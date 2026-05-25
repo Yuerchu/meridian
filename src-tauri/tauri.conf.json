@@ -1,0 +1,29 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicr9/schemas/master/schemas/tauri/2/tauri.conf.schema.json",
+  "productName": "Meridian",
+  "version": "0.1.0",
+  "identifier": "cn.yuxiaoqiu.meridian",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Meridian",
+        "width": 960,
+        "height": 680,
+        "minWidth": 640,
+        "minHeight": 480,
+        "decorations": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "plugins": {}
+}

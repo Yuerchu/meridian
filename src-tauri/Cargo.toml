@@ -1,0 +1,55 @@
+[package]
+name = "meridian"
+version = "0.1.0"
+edition = "2024"
+license = "LicenseRef-Proprietary-Yuerchu"
+authors = ["于小丘 Yuerchu <admin@yuxiaoqiu.cn>"]
+
+[lib]
+name = "meridian_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "meridian"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls-native-roots"], default-features = false }
+eventsource-stream = "0.2"
+futures = { version = "0.3", default-features = false, features = ["std"] }
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+# Ported from Codex (Apache-2.0)
+keyring = { version = "3.6", default-features = false, features = ["crypto-rust"] }
+age = "0.11"
+anyhow = "1"
+base64 = "0.22"
+sha2 = "0.10"
+rand = "0.9"
+regex = "1"
+bytes = "1"
+http = "1"
+async-trait = "0.1"
+# Database
+diesel = { version = "2", features = ["sqlite", "r2d2"] }
+libsqlite3-sys = { version = "0.37", features = ["bundled"] }
+diesel_migrations = "2"
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["crypto-rust", "windows-native"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["crypto-rust", "apple-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", default-features = false, features = ["crypto-rust", "linux-native-async-persistent"] }

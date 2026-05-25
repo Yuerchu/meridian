@@ -1,0 +1,25 @@
+Meridian
+Copyright 2026 于小丘 Yuerchu <admin@yuxiaoqiu.cn>
+
+This product includes code derived from the following projects:
+
+---
+
+OpenAI Codex CLI (codex-rs)
+Copyright 2025 OpenAI
+Licensed under the Apache License, Version 2.0
+https://github.com/openai/codex
+
+The following modules contain code ported from codex-rs:
+
+  src-tauri/src/keyring/     — from codex-rs/keyring-store/
+  src-tauri/src/secrets/     — from codex-rs/secrets/
+  src-tauri/src/client/      — from codex-rs/codex-client/
+
+Modifications made:
+  - keyring: renamed crate, no functional changes
+  - secrets: removed codex-git-utils dependency, renamed service constant
+    from "codex" to "meridian"
+  - client: removed ChatGPT cookie handling, ChatGPT host allowlist,
+    OpenTelemetry trace propagation, zstd request compression, and
+    custom CA probe binary; simplified HTTP client wrapper

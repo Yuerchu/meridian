@@ -1,0 +1,12 @@
+{
+  "$schema": "https://raw.githubusercontent.com/nicr9/schemas/master/schemas/tauri/2/capability.schema.json",
+  "identifier": "default",
+  "description": "Default capabilities for the main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:window:default",
+    "shell:default"
+  ]
+}
