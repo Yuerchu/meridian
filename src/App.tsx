@@ -1,38 +1,96 @@
-import { useState } from 'react'
-import Chat from './components/Chat'
-import Settings from './components/Settings'
+import { useCallback, useEffect, useState } from 'react'
+import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { AppSidebar } from '@/components/layout/app-sidebar'
+import { ChatView } from '@/components/chat/chat-view'
+import Settings from '@/components/Settings'
+import { api } from '@/api'
+import type { Conversation } from '@/types'
 
 type Page = 'chat' | 'settings'
 
 function App() {
   const [page, setPage] = useState<Page>('chat')
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeId, setActiveId] = useState<string | null>(null)
+
+  const refreshConversations = useCallback(async () => {
+    const list = await api.listConversations()
+    setConversations(list)
+    return list
+  }, [])
+
+  useEffect(() => {
+    refreshConversations()
+  }, [refreshConversations])
+
+  const handleCreate = useCallback(async () => {
+    const conv = await api.createConversation()
+    const list = await refreshConversations()
+    setActiveId(conv.id)
+    setPage('chat')
+    return list
+  }, [refreshConversations])
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      await api.deleteConversation(id)
+      await refreshConversations()
+      if (activeId === id) {
+        setActiveId(null)
+      }
+    },
+    [activeId, refreshConversations],
+  )
+
+  const handleSelect = useCallback(
+    (id: string) => {
+      setActiveId(id)
+      setPage('chat')
+    },
+    [],
+  )
+
+  const activeConversation = conversations.find((c) => c.id === activeId)
 
   return (
-    <div className="flex flex-col h-screen bg-neutral-950 text-neutral-100">
-      <header
-        className="flex items-center h-12 px-4 border-b border-neutral-800 select-none"
-        data-tauri-drag-region
-      >
-        <h1 className="text-sm font-medium tracking-wide">Meridian</h1>
-        <span className="ml-2 text-xs text-neutral-500">v0.1.0-dev</span>
-        <nav className="ml-auto flex gap-1">
-          <button
-            onClick={() => setPage('chat')}
-            className={`px-3 py-1 text-xs rounded ${page === 'chat' ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-500 hover:text-neutral-300'}`}
-          >
-            Chat
-          </button>
-          <button
-            onClick={() => setPage('settings')}
-            className={`px-3 py-1 text-xs rounded ${page === 'settings' ? 'bg-neutral-800 text-neutral-100' : 'text-neutral-500 hover:text-neutral-300'}`}
-          >
-            Settings
-          </button>
-        </nav>
-      </header>
+    <SidebarProvider>
+      <AppSidebar
+        conversations={conversations}
+        activeId={activeId}
+        onSelect={handleSelect}
+        onCreate={handleCreate}
+        onDelete={handleDelete}
+        onOpenSettings={() => setPage('settings')}
+      />
+      <SidebarInset>
+        <header className="flex items-center h-12 gap-2 px-4 border-b border-neutral-800 select-none" data-tauri-drag-region>
+          <SidebarTrigger className="-ml-1" />
+          <span className="text-sm font-medium">
+            {page === 'settings'
+              ? 'Settings'
+              : activeConversation?.title ?? 'Meridian'}
+          </span>
+        </header>
 
-      {page === 'chat' ? <Chat /> : <Settings />}
-    </div>
+        <main className="flex-1 overflow-hidden">
+          {page === 'settings' ? (
+            <Settings />
+          ) : activeId ? (
+            <ChatView conversationId={activeId} />
+          ) : (
+            <div className="flex flex-col items-center justify-center h-full gap-4 text-neutral-500">
+              <p className="text-sm">No conversation selected</p>
+              <button
+                onClick={handleCreate}
+                className="px-4 py-2 text-sm bg-neutral-100 text-neutral-900 rounded-lg hover:bg-neutral-200"
+              >
+                New Chat
+              </button>
+            </div>
+          )}
+        </main>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
 
