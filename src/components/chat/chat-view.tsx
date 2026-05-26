@@ -1,30 +1,47 @@
-import { useEffect, useState, useCallback, useRef, useLayoutEffect } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listen } from '@tauri-apps/api/event'
 import { api } from '@/api'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageItem } from './message-item'
 import { InputBar } from './input-bar'
 import type { Message as DbMessage, StreamChunk, Assistant, Provider } from '@/types'
 
-function AutoScrollDiv({ children, dep }: { children: React.ReactNode; dep: unknown }) {
-  const ref = useRef<HTMLDivElement>(null)
+function AutoScrollArea({ children, dep }: { children: React.ReactNode; dep: unknown }) {
+  const rootRef = useRef<HTMLDivElement>(null)
   const stickRef = useRef(true)
 
-  function handleScroll() {
-    const el = ref.current
-    if (!el) return
-    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  function getViewport() {
+    return rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]') ?? null
   }
 
-  useLayoutEffect(() => {
-    if (stickRef.current && ref.current) {
-      ref.current.scrollTop = ref.current.scrollHeight
+  useEffect(() => {
+    if (stickRef.current) {
+      requestAnimationFrame(() => {
+        const el = getViewport()
+        if (el) el.scrollTop = el.scrollHeight
+      })
     }
   }, [dep])
 
+  useEffect(() => {
+    const el = getViewport()
+    if (!el) return
+    function handleScroll() {
+      if (!el) return
+      stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+    }
+    el.addEventListener('scroll', handleScroll)
+    return () => el.removeEventListener('scroll', handleScroll)
+  }, [])
+
   return (
-    <div ref={ref} onScroll={handleScroll} className="flex-1 overflow-y-auto px-4 py-6 space-y-6">
-      {children}
+    <div ref={rootRef} className="flex-1 min-h-0">
+      <ScrollArea className="h-full">
+        <div className="px-4 py-6 space-y-6">
+          {children}
+        </div>
+      </ScrollArea>
     </div>
   )
 }
@@ -157,7 +174,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
 
   return (
     <div className="flex flex-col h-full">
-      <AutoScrollDiv dep={lastMsg?.content ?? null}>
+      <AutoScrollArea dep={lastMsg ? `${lastMsg.id}:${lastMsg.content.length}` : null}>
         {error && (
           <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive break-all">
             {error}
@@ -175,7 +192,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
             {t('chat.startHint')}
           </div>
         )}
-      </AutoScrollDiv>
+      </AutoScrollArea>
 
       <InputBar
         value={input}

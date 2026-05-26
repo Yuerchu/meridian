@@ -139,6 +139,9 @@ body {
     @apply bg-background text-foreground;
   }
   html {
-    @apply font-sans;
+    @apply font-sans overflow-hidden h-full;
+  }
+  body, #root {
+    @apply h-full overflow-hidden;
   }
 }

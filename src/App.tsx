@@ -73,8 +73,8 @@ function App() {
         onDelete={handleDelete}
         onOpenSettings={() => setPage('settings')}
       />
-      <SidebarInset>
-        <header className="flex items-center h-12 gap-2 px-4 border-b border-border select-none" data-tauri-drag-region>
+      <SidebarInset className="flex flex-col overflow-hidden">
+        <header className="flex items-center h-12 gap-2 px-4 border-b border-border select-none shrink-0" data-tauri-drag-region>
           <SidebarTrigger className="-ml-1" />
           <span className="text-sm font-medium">
             {page === 'settings'
@@ -83,7 +83,7 @@ function App() {
           </span>
         </header>
 
-        <main className="flex-1 overflow-hidden">
+        <main className="flex-1 min-h-0 overflow-hidden">
           {page === 'settings' ? (
             <SettingsPage />
           ) : activeId ? (
