@@ -28,6 +28,7 @@ struct AppTools(tools::ToolRegistry);
 pub enum ApprovalDecision {
     Approved,
     Denied,
+    Response(String),
 }
 
 struct ApprovalWaiters(Mutex<HashMap<String, oneshot::Sender<ApprovalDecision>>>);
@@ -458,6 +459,16 @@ async fn deny_tool_call(app: tauri::AppHandle, call_id: String) -> Result<(), St
     Ok(())
 }
 
+#[tauri::command]
+async fn respond_to_ask(app: tauri::AppHandle, call_id: String, response: String) -> Result<(), String> {
+    let waiters = app.state::<ApprovalWaiters>();
+    let mut map = waiters.0.lock().await;
+    if let Some(tx) = map.remove(&call_id) {
+        let _ = tx.send(ApprovalDecision::Response(response));
+    }
+    Ok(())
+}
+
 // --- Chat command (with agent loop + tools + approval) ---
 
 #[tauri::command]
@@ -608,8 +619,27 @@ async fn chat(
                 })).map_err(|e| e.to_string())?;
 
                 let tool = tool_registry.0.get(&tc.name);
-                let result = if let Some(tool) = tool {
-                    // Check permission
+                let result = if tc.name == "ask_user" {
+                    // ask_user: send question to frontend, wait for text response
+                    let (tx, rx) = oneshot::channel();
+                    {
+                        let waiters = app.state::<ApprovalWaiters>();
+                        let mut map = waiters.0.lock().await;
+                        map.insert(tc.id.clone(), tx);
+                    }
+                    app.emit("chat-stream", serde_json::json!({
+                        "type": "tool_approval_req",
+                        "call_id": tc.id,
+                        "tool_name": tc.name,
+                        "arguments": tc.arguments,
+                        "message_id": &assistant_msg_id,
+                    })).map_err(|e| e.to_string())?;
+
+                    match rx.await {
+                        Ok(ApprovalDecision::Response(text)) => text,
+                        _ => "User did not respond.".to_string(),
+                    }
+                } else if let Some(tool) = tool {
                     let permission = tool.default_permission();
                     let approved = match permission {
                         tools::Permission::Always => true,
@@ -874,7 +904,7 @@ pub fn run() {
             list_assistants, create_assistant, update_assistant, delete_assistant,
             list_providers, create_provider, update_provider, delete_provider,
             set_provider_key, get_provider_key_exists, fetch_provider_models,
-            approve_tool_call, deny_tool_call,
+            approve_tool_call, deny_tool_call, respond_to_ask,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

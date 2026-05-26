@@ -1,5 +1,9 @@
+pub mod apply_patch;
+pub mod ask_user;
+pub mod list_directory;
 pub mod read_file;
 pub mod run_command;
+pub mod search_files;
 pub mod write_file;
 
 use async_trait::async_trait;
@@ -28,9 +32,13 @@ pub struct ToolRegistry {
 impl ToolRegistry {
     pub fn new() -> Self {
         let tools: Vec<Box<dyn Tool>> = vec![
+            Box::new(ask_user::AskUserTool),
             Box::new(read_file::ReadFileTool),
             Box::new(write_file::WriteFileTool),
             Box::new(run_command::RunCommandTool),
+            Box::new(list_directory::ListDirectoryTool),
+            Box::new(search_files::SearchFilesTool),
+            Box::new(apply_patch::ApplyPatchTool),
         ];
         Self { tools }
     }

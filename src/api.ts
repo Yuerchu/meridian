@@ -108,4 +108,7 @@ export const api = {
 
   denyToolCall: (callId: string) =>
     invoke<void>('deny_tool_call', { callId }),
+
+  respondToAsk: (callId: string, response: string) =>
+    invoke<void>('respond_to_ask', { callId, response }),
 }

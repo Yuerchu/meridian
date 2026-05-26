@@ -1,0 +1,176 @@
+use async_trait::async_trait;
+use super::{Permission, Tool};
+use regex::Regex;
+
+pub struct SearchFilesTool;
+
+#[async_trait]
+impl Tool for SearchFilesTool {
+    fn name(&self) -> &str {
+        "search_files"
+    }
+
+    fn description(&self) -> &str {
+        "Search for a text pattern in files within a directory. Returns matching lines with file paths and line numbers. Supports regex patterns."
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "pattern": {
+                    "type": "string",
+                    "description": "Text or regex pattern to search for"
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Absolute path to the directory to search in"
+                },
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum number of matching lines to return (default: 50)"
+                }
+            },
+            "required": ["pattern", "path"]
+        })
+    }
+
+    fn default_permission(&self) -> Permission {
+        Permission::Always
+    }
+
+    async fn execute(&self, args: serde_json::Value) -> Result<String, String> {
+        let pattern = args["pattern"]
+            .as_str()
+            .ok_or("missing 'pattern' argument")?
+            .to_string();
+        let path = args["path"]
+            .as_str()
+            .ok_or("missing 'path' argument")?
+            .to_string();
+        let max_results = args["max_results"]
+            .as_u64()
+            .unwrap_or(50) as usize;
+
+        let path = std::path::PathBuf::from(path);
+        tokio::task::spawn_blocking(move || search(&path, &pattern, max_results))
+            .await
+            .map_err(|e| format!("task failed: {e}"))?
+    }
+}
+
+const SKIP_DIRS: &[&str] = &[
+    ".git", "node_modules", "target", "__pycache__", ".venv",
+    "dist", "build", ".next", ".nuxt", "vendor",
+];
+
+const MAX_DEPTH: usize = 10;
+const MAX_LINE_LEN: usize = 500;
+
+fn search(root: &std::path::Path, pattern: &str, max_results: usize) -> Result<String, String> {
+    let re = Regex::new(pattern)
+        .map_err(|e| format!("invalid regex pattern: {e}"))?;
+
+    let mut matches = Vec::new();
+    walk_and_search(root, &re, 0, max_results, &mut matches)?;
+
+    if matches.is_empty() {
+        return Ok("No matches found.".to_string());
+    }
+
+    let total = matches.len();
+    let truncated = total >= max_results;
+    let mut result = matches.join("\n");
+    if truncated {
+        result.push_str(&format!("\n\n(showing first {max_results} matches)"));
+    }
+    Ok(result)
+}
+
+fn walk_and_search(
+    dir: &std::path::Path,
+    re: &Regex,
+    depth: usize,
+    max_results: usize,
+    matches: &mut Vec<String>,
+) -> Result<(), String> {
+    if depth > MAX_DEPTH || matches.len() >= max_results {
+        return Ok(());
+    }
+
+    let entries = std::fs::read_dir(dir)
+        .map_err(|e| format!("failed to read '{}': {}", dir.display(), e))?;
+
+    for entry in entries {
+        if matches.len() >= max_results {
+            break;
+        }
+
+        let entry = match entry {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+
+        let name = entry.file_name();
+        let name_str = name.to_string_lossy();
+
+        if name_str.starts_with('.') && depth > 0 {
+            continue;
+        }
+        if SKIP_DIRS.contains(&name_str.as_ref()) {
+            continue;
+        }
+
+        let file_type = match entry.file_type() {
+            Ok(ft) => ft,
+            Err(_) => continue,
+        };
+
+        if file_type.is_dir() {
+            walk_and_search(&entry.path(), re, depth + 1, max_results, matches)?;
+        } else if file_type.is_file() {
+            search_file(&entry.path(), re, max_results, matches);
+        }
+    }
+
+    Ok(())
+}
+
+fn search_file(
+    path: &std::path::Path,
+    re: &Regex,
+    max_results: usize,
+    matches: &mut Vec<String>,
+) {
+    let content = match std::fs::read(path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    // Skip binary files (check first 512 bytes for null bytes)
+    let check_len = content.len().min(512);
+    if content[..check_len].contains(&0) {
+        return;
+    }
+
+    let text = match std::str::from_utf8(&content) {
+        Ok(t) => t,
+        Err(_) => return,
+    };
+
+    let display_path = path.display().to_string();
+
+    for (line_num, line) in text.lines().enumerate() {
+        if matches.len() >= max_results {
+            break;
+        }
+        if re.is_match(line) {
+            let display_line = if line.len() > MAX_LINE_LEN {
+                format!("{}...", &line[..MAX_LINE_LEN])
+            } else {
+                line.to_string()
+            };
+            matches.push(format!("{}:{}:{}", display_path, line_num + 1, display_line));
+        }
+    }
+}
