@@ -102,4 +102,10 @@ export const api = {
 
   fetchProviderModels: (providerId: string) =>
     invoke<ModelInfo[]>('fetch_provider_models', { providerId }),
+
+  approveToolCall: (callId: string) =>
+    invoke<void>('approve_tool_call', { callId }),
+
+  denyToolCall: (callId: string) =>
+    invoke<void>('deny_tool_call', { callId }),
 }

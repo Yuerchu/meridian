@@ -1,11 +1,12 @@
-import { useState, useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { Bot, Copy, Check, Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { Message } from '@/types'
+import { ToolCallBlock } from './tool-call-block'
+import type { ContentBlock, Message } from '@/types'
 
 function useRelativeTime() {
   const { t } = useTranslation()
@@ -60,6 +61,42 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
   )
 }
 
+const proseClasses = cn(
+  "text-sm leading-relaxed prose prose-invert prose-sm max-w-none",
+  "prose-p:my-1.5 prose-headings:mt-4 prose-headings:mb-2",
+  "prose-pre:p-0 prose-pre:bg-transparent prose-pre:my-0",
+  "prose-code:before:content-none prose-code:after:content-none",
+  "prose-table:text-sm prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5",
+  "prose-table:border prose-table:border-border",
+  "prose-th:border prose-th:border-border prose-th:bg-muted/50",
+  "prose-td:border prose-td:border-border",
+)
+
+const MarkdownContent = React.memo(function MarkdownContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+  return (
+    <div className={proseClasses}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={{ code: CodeBlock as never }}>
+        {content}
+      </ReactMarkdown>
+      {isStreaming && (
+        <span className="inline-block w-2 h-4 ml-0.5 bg-muted-foreground animate-pulse" />
+      )}
+    </div>
+  )
+})
+
+const MemoToolCallBlock = React.memo(ToolCallBlock)
+
+function AssistantBlock({ block, isLast, isStreaming }: { block: ContentBlock; isLast: boolean; isStreaming?: boolean }) {
+  if (block.type === 'text') {
+    return <MarkdownContent content={block.text} isStreaming={isLast && isStreaming} />
+  }
+  if (block.type === 'tool_call') {
+    return <MemoToolCallBlock data={block.data} />
+  }
+  return null
+}
+
 interface MessageItemProps {
   message: Message
   isStreaming?: boolean
@@ -94,29 +131,13 @@ export function MessageItem({ message, isStreaming, onDelete }: MessageItemProps
       </div>
 
       <div className="pl-8">
-        <div className={cn(
-          "text-sm leading-relaxed prose prose-invert prose-sm max-w-none",
-          "prose-p:my-1.5 prose-headings:mt-4 prose-headings:mb-2",
-          "prose-pre:p-0 prose-pre:bg-transparent prose-pre:my-0",
-          "prose-code:before:content-none prose-code:after:content-none",
-          "prose-table:text-sm prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5",
-          "prose-table:border prose-table:border-border",
-          "prose-th:border prose-th:border-border prose-th:bg-muted/50",
-          "prose-td:border prose-td:border-border",
-        )}>
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            rehypePlugins={[rehypeHighlight]}
-            components={{
-              code: CodeBlock as never,
-            }}
-          >
-            {message.content}
-          </ReactMarkdown>
-          {isStreaming && (
-            <span className="inline-block w-2 h-4 ml-0.5 bg-muted-foreground animate-pulse" />
-          )}
-        </div>
+        {(message._blocks && message._blocks.length > 0) ? (
+          message._blocks.map((block, i) => (
+            <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} />
+          ))
+        ) : (
+          <MarkdownContent content={message.content} isStreaming={isStreaming} />
+        )}
 
         <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
           <CopyButton text={message.content} />

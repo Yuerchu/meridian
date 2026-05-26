@@ -3,7 +3,9 @@ mod db;
 mod keyring;
 mod provider;
 mod secrets;
+mod tools;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -13,12 +15,37 @@ use db::models::conversation::Conversation;
 use db::models::message::{Message, NewMessage};
 use db::models::provider::{NewProvider, Provider, ProviderUpdate};
 use provider::models::ModelInfo;
-use provider::{ChatMessage, ChatParams, ChatProvider};
+use provider::{ChatMessage, ChatParams, ChatProvider, ToolCall};
 use secrets::{SecretName, SecretScope, SecretsManager};
 use tauri::{Emitter, Manager};
+use tokio::sync::{oneshot, Mutex};
 
 struct AppSecrets(Arc<SecretsManager>);
 struct AppDb(DbPool);
+struct AppTools(tools::ToolRegistry);
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum ApprovalDecision {
+    Approved,
+    Denied,
+}
+
+struct ApprovalWaiters(Mutex<HashMap<String, oneshot::Sender<ApprovalDecision>>>);
+
+fn take_bytes_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = 0;
+    for (i, ch) in s.char_indices() {
+        let next = i + ch.len_utf8();
+        if next > max_bytes {
+            break;
+        }
+        end = next;
+    }
+    &s[..end]
+}
 
 fn now_ms() -> i64 {
     SystemTime::now()
@@ -38,23 +65,14 @@ fn build_messages(
 ) -> Vec<ChatMessage> {
     let mut msgs = Vec::new();
     if !system_prompt.is_empty() {
-        msgs.push(ChatMessage {
-            role: "system".into(),
-            content: system_prompt.into(),
-        });
+        msgs.push(ChatMessage { role: "system".into(), content: system_prompt.into(), tool_calls: None, tool_call_id: None });
     }
     for m in history {
         if m.role == "user" || m.role == "assistant" {
-            msgs.push(ChatMessage {
-                role: m.role.clone(),
-                content: m.content.clone(),
-            });
+            msgs.push(ChatMessage { role: m.role.clone(), content: m.content.clone(), tool_calls: None, tool_call_id: None });
         }
     }
-    msgs.push(ChatMessage {
-        role: "user".into(),
-        content: user_message.into(),
-    });
+    msgs.push(ChatMessage::user(user_message));
     msgs
 }
 
@@ -418,7 +436,29 @@ async fn fetch_provider_models(
         .map_err(|e| e.to_string())
 }
 
-// --- Chat command (with history + provider + title generation) ---
+// --- Tool approval commands ---
+
+#[tauri::command]
+async fn approve_tool_call(app: tauri::AppHandle, call_id: String) -> Result<(), String> {
+    let waiters = app.state::<ApprovalWaiters>();
+    let mut map = waiters.0.lock().await;
+    if let Some(tx) = map.remove(&call_id) {
+        let _ = tx.send(ApprovalDecision::Approved);
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn deny_tool_call(app: tauri::AppHandle, call_id: String) -> Result<(), String> {
+    let waiters = app.state::<ApprovalWaiters>();
+    let mut map = waiters.0.lock().await;
+    if let Some(tx) = map.remove(&call_id) {
+        let _ = tx.send(ApprovalDecision::Denied);
+    }
+    Ok(())
+}
+
+// --- Chat command (with agent loop + tools + approval) ---
 
 #[tauri::command]
 async fn chat(
@@ -525,45 +565,152 @@ async fn chat(
         }).await.map_err(|e| e.to_string())??;
     }
 
-    // Stream from provider
-    let mut stream = provider.stream_chat(chat_messages, params.clone())
-        .await.map_err(|e| e.to_string())?;
+    // Get tool definitions
+    let tool_registry = app.state::<AppTools>();
+    let tool_defs = tool_registry.0.definitions();
+    let has_tools = !tool_defs.is_empty();
+    let max_iterations = 10;
 
     let mut full_content = String::new();
 
-    use futures::StreamExt;
-    while let Some(chunk) = stream.next().await {
-        match chunk {
-            Ok(content) => {
-                full_content.push_str(&content);
+    if has_tools {
+        // Agent loop: non-streaming with tool calls
+
+        for _iteration in 0..max_iterations {
+            let response = provider.chat_with_tools(
+                chat_messages.clone(), tool_defs.clone(), params.clone()
+            ).await.map_err(|e| e.to_string())?;
+
+            if !response.text.is_empty() {
+                full_content.push_str(&response.text);
                 app.emit("chat-stream", serde_json::json!({
-                    "content": content, "done": false, "message_id": &assistant_msg_id,
+                    "content": &response.text, "done": false, "message_id": &assistant_msg_id,
                 })).map_err(|e| e.to_string())?;
             }
-            Err(e) => {
-                let pool = pool.clone();
-                let msg_id = assistant_msg_id.clone();
-                let content = full_content.clone();
-                let _ = tokio::task::spawn_blocking(move || {
-                    if let Ok(mut conn) = pool.get() {
-                        let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
+
+            if response.tool_calls.is_empty() {
+                break;
+            }
+
+            // Add assistant message with tool_calls to context
+            chat_messages.push(ChatMessage::assistant_with_tools(
+                &response.text, response.tool_calls.clone()
+            ));
+
+            // Process each tool call
+            for tc in &response.tool_calls {
+                app.emit("chat-stream", serde_json::json!({
+                    "type": "tool_call",
+                    "call_id": tc.id,
+                    "tool_name": tc.name,
+                    "arguments": tc.arguments,
+                    "message_id": &assistant_msg_id,
+                })).map_err(|e| e.to_string())?;
+
+                let tool = tool_registry.0.get(&tc.name);
+                let result = if let Some(tool) = tool {
+                    // Check permission
+                    let permission = tool.default_permission();
+                    let approved = match permission {
+                        tools::Permission::Always => true,
+                        tools::Permission::Never => false,
+                        tools::Permission::Ask => {
+                            let (tx, rx) = oneshot::channel();
+                            {
+                                let waiters = app.state::<ApprovalWaiters>();
+                                let mut map = waiters.0.lock().await;
+                                map.insert(tc.id.clone(), tx);
+                            }
+                            app.emit("chat-stream", serde_json::json!({
+                                "type": "tool_approval_req",
+                                "call_id": tc.id,
+                                "tool_name": tc.name,
+                                "arguments": tc.arguments,
+                                "message_id": &assistant_msg_id,
+                            })).map_err(|e| e.to_string())?;
+
+                            match rx.await {
+                                Ok(ApprovalDecision::Approved) => true,
+                                _ => false,
+                            }
+                        }
+                    };
+
+                    if approved {
+                        let args: serde_json::Value = serde_json::from_str(&tc.arguments)
+                            .unwrap_or_default();
+                        match tool.execute(args).await {
+                            Ok(output) => output,
+                            Err(e) => format!("Error: {e}"),
+                        }
+                    } else {
+                        "Tool call denied by user.".to_string()
                     }
-                }).await;
-                return Err(e.to_string());
+                } else {
+                    format!("Unknown tool: {}", tc.name)
+                };
+
+                app.emit("chat-stream", serde_json::json!({
+                    "type": "tool_result",
+                    "call_id": tc.id,
+                    "result": &result,
+                    "message_id": &assistant_msg_id,
+                })).map_err(|e| e.to_string())?;
+
+                chat_messages.push(ChatMessage::tool_result(&tc.id, &result));
             }
         }
-    }
 
-    // Persist final content
-    {
-        let pool = pool.clone();
-        let msg_id = assistant_msg_id.clone();
-        let content = full_content.clone();
-        tokio::task::spawn_blocking(move || {
-            if let Ok(mut conn) = pool.get() {
-                let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
+        // Persist final content
+        {
+            let pool = pool.clone();
+            let msg_id = assistant_msg_id.clone();
+            let content = full_content.clone();
+            tokio::task::spawn_blocking(move || {
+                if let Ok(mut conn) = pool.get() {
+                    let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
+                }
+            }).await.map_err(|e| e.to_string())?;
+        }
+    } else {
+        // Simple streaming (no tools)
+        let mut stream = provider.stream_chat(chat_messages, params.clone())
+            .await.map_err(|e| e.to_string())?;
+
+        use futures::StreamExt;
+        while let Some(chunk) = stream.next().await {
+            match chunk {
+                Ok(content) => {
+                    full_content.push_str(&content);
+                    app.emit("chat-stream", serde_json::json!({
+                        "content": content, "done": false, "message_id": &assistant_msg_id,
+                    })).map_err(|e| e.to_string())?;
+                }
+                Err(e) => {
+                    let pool = pool.clone();
+                    let msg_id = assistant_msg_id.clone();
+                    let content = full_content.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        if let Ok(mut conn) = pool.get() {
+                            let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
+                        }
+                    }).await;
+                    return Err(e.to_string());
+                }
             }
-        }).await.map_err(|e| e.to_string())?;
+        }
+
+        // Persist final content
+        {
+            let pool = pool.clone();
+            let msg_id = assistant_msg_id.clone();
+            let content = full_content.clone();
+            tokio::task::spawn_blocking(move || {
+                if let Ok(mut conn) = pool.get() {
+                    let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
+                }
+            }).await.map_err(|e| e.to_string())?;
+        }
     }
 
     app.emit("chat-stream", serde_json::json!({
@@ -572,14 +719,11 @@ async fn chat(
 
     // Auto-generate title if first message
     if conv_title.is_none() {
-        let title_messages = vec![ChatMessage {
-            role: "user".into(),
-            content: format!(
-                "Generate a short title (max 6 words, no quotes, no punctuation) for this conversation:\nUser: {}\nAssistant: {}",
-                &message,
-                &full_content[..full_content.len().min(300)]
-            ),
-        }];
+        let title_messages = vec![ChatMessage::user(&format!(
+            "Generate a short title (max 6 words, no quotes, no punctuation) for this conversation:\nUser: {}\nAssistant: {}",
+            &message,
+            take_bytes_at_char_boundary(&full_content, 300)
+        ))];
         let title_params = ChatParams {
             model: params.model,
             temperature: Some(0.3),
@@ -717,6 +861,8 @@ pub fn run() {
             }
 
             app.manage(AppDb(pool));
+            app.manage(AppTools(tools::ToolRegistry::new()));
+            app.manage(ApprovalWaiters(Mutex::new(HashMap::new())));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -728,6 +874,7 @@ pub fn run() {
             list_assistants, create_assistant, update_assistant, delete_assistant,
             list_providers, create_provider, update_provider, delete_provider,
             set_provider_key, get_provider_key_exists, fetch_provider_models,
+            approve_tool_call, deny_tool_call,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

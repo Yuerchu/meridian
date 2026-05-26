@@ -5,7 +5,8 @@ import { api } from '@/api'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageItem } from './message-item'
 import { InputBar } from './input-bar'
-import type { Message as DbMessage, StreamChunk, Assistant, Provider } from '@/types'
+// ToolCallBlock is rendered inside MessageItem via _toolCallDisplays
+import type { Message as DbMessage, StreamChunk, Assistant, Provider, ToolCallDisplay } from '@/types'
 
 function AutoScrollArea({ children, dep }: { children: React.ReactNode; dep: unknown }) {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -95,17 +96,90 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
 
   useEffect(() => {
     const promise = listen<StreamChunk>('chat-stream', (event) => {
-      if (event.payload.done) {
+      const p = event.payload
+
+      if (p.done) {
         setStreaming(false)
         submittingRef.current = false
-        api.loadMessages(conversationIdRef.current).then(setMessages)
-      } else {
+        api.loadMessages(conversationIdRef.current).then((dbMessages) => {
+          setMessages((prev) => {
+            const blocksMap = new Map<string, typeof prev[0]['_blocks']>()
+            for (const m of prev) {
+              if (m._blocks?.length) {
+                blocksMap.set(m.id, m._blocks)
+              }
+            }
+            if (blocksMap.size === 0) return dbMessages
+            return dbMessages.map((m) => {
+              const tempKey = [...blocksMap.keys()].find((k) => k.startsWith('temp-'))
+              if (m.role === 'assistant' && tempKey) {
+                const blocks = blocksMap.get(tempKey)
+                blocksMap.delete(tempKey)
+                if (blocks?.length) {
+                  return { ...m, _blocks: blocks }
+                }
+              }
+              return m
+            })
+          })
+        })
+        return
+      }
+
+      if ((p.type === 'tool_call' || p.type === 'tool_approval_req' || p.type === 'tool_result') && p.call_id) {
+        setMessages((prev) => {
+          const lastIdx = prev.length - 1
+          const last = prev[lastIdx]
+          if (!last || last.role !== 'assistant') return prev
+
+          const blocks = [...(last._blocks ?? [])]
+
+          if (p.type === 'tool_call') {
+            blocks.push({
+              type: 'tool_call',
+              data: {
+                call_id: p.call_id!,
+                tool_name: p.tool_name!,
+                arguments: p.arguments ?? '{}',
+                status: 'running',
+              },
+            })
+          } else {
+            const idx = blocks.findIndex(
+              (b) => b.type === 'tool_call' && b.data.call_id === p.call_id,
+            )
+            if (idx >= 0 && blocks[idx].type === 'tool_call') {
+              const tc = blocks[idx] as { type: 'tool_call'; data: ToolCallDisplay }
+              if (p.type === 'tool_approval_req') {
+                blocks[idx] = { type: 'tool_call', data: { ...tc.data, status: 'pending' } }
+              } else if (p.type === 'tool_result') {
+                blocks[idx] = { type: 'tool_call', data: { ...tc.data, status: 'completed', result: p.result } }
+              }
+            }
+          }
+
+          const updated = [...prev]
+          updated[lastIdx] = { ...last, _blocks: blocks }
+          return updated
+        })
+        return
+      }
+
+      // Regular text chunk — append to last text block or create new one
+      if (p.content) {
         setMessages((prev) => {
           const last = prev[prev.length - 1]
           if (last?.role === 'assistant') {
+            const blocks = [...(last._blocks ?? [])]
+            const lastBlock = blocks[blocks.length - 1]
+            if (lastBlock?.type === 'text') {
+              blocks[blocks.length - 1] = { type: 'text', text: lastBlock.text + p.content }
+            } else {
+              blocks.push({ type: 'text', text: p.content! })
+            }
             return [
               ...prev.slice(0, -1),
-              { ...last, content: last.content + event.payload.content },
+              { ...last, content: last.content + p.content, _blocks: blocks },
             ]
           }
           return prev

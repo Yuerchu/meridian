@@ -9,6 +9,18 @@ export interface Conversation {
   updated_at: number
 }
 
+export interface ToolCallDisplay {
+  call_id: string
+  tool_name: string
+  arguments: string
+  status: 'pending' | 'approved' | 'denied' | 'running' | 'completed'
+  result?: string
+}
+
+export type ContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_call'; data: ToolCallDisplay }
+
 export interface Message {
   id: string
   conversation_id: string
@@ -22,6 +34,7 @@ export interface Message {
   tool_call_id: string | null
   sort_order: number
   created_at: number
+  _blocks?: ContentBlock[]
 }
 
 export interface Assistant {
@@ -60,7 +73,12 @@ export interface ModelInfo {
 }
 
 export interface StreamChunk {
-  content: string
-  done: boolean
-  message_id: string
+  type?: string
+  content?: string
+  done?: boolean
+  message_id?: string
+  call_id?: string
+  tool_name?: string
+  arguments?: string
+  result?: string
 }
