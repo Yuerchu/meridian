@@ -11,6 +11,8 @@ use db::DbPool;
 use db::models::assistant::{Assistant, AssistantUpdate, NewAssistant};
 use db::models::conversation::Conversation;
 use db::models::message::{Message, NewMessage};
+use db::models::provider::{NewProvider, Provider, ProviderUpdate};
+use provider::models::ModelInfo;
 use provider::{ChatMessage, ChatParams, ChatProvider};
 use secrets::{SecretName, SecretScope, SecretsManager};
 use tauri::{Emitter, Manager};
@@ -73,38 +75,48 @@ fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_limit: usize, 
     *messages = trimmed;
 }
 
+fn provider_secret_name(provider_id: &str) -> String {
+    format!("PROVIDER_{}_KEY", provider_id.replace('-', "_").to_uppercase())
+}
+
+fn get_provider_api_key(secrets: &SecretsManager, provider_id: &str) -> Option<String> {
+    let key = provider_secret_name(provider_id);
+    secrets.get(&SecretScope::Global, &SecretName::new(&key).unwrap()).ok().flatten()
+}
+
 fn resolve_provider_config(
     secrets: &SecretsManager,
+    pool: &DbPool,
     assistant: Option<&Assistant>,
 ) -> Result<(String, String, String, String), String> {
-    let get_secret = |key: &str| -> Option<String> {
-        secrets
-            .get(&SecretScope::Global, &SecretName::new(key).unwrap())
-            .ok()
-            .flatten()
-    };
+    if let Some(provider_id) = assistant.and_then(|a| a.provider_id.as_deref()) {
+        let mut conn = get_conn(pool)?;
+        let provider = db::ops::provider::get_provider(&mut conn, provider_id)
+            .map_err(|e| format!("Provider not found: {e}"))?;
+        let api_key = get_provider_api_key(secrets, provider_id)
+            .ok_or_else(|| format!("API Key not set for provider '{}'", provider.name))?;
+        let model = assistant
+            .and_then(|a| a.model_id.clone())
+            .unwrap_or_else(|| "gpt-4.1-mini".into());
+        let base_url = provider.base_url.trim_end_matches('/').to_string();
+        return Ok((provider.provider_type, base_url, api_key, model));
+    }
 
-    let provider_type = assistant
-        .and_then(|a| a.provider_id.as_deref())
-        .map(|_| get_secret("PROVIDER_TYPE").unwrap_or_else(|| "openai".into()))
-        .unwrap_or_else(|| get_secret("PROVIDER_TYPE").unwrap_or_else(|| "openai".into()));
+    // Fallback: first enabled provider
+    let mut conn = get_conn(pool)?;
+    if let Ok(providers) = db::ops::provider::list_providers(&mut conn) {
+        if let Some(p) = providers.into_iter().find(|p| p.is_enabled != 0) {
+            if let Some(api_key) = get_provider_api_key(secrets, &p.id) {
+                let model = assistant
+                    .and_then(|a| a.model_id.clone())
+                    .unwrap_or_else(|| "gpt-4.1-mini".into());
+                let base_url = p.base_url.trim_end_matches('/').to_string();
+                return Ok((p.provider_type, base_url, api_key, model));
+            }
+        }
+    }
 
-    let base_url = get_secret("API_BASE")
-        .or_else(|| std::env::var("MERIDIAN_API_BASE").ok())
-        .unwrap_or_else(|| "https://api.openai.com/v1".into());
-    let base_url = base_url.trim_end_matches('/').to_string();
-
-    let api_key = get_secret("API_KEY")
-        .or_else(|| std::env::var("MERIDIAN_API_KEY").ok())
-        .ok_or("API Key not configured. Go to Settings to set it.")?;
-
-    let model = assistant
-        .and_then(|a| a.model_id.clone())
-        .or_else(|| get_secret("MODEL"))
-        .or_else(|| std::env::var("MERIDIAN_MODEL").ok())
-        .unwrap_or_else(|| "gpt-4.1-mini".into());
-
-    Ok((provider_type, base_url, api_key, model))
+    Err("No provider configured. Go to Settings → Provider to add one.".into())
 }
 
 // --- Secret commands ---
@@ -283,6 +295,129 @@ async fn delete_assistant(app: tauri::AppHandle, id: String) -> Result<(), Strin
     }).await.map_err(|e| e.to_string())?
 }
 
+// --- Provider commands ---
+
+#[tauri::command]
+async fn list_providers(app: tauri::AppHandle) -> Result<Vec<Provider>, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::provider::list_providers(&mut conn).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn create_provider(
+    app: tauri::AppHandle,
+    name: String,
+    provider_type: String,
+    base_url: String,
+) -> Result<Provider, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = now_ms();
+        db::ops::provider::create_provider(&mut conn, &NewProvider {
+            id: &id,
+            name: &name,
+            provider_type: &provider_type,
+            base_url: &base_url,
+            is_enabled: 1,
+            sort_order: 0,
+            created_at: now,
+            updated_at: now,
+        }).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn update_provider(
+    app: tauri::AppHandle,
+    id: String,
+    name: Option<String>,
+    provider_type: Option<String>,
+    base_url: Option<String>,
+    is_enabled: Option<i32>,
+) -> Result<Provider, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        let changeset = ProviderUpdate {
+            name,
+            provider_type,
+            base_url,
+            is_enabled,
+            updated_at: Some(now_ms()),
+            ..Default::default()
+        };
+        db::ops::provider::update_provider(&mut conn, &id, &changeset).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_provider(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    let secrets = app.state::<AppSecrets>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::provider::delete_provider(&mut conn, &id).map_err(|e| e.to_string())?;
+        let key_name = provider_secret_name(&id);
+        let _ = secrets.delete(&SecretScope::Global, &SecretName::new(&key_name).unwrap());
+        Ok(())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn set_provider_key(
+    app: tauri::AppHandle,
+    provider_id: String,
+    api_key: String,
+) -> Result<(), String> {
+    let secrets = app.state::<AppSecrets>();
+    let key_name = provider_secret_name(&provider_id);
+    secrets.0.set(&SecretScope::Global, &SecretName::new(&key_name).unwrap(), &api_key)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_provider_key_exists(
+    app: tauri::AppHandle,
+    provider_id: String,
+) -> Result<bool, String> {
+    let secrets = app.state::<AppSecrets>();
+    let key_name = provider_secret_name(&provider_id);
+    let exists = secrets.0.get(&SecretScope::Global, &SecretName::new(&key_name).unwrap())
+        .ok().flatten().is_some();
+    Ok(exists)
+}
+
+#[tauri::command]
+async fn fetch_provider_models(
+    app: tauri::AppHandle,
+    provider_id: String,
+) -> Result<Vec<ModelInfo>, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    let secrets = app.state::<AppSecrets>().0.clone();
+
+    let (provider_type, base_url) = {
+        let pool = pool.clone();
+        let pid = provider_id.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| e.to_string())?;
+            let p = db::ops::provider::get_provider(&mut conn, &pid).map_err(|e| e.to_string())?;
+            Ok::<_, String>((p.provider_type, p.base_url))
+        }).await.map_err(|e| e.to_string())??
+    };
+
+    let api_key = get_provider_api_key(&secrets, &provider_id)
+        .ok_or("API Key not set for this provider")?;
+
+    provider::models::fetch_models(&provider_type, &base_url, &api_key)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 // --- Chat command (with history + provider + title generation) ---
 
 #[tauri::command]
@@ -290,6 +425,8 @@ async fn chat(
     app: tauri::AppHandle,
     conversation_id: String,
     message: String,
+    model_override: Option<String>,
+    provider_override: Option<String>,
 ) -> Result<(), String> {
     let secrets = app.state::<AppSecrets>();
     let pool = app.state::<AppDb>().0.clone();
@@ -310,9 +447,27 @@ async fn chat(
         }).await.map_err(|e| e.to_string())??
     };
 
-    // Resolve provider config
-    let (provider_type, base_url, api_key, model) =
-        resolve_provider_config(&secrets.0, assistant.as_ref())?;
+    // Resolve provider config (with optional overrides)
+    let (mut provider_type, mut base_url, mut api_key, model) =
+        resolve_provider_config(&secrets.0, &pool, assistant.as_ref())?;
+
+    let model = model_override.unwrap_or(model);
+
+    if let Some(ref pid) = provider_override {
+        let pool2 = pool.clone();
+        let pid2 = pid.clone();
+        let secrets2 = secrets.0.clone();
+        let (pt, bu, ak) = tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2)?;
+            let p = db::ops::provider::get_provider(&mut conn, &pid2).map_err(|e| e.to_string())?;
+            let ak = get_provider_api_key(&secrets2, &pid2)
+                .ok_or_else(|| format!("API Key not set for provider '{}'", p.name))?;
+            Ok::<_, String>((p.provider_type, p.base_url.trim_end_matches('/').to_string(), ak))
+        }).await.map_err(|e| e.to_string())??;
+        provider_type = pt;
+        base_url = bu;
+        api_key = ak;
+    }
 
     let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key);
 
@@ -459,8 +614,8 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()
                 .expect("failed to resolve app data dir");
             std::fs::create_dir_all(&data_dir).expect("failed to create app data dir");
-            let mgr = SecretsManager::new(data_dir.clone());
-            app.manage(AppSecrets(Arc::new(mgr)));
+            let mgr = Arc::new(SecretsManager::new(data_dir.clone()));
+            app.manage(AppSecrets(mgr.clone()));
 
             let db_path = data_dir.join("meridian.db");
             let pool = db::init_db(db_path.to_str().expect("invalid db path"));
@@ -494,6 +649,73 @@ pub fn run() {
                 }
             }
 
+            // Migrate legacy secrets-based provider to DB
+            {
+                let mut conn = pool.get().expect("db connection");
+                let count = db::ops::provider::count_providers(&mut conn).unwrap_or(0);
+                if count == 0 {
+                    if let Some(api_key) = mgr
+                        .get(&SecretScope::Global, &SecretName::new("API_KEY").unwrap())
+                        .ok()
+                        .flatten()
+                    {
+                        let provider_type = mgr
+                            .get(&SecretScope::Global, &SecretName::new("PROVIDER_TYPE").unwrap())
+                            .ok()
+                            .flatten()
+                            .unwrap_or_else(|| "openai".into());
+                        let base_url = mgr
+                            .get(&SecretScope::Global, &SecretName::new("API_BASE").unwrap())
+                            .ok()
+                            .flatten()
+                            .unwrap_or_else(|| "https://api.openai.com/v1".into());
+                        let model = mgr
+                            .get(&SecretScope::Global, &SecretName::new("MODEL").unwrap())
+                            .ok()
+                            .flatten();
+
+                        let pid = uuid::Uuid::new_v4().to_string();
+                        let now = now_ms();
+                        if let Ok(provider) = db::ops::provider::create_provider(
+                            &mut conn,
+                            &NewProvider {
+                                id: &pid,
+                                name: "Default",
+                                provider_type: &provider_type,
+                                base_url: &base_url,
+                                is_enabled: 1,
+                                sort_order: 0,
+                                created_at: now,
+                                updated_at: now,
+                            },
+                        ) {
+                            let key_name = provider_secret_name(&provider.id);
+                            let _ = mgr.set(
+                                &SecretScope::Global,
+                                &SecretName::new(&key_name).unwrap(),
+                                &api_key,
+                            );
+                            // Link default assistant to this provider
+                            if let Ok(Some(default_assistant)) =
+                                db::ops::assistant::get_default_assistant(&mut conn)
+                            {
+                                let changeset = AssistantUpdate {
+                                    provider_id: Some(Some(provider.id.clone())),
+                                    model_id: model.map(Some),
+                                    updated_at: Some(now),
+                                    ..Default::default()
+                                };
+                                let _ = db::ops::assistant::update_assistant(
+                                    &mut conn,
+                                    &default_assistant.id,
+                                    &changeset,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
             app.manage(AppDb(pool));
             Ok(())
         })
@@ -504,6 +726,8 @@ pub fn run() {
             update_conversation_title, toggle_pin_conversation, delete_conversation,
             load_messages, delete_message,
             list_assistants, create_assistant, update_assistant, delete_assistant,
+            list_providers, create_provider, update_provider, delete_provider,
+            set_provider_key, get_provider_key_exists, fetch_provider_models,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

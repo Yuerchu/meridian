@@ -29,12 +29,12 @@ pub struct NewProvider<'a> {
     pub updated_at: i64,
 }
 
-#[derive(Debug, AsChangeset)]
+#[derive(Debug, Default, AsChangeset)]
 #[diesel(table_name = providers)]
-pub struct ProviderUpdate<'a> {
-    pub name: Option<&'a str>,
-    pub provider_type: Option<&'a str>,
-    pub base_url: Option<&'a str>,
+pub struct ProviderUpdate {
+    pub name: Option<String>,
+    pub provider_type: Option<String>,
+    pub base_url: Option<String>,
     pub is_enabled: Option<i32>,
     pub sort_order: Option<i32>,
     pub updated_at: Option<i64>,

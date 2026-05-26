@@ -1,0 +1,124 @@
+import { useRef, useCallback, useEffect } from 'react'
+import { useTranslation } from 'react-i18next'
+import { ArrowUp, Square } from 'lucide-react'
+import {
+  InputGroup,
+  InputGroupTextarea,
+  InputGroupAddon,
+  InputGroupButton,
+} from '@/components/ui/input-group'
+import { Toolbar } from './toolbar'
+import type { Assistant, Provider } from '@/types'
+
+interface InputBarProps {
+  value: string
+  onChange: (value: string) => void
+  onSubmit: () => void
+  onStop?: () => void
+  disabled?: boolean
+  streaming?: boolean
+  assistants: Assistant[]
+  providers: Provider[]
+  currentAssistantId: string | null
+  currentModelId: string | null
+  currentProviderId: string | null
+  onSelectAssistant: (id: string) => void
+  onSelectModel: (modelId: string, providerId: string) => void
+}
+
+export function InputBar({
+  value,
+  onChange,
+  onSubmit,
+  onStop,
+  disabled,
+  streaming,
+  assistants,
+  providers,
+  currentAssistantId,
+  currentModelId,
+  currentProviderId,
+  onSelectAssistant,
+  onSelectModel,
+}: InputBarProps) {
+  const { t } = useTranslation()
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    textareaRef.current?.focus()
+  }, [])
+
+  const adjustHeight = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+  }, [])
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        if (!disabled && value.trim()) {
+          onSubmit()
+        }
+      }
+    },
+    [disabled, value, onSubmit],
+  )
+
+  return (
+    <div className="px-4 pb-4 pt-2">
+      <div className="max-w-2xl mx-auto">
+        <InputGroup className="rounded-2xl">
+          <InputGroupTextarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => {
+              onChange(e.target.value)
+              adjustHeight()
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={t('chat.placeholder')}
+            disabled={disabled && !streaming}
+            rows={1}
+            className="min-h-[24px] max-h-[200px] py-3 px-4"
+          />
+          <InputGroupAddon align="block-end" className="px-2 pb-2 pt-0">
+            <div className="flex items-center justify-between w-full">
+              <Toolbar
+                assistants={assistants}
+                providers={providers}
+                currentAssistantId={currentAssistantId}
+                currentModelId={currentModelId}
+                currentProviderId={currentProviderId}
+                onSelectAssistant={onSelectAssistant}
+                onSelectModel={onSelectModel}
+              />
+              {streaming ? (
+                <InputGroupButton
+                  size="icon-sm"
+                  variant="default"
+                  onClick={onStop}
+                  className="rounded-full"
+                >
+                  <Square className="size-3.5" fill="currentColor" />
+                </InputGroupButton>
+              ) : (
+                <InputGroupButton
+                  size="icon-sm"
+                  variant="default"
+                  onClick={onSubmit}
+                  disabled={disabled || !value.trim()}
+                  className="rounded-full"
+                >
+                  <ArrowUp className="size-4" strokeWidth={2.5} />
+                </InputGroupButton>
+              )}
+            </div>
+          </InputGroupAddon>
+        </InputGroup>
+      </div>
+    </div>
+  )
+}

@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, Conversation, Message } from './types'
+import type { Assistant, Conversation, Message, ModelInfo, Provider } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -23,8 +23,13 @@ export const api = {
   deleteMessage: (id: string) =>
     invoke<void>('delete_message', { id }),
 
-  chat: (conversationId: string, message: string) =>
-    invoke<void>('chat', { conversationId, message }),
+  chat: (conversationId: string, message: string, modelOverride?: string, providerOverride?: string) =>
+    invoke<void>('chat', {
+      conversationId,
+      message,
+      modelOverride: modelOverride ?? null,
+      providerOverride: providerOverride ?? null,
+    }),
 
   setSecret: (key: string, value: string) =>
     invoke<void>('set_secret', { key, value }),
@@ -64,4 +69,37 @@ export const api = {
 
   deleteAssistant: (id: string) =>
     invoke<void>('delete_assistant', { id }),
+
+  // Providers
+  listProviders: () =>
+    invoke<Provider[]>('list_providers'),
+
+  createProvider: (name: string, providerType: string, baseUrl: string) =>
+    invoke<Provider>('create_provider', { name, providerType, baseUrl }),
+
+  updateProvider: (id: string, updates: {
+    name?: string
+    providerType?: string
+    baseUrl?: string
+    isEnabled?: number
+  }) =>
+    invoke<Provider>('update_provider', {
+      id,
+      name: updates.name ?? null,
+      providerType: updates.providerType ?? null,
+      baseUrl: updates.baseUrl ?? null,
+      isEnabled: updates.isEnabled ?? null,
+    }),
+
+  deleteProvider: (id: string) =>
+    invoke<void>('delete_provider', { id }),
+
+  setProviderKey: (providerId: string, apiKey: string) =>
+    invoke<void>('set_provider_key', { providerId, apiKey }),
+
+  getProviderKeyExists: (providerId: string) =>
+    invoke<boolean>('get_provider_key_exists', { providerId }),
+
+  fetchProviderModels: (providerId: string) =>
+    invoke<ModelInfo[]>('fetch_provider_models', { providerId }),
 }

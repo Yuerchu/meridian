@@ -43,6 +43,22 @@ export interface Assistant {
   compact_keep_recent: number
 }
 
+export interface Provider {
+  id: string
+  name: string
+  provider_type: string
+  base_url: string
+  is_enabled: number
+  sort_order: number
+  created_at: number
+  updated_at: number
+}
+
+export interface ModelInfo {
+  id: string
+  name: string
+}
+
 export interface StreamChunk {
   content: string
   done: boolean

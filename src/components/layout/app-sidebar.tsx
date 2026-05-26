@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next'
 import { MessageSquare, Plus, Settings, Trash2 } from 'lucide-react'
 import type { Conversation } from '@/types'
 import {
@@ -31,6 +32,8 @@ export function AppSidebar({
   onDelete,
   onOpenSettings,
 }: AppSidebarProps) {
+  const { t } = useTranslation()
+
   return (
     <Sidebar variant="inset" collapsible="icon">
       <SidebarHeader>
@@ -38,7 +41,7 @@ export function AppSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton onClick={onCreate}>
               <Plus />
-              <span>New Chat</span>
+              <span>{t('sidebar.newChat')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
@@ -46,7 +49,7 @@ export function AppSidebar({
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Conversations</SidebarGroupLabel>
+          <SidebarGroupLabel>{t('sidebar.conversations')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {conversations.map((conv) => (
@@ -56,7 +59,7 @@ export function AppSidebar({
                     onClick={() => onSelect(conv.id)}
                   >
                     <MessageSquare />
-                    <span>{conv.title ?? 'New Chat'}</span>
+                    <span>{conv.title ?? t('sidebar.newChat')}</span>
                   </SidebarMenuButton>
                   <SidebarMenuAction
                     onClick={(e) => {
@@ -78,7 +81,7 @@ export function AppSidebar({
           <SidebarMenuItem>
             <SidebarMenuButton onClick={onOpenSettings}>
               <Settings />
-              <span>Settings</span>
+              <span>{t('sidebar.settings')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>

@@ -1,0 +1,136 @@
+import { useState, useCallback } from 'react'
+import { useTranslation } from 'react-i18next'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import rehypeHighlight from 'rehype-highlight'
+import { Bot, Copy, Check, Trash2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import type { Message } from '@/types'
+
+function useRelativeTime() {
+  const { t } = useTranslation()
+  return (ts: number): string => {
+    const diff = Date.now() - ts
+    if (diff < 60_000) return t('chat.time.justNow')
+    if (diff < 3600_000) return t('chat.time.mAgo', { count: Math.floor(diff / 60_000) })
+    if (diff < 86400_000) return t('chat.time.hAgo', { count: Math.floor(diff / 3600_000) })
+    return new Date(ts).toLocaleDateString()
+  }
+}
+
+function CopyButton({ text }: { text: string }) {
+  const { t } = useTranslation()
+  const [copied, setCopied] = useState(false)
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }, [text])
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+      title={t('chat.copy')}
+    >
+      {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  )
+}
+
+function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLElement>) {
+  const match = /language-(\w+)/.exec(className || '')
+  const lang = match ? match[1] : null
+  const code = String(children).replace(/\n$/, '')
+
+  if (!className) {
+    return <code className="px-1.5 py-0.5 bg-muted rounded text-[13px]" {...props}>{children}</code>
+  }
+
+  return (
+    <div className="group relative my-3 rounded-lg overflow-hidden bg-card border border-border">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 text-xs text-muted-foreground">
+        <span>{lang ?? 'code'}</span>
+        <CopyButton text={code} />
+      </div>
+      <pre className="overflow-x-auto p-3 text-[13px] leading-relaxed !bg-transparent !m-0">
+        <code className={className} {...props}>{children}</code>
+      </pre>
+    </div>
+  )
+}
+
+interface MessageItemProps {
+  message: Message
+  isStreaming?: boolean
+  onDelete?: (id: string) => void
+}
+
+export function MessageItem({ message, isStreaming, onDelete }: MessageItemProps) {
+  const { t } = useTranslation()
+  const relativeTime = useRelativeTime()
+  const isUser = message.role === 'user'
+
+  if (isUser) {
+    return (
+      <div className="flex justify-end group">
+        <div className="max-w-[80%] rounded-2xl bg-accent px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
+          {message.content}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="group">
+      <div className="flex items-center gap-2 mb-1.5">
+        <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
+          <Bot className="w-3.5 h-3.5 text-muted-foreground" />
+        </div>
+        {message.model_id && (
+          <span className="text-xs text-muted-foreground">{message.model_id}</span>
+        )}
+        <span className="text-xs text-muted-foreground/60">{relativeTime(message.created_at)}</span>
+      </div>
+
+      <div className="pl-8">
+        <div className={cn(
+          "text-sm leading-relaxed prose prose-invert prose-sm max-w-none",
+          "prose-p:my-1.5 prose-headings:mt-4 prose-headings:mb-2",
+          "prose-pre:p-0 prose-pre:bg-transparent prose-pre:my-0",
+          "prose-code:before:content-none prose-code:after:content-none",
+          "prose-table:text-sm prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5",
+          "prose-table:border prose-table:border-border",
+          "prose-th:border prose-th:border-border prose-th:bg-muted/50",
+          "prose-td:border prose-td:border-border",
+        )}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={[rehypeHighlight]}
+            components={{
+              code: CodeBlock as never,
+            }}
+          >
+            {message.content}
+          </ReactMarkdown>
+          {isStreaming && (
+            <span className="inline-block w-2 h-4 ml-0.5 bg-muted-foreground animate-pulse" />
+          )}
+        </div>
+
+        <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <CopyButton text={message.content} />
+          {onDelete && (
+            <button
+              onClick={() => onDelete(message.id)}
+              className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
+              title={t('chat.delete')}
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub mod models;
 pub mod openai_compat;
 pub mod registry;
 
