@@ -14,7 +14,7 @@ export default defineConfig({
     },
   },
   server: {
-    host: host || false,
+    host: host || '127.0.0.1',
     port: 5173,
     strictPort: true,
     hmr: host ? { protocol: 'ws', host, port: 5174 } : undefined,

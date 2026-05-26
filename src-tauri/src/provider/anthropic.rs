@@ -1,17 +1,17 @@
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::stream::StreamExt;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
 use super::{ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError};
 
-pub struct OpenAICompatProvider {
+pub struct AnthropicProvider {
     base_url: String,
     api_key: String,
 }
 
-impl OpenAICompatProvider {
+impl AnthropicProvider {
     pub fn new(base_url: &str, api_key: &str) -> Self {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
@@ -20,54 +20,68 @@ impl OpenAICompatProvider {
     }
 
     fn build_request(&self, messages: &[ChatMessage], params: &ChatParams, stream: bool) -> Request {
-        let body = serde_json::json!({
-            "model": params.model,
-            "messages": messages.iter().map(|m| serde_json::json!({
+        let system = messages.iter()
+            .filter(|m| m.role == "system")
+            .map(|m| m.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+
+        let api_messages: Vec<serde_json::Value> = messages.iter()
+            .filter(|m| m.role != "system")
+            .map(|m| serde_json::json!({
                 "role": m.role,
                 "content": m.content,
-            })).collect::<Vec<_>>(),
+            }))
+            .collect();
+
+        let mut body = serde_json::json!({
+            "model": params.model,
+            "messages": api_messages,
             "stream": stream,
-            "temperature": params.temperature,
-            "top_p": params.top_p,
-            "max_tokens": params.max_tokens,
+            "max_tokens": params.max_tokens.unwrap_or(4096),
         });
+
+        if !system.is_empty() {
+            body["system"] = serde_json::json!(system);
+        }
+        if let Some(t) = params.temperature {
+            body["temperature"] = serde_json::json!(t);
+        }
+        if let Some(p) = params.top_p {
+            body["top_p"] = serde_json::json!(p);
+        }
 
         let mut req = Request::new(
             http::Method::POST,
-            format!("{}/chat/completions", self.base_url),
+            format!("{}/v1/messages", self.base_url),
         );
-        req.headers.insert(
-            http::header::AUTHORIZATION,
-            format!("Bearer {}", self.api_key).parse().unwrap(),
-        );
+        req.headers.insert("x-api-key", self.api_key.parse().unwrap());
+        req.headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
         req.body = Some(RequestBody::Json(body));
         req
     }
 }
 
 #[derive(Deserialize)]
-struct ChatChunk {
-    choices: Vec<ChunkChoice>,
+struct AnthropicStreamEvent {
+    #[serde(rename = "type")]
+    event_type: String,
+    delta: Option<AnthropicDelta>,
+    content_block: Option<AnthropicContentBlock>,
 }
 
 #[derive(Deserialize)]
-struct ChunkChoice {
-    delta: Option<Delta>,
-    message: Option<FullMessage>,
+struct AnthropicDelta {
+    text: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct Delta {
-    content: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct FullMessage {
-    content: Option<String>,
+struct AnthropicContentBlock {
+    text: Option<String>,
 }
 
 #[async_trait]
-impl ChatProvider for OpenAICompatProvider {
+impl ChatProvider for AnthropicProvider {
     async fn stream_chat(
         &self,
         messages: Vec<ChatMessage>,
@@ -83,18 +97,14 @@ impl ChatProvider for OpenAICompatProvider {
             .filter_map(|event| async {
                 match event {
                     Ok(ev) => {
-                        if ev.data == "[DONE]" {
-                            return None;
-                        }
-                        match serde_json::from_str::<ChatChunk>(&ev.data) {
-                            Ok(chunk) => {
-                                let content = chunk.choices.first()
-                                    .and_then(|c| c.delta.as_ref())
-                                    .and_then(|d| d.content.clone())
-                                    .unwrap_or_default();
-                                if content.is_empty() { None } else { Some(Ok(content)) }
+                        let parsed = serde_json::from_str::<AnthropicStreamEvent>(&ev.data).ok()?;
+                        match parsed.event_type.as_str() {
+                            "content_block_delta" => {
+                                let text = parsed.delta?.text?;
+                                if text.is_empty() { None } else { Some(Ok(text)) }
                             }
-                            Err(e) => Some(Err(ProviderError::Parse(e.to_string()))),
+                            "message_stop" | "error" => None,
+                            _ => None,
                         }
                     }
                     Err(e) => Some(Err(ProviderError::Parse(e.to_string()))),
@@ -116,7 +126,7 @@ impl ChatProvider for OpenAICompatProvider {
         let parsed: serde_json::Value = serde_json::from_slice(&resp.body)
             .map_err(|e| ProviderError::Parse(e.to_string()))?;
 
-        parsed["choices"][0]["message"]["content"]
+        parsed["content"][0]["text"]
             .as_str()
             .map(|s| s.to_string())
             .ok_or_else(|| ProviderError::Parse("no content in response".into()))

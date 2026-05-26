@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Conversation, Message } from './types'
+import type { Assistant, Conversation, Message } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -34,4 +34,34 @@ export const api = {
 
   deleteSecret: (key: string) =>
     invoke<boolean>('delete_secret', { key }),
+
+  listAssistants: () =>
+    invoke<Assistant[]>('list_assistants'),
+
+  createAssistant: (name: string, systemPrompt: string, modelId?: string) =>
+    invoke<Assistant>('create_assistant', {
+      name,
+      systemPrompt,
+      modelId: modelId ?? null,
+      temperature: null,
+      topP: null,
+      maxTokens: null,
+    }),
+
+  updateAssistant: (id: string, updates: {
+    name?: string
+    systemPrompt?: string
+    modelId?: string | null
+    temperature?: number | null
+  }) =>
+    invoke<Assistant>('update_assistant', {
+      id,
+      name: updates.name ?? null,
+      systemPrompt: updates.systemPrompt ?? null,
+      modelId: updates.modelId !== undefined ? updates.modelId : null,
+      temperature: updates.temperature !== undefined ? updates.temperature : null,
+    }),
+
+  deleteAssistant: (id: string) =>
+    invoke<void>('delete_assistant', { id }),
 }

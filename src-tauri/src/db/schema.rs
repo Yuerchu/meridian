@@ -16,6 +16,8 @@ diesel::table! {
         sort_order -> Integer,
         created_at -> BigInt,
         updated_at -> BigInt,
+        context_limit -> Integer,
+        compact_keep_recent -> Integer,
     }
 }
 
@@ -117,4 +119,12 @@ diesel::joinable!(messages -> providers (provider_id));
 diesel::joinable!(tool_permissions -> mcp_servers (mcp_server_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    assistants,attachments,conversations,mcp_servers,messages,preferences,providers,tool_permissions,);
+    assistants,
+    attachments,
+    conversations,
+    mcp_servers,
+    messages,
+    preferences,
+    providers,
+    tool_permissions,
+);

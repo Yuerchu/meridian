@@ -24,6 +24,25 @@ export interface Message {
   created_at: number
 }
 
+export interface Assistant {
+  id: string
+  name: string
+  description: string | null
+  avatar: string | null
+  system_prompt: string
+  provider_id: string | null
+  model_id: string | null
+  temperature: number | null
+  top_p: number | null
+  max_tokens: number | null
+  is_default: number
+  sort_order: number
+  created_at: number
+  updated_at: number
+  context_limit: number
+  compact_keep_recent: number
+}
+
 export interface StreamChunk {
   content: string
   done: boolean

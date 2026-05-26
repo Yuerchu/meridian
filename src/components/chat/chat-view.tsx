@@ -34,6 +34,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const conversationIdRef = useRef(conversationId)
+  const submittingRef = useRef(false)
   conversationIdRef.current = conversationId
 
   useEffect(() => {
@@ -44,6 +45,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     const promise = listen<StreamChunk>('chat-stream', (event) => {
       if (event.payload.done) {
         setStreaming(false)
+        submittingRef.current = false
         api.loadMessages(conversationIdRef.current).then(setMessages)
       } else {
         setMessages((prev) => {
@@ -67,7 +69,8 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     async (e: React.FormEvent) => {
       e.preventDefault()
       const text = input.trim()
-      if (!text || streaming) return
+      if (!text || streaming || submittingRef.current) return
+      submittingRef.current = true
 
       setInput('')
       setStreaming(true)
@@ -111,6 +114,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
       } catch (err) {
         setError(String(err))
         setStreaming(false)
+        submittingRef.current = false
         api.loadMessages(conversationId).then(setMessages)
       }
     },

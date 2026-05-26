@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { listen } from '@tauri-apps/api/event'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { ChatView } from '@/components/chat/chat-view'
@@ -21,6 +22,13 @@ function App() {
 
   useEffect(() => {
     refreshConversations()
+  }, [refreshConversations])
+
+  useEffect(() => {
+    const promise = listen('conversation-updated', () => {
+      refreshConversations()
+    })
+    return () => { promise.then((fn) => fn()) }
   }, [refreshConversations])
 
   const handleCreate = useCallback(async () => {
