@@ -522,6 +522,26 @@ async fn list_conversations_by_project(app: tauri::AppHandle, project_id: String
     }).await.map_err(|e| e.to_string())?
 }
 
+// --- Preference commands ---
+
+#[tauri::command]
+async fn get_preference(app: tauri::AppHandle, key: String) -> Result<Option<String>, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::preference::get_preference(&mut conn, &key).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn set_preference(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::preference::set_preference(&mut conn, &key, &value, now_ms()).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
 // --- Chat command (with agent loop + tools + approval) ---
 
 #[tauri::command]
@@ -632,12 +652,22 @@ async fn chat(
         }).await.map_err(|e| e.to_string())??;
     }
 
-    // Get tool definitions
+    // Get tool definitions + shell preference
     let tool_registry = app.state::<AppTools>();
     let tool_defs = tool_registry.0.definitions();
     let has_tools = !tool_defs.is_empty();
     let max_iterations = 10;
-    let tool_context = tools::ToolContext { working_directory: project_path };
+    let shell_type = {
+        let pool2 = pool.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool2.get().ok()?;
+            db::ops::preference::get_preference(&mut conn, "shell").ok()?
+        }).await.ok().flatten()
+    };
+    let tool_context = tools::ToolContext {
+        working_directory: project_path,
+        shell: shell_type.map(|s| tools::ShellType::from_str(&s)).unwrap_or_else(tools::ShellType::default_for_platform),
+    };
 
     let mut full_content = String::new();
 
@@ -968,6 +998,7 @@ pub fn run() {
             set_provider_key, get_provider_key_exists, fetch_provider_models,
             list_projects, create_project, update_project, delete_project,
             list_conversations_by_project,
+            get_preference, set_preference,
             approve_tool_call, deny_tool_call, respond_to_ask,
         ])
         .run(tauri::generate_context!())

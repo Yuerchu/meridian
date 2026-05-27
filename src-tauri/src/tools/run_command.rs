@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{Permission, Tool, ToolContext};
+use super::{Permission, Tool, ToolContext, ShellType};
 
 pub struct RunCommandTool;
 
@@ -37,18 +37,30 @@ impl Tool for RunCommandTool {
 
         let cwd = context.working_dir_or_current();
 
-        let output = if cfg!(target_os = "windows") {
-            tokio::process::Command::new("cmd")
-                .args(["/C", command])
-                .current_dir(&cwd)
-                .output()
-                .await
-        } else {
-            tokio::process::Command::new("sh")
-                .args(["-c", command])
-                .current_dir(&cwd)
-                .output()
-                .await
+        let output = match context.shell {
+            ShellType::Cmd => {
+                tokio::process::Command::new("cmd")
+                    .args(["/C", command])
+                    .current_dir(&cwd)
+                    .output()
+                    .await
+            }
+            ShellType::PowerShell => {
+                let ps = find_powershell();
+                tokio::process::Command::new(ps)
+                    .args(["-NoProfile", "-Command", command])
+                    .current_dir(&cwd)
+                    .output()
+                    .await
+            }
+            ShellType::Bash => {
+                let bash = find_bash();
+                tokio::process::Command::new(bash)
+                    .args(["-c", command])
+                    .current_dir(&cwd)
+                    .output()
+                    .await
+            }
         };
 
         match output {
@@ -78,5 +90,33 @@ impl Tool for RunCommandTool {
             }
             Err(e) => Err(format!("failed to execute command: {e}")),
         }
+    }
+}
+
+fn find_powershell() -> &'static str {
+    if cfg!(target_os = "windows") {
+        if std::path::Path::new("C:\\Program Files\\PowerShell\\7\\pwsh.exe").exists() {
+            "C:\\Program Files\\PowerShell\\7\\pwsh.exe"
+        } else {
+            "powershell"
+        }
+    } else {
+        "pwsh"
+    }
+}
+
+fn find_bash() -> &'static str {
+    if cfg!(target_os = "windows") {
+        let git_bash = "C:\\Program Files\\Git\\bin\\bash.exe";
+        if std::path::Path::new(git_bash).exists() {
+            return git_bash;
+        }
+        let git_bash_x86 = "C:\\Program Files (x86)\\Git\\bin\\bash.exe";
+        if std::path::Path::new(git_bash_x86).exists() {
+            return git_bash_x86;
+        }
+        "bash"
+    } else {
+        "/bin/bash"
     }
 }

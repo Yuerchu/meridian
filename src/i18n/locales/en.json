@@ -74,6 +74,8 @@
   "settings.assistant.contextLimit": "Context Limit (tokens)",
   "settings.general.title": "General",
   "settings.general.language": "Language",
+  "settings.general.shell": "Shell",
+  "settings.general.shellHint": "Shell used by the run_command tool. Bash (Git Bash) is recommended for UTF-8 support.",
   "settings.about.title": "About",
   "settings.about.description": "Multi-provider AI desktop client with coding agent capabilities. Built with Tauri, React, and Rust.",
   "settings.about.copyright": "© 2026 于小丘 Yuerchu",

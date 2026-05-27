@@ -131,4 +131,11 @@ export const api = {
 
   listConversationsByProject: (projectId: string, archived = false) =>
     invoke<Conversation[]>('list_conversations_by_project', { projectId, archived }),
+
+  // Preferences
+  getPreference: (key: string) =>
+    invoke<string | null>('get_preference', { key }),
+
+  setPreference: (key: string, value: string) =>
+    invoke<void>('set_preference', { key, value }),
 }

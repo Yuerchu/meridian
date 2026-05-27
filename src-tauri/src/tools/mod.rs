@@ -23,6 +23,32 @@ pub enum Permission {
 #[derive(Debug, Clone)]
 pub struct ToolContext {
     pub working_directory: Option<String>,
+    pub shell: ShellType,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShellType {
+    Cmd,
+    PowerShell,
+    Bash,
+}
+
+impl ShellType {
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "powershell" => Self::PowerShell,
+            "bash" => Self::Bash,
+            _ => Self::default_for_platform(),
+        }
+    }
+
+    pub fn default_for_platform() -> Self {
+        if cfg!(target_os = "windows") {
+            Self::Bash
+        } else {
+            Self::Bash
+        }
+    }
 }
 
 impl ToolContext {
