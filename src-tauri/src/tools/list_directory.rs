@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{Permission, Tool};
+use super::{Permission, Tool, ToolContext};
 
 pub struct ListDirectoryTool;
 
@@ -10,7 +10,7 @@ impl Tool for ListDirectoryTool {
     }
 
     fn description(&self) -> &str {
-        "List the contents of a directory, showing file names, types, and sizes."
+        "List the contents of a directory, showing file names, types, and sizes. Path can be relative to project root or absolute."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -19,7 +19,7 @@ impl Tool for ListDirectoryTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Absolute path to the directory to list"
+                    "description": "Path to the directory to list"
                 }
             },
             "required": ["path"]
@@ -30,12 +30,12 @@ impl Tool for ListDirectoryTool {
         Permission::Always
     }
 
-    async fn execute(&self, args: serde_json::Value) -> Result<String, String> {
-        let path = args["path"]
+    async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
+        let path_str = args["path"]
             .as_str()
             .ok_or("missing 'path' argument")?;
 
-        let path = std::path::PathBuf::from(path);
+        let path = context.resolve_path(path_str);
         tokio::task::spawn_blocking(move || list_dir(&path))
             .await
             .map_err(|e| format!("task failed: {e}"))?

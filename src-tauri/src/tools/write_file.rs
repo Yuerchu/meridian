@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{Permission, Tool};
+use super::{Permission, Tool, ToolContext};
 
 pub struct WriteFileTool;
 
@@ -10,7 +10,7 @@ impl Tool for WriteFileTool {
     }
 
     fn description(&self) -> &str {
-        "Write content to a file at the given path. Creates the file if it doesn't exist, overwrites if it does."
+        "Write content to a file at the given path. Creates the file if it doesn't exist, overwrites if it does. Path can be relative to project root or absolute."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -19,7 +19,7 @@ impl Tool for WriteFileTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Absolute path to the file to write"
+                    "description": "Path to the file to write"
                 },
                 "content": {
                     "type": "string",
@@ -34,24 +34,26 @@ impl Tool for WriteFileTool {
         Permission::Ask
     }
 
-    async fn execute(&self, args: serde_json::Value) -> Result<String, String> {
-        let path = args["path"]
+    async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
+        let path_str = args["path"]
             .as_str()
             .ok_or("missing 'path' argument")?;
         let content = args["content"]
             .as_str()
             .ok_or("missing 'content' argument")?;
 
-        if let Some(parent) = std::path::Path::new(path).parent() {
+        let path = context.resolve_path(path_str);
+
+        if let Some(parent) = path.parent() {
             tokio::fs::create_dir_all(parent)
                 .await
                 .map_err(|e| format!("failed to create directory: {e}"))?;
         }
 
-        tokio::fs::write(path, content)
+        tokio::fs::write(&path, content)
             .await
-            .map_err(|e| format!("failed to write file '{}': {}", path, e))?;
+            .map_err(|e| format!("failed to write file '{}': {}", path.display(), e))?;
 
-        Ok(format!("Successfully wrote {} bytes to {}", content.len(), path))
+        Ok(format!("Successfully wrote {} bytes to {}", content.len(), path.display()))
     }
 }

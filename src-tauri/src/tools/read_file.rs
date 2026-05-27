@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{Permission, Tool};
+use super::{Permission, Tool, ToolContext};
 
 pub struct ReadFileTool;
 
@@ -30,13 +30,14 @@ impl Tool for ReadFileTool {
         Permission::Ask
     }
 
-    async fn execute(&self, args: serde_json::Value) -> Result<String, String> {
-        let path = args["path"]
+    async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
+        let path_str = args["path"]
             .as_str()
             .ok_or("missing 'path' argument")?;
+        let path = context.resolve_path(path_str);
 
-        tokio::fs::read_to_string(path)
+        tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| format!("failed to read file '{}': {}", path, e))
+            .map_err(|e| format!("failed to read file '{}': {}", path.display(), e))
     }
 }

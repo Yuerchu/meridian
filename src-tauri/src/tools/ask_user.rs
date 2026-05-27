@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{Permission, Tool};
+use super::{Permission, Tool, ToolContext};
 
 pub struct AskUserTool;
 
@@ -66,7 +66,7 @@ impl Tool for AskUserTool {
         Permission::Always
     }
 
-    async fn execute(&self, _args: serde_json::Value) -> Result<String, String> {
+    async fn execute(&self, _args: serde_json::Value, _context: &ToolContext) -> Result<String, String> {
         Err("ask_user must be handled by the agent loop".to_string())
     }
 }

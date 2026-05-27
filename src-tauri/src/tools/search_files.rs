@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{Permission, Tool};
+use super::{Permission, Tool, ToolContext};
 use regex::Regex;
 
 pub struct SearchFilesTool;
@@ -39,21 +39,21 @@ impl Tool for SearchFilesTool {
         Permission::Always
     }
 
-    async fn execute(&self, args: serde_json::Value) -> Result<String, String> {
+    async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
         let pattern = args["pattern"]
             .as_str()
             .ok_or("missing 'pattern' argument")?
             .to_string();
-        let path = args["path"]
+        let path_str = args["path"]
             .as_str()
-            .ok_or("missing 'path' argument")?
-            .to_string();
+            .ok_or("missing 'path' argument")?;
+        let path = context.resolve_path(path_str).to_string_lossy().to_string();
         let max_results = args["max_results"]
             .as_u64()
             .unwrap_or(50) as usize;
 
-        let path = std::path::PathBuf::from(path);
-        tokio::task::spawn_blocking(move || search(&path, &pattern, max_results))
+        let path_buf = std::path::PathBuf::from(path);
+        tokio::task::spawn_blocking(move || search(&path_buf, &pattern, max_results))
             .await
             .map_err(|e| format!("task failed: {e}"))?
     }

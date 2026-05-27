@@ -1,10 +1,14 @@
 pub mod apply_patch;
 pub mod ask_user;
+pub mod edit_file;
+pub mod glob_files;
 pub mod list_directory;
 pub mod read_file;
 pub mod run_command;
 pub mod search_files;
 pub mod write_file;
+
+use std::path::{Path, PathBuf};
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -16,13 +20,38 @@ pub enum Permission {
     Never,
 }
 
+#[derive(Debug, Clone)]
+pub struct ToolContext {
+    pub working_directory: Option<String>,
+}
+
+impl ToolContext {
+    pub fn resolve_path(&self, path: &str) -> PathBuf {
+        let p = Path::new(path);
+        if p.is_absolute() {
+            p.to_path_buf()
+        } else if let Some(ref wd) = self.working_directory {
+            PathBuf::from(wd).join(path)
+        } else {
+            p.to_path_buf()
+        }
+    }
+
+    pub fn working_dir_or_current(&self) -> PathBuf {
+        self.working_directory
+            .as_ref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
+    }
+}
+
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> serde_json::Value;
     fn default_permission(&self) -> Permission;
-    async fn execute(&self, args: serde_json::Value) -> Result<String, String>;
+    async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String>;
 }
 
 pub struct ToolRegistry {
@@ -39,6 +68,8 @@ impl ToolRegistry {
             Box::new(list_directory::ListDirectoryTool),
             Box::new(search_files::SearchFilesTool),
             Box::new(apply_patch::ApplyPatchTool),
+            Box::new(edit_file::EditFileTool),
+            Box::new(glob_files::GlobFilesTool),
         ];
         Self { tools }
     }

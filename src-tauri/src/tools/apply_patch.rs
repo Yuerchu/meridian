@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{Permission, Tool};
+use super::{Permission, Tool, ToolContext};
 use std::path::PathBuf;
 
 pub struct ApplyPatchTool;
@@ -35,11 +35,13 @@ impl Tool for ApplyPatchTool {
         Permission::Ask
     }
 
-    async fn execute(&self, args: serde_json::Value) -> Result<String, String> {
+    async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
         let patch = args["patch"]
             .as_str()
             .ok_or("missing 'patch' argument")?;
-        let base_path = args["base_path"].as_str().map(PathBuf::from);
+        let base_path = args["base_path"].as_str()
+            .map(|p| context.resolve_path(p))
+            .or_else(|| context.working_directory.as_ref().map(PathBuf::from));
 
         let file_patches = parse_unified_diff(patch)?;
         if file_patches.is_empty() {

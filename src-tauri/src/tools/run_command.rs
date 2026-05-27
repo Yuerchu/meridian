@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use super::{Permission, Tool};
+use super::{Permission, Tool, ToolContext};
 
 pub struct RunCommandTool;
 
@@ -10,7 +10,7 @@ impl Tool for RunCommandTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command and return its output (stdout and stderr)."
+        "Execute a shell command and return its output (stdout and stderr). The command runs in the project's working directory."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -30,19 +30,23 @@ impl Tool for RunCommandTool {
         Permission::Ask
     }
 
-    async fn execute(&self, args: serde_json::Value) -> Result<String, String> {
+    async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
         let command = args["command"]
             .as_str()
             .ok_or("missing 'command' argument")?;
 
+        let cwd = context.working_dir_or_current();
+
         let output = if cfg!(target_os = "windows") {
             tokio::process::Command::new("cmd")
                 .args(["/C", command])
+                .current_dir(&cwd)
                 .output()
                 .await
         } else {
             tokio::process::Command::new("sh")
                 .args(["-c", command])
+                .current_dir(&cwd)
                 .output()
                 .await
         };
