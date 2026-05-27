@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Wrench, Check, X, Loader2, MessageCircleQuestion, Send, Circle, CircleCheck, Square, SquareCheck } from 'lucide-react'
+import { Wrench, Check, X, Loader2, MessageCircleQuestion, Send, SkipForward, Circle, CircleCheck, Square, SquareCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { api } from '@/api'
 import type { ToolCallDisplay } from '@/types'
@@ -13,11 +13,38 @@ interface AskOption {
 interface AskQuestion {
   id: string
   question: string
-  options: AskOption[]
+  options?: AskOption[]
   multi_select?: boolean
 }
 
-type Answers = Record<string, string | string[]>
+interface QuestionAnswer {
+  selected: string | string[] | null
+  notes: string
+}
+
+type Answers = Record<string, QuestionAnswer>
+
+function emptyAnswer(q: AskQuestion): QuestionAnswer {
+  return { selected: q.multi_select ? [] : null, notes: '' }
+}
+
+function hasContent(a: QuestionAnswer | undefined): boolean {
+  if (!a) return false
+  if (a.notes.trim()) return true
+  if (Array.isArray(a.selected)) return a.selected.length > 0
+  return a.selected !== null
+}
+
+function formatAnswer(a: QuestionAnswer): string {
+  const sel = Array.isArray(a.selected)
+    ? a.selected.join(', ')
+    : a.selected
+  const notes = a.notes.trim()
+  if (sel && notes) return `${sel}\n\nNotes: ${notes}`
+  if (sel) return sel
+  if (notes) return notes
+  return '(skipped)'
+}
 
 function QuestionBlock({
   q,
@@ -25,113 +52,75 @@ function QuestionBlock({
   onChange,
 }: {
   q: AskQuestion
-  value: string | string[] | undefined
-  onChange: (id: string, val: string | string[]) => void
+  value: QuestionAnswer
+  onChange: (id: string, val: QuestionAnswer) => void
 }) {
   const { t } = useTranslation()
-  const [otherText, setOtherText] = useState('')
+  const hasOptions = q.options && q.options.length > 0
   const isMulti = q.multi_select === true
 
-  const selected = isMulti
-    ? (Array.isArray(value) ? value : [])
-    : (typeof value === 'string' ? value : '')
-
-  const isOtherSelected = isMulti
-    ? (selected as string[]).includes('__other__')
-    : selected === '__other__'
-
   const toggleMulti = (label: string) => {
-    const arr = selected as string[]
+    const arr = Array.isArray(value.selected) ? value.selected : []
     const next = arr.includes(label) ? arr.filter((v) => v !== label) : [...arr, label]
-    onChange(q.id, next)
+    onChange(q.id, { ...value, selected: next })
   }
 
   const selectSingle = (label: string) => {
-    onChange(q.id, label)
-  }
-
-  const toggleOther = () => {
-    if (isMulti) {
-      toggleMulti('__other__')
-    } else {
-      selectSingle(isOtherSelected ? '' : '__other__')
-    }
+    onChange(q.id, { ...value, selected: value.selected === label ? null : label })
   }
 
   return (
     <div className="space-y-1.5">
       <div className="text-sm text-foreground font-medium">{q.question}</div>
-      <div className="space-y-1">
-        {q.options.map((opt) => {
-          const checked = isMulti
-            ? (selected as string[]).includes(opt.label)
-            : selected === opt.label
 
-          return (
-            <button
-              key={opt.label}
-              type="button"
-              onClick={() => isMulti ? toggleMulti(opt.label) : selectSingle(opt.label)}
-              className={`w-full flex items-start gap-2 px-2.5 py-1.5 rounded-md text-left transition-colors ${
-                checked
-                  ? 'bg-accent/80 text-accent-foreground'
-                  : 'hover:bg-accent/40 text-muted-foreground'
-              }`}
-            >
-              <span className="mt-0.5 shrink-0">
-                {isMulti
-                  ? (checked
-                    ? <SquareCheck className="w-3.5 h-3.5 text-foreground" />
-                    : <Square className="w-3.5 h-3.5" />)
-                  : (checked
-                    ? <CircleCheck className="w-3.5 h-3.5 text-foreground" />
-                    : <Circle className="w-3.5 h-3.5" />)
-                }
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="text-xs font-medium text-foreground">{opt.label}</span>
-                {opt.description && (
-                  <span className="block text-[11px] text-muted-foreground">{opt.description}</span>
-                )}
-              </span>
-            </button>
-          )
-        })}
+      {hasOptions && (
+        <div className="space-y-1">
+          {q.options!.map((opt) => {
+            const checked = isMulti
+              ? (Array.isArray(value.selected) && value.selected.includes(opt.label))
+              : value.selected === opt.label
 
-        {/* Other option */}
-        <button
-          type="button"
-          onClick={toggleOther}
-          className={`w-full flex items-start gap-2 px-2.5 py-1.5 rounded-md text-left transition-colors ${
-            isOtherSelected
-              ? 'bg-accent/80 text-accent-foreground'
-              : 'hover:bg-accent/40 text-muted-foreground'
-          }`}
-        >
-          <span className="mt-0.5 shrink-0">
-            {isMulti
-              ? (isOtherSelected
-                ? <SquareCheck className="w-3.5 h-3.5 text-foreground" />
-                : <Square className="w-3.5 h-3.5" />)
-              : (isOtherSelected
-                ? <CircleCheck className="w-3.5 h-3.5 text-foreground" />
-                : <Circle className="w-3.5 h-3.5" />)
-            }
-          </span>
-          <span className="text-xs font-medium text-foreground">{t('chat.tool.other')}</span>
-        </button>
+            return (
+              <button
+                key={opt.label}
+                type="button"
+                onClick={() => isMulti ? toggleMulti(opt.label) : selectSingle(opt.label)}
+                className={`w-full flex items-start gap-2 px-2.5 py-1.5 rounded-md text-left transition-colors ${
+                  checked
+                    ? 'bg-accent/80 text-accent-foreground'
+                    : 'hover:bg-accent/40 text-muted-foreground'
+                }`}
+              >
+                <span className="mt-0.5 shrink-0">
+                  {isMulti
+                    ? (checked
+                      ? <SquareCheck className="w-3.5 h-3.5 text-foreground" />
+                      : <Square className="w-3.5 h-3.5" />)
+                    : (checked
+                      ? <CircleCheck className="w-3.5 h-3.5 text-foreground" />
+                      : <Circle className="w-3.5 h-3.5" />)
+                  }
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="text-xs font-medium text-foreground">{opt.label}</span>
+                  {opt.description && (
+                    <span className="block text-[11px] text-muted-foreground">{opt.description}</span>
+                  )}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
-        {isOtherSelected && (
-          <input
-            type="text"
-            value={otherText}
-            onChange={(e) => setOtherText(e.target.value)}
-            placeholder={t('chat.tool.otherPlaceholder')}
-            className="w-full pl-8 pr-2.5 py-1.5 text-xs bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-ring"
-            autoFocus
-          />
-        )}
-      </div>
+      <input
+        type="text"
+        value={value.notes}
+        onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
+        placeholder={hasOptions ? t('chat.tool.notesPlaceholder') : t('chat.tool.askUserPlaceholder')}
+        className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-ring"
+        autoFocus={!hasOptions}
+      />
     </div>
   )
 }
@@ -148,38 +137,29 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
     // ignore
   }
 
-  const handleChange = useCallback((id: string, val: string | string[]) => {
+  const getAnswer = (id: string, q: AskQuestion) => answers[id] ?? emptyAnswer(q)
+
+  const handleChange = useCallback((id: string, val: QuestionAnswer) => {
     setAnswers((prev) => ({ ...prev, [id]: val }))
   }, [])
 
   const handleSubmit = useCallback(() => {
-    const result: Record<string, string | string[]> = {}
+    const result: Record<string, string> = {}
     for (const q of questions) {
-      const val = answers[q.id]
-      if (val === '__other__' || (Array.isArray(val) && val.includes('__other__'))) {
-        const otherInput = document.querySelector<HTMLInputElement>(
-          `[data-ask-question="${q.id}"] input[type="text"]`
-        )
-        const otherText = otherInput?.value?.trim() || ''
-        if (Array.isArray(val)) {
-          result[q.id] = [...val.filter((v) => v !== '__other__'), ...(otherText ? [otherText] : [])]
-        } else {
-          result[q.id] = otherText || ''
-        }
-      } else if (val !== undefined) {
-        result[q.id] = val
-      } else {
-        result[q.id] = q.multi_select ? [] : ''
-      }
+      result[q.id] = formatAnswer(getAnswer(q.id, q))
     }
     api.respondToAsk(data.call_id, JSON.stringify(result))
   }, [answers, questions, data.call_id])
 
-  const hasAnswer = questions.some((q) => {
-    const val = answers[q.id]
-    if (Array.isArray(val)) return val.length > 0
-    return !!val
-  })
+  const handleSkip = useCallback(() => {
+    const result: Record<string, string> = {}
+    for (const q of questions) {
+      result[q.id] = '(skipped)'
+    }
+    api.respondToAsk(data.call_id, JSON.stringify(result))
+  }, [questions, data.call_id])
+
+  const canSubmit = questions.some((q) => hasContent(answers[q.id]))
 
   return (
     <div className="my-3 border border-border rounded-lg overflow-hidden text-xs">
@@ -193,20 +173,29 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
       {data.status === 'pending' && (
         <div className="px-3 py-2 space-y-3">
           {questions.map((q) => (
-            <div key={q.id} data-ask-question={q.id}>
-              <QuestionBlock q={q} value={answers[q.id]} onChange={handleChange} />
+            <div key={q.id}>
+              <QuestionBlock q={q} value={getAnswer(q.id, q)} onChange={handleChange} />
             </div>
           ))}
-          <div className="pt-1">
+          <div className="flex gap-2 pt-1">
             <Button
               size="sm"
               variant="default"
               className="h-7 text-xs"
               onClick={handleSubmit}
-              disabled={!hasAnswer}
+              disabled={!canSubmit}
             >
               <Send className="w-3 h-3" />
               {t('chat.tool.askUserSubmit')}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs text-muted-foreground"
+              onClick={handleSkip}
+            >
+              <SkipForward className="w-3 h-3" />
+              {t('chat.tool.skip')}
             </Button>
           </div>
         </div>

@@ -10,7 +10,7 @@ impl Tool for AskUserTool {
     }
 
     fn description(&self) -> &str {
-        "Ask the user one or more questions and wait for their responses. Each question must provide 2-4 mutually exclusive options. The client automatically adds a free-form \"Other\" option, so do not include one. Put the recommended option first and suffix its label with \"(Recommended)\"."
+        "Ask the user one or more questions and wait for their responses. Each question can optionally provide 2-4 choices for the user to select from. The user may also skip a question, add supplementary notes to their selection, or type a free-form answer. Put the recommended option first and suffix its label with \"(Recommended)\". An \"Other\" free-form option is added automatically when options are provided."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -28,7 +28,7 @@ impl Tool for AskUserTool {
                             },
                             "question": {
                                 "type": "string",
-                                "description": "Single-sentence prompt shown to the user"
+                                "description": "The question to ask the user"
                             },
                             "options": {
                                 "type": "array",
@@ -46,14 +46,14 @@ impl Tool for AskUserTool {
                                     },
                                     "required": ["label"]
                                 },
-                                "description": "2-4 mutually exclusive choices. Do not include an \"Other\" option; the client adds one automatically."
+                                "description": "2-4 choices. Omit for free-form text input."
                             },
                             "multi_select": {
                                 "type": "boolean",
                                 "description": "If true, user can select multiple options. Default false."
                             }
                         },
-                        "required": ["id", "question", "options"]
+                        "required": ["id", "question"]
                     },
                     "description": "1-4 questions to show the user. Prefer fewer questions."
                 }
