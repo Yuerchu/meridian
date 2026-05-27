@@ -1,12 +1,12 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, Conversation, Message, ModelInfo, Provider } from './types'
+import type { Assistant, Conversation, Message, ModelInfo, Project, Provider } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
     invoke<Conversation[]>('list_conversations', { archived }),
 
-  createConversation: (title?: string) =>
-    invoke<Conversation>('create_conversation', { title: title ?? null }),
+  createConversation: (title?: string, projectId?: string) =>
+    invoke<Conversation>('create_conversation', { title: title ?? null, projectId: projectId ?? null }),
 
   updateConversationTitle: (id: string, title: string) =>
     invoke<void>('update_conversation_title', { id, title }),
@@ -111,4 +111,24 @@ export const api = {
 
   respondToAsk: (callId: string, response: string) =>
     invoke<void>('respond_to_ask', { callId, response }),
+
+  // Projects
+  listProjects: () =>
+    invoke<Project[]>('list_projects'),
+
+  createProject: (name: string, path: string) =>
+    invoke<Project>('create_project', { name, path }),
+
+  updateProject: (id: string, updates: { name?: string; path?: string }) =>
+    invoke<Project>('update_project', {
+      id,
+      name: updates.name ?? null,
+      path: updates.path ?? null,
+    }),
+
+  deleteProject: (id: string) =>
+    invoke<void>('delete_project', { id }),
+
+  listConversationsByProject: (projectId: string, archived = false) =>
+    invoke<Conversation[]>('list_conversations_by_project', { projectId, archived }),
 }

@@ -1,3 +1,11 @@
+export interface Project {
+  id: string
+  name: string
+  path: string
+  created_at: number
+  updated_at: number
+}
+
 export interface Conversation {
   id: string
   title: string | null
@@ -7,6 +15,7 @@ export interface Conversation {
   message_count: number
   created_at: number
   updated_at: number
+  project_id: string | null
 }
 
 export interface ToolCallDisplay {

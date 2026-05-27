@@ -1,6 +1,7 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MessageSquare, Plus, Settings, Trash2 } from 'lucide-react'
-import type { Conversation } from '@/types'
+import { MessageSquare, Plus, Settings, Trash2, FolderOpen, FolderPlus } from 'lucide-react'
+import type { Conversation, Project } from '@/types'
 import {
   Sidebar,
   SidebarContent,
@@ -22,6 +23,58 @@ interface AppSidebarProps {
   onCreate: () => void
   onDelete: (id: string) => void
   onOpenSettings: () => void
+  projects: Project[]
+  activeProjectId: string | null
+  onSelectProject: (id: string | null) => void
+  onCreateProject: (name: string, path: string) => void
+}
+
+function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path: string) => void; onCancel: () => void }) {
+  const { t } = useTranslation()
+  const [name, setName] = useState('')
+  const [path, setPath] = useState('')
+
+  return (
+    <div className="px-2 py-1.5 space-y-1.5">
+      <input
+        type="text"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder={t('sidebar.projectName')}
+        className="w-full px-2 py-1 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
+        autoFocus
+      />
+      <input
+        type="text"
+        value={path}
+        onChange={(e) => setPath(e.target.value)}
+        placeholder={t('sidebar.projectPath')}
+        className="w-full px-2 py-1 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && name.trim() && path.trim()) {
+            onSubmit(name.trim(), path.trim())
+          } else if (e.key === 'Escape') {
+            onCancel()
+          }
+        }}
+      />
+      <div className="flex gap-1">
+        <button
+          onClick={() => name.trim() && path.trim() && onSubmit(name.trim(), path.trim())}
+          disabled={!name.trim() || !path.trim()}
+          className="flex-1 px-2 py-1 text-xs bg-accent text-accent-foreground rounded hover:bg-accent/80 disabled:opacity-50"
+        >
+          {t('common.save')}
+        </button>
+        <button
+          onClick={onCancel}
+          className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground rounded"
+        >
+          ✕
+        </button>
+      </div>
+    </div>
+  )
 }
 
 export function AppSidebar({
@@ -31,8 +84,13 @@ export function AppSidebar({
   onCreate,
   onDelete,
   onOpenSettings,
+  projects,
+  activeProjectId,
+  onSelectProject,
+  onCreateProject,
 }: AppSidebarProps) {
   const { t } = useTranslation()
+  const [showNewProject, setShowNewProject] = useState(false)
 
   return (
     <Sidebar variant="inset" collapsible="icon">
@@ -48,6 +106,53 @@ export function AppSidebar({
       </SidebarHeader>
 
       <SidebarContent>
+        {/* Project selector */}
+        <SidebarGroup>
+          <SidebarGroupLabel>
+            <span>{t('sidebar.projects')}</span>
+            <button
+              onClick={() => setShowNewProject(true)}
+              className="ml-auto p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <FolderPlus className="w-3.5 h-3.5" />
+            </button>
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  isActive={activeProjectId === null}
+                  onClick={() => onSelectProject(null)}
+                >
+                  <FolderOpen />
+                  <span>{t('sidebar.allProjects')}</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {projects.map((project) => (
+                <SidebarMenuItem key={project.id}>
+                  <SidebarMenuButton
+                    isActive={project.id === activeProjectId}
+                    onClick={() => onSelectProject(project.id)}
+                  >
+                    <FolderOpen />
+                    <span>{project.name}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              ))}
+              {showNewProject && (
+                <NewProjectForm
+                  onSubmit={(name, path) => {
+                    onCreateProject(name, path)
+                    setShowNewProject(false)
+                  }}
+                  onCancel={() => setShowNewProject(false)}
+                />
+              )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        {/* Conversations */}
         <SidebarGroup>
           <SidebarGroupLabel>{t('sidebar.conversations')}</SidebarGroupLabel>
           <SidebarGroupContent>

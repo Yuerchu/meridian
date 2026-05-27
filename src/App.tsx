@@ -7,7 +7,7 @@ import { ChatView } from '@/components/chat/chat-view'
 import { EmptyState } from '@/components/chat/empty-state'
 import SettingsPage from '@/components/settings'
 import { api } from '@/api'
-import type { Conversation } from '@/types'
+import type { Conversation, Project } from '@/types'
 
 type Page = 'chat' | 'settings'
 
@@ -16,12 +16,25 @@ function App() {
   const [page, setPage] = useState<Page>('chat')
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeId, setActiveId] = useState<string | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+
+  const refreshProjects = useCallback(async () => {
+    const list = await api.listProjects()
+    setProjects(list)
+  }, [])
 
   const refreshConversations = useCallback(async () => {
-    const list = await api.listConversations()
+    const list = activeProjectId
+      ? await api.listConversationsByProject(activeProjectId)
+      : await api.listConversations()
     setConversations(list)
     return list
-  }, [])
+  }, [activeProjectId])
+
+  useEffect(() => {
+    refreshProjects()
+  }, [refreshProjects])
 
   useEffect(() => {
     refreshConversations()
@@ -35,12 +48,12 @@ function App() {
   }, [refreshConversations])
 
   const handleCreate = useCallback(async () => {
-    const conv = await api.createConversation()
+    const conv = await api.createConversation(undefined, activeProjectId ?? undefined)
     const list = await refreshConversations()
     setActiveId(conv.id)
     setPage('chat')
     return list
-  }, [refreshConversations])
+  }, [refreshConversations, activeProjectId])
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -61,7 +74,18 @@ function App() {
     [],
   )
 
+  const handleSelectProject = useCallback((id: string | null) => {
+    setActiveProjectId(id)
+    setActiveId(null)
+  }, [])
+
+  const handleCreateProject = useCallback(async (name: string, path: string) => {
+    await api.createProject(name, path)
+    await refreshProjects()
+  }, [refreshProjects])
+
   const activeConversation = conversations.find((c) => c.id === activeId)
+  const activeProject = projects.find((p) => p.id === activeProjectId)
 
   return (
     <SidebarProvider>
@@ -72,14 +96,18 @@ function App() {
         onCreate={handleCreate}
         onDelete={handleDelete}
         onOpenSettings={() => setPage('settings')}
+        projects={projects}
+        activeProjectId={activeProjectId}
+        onSelectProject={handleSelectProject}
+        onCreateProject={handleCreateProject}
       />
       <SidebarInset className="flex flex-col overflow-hidden">
-        <header className="flex items-center h-12 gap-2 px-4 border-b border-border select-none shrink-0" data-tauri-drag-region>
+        <header className="flex items-center h-12 gap-2 px-4 pt-[env(safe-area-inset-top)] border-b border-border select-none shrink-0" data-tauri-drag-region>
           <SidebarTrigger className="-ml-1" />
           <span className="text-sm font-medium">
             {page === 'settings'
               ? t('settings.title')
-              : activeConversation?.title ?? t('app.name')}
+              : activeConversation?.title ?? (activeProject?.name ?? t('app.name'))}
           </span>
         </header>
 
