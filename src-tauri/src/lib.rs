@@ -909,3 +909,139 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn msg(id: &str, role: &str, content: &str) -> Message {
+        Message {
+            id: id.into(),
+            conversation_id: "c".into(),
+            role: role.into(),
+            content: content.into(),
+            provider_id: None,
+            model_id: None,
+            input_tokens: None,
+            output_tokens: None,
+            tool_calls: None,
+            tool_call_id: None,
+            sort_order: 0,
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn test_take_bytes_ascii() {
+        assert_eq!(take_bytes_at_char_boundary("hello world", 5), "hello");
+    }
+
+    #[test]
+    fn test_take_bytes_short_string() {
+        assert_eq!(take_bytes_at_char_boundary("hi", 10), "hi");
+    }
+
+    #[test]
+    fn test_take_bytes_multibyte() {
+        let s = "hello世界";
+        assert_eq!(take_bytes_at_char_boundary(s, 5), "hello");
+        assert_eq!(take_bytes_at_char_boundary(s, 6), "hello");
+        assert_eq!(take_bytes_at_char_boundary(s, 7), "hello");
+        assert_eq!(take_bytes_at_char_boundary(s, 8), "hello世");
+        assert_eq!(take_bytes_at_char_boundary(s, 11), "hello世界");
+    }
+
+    #[test]
+    fn test_take_bytes_zero() {
+        assert_eq!(take_bytes_at_char_boundary("hello", 0), "");
+    }
+
+    #[test]
+    fn test_build_messages_with_system() {
+        let history = vec![msg("1", "user", "hi")];
+        let msgs = build_messages("You are a helper", &history, "new question");
+        assert_eq!(msgs[0].role, "system");
+        assert_eq!(msgs[0].content, "You are a helper");
+        assert_eq!(msgs[1].role, "user");
+        assert_eq!(msgs[1].content, "hi");
+        assert_eq!(msgs[2].role, "user");
+        assert_eq!(msgs[2].content, "new question");
+    }
+
+    #[test]
+    fn test_build_messages_empty_system() {
+        let msgs = build_messages("", &[], "hello");
+        assert_eq!(msgs.len(), 1);
+        assert_eq!(msgs[0].role, "user");
+    }
+
+    #[test]
+    fn test_build_messages_filters_roles() {
+        let history = vec![
+            msg("1", "user", "q"),
+            msg("2", "tool", "result"),
+            msg("3", "assistant", "a"),
+        ];
+        let msgs = build_messages("sys", &history, "new");
+        assert_eq!(msgs.len(), 4);
+        assert_eq!(msgs[0].role, "system");
+        assert_eq!(msgs[1].role, "user");
+        assert_eq!(msgs[1].content, "q");
+        assert_eq!(msgs[2].role, "assistant");
+        assert_eq!(msgs[2].content, "a");
+        assert_eq!(msgs[3].role, "user");
+        assert_eq!(msgs[3].content, "new");
+    }
+
+    #[test]
+    fn test_trim_no_trim_needed() {
+        let mut msgs = vec![
+            ChatMessage { role: "system".into(), content: "sys".into(), tool_calls: None, tool_call_id: None },
+            ChatMessage { role: "user".into(), content: "hi".into(), tool_calls: None, tool_call_id: None },
+        ];
+        trim_to_context_limit(&mut msgs, 100_000, 5);
+        assert_eq!(msgs.len(), 2);
+    }
+
+    #[test]
+    fn test_trim_preserves_system() {
+        let mut msgs = vec![
+            ChatMessage { role: "system".into(), content: "s".repeat(1000), tool_calls: None, tool_call_id: None },
+        ];
+        for i in 0..20 {
+            msgs.push(ChatMessage {
+                role: if i % 2 == 0 { "user" } else { "assistant" }.into(),
+                content: "x".repeat(200),
+                tool_calls: None,
+                tool_call_id: None,
+            });
+        }
+        trim_to_context_limit(&mut msgs, 500, 2);
+        assert_eq!(msgs[0].role, "system");
+        assert!(msgs.len() < 21);
+    }
+
+    #[test]
+    fn test_trim_keeps_recent() {
+        let mut msgs = Vec::new();
+        for i in 0..10 {
+            msgs.push(ChatMessage {
+                role: if i % 2 == 0 { "user" } else { "assistant" }.into(),
+                content: format!("msg-{i}"),
+                tool_calls: None,
+                tool_call_id: None,
+            });
+        }
+        trim_to_context_limit(&mut msgs, 10, 2);
+        let last = msgs.last().unwrap();
+        assert_eq!(last.content, "msg-9");
+    }
+
+    #[test]
+    fn test_provider_secret_name() {
+        assert_eq!(
+            provider_secret_name("my-provider-1"),
+            "PROVIDER_MY_PROVIDER_1_KEY"
+        );
+    }
+}
