@@ -289,3 +289,104 @@ fn parse_canonical_key(canonical_key: &str) -> Option<SecretListEntry> {
         _ => None,
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::keyring::test_support::MockKeyringStore;
+    use std::sync::Arc;
+
+    fn make_backend(dir: &std::path::Path) -> LocalSecretsBackend {
+        let keyring = Arc::new(MockKeyringStore::new());
+        LocalSecretsBackend::new(dir.to_path_buf(), keyring)
+    }
+
+    #[test]
+    fn test_set_get_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let backend = make_backend(dir.path());
+        let scope = SecretScope::Global;
+        let name = SecretName::new("API_KEY").unwrap();
+
+        backend.set(&scope, &name, "secret_value_123").unwrap();
+        let got = backend.get(&scope, &name).unwrap();
+        assert_eq!(got, Some("secret_value_123".to_string()));
+    }
+
+    #[test]
+    fn test_delete_secret() {
+        let dir = tempfile::tempdir().unwrap();
+        let backend = make_backend(dir.path());
+        let scope = SecretScope::Global;
+        let name = SecretName::new("TO_DELETE").unwrap();
+
+        backend.set(&scope, &name, "temp").unwrap();
+        assert!(backend.delete(&scope, &name).unwrap());
+        assert_eq!(backend.get(&scope, &name).unwrap(), None);
+        assert!(!backend.delete(&scope, &name).unwrap());
+    }
+
+    #[test]
+    fn test_no_temp_files_left() {
+        let dir = tempfile::tempdir().unwrap();
+        let backend = make_backend(dir.path());
+        let scope = SecretScope::Global;
+        let name = SecretName::new("KEY_A").unwrap();
+
+        backend.set(&scope, &name, "val1").unwrap();
+        backend.set(&scope, &name, "val2").unwrap();
+
+        let secrets_dir = dir.path().join("secrets");
+        let entries: Vec<_> = fs::read_dir(&secrets_dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].file_name().to_str().unwrap(), LOCAL_SECRETS_FILENAME);
+    }
+
+    #[test]
+    fn test_set_empty_value_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let backend = make_backend(dir.path());
+        let scope = SecretScope::Global;
+        let name = SecretName::new("EMPTY").unwrap();
+        assert!(backend.set(&scope, &name, "").is_err());
+    }
+
+    #[test]
+    fn test_list_secrets() {
+        let dir = tempfile::tempdir().unwrap();
+        let backend = make_backend(dir.path());
+        let global = SecretScope::Global;
+        let env = SecretScope::Environment("test-env".into());
+
+        backend.set(&global, &SecretName::new("KEY_A").unwrap(), "a").unwrap();
+        backend.set(&env, &SecretName::new("KEY_B").unwrap(), "b").unwrap();
+
+        let all = backend.list(None).unwrap();
+        assert_eq!(all.len(), 2);
+
+        let global_only = backend.list(Some(&global)).unwrap();
+        assert_eq!(global_only.len(), 1);
+        assert_eq!(global_only[0].name.as_str(), "KEY_A");
+    }
+
+    #[test]
+    fn test_parse_canonical_key_valid() {
+        let entry = parse_canonical_key("global/API_KEY").unwrap();
+        assert_eq!(entry.scope, SecretScope::Global);
+        assert_eq!(entry.name.as_str(), "API_KEY");
+
+        let entry = parse_canonical_key("env/my-env/SECRET").unwrap();
+        assert_eq!(entry.scope, SecretScope::Environment("my-env".into()));
+        assert_eq!(entry.name.as_str(), "SECRET");
+    }
+
+    #[test]
+    fn test_parse_canonical_key_invalid() {
+        assert!(parse_canonical_key("invalid").is_none());
+        assert!(parse_canonical_key("global/too/many").is_none());
+        assert!(parse_canonical_key("unknown/KEY").is_none());
+    }
+}

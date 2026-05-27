@@ -53,3 +53,8 @@ keyring = { version = "3.6", default-features = false, features = ["crypto-rust"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", default-features = false, features = ["crypto-rust", "linux-native-async-persistent"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "test-util"] }
+tempfile = "3"
+pretty_assertions = "1"

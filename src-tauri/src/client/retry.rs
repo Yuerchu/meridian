@@ -71,3 +71,85 @@ where
     }
     Err(TransportError::RetryLimit)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http::StatusCode;
+
+    #[test]
+    fn test_backoff_zero() {
+        let d = backoff(Duration::from_millis(100), 0);
+        assert_eq!(d, Duration::from_millis(100));
+    }
+
+    #[test]
+    fn test_backoff_one() {
+        let d = backoff(Duration::from_millis(100), 1);
+        let ms = d.as_millis() as u64;
+        assert!((90..=110).contains(&ms), "expected ~100ms, got {ms}ms");
+    }
+
+    #[test]
+    fn test_backoff_two() {
+        let d = backoff(Duration::from_millis(100), 2);
+        let ms = d.as_millis() as u64;
+        assert!((180..=220).contains(&ms), "expected ~200ms, got {ms}ms");
+    }
+
+    #[test]
+    fn test_backoff_no_overflow() {
+        let d = backoff(Duration::from_millis(100), 64);
+        assert!(d.as_millis() > 0);
+    }
+
+    fn make_retry_on(retry_429: bool, retry_5xx: bool, retry_transport: bool) -> RetryOn {
+        RetryOn { retry_429, retry_5xx, retry_transport }
+    }
+
+    fn http_err(status: u16) -> TransportError {
+        TransportError::Http {
+            status: StatusCode::from_u16(status).unwrap(),
+            url: None,
+            headers: None,
+            body: None,
+        }
+    }
+
+    #[test]
+    fn test_should_retry_429() {
+        let r = make_retry_on(true, false, false);
+        assert!(r.should_retry(&http_err(429), 0, 3));
+        assert!(!r.should_retry(&http_err(500), 0, 3));
+    }
+
+    #[test]
+    fn test_should_retry_5xx() {
+        let r = make_retry_on(false, true, false);
+        assert!(r.should_retry(&http_err(500), 0, 3));
+        assert!(r.should_retry(&http_err(503), 0, 3));
+        assert!(!r.should_retry(&http_err(400), 0, 3));
+        assert!(!r.should_retry(&http_err(429), 0, 3));
+    }
+
+    #[test]
+    fn test_should_retry_transport() {
+        let r = make_retry_on(false, false, true);
+        assert!(r.should_retry(&TransportError::Timeout, 0, 3));
+        assert!(r.should_retry(&TransportError::Network("err".into()), 0, 3));
+        assert!(!r.should_retry(&http_err(500), 0, 3));
+    }
+
+    #[test]
+    fn test_no_retry_max_attempts() {
+        let r = make_retry_on(true, true, true);
+        assert!(!r.should_retry(&http_err(429), 3, 3));
+        assert!(!r.should_retry(&TransportError::Timeout, 5, 3));
+    }
+
+    #[test]
+    fn test_no_retry_build_error() {
+        let r = make_retry_on(true, true, true);
+        assert!(!r.should_retry(&TransportError::Build("err".into()), 0, 3));
+    }
+}

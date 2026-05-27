@@ -155,3 +155,49 @@ pub(crate) fn compute_keyring_account(data_dir: &Path) -> String {
 pub(crate) fn keyring_service() -> &'static str {
     KEYRING_SERVICE
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_secret_name_valid() {
+        let name = SecretName::new("API_KEY").unwrap();
+        assert_eq!(name.as_str(), "API_KEY");
+    }
+
+    #[test]
+    fn test_secret_name_rejects_empty() {
+        assert!(SecretName::new("").is_err());
+        assert!(SecretName::new("   ").is_err());
+    }
+
+    #[test]
+    fn test_secret_name_rejects_lowercase() {
+        assert!(SecretName::new("api_key").is_err());
+    }
+
+    #[test]
+    fn test_secret_name_trims_whitespace() {
+        let name = SecretName::new("  API_KEY  ").unwrap();
+        assert_eq!(name.as_str(), "API_KEY");
+    }
+
+    #[test]
+    fn test_scope_canonical_key_global() {
+        let name = SecretName::new("API_KEY").unwrap();
+        assert_eq!(SecretScope::Global.canonical_key(&name), "global/API_KEY");
+    }
+
+    #[test]
+    fn test_scope_canonical_key_env() {
+        let name = SecretName::new("API_KEY").unwrap();
+        let scope = SecretScope::Environment("env-abc".into());
+        assert_eq!(scope.canonical_key(&name), "env/env-abc/API_KEY");
+    }
+
+    #[test]
+    fn test_keyring_service_is_meridian() {
+        assert_eq!(keyring_service(), "meridian");
+    }
+}

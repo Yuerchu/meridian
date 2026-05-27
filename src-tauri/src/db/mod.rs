@@ -32,3 +32,21 @@ pub fn init_db(db_path: &str) -> DbPool {
 
     pool
 }
+
+#[cfg(test)]
+pub(crate) fn test_db() -> DbPool {
+    let manager = ConnectionManager::<SqliteConnection>::new(":memory:");
+    let pool = Pool::builder()
+        .max_size(1)
+        .build(manager)
+        .expect("failed to create test db pool");
+
+    let mut conn = pool.get().expect("failed to get test db connection");
+    diesel::sql_query("PRAGMA foreign_keys=ON")
+        .execute(&mut conn)
+        .ok();
+    conn.run_pending_migrations(MIGRATIONS)
+        .expect("failed to run test migrations");
+
+    pool
+}

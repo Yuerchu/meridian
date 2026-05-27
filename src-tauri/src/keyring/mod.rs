@@ -103,3 +103,79 @@ impl KeyringStore for DefaultKeyringStore {
         }
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_support {
+    use super::*;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    #[derive(Debug, Default)]
+    pub struct MockKeyringStore {
+        store: Mutex<HashMap<String, String>>,
+        errors: Mutex<HashMap<String, String>>,
+    }
+
+    impl MockKeyringStore {
+        pub fn new() -> Self {
+            Self::default()
+        }
+
+        fn key(service: &str, account: &str) -> String {
+            format!("{service}:{account}")
+        }
+
+        pub fn set_error(&self, service: &str, account: &str, msg: &str) {
+            self.errors
+                .lock()
+                .unwrap()
+                .insert(Self::key(service, account), msg.to_string());
+        }
+    }
+
+    impl KeyringStore for MockKeyringStore {
+        fn load(
+            &self,
+            service: &str,
+            account: &str,
+        ) -> Result<Option<String>, CredentialStoreError> {
+            if let Some(msg) = self.errors.lock().unwrap().remove(&Self::key(service, account)) {
+                return Err(CredentialStoreError::Other(
+                    KeyringError::PlatformFailure(msg.into()),
+                ));
+            }
+            Ok(self.store.lock().unwrap().get(&Self::key(service, account)).cloned())
+        }
+
+        fn save(
+            &self,
+            service: &str,
+            account: &str,
+            value: &str,
+        ) -> Result<(), CredentialStoreError> {
+            if let Some(msg) = self.errors.lock().unwrap().remove(&Self::key(service, account)) {
+                return Err(CredentialStoreError::Other(
+                    KeyringError::PlatformFailure(msg.into()),
+                ));
+            }
+            self.store
+                .lock()
+                .unwrap()
+                .insert(Self::key(service, account), value.to_string());
+            Ok(())
+        }
+
+        fn delete(
+            &self,
+            service: &str,
+            account: &str,
+        ) -> Result<bool, CredentialStoreError> {
+            if let Some(msg) = self.errors.lock().unwrap().remove(&Self::key(service, account)) {
+                return Err(CredentialStoreError::Other(
+                    KeyringError::PlatformFailure(msg.into()),
+                ));
+            }
+            Ok(self.store.lock().unwrap().remove(&Self::key(service, account)).is_some())
+        }
+    }
+}
