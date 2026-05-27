@@ -1,0 +1,39 @@
+use diesel::prelude::*;
+use diesel::sqlite::SqliteConnection;
+
+use crate::db::models::project::{NewProject, Project, ProjectUpdate};
+#[allow(unused_imports)]
+use crate::db::schema::projects;
+
+pub fn list_projects(conn: &mut SqliteConnection) -> QueryResult<Vec<Project>> {
+    projects::table
+        .order(projects::updated_at.desc())
+        .load::<Project>(conn)
+}
+
+pub fn get_project(conn: &mut SqliteConnection, id: &str) -> QueryResult<Project> {
+    projects::table.find(id).first::<Project>(conn)
+}
+
+pub fn create_project(conn: &mut SqliteConnection, new: &NewProject) -> QueryResult<Project> {
+    diesel::insert_into(projects::table)
+        .values(new)
+        .execute(conn)?;
+    projects::table.find(new.id).first::<Project>(conn)
+}
+
+pub fn update_project(
+    conn: &mut SqliteConnection,
+    id: &str,
+    changeset: &ProjectUpdate,
+) -> QueryResult<Project> {
+    diesel::update(projects::table.find(id))
+        .set(changeset)
+        .execute(conn)?;
+    projects::table.find(id).first::<Project>(conn)
+}
+
+pub fn delete_project(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
+    diesel::delete(projects::table.find(id)).execute(conn)?;
+    Ok(())
+}

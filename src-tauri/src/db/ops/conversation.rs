@@ -27,6 +27,7 @@ pub fn create_conversation(
     id: &str,
     title: Option<&str>,
     assistant_id: Option<&str>,
+    project_id: Option<&str>,
     now: i64,
 ) -> QueryResult<Conversation> {
     let new = NewConversation {
@@ -37,11 +38,25 @@ pub fn create_conversation(
         is_archived: 0,
         created_at: now,
         updated_at: now,
+        project_id,
     };
     diesel::insert_into(conversations::table)
         .values(&new)
         .execute(conn)?;
     conversations::table.find(id).first::<Conversation>(conn)
+}
+
+pub fn list_conversations_by_project(
+    conn: &mut SqliteConnection,
+    project_id: &str,
+    archived: bool,
+) -> QueryResult<Vec<Conversation>> {
+    let archived_val = if archived { 1 } else { 0 };
+    conversations::table
+        .filter(conversations::project_id.eq(project_id))
+        .filter(conversations::is_archived.eq(archived_val))
+        .order((conversations::is_pinned.desc(), conversations::updated_at.desc()))
+        .load::<Conversation>(conn)
 }
 
 pub fn update_title(

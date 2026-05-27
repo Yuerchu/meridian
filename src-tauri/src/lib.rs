@@ -173,7 +173,7 @@ async fn list_conversations(app: tauri::AppHandle, archived: bool) -> Result<Vec
 }
 
 #[tauri::command]
-async fn create_conversation(app: tauri::AppHandle, title: Option<String>) -> Result<Conversation, String> {
+async fn create_conversation(app: tauri::AppHandle, title: Option<String>, project_id: Option<String>) -> Result<Conversation, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
@@ -181,7 +181,7 @@ async fn create_conversation(app: tauri::AppHandle, title: Option<String>) -> Re
         let default_assistant = db::ops::assistant::get_default_assistant(&mut conn)
             .map_err(|e| e.to_string())?;
         let assistant_id = default_assistant.as_ref().map(|a| a.id.as_str());
-        db::ops::conversation::create_conversation(&mut conn, &id, title.as_deref(), assistant_id, now_ms())
+        db::ops::conversation::create_conversation(&mut conn, &id, title.as_deref(), assistant_id, project_id.as_deref(), now_ms())
             .map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
@@ -469,6 +469,59 @@ async fn respond_to_ask(app: tauri::AppHandle, call_id: String, response: String
     Ok(())
 }
 
+// --- Project commands ---
+
+#[tauri::command]
+async fn list_projects(app: tauri::AppHandle) -> Result<Vec<db::models::project::Project>, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::project::list_projects(&mut conn).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn create_project(app: tauri::AppHandle, name: String, path: String) -> Result<db::models::project::Project, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = now_ms();
+        db::ops::project::create_project(&mut conn, &db::models::project::NewProject {
+            id: &id, name: &name, path: &path, created_at: now, updated_at: now,
+        }).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn update_project(app: tauri::AppHandle, id: String, name: Option<String>, path: Option<String>) -> Result<db::models::project::Project, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::project::update_project(&mut conn, &id, &db::models::project::ProjectUpdate {
+            name, path, updated_at: Some(now_ms()),
+        }).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_project(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::project::delete_project(&mut conn, &id).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn list_conversations_by_project(app: tauri::AppHandle, project_id: String, archived: bool) -> Result<Vec<Conversation>, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::conversation::list_conversations_by_project(&mut conn, &project_id, archived).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
 // --- Chat command (with agent loop + tools + approval) ---
 
 #[tauri::command]
@@ -482,8 +535,8 @@ async fn chat(
     let secrets = app.state::<AppSecrets>();
     let pool = app.state::<AppDb>().0.clone();
 
-    // Load conversation + assistant + history
-    let (assistant, history, conv_title) = {
+    // Load conversation + assistant + history + project path
+    let (assistant, history, conv_title, project_path) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         tokio::task::spawn_blocking(move || {
@@ -494,7 +547,10 @@ async fn chat(
                 .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok());
             let history = db::ops::message::list_messages(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;
-            Ok::<_, String>((assistant, history, conv.title))
+            let project_path = conv.project_id.as_deref()
+                .and_then(|pid| db::ops::project::get_project(&mut conn, pid).ok())
+                .map(|p| p.path);
+            Ok::<_, String>((assistant, history, conv.title, project_path))
         }).await.map_err(|e| e.to_string())??
     };
 
@@ -581,6 +637,7 @@ async fn chat(
     let tool_defs = tool_registry.0.definitions();
     let has_tools = !tool_defs.is_empty();
     let max_iterations = 10;
+    let tool_context = tools::ToolContext { working_directory: project_path };
 
     let mut full_content = String::new();
 
@@ -669,7 +726,7 @@ async fn chat(
                     if approved {
                         let args: serde_json::Value = serde_json::from_str(&tc.arguments)
                             .unwrap_or_default();
-                        match tool.execute(args).await {
+                        match tool.execute(args, &tool_context).await {
                             Ok(output) => output,
                             Err(e) => format!("Error: {e}"),
                         }
@@ -779,8 +836,12 @@ async fn chat(
     Ok(())
 }
 
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt::init();
+
+    #[cfg(target_os = "android")]
+    android_keyring::set_android_keyring_credential_builder();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -904,6 +965,8 @@ pub fn run() {
             list_assistants, create_assistant, update_assistant, delete_assistant,
             list_providers, create_provider, update_provider, delete_provider,
             set_provider_key, get_provider_key_exists, fetch_provider_models,
+            list_projects, create_project, update_project, delete_project,
+            list_conversations_by_project,
             approve_tool_call, deny_tool_call, respond_to_ask,
         ])
         .run(tauri::generate_context!())
@@ -993,28 +1056,29 @@ mod tests {
         assert_eq!(msgs[3].content, "new");
     }
 
+    fn chat_msg(role: &str, content: &str) -> ChatMessage {
+        ChatMessage {
+            role: role.into(),
+            content: content.into(),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+        }
+    }
+
     #[test]
     fn test_trim_no_trim_needed() {
-        let mut msgs = vec![
-            ChatMessage { role: "system".into(), content: "sys".into(), tool_calls: None, tool_call_id: None },
-            ChatMessage { role: "user".into(), content: "hi".into(), tool_calls: None, tool_call_id: None },
-        ];
+        let mut msgs = vec![chat_msg("system", "sys"), chat_msg("user", "hi")];
         trim_to_context_limit(&mut msgs, 100_000, 5);
         assert_eq!(msgs.len(), 2);
     }
 
     #[test]
     fn test_trim_preserves_system() {
-        let mut msgs = vec![
-            ChatMessage { role: "system".into(), content: "s".repeat(1000), tool_calls: None, tool_call_id: None },
-        ];
+        let mut msgs = vec![chat_msg("system", &"s".repeat(1000))];
         for i in 0..20 {
-            msgs.push(ChatMessage {
-                role: if i % 2 == 0 { "user" } else { "assistant" }.into(),
-                content: "x".repeat(200),
-                tool_calls: None,
-                tool_call_id: None,
-            });
+            let role = if i % 2 == 0 { "user" } else { "assistant" };
+            msgs.push(chat_msg(role, &"x".repeat(200)));
         }
         trim_to_context_limit(&mut msgs, 500, 2);
         assert_eq!(msgs[0].role, "system");
@@ -1025,12 +1089,8 @@ mod tests {
     fn test_trim_keeps_recent() {
         let mut msgs = Vec::new();
         for i in 0..10 {
-            msgs.push(ChatMessage {
-                role: if i % 2 == 0 { "user" } else { "assistant" }.into(),
-                content: format!("msg-{i}"),
-                tool_calls: None,
-                tool_call_id: None,
-            });
+            let role = if i % 2 == 0 { "user" } else { "assistant" };
+            msgs.push(chat_msg(role, &format!("msg-{i}")));
         }
         trim_to_context_limit(&mut msgs, 10, 2);
         let last = msgs.last().unwrap();

@@ -14,6 +14,7 @@ pub struct Conversation {
     pub message_count: i32,
     pub created_at: i64,
     pub updated_at: i64,
+    pub project_id: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
@@ -26,4 +27,5 @@ pub struct NewConversation<'a> {
     pub is_archived: i32,
     pub created_at: i64,
     pub updated_at: i64,
+    pub project_id: Option<&'a str>,
 }

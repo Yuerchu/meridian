@@ -43,6 +43,17 @@ diesel::table! {
         message_count -> Integer,
         created_at -> BigInt,
         updated_at -> BigInt,
+        project_id -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    projects (id) {
+        id -> Text,
+        name -> Text,
+        path -> Text,
+        created_at -> BigInt,
+        updated_at -> BigInt,
     }
 }
 
@@ -114,6 +125,7 @@ diesel::table! {
 diesel::joinable!(assistants -> providers (provider_id));
 diesel::joinable!(attachments -> messages (message_id));
 diesel::joinable!(conversations -> assistants (assistant_id));
+diesel::joinable!(conversations -> projects (project_id));
 diesel::joinable!(messages -> conversations (conversation_id));
 diesel::joinable!(messages -> providers (provider_id));
 diesel::joinable!(tool_permissions -> mcp_servers (mcp_server_id));
@@ -125,6 +137,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     mcp_servers,
     messages,
     preferences,
+    projects,
     providers,
     tool_permissions,
 );

@@ -4,5 +4,6 @@ pub mod conversation;
 pub mod mcp_server;
 pub mod message;
 pub mod preference;
+pub mod project;
 pub mod provider;
 pub mod tool_permission;
