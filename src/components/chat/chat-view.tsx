@@ -248,7 +248,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
 
   return (
     <div className="flex flex-col h-full">
-      <AutoScrollArea dep={lastMsg ? `${lastMsg.id}:${lastMsg.content.length}` : null}>
+      <AutoScrollArea dep={lastMsg ? `${lastMsg.id}:${lastMsg.content.length}:${lastMsg._blocks?.length ?? 0}` : null}>
         {error && (
           <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive break-all">
             {error}

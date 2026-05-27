@@ -310,6 +310,13 @@ export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
         </div>
       )}
 
+      {data.status === 'running' && (
+        <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/10 text-muted-foreground">
+          <Loader2 className="w-3 h-3 animate-spin" />
+          <span className="text-[11px]">{t('chat.tool.running')}</span>
+        </div>
+      )}
+
       {data.result && (
         <div className="px-3 py-2 border-t border-border bg-muted/10">
           <pre className="whitespace-pre-wrap text-foreground max-h-40 overflow-y-auto text-[11px]">

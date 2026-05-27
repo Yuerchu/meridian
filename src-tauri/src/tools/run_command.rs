@@ -37,31 +37,34 @@ impl Tool for RunCommandTool {
 
         let cwd = context.working_dir_or_current();
 
-        let output = match context.shell {
+        let mut cmd = match context.shell {
             ShellType::Cmd => {
-                tokio::process::Command::new("cmd")
-                    .args(["/C", command])
-                    .current_dir(&cwd)
-                    .output()
-                    .await
+                let mut c = tokio::process::Command::new("cmd");
+                c.args(["/C", command]);
+                c
             }
             ShellType::PowerShell => {
                 let ps = find_powershell();
-                tokio::process::Command::new(ps)
-                    .args(["-NoProfile", "-Command", command])
-                    .current_dir(&cwd)
-                    .output()
-                    .await
+                let mut c = tokio::process::Command::new(ps);
+                c.args(["-NoProfile", "-Command", command]);
+                c
             }
             ShellType::Bash => {
                 let bash = find_bash();
-                tokio::process::Command::new(bash)
-                    .args(["-c", command])
-                    .current_dir(&cwd)
-                    .output()
-                    .await
+                let mut c = tokio::process::Command::new(bash);
+                c.args(["-c", command]);
+                c
             }
         };
+        cmd.current_dir(&cwd);
+
+        #[cfg(target_os = "windows")]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+        }
+
+        let output = cmd.output().await;
 
         match output {
             Ok(output) => {

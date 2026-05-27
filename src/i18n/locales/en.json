@@ -19,6 +19,7 @@
   "chat.delete": "Delete",
   "chat.tool.allow": "Allow",
   "chat.tool.deny": "Deny",
+  "chat.tool.running": "Running...",
   "chat.tool.askUser": "Question",
   "chat.tool.askUserPlaceholder": "Type your response...",
   "chat.tool.askUserSubmit": "Submit",

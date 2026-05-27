@@ -19,6 +19,7 @@
   "chat.delete": "删除",
   "chat.tool.allow": "允许",
   "chat.tool.deny": "拒绝",
+  "chat.tool.running": "执行中…",
   "chat.tool.askUser": "提问",
   "chat.tool.askUserPlaceholder": "输入你的回答…",
   "chat.tool.askUserSubmit": "提交",
