@@ -1,7 +1,11 @@
+use std::time::Duration;
 use async_trait::async_trait;
 use super::{Permission, Tool, ToolContext, ShellType};
 
 pub struct RunCommandTool;
+
+const MAX_OUTPUT_BYTES: usize = 256 * 1024; // 256 KB
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[async_trait]
 impl Tool for RunCommandTool {
@@ -10,7 +14,7 @@ impl Tool for RunCommandTool {
     }
 
     fn description(&self) -> &str {
-        "Execute a shell command and return its output (stdout and stderr). The command runs in the project's working directory."
+        "Execute a shell command and return its output (stdout and stderr). The command runs in the project's working directory. Output is truncated at 256KB. Timeout: 120 seconds."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -64,7 +68,10 @@ impl Tool for RunCommandTool {
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
 
-        let output = cmd.output().await;
+        let output = match tokio::time::timeout(COMMAND_TIMEOUT, cmd.output()).await {
+            Ok(result) => result,
+            Err(_) => return Err(format!("command timed out after {}s", COMMAND_TIMEOUT.as_secs())),
+        };
 
         match output {
             Ok(output) => {
@@ -89,6 +96,16 @@ impl Tool for RunCommandTool {
                 if result.is_empty() {
                     result = "(no output)".to_string();
                 }
+
+                if result.len() > MAX_OUTPUT_BYTES {
+                    let truncated = crate::take_bytes_at_char_boundary(&result, MAX_OUTPUT_BYTES);
+                    return Ok(format!(
+                        "{}...\n\n(output truncated at 256KB, total {} bytes)",
+                        truncated,
+                        result.len()
+                    ));
+                }
+
                 Ok(result)
             }
             Err(e) => Err(format!("failed to execute command: {e}")),

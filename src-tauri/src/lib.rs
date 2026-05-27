@@ -33,7 +33,7 @@ pub enum ApprovalDecision {
 
 struct ApprovalWaiters(Mutex<HashMap<String, oneshot::Sender<ApprovalDecision>>>);
 
-fn take_bytes_at_char_boundary(s: &str, max_bytes: usize) -> &str {
+pub fn take_bytes_at_char_boundary(s: &str, max_bytes: usize) -> &str {
     if s.len() <= max_bytes {
         return s;
     }

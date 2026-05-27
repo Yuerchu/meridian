@@ -3,6 +3,8 @@ use super::{Permission, Tool, ToolContext};
 
 pub struct ReadFileTool;
 
+const MAX_OUTPUT_BYTES: usize = 256 * 1024;
+
 #[async_trait]
 impl Tool for ReadFileTool {
     fn name(&self) -> &str {
@@ -10,7 +12,7 @@ impl Tool for ReadFileTool {
     }
 
     fn description(&self) -> &str {
-        "Read the contents of a file at the given path. Returns the file content as text."
+        "Read the contents of a file. Path can be relative to project root or absolute. Output truncated at 256KB for large files."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -19,7 +21,7 @@ impl Tool for ReadFileTool {
             "properties": {
                 "path": {
                     "type": "string",
-                    "description": "Absolute path to the file to read"
+                    "description": "Path to the file to read"
                 }
             },
             "required": ["path"]
@@ -36,8 +38,19 @@ impl Tool for ReadFileTool {
             .ok_or("missing 'path' argument")?;
         let path = context.resolve_path(path_str);
 
-        tokio::fs::read_to_string(&path)
+        let content = tokio::fs::read_to_string(&path)
             .await
-            .map_err(|e| format!("failed to read file '{}': {}", path.display(), e))
+            .map_err(|e| format!("failed to read file '{}': {}", path.display(), e))?;
+
+        if content.len() > MAX_OUTPUT_BYTES {
+            let truncated = crate::take_bytes_at_char_boundary(&content, MAX_OUTPUT_BYTES);
+            return Ok(format!(
+                "{}...\n\n(file truncated at 256KB, total {} bytes)",
+                truncated,
+                content.len()
+            ));
+        }
+
+        Ok(content)
     }
 }
