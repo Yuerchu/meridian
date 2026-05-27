@@ -32,7 +32,7 @@
   "sidebar.projects": "Projects",
   "sidebar.allProjects": "All Projects",
   "sidebar.projectName": "Project name",
-  "sidebar.projectPath": "Directory path (e.g. C:\\Projects\\myapp)",
+  "sidebar.browsePath": "Select directory...",
   "toolbar.noAssistant": "No Assistant",
   "toolbar.selectModel": "Select model",
   "toolbar.loadingModels": "Loading models...",

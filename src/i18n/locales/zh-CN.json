@@ -32,7 +32,7 @@
   "sidebar.projects": "项目",
   "sidebar.allProjects": "全部项目",
   "sidebar.projectName": "项目名称",
-  "sidebar.projectPath": "目录路径（如 C:\\Projects\\myapp）",
+  "sidebar.browsePath": "选择目录…",
   "toolbar.noAssistant": "无助手",
   "toolbar.selectModel": "选择模型",
   "toolbar.loadingModels": "加载模型中…",

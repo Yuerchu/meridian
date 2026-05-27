@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import { open } from '@tauri-apps/plugin-dialog'
 import { MessageSquare, Plus, Settings, Trash2, FolderOpen, FolderPlus } from 'lucide-react'
 import type { Conversation, Project } from '@/types'
 import {
@@ -34,6 +35,17 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
   const [name, setName] = useState('')
   const [path, setPath] = useState('')
 
+  const handleBrowse = useCallback(async () => {
+    const selected = await open({ directory: true, multiple: false })
+    if (selected) {
+      setPath(selected)
+      if (!name.trim()) {
+        const parts = selected.replace(/\\/g, '/').split('/')
+        setName(parts[parts.length - 1] || '')
+      }
+    }
+  }, [name])
+
   return (
     <div className="px-2 py-1.5 space-y-1.5">
       <input
@@ -43,21 +55,21 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
         placeholder={t('sidebar.projectName')}
         className="w-full px-2 py-1 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
         autoFocus
-      />
-      <input
-        type="text"
-        value={path}
-        onChange={(e) => setPath(e.target.value)}
-        placeholder={t('sidebar.projectPath')}
-        className="w-full px-2 py-1 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
         onKeyDown={(e) => {
-          if (e.key === 'Enter' && name.trim() && path.trim()) {
-            onSubmit(name.trim(), path.trim())
-          } else if (e.key === 'Escape') {
-            onCancel()
-          }
+          if (e.key === 'Enter' && name.trim() && path.trim()) onSubmit(name.trim(), path.trim())
+          else if (e.key === 'Escape') onCancel()
         }}
       />
+      <button
+        type="button"
+        onClick={handleBrowse}
+        className="w-full flex items-center gap-1.5 px-2 py-1 text-xs bg-background border border-border rounded hover:bg-accent/40 transition-colors text-left"
+      >
+        <FolderOpen className="w-3 h-3 text-muted-foreground shrink-0" />
+        <span className={path ? 'text-foreground truncate' : 'text-muted-foreground'}>
+          {path || t('sidebar.browsePath')}
+        </span>
+      </button>
       <div className="flex gap-1">
         <button
           onClick={() => name.trim() && path.trim() && onSubmit(name.trim(), path.trim())}
