@@ -66,11 +66,11 @@ fn build_messages(
 ) -> Vec<ChatMessage> {
     let mut msgs = Vec::new();
     if !system_prompt.is_empty() {
-        msgs.push(ChatMessage { role: "system".into(), content: system_prompt.into(), tool_calls: None, tool_call_id: None });
+        msgs.push(ChatMessage { role: "system".into(), content: system_prompt.into(), reasoning_content: None, tool_calls: None, tool_call_id: None });
     }
     for m in history {
         if m.role == "user" || m.role == "assistant" {
-            msgs.push(ChatMessage { role: m.role.clone(), content: m.content.clone(), tool_calls: None, tool_call_id: None });
+            msgs.push(ChatMessage { role: m.role.clone(), content: m.content.clone(), reasoning_content: None, tool_calls: None, tool_call_id: None });
         }
     }
     msgs.push(ChatMessage::user(user_message));
@@ -605,7 +605,7 @@ async fn chat(
 
             // Add assistant message with tool_calls to context
             chat_messages.push(ChatMessage::assistant_with_tools(
-                &response.text, response.tool_calls.clone()
+                &response.text, response.reasoning_content.clone(), response.tool_calls.clone()
             ));
 
             // Process each tool call

@@ -6,12 +6,12 @@ use serde::Deserialize;
 use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
 use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, ToolCall, ToolDefinition};
 
-pub struct OpenAICompatProvider {
+pub struct DeepSeekProvider {
     base_url: String,
     api_key: String,
 }
 
-impl OpenAICompatProvider {
+impl DeepSeekProvider {
     pub fn new(base_url: &str, api_key: &str) -> Self {
         Self {
             base_url: base_url.trim_end_matches('/').to_string(),
@@ -22,6 +22,9 @@ impl OpenAICompatProvider {
     fn serialize_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
         messages.iter().map(|m| {
             let mut msg = serde_json::json!({ "role": m.role, "content": m.content });
+            if let Some(ref rc) = m.reasoning_content {
+                msg["reasoning_content"] = serde_json::json!(rc);
+            }
             if let Some(ref tool_calls) = m.tool_calls {
                 msg["tool_calls"] = serde_json::json!(tool_calls.iter().map(|tc| {
                     serde_json::json!({
@@ -50,12 +53,6 @@ impl OpenAICompatProvider {
             "messages": Self::serialize_messages(messages),
             "stream": stream,
         });
-        if let Some(t) = params.temperature {
-            body["temperature"] = serde_json::json!(t);
-        }
-        if let Some(p) = params.top_p {
-            body["top_p"] = serde_json::json!(p);
-        }
         if let Some(m) = params.max_tokens {
             body["max_tokens"] = serde_json::json!(m);
         }
@@ -101,11 +98,13 @@ struct ChunkChoice {
 #[derive(Deserialize)]
 struct Delta {
     content: Option<String>,
+    reasoning_content: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct FullMessage {
     content: Option<String>,
+    reasoning_content: Option<String>,
     tool_calls: Option<Vec<FullToolCall>>,
 }
 
@@ -122,7 +121,7 @@ struct FullToolCallFunction {
 }
 
 #[async_trait]
-impl ChatProvider for OpenAICompatProvider {
+impl ChatProvider for DeepSeekProvider {
     async fn stream_chat(
         &self,
         messages: Vec<ChatMessage>,
@@ -143,10 +142,10 @@ impl ChatProvider for OpenAICompatProvider {
                         }
                         match serde_json::from_str::<ChatChunk>(&ev.data) {
                             Ok(chunk) => {
-                                let content = chunk.choices.first()
-                                    .and_then(|c| c.delta.as_ref())
-                                    .and_then(|d| d.content.clone())
-                                    .unwrap_or_default();
+                                let choice = chunk.choices.first()?;
+                                let delta = choice.delta.as_ref()?;
+                                // TODO: stream reasoning_content to frontend separately
+                                let content = delta.content.clone().unwrap_or_default();
                                 if content.is_empty() { None } else { Some(Ok(content)) }
                             }
                             Err(e) => Some(Err(ProviderError::Parse(e.to_string()))),
@@ -192,6 +191,7 @@ impl ChatProvider for OpenAICompatProvider {
 
         let message = &parsed["choices"][0]["message"];
         let text = message["content"].as_str().unwrap_or("").to_string();
+        let reasoning_content = message["reasoning_content"].as_str().map(|s| s.to_string());
 
         let tool_calls = if let Some(tcs) = message["tool_calls"].as_array() {
             tcs.iter().filter_map(|tc| {
@@ -205,6 +205,6 @@ impl ChatProvider for OpenAICompatProvider {
             Vec::new()
         };
 
-        Ok(AgentResponse { text, reasoning_content: None, tool_calls })
+        Ok(AgentResponse { text, reasoning_content, tool_calls })
     }
 }

@@ -1,5 +1,6 @@
 use super::ChatProvider;
 use super::anthropic::AnthropicProvider;
+use super::deepseek::DeepSeekProvider;
 use super::openai_compat::OpenAICompatProvider;
 
 pub fn create_provider(
@@ -9,6 +10,7 @@ pub fn create_provider(
 ) -> Box<dyn ChatProvider> {
     match provider_type {
         "anthropic" => Box::new(AnthropicProvider::new(base_url, api_key)),
+        "deepseek" => Box::new(DeepSeekProvider::new(base_url, api_key)),
         _ => Box::new(OpenAICompatProvider::new(base_url, api_key)),
     }
 }

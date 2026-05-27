@@ -236,6 +236,6 @@ impl ChatProvider for AnthropicProvider {
             }
         }
 
-        Ok(AgentResponse { text, tool_calls })
+        Ok(AgentResponse { text, reasoning_content: None, tool_calls })
     }
 }

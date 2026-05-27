@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub mod deepseek;
 pub mod models;
 pub mod openai_compat;
 pub mod registry;
@@ -11,22 +12,23 @@ use std::pin::Pin;
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
+    pub reasoning_content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub tool_call_id: Option<String>,
 }
 
 impl ChatMessage {
     pub fn user(content: &str) -> Self {
-        Self { role: "user".into(), content: content.into(), tool_calls: None, tool_call_id: None }
+        Self { role: "user".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: None }
     }
     pub fn assistant(content: &str) -> Self {
-        Self { role: "assistant".into(), content: content.into(), tool_calls: None, tool_call_id: None }
+        Self { role: "assistant".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: None }
     }
-    pub fn assistant_with_tools(content: &str, tool_calls: Vec<ToolCall>) -> Self {
-        Self { role: "assistant".into(), content: content.into(), tool_calls: Some(tool_calls), tool_call_id: None }
+    pub fn assistant_with_tools(content: &str, reasoning_content: Option<String>, tool_calls: Vec<ToolCall>) -> Self {
+        Self { role: "assistant".into(), content: content.into(), reasoning_content, tool_calls: Some(tool_calls), tool_call_id: None }
     }
     pub fn tool_result(tool_call_id: &str, content: &str) -> Self {
-        Self { role: "tool".into(), content: content.into(), tool_calls: None, tool_call_id: Some(tool_call_id.into()) }
+        Self { role: "tool".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: Some(tool_call_id.into()) }
     }
 }
 
@@ -65,6 +67,7 @@ pub struct ToolCall {
 
 pub struct AgentResponse {
     pub text: String,
+    pub reasoning_content: Option<String>,
     pub tool_calls: Vec<ToolCall>,
 }
 
