@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Wrench, Check, X, Loader2, MessageCircleQuestion, Send, SkipForward, Circle, CircleCheck, Square, SquareCheck } from 'lucide-react'
+import { Wrench, Check, X, Loader2, MessageCircleQuestion, Send, SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { api } from '@/api'
 import type { ToolCallDisplay } from '@/types'
@@ -22,8 +22,6 @@ interface QuestionAnswer {
   notes: string
 }
 
-type Answers = Record<string, QuestionAnswer>
-
 function emptyAnswer(q: AskQuestion): QuestionAnswer {
   return { selected: q.multi_select ? [] : null, notes: '' }
 }
@@ -35,7 +33,9 @@ function hasContent(a: QuestionAnswer | undefined): boolean {
   return a.selected !== null
 }
 
-function formatAnswer(a: QuestionAnswer): string {
+function formatAnswer(a: QuestionAnswer | undefined, skipped: boolean): string {
+  if (skipped) return '(skipped)'
+  if (!a) return '(skipped)'
   const sel = Array.isArray(a.selected)
     ? a.selected.join(', ')
     : a.selected
@@ -43,17 +43,23 @@ function formatAnswer(a: QuestionAnswer): string {
   if (sel && notes) return `${sel}\n\nNotes: ${notes}`
   if (sel) return sel
   if (notes) return notes
-  return '(skipped)'
+  return '(no answer)'
 }
 
 function QuestionBlock({
   q,
   value,
+  skipped,
   onChange,
+  onSkip,
+  onUnskip,
 }: {
   q: AskQuestion
   value: QuestionAnswer
+  skipped: boolean
   onChange: (id: string, val: QuestionAnswer) => void
+  onSkip: (id: string) => void
+  onUnskip: (id: string) => void
 }) {
   const { t } = useTranslation()
   const hasOptions = q.options && q.options.length > 0
@@ -69,9 +75,35 @@ function QuestionBlock({
     onChange(q.id, { ...value, selected: value.selected === label ? null : label })
   }
 
+  if (skipped) {
+    return (
+      <div className="flex items-center justify-between py-1">
+        <span className="text-sm text-muted-foreground line-through">{q.question}</span>
+        <button
+          type="button"
+          onClick={() => onUnskip(q.id)}
+          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0 ml-2"
+        >
+          <Undo2 className="w-3 h-3" />
+          {t('chat.tool.undo')}
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-1.5">
-      <div className="text-sm text-foreground font-medium">{q.question}</div>
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-sm text-foreground font-medium">{q.question}</div>
+        <button
+          type="button"
+          onClick={() => onSkip(q.id)}
+          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0 mt-0.5"
+        >
+          <SkipForward className="w-3 h-3" />
+          {t('chat.tool.skipQuestion')}
+        </button>
+      </div>
 
       {hasOptions && (
         <div className="space-y-1">
@@ -127,7 +159,8 @@ function QuestionBlock({
 
 function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   const { t } = useTranslation()
-  const [answers, setAnswers] = useState<Answers>({})
+  const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({})
+  const [skippedSet, setSkippedSet] = useState<Set<string>>(new Set())
 
   let questions: AskQuestion[] = []
   try {
@@ -141,25 +174,37 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
 
   const handleChange = useCallback((id: string, val: QuestionAnswer) => {
     setAnswers((prev) => ({ ...prev, [id]: val }))
+    setSkippedSet((prev) => {
+      if (!prev.has(id)) return prev
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+  }, [])
+
+  const handleSkip = useCallback((id: string) => {
+    setSkippedSet((prev) => new Set(prev).add(id))
+  }, [])
+
+  const handleUnskip = useCallback((id: string) => {
+    setSkippedSet((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
   }, [])
 
   const handleSubmit = useCallback(() => {
     const result: Record<string, string> = {}
     for (const q of questions) {
-      result[q.id] = formatAnswer(getAnswer(q.id, q))
+      result[q.id] = formatAnswer(answers[q.id], skippedSet.has(q.id))
     }
     api.respondToAsk(data.call_id, JSON.stringify(result))
-  }, [answers, questions, data.call_id])
+  }, [answers, skippedSet, questions, data.call_id])
 
-  const handleSkip = useCallback(() => {
-    const result: Record<string, string> = {}
-    for (const q of questions) {
-      result[q.id] = '(skipped)'
-    }
-    api.respondToAsk(data.call_id, JSON.stringify(result))
-  }, [questions, data.call_id])
-
-  const canSubmit = questions.some((q) => hasContent(answers[q.id]))
+  const canSubmit = questions.some((q) =>
+    skippedSet.has(q.id) || hasContent(answers[q.id])
+  )
 
   return (
     <div className="my-3 border border-border rounded-lg overflow-hidden text-xs">
@@ -173,11 +218,17 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
       {data.status === 'pending' && (
         <div className="px-3 py-2 space-y-3">
           {questions.map((q) => (
-            <div key={q.id}>
-              <QuestionBlock q={q} value={getAnswer(q.id, q)} onChange={handleChange} />
-            </div>
+            <QuestionBlock
+              key={q.id}
+              q={q}
+              value={getAnswer(q.id, q)}
+              skipped={skippedSet.has(q.id)}
+              onChange={handleChange}
+              onSkip={handleSkip}
+              onUnskip={handleUnskip}
+            />
           ))}
-          <div className="flex gap-2 pt-1">
+          <div className="pt-1">
             <Button
               size="sm"
               variant="default"
@@ -187,15 +238,6 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
             >
               <Send className="w-3 h-3" />
               {t('chat.tool.askUserSubmit')}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs text-muted-foreground"
-              onClick={handleSkip}
-            >
-              <SkipForward className="w-3 h-3" />
-              {t('chat.tool.skip')}
             </Button>
           </div>
         </div>

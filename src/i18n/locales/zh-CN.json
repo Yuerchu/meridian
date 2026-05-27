@@ -23,6 +23,8 @@
   "chat.tool.askUserPlaceholder": "输入你的回答…",
   "chat.tool.askUserSubmit": "提交",
   "chat.tool.skip": "跳过",
+  "chat.tool.skipQuestion": "跳过此题",
+  "chat.tool.undo": "撤销",
   "chat.tool.notesPlaceholder": "补充说明（可选）…",
   "sidebar.newChat": "新对话",
   "sidebar.conversations": "对话",

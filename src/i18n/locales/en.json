@@ -23,6 +23,8 @@
   "chat.tool.askUserPlaceholder": "Type your response...",
   "chat.tool.askUserSubmit": "Submit",
   "chat.tool.skip": "Skip",
+  "chat.tool.skipQuestion": "Skip",
+  "chat.tool.undo": "Undo",
   "chat.tool.notesPlaceholder": "Additional notes (optional)...",
   "sidebar.newChat": "New Chat",
   "sidebar.conversations": "Conversations",
