@@ -5,8 +5,19 @@ import { api } from '@/api'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageItem } from './message-item'
 import { InputBar } from './input-bar'
-// ToolCallBlock is rendered inside MessageItem via _toolCallDisplays
-import type { Message as DbMessage, StreamChunk, Assistant, Provider, ToolCallDisplay } from '@/types'
+import type { Message as DbMessage, StreamChunk, Assistant, Provider, ToolCallDisplay, ContentBlock } from '@/types'
+
+function hydrateBlocks(msgs: DbMessage[]): DbMessage[] {
+  return msgs.map((m) => {
+    if (m.role === 'assistant' && m.tool_calls) {
+      try {
+        const blocks = JSON.parse(m.tool_calls) as ContentBlock[]
+        return { ...m, _blocks: blocks }
+      } catch { /* ignore malformed JSON */ }
+    }
+    return m
+  })
+}
 
 function AutoScrollArea({ children, dep }: { children: React.ReactNode; dep: unknown }) {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -63,7 +74,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
   conversationIdRef.current = conversationId
 
   useEffect(() => {
-    api.loadMessages(conversationId).then(setMessages)
+    api.loadMessages(conversationId).then((msgs) => setMessages(hydrateBlocks(msgs)))
   }, [conversationId])
 
   useEffect(() => {
@@ -101,27 +112,8 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
       if (p.done) {
         setStreaming(false)
         submittingRef.current = false
-        api.loadMessages(conversationIdRef.current).then((dbMessages) => {
-          setMessages((prev) => {
-            const blocksMap = new Map<string, typeof prev[0]['_blocks']>()
-            for (const m of prev) {
-              if (m._blocks?.length) {
-                blocksMap.set(m.id, m._blocks)
-              }
-            }
-            if (blocksMap.size === 0) return dbMessages
-            return dbMessages.map((m) => {
-              const tempKey = [...blocksMap.keys()].find((k) => k.startsWith('temp-'))
-              if (m.role === 'assistant' && tempKey) {
-                const blocks = blocksMap.get(tempKey)
-                blocksMap.delete(tempKey)
-                if (blocks?.length) {
-                  return { ...m, _blocks: blocks }
-                }
-              }
-              return m
-            })
-          })
+        api.loadMessages(conversationIdRef.current).then((msgs) => {
+          setMessages(hydrateBlocks(msgs))
         })
         return
       }
@@ -239,7 +231,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
         setError(String(err))
         setStreaming(false)
         submittingRef.current = false
-        api.loadMessages(conversationId).then(setMessages)
+        api.loadMessages(conversationId).then((msgs) => setMessages(hydrateBlocks(msgs)))
       })
   }, [conversationId, input, streaming, selectedModelId, selectedProviderId])
 

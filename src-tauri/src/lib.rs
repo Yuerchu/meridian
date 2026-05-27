@@ -69,12 +69,44 @@ fn build_messages(
         msgs.push(ChatMessage { role: "system".into(), content: system_prompt.into(), reasoning_content: None, tool_calls: None, tool_call_id: None });
     }
     for m in history {
-        if m.role == "user" || m.role == "assistant" {
-            msgs.push(ChatMessage { role: m.role.clone(), content: m.content.clone(), reasoning_content: None, tool_calls: None, tool_call_id: None });
+        match m.role.as_str() {
+            "user" => msgs.push(ChatMessage::user(&m.content)),
+            "assistant" => {
+                if let Some(ref tc_json) = m.tool_calls {
+                    let tool_calls = extract_tool_calls_from_blocks(tc_json);
+                    if !tool_calls.is_empty() {
+                        msgs.push(ChatMessage::assistant_with_tools(&m.content, None, tool_calls));
+                        continue;
+                    }
+                }
+                msgs.push(ChatMessage { role: "assistant".into(), content: m.content.clone(), reasoning_content: None, tool_calls: None, tool_call_id: None });
+            }
+            "tool" => {
+                if let Some(ref call_id) = m.tool_call_id {
+                    msgs.push(ChatMessage::tool_result(call_id, &m.content));
+                }
+            }
+            _ => {}
         }
     }
     msgs.push(ChatMessage::user(user_message));
     msgs
+}
+
+fn extract_tool_calls_from_blocks(blocks_json: &str) -> Vec<provider::ToolCall> {
+    let blocks: Vec<serde_json::Value> = match serde_json::from_str(blocks_json) {
+        Ok(v) => v,
+        Err(_) => return Vec::new(),
+    };
+    blocks.iter().filter_map(|b| {
+        if b.get("type")?.as_str()? != "tool_call" { return None; }
+        let data = b.get("data")?;
+        Some(provider::ToolCall {
+            id: data.get("call_id")?.as_str()?.to_string(),
+            name: data.get("tool_name")?.as_str()?.to_string(),
+            arguments: data.get("arguments")?.as_str()?.to_string(),
+        })
+    }).collect()
 }
 
 fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_limit: usize, keep_recent: usize) {
@@ -656,7 +688,6 @@ async fn chat(
     let tool_registry = app.state::<AppTools>();
     let tool_defs = tool_registry.0.definitions();
     let has_tools = !tool_defs.is_empty();
-    let max_iterations = 10;
     let shell_type = {
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
@@ -670,17 +701,19 @@ async fn chat(
     };
 
     let mut full_content = String::new();
+    let mut blocks: Vec<serde_json::Value> = Vec::new();
 
     if has_tools {
-        // Agent loop: non-streaming with tool calls
+        // Agent loop: runs until model stops issuing tool calls (like Codex)
 
-        for _iteration in 0..max_iterations {
+        loop {
             let response = provider.chat_with_tools(
                 chat_messages.clone(), tool_defs.clone(), params.clone()
             ).await.map_err(|e| e.to_string())?;
 
             if !response.text.is_empty() {
                 full_content.push_str(&response.text);
+                blocks.push(serde_json::json!({"type": "text", "text": &response.text}));
                 app.emit("chat-stream", serde_json::json!({
                     "content": &response.text, "done": false, "message_id": &assistant_msg_id,
                 })).map_err(|e| e.to_string())?;
@@ -690,12 +723,10 @@ async fn chat(
                 break;
             }
 
-            // Add assistant message with tool_calls to context
             chat_messages.push(ChatMessage::assistant_with_tools(
                 &response.text, response.reasoning_content.clone(), response.tool_calls.clone()
             ));
 
-            // Process each tool call
             for tc in &response.tool_calls {
                 app.emit("chat-stream", serde_json::json!({
                     "type": "tool_call",
@@ -707,7 +738,6 @@ async fn chat(
 
                 let tool = tool_registry.0.get(&tc.name);
                 let result = if tc.name == "ask_user" {
-                    // ask_user: send question to frontend, wait for text response
                     let (tx, rx) = oneshot::channel();
                     {
                         let waiters = app.state::<ApprovalWaiters>();
@@ -721,7 +751,6 @@ async fn chat(
                         "arguments": tc.arguments,
                         "message_id": &assistant_msg_id,
                     })).map_err(|e| e.to_string())?;
-
                     match rx.await {
                         Ok(ApprovalDecision::Response(text)) => text,
                         _ => "User did not respond.".to_string(),
@@ -745,14 +774,12 @@ async fn chat(
                                 "arguments": tc.arguments,
                                 "message_id": &assistant_msg_id,
                             })).map_err(|e| e.to_string())?;
-
                             match rx.await {
                                 Ok(ApprovalDecision::Approved) => true,
                                 _ => false,
                             }
                         }
                     };
-
                     if approved {
                         let args: serde_json::Value = serde_json::from_str(&tc.arguments)
                             .unwrap_or_default();
@@ -774,18 +801,57 @@ async fn chat(
                     "message_id": &assistant_msg_id,
                 })).map_err(|e| e.to_string())?;
 
+                // Collect block for persistence
+                blocks.push(serde_json::json!({
+                    "type": "tool_call",
+                    "data": {
+                        "call_id": tc.id,
+                        "tool_name": tc.name,
+                        "arguments": tc.arguments,
+                        "status": "completed",
+                        "result": &result
+                    }
+                }));
+
+                // Persist tool result as a separate message (for model context)
+                {
+                    let pool = pool.clone();
+                    let conv_id = conversation_id.clone();
+                    let tool_msg_id = uuid::Uuid::new_v4().to_string();
+                    let call_id = tc.id.clone();
+                    let tool_result = result.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        if let Ok(mut conn) = pool.get() {
+                            let _ = db::ops::message::insert_message(&mut conn, &NewMessage {
+                                id: &tool_msg_id, conversation_id: &conv_id, role: "tool",
+                                content: &tool_result, provider_id: None, model_id: None,
+                                input_tokens: None, output_tokens: None,
+                                tool_calls: None, tool_call_id: Some(&call_id),
+                                sort_order: 0, created_at: now,
+                            });
+                        }
+                    }).await;
+                }
+
                 chat_messages.push(ChatMessage::tool_result(&tc.id, &result));
             }
+
+            trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
         }
 
-        // Persist final content
+        // Persist assistant message: content + blocks JSON
         {
             let pool = pool.clone();
             let msg_id = assistant_msg_id.clone();
             let content = full_content.clone();
+            let blocks_json = if blocks.is_empty() { None } else {
+                serde_json::to_string(&blocks).ok()
+            };
             tokio::task::spawn_blocking(move || {
                 if let Ok(mut conn) = pool.get() {
-                    let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
+                    let _ = db::ops::message::update_content_and_tool_calls(
+                        &mut conn, &msg_id, &content, blocks_json.as_deref()
+                    );
                 }
             }).await.map_err(|e| e.to_string())?;
         }

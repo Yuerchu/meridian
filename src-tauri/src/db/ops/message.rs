@@ -35,6 +35,21 @@ pub fn update_content(
     Ok(())
 }
 
+pub fn update_content_and_tool_calls(
+    conn: &mut SqliteConnection,
+    id: &str,
+    content: &str,
+    tool_calls: Option<&str>,
+) -> QueryResult<()> {
+    diesel::update(messages::table.find(id))
+        .set((
+            messages::content.eq(content),
+            messages::tool_calls.eq(tool_calls),
+        ))
+        .execute(conn)?;
+    Ok(())
+}
+
 pub fn update_tokens(
     conn: &mut SqliteConnection,
     id: &str,
