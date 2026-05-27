@@ -17,6 +17,7 @@
   "chat.time.hAgo": "{{count}}小时前",
   "chat.copy": "复制",
   "chat.delete": "删除",
+  "chat.regenerate": "重新生成",
   "chat.tool.allow": "允许",
   "chat.tool.deny": "拒绝",
   "chat.tool.running": "执行中…",

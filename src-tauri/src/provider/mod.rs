@@ -65,10 +65,18 @@ pub struct ToolCall {
     pub arguments: String,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct TokenUsage {
+    pub prompt_tokens: Option<i32>,
+    pub completion_tokens: Option<i32>,
+    pub total_tokens: Option<i32>,
+}
+
 pub struct AgentResponse {
     pub text: String,
     pub reasoning_content: Option<String>,
     pub tool_calls: Vec<ToolCall>,
+    pub usage: Option<TokenUsage>,
 }
 
 #[derive(Debug, thiserror::Error)]

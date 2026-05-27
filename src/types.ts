@@ -90,4 +90,6 @@ export interface StreamChunk {
   tool_name?: string
   arguments?: string
   result?: string
+  input_tokens?: number
+  output_tokens?: number
 }

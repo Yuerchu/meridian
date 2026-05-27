@@ -17,6 +17,7 @@
   "chat.time.hAgo": "{{count}}h ago",
   "chat.copy": "Copy",
   "chat.delete": "Delete",
+  "chat.regenerate": "Regenerate",
   "chat.tool.allow": "Allow",
   "chat.tool.deny": "Deny",
   "chat.tool.running": "Running...",

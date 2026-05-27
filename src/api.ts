@@ -23,6 +23,12 @@ export const api = {
   deleteMessage: (id: string) =>
     invoke<void>('delete_message', { id }),
 
+  deleteMessagesFrom: (conversationId: string, fromSortOrder: number) =>
+    invoke<void>('delete_messages_from', { conversationId, fromSortOrder }),
+
+  stopChat: (conversationId: string) =>
+    invoke<void>('stop_chat', { conversationId }),
+
   chat: (conversationId: string, message: string, modelOverride?: string, providerOverride?: string) =>
     invoke<void>('chat', {
       conversationId,

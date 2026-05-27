@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
-import { Bot, Copy, Check, Trash2 } from 'lucide-react'
+import { Bot, Copy, Check, Trash2, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ToolCallBlock } from './tool-call-block'
 import type { ContentBlock, Message } from '@/types'
@@ -101,9 +101,10 @@ interface MessageItemProps {
   message: Message
   isStreaming?: boolean
   onDelete?: (id: string) => void
+  onRegenerate?: (id: string) => void
 }
 
-export function MessageItem({ message, isStreaming, onDelete }: MessageItemProps) {
+export function MessageItem({ message, isStreaming, onDelete, onRegenerate }: MessageItemProps) {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime()
   const isUser = message.role === 'user'
@@ -139,17 +140,35 @@ export function MessageItem({ message, isStreaming, onDelete }: MessageItemProps
           <MarkdownContent content={message.content} isStreaming={isStreaming} />
         )}
 
-        <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <CopyButton text={message.content} />
-          {onDelete && (
-            <button
-              onClick={() => onDelete(message.id)}
-              className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
-              title={t('chat.delete')}
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+        <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {(message.input_tokens || message.output_tokens) && (
+            <span className="text-[11px] text-muted-foreground/50 mr-1">
+              {message.input_tokens && message.output_tokens
+                ? `${message.input_tokens.toLocaleString()} + ${message.output_tokens.toLocaleString()} tokens`
+                : `${(message.output_tokens ?? message.input_tokens)!.toLocaleString()} tokens`}
+            </span>
           )}
+          <div className="flex gap-1">
+            <CopyButton text={message.content} />
+            {onRegenerate && !isStreaming && (
+              <button
+                onClick={() => onRegenerate(message.id)}
+                className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                title={t('chat.regenerate')}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={() => onDelete(message.id)}
+                className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
+                title={t('chat.delete')}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

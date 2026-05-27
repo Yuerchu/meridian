@@ -19,6 +19,7 @@ use provider::{ChatMessage, ChatParams, ChatProvider, ToolCall};
 use secrets::{SecretName, SecretScope, SecretsManager};
 use tauri::{Emitter, Manager};
 use tokio::sync::{oneshot, Mutex};
+use tokio_util::sync::CancellationToken;
 
 struct AppSecrets(Arc<SecretsManager>);
 struct AppDb(DbPool);
@@ -32,6 +33,7 @@ pub enum ApprovalDecision {
 }
 
 struct ApprovalWaiters(Mutex<HashMap<String, oneshot::Sender<ApprovalDecision>>>);
+struct ActiveChats(Mutex<HashMap<String, CancellationToken>>);
 
 pub fn take_bytes_at_char_boundary(s: &str, max_bytes: usize) -> &str {
     if s.len() <= max_bytes {
@@ -262,6 +264,16 @@ async fn delete_message(app: tauri::AppHandle, id: String) -> Result<(), String>
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::message::delete_message(&mut conn, &id).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_messages_from(app: tauri::AppHandle, conversation_id: String, from_sort_order: i32) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::message::delete_messages_from(&mut conn, &conversation_id, from_sort_order)
+            .map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
 
@@ -574,6 +586,17 @@ async fn set_preference(app: tauri::AppHandle, key: String, value: String) -> Re
     }).await.map_err(|e| e.to_string())?
 }
 
+// --- Stop chat command ---
+
+#[tauri::command]
+async fn stop_chat(app: tauri::AppHandle, conversation_id: String) -> Result<(), String> {
+    let chats = app.state::<ActiveChats>();
+    if let Some(token) = chats.0.lock().await.get(&conversation_id) {
+        token.cancel();
+    }
+    Ok(())
+}
+
 // --- Chat command (with agent loop + tools + approval) ---
 
 #[tauri::command]
@@ -586,6 +609,12 @@ async fn chat(
 ) -> Result<(), String> {
     let secrets = app.state::<AppSecrets>();
     let pool = app.state::<AppDb>().0.clone();
+
+    let cancel = CancellationToken::new();
+    {
+        let chats = app.state::<ActiveChats>();
+        chats.0.lock().await.insert(conversation_id.clone(), cancel.clone());
+    }
 
     // Load conversation + assistant + history + project path
     let (assistant, history, conv_title, project_path) = {
@@ -702,14 +731,23 @@ async fn chat(
 
     let mut full_content = String::new();
     let mut blocks: Vec<serde_json::Value> = Vec::new();
+    let mut total_input_tokens = 0i32;
+    let mut total_output_tokens = 0i32;
 
     if has_tools {
         // Agent loop: runs until model stops issuing tool calls (like Codex)
 
         loop {
+            if cancel.is_cancelled() { break; }
+
             let response = provider.chat_with_tools(
                 chat_messages.clone(), tool_defs.clone(), params.clone()
             ).await.map_err(|e| e.to_string())?;
+
+            if let Some(ref u) = response.usage {
+                total_input_tokens += u.prompt_tokens.unwrap_or(0);
+                total_output_tokens += u.completion_tokens.unwrap_or(0);
+            }
 
             if !response.text.is_empty() {
                 full_content.push_str(&response.text);
@@ -728,6 +766,8 @@ async fn chat(
             ));
 
             for tc in &response.tool_calls {
+                if cancel.is_cancelled() { break; }
+
                 app.emit("chat-stream", serde_json::json!({
                     "type": "tool_call",
                     "call_id": tc.id,
@@ -836,10 +876,11 @@ async fn chat(
                 chat_messages.push(ChatMessage::tool_result(&tc.id, &result));
             }
 
+            if cancel.is_cancelled() { break; }
             trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
         }
 
-        // Persist assistant message: content + blocks JSON
+        // Persist assistant message: content + blocks JSON + tokens
         {
             let pool = pool.clone();
             let msg_id = assistant_msg_id.clone();
@@ -847,11 +888,18 @@ async fn chat(
             let blocks_json = if blocks.is_empty() { None } else {
                 serde_json::to_string(&blocks).ok()
             };
+            let inp = total_input_tokens;
+            let out = total_output_tokens;
             tokio::task::spawn_blocking(move || {
                 if let Ok(mut conn) = pool.get() {
                     let _ = db::ops::message::update_content_and_tool_calls(
                         &mut conn, &msg_id, &content, blocks_json.as_deref()
                     );
+                    if inp > 0 || out > 0 {
+                        let _ = db::ops::message::update_tokens(
+                            &mut conn, &msg_id, Some(inp), Some(out)
+                        );
+                    }
                 }
             }).await.map_err(|e| e.to_string())?;
         }
@@ -861,24 +909,35 @@ async fn chat(
             .await.map_err(|e| e.to_string())?;
 
         use futures::StreamExt;
-        while let Some(chunk) = stream.next().await {
-            match chunk {
-                Ok(content) => {
-                    full_content.push_str(&content);
-                    app.emit("chat-stream", serde_json::json!({
-                        "content": content, "done": false, "message_id": &assistant_msg_id,
-                    })).map_err(|e| e.to_string())?;
-                }
-                Err(e) => {
-                    let pool = pool.clone();
-                    let msg_id = assistant_msg_id.clone();
-                    let content = full_content.clone();
-                    let _ = tokio::task::spawn_blocking(move || {
-                        if let Ok(mut conn) = pool.get() {
-                            let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
+        loop {
+            tokio::select! {
+                _ = cancel.cancelled() => { break; }
+                chunk = stream.next() => {
+                    match chunk {
+                        Some(Ok(content)) => {
+                            full_content.push_str(&content);
+                            app.emit("chat-stream", serde_json::json!({
+                                "content": content, "done": false, "message_id": &assistant_msg_id,
+                            })).map_err(|e| e.to_string())?;
                         }
-                    }).await;
-                    return Err(e.to_string());
+                        Some(Err(e)) => {
+                            let pool = pool.clone();
+                            let msg_id = assistant_msg_id.clone();
+                            let content = full_content.clone();
+                            let _ = tokio::task::spawn_blocking(move || {
+                                if let Ok(mut conn) = pool.get() {
+                                    let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
+                                }
+                            }).await;
+                            // Clean up cancel token before returning
+                            {
+                                let chats = app.state::<ActiveChats>();
+                                chats.0.lock().await.remove(&conversation_id);
+                            }
+                            return Err(e.to_string());
+                        }
+                        None => { break; }
+                    }
                 }
             }
         }
@@ -896,8 +955,15 @@ async fn chat(
         }
     }
 
+    // Clean up cancel token
+    {
+        let chats = app.state::<ActiveChats>();
+        chats.0.lock().await.remove(&conversation_id);
+    }
+
     app.emit("chat-stream", serde_json::json!({
         "content": "", "done": true, "message_id": &assistant_msg_id,
+        "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
     })).map_err(|e| e.to_string())?;
 
     // Auto-generate title if first message
@@ -1051,14 +1117,15 @@ pub fn run() {
             app.manage(AppDb(pool));
             app.manage(AppTools(tools::ToolRegistry::new()));
             app.manage(ApprovalWaiters(Mutex::new(HashMap::new())));
+            app.manage(ActiveChats(Mutex::new(HashMap::new())));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            chat,
+            chat, stop_chat,
             set_secret, get_secret, delete_secret,
             list_conversations, create_conversation,
             update_conversation_title, toggle_pin_conversation, delete_conversation,
-            load_messages, delete_message,
+            load_messages, delete_message, delete_messages_from,
             list_assistants, create_assistant, update_assistant, delete_assistant,
             list_providers, create_provider, update_provider, delete_provider,
             set_provider_key, get_provider_key_exists, fetch_provider_models,

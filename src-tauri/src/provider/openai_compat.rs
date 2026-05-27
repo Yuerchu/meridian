@@ -4,7 +4,7 @@ use futures::stream::StreamExt;
 use serde::Deserialize;
 
 use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
-use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, ToolCall, ToolDefinition};
+use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, ToolCall, ToolDefinition, TokenUsage};
 
 pub struct OpenAICompatProvider {
     base_url: String,
@@ -205,6 +205,12 @@ impl ChatProvider for OpenAICompatProvider {
             Vec::new()
         };
 
-        Ok(AgentResponse { text, reasoning_content: None, tool_calls })
+        let usage = parsed.get("usage").map(|u| TokenUsage {
+            prompt_tokens: u["prompt_tokens"].as_i64().map(|v| v as i32),
+            completion_tokens: u["completion_tokens"].as_i64().map(|v| v as i32),
+            total_tokens: u["total_tokens"].as_i64().map(|v| v as i32),
+        });
+
+        Ok(AgentResponse { text, reasoning_content: None, tool_calls, usage })
     }
 }

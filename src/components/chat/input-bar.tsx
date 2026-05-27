@@ -10,6 +10,12 @@ import {
 import { Toolbar } from './toolbar'
 import type { Assistant, Provider } from '@/types'
 
+interface ContextInfo {
+  messageCount: number
+  estimatedTokens: number
+  contextLimit: number
+}
+
 interface InputBarProps {
   value: string
   onChange: (value: string) => void
@@ -24,6 +30,7 @@ interface InputBarProps {
   currentProviderId: string | null
   onSelectAssistant: (id: string) => void
   onSelectModel: (modelId: string, providerId: string) => void
+  contextInfo?: ContextInfo
 }
 
 export function InputBar({
@@ -40,6 +47,7 @@ export function InputBar({
   currentProviderId,
   onSelectAssistant,
   onSelectModel,
+  contextInfo,
 }: InputBarProps) {
   const { t } = useTranslation()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -68,7 +76,7 @@ export function InputBar({
   )
 
   return (
-    <div className="px-4 pb-4 pt-2">
+    <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
       <div className="max-w-2xl mx-auto">
         <InputGroup className="rounded-2xl">
           <InputGroupTextarea
@@ -95,26 +103,40 @@ export function InputBar({
                 onSelectAssistant={onSelectAssistant}
                 onSelectModel={onSelectModel}
               />
-              {streaming ? (
-                <InputGroupButton
-                  size="icon-sm"
-                  variant="default"
-                  onClick={onStop}
-                  className="rounded-full"
-                >
-                  <Square className="size-3.5" fill="currentColor" />
-                </InputGroupButton>
-              ) : (
-                <InputGroupButton
-                  size="icon-sm"
-                  variant="default"
-                  onClick={onSubmit}
-                  disabled={disabled || !value.trim()}
-                  className="rounded-full"
-                >
-                  <ArrowUp className="size-4" strokeWidth={2.5} />
-                </InputGroupButton>
-              )}
+              <div className="flex items-center gap-2">
+                {contextInfo && contextInfo.messageCount > 0 && (
+                  <div className={`flex items-center gap-1.5 text-[11px] ${
+                    contextInfo.estimatedTokens / contextInfo.contextLimit > 0.95
+                      ? 'text-destructive'
+                      : contextInfo.estimatedTokens / contextInfo.contextLimit > 0.8
+                        ? 'text-yellow-500'
+                        : 'text-muted-foreground/60'
+                  }`}>
+                    <span>≡ {contextInfo.messageCount}</span>
+                    <span>↑ {contextInfo.estimatedTokens.toLocaleString()}</span>
+                  </div>
+                )}
+                {streaming ? (
+                  <InputGroupButton
+                    size="icon-sm"
+                    variant="default"
+                    onClick={onStop}
+                    className="rounded-full"
+                  >
+                    <Square className="size-3.5" fill="currentColor" />
+                  </InputGroupButton>
+                ) : (
+                  <InputGroupButton
+                    size="icon-sm"
+                    variant="default"
+                    onClick={onSubmit}
+                    disabled={disabled || !value.trim()}
+                    className="rounded-full"
+                  >
+                    <ArrowUp className="size-4" strokeWidth={2.5} />
+                  </InputGroupButton>
+                )}
+              </div>
             </div>
           </InputGroupAddon>
         </InputGroup>

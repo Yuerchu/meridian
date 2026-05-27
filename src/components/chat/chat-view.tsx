@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listen } from '@tauri-apps/api/event'
 import { api } from '@/api'
@@ -105,6 +105,16 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     setSelectedProviderId(providerId)
   }, [])
 
+  const handleStop = useCallback(() => {
+    api.stopChat(conversationId)
+  }, [conversationId])
+
+  const handleDelete = useCallback((id: string) => {
+    api.deleteMessage(id).then(() => {
+      setMessages((prev) => prev.filter((m) => m.id !== id))
+    })
+  }, [])
+
   useEffect(() => {
     const promise = listen<StreamChunk>('chat-stream', (event) => {
       const p = event.payload
@@ -183,47 +193,64 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     }
   }, [])
 
-  const handleSubmit = useCallback(() => {
-    const text = input.trim()
+  const sendMessage = useCallback((text: string, addUserBubble: boolean) => {
     if (!text || streaming || submittingRef.current) return
     submittingRef.current = true
-
-    setInput('')
     setStreaming(true)
     setError(null)
     const now = Date.now()
 
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: `temp-user-${now}`,
-        conversation_id: conversationId,
-        role: 'user',
-        content: text,
-        provider_id: null,
-        model_id: null,
-        input_tokens: null,
-        output_tokens: null,
-        tool_calls: null,
-        tool_call_id: null,
-        sort_order: prev.length,
-        created_at: now,
-      },
-      {
-        id: `temp-assistant-${now}`,
-        conversation_id: conversationId,
-        role: 'assistant',
-        content: '',
-        provider_id: selectedProviderId,
-        model_id: selectedModelId,
-        input_tokens: null,
-        output_tokens: null,
-        tool_calls: null,
-        tool_call_id: null,
-        sort_order: prev.length + 1,
-        created_at: now,
-      },
-    ])
+    if (addUserBubble) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `temp-user-${now}`,
+          conversation_id: conversationId,
+          role: 'user',
+          content: text,
+          provider_id: null,
+          model_id: null,
+          input_tokens: null,
+          output_tokens: null,
+          tool_calls: null,
+          tool_call_id: null,
+          sort_order: prev.length,
+          created_at: now,
+        },
+        {
+          id: `temp-assistant-${now}`,
+          conversation_id: conversationId,
+          role: 'assistant',
+          content: '',
+          provider_id: selectedProviderId,
+          model_id: selectedModelId,
+          input_tokens: null,
+          output_tokens: null,
+          tool_calls: null,
+          tool_call_id: null,
+          sort_order: prev.length + 1,
+          created_at: now,
+        },
+      ])
+    } else {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `temp-assistant-${now}`,
+          conversation_id: conversationId,
+          role: 'assistant',
+          content: '',
+          provider_id: selectedProviderId,
+          model_id: selectedModelId,
+          input_tokens: null,
+          output_tokens: null,
+          tool_calls: null,
+          tool_call_id: null,
+          sort_order: prev.length,
+          created_at: now,
+        },
+      ])
+    }
 
     api
       .chat(conversationId, text, selectedModelId ?? undefined, selectedProviderId ?? undefined)
@@ -233,10 +260,36 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
         submittingRef.current = false
         api.loadMessages(conversationId).then((msgs) => setMessages(hydrateBlocks(msgs)))
       })
-  }, [conversationId, input, streaming, selectedModelId, selectedProviderId])
+  }, [conversationId, streaming, selectedModelId, selectedProviderId])
+
+  const handleSubmit = useCallback(() => {
+    const text = input.trim()
+    if (!text) return
+    setInput('')
+    sendMessage(text, true)
+  }, [input, sendMessage])
+
+  const handleRegenerate = useCallback((messageId: string) => {
+    const msgIndex = messages.findIndex((m) => m.id === messageId)
+    if (msgIndex < 0) return
+    const userMsg = messages.slice(0, msgIndex).reverse().find((m) => m.role === 'user')
+    if (!userMsg) return
+    const targetMsg = messages[msgIndex]
+    api.deleteMessagesFrom(conversationId, targetMsg.sort_order).then(() => {
+      setMessages((prev) => prev.filter((m) => m.sort_order < targetMsg.sort_order))
+      sendMessage(userMsg.content, false)
+    })
+  }, [messages, conversationId, sendMessage])
 
   const visibleMessages = messages.filter((m) => m.role === 'user' || m.role === 'assistant')
   const lastMsg = visibleMessages[visibleMessages.length - 1]
+
+  const selectedAssistant = assistants.find((a) => a.id === selectedAssistantId)
+  const contextInfo = useMemo(() => {
+    const contextLimit = selectedAssistant?.context_limit ?? 128000
+    const estimatedTokens = messages.reduce((sum, m) => sum + Math.ceil(m.content.length / 4) + 4, 0)
+    return { messageCount: visibleMessages.length, estimatedTokens, contextLimit }
+  }, [messages, visibleMessages.length, selectedAssistant?.context_limit])
 
   return (
     <div className="flex flex-col h-full">
@@ -251,6 +304,8 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
             key={m.id}
             message={m}
             isStreaming={streaming && m.id.startsWith('temp-assistant-')}
+            onDelete={handleDelete}
+            onRegenerate={m.role === 'assistant' ? handleRegenerate : undefined}
           />
         ))}
         {messages.length === 0 && (
@@ -264,6 +319,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
         value={input}
         onChange={setInput}
         onSubmit={handleSubmit}
+        onStop={handleStop}
         disabled={streaming}
         streaming={streaming}
         assistants={assistants}
@@ -273,6 +329,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
         currentProviderId={selectedProviderId}
         onSelectAssistant={handleSelectAssistant}
         onSelectModel={handleSelectModel}
+        contextInfo={contextInfo}
       />
     </div>
   )
