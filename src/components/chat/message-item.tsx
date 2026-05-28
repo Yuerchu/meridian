@@ -3,8 +3,9 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
-import { Bot, Copy, Check, Trash2, RefreshCw } from 'lucide-react'
+import { Bot, Copy, Check, Trash2, RefreshCw, ChevronDown, ChevronRight, Lightbulb } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { ToolCallBlock } from './tool-call-block'
 import type { ContentBlock, Message } from '@/types'
 
@@ -54,9 +55,11 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
         <span>{lang ?? 'code'}</span>
         <CopyButton text={code} />
       </div>
-      <pre className="overflow-x-auto p-3 text-[13px] leading-relaxed !bg-transparent !m-0">
-        <code className={className} {...props}>{children}</code>
-      </pre>
+      <ScrollArea className="w-full">
+        <pre className="p-3 text-[13px] leading-relaxed !bg-transparent !m-0 w-fit min-w-full">
+          <code className={className} {...props}>{children}</code>
+        </pre>
+      </ScrollArea>
     </div>
   )
 }
@@ -87,7 +90,36 @@ const MarkdownContent = React.memo(function MarkdownContent({ content, isStreami
 
 const MemoToolCallBlock = React.memo(ToolCallBlock)
 
+function ThinkingBlock({ text, isStreaming }: { text: string; isStreaming?: boolean }) {
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(!!isStreaming)
+
+  return (
+    <div className="my-2 rounded-lg border border-border/50 overflow-hidden">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 w-full px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent/30 transition-colors"
+      >
+        <Lightbulb className="w-3.5 h-3.5 text-blue-400/70" />
+        <span>{t('chat.thinking')}</span>
+        {isStreaming && <span className="inline-block w-1.5 h-3 ml-1 bg-muted-foreground/50 animate-pulse" />}
+        {expanded
+          ? <ChevronDown className="w-3 h-3 ml-auto" />
+          : <ChevronRight className="w-3 h-3 ml-auto" />}
+      </button>
+      {expanded && (
+        <div className="px-3 pb-2 text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
+          {text}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function AssistantBlock({ block, isLast, isStreaming }: { block: ContentBlock; isLast: boolean; isStreaming?: boolean }) {
+  if (block.type === 'thinking') {
+    return <ThinkingBlock text={block.text} isStreaming={isLast && isStreaming} />
+  }
   if (block.type === 'text') {
     return <MarkdownContent content={block.text} isStreaming={isLast && isStreaming} />
   }

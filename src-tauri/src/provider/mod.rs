@@ -38,6 +38,9 @@ pub struct ChatParams {
     pub temperature: Option<f64>,
     pub top_p: Option<f64>,
     pub max_tokens: Option<i32>,
+    pub thinking_enabled: bool,
+    pub thinking_budget: Option<i32>,
+    pub thinking_effort: Option<String>,
 }
 
 impl Default for ChatParams {
@@ -47,8 +50,17 @@ impl Default for ChatParams {
             temperature: None,
             top_p: None,
             max_tokens: None,
+            thinking_enabled: false,
+            thinking_budget: None,
+            thinking_effort: None,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub enum StreamEvent {
+    Text(String),
+    Reasoning(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -91,7 +103,7 @@ pub enum ProviderError {
     NotImplemented(String),
 }
 
-pub type ChatStream = Pin<Box<dyn futures::Stream<Item = Result<String, ProviderError>> + Send>>;
+pub type ChatStream = Pin<Box<dyn futures::Stream<Item = Result<StreamEvent, ProviderError>> + Send>>;
 
 #[async_trait]
 pub trait ChatProvider: Send + Sync {

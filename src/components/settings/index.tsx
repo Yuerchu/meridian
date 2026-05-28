@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Cloud, Bot, Settings2, Info } from 'lucide-react'
+import { Cloud, Bot, Settings2, Info, Plug } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProviderSettings } from './provider-settings'
 import { AssistantSettings } from './assistant-settings'
 import { GeneralSettings } from './general-settings'
+import { McpSettings } from './mcp-settings'
 import { About } from './about'
 
-type SettingsTab = 'provider' | 'assistants' | 'general' | 'about'
+type SettingsTab = 'provider' | 'assistants' | 'mcp' | 'general' | 'about'
 
 export default function SettingsPage() {
   const { t } = useTranslation()
@@ -16,6 +17,7 @@ export default function SettingsPage() {
   const tabs: Array<{ id: SettingsTab; label: string; icon: React.ElementType }> = [
     { id: 'provider', label: t('settings.provider'), icon: Cloud },
     { id: 'assistants', label: t('settings.assistants'), icon: Bot },
+    { id: 'mcp', label: t('settings.mcp'), icon: Plug },
     { id: 'general', label: t('settings.general'), icon: Settings2 },
     { id: 'about', label: t('settings.about'), icon: Info },
   ]
@@ -43,6 +45,7 @@ export default function SettingsPage() {
       <div className="flex-1 overflow-y-auto p-6">
         {activeTab === 'provider' && <ProviderSettings />}
         {activeTab === 'assistants' && <AssistantSettings />}
+        {activeTab === 'mcp' && <McpSettings />}
         {activeTab === 'general' && <GeneralSettings />}
         {activeTab === 'about' && <About />}
       </div>

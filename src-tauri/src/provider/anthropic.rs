@@ -4,7 +4,7 @@ use futures::stream::StreamExt;
 use serde::Deserialize;
 
 use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
-use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, ToolCall, ToolDefinition, TokenUsage};
+use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ToolCall, ToolDefinition, TokenUsage};
 
 pub struct AnthropicProvider {
     base_url: String,
@@ -38,14 +38,31 @@ impl AnthropicProvider {
             "model": params.model,
             "messages": api_messages,
             "stream": stream,
-            "max_tokens": params.max_tokens.unwrap_or(4096),
         });
+
+        if let Some(m) = params.max_tokens {
+            body["max_tokens"] = serde_json::json!(m);
+        }
+
+        if params.thinking_enabled {
+            if let Some(budget) = params.thinking_budget {
+                body["thinking"] = serde_json::json!({
+                    "type": "enabled",
+                    "budget_tokens": budget
+                });
+            }
+        }
 
         if !system.is_empty() {
             body["system"] = serde_json::json!(system);
         }
-        if let Some(t) = params.temperature {
-            body["temperature"] = serde_json::json!(t);
+        if let Some(ref effort) = params.thinking_effort {
+            body["output_config"] = serde_json::json!({"effort": effort});
+        }
+        if !params.thinking_enabled {
+            if let Some(t) = params.temperature {
+                body["temperature"] = serde_json::json!(t);
+            }
         }
         if let Some(p) = params.top_p {
             body["top_p"] = serde_json::json!(p);
@@ -72,11 +89,16 @@ struct AnthropicStreamEvent {
 
 #[derive(Deserialize)]
 struct AnthropicDelta {
+    #[serde(rename = "type")]
+    delta_type: Option<String>,
     text: Option<String>,
+    thinking: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct AnthropicContentBlock {
+    #[serde(rename = "type")]
+    block_type: Option<String>,
     text: Option<String>,
 }
 
@@ -100,8 +122,17 @@ impl ChatProvider for AnthropicProvider {
                         let parsed = serde_json::from_str::<AnthropicStreamEvent>(&ev.data).ok()?;
                         match parsed.event_type.as_str() {
                             "content_block_delta" => {
-                                let text = parsed.delta?.text?;
-                                if text.is_empty() { None } else { Some(Ok(text)) }
+                                let delta = parsed.delta?;
+                                match delta.delta_type.as_deref() {
+                                    Some("thinking_delta") => {
+                                        let text = delta.thinking?;
+                                        if text.is_empty() { None } else { Some(Ok(StreamEvent::Reasoning(text))) }
+                                    }
+                                    _ => {
+                                        let text = delta.text?;
+                                        if text.is_empty() { None } else { Some(Ok(StreamEvent::Text(text))) }
+                                    }
+                                }
                             }
                             "message_stop" | "error" => None,
                             _ => None,
@@ -181,13 +212,25 @@ impl ChatProvider for AnthropicProvider {
         let mut body = serde_json::json!({
             "model": params.model,
             "messages": api_messages,
-            "max_tokens": params.max_tokens.unwrap_or(4096),
         });
+        if let Some(m) = params.max_tokens {
+            body["max_tokens"] = serde_json::json!(m);
+        }
+        if params.thinking_enabled {
+            if let Some(budget) = params.thinking_budget {
+                body["thinking"] = serde_json::json!({"type": "enabled", "budget_tokens": budget});
+            }
+        }
+        if let Some(ref effort) = params.thinking_effort {
+            body["output_config"] = serde_json::json!({"effort": effort});
+        }
         if !system.is_empty() {
             body["system"] = serde_json::json!(system);
         }
-        if let Some(t) = params.temperature {
-            body["temperature"] = serde_json::json!(t);
+        if !params.thinking_enabled {
+            if let Some(t) = params.temperature {
+                body["temperature"] = serde_json::json!(t);
+            }
         }
         if !tools.is_empty() {
             body["tools"] = serde_json::json!(tools.iter().map(|t| {
@@ -212,11 +255,17 @@ impl ChatProvider for AnthropicProvider {
             .map_err(|e| ProviderError::Parse(e.to_string()))?;
 
         let mut text = String::new();
+        let mut reasoning_content = String::new();
         let mut tool_calls = Vec::new();
 
         if let Some(content) = parsed["content"].as_array() {
             for block in content {
                 match block["type"].as_str() {
+                    Some("thinking") => {
+                        if let Some(t) = block["thinking"].as_str() {
+                            reasoning_content.push_str(t);
+                        }
+                    }
                     Some("text") => {
                         if let Some(t) = block["text"].as_str() {
                             text.push_str(t);
@@ -242,6 +291,7 @@ impl ChatProvider for AnthropicProvider {
             total_tokens: None,
         });
 
-        Ok(AgentResponse { text, reasoning_content: None, tool_calls, usage })
+        let reasoning = if reasoning_content.is_empty() { None } else { Some(reasoning_content) };
+        Ok(AgentResponse { text, reasoning_content: reasoning, tool_calls, usage })
     }
 }

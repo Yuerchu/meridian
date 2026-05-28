@@ -4,7 +4,7 @@ use futures::stream::StreamExt;
 use serde::Deserialize;
 
 use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
-use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, ToolCall, ToolDefinition, TokenUsage};
+use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ToolCall, ToolDefinition, TokenUsage};
 
 pub struct DeepSeekProvider {
     base_url: String,
@@ -55,6 +55,12 @@ impl DeepSeekProvider {
         });
         if let Some(m) = params.max_tokens {
             body["max_tokens"] = serde_json::json!(m);
+        }
+        if !params.thinking_enabled {
+            body["thinking"] = serde_json::json!({"type": "disabled"});
+        }
+        if let Some(ref effort) = params.thinking_effort {
+            body["reasoning_effort"] = serde_json::json!(effort);
         }
         if let Some(tools) = tools {
             if !tools.is_empty() {
@@ -142,11 +148,14 @@ impl ChatProvider for DeepSeekProvider {
                         }
                         match serde_json::from_str::<ChatChunk>(&ev.data) {
                             Ok(chunk) => {
-                                let choice = chunk.choices.first()?;
-                                let delta = choice.delta.as_ref()?;
-                                // TODO: stream reasoning_content to frontend separately
+                                let delta = chunk.choices.first()?.delta.as_ref()?;
+                                if let Some(ref r) = delta.reasoning_content {
+                                    if !r.is_empty() {
+                                        return Some(Ok(StreamEvent::Reasoning(r.clone())));
+                                    }
+                                }
                                 let content = delta.content.clone().unwrap_or_default();
-                                if content.is_empty() { None } else { Some(Ok(content)) }
+                                if content.is_empty() { None } else { Some(Ok(StreamEvent::Text(content))) }
                             }
                             Err(e) => Some(Err(ProviderError::Parse(e.to_string()))),
                         }

@@ -5,7 +5,7 @@ import { api } from '@/api'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageItem } from './message-item'
 import { InputBar } from './input-bar'
-import type { Message as DbMessage, StreamChunk, Assistant, Provider, ToolCallDisplay, ContentBlock } from '@/types'
+import type { Message as DbMessage, StreamChunk, Assistant, Provider, ToolCallDisplay, ContentBlock, ThinkingLevel } from '@/types'
 
 function hydrateBlocks(msgs: DbMessage[]): DbMessage[] {
   return msgs.map((m) => {
@@ -68,6 +68,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null)
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('default')
   const { t } = useTranslation()
   const conversationIdRef = useRef(conversationId)
   const submittingRef = useRef(false)
@@ -167,7 +168,24 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
         return
       }
 
-      // Regular text chunk — append to last text block or create new one
+      if (p.type === 'reasoning' && p.content) {
+        setMessages((prev) => {
+          const last = prev[prev.length - 1]
+          if (last?.role === 'assistant') {
+            const blocks = [...(last._blocks ?? [])]
+            const lastBlock = blocks[blocks.length - 1]
+            if (lastBlock?.type === 'thinking') {
+              blocks[blocks.length - 1] = { type: 'thinking', text: lastBlock.text + p.content }
+            } else {
+              blocks.push({ type: 'thinking', text: p.content! })
+            }
+            return [...prev.slice(0, -1), { ...last, _blocks: blocks }]
+          }
+          return prev
+        })
+        return
+      }
+
       if (p.content) {
         setMessages((prev) => {
           const last = prev[prev.length - 1]
@@ -253,14 +271,14 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     }
 
     api
-      .chat(conversationId, text, selectedModelId ?? undefined, selectedProviderId ?? undefined)
+      .chat(conversationId, text, selectedModelId ?? undefined, selectedProviderId ?? undefined, thinkingLevel !== 'default' ? thinkingLevel : undefined)
       .catch((err) => {
         setError(String(err))
         setStreaming(false)
         submittingRef.current = false
         api.loadMessages(conversationId).then((msgs) => setMessages(hydrateBlocks(msgs)))
       })
-  }, [conversationId, streaming, selectedModelId, selectedProviderId])
+  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel])
 
   const handleSubmit = useCallback(() => {
     const text = input.trim()
@@ -329,6 +347,8 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
         currentProviderId={selectedProviderId}
         onSelectAssistant={handleSelectAssistant}
         onSelectModel={handleSelectModel}
+        thinkingLevel={thinkingLevel}
+        onSelectThinkingLevel={setThinkingLevel}
         contextInfo={contextInfo}
       />
     </div>

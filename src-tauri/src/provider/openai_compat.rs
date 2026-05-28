@@ -4,7 +4,7 @@ use futures::stream::StreamExt;
 use serde::Deserialize;
 
 use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
-use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, ToolCall, ToolDefinition, TokenUsage};
+use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ToolCall, ToolDefinition, TokenUsage};
 
 pub struct OpenAICompatProvider {
     base_url: String,
@@ -59,6 +59,9 @@ impl OpenAICompatProvider {
         if let Some(m) = params.max_tokens {
             body["max_tokens"] = serde_json::json!(m);
         }
+        if let Some(ref effort) = params.thinking_effort {
+            body["reasoning_effort"] = serde_json::json!(effort);
+        }
         if let Some(tools) = tools {
             if !tools.is_empty() {
                 body["tools"] = serde_json::json!(tools.iter().map(|t| {
@@ -101,11 +104,13 @@ struct ChunkChoice {
 #[derive(Deserialize)]
 struct Delta {
     content: Option<String>,
+    reasoning_content: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct FullMessage {
     content: Option<String>,
+    reasoning_content: Option<String>,
     tool_calls: Option<Vec<FullToolCall>>,
 }
 
@@ -143,11 +148,14 @@ impl ChatProvider for OpenAICompatProvider {
                         }
                         match serde_json::from_str::<ChatChunk>(&ev.data) {
                             Ok(chunk) => {
-                                let content = chunk.choices.first()
-                                    .and_then(|c| c.delta.as_ref())
-                                    .and_then(|d| d.content.clone())
-                                    .unwrap_or_default();
-                                if content.is_empty() { None } else { Some(Ok(content)) }
+                                let delta = chunk.choices.first()?.delta.as_ref()?;
+                                if let Some(ref r) = delta.reasoning_content {
+                                    if !r.is_empty() {
+                                        return Some(Ok(StreamEvent::Reasoning(r.clone())));
+                                    }
+                                }
+                                let content = delta.content.clone().unwrap_or_default();
+                                if content.is_empty() { None } else { Some(Ok(StreamEvent::Text(content))) }
                             }
                             Err(e) => Some(Err(ProviderError::Parse(e.to_string()))),
                         }
@@ -192,6 +200,7 @@ impl ChatProvider for OpenAICompatProvider {
 
         let message = &parsed["choices"][0]["message"];
         let text = message["content"].as_str().unwrap_or("").to_string();
+        let reasoning_content = message["reasoning_content"].as_str().map(|s| s.to_string());
 
         let tool_calls = if let Some(tcs) = message["tool_calls"].as_array() {
             tcs.iter().filter_map(|tc| {
@@ -211,6 +220,6 @@ impl ChatProvider for OpenAICompatProvider {
             total_tokens: u["total_tokens"].as_i64().map(|v| v as i32),
         });
 
-        Ok(AgentResponse { text, reasoning_content: None, tool_calls, usage })
+        Ok(AgentResponse { text, reasoning_content, tool_calls, usage })
     }
 }

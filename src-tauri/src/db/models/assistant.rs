@@ -22,6 +22,9 @@ pub struct Assistant {
     pub updated_at: i64,
     pub context_limit: i32,
     pub compact_keep_recent: i32,
+    pub enabled_tools: Option<String>,
+    pub thinking_enabled: i32,
+    pub thinking_budget: Option<i32>,
 }
 
 #[derive(Debug, Insertable)]
@@ -43,6 +46,9 @@ pub struct NewAssistant<'a> {
     pub updated_at: i64,
     pub context_limit: i32,
     pub compact_keep_recent: i32,
+    pub enabled_tools: Option<&'a str>,
+    pub thinking_enabled: i32,
+    pub thinking_budget: Option<i32>,
 }
 
 #[derive(Debug, AsChangeset, Default)]
@@ -60,5 +66,8 @@ pub struct AssistantUpdate {
     pub is_default: Option<i32>,
     pub context_limit: Option<i32>,
     pub compact_keep_recent: Option<i32>,
+    pub enabled_tools: Option<Option<String>>,
+    pub thinking_enabled: Option<i32>,
+    pub thinking_budget: Option<Option<i32>>,
     pub updated_at: Option<i64>,
 }

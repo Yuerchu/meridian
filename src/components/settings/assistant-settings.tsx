@@ -5,8 +5,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Checkbox } from '@/components/ui/checkbox'
 import { api } from '@/api'
-import type { Assistant, Provider, ModelInfo } from '@/types'
+import type { Assistant, Provider, ModelInfo, ToolInfo } from '@/types'
 
 function AssistantEditor({
   assistant,
@@ -26,8 +27,18 @@ function AssistantEditor({
   const [modelId, setModelId] = useState(assistant.model_id ?? '')
   const [temperature, setTemperature] = useState(assistant.temperature?.toString() ?? '')
   const [contextLimit, setContextLimit] = useState(assistant.context_limit.toString())
+  const [thinkingEnabled, setThinkingEnabled] = useState(assistant.thinking_enabled !== 0)
+  const [thinkingBudget, setThinkingBudget] = useState(assistant.thinking_budget?.toString() ?? '')
   const [models, setModels] = useState<ModelInfo[]>([])
   const [saved, setSaved] = useState(false)
+  const [allTools, setAllTools] = useState<ToolInfo[]>([])
+  const [toolMode, setToolMode] = useState<'all' | 'custom'>(assistant.enabled_tools ? 'custom' : 'all')
+  const [selectedTools, setSelectedTools] = useState<Set<string>>(() => {
+    if (assistant.enabled_tools) {
+      try { return new Set(JSON.parse(assistant.enabled_tools) as string[]) } catch { /* ignore */ }
+    }
+    return new Set<string>()
+  })
 
   useEffect(() => {
     if (providerId) {
@@ -37,12 +48,22 @@ function AssistantEditor({
     }
   }, [providerId])
 
+  useEffect(() => {
+    api.listAllToolNames().then(setAllTools)
+  }, [])
+
   async function handleSave() {
+    const enabledTools = toolMode === 'custom'
+      ? JSON.stringify([...selectedTools])
+      : null
     await onSave(assistant.id, {
       name,
       systemPrompt,
       modelId: modelId.trim() || null,
       temperature: temperature ? parseFloat(temperature) : null,
+      enabledTools,
+      thinkingEnabled: thinkingEnabled ? 1 : 0,
+      thinkingBudget: thinkingBudget ? parseInt(thinkingBudget) : null,
     })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -125,6 +146,65 @@ function AssistantEditor({
             onChange={(e) => setContextLimit(e.target.value)}
           />
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="block text-[11px] text-muted-foreground">{t('settings.assistant.thinking')}</label>
+        <div className="flex items-center gap-3">
+          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+            <Checkbox
+              checked={thinkingEnabled}
+              onCheckedChange={(checked) => setThinkingEnabled(!!checked)}
+            />
+            <span>{t('settings.assistant.thinkingEnabled')}</span>
+          </label>
+        </div>
+        {thinkingEnabled && (
+          <div className="space-y-1 mt-2">
+            <Input
+              type="number"
+              value={thinkingBudget}
+              onChange={(e) => setThinkingBudget(e.target.value)}
+              placeholder={t('settings.assistant.thinkingBudget')}
+            />
+            <p className="text-[10px] text-muted-foreground/60">{t('settings.assistant.thinkingBudgetHint')}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="block text-[11px] text-muted-foreground">{t('settings.assistant.tools')}</label>
+        <div className="flex gap-2 mb-2">
+          <Button
+            size="sm" variant={toolMode === 'all' ? 'default' : 'outline'}
+            onClick={() => setToolMode('all')}
+          >{t('settings.assistant.toolsAll')}</Button>
+          <Button
+            size="sm" variant={toolMode === 'custom' ? 'default' : 'outline'}
+            onClick={() => setToolMode('custom')}
+          >{t('settings.assistant.toolsCustom')}</Button>
+        </div>
+        {toolMode === 'custom' && (
+          <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto p-2 border border-border rounded-lg">
+            {allTools.map((tool) => (
+              <label key={tool.name} className="flex items-center gap-1.5 text-xs cursor-pointer py-0.5">
+                <Checkbox
+                  checked={selectedTools.has(tool.name)}
+                  onCheckedChange={(checked) => {
+                    const next = new Set(selectedTools)
+                    if (checked) next.add(tool.name)
+                    else next.delete(tool.name)
+                    setSelectedTools(next)
+                  }}
+                />
+                <span className="font-mono truncate">{tool.name}</span>
+                {tool.source === 'mcp' && (
+                  <span className="text-muted-foreground/50 text-[10px]">MCP</span>
+                )}
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-2 pt-1">

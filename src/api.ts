@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, Conversation, Message, ModelInfo, Project, Provider } from './types'
+import type { Assistant, Conversation, McpServer, McpToolDef, Message, ModelInfo, Project, Provider, ToolInfo } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -29,12 +29,13 @@ export const api = {
   stopChat: (conversationId: string) =>
     invoke<void>('stop_chat', { conversationId }),
 
-  chat: (conversationId: string, message: string, modelOverride?: string, providerOverride?: string) =>
+  chat: (conversationId: string, message: string, modelOverride?: string, providerOverride?: string, thinkingLevel?: string) =>
     invoke<void>('chat', {
       conversationId,
       message,
       modelOverride: modelOverride ?? null,
       providerOverride: providerOverride ?? null,
+      thinkingLevel: thinkingLevel ?? null,
     }),
 
   setSecret: (key: string, value: string) =>
@@ -64,6 +65,9 @@ export const api = {
     systemPrompt?: string
     modelId?: string | null
     temperature?: number | null
+    enabledTools?: string | null
+    thinkingEnabled?: number
+    thinkingBudget?: number | null
   }) =>
     invoke<Assistant>('update_assistant', {
       id,
@@ -71,6 +75,9 @@ export const api = {
       systemPrompt: updates.systemPrompt ?? null,
       modelId: updates.modelId !== undefined ? updates.modelId : null,
       temperature: updates.temperature !== undefined ? updates.temperature : null,
+      enabledTools: updates.enabledTools !== undefined ? updates.enabledTools : null,
+      thinkingEnabled: updates.thinkingEnabled ?? null,
+      thinkingBudget: updates.thinkingBudget !== undefined ? updates.thinkingBudget : null,
     }),
 
   deleteAssistant: (id: string) =>
@@ -144,4 +151,46 @@ export const api = {
 
   setPreference: (key: string, value: string) =>
     invoke<void>('set_preference', { key, value }),
+
+  // MCP servers
+  listMcpServers: () =>
+    invoke<McpServer[]>('list_mcp_servers'),
+
+  createMcpServer: (name: string, transportType: string, command?: string, args?: string, env?: string) =>
+    invoke<McpServer>('create_mcp_server', {
+      name, transportType,
+      command: command ?? null, args: args ?? null,
+      env: env ?? null, url: null,
+    }),
+
+  updateMcpServer: (id: string, updates: {
+    name?: string
+    command?: string | null
+    args?: string | null
+    env?: string | null
+    isEnabled?: number
+  }) =>
+    invoke<McpServer>('update_mcp_server', {
+      id,
+      name: updates.name ?? null,
+      command: updates.command !== undefined ? updates.command : null,
+      args: updates.args !== undefined ? updates.args : null,
+      env: updates.env !== undefined ? updates.env : null,
+      isEnabled: updates.isEnabled ?? null,
+    }),
+
+  deleteMcpServer: (id: string) =>
+    invoke<void>('delete_mcp_server', { id }),
+
+  connectMcpServer: (id: string) =>
+    invoke<void>('connect_mcp_server', { id }),
+
+  disconnectMcpServer: (id: string) =>
+    invoke<void>('disconnect_mcp_server', { id }),
+
+  listMcpTools: (serverId?: string) =>
+    invoke<McpToolDef[]>('list_mcp_tools', { serverId: serverId ?? null }),
+
+  listAllToolNames: () =>
+    invoke<ToolInfo[]>('list_all_tool_names'),
 }

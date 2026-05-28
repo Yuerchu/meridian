@@ -34,3 +34,16 @@ pub struct NewMcpServer<'a> {
     pub created_at: i64,
     pub updated_at: i64,
 }
+
+#[derive(Debug, AsChangeset, Default)]
+#[diesel(table_name = mcp_servers)]
+pub struct McpServerUpdate {
+    pub name: Option<String>,
+    pub transport_type: Option<String>,
+    pub command: Option<Option<String>>,
+    pub args: Option<Option<String>>,
+    pub env: Option<Option<String>>,
+    pub url: Option<Option<String>>,
+    pub is_enabled: Option<i32>,
+    pub updated_at: Option<i64>,
+}

@@ -1,11 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bot, ChevronDown, Cpu, Check, Star } from 'lucide-react'
+import { Bot, ChevronDown, Cpu, Check, Star, Lightbulb } from 'lucide-react'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
-import type { Assistant, Provider, ModelInfo } from '@/types'
+import type { Assistant, Provider, ModelInfo, ThinkingLevel } from '@/types'
 
 interface ToolbarProps {
   assistants: Assistant[]
@@ -15,6 +15,8 @@ interface ToolbarProps {
   currentProviderId: string | null
   onSelectAssistant: (id: string) => void
   onSelectModel: (modelId: string, providerId: string) => void
+  thinkingLevel: ThinkingLevel
+  onSelectThinkingLevel: (level: ThinkingLevel) => void
 }
 
 function AssistantSelector({
@@ -155,6 +157,63 @@ function ModelSelector({
   )
 }
 
+const THINKING_LEVELS: Array<{ id: ThinkingLevel; labelKey: string; descKey: string }> = [
+  { id: 'default', labelKey: 'toolbar.thinking.default', descKey: 'toolbar.thinking.defaultDesc' },
+  { id: 'off', labelKey: 'toolbar.thinking.off', descKey: 'toolbar.thinking.offDesc' },
+  { id: 'low', labelKey: 'toolbar.thinking.low', descKey: 'toolbar.thinking.lowDesc' },
+  { id: 'medium', labelKey: 'toolbar.thinking.medium', descKey: 'toolbar.thinking.mediumDesc' },
+  { id: 'high', labelKey: 'toolbar.thinking.high', descKey: 'toolbar.thinking.highDesc' },
+  { id: 'max', labelKey: 'toolbar.thinking.max', descKey: 'toolbar.thinking.maxDesc' },
+]
+
+function ThinkingSelector({
+  current,
+  onSelect,
+}: {
+  current: ThinkingLevel
+  onSelect: (level: ThinkingLevel) => void
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const isActive = current !== 'default' && current !== 'off'
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger className={cn(
+        'flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors',
+        isActive
+          ? 'text-blue-400 hover:text-blue-300 hover:bg-accent'
+          : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+      )}>
+        <Lightbulb className="w-3.5 h-3.5" />
+        {current !== 'default' && (
+          <span className="max-w-[60px] truncate">{t(`toolbar.thinking.${current}`)}</span>
+        )}
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-56 p-1 bg-popover border-border">
+        <div className="px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+          {t('toolbar.thinking')}
+        </div>
+        {THINKING_LEVELS.map((level) => (
+          <button
+            key={level.id}
+            onClick={() => { onSelect(level.id); setOpen(false) }}
+            className={cn(
+              'w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs text-left transition-colors',
+              level.id === current
+                ? 'bg-accent text-accent-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+            )}
+          >
+            <span>{t(level.labelKey)}</span>
+            <span className="text-[10px] text-muted-foreground/60">{t(level.descKey)}</span>
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
+  )
+}
+
 export function Toolbar(props: ToolbarProps) {
   return (
     <div className="flex items-center gap-0.5">
@@ -169,6 +228,11 @@ export function Toolbar(props: ToolbarProps) {
         currentModelId={props.currentModelId}
         currentProviderId={props.currentProviderId}
         onSelect={props.onSelectModel}
+      />
+      <span className="text-border text-xs">·</span>
+      <ThinkingSelector
+        current={props.thinkingLevel}
+        onSelect={props.onSelectThinkingLevel}
       />
     </div>
   )

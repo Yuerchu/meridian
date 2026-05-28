@@ -28,6 +28,7 @@ export interface ToolCallDisplay {
 
 export type ContentBlock =
   | { type: 'text'; text: string }
+  | { type: 'thinking'; text: string }
   | { type: 'tool_call'; data: ToolCallDisplay }
 
 export interface Message {
@@ -63,7 +64,12 @@ export interface Assistant {
   updated_at: number
   context_limit: number
   compact_keep_recent: number
+  enabled_tools: string | null
+  thinking_enabled: number
+  thinking_budget: number | null
 }
+
+export type ThinkingLevel = 'default' | 'off' | 'low' | 'medium' | 'high' | 'max'
 
 export interface Provider {
   id: string
@@ -79,6 +85,35 @@ export interface Provider {
 export interface ModelInfo {
   id: string
   name: string
+}
+
+export interface McpServer {
+  id: string
+  name: string
+  transport_type: string
+  command: string | null
+  args: string | null
+  env: string | null
+  url: string | null
+  is_enabled: number
+  sort_order: number
+  created_at: number
+  updated_at: number
+}
+
+export interface McpToolDef {
+  server_id: string
+  server_name: string
+  qualified_name: string
+  name: string
+  description: string
+}
+
+export interface ToolInfo {
+  name: string
+  description: string
+  source: 'builtin' | 'mcp'
+  server_name?: string
 }
 
 export interface StreamChunk {

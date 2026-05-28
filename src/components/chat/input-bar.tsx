@@ -8,7 +8,7 @@ import {
   InputGroupButton,
 } from '@/components/ui/input-group'
 import { Toolbar } from './toolbar'
-import type { Assistant, Provider } from '@/types'
+import type { Assistant, Provider, ThinkingLevel } from '@/types'
 
 interface ContextInfo {
   messageCount: number
@@ -30,6 +30,8 @@ interface InputBarProps {
   currentProviderId: string | null
   onSelectAssistant: (id: string) => void
   onSelectModel: (modelId: string, providerId: string) => void
+  thinkingLevel: ThinkingLevel
+  onSelectThinkingLevel: (level: ThinkingLevel) => void
   contextInfo?: ContextInfo
 }
 
@@ -47,6 +49,8 @@ export function InputBar({
   currentProviderId,
   onSelectAssistant,
   onSelectModel,
+  thinkingLevel,
+  onSelectThinkingLevel,
   contextInfo,
 }: InputBarProps) {
   const { t } = useTranslation()
@@ -102,6 +106,8 @@ export function InputBar({
                 currentProviderId={currentProviderId}
                 onSelectAssistant={onSelectAssistant}
                 onSelectModel={onSelectModel}
+                thinkingLevel={thinkingLevel}
+                onSelectThinkingLevel={onSelectThinkingLevel}
               />
               <div className="flex items-center gap-2">
                 {contextInfo && contextInfo.messageCount > 0 && (

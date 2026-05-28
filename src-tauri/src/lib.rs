@@ -1,6 +1,7 @@
 mod client;
 mod db;
 mod keyring;
+mod mcp;
 mod provider;
 mod secrets;
 mod tools;
@@ -12,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use db::DbPool;
 use db::models::assistant::{Assistant, AssistantUpdate, NewAssistant};
 use db::models::conversation::Conversation;
+use db::models::mcp_server::{McpServer, McpServerUpdate, NewMcpServer};
 use db::models::message::{Message, NewMessage};
 use db::models::provider::{NewProvider, Provider, ProviderUpdate};
 use provider::models::ModelInfo;
@@ -24,6 +26,7 @@ use tokio_util::sync::CancellationToken;
 struct AppSecrets(Arc<SecretsManager>);
 struct AppDb(DbPool);
 struct AppTools(tools::ToolRegistry);
+struct AppMcp(Arc<Mutex<mcp::McpManager>>);
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ApprovalDecision {
@@ -320,6 +323,9 @@ async fn create_assistant(
             updated_at: now,
             context_limit: 128000,
             compact_keep_recent: 10,
+            enabled_tools: None,
+            thinking_enabled: 0,
+            thinking_budget: None,
         };
         db::ops::assistant::create_assistant(&mut conn, &new).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
@@ -333,6 +339,9 @@ async fn update_assistant(
     system_prompt: Option<String>,
     model_id: Option<Option<String>>,
     temperature: Option<Option<f32>>,
+    enabled_tools: Option<Option<String>>,
+    thinking_enabled: Option<i32>,
+    thinking_budget: Option<Option<i32>>,
 ) -> Result<Assistant, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
@@ -342,6 +351,9 @@ async fn update_assistant(
             system_prompt,
             model_id,
             temperature,
+            enabled_tools,
+            thinking_enabled,
+            thinking_budget,
             updated_at: Some(now_ms()),
             ..Default::default()
         };
@@ -586,6 +598,125 @@ async fn set_preference(app: tauri::AppHandle, key: String, value: String) -> Re
     }).await.map_err(|e| e.to_string())?
 }
 
+// --- MCP commands ---
+
+#[tauri::command]
+async fn list_mcp_servers(app: tauri::AppHandle) -> Result<Vec<McpServer>, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::mcp_server::list_mcp_servers(&mut conn).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn create_mcp_server(
+    app: tauri::AppHandle,
+    name: String,
+    transport_type: String,
+    command: Option<String>,
+    args: Option<String>,
+    env: Option<String>,
+    url: Option<String>,
+) -> Result<McpServer, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = now_ms();
+        db::ops::mcp_server::create_mcp_server(&mut conn, &NewMcpServer {
+            id: &id, name: &name, transport_type: &transport_type,
+            command: command.as_deref(), args: args.as_deref(),
+            env: env.as_deref(), url: url.as_deref(),
+            is_enabled: 1, sort_order: 0, created_at: now, updated_at: now,
+        }).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn update_mcp_server(
+    app: tauri::AppHandle,
+    id: String,
+    name: Option<String>,
+    command: Option<Option<String>>,
+    args: Option<Option<String>>,
+    env: Option<Option<String>>,
+    is_enabled: Option<i32>,
+) -> Result<McpServer, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::mcp_server::update_mcp_server(&mut conn, &id, &McpServerUpdate {
+            name, command, args, env, is_enabled,
+            updated_at: Some(now_ms()),
+            ..Default::default()
+        }).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_mcp_server(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    {
+        let mcp = app.state::<AppMcp>();
+        mcp.0.lock().await.disconnect_server(&id).await;
+    }
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::mcp_server::delete_mcp_server(&mut conn, &id).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn connect_mcp_server(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    let server = tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::mcp_server::get_mcp_server(&mut conn, &id).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())??;
+
+    let mcp = app.state::<AppMcp>();
+    mcp.0.lock().await.connect_server(&server).await
+}
+
+#[tauri::command]
+async fn disconnect_mcp_server(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let mcp = app.state::<AppMcp>();
+    mcp.0.lock().await.disconnect_server(&id).await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn list_mcp_tools(app: tauri::AppHandle, server_id: Option<String>) -> Result<Vec<mcp::McpToolDef>, String> {
+    let mcp = app.state::<AppMcp>();
+    let mgr = mcp.0.lock().await;
+    if let Some(sid) = server_id {
+        Ok(mgr.tool_defs_for_server(&sid).into_iter().cloned().collect())
+    } else {
+        Ok(mgr.tools.iter().cloned().collect::<Vec<_>>())
+    }
+}
+
+#[tauri::command]
+async fn list_all_tool_names(app: tauri::AppHandle) -> Result<Vec<serde_json::Value>, String> {
+    let tool_registry = app.state::<AppTools>();
+    let mcp = app.state::<AppMcp>();
+    let mgr = mcp.0.lock().await;
+
+    let mut result: Vec<serde_json::Value> = tool_registry.0.definitions().iter().map(|t| {
+        serde_json::json!({"name": t.name, "description": t.description, "source": "builtin"})
+    }).collect();
+
+    for t in &mgr.tools {
+        result.push(serde_json::json!({
+            "name": t.qualified_name, "description": t.description,
+            "source": "mcp", "server_name": t.server_name
+        }));
+    }
+
+    Ok(result)
+}
+
 // --- Stop chat command ---
 
 #[tauri::command]
@@ -606,6 +737,7 @@ async fn chat(
     message: String,
     model_override: Option<String>,
     provider_override: Option<String>,
+    thinking_level: Option<String>,
 ) -> Result<(), String> {
     let secrets = app.state::<AppSecrets>();
     let pool = app.state::<AppDb>().0.clone();
@@ -667,11 +799,26 @@ async fn chat(
     let mut chat_messages = build_messages(system_prompt, &history, &message);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
+    let (thinking_enabled, thinking_budget, thinking_effort) = {
+        let a_enabled = assistant.as_ref().map(|a| a.thinking_enabled != 0).unwrap_or(false);
+        let a_budget = assistant.as_ref().and_then(|a| a.thinking_budget);
+        match thinking_level.as_deref() {
+            Some("off") => (false, None, None),
+            Some(level @ ("low" | "medium" | "high" | "max")) => (
+                true, a_budget, Some(level.to_string()),
+            ),
+            _ => (a_enabled, a_budget, None),
+        }
+    };
+
     let params = ChatParams {
         model: model.clone(),
         temperature: assistant.as_ref().and_then(|a| a.temperature.map(|t| t as f64)),
         top_p: assistant.as_ref().and_then(|a| a.top_p.map(|t| t as f64)),
         max_tokens: assistant.as_ref().and_then(|a| a.max_tokens),
+        thinking_enabled,
+        thinking_budget,
+        thinking_effort,
     };
 
     // Persist user message
@@ -713,9 +860,22 @@ async fn chat(
         }).await.map_err(|e| e.to_string())??;
     }
 
-    // Get tool definitions + shell preference
+    // Get tool definitions (builtin + MCP) + per-assistant filtering + shell preference
     let tool_registry = app.state::<AppTools>();
-    let tool_defs = tool_registry.0.definitions();
+    let mut all_tool_defs = tool_registry.0.definitions();
+    {
+        let mcp = app.state::<AppMcp>();
+        let mgr = mcp.0.lock().await;
+        all_tool_defs.extend(mgr.all_tool_definitions());
+    }
+    let enabled_tools: Option<Vec<String>> = assistant.as_ref()
+        .and_then(|a| a.enabled_tools.as_ref())
+        .and_then(|json| serde_json::from_str(json).ok());
+    let tool_defs: Vec<_> = if let Some(ref enabled) = enabled_tools {
+        all_tool_defs.into_iter().filter(|t| enabled.contains(&t.name)).collect()
+    } else {
+        all_tool_defs
+    };
     let has_tools = !tool_defs.is_empty();
     let shell_type = {
         let pool2 = pool.clone();
@@ -749,6 +909,16 @@ async fn chat(
                 total_output_tokens += u.completion_tokens.unwrap_or(0);
             }
 
+            if let Some(ref reasoning) = response.reasoning_content {
+                if !reasoning.is_empty() {
+                    blocks.push(serde_json::json!({"type": "thinking", "text": reasoning}));
+                    app.emit("chat-stream", serde_json::json!({
+                        "type": "reasoning", "content": reasoning,
+                        "done": false, "message_id": &assistant_msg_id,
+                    })).map_err(|e| e.to_string())?;
+                }
+            }
+
             if !response.text.is_empty() {
                 full_content.push_str(&response.text);
                 blocks.push(serde_json::json!({"type": "text", "text": &response.text}));
@@ -776,8 +946,22 @@ async fn chat(
                     "message_id": &assistant_msg_id,
                 })).map_err(|e| e.to_string())?;
 
-                let tool = tool_registry.0.get(&tc.name);
-                let result = if tc.name == "ask_user" {
+                let tool_allowed = enabled_tools.as_ref()
+                    .map(|e| e.contains(&tc.name))
+                    .unwrap_or(true);
+                let is_mcp = tc.name.starts_with("mcp__");
+                let tool = if tool_allowed && !is_mcp { tool_registry.0.get(&tc.name) } else { None };
+                let result = if !tool_allowed {
+                    "Tool not available for this assistant.".to_string()
+                } else if is_mcp {
+                    let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
+                    let mcp = app.state::<AppMcp>();
+                    let mut mgr = mcp.0.lock().await;
+                    match mgr.call_tool(&tc.name, args).await {
+                        Ok(output) => output,
+                        Err(e) => format!("MCP error: {e}"),
+                    }
+                } else if tc.name == "ask_user" {
                     let (tx, rx) = oneshot::channel();
                     {
                         let waiters = app.state::<ApprovalWaiters>();
@@ -907,6 +1091,7 @@ async fn chat(
         // Simple streaming (no tools)
         let mut stream = provider.stream_chat(chat_messages, params.clone())
             .await.map_err(|e| e.to_string())?;
+        let mut reasoning_buf = String::new();
 
         use futures::StreamExt;
         loop {
@@ -914,10 +1099,17 @@ async fn chat(
                 _ = cancel.cancelled() => { break; }
                 chunk = stream.next() => {
                     match chunk {
-                        Some(Ok(content)) => {
+                        Some(Ok(provider::StreamEvent::Text(content))) => {
                             full_content.push_str(&content);
                             app.emit("chat-stream", serde_json::json!({
                                 "content": content, "done": false, "message_id": &assistant_msg_id,
+                            })).map_err(|e| e.to_string())?;
+                        }
+                        Some(Ok(provider::StreamEvent::Reasoning(content))) => {
+                            reasoning_buf.push_str(&content);
+                            app.emit("chat-stream", serde_json::json!({
+                                "type": "reasoning", "content": content,
+                                "done": false, "message_id": &assistant_msg_id,
                             })).map_err(|e| e.to_string())?;
                         }
                         Some(Err(e)) => {
@@ -929,7 +1121,6 @@ async fn chat(
                                     let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
                                 }
                             }).await;
-                            // Clean up cancel token before returning
                             {
                                 let chats = app.state::<ActiveChats>();
                                 chats.0.lock().await.remove(&conversation_id);
@@ -942,14 +1133,25 @@ async fn chat(
             }
         }
 
-        // Persist final content
+        // Persist final content (with reasoning as blocks if present)
         {
             let pool = pool.clone();
             let msg_id = assistant_msg_id.clone();
             let content = full_content.clone();
+            let blocks_json = if reasoning_buf.is_empty() { None } else {
+                let b = vec![
+                    serde_json::json!({"type": "thinking", "text": reasoning_buf}),
+                    serde_json::json!({"type": "text", "text": &content}),
+                ];
+                serde_json::to_string(&b).ok()
+            };
             tokio::task::spawn_blocking(move || {
                 if let Ok(mut conn) = pool.get() {
-                    let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
+                    if let Some(ref bj) = blocks_json {
+                        let _ = db::ops::message::update_content_and_tool_calls(&mut conn, &msg_id, &content, Some(bj));
+                    } else {
+                        let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
+                    }
                 }
             }).await.map_err(|e| e.to_string())?;
         }
@@ -1043,6 +1245,9 @@ pub fn run() {
                         updated_at: now,
                         context_limit: 128000,
                         compact_keep_recent: 10,
+                        enabled_tools: None,
+                        thinking_enabled: 0,
+                        thinking_budget: None,
                     });
                 }
             }
@@ -1118,6 +1323,7 @@ pub fn run() {
             app.manage(AppTools(tools::ToolRegistry::new()));
             app.manage(ApprovalWaiters(Mutex::new(HashMap::new())));
             app.manage(ActiveChats(Mutex::new(HashMap::new())));
+            app.manage(AppMcp(Arc::new(Mutex::new(mcp::McpManager::new()))));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1132,6 +1338,8 @@ pub fn run() {
             list_projects, create_project, update_project, delete_project,
             list_conversations_by_project,
             get_preference, set_preference,
+            list_mcp_servers, create_mcp_server, update_mcp_server, delete_mcp_server,
+            connect_mcp_server, disconnect_mcp_server, list_mcp_tools, list_all_tool_names,
             approve_tool_call, deny_tool_call, respond_to_ask,
         ])
         .run(tauri::generate_context!())

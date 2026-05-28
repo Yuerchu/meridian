@@ -1,35 +1,30 @@
-name: Build
+name: CI
 
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
     branches: [main]
-  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
+  test:
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
-            target: x86_64-pc-windows-msvc
             label: windows-x64
           - os: macos-latest
-            target: aarch64-apple-darwin
             label: macos-arm64
           - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
             label: linux-x64
 
     runs-on: ${{ matrix.os }}
-    name: Build (${{ matrix.label }})
+    name: Test (${{ matrix.label }})
 
     steps:
       - uses: actions/checkout@v4
@@ -42,13 +37,11 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-          key: ${{ matrix.target }}
+          key: test-${{ matrix.label }}
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -58,13 +51,12 @@ jobs:
 
       - run: pnpm install
 
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
-          releaseName: ${{ github.ref_type == 'tag' && format('Meridian {0}', github.ref_name) || '' }}
-          releaseDraft: true
-          prerelease: false
-          args: --target ${{ matrix.target }}
-          tauriScript: pnpm tauri
+      - name: TypeScript check
+        run: pnpm exec tsc -b
+
+      - name: Frontend tests
+        run: pnpm test
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test

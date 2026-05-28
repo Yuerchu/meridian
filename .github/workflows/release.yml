@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: windows-latest
+            label: windows-x64
+          - os: macos-latest
+            label: macos-arm64
+          - os: ubuntu-latest
+            label: linux-x64
+
+    runs-on: ${{ matrix.os }}
+    name: Test (${{ matrix.label }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: test-${{ matrix.label }}
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - run: pnpm install
+
+      - name: TypeScript check
+        run: pnpm exec tsc -b
+
+      - name: Frontend tests
+        run: pnpm test
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+  build:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            label: windows-x64
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            label: macos-arm64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            label: linux-x64
+
+    runs-on: ${{ matrix.os }}
+    name: Build (${{ matrix.label }})
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: build-${{ matrix.target }}
+
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - run: pnpm install
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Meridian ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}
+          tauriScript: pnpm tauri
