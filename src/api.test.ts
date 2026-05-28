@@ -26,13 +26,13 @@ describe('api', () => {
     it('createConversation sends null title by default', async () => {
       mockInvoke.mockResolvedValueOnce({ id: '1' })
       await api.createConversation()
-      expect(mockInvoke).toHaveBeenCalledWith('create_conversation', { title: null })
+      expect(mockInvoke).toHaveBeenCalledWith('create_conversation', { title: null, projectId: null })
     })
 
     it('createConversation sends provided title', async () => {
       mockInvoke.mockResolvedValueOnce({ id: '1' })
       await api.createConversation('My Chat')
-      expect(mockInvoke).toHaveBeenCalledWith('create_conversation', { title: 'My Chat' })
+      expect(mockInvoke).toHaveBeenCalledWith('create_conversation', { title: 'My Chat', projectId: null })
     })
 
     it('updateConversationTitle sends id and title', async () => {
@@ -75,6 +75,7 @@ describe('api', () => {
         message: 'Hello',
         modelOverride: null,
         providerOverride: null,
+        thinkingLevel: null,
       })
     })
 
@@ -86,6 +87,7 @@ describe('api', () => {
         message: 'Hi',
         modelOverride: 'gpt-4',
         providerOverride: 'openai',
+        thinkingLevel: null,
       })
     })
   })
