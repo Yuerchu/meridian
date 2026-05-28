@@ -337,8 +337,10 @@ async fn update_assistant(
     id: String,
     name: Option<String>,
     system_prompt: Option<String>,
+    provider_id: Option<Option<String>>,
     model_id: Option<Option<String>>,
     temperature: Option<Option<f32>>,
+    context_limit: Option<i32>,
     enabled_tools: Option<Option<String>>,
     thinking_enabled: Option<i32>,
     thinking_budget: Option<Option<i32>>,
@@ -349,8 +351,10 @@ async fn update_assistant(
         let changeset = AssistantUpdate {
             name,
             system_prompt,
+            provider_id,
             model_id,
             temperature,
+            context_limit,
             enabled_tools,
             thinking_enabled,
             thinking_budget,
@@ -738,6 +742,7 @@ async fn chat(
     model_override: Option<String>,
     provider_override: Option<String>,
     thinking_level: Option<String>,
+    assistant_id: Option<String>,
 ) -> Result<(), String> {
     let secrets = app.state::<AppSecrets>();
     let pool = app.state::<AppDb>().0.clone();
@@ -752,11 +757,14 @@ async fn chat(
     let (assistant, history, conv_title, project_path) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
+        let aid_override = assistant_id.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
             let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;
-            let assistant = conv.assistant_id.as_deref()
+            let effective_aid = aid_override.as_deref()
+                .or(conv.assistant_id.as_deref());
+            let assistant = effective_aid
                 .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok());
             let history = db::ops::message::list_messages(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;

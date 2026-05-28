@@ -47,7 +47,9 @@ impl Tool for SearchFilesTool {
         let path_str = args["path"]
             .as_str()
             .ok_or("missing 'path' argument")?;
-        let path = context.resolve_path(path_str).to_string_lossy().to_string();
+        let resolved = context.resolve_path(path_str);
+        context.validate_path(&resolved)?;
+        let path = resolved.to_string_lossy().to_string();
         let max_results = args["max_results"]
             .as_u64()
             .unwrap_or(50) as usize;

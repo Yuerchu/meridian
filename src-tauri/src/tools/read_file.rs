@@ -37,6 +37,7 @@ impl Tool for ReadFileTool {
             .as_str()
             .ok_or("missing 'path' argument")?;
         let path = context.resolve_path(path_str);
+        context.validate_path(&path)?;
 
         let content = tokio::fs::read_to_string(&path)
             .await

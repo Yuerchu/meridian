@@ -36,6 +36,7 @@ impl Tool for ListDirectoryTool {
             .ok_or("missing 'path' argument")?;
 
         let path = context.resolve_path(path_str);
+        context.validate_path(&path)?;
         tokio::task::spawn_blocking(move || list_dir(&path))
             .await
             .map_err(|e| format!("task failed: {e}"))?

@@ -70,6 +70,9 @@ mod tests {
             updated_at: 1000,
             context_limit: 128000,
             compact_keep_recent: 5,
+            enabled_tools: None,
+            thinking_enabled: 0,
+            thinking_budget: None,
         }
     }
 

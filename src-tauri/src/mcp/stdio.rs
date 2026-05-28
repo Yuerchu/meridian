@@ -49,6 +49,27 @@ impl StdioTransport {
         })
     }
 
+    async fn send_raw(&mut self, body: &str) -> Result<(), String> {
+        let header = format!("Content-Length: {}\r\n\r\n", body.len());
+        self.writer.write_all(header.as_bytes()).await.map_err(|e| format!("write header: {e}"))?;
+        self.writer.write_all(body.as_bytes()).await.map_err(|e| format!("write body: {e}"))?;
+        self.writer.flush().await.map_err(|e| format!("flush: {e}"))?;
+        Ok(())
+    }
+
+    pub async fn notify(
+        &mut self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<(), String> {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params.unwrap_or(serde_json::Value::Null),
+        });
+        self.send_raw(&body.to_string()).await
+    }
+
     pub async fn request(
         &mut self,
         method: &str,
@@ -57,21 +78,9 @@ impl StdioTransport {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let req = JsonRpcRequest::new(id, method, params);
         let body = serde_json::to_string(&req).map_err(|e| e.to_string())?;
+        self.send_raw(&body).await?;
 
-        let header = format!("Content-Length: {}\r\n\r\n", body.len());
-        self.writer
-            .write_all(header.as_bytes())
-            .await
-            .map_err(|e| format!("write header: {e}"))?;
-        self.writer
-            .write_all(body.as_bytes())
-            .await
-            .map_err(|e| format!("write body: {e}"))?;
-        self.writer
-            .flush()
-            .await
-            .map_err(|e| format!("flush: {e}"))?;
-
+        let read_fut = async {
         loop {
             let mut header_line = String::new();
             self.reader
@@ -115,6 +124,11 @@ impl StdioTransport {
 
             return resp.result.ok_or_else(|| "empty result".to_string());
         }
+        };
+
+        tokio::time::timeout(std::time::Duration::from_secs(30), read_fut)
+            .await
+            .map_err(|_| format!("MCP request '{}' timed out after 30s", method))?
     }
 
     pub async fn shutdown(&mut self) {

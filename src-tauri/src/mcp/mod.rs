@@ -71,7 +71,7 @@ impl McpManager {
             "clientInfo": { "name": "meridian", "version": "0.1.0" }
         }))).await?;
 
-        transport.request("notifications/initialized", None).await.ok();
+        transport.notify("notifications/initialized", None).await.ok();
 
         let result = transport.request("tools/list", None).await?;
         let tools_result: McpToolsListResult = serde_json::from_value(result)

@@ -63,6 +63,20 @@ impl ToolContext {
         }
     }
 
+    pub fn validate_path(&self, resolved: &Path) -> Result<(), String> {
+        if let Some(ref wd) = self.working_directory {
+            let wd_canonical = std::fs::canonicalize(wd).unwrap_or_else(|_| PathBuf::from(wd));
+            let target = std::fs::canonicalize(resolved).unwrap_or_else(|_| resolved.to_path_buf());
+            if !target.starts_with(&wd_canonical) {
+                return Err(format!(
+                    "Access denied: path '{}' is outside the project directory",
+                    resolved.display()
+                ));
+            }
+        }
+        Ok(())
+    }
+
     pub fn working_dir_or_current(&self) -> PathBuf {
         self.working_directory
             .as_ref()

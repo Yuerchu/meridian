@@ -29,13 +29,14 @@ export const api = {
   stopChat: (conversationId: string) =>
     invoke<void>('stop_chat', { conversationId }),
 
-  chat: (conversationId: string, message: string, modelOverride?: string, providerOverride?: string, thinkingLevel?: string) =>
+  chat: (conversationId: string, message: string, modelOverride?: string, providerOverride?: string, thinkingLevel?: string, assistantId?: string) =>
     invoke<void>('chat', {
       conversationId,
       message,
       modelOverride: modelOverride ?? null,
       providerOverride: providerOverride ?? null,
       thinkingLevel: thinkingLevel ?? null,
+      assistantId: assistantId ?? null,
     }),
 
   setSecret: (key: string, value: string) =>
@@ -63,8 +64,10 @@ export const api = {
   updateAssistant: (id: string, updates: {
     name?: string
     systemPrompt?: string
+    providerId?: string | null
     modelId?: string | null
     temperature?: number | null
+    contextLimit?: number | null
     enabledTools?: string | null
     thinkingEnabled?: number
     thinkingBudget?: number | null
@@ -73,8 +76,10 @@ export const api = {
       id,
       name: updates.name ?? null,
       systemPrompt: updates.systemPrompt ?? null,
+      providerId: updates.providerId !== undefined ? updates.providerId : null,
       modelId: updates.modelId !== undefined ? updates.modelId : null,
       temperature: updates.temperature !== undefined ? updates.temperature : null,
+      contextLimit: updates.contextLimit ?? null,
       enabledTools: updates.enabledTools !== undefined ? updates.enabledTools : null,
       thinkingEnabled: updates.thinkingEnabled ?? null,
       thinkingBudget: updates.thinkingBudget !== undefined ? updates.thinkingBudget : null,

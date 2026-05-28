@@ -271,14 +271,14 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     }
 
     api
-      .chat(conversationId, text, selectedModelId ?? undefined, selectedProviderId ?? undefined, thinkingLevel !== 'default' ? thinkingLevel : undefined)
+      .chat(conversationId, text, selectedModelId ?? undefined, selectedProviderId ?? undefined, thinkingLevel !== 'default' ? thinkingLevel : undefined, selectedAssistantId ?? undefined)
       .catch((err) => {
         setError(String(err))
         setStreaming(false)
         submittingRef.current = false
         api.loadMessages(conversationId).then((msgs) => setMessages(hydrateBlocks(msgs)))
       })
-  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel])
+  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, selectedAssistantId])
 
   const handleSubmit = useCallback(() => {
     const text = input.trim()

@@ -59,8 +59,10 @@ function AssistantEditor({
     await onSave(assistant.id, {
       name,
       systemPrompt,
+      providerId: providerId.trim() || null,
       modelId: modelId.trim() || null,
       temperature: temperature ? parseFloat(temperature) : null,
+      contextLimit: contextLimit ? parseInt(contextLimit) : null,
       enabledTools,
       thinkingEnabled: thinkingEnabled ? 1 : 0,
       thinkingBudget: thinkingBudget ? parseInt(thinkingBudget) : null,

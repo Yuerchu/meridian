@@ -10,3 +10,4 @@ icon.png
 *.log
 .DS_Store
 tsconfig.tsbuildinfo
+.claude/

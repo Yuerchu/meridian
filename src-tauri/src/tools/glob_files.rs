@@ -43,6 +43,7 @@ impl Tool for GlobFilesTool {
             .as_str()
             .map(|p| context.resolve_path(p))
             .unwrap_or_else(|| context.working_dir_or_current());
+        context.validate_path(&base)?;
 
         let base_clone = base.clone();
         tokio::task::spawn_blocking(move || glob_search(&base_clone, &pattern))
