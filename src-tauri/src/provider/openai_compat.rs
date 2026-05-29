@@ -19,25 +19,6 @@ impl OpenAICompatProvider {
         }
     }
 
-    fn serialize_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
-        messages.iter().map(|m| {
-            let mut msg = serde_json::json!({ "role": m.role, "content": m.content });
-            if let Some(ref tool_calls) = m.tool_calls {
-                msg["tool_calls"] = serde_json::json!(tool_calls.iter().map(|tc| {
-                    serde_json::json!({
-                        "id": tc.id,
-                        "type": "function",
-                        "function": { "name": tc.name, "arguments": tc.arguments }
-                    })
-                }).collect::<Vec<_>>());
-            }
-            if let Some(ref tool_call_id) = m.tool_call_id {
-                msg["tool_call_id"] = serde_json::json!(tool_call_id);
-            }
-            msg
-        }).collect()
-    }
-
     fn build_request(
         &self,
         messages: &[ChatMessage],
@@ -47,9 +28,12 @@ impl OpenAICompatProvider {
     ) -> Request {
         let mut body = serde_json::json!({
             "model": params.model,
-            "messages": Self::serialize_messages(messages),
+            "messages": serialize_openai_messages(messages),
             "stream": stream,
         });
+        if stream {
+            body["stream_options"] = serde_json::json!({"include_usage": true});
+        }
         if let Some(t) = params.temperature {
             body["temperature"] = serde_json::json!(t);
         }
@@ -90,78 +74,158 @@ impl OpenAICompatProvider {
     }
 }
 
-#[derive(Deserialize)]
-struct ChatChunk {
-    choices: Vec<ChunkChoice>,
+pub fn serialize_openai_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+    messages.iter().map(|m| {
+        let mut msg = serde_json::json!({ "role": m.role, "content": m.content });
+        if let Some(ref tool_calls) = m.tool_calls {
+            msg["tool_calls"] = serde_json::json!(tool_calls.iter().map(|tc| {
+                serde_json::json!({
+                    "id": tc.id,
+                    "type": "function",
+                    "function": { "name": tc.name, "arguments": tc.arguments }
+                })
+            }).collect::<Vec<_>>());
+        }
+        if let Some(ref tool_call_id) = m.tool_call_id {
+            msg["tool_call_id"] = serde_json::json!(tool_call_id);
+        }
+        msg
+    }).collect()
 }
 
 #[derive(Deserialize)]
-struct ChunkChoice {
-    delta: Option<Delta>,
-    message: Option<FullMessage>,
+pub struct ChatChunk {
+    pub choices: Vec<ChunkChoice>,
+    pub usage: Option<ChunkUsage>,
 }
 
 #[derive(Deserialize)]
-struct Delta {
-    content: Option<String>,
-    reasoning_content: Option<String>,
+pub struct ChunkChoice {
+    pub delta: Option<Delta>,
+    pub finish_reason: Option<String>,
 }
 
 #[derive(Deserialize)]
-struct FullMessage {
-    content: Option<String>,
-    reasoning_content: Option<String>,
-    tool_calls: Option<Vec<FullToolCall>>,
+pub struct Delta {
+    pub content: Option<String>,
+    pub reasoning_content: Option<String>,
+    pub tool_calls: Option<Vec<DeltaToolCall>>,
 }
 
 #[derive(Deserialize)]
-struct FullToolCall {
-    id: String,
-    function: FullToolCallFunction,
+pub struct DeltaToolCall {
+    pub index: usize,
+    pub id: Option<String>,
+    pub function: Option<DeltaFunction>,
 }
 
 #[derive(Deserialize)]
-struct FullToolCallFunction {
-    name: String,
-    arguments: String,
+pub struct DeltaFunction {
+    pub name: Option<String>,
+    pub arguments: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct ChunkUsage {
+    pub prompt_tokens: Option<i32>,
+    pub completion_tokens: Option<i32>,
+    pub total_tokens: Option<i32>,
+}
+
+pub fn parse_openai_sse_events(chunk: &ChatChunk) -> (Vec<StreamEvent>, Option<String>, Option<TokenUsage>) {
+    let mut events = Vec::new();
+    let mut finish_reason = None;
+    let mut usage = None;
+
+    if let Some(ref u) = chunk.usage {
+        usage = Some(TokenUsage {
+            prompt_tokens: u.prompt_tokens,
+            completion_tokens: u.completion_tokens,
+            total_tokens: u.total_tokens,
+        });
+    }
+
+    if let Some(choice) = chunk.choices.first() {
+        if let Some(ref fr) = choice.finish_reason {
+            finish_reason = Some(fr.clone());
+        }
+        if let Some(ref delta) = choice.delta {
+            if let Some(ref r) = delta.reasoning_content {
+                if !r.is_empty() {
+                    events.push(StreamEvent::Reasoning(r.clone()));
+                }
+            }
+            if let Some(ref c) = delta.content {
+                if !c.is_empty() {
+                    events.push(StreamEvent::Text(c.clone()));
+                }
+            }
+            if let Some(ref tcs) = delta.tool_calls {
+                for tc in tcs {
+                    if let Some(ref id) = tc.id {
+                        let name = tc.function.as_ref()
+                            .and_then(|f| f.name.clone())
+                            .unwrap_or_default();
+                        events.push(StreamEvent::ToolCallStart {
+                            index: tc.index,
+                            id: id.clone(),
+                            name,
+                        });
+                    }
+                    if let Some(ref f) = tc.function {
+                        if let Some(ref args) = f.arguments {
+                            if !args.is_empty() {
+                                events.push(StreamEvent::ToolCallDelta {
+                                    index: tc.index,
+                                    arguments: args.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    (events, finish_reason, usage)
 }
 
 #[async_trait]
 impl ChatProvider for OpenAICompatProvider {
-    async fn stream_chat(
+    async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,
+        tools: Vec<ToolDefinition>,
         params: ChatParams,
     ) -> Result<ChatStream, ProviderError> {
+        let tools_opt = if tools.is_empty() { None } else { Some(tools.as_slice()) };
         let transport = ReqwestTransport::new(reqwest::Client::new());
-        let req = self.build_request(&messages, None, &params, true);
+        let req = self.build_request(&messages, tools_opt, &params, true);
         let resp = transport.stream(req).await?;
 
         let stream = resp.bytes
             .map(|r| r.map_err(ProviderError::Transport))
             .eventsource()
-            .filter_map(|event| async {
-                match event {
+            .flat_map(move |event| {
+                let events: Vec<Result<StreamEvent, ProviderError>> = match event {
                     Ok(ev) => {
                         if ev.data == "[DONE]" {
-                            return None;
+                            return futures::stream::iter(vec![]);
                         }
                         match serde_json::from_str::<ChatChunk>(&ev.data) {
                             Ok(chunk) => {
-                                let delta = chunk.choices.first()?.delta.as_ref()?;
-                                if let Some(ref r) = delta.reasoning_content {
-                                    if !r.is_empty() {
-                                        return Some(Ok(StreamEvent::Reasoning(r.clone())));
-                                    }
+                                let (mut stream_events, finish_reason, usage) = parse_openai_sse_events(&chunk);
+                                if finish_reason.is_some() || usage.is_some() {
+                                    stream_events.push(StreamEvent::Done { usage, finish_reason });
                                 }
-                                let content = delta.content.clone().unwrap_or_default();
-                                if content.is_empty() { None } else { Some(Ok(StreamEvent::Text(content))) }
+                                stream_events.into_iter().map(Ok).collect()
                             }
-                            Err(e) => Some(Err(ProviderError::Parse(e.to_string()))),
+                            Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
                         }
                     }
-                    Err(e) => Some(Err(ProviderError::Parse(e.to_string()))),
-                }
+                    Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
+                };
+                futures::stream::iter(events)
             });
 
         Ok(Box::pin(stream))

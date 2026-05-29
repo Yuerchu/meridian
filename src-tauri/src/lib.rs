@@ -17,7 +17,7 @@ use db::models::mcp_server::{McpServer, McpServerUpdate, NewMcpServer};
 use db::models::message::{Message, NewMessage};
 use db::models::provider::{NewProvider, Provider, ProviderUpdate};
 use provider::models::ModelInfo;
-use provider::{ChatMessage, ChatParams, ChatProvider, ToolCall};
+use provider::{ChatMessage, ChatParams, ChatProvider};
 use secrets::{SecretName, SecretScope, SecretsManager};
 use tauri::{Emitter, Manager};
 use tokio::sync::{oneshot, Mutex};
@@ -31,7 +31,7 @@ struct AppMcp(Arc<Mutex<mcp::McpManager>>);
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ApprovalDecision {
     Approved,
-    Denied,
+    Denied(Option<String>),
     Response(String),
 }
 
@@ -510,11 +510,11 @@ async fn approve_tool_call(app: tauri::AppHandle, call_id: String) -> Result<(),
 }
 
 #[tauri::command]
-async fn deny_tool_call(app: tauri::AppHandle, call_id: String) -> Result<(), String> {
+async fn deny_tool_call(app: tauri::AppHandle, call_id: String, reason: Option<String>) -> Result<(), String> {
     let waiters = app.state::<ApprovalWaiters>();
     let mut map = waiters.0.lock().await;
     if let Some(tx) = map.remove(&call_id) {
-        let _ = tx.send(ApprovalDecision::Denied);
+        let _ = tx.send(ApprovalDecision::Denied(reason));
     }
     Ok(())
 }
@@ -732,6 +732,84 @@ async fn stop_chat(app: tauri::AppHandle, conversation_id: String) -> Result<(),
     Ok(())
 }
 
+// --- Stream consumption helper ---
+
+struct StreamResult {
+    text: String,
+    reasoning: String,
+    tool_calls: Vec<provider::ToolCall>,
+    usage: Option<provider::TokenUsage>,
+    finish_reason: Option<String>,
+}
+
+async fn consume_stream(
+    mut stream: provider::ChatStream,
+    app: &tauri::AppHandle,
+    cancel: &tokio_util::sync::CancellationToken,
+    message_id: &str,
+) -> Result<StreamResult, String> {
+    use futures::StreamExt;
+
+    let mut text = String::new();
+    let mut reasoning = String::new();
+    let mut tool_acc: Vec<(String, String, String)> = Vec::new(); // (id, name, args_buffer)
+    let mut usage = None;
+    let mut finish_reason = None;
+
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => { break; }
+            chunk = stream.next() => {
+                match chunk {
+                    Some(Ok(provider::StreamEvent::Text(s))) => {
+                        text.push_str(&s);
+                        app.emit("chat-stream", serde_json::json!({
+                            "content": s, "done": false, "message_id": message_id,
+                        })).map_err(|e| e.to_string())?;
+                    }
+                    Some(Ok(provider::StreamEvent::Reasoning(s))) => {
+                        reasoning.push_str(&s);
+                        app.emit("chat-stream", serde_json::json!({
+                            "type": "reasoning", "content": s,
+                            "done": false, "message_id": message_id,
+                        })).map_err(|e| e.to_string())?;
+                    }
+                    Some(Ok(provider::StreamEvent::ToolCallStart { index, id, name })) => {
+                        while tool_acc.len() <= index {
+                            tool_acc.push((String::new(), String::new(), String::new()));
+                        }
+                        tool_acc[index] = (id, name, String::new());
+                    }
+                    Some(Ok(provider::StreamEvent::ToolCallDelta { index, arguments })) => {
+                        if let Some(entry) = tool_acc.get_mut(index) {
+                            entry.2.push_str(&arguments);
+                        }
+                    }
+                    Some(Ok(provider::StreamEvent::Done { usage: u, finish_reason: fr })) => {
+                        usage = u;
+                        finish_reason = fr;
+                    }
+                    Some(Err(e)) => {
+                        return Err(e.to_string());
+                    }
+                    None => { break; }
+                }
+            }
+        }
+    }
+
+    let tool_calls: Vec<provider::ToolCall> = if cancel.is_cancelled() {
+        vec![]
+    } else {
+        tool_acc.into_iter()
+            .filter(|(id, _, _)| !id.is_empty())
+            .map(|(id, name, args)| provider::ToolCall { id, name, arguments: args })
+            .collect()
+    };
+
+    Ok(StreamResult { text, reasoning, tool_calls, usage, finish_reason })
+}
+
 // --- Chat command (with agent loop + tools + approval) ---
 
 #[tauri::command]
@@ -884,7 +962,6 @@ async fn chat(
     } else {
         all_tool_defs
     };
-    let has_tools = !tool_defs.is_empty();
     let shell_type = {
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
@@ -902,267 +979,190 @@ async fn chat(
     let mut total_input_tokens = 0i32;
     let mut total_output_tokens = 0i32;
 
-    if has_tools {
-        // Agent loop: runs until model stops issuing tool calls (like Codex)
+    // Unified streaming agent loop: always streams, handles tools when present
+    loop {
+        if cancel.is_cancelled() { break; }
 
-        loop {
+        let stream = provider.stream_chat_with_tools(
+            chat_messages.clone(), tool_defs.clone(), params.clone()
+        ).await.map_err(|e| e.to_string())?;
+
+        let result = consume_stream(stream, &app, &cancel, &assistant_msg_id).await?;
+
+        if let Some(ref u) = result.usage {
+            total_input_tokens += u.prompt_tokens.unwrap_or(0);
+            total_output_tokens += u.completion_tokens.unwrap_or(0);
+        }
+
+        if !result.reasoning.is_empty() {
+            blocks.push(serde_json::json!({"type": "thinking", "text": &result.reasoning}));
+        }
+        if !result.text.is_empty() {
+            full_content.push_str(&result.text);
+            blocks.push(serde_json::json!({"type": "text", "text": &result.text}));
+        }
+
+        if result.tool_calls.is_empty() { break; }
+
+        // Discard tool calls if response was truncated
+        if result.finish_reason.as_deref() == Some("length") { break; }
+
+        chat_messages.push(ChatMessage::assistant_with_tools(
+            &result.text, if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) }, result.tool_calls.clone()
+        ));
+
+        for tc in &result.tool_calls {
             if cancel.is_cancelled() { break; }
 
-            let response = provider.chat_with_tools(
-                chat_messages.clone(), tool_defs.clone(), params.clone()
-            ).await.map_err(|e| e.to_string())?;
+            app.emit("chat-stream", serde_json::json!({
+                "type": "tool_call",
+                "call_id": tc.id,
+                "tool_name": tc.name,
+                "arguments": tc.arguments,
+                "message_id": &assistant_msg_id,
+            })).map_err(|e| e.to_string())?;
 
-            if let Some(ref u) = response.usage {
-                total_input_tokens += u.prompt_tokens.unwrap_or(0);
-                total_output_tokens += u.completion_tokens.unwrap_or(0);
-            }
-
-            if let Some(ref reasoning) = response.reasoning_content {
-                if !reasoning.is_empty() {
-                    blocks.push(serde_json::json!({"type": "thinking", "text": reasoning}));
-                    app.emit("chat-stream", serde_json::json!({
-                        "type": "reasoning", "content": reasoning,
-                        "done": false, "message_id": &assistant_msg_id,
-                    })).map_err(|e| e.to_string())?;
+            let tool_allowed = enabled_tools.as_ref()
+                .map(|e| e.contains(&tc.name))
+                .unwrap_or(true);
+            let is_mcp = tc.name.starts_with("mcp__");
+            let tool = if tool_allowed && !is_mcp { tool_registry.0.get(&tc.name) } else { None };
+            let result = if !tool_allowed {
+                "Tool not available for this assistant.".to_string()
+            } else if is_mcp {
+                let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
+                let mcp = app.state::<AppMcp>();
+                let mut mgr = mcp.0.lock().await;
+                match mgr.call_tool(&tc.name, args).await {
+                    Ok(output) => output,
+                    Err(e) => format!("MCP error: {e}"),
                 }
-            }
-
-            if !response.text.is_empty() {
-                full_content.push_str(&response.text);
-                blocks.push(serde_json::json!({"type": "text", "text": &response.text}));
+            } else if tc.name == "ask_user" {
+                let (tx, rx) = oneshot::channel();
+                {
+                    let waiters = app.state::<ApprovalWaiters>();
+                    let mut map = waiters.0.lock().await;
+                    map.insert(tc.id.clone(), tx);
+                }
                 app.emit("chat-stream", serde_json::json!({
-                    "content": &response.text, "done": false, "message_id": &assistant_msg_id,
-                })).map_err(|e| e.to_string())?;
-            }
-
-            if response.tool_calls.is_empty() {
-                break;
-            }
-
-            chat_messages.push(ChatMessage::assistant_with_tools(
-                &response.text, response.reasoning_content.clone(), response.tool_calls.clone()
-            ));
-
-            for tc in &response.tool_calls {
-                if cancel.is_cancelled() { break; }
-
-                app.emit("chat-stream", serde_json::json!({
-                    "type": "tool_call",
+                    "type": "tool_approval_req",
                     "call_id": tc.id,
                     "tool_name": tc.name,
                     "arguments": tc.arguments,
                     "message_id": &assistant_msg_id,
                 })).map_err(|e| e.to_string())?;
-
-                let tool_allowed = enabled_tools.as_ref()
-                    .map(|e| e.contains(&tc.name))
-                    .unwrap_or(true);
-                let is_mcp = tc.name.starts_with("mcp__");
-                let tool = if tool_allowed && !is_mcp { tool_registry.0.get(&tc.name) } else { None };
-                let result = if !tool_allowed {
-                    "Tool not available for this assistant.".to_string()
-                } else if is_mcp {
-                    let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
-                    let mcp = app.state::<AppMcp>();
-                    let mut mgr = mcp.0.lock().await;
-                    match mgr.call_tool(&tc.name, args).await {
-                        Ok(output) => output,
-                        Err(e) => format!("MCP error: {e}"),
-                    }
-                } else if tc.name == "ask_user" {
-                    let (tx, rx) = oneshot::channel();
-                    {
-                        let waiters = app.state::<ApprovalWaiters>();
-                        let mut map = waiters.0.lock().await;
-                        map.insert(tc.id.clone(), tx);
-                    }
-                    app.emit("chat-stream", serde_json::json!({
-                        "type": "tool_approval_req",
-                        "call_id": tc.id,
-                        "tool_name": tc.name,
-                        "arguments": tc.arguments,
-                        "message_id": &assistant_msg_id,
-                    })).map_err(|e| e.to_string())?;
-                    match rx.await {
-                        Ok(ApprovalDecision::Response(text)) => text,
-                        _ => "User did not respond.".to_string(),
-                    }
-                } else if let Some(tool) = tool {
-                    let permission = tool.default_permission();
-                    let approved = match permission {
-                        tools::Permission::Always => true,
-                        tools::Permission::Never => false,
-                        tools::Permission::Ask => {
-                            let (tx, rx) = oneshot::channel();
-                            {
-                                let waiters = app.state::<ApprovalWaiters>();
-                                let mut map = waiters.0.lock().await;
-                                map.insert(tc.id.clone(), tx);
-                            }
-                            app.emit("chat-stream", serde_json::json!({
-                                "type": "tool_approval_req",
-                                "call_id": tc.id,
-                                "tool_name": tc.name,
-                                "arguments": tc.arguments,
-                                "message_id": &assistant_msg_id,
-                            })).map_err(|e| e.to_string())?;
-                            match rx.await {
-                                Ok(ApprovalDecision::Approved) => true,
-                                _ => false,
-                            }
+                match rx.await {
+                    Ok(ApprovalDecision::Response(text)) => text,
+                    _ => "User did not respond.".to_string(),
+                }
+            } else if let Some(tool) = tool {
+                let permission = tool.default_permission();
+                let (approved, deny_reason): (bool, Option<String>) = match permission {
+                    tools::Permission::Always => (true, None),
+                    tools::Permission::Never => (false, None),
+                    tools::Permission::Ask => {
+                        let (tx, rx) = oneshot::channel();
+                        {
+                            let waiters = app.state::<ApprovalWaiters>();
+                            let mut map = waiters.0.lock().await;
+                            map.insert(tc.id.clone(), tx);
                         }
-                    };
-                    if approved {
-                        let args: serde_json::Value = serde_json::from_str(&tc.arguments)
-                            .unwrap_or_default();
-                        match tool.execute(args, &tool_context).await {
-                            Ok(output) => output,
-                            Err(e) => format!("Error: {e}"),
+                        app.emit("chat-stream", serde_json::json!({
+                            "type": "tool_approval_req",
+                            "call_id": tc.id,
+                            "tool_name": tc.name,
+                            "arguments": tc.arguments,
+                            "message_id": &assistant_msg_id,
+                        })).map_err(|e| e.to_string())?;
+                        match rx.await {
+                            Ok(ApprovalDecision::Approved) => (true, None),
+                            Ok(ApprovalDecision::Denied(reason)) => (false, reason),
+                            _ => (false, None),
                         }
-                    } else {
-                        "Tool call denied by user.".to_string()
                     }
-                } else {
-                    format!("Unknown tool: {}", tc.name)
                 };
+                if approved {
+                    let args: serde_json::Value = serde_json::from_str(&tc.arguments)
+                        .unwrap_or_default();
+                    match tool.execute(args, &tool_context).await {
+                        Ok(output) => output,
+                        Err(e) => format!("Error: {e}"),
+                    }
+                } else if let Some(reason) = deny_reason {
+                    format!("Tool call denied by user. Reason: {reason}")
+                } else {
+                    "Tool call denied by user.".to_string()
+                }
+            } else {
+                format!("Unknown tool: {}", tc.name)
+            };
 
-                app.emit("chat-stream", serde_json::json!({
-                    "type": "tool_result",
+            app.emit("chat-stream", serde_json::json!({
+                "type": "tool_result",
+                "call_id": tc.id,
+                "result": &result,
+                "message_id": &assistant_msg_id,
+            })).map_err(|e| e.to_string())?;
+
+            blocks.push(serde_json::json!({
+                "type": "tool_call",
+                "data": {
                     "call_id": tc.id,
-                    "result": &result,
-                    "message_id": &assistant_msg_id,
-                })).map_err(|e| e.to_string())?;
-
-                // Collect block for persistence
-                blocks.push(serde_json::json!({
-                    "type": "tool_call",
-                    "data": {
-                        "call_id": tc.id,
-                        "tool_name": tc.name,
-                        "arguments": tc.arguments,
-                        "status": "completed",
-                        "result": &result
-                    }
-                }));
-
-                // Persist tool result as a separate message (for model context)
-                {
-                    let pool = pool.clone();
-                    let conv_id = conversation_id.clone();
-                    let tool_msg_id = uuid::Uuid::new_v4().to_string();
-                    let call_id = tc.id.clone();
-                    let tool_result = result.clone();
-                    let _ = tokio::task::spawn_blocking(move || {
-                        if let Ok(mut conn) = pool.get() {
-                            let _ = db::ops::message::insert_message(&mut conn, &NewMessage {
-                                id: &tool_msg_id, conversation_id: &conv_id, role: "tool",
-                                content: &tool_result, provider_id: None, model_id: None,
-                                input_tokens: None, output_tokens: None,
-                                tool_calls: None, tool_call_id: Some(&call_id),
-                                sort_order: 0, created_at: now,
-                            });
-                        }
-                    }).await;
+                    "tool_name": tc.name,
+                    "arguments": tc.arguments,
+                    "status": "completed",
+                    "result": &result
                 }
+            }));
 
-                chat_messages.push(ChatMessage::tool_result(&tc.id, &result));
+            {
+                let pool = pool.clone();
+                let conv_id = conversation_id.clone();
+                let tool_msg_id = uuid::Uuid::new_v4().to_string();
+                let call_id = tc.id.clone();
+                let tool_result = result.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Ok(mut conn) = pool.get() {
+                        let _ = db::ops::message::insert_message(&mut conn, &NewMessage {
+                            id: &tool_msg_id, conversation_id: &conv_id, role: "tool",
+                            content: &tool_result, provider_id: None, model_id: None,
+                            input_tokens: None, output_tokens: None,
+                            tool_calls: None, tool_call_id: Some(&call_id),
+                            sort_order: 0, created_at: now,
+                        });
+                    }
+                }).await;
             }
 
-            if cancel.is_cancelled() { break; }
-            trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
+            chat_messages.push(ChatMessage::tool_result(&tc.id, &result));
         }
 
-        // Persist assistant message: content + blocks JSON + tokens
-        {
-            let pool = pool.clone();
-            let msg_id = assistant_msg_id.clone();
-            let content = full_content.clone();
-            let blocks_json = if blocks.is_empty() { None } else {
-                serde_json::to_string(&blocks).ok()
-            };
-            let inp = total_input_tokens;
-            let out = total_output_tokens;
-            tokio::task::spawn_blocking(move || {
-                if let Ok(mut conn) = pool.get() {
-                    let _ = db::ops::message::update_content_and_tool_calls(
-                        &mut conn, &msg_id, &content, blocks_json.as_deref()
-                    );
-                    if inp > 0 || out > 0 {
-                        let _ = db::ops::message::update_tokens(
-                            &mut conn, &msg_id, Some(inp), Some(out)
-                        );
-                    }
+        if cancel.is_cancelled() { break; }
+        trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
+    }
+
+    // Persist assistant message
+    {
+        let pool = pool.clone();
+        let msg_id = assistant_msg_id.clone();
+        let content = full_content.clone();
+        let blocks_json = if blocks.is_empty() { None } else {
+            serde_json::to_string(&blocks).ok()
+        };
+        let inp = total_input_tokens;
+        let out = total_output_tokens;
+        tokio::task::spawn_blocking(move || {
+            if let Ok(mut conn) = pool.get() {
+                if let Some(ref bj) = blocks_json {
+                    let _ = db::ops::message::update_content_and_tool_calls(&mut conn, &msg_id, &content, Some(bj));
+                } else {
+                    let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
                 }
-            }).await.map_err(|e| e.to_string())?;
-        }
-    } else {
-        // Simple streaming (no tools)
-        let mut stream = provider.stream_chat(chat_messages, params.clone())
-            .await.map_err(|e| e.to_string())?;
-        let mut reasoning_buf = String::new();
-
-        use futures::StreamExt;
-        loop {
-            tokio::select! {
-                _ = cancel.cancelled() => { break; }
-                chunk = stream.next() => {
-                    match chunk {
-                        Some(Ok(provider::StreamEvent::Text(content))) => {
-                            full_content.push_str(&content);
-                            app.emit("chat-stream", serde_json::json!({
-                                "content": content, "done": false, "message_id": &assistant_msg_id,
-                            })).map_err(|e| e.to_string())?;
-                        }
-                        Some(Ok(provider::StreamEvent::Reasoning(content))) => {
-                            reasoning_buf.push_str(&content);
-                            app.emit("chat-stream", serde_json::json!({
-                                "type": "reasoning", "content": content,
-                                "done": false, "message_id": &assistant_msg_id,
-                            })).map_err(|e| e.to_string())?;
-                        }
-                        Some(Err(e)) => {
-                            let pool = pool.clone();
-                            let msg_id = assistant_msg_id.clone();
-                            let content = full_content.clone();
-                            let _ = tokio::task::spawn_blocking(move || {
-                                if let Ok(mut conn) = pool.get() {
-                                    let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
-                                }
-                            }).await;
-                            {
-                                let chats = app.state::<ActiveChats>();
-                                chats.0.lock().await.remove(&conversation_id);
-                            }
-                            return Err(e.to_string());
-                        }
-                        None => { break; }
-                    }
+                if inp > 0 || out > 0 {
+                    let _ = db::ops::message::update_tokens(&mut conn, &msg_id, Some(inp), Some(out));
                 }
             }
-        }
-
-        // Persist final content (with reasoning as blocks if present)
-        {
-            let pool = pool.clone();
-            let msg_id = assistant_msg_id.clone();
-            let content = full_content.clone();
-            let blocks_json = if reasoning_buf.is_empty() { None } else {
-                let b = vec![
-                    serde_json::json!({"type": "thinking", "text": reasoning_buf}),
-                    serde_json::json!({"type": "text", "text": &content}),
-                ];
-                serde_json::to_string(&b).ok()
-            };
-            tokio::task::spawn_blocking(move || {
-                if let Ok(mut conn) = pool.get() {
-                    if let Some(ref bj) = blocks_json {
-                        let _ = db::ops::message::update_content_and_tool_calls(&mut conn, &msg_id, &content, Some(bj));
-                    } else {
-                        let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
-                    }
-                }
-            }).await.map_err(|e| e.to_string())?;
-        }
+        }).await.map_err(|e| e.to_string())?;
     }
 
     // Clean up cancel token

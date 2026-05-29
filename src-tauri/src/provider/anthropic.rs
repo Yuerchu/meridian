@@ -19,24 +19,56 @@ impl AnthropicProvider {
         }
     }
 
-    fn build_request(&self, messages: &[ChatMessage], params: &ChatParams, stream: bool) -> Request {
+    fn serialize_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+        messages.iter()
+            .filter(|m| m.role != "system")
+            .map(|m| {
+                if m.role == "assistant" {
+                    if let Some(ref tcs) = m.tool_calls {
+                        let mut content: Vec<serde_json::Value> = Vec::new();
+                        if !m.content.is_empty() {
+                            content.push(serde_json::json!({"type": "text", "text": m.content}));
+                        }
+                        for tc in tcs {
+                            let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
+                            content.push(serde_json::json!({
+                                "type": "tool_use", "id": tc.id, "name": tc.name, "input": args
+                            }));
+                        }
+                        return serde_json::json!({"role": "assistant", "content": content});
+                    }
+                }
+                if m.role == "tool" {
+                    return serde_json::json!({
+                        "role": "user",
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": m.tool_call_id.as_deref().unwrap_or(""),
+                            "content": m.content,
+                        }]
+                    });
+                }
+                serde_json::json!({"role": m.role, "content": m.content})
+            })
+            .collect()
+    }
+
+    fn build_request(
+        &self,
+        messages: &[ChatMessage],
+        tools: Option<&[ToolDefinition]>,
+        params: &ChatParams,
+        stream: bool,
+    ) -> Request {
         let system = messages.iter()
             .filter(|m| m.role == "system")
             .map(|m| m.content.as_str())
             .collect::<Vec<_>>()
             .join("\n\n");
 
-        let api_messages: Vec<serde_json::Value> = messages.iter()
-            .filter(|m| m.role != "system")
-            .map(|m| serde_json::json!({
-                "role": m.role,
-                "content": m.content,
-            }))
-            .collect();
-
         let mut body = serde_json::json!({
             "model": params.model,
-            "messages": api_messages,
+            "messages": Self::serialize_messages(messages),
             "stream": stream,
         });
 
@@ -68,6 +100,18 @@ impl AnthropicProvider {
             body["top_p"] = serde_json::json!(p);
         }
 
+        if let Some(tools) = tools {
+            if !tools.is_empty() {
+                body["tools"] = serde_json::json!(tools.iter().map(|t| {
+                    serde_json::json!({
+                        "name": t.name,
+                        "description": t.description,
+                        "input_schema": t.parameters,
+                    })
+                }).collect::<Vec<_>>());
+            }
+        }
+
         let mut req = Request::new(
             http::Method::POST,
             format!("{}/v1/messages", self.base_url),
@@ -83,8 +127,10 @@ impl AnthropicProvider {
 struct AnthropicStreamEvent {
     #[serde(rename = "type")]
     event_type: String,
+    index: Option<usize>,
     delta: Option<AnthropicDelta>,
     content_block: Option<AnthropicContentBlock>,
+    usage: Option<AnthropicUsage>,
 }
 
 #[derive(Deserialize)]
@@ -93,6 +139,8 @@ struct AnthropicDelta {
     delta_type: Option<String>,
     text: Option<String>,
     thinking: Option<String>,
+    partial_json: Option<String>,
+    stop_reason: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -100,46 +148,95 @@ struct AnthropicContentBlock {
     #[serde(rename = "type")]
     block_type: Option<String>,
     text: Option<String>,
+    id: Option<String>,
+    name: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AnthropicUsage {
+    input_tokens: Option<i32>,
+    output_tokens: Option<i32>,
 }
 
 #[async_trait]
 impl ChatProvider for AnthropicProvider {
-    async fn stream_chat(
+    async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,
+        tools: Vec<ToolDefinition>,
         params: ChatParams,
     ) -> Result<ChatStream, ProviderError> {
+        let tools_opt = if tools.is_empty() { None } else { Some(tools.as_slice()) };
         let transport = ReqwestTransport::new(reqwest::Client::new());
-        let req = self.build_request(&messages, &params, true);
+        let req = self.build_request(&messages, tools_opt, &params, true);
         let resp = transport.stream(req).await?;
 
         let stream = resp.bytes
-            .map(|r| r.map_err(|e| ProviderError::Transport(e)))
+            .map(|r| r.map_err(ProviderError::Transport))
             .eventsource()
-            .filter_map(|event| async {
-                match event {
+            .flat_map(|event| {
+                let events: Vec<Result<StreamEvent, ProviderError>> = match event {
                     Ok(ev) => {
-                        let parsed = serde_json::from_str::<AnthropicStreamEvent>(&ev.data).ok()?;
+                        let parsed = match serde_json::from_str::<AnthropicStreamEvent>(&ev.data) {
+                            Ok(p) => p,
+                            Err(e) => return futures::stream::iter(vec![Err(ProviderError::Parse(e.to_string()))]),
+                        };
+                        let mut out = Vec::new();
                         match parsed.event_type.as_str() {
-                            "content_block_delta" => {
-                                let delta = parsed.delta?;
-                                match delta.delta_type.as_deref() {
-                                    Some("thinking_delta") => {
-                                        let text = delta.thinking?;
-                                        if text.is_empty() { None } else { Some(Ok(StreamEvent::Reasoning(text))) }
-                                    }
-                                    _ => {
-                                        let text = delta.text?;
-                                        if text.is_empty() { None } else { Some(Ok(StreamEvent::Text(text))) }
+                            "content_block_start" => {
+                                if let Some(ref cb) = parsed.content_block {
+                                    if cb.block_type.as_deref() == Some("tool_use") {
+                                        if let (Some(id), Some(name)) = (&cb.id, &cb.name) {
+                                            out.push(Ok(StreamEvent::ToolCallStart {
+                                                index: parsed.index.unwrap_or(0),
+                                                id: id.clone(),
+                                                name: name.clone(),
+                                            }));
+                                        }
                                     }
                                 }
                             }
-                            "message_stop" | "error" => None,
-                            _ => None,
+                            "content_block_delta" => {
+                                if let Some(ref delta) = parsed.delta {
+                                    match delta.delta_type.as_deref() {
+                                        Some("thinking_delta") => {
+                                            if let Some(ref t) = delta.thinking {
+                                                if !t.is_empty() {
+                                                    out.push(Ok(StreamEvent::Reasoning(t.clone())));
+                                                }
+                                            }
+                                        }
+                                        Some("input_json_delta") => {
+                                            if let Some(ref pj) = delta.partial_json {
+                                                out.push(Ok(StreamEvent::ToolCallDelta {
+                                                    index: parsed.index.unwrap_or(0),
+                                                    arguments: pj.clone(),
+                                                }));
+                                            }
+                                        }
+                                        _ => {
+                                            if let Some(ref t) = delta.text {
+                                                if !t.is_empty() {
+                                                    out.push(Ok(StreamEvent::Text(t.clone())));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            "message_delta" => {
+                                // usage and stop_reason handled at Done
+                            }
+                            "message_stop" => {
+                                // We'll handle Done after the stream ends
+                            }
+                            _ => {}
                         }
+                        out
                     }
-                    Err(e) => Some(Err(ProviderError::Parse(e.to_string()))),
-                }
+                    Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
+                };
+                futures::stream::iter(events)
             });
 
         Ok(Box::pin(stream))
@@ -151,7 +248,7 @@ impl ChatProvider for AnthropicProvider {
         params: ChatParams,
     ) -> Result<String, ProviderError> {
         let transport = ReqwestTransport::new(reqwest::Client::new());
-        let req = self.build_request(&messages, &params, false);
+        let req = self.build_request(&messages, None, &params, false);
         let resp = transport.execute(req).await?;
 
         let parsed: serde_json::Value = serde_json::from_slice(&resp.body)
@@ -170,86 +267,7 @@ impl ChatProvider for AnthropicProvider {
         params: ChatParams,
     ) -> Result<AgentResponse, ProviderError> {
         let transport = ReqwestTransport::new(reqwest::Client::new());
-
-        let system = messages.iter()
-            .filter(|m| m.role == "system")
-            .map(|m| m.content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-
-        let api_messages: Vec<serde_json::Value> = messages.iter()
-            .filter(|m| m.role != "system")
-            .map(|m| {
-                if m.role == "assistant" {
-                    if let Some(ref tcs) = m.tool_calls {
-                        let mut content: Vec<serde_json::Value> = Vec::new();
-                        if !m.content.is_empty() {
-                            content.push(serde_json::json!({"type": "text", "text": m.content}));
-                        }
-                        for tc in tcs {
-                            let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
-                            content.push(serde_json::json!({
-                                "type": "tool_use", "id": tc.id, "name": tc.name, "input": args
-                            }));
-                        }
-                        return serde_json::json!({"role": "assistant", "content": content});
-                    }
-                }
-                if m.role == "tool" {
-                    return serde_json::json!({
-                        "role": "user",
-                        "content": [{
-                            "type": "tool_result",
-                            "tool_use_id": m.tool_call_id.as_deref().unwrap_or(""),
-                            "content": m.content,
-                        }]
-                    });
-                }
-                serde_json::json!({"role": m.role, "content": m.content})
-            })
-            .collect();
-
-        let mut body = serde_json::json!({
-            "model": params.model,
-            "messages": api_messages,
-        });
-        if let Some(m) = params.max_tokens {
-            body["max_tokens"] = serde_json::json!(m);
-        }
-        if params.thinking_enabled {
-            if let Some(budget) = params.thinking_budget {
-                body["thinking"] = serde_json::json!({"type": "enabled", "budget_tokens": budget});
-            }
-        }
-        if let Some(ref effort) = params.thinking_effort {
-            body["output_config"] = serde_json::json!({"effort": effort});
-        }
-        if !system.is_empty() {
-            body["system"] = serde_json::json!(system);
-        }
-        if !params.thinking_enabled {
-            if let Some(t) = params.temperature {
-                body["temperature"] = serde_json::json!(t);
-            }
-        }
-        if !tools.is_empty() {
-            body["tools"] = serde_json::json!(tools.iter().map(|t| {
-                serde_json::json!({
-                    "name": t.name,
-                    "description": t.description,
-                    "input_schema": t.parameters,
-                })
-            }).collect::<Vec<_>>());
-        }
-
-        let mut req = Request::new(
-            http::Method::POST,
-            format!("{}/v1/messages", self.base_url.trim_end_matches('/')),
-        );
-        req.headers.insert("x-api-key", self.api_key.parse().unwrap());
-        req.headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
-        req.body = Some(RequestBody::Json(body));
-
+        let req = self.build_request(&messages, Some(&tools), &params, false);
         let resp = transport.execute(req).await?;
         let parsed: serde_json::Value = serde_json::from_slice(&resp.body)
             .map_err(|e| ProviderError::Parse(e.to_string()))?;

@@ -90,9 +90,9 @@ const MarkdownContent = React.memo(function MarkdownContent({ content, isStreami
 
 const MemoToolCallBlock = React.memo(ToolCallBlock)
 
-function ThinkingBlock({ text, isStreaming }: { text: string; isStreaming?: boolean }) {
+function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; isStreaming?: boolean; defaultExpanded?: boolean }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(!!isStreaming)
+  const [expanded, setExpanded] = useState(!!isStreaming || !!defaultExpanded)
 
   return (
     <div className="my-2 rounded-lg border border-border/50 overflow-hidden">
@@ -116,9 +116,9 @@ function ThinkingBlock({ text, isStreaming }: { text: string; isStreaming?: bool
   )
 }
 
-function AssistantBlock({ block, isLast, isStreaming }: { block: ContentBlock; isLast: boolean; isStreaming?: boolean }) {
+function AssistantBlock({ block, isLast, isStreaming, isLastMessage }: { block: ContentBlock; isLast: boolean; isStreaming?: boolean; isLastMessage?: boolean }) {
   if (block.type === 'thinking') {
-    return <ThinkingBlock text={block.text} isStreaming={isLast && isStreaming} />
+    return <ThinkingBlock text={block.text} isStreaming={isLast && isStreaming} defaultExpanded={!!isLastMessage && isLast} />
   }
   if (block.type === 'text') {
     return <MarkdownContent content={block.text} isStreaming={isLast && isStreaming} />
@@ -132,11 +132,12 @@ function AssistantBlock({ block, isLast, isStreaming }: { block: ContentBlock; i
 interface MessageItemProps {
   message: Message
   isStreaming?: boolean
+  isLastMessage?: boolean
   onDelete?: (id: string) => void
   onRegenerate?: (id: string) => void
 }
 
-export function MessageItem({ message, isStreaming, onDelete, onRegenerate }: MessageItemProps) {
+export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate }: MessageItemProps) {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime()
   const isUser = message.role === 'user'
@@ -166,7 +167,7 @@ export function MessageItem({ message, isStreaming, onDelete, onRegenerate }: Me
       <div className="pl-8">
         {(message._blocks && message._blocks.length > 0) ? (
           message._blocks.map((block, i) => (
-            <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} />
+            <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} />
           ))
         ) : (
           <MarkdownContent content={message.content} isStreaming={isStreaming} />

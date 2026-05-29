@@ -317,11 +317,12 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
             {error}
           </div>
         )}
-        {visibleMessages.map((m) => (
+        {visibleMessages.map((m, i) => (
           <MessageItem
             key={m.id}
             message={m}
             isStreaming={streaming && m.id.startsWith('temp-assistant-')}
+            isLastMessage={i === visibleMessages.length - 1}
             onDelete={handleDelete}
             onRegenerate={m.role === 'assistant' ? handleRegenerate : undefined}
           />

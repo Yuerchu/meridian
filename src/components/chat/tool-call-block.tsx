@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Wrench, Check, X, Loader2, MessageCircleQuestion, Send, SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck } from 'lucide-react'
+import { Wrench, Check, X, Loader2, MessageCircleQuestion, Send, SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { api } from '@/api'
 import type { ToolCallDisplay } from '@/types'
@@ -254,8 +254,64 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   )
 }
 
+function PendingApproval({ callId }: { callId: string }) {
+  const { t } = useTranslation()
+  const [showFeedback, setShowFeedback] = useState(false)
+  const [feedback, setFeedback] = useState('')
+
+  if (!showFeedback) {
+    return (
+      <div className="flex gap-2 px-3 py-2 border-t border-border bg-muted/10">
+        <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => api.approveToolCall(callId)}>
+          <Check className="w-3 h-3" />
+          {t('chat.tool.allow')}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs text-destructive hover:text-destructive"
+          onClick={() => setShowFeedback(true)}
+        >
+          <X className="w-3 h-3" />
+          {t('chat.tool.deny')}
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="px-3 py-2 border-t border-border bg-muted/10 space-y-2">
+      <input
+        type="text"
+        value={feedback}
+        onChange={(e) => setFeedback(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') api.denyToolCall(callId, feedback || undefined) }}
+        placeholder={t('chat.tool.denyReasonPlaceholder')}
+        className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-ring"
+        autoFocus
+      />
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 text-xs text-destructive hover:text-destructive"
+          onClick={() => api.denyToolCall(callId, feedback || undefined)}
+        >
+          <X className="w-3 h-3" />
+          {feedback.trim() ? t('chat.tool.denyWithReason') : t('chat.tool.deny')}
+        </Button>
+        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowFeedback(false)}>
+          {t('chat.tool.cancel')}
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
   const { t } = useTranslation()
+  const isCompleted = data.status === 'completed' || data.status === 'denied'
+  const [expanded, setExpanded] = useState(!isCompleted)
 
   if (data.tool_name === 'ask_user') {
     return <AskUserBlock data={data} />
@@ -270,59 +326,48 @@ export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
 
   return (
     <div className="my-3 border border-border rounded-lg overflow-hidden text-xs">
-      <div className="flex items-center gap-2 px-3 py-2 bg-muted/30">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-2 px-3 py-2 bg-muted/30 w-full text-left hover:bg-muted/50 transition-colors"
+      >
         <Wrench className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="font-medium text-foreground">{data.tool_name}</span>
         {data.status === 'running' && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground ml-auto" />}
         {data.status === 'completed' && <Check className="w-3 h-3 text-green-500 ml-auto" />}
         {data.status === 'denied' && <X className="w-3 h-3 text-destructive ml-auto" />}
-      </div>
+        {expanded
+          ? <ChevronDown className="w-3 h-3 text-muted-foreground" />
+          : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
+      </button>
 
-      <div className="px-3 py-2 space-y-1 text-muted-foreground">
-        {Object.entries(parsedArgs).map(([key, value]) => (
-          <div key={key}>
-            <span className="text-muted-foreground/60">{key}:</span>{' '}
-            <span className="text-foreground">{String(value).length > 200 ? `${String(value).slice(0, 200)}...` : String(value)}</span>
+      {expanded && (
+        <>
+          <div className="px-3 py-2 space-y-1 text-muted-foreground">
+            {Object.entries(parsedArgs).map(([key, value]) => (
+              <div key={key}>
+                <span className="text-muted-foreground/60">{key}:</span>{' '}
+                <span className="text-foreground">{String(value).length > 200 ? `${String(value).slice(0, 200)}...` : String(value)}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      {data.status === 'pending' && (
-        <div className="flex gap-2 px-3 py-2 border-t border-border bg-muted/10">
-          <Button
-            size="sm"
-            variant="default"
-            className="h-7 text-xs"
-            onClick={() => api.approveToolCall(data.call_id)}
-          >
-            <Check className="w-3 h-3" />
-            {t('chat.tool.allow')}
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs text-destructive hover:text-destructive"
-            onClick={() => api.denyToolCall(data.call_id)}
-          >
-            <X className="w-3 h-3" />
-            {t('chat.tool.deny')}
-          </Button>
-        </div>
-      )}
+          {data.status === 'pending' && <PendingApproval callId={data.call_id} />}
 
-      {data.status === 'running' && (
-        <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/10 text-muted-foreground">
-          <Loader2 className="w-3 h-3 animate-spin" />
-          <span className="text-[11px]">{t('chat.tool.running')}</span>
-        </div>
-      )}
+          {data.status === 'running' && (
+            <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/10 text-muted-foreground">
+              <Loader2 className="w-3 h-3 animate-spin" />
+              <span className="text-[11px]">{t('chat.tool.running')}</span>
+            </div>
+          )}
 
-      {data.result && (
-        <div className="px-3 py-2 border-t border-border bg-muted/10">
-          <pre className="whitespace-pre-wrap text-foreground max-h-40 overflow-y-auto text-[11px]">
-            {data.result.length > 1000 ? `${data.result.slice(0, 1000)}...` : data.result}
-          </pre>
-        </div>
+          {data.result && (
+            <div className="px-3 py-2 border-t border-border bg-muted/10">
+              <pre className="whitespace-pre-wrap text-foreground max-h-40 overflow-y-auto text-[11px]">
+                {data.result.length > 1000 ? `${data.result.slice(0, 1000)}...` : data.result}
+              </pre>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
