@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Plug, PlugZap, Trash2 } from 'lucide-react'
+import { Plus, Plug, PlugZap, Trash2, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
 import type { McpServer, McpToolDef } from '@/types'
 
@@ -134,6 +135,7 @@ function McpServerEditor({
 
 export function McpSettings() {
   const { t } = useTranslation()
+  const isMobile = useIsMobile()
   const [servers, setServers] = useState<McpServer[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
 
@@ -157,6 +159,66 @@ export function McpSettings() {
 
   const selected = servers.find((s) => s.id === selectedId)
 
+  const serverList = (
+    <div className="space-y-1">
+      {servers.map((s) => (
+        <button
+          key={s.id}
+          onClick={() => setSelectedId(s.id)}
+          className={cn(
+            'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors',
+            selectedId === s.id
+              ? 'bg-accent text-accent-foreground'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <Plug className="w-3.5 h-3.5" />
+            {s.name}
+          </div>
+        </button>
+      ))}
+    </div>
+  )
+
+  if (isMobile) {
+    return (
+      <div className="max-w-3xl">
+        {selected ? (
+          <>
+            <button
+              onClick={() => setSelectedId(null)}
+              className="flex items-center gap-2 text-sm text-muted-foreground mb-4 hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              {t('common.back')}
+            </button>
+            <McpServerEditor
+              key={selected.id}
+              server={selected}
+              onUpdate={refresh}
+              onDelete={handleDelete}
+            />
+          </>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold">{t('settings.mcp.title')}</h2>
+              <Button size="sm" variant="outline" onClick={handleAdd}>
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+            {servers.length === 0 ? (
+              <p className="text-sm text-muted-foreground">{t('settings.mcp.noServers')}</p>
+            ) : (
+              serverList
+            )}
+          </>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-3xl">
       <div className="flex items-center justify-between mb-4">
@@ -171,25 +233,7 @@ export function McpSettings() {
       ) : (
         <div className="flex gap-4">
           <ScrollArea className="w-48 flex-shrink-0">
-            <div className="space-y-1">
-              {servers.map((s) => (
-                <button
-                  key={s.id}
-                  onClick={() => setSelectedId(s.id)}
-                  className={cn(
-                    'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors',
-                    selectedId === s.id
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <Plug className="w-3.5 h-3.5" />
-                    {s.name}
-                  </div>
-                </button>
-              ))}
-            </div>
+            {serverList}
           </ScrollArea>
 
           <div className="flex-1">

@@ -121,6 +121,7 @@
   "toolbar.thinking.highDesc": "高强度推理",
   "toolbar.thinking.max": "穷究",
   "toolbar.thinking.maxDesc": "最大强度推理",
+  "common.back": "返回",
   "common.save": "保存",
   "common.saved": "已保存",
   "common.delete": "删除",

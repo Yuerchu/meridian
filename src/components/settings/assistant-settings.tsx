@@ -88,7 +88,7 @@ function AssistantEditor({
         />
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label className="block text-[11px] text-muted-foreground">{t('settings.assistant.provider')}</label>
           <Select value={providerId || '_default'} onValueChange={(v) => { setProviderId(!v || v === '_default' ? '' : v); setModelId('') }}>
@@ -127,7 +127,7 @@ function AssistantEditor({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label className="block text-[11px] text-muted-foreground">{t('settings.assistant.temperature')}</label>
           <Input
@@ -187,7 +187,7 @@ function AssistantEditor({
           >{t('settings.assistant.toolsCustom')}</Button>
         </div>
         {toolMode === 'custom' && (
-          <div className="grid grid-cols-2 gap-1 max-h-40 overflow-y-auto p-2 border border-border rounded-lg">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-1 max-h-40 overflow-y-auto p-2 border border-border rounded-lg">
             {allTools.map((tool) => (
               <label key={tool.name} className="flex items-center gap-1.5 text-xs cursor-pointer py-0.5">
                 <Checkbox

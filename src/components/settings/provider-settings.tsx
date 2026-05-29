@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Check, RefreshCw, Trash2, Cloud, Key } from 'lucide-react'
+import { Plus, Check, RefreshCw, Trash2, Cloud, Key, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
 import type { Provider, ModelInfo } from '@/types'
 
@@ -157,6 +158,7 @@ function ProviderEditor({
 
 export function ProviderSettings() {
   const { t } = useTranslation()
+  const isMobile = useIsMobile()
   const [providers, setProviders] = useState<Provider[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -196,6 +198,63 @@ export function ProviderSettings() {
 
   const selected = providers.find((p) => p.id === selectedId)
 
+  const providerList = (
+    <>
+      {providers.map((p) => (
+        <button
+          key={p.id}
+          onClick={() => setSelectedId(p.id)}
+          className={cn(
+            'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors',
+            selectedId === p.id
+              ? 'bg-accent text-accent-foreground'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+          )}
+        >
+          <Cloud className="w-4 h-4 flex-shrink-0" />
+          <span className="truncate">{p.name}</span>
+        </button>
+      ))}
+      {providers.length === 0 && (
+        <p className="text-xs text-muted-foreground px-3">{t('settings.provider.noProviders')}</p>
+      )}
+    </>
+  )
+
+  if (isMobile) {
+    return (
+      <div className="max-w-3xl">
+        {selected ? (
+          <>
+            <button
+              onClick={() => setSelectedId(null)}
+              className="flex items-center gap-2 text-sm text-muted-foreground mb-4 hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              {t('common.back')}
+            </button>
+            <ProviderEditor
+              key={selected.id}
+              provider={selected}
+              onUpdate={refresh}
+              onDelete={handleDelete}
+            />
+          </>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-medium">{t('settings.provider.title')}</h2>
+              <Button variant="ghost" size="icon" onClick={handleCreate} title={t('settings.provider.addProvider')}>
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+            {providerList}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="flex gap-6 max-w-3xl">
       <div className="w-44 flex-shrink-0 space-y-2">
@@ -205,24 +264,7 @@ export function ProviderSettings() {
             <Plus className="w-4 h-4" />
           </Button>
         </div>
-        {providers.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => setSelectedId(p.id)}
-            className={cn(
-              'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors',
-              selectedId === p.id
-                ? 'bg-accent text-accent-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-            )}
-          >
-            <Cloud className="w-4 h-4 flex-shrink-0" />
-            <span className="truncate">{p.name}</span>
-          </button>
-        ))}
-        {providers.length === 0 && (
-          <p className="text-xs text-muted-foreground px-3">{t('settings.provider.noProviders')}</p>
-        )}
+        {providerList}
       </div>
 
       <div className="flex-1 min-w-0">

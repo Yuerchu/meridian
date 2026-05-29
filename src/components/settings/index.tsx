@@ -23,14 +23,14 @@ export default function SettingsPage() {
   ]
 
   return (
-    <div className="flex h-full">
-      <nav className="w-48 border-r border-border p-3 space-y-1 flex-shrink-0">
+    <div className="flex flex-col md:flex-row h-full">
+      <nav className="flex md:flex-col md:w-48 md:border-r border-border md:p-3 md:space-y-1 flex-shrink-0 overflow-x-auto border-b md:border-b-0 p-1 gap-1">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
+              'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors whitespace-nowrap flex-shrink-0 md:w-full',
               activeTab === tab.id
                 ? 'bg-accent text-accent-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
@@ -42,7 +42,7 @@ export default function SettingsPage() {
         ))}
       </nav>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {activeTab === 'provider' && <ProviderSettings />}
         {activeTab === 'assistants' && <AssistantSettings />}
         {activeTab === 'mcp' && <McpSettings />}
