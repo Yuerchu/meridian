@@ -44,11 +44,16 @@ function ProviderEditor({
 
   const handleSaveKey = useCallback(async () => {
     if (!apiKey.trim()) return
-    await api.setProviderKey(provider.id, apiKey.trim())
-    setHasKey(true)
-    setApiKey('')
-    setKeySaved(true)
-    setTimeout(() => setKeySaved(false), 2000)
+    try {
+      await api.setProviderKey(provider.id, apiKey.trim())
+      setHasKey(true)
+      setApiKey('')
+      setKeySaved(true)
+      setTimeout(() => setKeySaved(false), 2000)
+    } catch (err) {
+      console.error('Failed to save key:', err)
+      alert(String(err))
+    }
   }, [provider.id, apiKey])
 
   const handleFetchModels = useCallback(async () => {

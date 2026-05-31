@@ -1212,9 +1212,6 @@ async fn chat(
 pub fn run() {
     tracing_subscriber::fmt::init();
 
-    #[cfg(target_os = "android")]
-    android_keyring::set_android_keyring_credential_builder();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1352,6 +1349,33 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(target_os = "android")]
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_initNdkContext(
+    env: jni::JNIEnv,
+    _class: jni::objects::JObject,
+    context: jni::objects::JObject,
+) {
+    use std::ffi::c_void;
+    use std::sync::OnceLock;
+    use jni::objects::GlobalRef;
+
+    static REF: OnceLock<Option<GlobalRef>> = OnceLock::new();
+    REF.get_or_init(|| match env.new_global_ref(&context) {
+        Ok(ref_) => {
+            let vm = env.get_java_vm().unwrap();
+            let vm = vm.get_java_vm_pointer() as *mut c_void;
+            unsafe {
+                ndk_context::initialize_android_context(vm, ref_.as_obj().as_raw() as _);
+            }
+            android_keyring::set_android_keyring_credential_builder();
+            Some(ref_)
+        }
+        Err(_) => None,
+    });
 }
 
 #[cfg(test)]
