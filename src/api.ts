@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, Conversation, McpServer, McpToolDef, Message, ModelInfo, Project, Provider, SafRootEntry, ToolInfo } from './types'
+import type { Assistant, Conversation, Emoji, EmojiPack, McpServer, McpToolDef, Message, ModelInfo, Project, PromptTemplate, Provider, SafRootEntry, TemplateVariable, ToolInfo } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -241,4 +241,71 @@ export const api = {
 
   stopOneBot: () =>
     invoke<void>('stop_onebot'),
+
+  // Prompt Templates
+  listPromptTemplates: () =>
+    invoke<PromptTemplate[]>('list_prompt_templates'),
+
+  createPromptTemplate: (name: string, category: string, templateText: string, description?: string) =>
+    invoke<PromptTemplate>('create_prompt_template', {
+      name, category, templateText,
+      description: description ?? null,
+    }),
+
+  updatePromptTemplate: (id: string, updates: {
+    name?: string
+    description?: string | null
+    category?: string
+    templateText?: string
+  }) =>
+    invoke<PromptTemplate>('update_prompt_template', {
+      id,
+      name: updates.name ?? null,
+      description: updates.description !== undefined ? updates.description : null,
+      category: updates.category ?? null,
+      templateText: updates.templateText ?? null,
+    }),
+
+  deletePromptTemplate: (id: string) =>
+    invoke<void>('delete_prompt_template', { id }),
+
+  listTemplateVariables: () =>
+    invoke<TemplateVariable[]>('list_template_variables'),
+
+  // Emoji Packs
+  listEmojiPacks: () =>
+    invoke<EmojiPack[]>('list_emoji_packs'),
+
+  createEmojiPack: (name: string, description?: string) =>
+    invoke<EmojiPack>('create_emoji_pack', {
+      name,
+      description: description ?? null,
+    }),
+
+  deleteEmojiPack: (id: string) =>
+    invoke<void>('delete_emoji_pack', { id }),
+
+  listEmojis: (packId: string) =>
+    invoke<Emoji[]>('list_emojis', { packId }),
+
+  importEmojis: (packId: string, filePaths: string[]) =>
+    invoke<Emoji[]>('import_emojis', { packId, filePaths }),
+
+  deleteEmoji: (id: string) =>
+    invoke<void>('delete_emoji', { id }),
+
+  searchEmojis: (query: string) =>
+    invoke<Emoji[]>('search_emojis', { query }),
+
+  assignEmojiPack: (assistantId: string, packId: string) =>
+    invoke<void>('assign_emoji_pack', { assistantId, packId }),
+
+  unassignEmojiPack: (assistantId: string, packId: string) =>
+    invoke<void>('unassign_emoji_pack', { assistantId, packId }),
+
+  listAssistantEmojiPacks: (assistantId: string) =>
+    invoke<EmojiPack[]>('list_assistant_emoji_packs', { assistantId }),
+
+  getEmojiFileUrl: (emojiId: string) =>
+    invoke<string>('get_emoji_file_url', { emojiId }),
 }

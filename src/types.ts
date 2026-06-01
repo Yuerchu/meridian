@@ -122,6 +122,46 @@ export interface SafRootEntry {
   virtual_prefix: string
 }
 
+export interface EmojiPack {
+  id: string
+  name: string
+  description: string | null
+  cover_image: string | null
+  is_builtin: number
+  sort_order: number
+  created_at: number
+  updated_at: number
+}
+
+export interface Emoji {
+  id: string
+  pack_id: string
+  name: string
+  tags: string | null
+  file_name: string
+  file_format: string
+  sort_order: number
+  created_at: number
+}
+
+export interface PromptTemplate {
+  id: string
+  name: string
+  description: string | null
+  category: string
+  template_text: string
+  is_builtin: number
+  sort_order: number
+  created_at: number
+  updated_at: number
+}
+
+export interface TemplateVariable {
+  name: string
+  description_en: string
+  description_zh: string
+}
+
 export interface StreamChunk {
   type?: string
   content?: string

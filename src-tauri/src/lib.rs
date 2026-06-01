@@ -2,6 +2,7 @@
 mod android_bridge;
 mod client;
 mod db;
+mod emoji;
 mod keyring;
 mod mcp;
 #[cfg(not(target_os = "android"))]
@@ -9,6 +10,7 @@ mod onebot;
 mod platform;
 mod provider;
 mod secrets;
+mod template;
 mod tools;
 
 use std::collections::HashMap;
@@ -20,6 +22,9 @@ use db::models::assistant::{Assistant, AssistantUpdate, NewAssistant};
 use db::models::conversation::Conversation;
 use db::models::mcp_server::{McpServer, McpServerUpdate, NewMcpServer};
 use db::models::message::{Message, NewMessage};
+use db::models::emoji::{Emoji, NewEmoji};
+use db::models::emoji_pack::{EmojiPack, NewEmojiPack};
+use db::models::prompt_template::{NewPromptTemplate, PromptTemplate, PromptTemplateUpdate};
 use db::models::provider::{NewProvider, Provider, ProviderUpdate};
 use provider::models::ModelInfo;
 use provider::{ChatMessage, ChatParams, ChatProvider};
@@ -956,6 +961,236 @@ async fn consume_stream(
     Ok(StreamResult { text, reasoning, tool_calls, usage, finish_reason })
 }
 
+// --- Prompt Templates ---
+
+#[tauri::command]
+fn list_prompt_templates(app: tauri::AppHandle) -> Result<Vec<PromptTemplate>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::prompt_template::list_templates(&mut conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_prompt_template(
+    app: tauri::AppHandle,
+    name: String,
+    category: String,
+    template_text: String,
+    description: Option<String>,
+) -> Result<PromptTemplate, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    db::ops::prompt_template::create_template(&mut conn, &NewPromptTemplate {
+        id: &id,
+        name: &name,
+        description: description.as_deref(),
+        category: &category,
+        template_text: &template_text,
+        is_builtin: 0,
+        sort_order: 0,
+        created_at: now,
+        updated_at: now,
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_prompt_template(
+    app: tauri::AppHandle,
+    id: String,
+    name: Option<String>,
+    description: Option<Option<String>>,
+    category: Option<String>,
+    template_text: Option<String>,
+) -> Result<PromptTemplate, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::prompt_template::update_template(&mut conn, &id, &PromptTemplateUpdate {
+        name,
+        description,
+        category,
+        template_text,
+        updated_at: Some(now_ms()),
+        ..Default::default()
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_prompt_template(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::prompt_template::delete_template(&mut conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_template_variables() -> Result<serde_json::Value, String> {
+    let vars: Vec<serde_json::Value> = template::available_variables()
+        .into_iter()
+        .map(|v| serde_json::json!({
+            "name": v.name,
+            "description_en": v.description_en,
+            "description_zh": v.description_zh,
+        }))
+        .collect();
+    Ok(serde_json::json!(vars))
+}
+
+// --- Emoji Packs ---
+
+#[tauri::command]
+fn list_emoji_packs(app: tauri::AppHandle) -> Result<Vec<EmojiPack>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji_pack::list_packs(&mut conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_emoji_pack(
+    app: tauri::AppHandle,
+    name: String,
+    description: Option<String>,
+) -> Result<EmojiPack, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    emoji::ensure_pack_dir(&data_dir, &id)?;
+    db::ops::emoji_pack::create_pack(&mut conn, &NewEmojiPack {
+        id: &id,
+        name: &name,
+        description: description.as_deref(),
+        cover_image: None,
+        is_builtin: 0,
+        sort_order: 0,
+        created_at: now,
+        updated_at: now,
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_emoji_pack(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let pack = db::ops::emoji_pack::get_pack(&mut conn, &id).map_err(|e| e.to_string())?;
+    if pack.is_builtin == 1 {
+        return Err("Cannot delete built-in emoji pack".into());
+    }
+    db::ops::emoji_pack::delete_pack(&mut conn, &id).map_err(|e| e.to_string())?;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    emoji::delete_pack_dir(&data_dir, &id);
+    Ok(())
+}
+
+#[tauri::command]
+fn list_emojis(app: tauri::AppHandle, pack_id: String) -> Result<Vec<Emoji>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji::list_by_pack(&mut conn, &pack_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_emojis(
+    app: tauri::AppHandle,
+    pack_id: String,
+    file_paths: Vec<String>,
+) -> Result<Vec<Emoji>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let now = now_ms();
+    let count = db::ops::emoji::count_by_pack(&mut conn, &pack_id)
+        .map_err(|e| e.to_string())? as i32;
+
+    let mut imported = Vec::new();
+    for (i, path_str) in file_paths.iter().enumerate() {
+        let source = std::path::Path::new(path_str);
+        let (file_name, format) = emoji::import_file(&data_dir, &pack_id, source)?;
+        let emoji_name = source
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("emoji")
+            .to_string();
+        let id = uuid::Uuid::new_v4().to_string();
+        let e = db::ops::emoji::create_emoji(&mut conn, &NewEmoji {
+            id: &id,
+            pack_id: &pack_id,
+            name: &emoji_name,
+            tags: None,
+            file_name: &file_name,
+            file_format: &format,
+            sort_order: count + i as i32,
+            created_at: now,
+        }).map_err(|e| e.to_string())?;
+        imported.push(e);
+    }
+    Ok(imported)
+}
+
+#[tauri::command]
+fn delete_emoji(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let e = db::ops::emoji::get_emoji(&mut conn, &id).map_err(|e| e.to_string())?;
+    db::ops::emoji::delete_emoji(&mut conn, &id).map_err(|e| e.to_string())?;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    emoji::delete_file(&data_dir, &e.pack_id, &e.file_name);
+    Ok(())
+}
+
+#[tauri::command]
+fn search_emojis(app: tauri::AppHandle, query: String) -> Result<Vec<Emoji>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji::search_emojis(&mut conn, &query).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn assign_emoji_pack(
+    app: tauri::AppHandle,
+    assistant_id: String,
+    pack_id: String,
+) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji_pack::assign_pack(&mut conn, &assistant_id, &pack_id, now_ms())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn unassign_emoji_pack(
+    app: tauri::AppHandle,
+    assistant_id: String,
+    pack_id: String,
+) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji_pack::unassign_pack(&mut conn, &assistant_id, &pack_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_assistant_emoji_packs(
+    app: tauri::AppHandle,
+    assistant_id: String,
+) -> Result<Vec<EmojiPack>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji_pack::list_packs_for_assistant(&mut conn, &assistant_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_emoji_file_url(app: tauri::AppHandle, emoji_id: String) -> Result<String, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let e = db::ops::emoji::get_emoji(&mut conn, &emoji_id).map_err(|e| e.to_string())?;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let path = emoji::emoji_path(&data_dir, &e.pack_id, &e.file_name);
+    Ok(path.to_string_lossy().into_owned())
+}
+
 // --- Chat command (with agent loop + tools + approval) ---
 
 #[tauri::command]
@@ -1023,10 +1258,40 @@ async fn chat(
 
     let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key);
 
-    // Build messages with history
+    // Build messages with history (resolve template variables in system prompt)
     let file_access = build_file_access(&pool).await;
-    let system_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
-    let system_prompt = format!("{system_prompt}{}", file_access_prompt(&file_access));
+    let raw_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
+    let user_name = {
+        let pool2 = pool.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2).ok()?;
+            db::ops::preference::get_preference(&mut conn, "user_name").ok().flatten()
+        }).await.ok().flatten()
+    };
+    let mut tmpl_ctx = template::build_context(
+        assistant.as_ref().map(|a| a.name.as_str()),
+        user_name.as_deref(),
+    );
+    if let Some(ref a) = assistant {
+        let pool2 = pool.clone();
+        let aid = a.id.clone();
+        let emoji_names: Option<String> = tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2).ok()?;
+            let pack_ids = db::ops::emoji_pack::list_assigned_pack_ids(&mut conn, &aid).ok()?;
+            if pack_ids.is_empty() { return None; }
+            let emojis = db::ops::emoji::list_emojis_for_packs(&mut conn, &pack_ids).ok()?;
+            if emojis.is_empty() { return None; }
+            let list: Vec<String> = emojis.iter().take(100).map(|e| {
+                format!("[emoji:{}]", e.name)
+            }).collect();
+            Some(list.join(", "))
+        }).await.ok().flatten();
+        if let Some(names) = emoji_names {
+            tmpl_ctx.set("emoji_list", &names);
+        }
+    }
+    let system_prompt_resolved = template::resolve(raw_prompt, &tmpl_ctx);
+    let system_prompt = format!("{}{}", system_prompt_resolved, file_access_prompt(&file_access));
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
@@ -1473,6 +1738,35 @@ pub fn run() {
                 }
             }
 
+            // Seed built-in prompt templates on first run
+            {
+                let mut conn = pool.get().expect("db connection");
+                if db::ops::prompt_template::count_templates(&mut conn).unwrap_or(0) == 0 {
+                    let now = now_ms();
+                    let templates = [
+                        ("casual_friend", "Casual Friend", "随意朋友", "character", "You are {{assistant_name}}, a casual and friendly chat partner. Talk naturally, use slang, emoji, and informal language. Be playful and genuine. The current time is {{current_time}} on {{current_date}} ({{day_of_week}})."),
+                        ("professional", "Professional Assistant", "专业助手", "character", "You are {{assistant_name}}, a professional and knowledgeable assistant. Respond in a structured, clear, and formal manner. Provide thorough and accurate answers. Current date: {{current_date}}."),
+                        ("code_expert", "Code Expert", "代码专家", "coding", "You are {{assistant_name}}, an expert software engineer. Write clean, efficient, and well-documented code. Explain technical concepts clearly. Use code blocks with language tags. Current date: {{current_date}}."),
+                        ("creative_writer", "Creative Writer", "创意写手", "character", "You are {{assistant_name}}, a creative and expressive writer. Use vivid language, metaphors, and storytelling techniques. Be imaginative and emotionally engaging."),
+                        ("study_buddy", "Study Buddy", "学习伙伴", "character", "You are {{assistant_name}}, a patient and encouraging study partner for {{user_name}}. Break down complex topics into simple explanations. Use analogies and examples. Ask follow-up questions to check understanding. Current date: {{current_date}}."),
+                    ];
+                    for (i, (id_suffix, name, desc, category, text)) in templates.iter().enumerate() {
+                        let id = format!("builtin_{id_suffix}");
+                        let _ = db::ops::prompt_template::create_template(&mut conn, &NewPromptTemplate {
+                            id: &id,
+                            name,
+                            description: Some(desc),
+                            category,
+                            template_text: text,
+                            is_builtin: 1,
+                            sort_order: i as i32,
+                            created_at: now,
+                            updated_at: now,
+                        });
+                    }
+                }
+            }
+
             app.manage(AppDb(pool));
             app.manage(AppTools(Arc::new(tools::ToolRegistry::new())));
             app.manage(ApprovalWaiters(Mutex::new(HashMap::new())));
@@ -1516,6 +1810,12 @@ pub fn run() {
             start_onebot,
             #[cfg(not(target_os = "android"))]
             stop_onebot,
+            list_prompt_templates, create_prompt_template, update_prompt_template,
+            delete_prompt_template, list_template_variables,
+            list_emoji_packs, create_emoji_pack, delete_emoji_pack,
+            list_emojis, import_emojis, delete_emoji, search_emojis,
+            assign_emoji_pack, unassign_emoji_pack, list_assistant_emoji_packs,
+            get_emoji_file_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

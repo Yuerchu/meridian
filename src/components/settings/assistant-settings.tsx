@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, ChevronDown, ChevronRight, Star, Check } from 'lucide-react'
+import { Plus, ChevronDown, ChevronRight, Star, Check, BookTemplate } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { api } from '@/api'
-import type { Assistant, Provider, ModelInfo, ToolInfo } from '@/types'
+import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, TemplateVariable, ToolInfo } from '@/types'
 
 function AssistantEditor({
   assistant,
@@ -32,6 +32,11 @@ function AssistantEditor({
   const [models, setModels] = useState<ModelInfo[]>([])
   const [saved, setSaved] = useState(false)
   const [allTools, setAllTools] = useState<ToolInfo[]>([])
+  const [templates, setTemplates] = useState<PromptTemplate[]>([])
+  const [templateVars, setTemplateVars] = useState<TemplateVariable[]>([])
+  const [showTemplates, setShowTemplates] = useState(false)
+  const [allPacks, setAllPacks] = useState<EmojiPack[]>([])
+  const [assignedPackIds, setAssignedPackIds] = useState<Set<string>>(new Set())
   const [toolMode, setToolMode] = useState<'all' | 'custom'>(assistant.enabled_tools ? 'custom' : 'all')
   const [selectedTools, setSelectedTools] = useState<Set<string>>(() => {
     if (assistant.enabled_tools) {
@@ -50,7 +55,13 @@ function AssistantEditor({
 
   useEffect(() => {
     api.listAllToolNames().then(setAllTools)
-  }, [])
+    api.listPromptTemplates().then(setTemplates)
+    api.listTemplateVariables().then(setTemplateVars)
+    api.listEmojiPacks().then(setAllPacks)
+    api.listAssistantEmojiPacks(assistant.id).then((packs) =>
+      setAssignedPackIds(new Set(packs.map((p) => p.id))),
+    )
+  }, [assistant.id])
 
   async function handleSave() {
     const enabledTools = toolMode === 'custom'
@@ -79,13 +90,54 @@ function AssistantEditor({
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-[11px] text-muted-foreground">{t('settings.assistant.systemPrompt')}</label>
+        <div className="flex items-center justify-between">
+          <label className="block text-[11px] text-muted-foreground">{t('settings.assistant.systemPrompt')}</label>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[11px] gap-1"
+            onClick={() => setShowTemplates(!showTemplates)}
+          >
+            <BookTemplate className="w-3 h-3" />
+            {t('settings.assistant.browseTemplates')}
+          </Button>
+        </div>
+        {showTemplates && (
+          <div className="border border-border rounded-lg p-2 space-y-1 max-h-48 overflow-y-auto">
+            {templates.map((tpl) => (
+              <button
+                key={tpl.id}
+                className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-accent/50 transition-colors"
+                onClick={() => { setSystemPrompt(tpl.template_text); setShowTemplates(false) }}
+              >
+                <span className="font-medium">{tpl.name}</span>
+                {tpl.description && (
+                  <span className="text-muted-foreground ml-2">{tpl.description}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
         <Textarea
           value={systemPrompt}
           onChange={(e) => setSystemPrompt(e.target.value)}
-          rows={4}
-          className="resize-none"
+          rows={6}
+          className="resize-none font-mono text-xs"
         />
+        {templateVars.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {templateVars.map((v) => (
+              <button
+                key={v.name}
+                className="text-[10px] px-1.5 py-0.5 rounded bg-accent/50 text-muted-foreground hover:bg-accent transition-colors font-mono"
+                onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
+                title={v.description_en}
+              >
+                {`{{${v.name}}}`}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -208,6 +260,35 @@ function AssistantEditor({
           </div>
         )}
       </div>
+
+      {allPacks.length > 0 && (
+        <div className="space-y-1.5">
+          <label className="block text-[11px] text-muted-foreground">{t('settings.assistant.emojiPacks')}</label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2 border border-border rounded-lg">
+            {allPacks.map((pack) => (
+              <label key={pack.id} className="flex items-center gap-1.5 text-xs cursor-pointer py-0.5">
+                <Checkbox
+                  checked={assignedPackIds.has(pack.id)}
+                  onCheckedChange={async (checked) => {
+                    if (checked) {
+                      await api.assignEmojiPack(assistant.id, pack.id)
+                      setAssignedPackIds((prev) => new Set([...prev, pack.id]))
+                    } else {
+                      await api.unassignEmojiPack(assistant.id, pack.id)
+                      setAssignedPackIds((prev) => {
+                        const next = new Set(prev)
+                        next.delete(pack.id)
+                        return next
+                      })
+                    }
+                  }}
+                />
+                <span className="truncate">{pack.name}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 pt-1">
         <Button size="sm" onClick={handleSave}>{t('common.save')}</Button>

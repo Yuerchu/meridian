@@ -1,9 +1,13 @@
 pub mod assistant;
+pub mod assistant_emoji_pack;
 pub mod attachment;
 pub mod conversation;
+pub mod emoji;
+pub mod emoji_pack;
 pub mod mcp_server;
 pub mod message;
 pub mod preference;
+pub mod prompt_template;
 pub mod project;
 pub mod provider;
 pub mod tool_permission;

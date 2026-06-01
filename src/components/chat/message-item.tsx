@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -7,7 +7,9 @@ import { Bot, Copy, Check, Trash2, RefreshCw, ChevronDown, ChevronRight, Lightbu
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ToolCallBlock } from './tool-call-block'
+import { EmojiText } from './emoji-renderer'
 import type { ContentBlock, Message } from '@/types'
+import type { EmojiMap } from './emoji-renderer'
 
 function useRelativeTime() {
   const { t } = useTranslation()
@@ -75,10 +77,34 @@ const proseClasses = cn(
   "prose-td:border prose-td:border-border",
 )
 
-const MarkdownContent = React.memo(function MarkdownContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+function EmojiAwareText({ children, emojiMap }: { children: React.ReactNode; emojiMap?: EmojiMap }) {
+  if (!emojiMap || Object.keys(emojiMap).length === 0) return <>{children}</>
+  return (
+    <>
+      {React.Children.map(children, (child) => {
+        if (typeof child === 'string' && child.includes('[emoji:')) {
+          return <EmojiText text={child} emojiMap={emojiMap} />
+        }
+        return child
+      })}
+    </>
+  )
+}
+
+const MarkdownContent = React.memo(function MarkdownContent({ content, isStreaming, emojiMap }: { content: string; isStreaming?: boolean; emojiMap?: EmojiMap }) {
+  const components = useMemo(() => ({
+    code: CodeBlock as never,
+    p: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => (
+      <p {...props}><EmojiAwareText emojiMap={emojiMap}>{children}</EmojiAwareText></p>
+    ),
+    li: ({ children, ...props }: React.HTMLAttributes<HTMLLIElement>) => (
+      <li {...props}><EmojiAwareText emojiMap={emojiMap}>{children}</EmojiAwareText></li>
+    ),
+  }), [emojiMap])
+
   return (
     <div className={proseClasses}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={{ code: CodeBlock as never }}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={components}>
         {content}
       </ReactMarkdown>
       {isStreaming && (
@@ -116,12 +142,12 @@ function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; i
   )
 }
 
-function AssistantBlock({ block, isLast, isStreaming, isLastMessage }: { block: ContentBlock; isLast: boolean; isStreaming?: boolean; isLastMessage?: boolean }) {
+function AssistantBlock({ block, isLast, isStreaming, isLastMessage, emojiMap }: { block: ContentBlock; isLast: boolean; isStreaming?: boolean; isLastMessage?: boolean; emojiMap?: EmojiMap }) {
   if (block.type === 'thinking') {
     return <ThinkingBlock text={block.text} isStreaming={isLast && isStreaming} defaultExpanded={!!isLastMessage && isLast} />
   }
   if (block.type === 'text') {
-    return <MarkdownContent content={block.text} isStreaming={isLast && isStreaming} />
+    return <MarkdownContent content={block.text} isStreaming={isLast && isStreaming} emojiMap={emojiMap} />
   }
   if (block.type === 'tool_call') {
     return <MemoToolCallBlock data={block.data} />
@@ -135,9 +161,10 @@ interface MessageItemProps {
   isLastMessage?: boolean
   onDelete?: (id: string) => void
   onRegenerate?: (id: string) => void
+  emojiMap?: EmojiMap
 }
 
-export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate }: MessageItemProps) {
+export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, emojiMap }: MessageItemProps) {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime()
   const isUser = message.role === 'user'
@@ -146,7 +173,9 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
     return (
       <div className="flex justify-end group">
         <div className="max-w-[80%] rounded-2xl bg-accent px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
-          {message.content}
+          {emojiMap && Object.keys(emojiMap).length > 0
+            ? <EmojiText text={message.content} emojiMap={emojiMap} />
+            : message.content}
         </div>
       </div>
     )
@@ -167,10 +196,10 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
       <div className="pl-8">
         {(message._blocks && message._blocks.length > 0) ? (
           message._blocks.map((block, i) => (
-            <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} />
+            <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} emojiMap={emojiMap} />
           ))
         ) : (
-          <MarkdownContent content={message.content} isStreaming={isStreaming} />
+          <MarkdownContent content={message.content} isStreaming={isStreaming} emojiMap={emojiMap} />
         )}
 
         <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">

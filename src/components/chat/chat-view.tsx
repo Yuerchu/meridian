@@ -5,6 +5,7 @@ import { api } from '@/api'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageItem } from './message-item'
 import { InputBar } from './input-bar'
+import { useEmojiMap } from './emoji-renderer'
 import type { Message as DbMessage, StreamChunk, Assistant, Provider, ToolCallDisplay, ContentBlock, ThinkingLevel } from '@/types'
 
 function hydrateBlocks(msgs: DbMessage[]): DbMessage[] {
@@ -69,6 +70,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('default')
+  const emojiMap = useEmojiMap(selectedAssistantId)
   const { t } = useTranslation()
   const conversationIdRef = useRef(conversationId)
   const submittingRef = useRef(false)
@@ -325,6 +327,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
             isLastMessage={i === visibleMessages.length - 1}
             onDelete={handleDelete}
             onRegenerate={m.role === 'assistant' ? handleRegenerate : undefined}
+            emojiMap={emojiMap}
           />
         ))}
         {messages.length === 0 && (

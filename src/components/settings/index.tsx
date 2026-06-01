@@ -1,15 +1,17 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Cloud, Bot, Settings2, Info, Plug, Radio } from 'lucide-react'
+import { Cloud, Bot, Settings2, Info, Plug, Radio, BookTemplate, Smile } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProviderSettings } from './provider-settings'
 import { AssistantSettings } from './assistant-settings'
 import { GeneralSettings } from './general-settings'
 import { McpSettings } from './mcp-settings'
 import { OneBotSettings } from './onebot-settings'
+import { TemplateGallery } from './template-gallery'
+import { EmojiSettings } from './emoji-settings'
 import { About } from './about'
 
-type SettingsTab = 'provider' | 'assistants' | 'mcp' | 'onebot' | 'general' | 'about'
+type SettingsTab = 'provider' | 'assistants' | 'templates' | 'emoji' | 'mcp' | 'onebot' | 'general' | 'about'
 
 export default function SettingsPage() {
   const { t } = useTranslation()
@@ -18,6 +20,8 @@ export default function SettingsPage() {
   const tabs: Array<{ id: SettingsTab; label: string; icon: React.ElementType }> = [
     { id: 'provider', label: t('settings.provider'), icon: Cloud },
     { id: 'assistants', label: t('settings.assistants'), icon: Bot },
+    { id: 'templates', label: t('settings.templates'), icon: BookTemplate },
+    { id: 'emoji', label: t('settings.emoji'), icon: Smile },
     { id: 'mcp', label: t('settings.mcp'), icon: Plug },
     { id: 'onebot', label: t('settings.onebot'), icon: Radio },
     { id: 'general', label: t('settings.general'), icon: Settings2 },
@@ -47,6 +51,8 @@ export default function SettingsPage() {
       <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {activeTab === 'provider' && <ProviderSettings />}
         {activeTab === 'assistants' && <AssistantSettings />}
+        {activeTab === 'templates' && <TemplateGallery />}
+        {activeTab === 'emoji' && <EmojiSettings />}
         {activeTab === 'mcp' && <McpSettings />}
         {activeTab === 'onebot' && <OneBotSettings />}
         {activeTab === 'general' && <GeneralSettings />}

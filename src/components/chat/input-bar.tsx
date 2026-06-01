@@ -8,6 +8,7 @@ import {
   InputGroupButton,
 } from '@/components/ui/input-group'
 import { Toolbar } from './toolbar'
+import { EmojiPicker } from './emoji-picker'
 import type { Assistant, Provider, ThinkingLevel } from '@/types'
 
 interface ContextInfo {
@@ -110,6 +111,10 @@ export function InputBar({
                 onSelectThinkingLevel={onSelectThinkingLevel}
               />
               <div className="flex items-center gap-2 shrink-0">
+                <EmojiPicker
+                  assistantId={currentAssistantId}
+                  onSelect={(syntax) => onChange(value + syntax)}
+                />
                 {contextInfo && contextInfo.messageCount > 0 && (
                   <div className={`flex items-center gap-1.5 text-[11px] ${
                     contextInfo.estimatedTokens / contextInfo.contextLimit > 0.95
