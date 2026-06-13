@@ -1,7 +1,10 @@
+#[cfg(target_os = "android")]
+mod android_bridge;
 mod client;
 mod db;
 mod keyring;
 mod mcp;
+mod platform;
 mod provider;
 mod secrets;
 mod tools;
@@ -24,7 +27,7 @@ use tokio::sync::{oneshot, Mutex};
 use tokio_util::sync::CancellationToken;
 
 struct AppSecrets(Arc<SecretsManager>);
-struct AppDb(DbPool);
+pub(crate) struct AppDb(pub(crate) DbPool);
 struct AppTools(tools::ToolRegistry);
 struct AppMcp(Arc<Mutex<mcp::McpManager>>);
 
@@ -53,7 +56,7 @@ pub fn take_bytes_at_char_boundary(s: &str, max_bytes: usize) -> &str {
     &s[..end]
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -62,6 +65,92 @@ fn now_ms() -> i64 {
 
 fn get_conn(pool: &DbPool) -> Result<db::PooledConn, String> {
     pool.get().map_err(|e| format!("db connection error: {e}"))
+}
+
+/// Build the file access policy for tool execution.
+/// Desktop: unrestricted (legacy working_directory validation only).
+/// Android: whitelist of authorized roots from preferences + system grants.
+async fn build_file_access(pool: &DbPool) -> tools::FileAccess {
+    #[cfg(target_os = "android")]
+    {
+        let pool = pool.clone();
+        let prefs = tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().ok()?;
+            let manage = db::ops::preference::get_preference(&mut conn, "android.manage_storage_enabled")
+                .ok()
+                .flatten();
+            let saf = db::ops::preference::get_preference(&mut conn, "android.saf_roots")
+                .ok()
+                .flatten();
+            Some((manage, saf))
+        })
+        .await
+        .ok()
+        .flatten();
+        let (manage_pref, saf_pref) = prefs.unwrap_or((None, None));
+
+        let mut roots = Vec::new();
+        if manage_pref.as_deref() == Some("true")
+            && android_bridge::is_manage_storage_granted().unwrap_or(false)
+        {
+            let shared = std::path::PathBuf::from("/storage/emulated/0");
+            roots.push(tools::AccessRoot {
+                virtual_prefix: "/storage/emulated/0".to_string(),
+                kind: tools::RootKind::RealPath(shared.clone()),
+            });
+            roots.push(tools::AccessRoot {
+                virtual_prefix: "/sdcard".to_string(),
+                kind: tools::RootKind::RealPath(shared),
+            });
+        }
+        if let Some(json) = saf_pref {
+            if let Ok(entries) = serde_json::from_str::<Vec<platform::SafRootEntry>>(&json) {
+                for e in entries {
+                    roots.push(tools::AccessRoot {
+                        virtual_prefix: e.virtual_prefix,
+                        kind: tools::RootKind::SafTree { tree_uri: e.uri },
+                    });
+                }
+            }
+        }
+        tools::FileAccess::Roots(roots)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = pool;
+        tools::FileAccess::default()
+    }
+}
+
+/// Describe accessible file roots for the system prompt so the model knows
+/// what paths it may use. Empty string when not in roots mode.
+fn file_access_prompt(file_access: &tools::FileAccess) -> String {
+    let tools::FileAccess::Roots(roots) = file_access else {
+        return String::new();
+    };
+    if roots.is_empty() {
+        return "\n\n# File access\nNo file locations are currently authorized on this device. \
+                If the user asks for file operations, tell them to grant access in \
+                Settings (an authorized directory or 'All files access')."
+            .to_string();
+    }
+    let mut out = String::from(
+        "\n\n# File access\nYou can access files under these locations (use absolute paths):\n",
+    );
+    for root in roots {
+        match &root.kind {
+            tools::RootKind::RealPath(_) => {
+                out.push_str(&format!("- {} (direct access)\n", root.virtual_prefix));
+            }
+            tools::RootKind::SafTree { .. } => {
+                out.push_str(&format!(
+                    "- {} (user-authorized directory; recursive search/glob unavailable)\n",
+                    root.virtual_prefix
+                ));
+            }
+        }
+    }
+    out
 }
 
 fn build_messages(
@@ -878,11 +967,13 @@ async fn chat(
     let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key);
 
     // Build messages with history
+    let file_access = build_file_access(&pool).await;
     let system_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
+    let system_prompt = format!("{system_prompt}{}", file_access_prompt(&file_access));
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
-    let mut chat_messages = build_messages(system_prompt, &history, &message);
+    let mut chat_messages = build_messages(system_prompt.trim(), &history, &message);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
     let (thinking_enabled, thinking_budget, thinking_effort) = {
@@ -972,6 +1063,7 @@ async fn chat(
     let tool_context = tools::ToolContext {
         working_directory: project_path,
         shell: shell_type.map(|s| tools::ShellType::from_str(&s)).unwrap_or_else(tools::ShellType::default_for_platform),
+        file_access,
     };
 
     let mut full_content = String::new();
@@ -1212,6 +1304,11 @@ async fn chat(
 pub fn run() {
     tracing_subscriber::fmt::init();
 
+    // Tauri's tao android binding initializes ndk-context before run() is
+    // reached; registering the credential builder here is lazy and safe.
+    #[cfg(target_os = "android")]
+    let _ = android_keyring::set_android_keyring_credential_builder();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1346,37 +1443,13 @@ pub fn run() {
             list_mcp_servers, create_mcp_server, update_mcp_server, delete_mcp_server,
             connect_mcp_server, disconnect_mcp_server, list_mcp_tools, list_all_tool_names,
             approve_tool_call, deny_tool_call, respond_to_ask,
+            platform::get_platform, platform::get_manage_storage_status, platform::request_manage_storage,
+            platform::pick_saf_directory, platform::list_saf_roots, platform::remove_saf_root,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-#[cfg(target_os = "android")]
-#[allow(non_snake_case)]
-#[unsafe(no_mangle)]
-pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_initNdkContext(
-    env: jni::JNIEnv,
-    _class: jni::objects::JObject,
-    context: jni::objects::JObject,
-) {
-    use std::ffi::c_void;
-    use std::sync::OnceLock;
-    use jni::objects::GlobalRef;
-
-    static REF: OnceLock<Option<GlobalRef>> = OnceLock::new();
-    REF.get_or_init(|| match env.new_global_ref(&context) {
-        Ok(ref_) => {
-            let vm = env.get_java_vm().unwrap();
-            let vm = vm.get_java_vm_pointer() as *mut c_void;
-            unsafe {
-                ndk_context::initialize_android_context(vm, ref_.as_obj().as_raw() as _);
-            }
-            android_keyring::set_android_keyring_credential_builder();
-            Some(ref_)
-        }
-        Err(_) => None,
-    });
-}
 
 #[cfg(test)]
 mod tests {

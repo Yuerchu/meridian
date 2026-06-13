@@ -61,17 +61,15 @@ impl Tool for EditFileTool {
             return Err("old_string and new_string are identical".to_string());
         }
 
-        let path = context.resolve_path(file_path);
+        let target = context.resolve_and_validate(file_path)?;
 
-        let content = tokio::fs::read_to_string(&path)
-            .await
-            .map_err(|e| format!("failed to read '{}': {}", path.display(), e))?;
+        let content = super::backend::read_to_string(&target).await?;
 
         let count = content.matches(old_string).count();
         if count == 0 {
             return Err(format!(
                 "old_string not found in '{}'. File has {} bytes.",
-                path.display(),
+                file_path,
                 content.len()
             ));
         }
@@ -82,15 +80,9 @@ impl Tool for EditFileTool {
             content.replacen(old_string, new_string, 1)
         };
 
-        tokio::fs::write(&path, &new_content)
-            .await
-            .map_err(|e| format!("failed to write '{}': {}", path.display(), e))?;
+        super::backend::write_string(&target, &new_content).await?;
 
         let replaced = if replace_all { count } else { 1 };
-        Ok(format!(
-            "Replaced {} occurrence(s) in {}",
-            replaced,
-            path.display()
-        ))
+        Ok(format!("Replaced {} occurrence(s) in {}", replaced, file_path))
     }
 }

@@ -39,14 +39,22 @@ impl Tool for GlobFilesTool {
             .as_str()
             .ok_or("missing 'pattern' argument")?
             .to_string();
-        let base = args["path"]
+        let base_str = args["path"]
             .as_str()
-            .map(|p| context.resolve_path(p))
-            .unwrap_or_else(|| context.working_dir_or_current());
-        context.validate_path(&base)?;
+            .map(str::to_string)
+            .unwrap_or_else(|| context.working_dir_or_current().to_string_lossy().to_string());
+        let base = match context.resolve_and_validate(&base_str)? {
+            super::ResolvedTarget::Real(p) => p,
+            super::ResolvedTarget::Saf { .. } => {
+                return Err(
+                    "glob is not supported in SAF-authorized directories; \
+                     enable 'All files access' in Settings to search there"
+                        .to_string(),
+                );
+            }
+        };
 
-        let base_clone = base.clone();
-        tokio::task::spawn_blocking(move || glob_search(&base_clone, &pattern))
+        tokio::task::spawn_blocking(move || glob_search(&base, &pattern))
             .await
             .map_err(|e| format!("task failed: {e}"))?
     }

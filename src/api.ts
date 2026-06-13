@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, Conversation, McpServer, McpToolDef, Message, ModelInfo, Project, Provider, ToolInfo } from './types'
+import type { Assistant, Conversation, McpServer, McpToolDef, Message, ModelInfo, Project, Provider, SafRootEntry, ToolInfo } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -156,6 +156,25 @@ export const api = {
 
   setPreference: (key: string, value: string) =>
     invoke<void>('set_preference', { key, value }),
+
+  // Platform / Android file access
+  getPlatform: () =>
+    invoke<string>('get_platform'),
+
+  getManageStorageStatus: () =>
+    invoke<boolean>('get_manage_storage_status'),
+
+  requestManageStorage: () =>
+    invoke<void>('request_manage_storage'),
+
+  pickSafDirectory: () =>
+    invoke<SafRootEntry[]>('pick_saf_directory'),
+
+  listSafRoots: () =>
+    invoke<SafRootEntry[]>('list_saf_roots'),
+
+  removeSafRoot: (uri: string) =>
+    invoke<SafRootEntry[]>('remove_saf_root', { uri }),
 
   // MCP servers
   listMcpServers: () =>

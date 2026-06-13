@@ -116,6 +116,12 @@ export interface ToolInfo {
   server_name?: string
 }
 
+export interface SafRootEntry {
+  uri: string
+  display_name: string
+  virtual_prefix: string
+}
+
 export interface StreamChunk {
   type?: string
   content?: string
