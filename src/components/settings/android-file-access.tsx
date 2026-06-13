@@ -18,7 +18,9 @@ export function AndroidFileAccess() {
   const [picking, setPicking] = useState(false)
 
   const refreshGranted = useCallback(() => {
-    api.getManageStorageStatus().then(setManageGranted).catch(() => {})
+    api.getManageStorageStatus().then(setManageGranted).catch((e) => {
+      console.error('getManageStorageStatus failed:', e)
+    })
   }, [])
 
   useEffect(() => {
@@ -27,17 +29,30 @@ export function AndroidFileAccess() {
     })
     api.listSafRoots().then(setSafRoots).catch(() => {})
     refreshGranted()
-    // Re-check the system grant when returning from the system settings page
+    // Re-check the system grant when returning from the system settings page.
+    // On Android WebView, window 'focus' may not fire reliably on Activity
+    // resume; visibilitychange is more dependable.
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refreshGranted()
+    }
     const onFocus = () => refreshGranted()
+    document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
+    }
   }, [refreshGranted])
 
-  const handleManageToggle = (checked: boolean) => {
+  const handleManageToggle = async (checked: boolean) => {
     setManageEnabled(checked)
-    api.setPreference('android.manage_storage_enabled', checked ? 'true' : 'false')
+    await api.setPreference('android.manage_storage_enabled', checked ? 'true' : 'false')
     if (checked && !manageGranted) {
-      api.requestManageStorage().catch(() => {})
+      try {
+        await api.requestManageStorage()
+      } catch (e) {
+        console.error('requestManageStorage failed:', e)
+      }
     }
   }
 
@@ -45,8 +60,8 @@ export function AndroidFileAccess() {
     setPicking(true)
     try {
       setSafRoots(await api.pickSafDirectory())
-    } catch {
-      // cancelled or unavailable
+    } catch (e) {
+      console.error('pickSafDirectory failed:', e)
     } finally {
       setPicking(false)
     }
