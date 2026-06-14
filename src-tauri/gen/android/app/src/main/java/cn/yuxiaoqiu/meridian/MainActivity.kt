@@ -9,17 +9,25 @@ import androidx.documentfile.provider.DocumentFile
 
 class MainActivity : TauriActivity() {
   companion object {
+    init {
+      System.loadLibrary("meridian_lib")
+    }
     var instance: MainActivity? = null
   }
 
   private lateinit var safLauncher: ActivityResultLauncher<Intent>
   private var pendingSafReq: Int = -1
 
+  /** Initialize ndk-context + android-keyring. Must be called before any Rust
+   *  code touches the Android keystore. Implemented in lib.rs. */
+  private external fun initNdkContext(context: android.content.Context)
+
   /** Implemented in Rust: src/android_bridge.rs (nativeOnSafResult). */
   external fun nativeOnSafResult(reqId: Int, uri: String?, name: String?)
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
+    initNdkContext(applicationContext)
     super.onCreate(savedInstanceState)
     instance = this
     safLauncher = registerForActivityResult(

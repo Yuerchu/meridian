@@ -17,17 +17,29 @@ use tokio::sync::oneshot;
 
 const BRIDGE_CLASS: &str = "cn.yuxiaoqiu.meridian.FileBridge";
 
+use jni::objects::GlobalRef;
+
+static BRIDGE_REF: OnceLock<GlobalRef> = OnceLock::new();
+
+/// Get the JavaVM via ndk-context.
+fn java_vm() -> Result<jni::JavaVM, String> {
+    let ctx = ndk_context::android_context();
+    unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
+        .map_err(|e| format!("failed to get JavaVM: {e}"))
+}
+
 /// Attach to the JVM and run `f` with the JNI env and the application context.
 /// Pending Java exceptions are converted into Err strings.
+/// Uses `attach_current_thread_permanently` to avoid the GlobalRef-drop-on-
+/// detached-thread warning that `AttachGuard` causes with jni 0.21.
 fn with_env<T>(
     f: impl FnOnce(&mut JNIEnv, &JObject) -> Result<T, jni::errors::Error>,
 ) -> Result<T, String> {
-    let ctx = ndk_context::android_context();
-    let vm = unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
-        .map_err(|e| format!("failed to get JavaVM: {e}"))?;
+    let vm = java_vm()?;
     let mut env = vm
-        .attach_current_thread()
+        .attach_current_thread_permanently()
         .map_err(|e| format!("failed to attach JNI thread: {e}"))?;
+    let ctx = ndk_context::android_context();
     let context = unsafe { JObject::from_raw(ctx.context().cast()) };
     match f(&mut env, &context) {
         Ok(v) => Ok(v),
@@ -51,31 +63,36 @@ fn describe_exception(env: &mut JNIEnv) -> String {
     "Java exception (no details)".to_string()
 }
 
-/// Load an app class via the application context's class loader.
-/// FindClass cannot see app classes from natively-attached threads.
-fn load_class<'l>(
-    env: &mut JNIEnv<'l>,
-    context: &JObject,
-    name: &str,
-) -> Result<JClass<'l>, jni::errors::Error> {
-    let loader = env
-        .call_method(context, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?
-        .l()?;
-    let class_name = env.new_string(name)?;
-    let cls = env
-        .call_method(
-            &loader,
-            "loadClass",
-            "(Ljava/lang/String;)Ljava/lang/Class;",
-            &[JValue::Object(&class_name)],
-        )?
-        .l()?;
-    Ok(JClass::from(cls))
+/// Load the FileBridge class once and cache it as a GlobalRef.
+/// Subsequent calls return the cached reference.
+fn bridge_class<'l>(env: &mut JNIEnv<'l>, context: &JObject) -> Result<JClass<'l>, jni::errors::Error> {
+    let global = BRIDGE_REF.get_or_init(|| {
+        let loader = env
+            .call_method(context, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])
+            .unwrap()
+            .l()
+            .unwrap();
+        let class_name = env.new_string(BRIDGE_CLASS).unwrap();
+        let cls = env
+            .call_method(
+                &loader,
+                "loadClass",
+                "(Ljava/lang/String;)Ljava/lang/Class;",
+                &[JValue::Object(&class_name)],
+            )
+            .unwrap()
+            .l()
+            .unwrap();
+        env.new_global_ref(&cls).unwrap()
+    });
+    // Reinterpret the GlobalRef as a local JClass scoped to this env
+    let local = env.new_local_ref(global.as_obj())?;
+    Ok(JClass::from(local))
 }
 
 pub fn is_manage_storage_granted() -> Result<bool, String> {
     with_env(|env, context| {
-        let cls = load_class(env, context, BRIDGE_CLASS)?;
+        let cls = bridge_class(env, context)?;
         env.call_static_method(
             &cls,
             "isManageStorageGranted",
@@ -88,7 +105,7 @@ pub fn is_manage_storage_granted() -> Result<bool, String> {
 
 pub fn open_manage_storage_settings() -> Result<(), String> {
     with_env(|env, context| {
-        let cls = load_class(env, context, BRIDGE_CLASS)?;
+        let cls = bridge_class(env, context)?;
         env.call_static_method(
             &cls,
             "openManageStorageSettings",
@@ -117,7 +134,7 @@ pub async fn pick_directory() -> Result<SafPickResult, String> {
     saf_waiters().lock().unwrap().insert(req_id, tx);
 
     let launched = with_env(|env, context| {
-        let cls = load_class(env, context, BRIDGE_CLASS)?;
+        let cls = bridge_class(env, context)?;
         env.call_static_method(
             &cls,
             "launchDirectoryPicker",
@@ -205,7 +222,7 @@ fn call_saf_string(
     args: Vec<String>,
 ) -> Result<String, String> {
     with_env(|env, context| {
-        let cls = load_class(env, context, BRIDGE_CLASS)?;
+        let cls = bridge_class(env, context)?;
         let jstrings: Vec<JString> = args
             .iter()
             .map(|a| env.new_string(a))
@@ -236,7 +253,7 @@ pub async fn saf_write(tree_uri: &str, rel: &str, content: &str) -> Result<(), S
     let (tree, rel, content) = (tree_uri.to_string(), rel.to_string(), content.to_string());
     tokio::task::spawn_blocking(move || {
         with_env(|env, context| {
-            let cls = load_class(env, context, BRIDGE_CLASS)?;
+            let cls = bridge_class(env, context)?;
             let tree = env.new_string(&tree)?;
             let rel = env.new_string(&rel)?;
             let content = env.new_string(&content)?;
@@ -296,7 +313,7 @@ pub async fn saf_delete(tree_uri: &str, rel: &str, recursive: bool) -> Result<()
     let (tree, rel) = (tree_uri.to_string(), rel.to_string());
     tokio::task::spawn_blocking(move || {
         with_env(|env, context| {
-            let cls = load_class(env, context, BRIDGE_CLASS)?;
+            let cls = bridge_class(env, context)?;
             let tree = env.new_string(&tree)?;
             let rel = env.new_string(&rel)?;
             env.call_static_method(
@@ -322,7 +339,7 @@ pub async fn saf_rename(tree_uri: &str, from_rel: &str, to_rel: &str) -> Result<
         (tree_uri.to_string(), from_rel.to_string(), to_rel.to_string());
     tokio::task::spawn_blocking(move || {
         with_env(|env, context| {
-            let cls = load_class(env, context, BRIDGE_CLASS)?;
+            let cls = bridge_class(env, context)?;
             let tree = env.new_string(&tree)?;
             let from = env.new_string(&from_rel)?;
             let to = env.new_string(&to_rel)?;

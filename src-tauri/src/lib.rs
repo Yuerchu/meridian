@@ -1304,11 +1304,6 @@ async fn chat(
 pub fn run() {
     tracing_subscriber::fmt::init();
 
-    // Tauri's tao android binding initializes ndk-context before run() is
-    // reached; registering the credential builder here is lazy and safe.
-    #[cfg(target_os = "android")]
-    let _ = android_keyring::set_android_keyring_credential_builder();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1450,6 +1445,35 @@ pub fn run() {
         .expect("error while running tauri application");
 }
 
+/// Called from MainActivity.onCreate to initialize ndk-context and
+/// android-keyring before any Rust code touches the Android keystore.
+/// Tauri itself does NOT initialize ndk-context; this JNI entry is required.
+#[cfg(target_os = "android")]
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_initNdkContext(
+    env: jni::JNIEnv,
+    _class: jni::objects::JObject,
+    context: jni::objects::JObject,
+) {
+    use std::ffi::c_void;
+    use std::sync::OnceLock;
+    use jni::objects::GlobalRef;
+
+    static REF: OnceLock<Option<GlobalRef>> = OnceLock::new();
+    REF.get_or_init(|| match env.new_global_ref(&context) {
+        Ok(ref_) => {
+            let vm = env.get_java_vm().unwrap();
+            let vm = vm.get_java_vm_pointer() as *mut c_void;
+            unsafe {
+                ndk_context::initialize_android_context(vm, ref_.as_obj().as_raw() as _);
+            }
+            android_keyring::set_android_keyring_credential_builder();
+            Some(ref_)
+        }
+        Err(_) => None,
+    });
+}
 
 #[cfg(test)]
 mod tests {
