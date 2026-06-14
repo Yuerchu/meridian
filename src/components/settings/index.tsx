@@ -1,14 +1,15 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Cloud, Bot, Settings2, Info, Plug } from 'lucide-react'
+import { Cloud, Bot, Settings2, Info, Plug, Radio } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProviderSettings } from './provider-settings'
 import { AssistantSettings } from './assistant-settings'
 import { GeneralSettings } from './general-settings'
 import { McpSettings } from './mcp-settings'
+import { OneBotSettings } from './onebot-settings'
 import { About } from './about'
 
-type SettingsTab = 'provider' | 'assistants' | 'mcp' | 'general' | 'about'
+type SettingsTab = 'provider' | 'assistants' | 'mcp' | 'onebot' | 'general' | 'about'
 
 export default function SettingsPage() {
   const { t } = useTranslation()
@@ -18,6 +19,7 @@ export default function SettingsPage() {
     { id: 'provider', label: t('settings.provider'), icon: Cloud },
     { id: 'assistants', label: t('settings.assistants'), icon: Bot },
     { id: 'mcp', label: t('settings.mcp'), icon: Plug },
+    { id: 'onebot', label: t('settings.onebot'), icon: Radio },
     { id: 'general', label: t('settings.general'), icon: Settings2 },
     { id: 'about', label: t('settings.about'), icon: Info },
   ]
@@ -46,6 +48,7 @@ export default function SettingsPage() {
         {activeTab === 'provider' && <ProviderSettings />}
         {activeTab === 'assistants' && <AssistantSettings />}
         {activeTab === 'mcp' && <McpSettings />}
+        {activeTab === 'onebot' && <OneBotSettings />}
         {activeTab === 'general' && <GeneralSettings />}
         {activeTab === 'about' && <About />}
       </div>

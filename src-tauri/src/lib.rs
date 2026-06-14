@@ -4,6 +4,8 @@ mod client;
 mod db;
 mod keyring;
 mod mcp;
+#[cfg(not(target_os = "android"))]
+mod onebot;
 mod platform;
 mod provider;
 mod secrets;
@@ -26,10 +28,10 @@ use tauri::{Emitter, Manager};
 use tokio::sync::{oneshot, Mutex};
 use tokio_util::sync::CancellationToken;
 
-struct AppSecrets(Arc<SecretsManager>);
+pub(crate) struct AppSecrets(pub(crate) Arc<SecretsManager>);
 pub(crate) struct AppDb(pub(crate) DbPool);
-struct AppTools(tools::ToolRegistry);
-struct AppMcp(Arc<Mutex<mcp::McpManager>>);
+pub(crate) struct AppTools(pub(crate) Arc<tools::ToolRegistry>);
+pub(crate) struct AppMcp(pub(crate) Arc<Mutex<mcp::McpManager>>);
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ApprovalDecision {
@@ -63,7 +65,7 @@ pub(crate) fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
-fn get_conn(pool: &DbPool) -> Result<db::PooledConn, String> {
+pub(crate) fn get_conn(pool: &DbPool) -> Result<db::PooledConn, String> {
     pool.get().map_err(|e| format!("db connection error: {e}"))
 }
 
@@ -153,7 +155,7 @@ fn file_access_prompt(file_access: &tools::FileAccess) -> String {
     out
 }
 
-fn build_messages(
+pub(crate) fn build_messages(
     system_prompt: &str,
     history: &[Message],
     user_message: &str,
@@ -187,7 +189,7 @@ fn build_messages(
     msgs
 }
 
-fn extract_tool_calls_from_blocks(blocks_json: &str) -> Vec<provider::ToolCall> {
+pub(crate) fn extract_tool_calls_from_blocks(blocks_json: &str) -> Vec<provider::ToolCall> {
     let blocks: Vec<serde_json::Value> = match serde_json::from_str(blocks_json) {
         Ok(v) => v,
         Err(_) => return Vec::new(),
@@ -203,7 +205,7 @@ fn extract_tool_calls_from_blocks(blocks_json: &str) -> Vec<provider::ToolCall> 
     }).collect()
 }
 
-fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_limit: usize, keep_recent: usize) {
+pub(crate) fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_limit: usize, keep_recent: usize) {
     let total_tokens: usize = messages.iter().map(|m| m.content.len() / 4 + 4).sum();
     if total_tokens <= context_limit {
         return;
@@ -220,16 +222,16 @@ fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_limit: usize, 
     *messages = trimmed;
 }
 
-fn provider_secret_name(provider_id: &str) -> String {
+pub(crate) fn provider_secret_name(provider_id: &str) -> String {
     format!("PROVIDER_{}_KEY", provider_id.replace('-', "_").to_uppercase())
 }
 
-fn get_provider_api_key(secrets: &SecretsManager, provider_id: &str) -> Option<String> {
+pub(crate) fn get_provider_api_key(secrets: &SecretsManager, provider_id: &str) -> Option<String> {
     let key = provider_secret_name(provider_id);
     secrets.get(&SecretScope::Global, &SecretName::new(&key).unwrap()).ok().flatten()
 }
 
-fn resolve_provider_config(
+pub(crate) fn resolve_provider_config(
     secrets: &SecretsManager,
     pool: &DbPool,
     assistant: Option<&Assistant>,
@@ -821,14 +823,69 @@ async fn stop_chat(app: tauri::AppHandle, conversation_id: String) -> Result<(),
     Ok(())
 }
 
+// --- OneBot commands ---
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+async fn get_onebot_status(app: tauri::AppHandle) -> Result<onebot::OneBotStatus, String> {
+    let ob = app.state::<onebot::AppOneBot>();
+    let server = ob.0.lock().await;
+    Ok(server.status())
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+async fn get_onebot_config(app: tauri::AppHandle) -> Result<onebot::OneBotConfig, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    Ok(onebot::load_config(&pool))
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+async fn save_onebot_config(app: tauri::AppHandle, config: onebot::OneBotConfig) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    onebot::save_config(&pool, &config)
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+async fn start_onebot(app: tauri::AppHandle) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    let config = onebot::load_config(&pool);
+
+    let ob = app.state::<onebot::AppOneBot>();
+    let mut server_guard = ob.0.lock().await;
+
+    // Recreate server with fresh config
+    let new_server = onebot::OneBotServer::new(
+        pool,
+        app.state::<AppSecrets>().0.clone(),
+        app.state::<AppTools>().0.clone(),
+        app.state::<AppMcp>().0.clone(),
+        config,
+    );
+    new_server.start()?;
+    *server_guard = new_server;
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+async fn stop_onebot(app: tauri::AppHandle) -> Result<(), String> {
+    let ob = app.state::<onebot::AppOneBot>();
+    let server = ob.0.lock().await;
+    server.stop();
+    Ok(())
+}
+
 // --- Stream consumption helper ---
 
-struct StreamResult {
-    text: String,
-    reasoning: String,
-    tool_calls: Vec<provider::ToolCall>,
-    usage: Option<provider::TokenUsage>,
-    finish_reason: Option<String>,
+pub(crate) struct StreamResult {
+    pub(crate) text: String,
+    pub(crate) reasoning: String,
+    pub(crate) tool_calls: Vec<provider::ToolCall>,
+    pub(crate) usage: Option<provider::TokenUsage>,
+    pub(crate) finish_reason: Option<String>,
 }
 
 async fn consume_stream(
@@ -1417,10 +1474,19 @@ pub fn run() {
             }
 
             app.manage(AppDb(pool));
-            app.manage(AppTools(tools::ToolRegistry::new()));
+            app.manage(AppTools(Arc::new(tools::ToolRegistry::new())));
             app.manage(ApprovalWaiters(Mutex::new(HashMap::new())));
             app.manage(ActiveChats(Mutex::new(HashMap::new())));
             app.manage(AppMcp(Arc::new(Mutex::new(mcp::McpManager::new()))));
+
+            #[cfg(not(target_os = "android"))]
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    onebot::maybe_start(handle).await;
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1440,6 +1506,16 @@ pub fn run() {
             approve_tool_call, deny_tool_call, respond_to_ask,
             platform::get_platform, platform::get_manage_storage_status, platform::request_manage_storage,
             platform::pick_saf_directory, platform::list_saf_roots, platform::remove_saf_root,
+            #[cfg(not(target_os = "android"))]
+            get_onebot_status,
+            #[cfg(not(target_os = "android"))]
+            get_onebot_config,
+            #[cfg(not(target_os = "android"))]
+            save_onebot_config,
+            #[cfg(not(target_os = "android"))]
+            start_onebot,
+            #[cfg(not(target_os = "android"))]
+            stop_onebot,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

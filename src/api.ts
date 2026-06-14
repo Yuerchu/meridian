@@ -217,4 +217,28 @@ export const api = {
 
   listAllToolNames: () =>
     invoke<ToolInfo[]>('list_all_tool_names'),
+
+  // OneBot
+  getOneBotStatus: () =>
+    invoke<{ enabled: boolean; running: boolean; connected_clients: number; host: string; port: number }>('get_onebot_status'),
+
+  getOneBotConfig: () =>
+    invoke<{
+      enabled: boolean; host: string; port: number;
+      access_token: string | null; assistant_id: string | null;
+      admin_users: number[];
+    }>('get_onebot_config'),
+
+  saveOneBotConfig: (config: {
+    enabled: boolean; host: string; port: number;
+    access_token: string | null; assistant_id: string | null;
+    admin_users: number[];
+  }) =>
+    invoke<void>('save_onebot_config', { config }),
+
+  startOneBot: () =>
+    invoke<void>('start_onebot'),
+
+  stopOneBot: () =>
+    invoke<void>('stop_onebot'),
 }
