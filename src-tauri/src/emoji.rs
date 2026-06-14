@@ -69,10 +69,13 @@ fn detect_format(file_name: &str) -> Result<String, String> {
 
     match ext.as_str() {
         "gif" => Ok("gif".into()),
-        "apng" | "png" => Ok("apng".into()),
+        "apng" => Ok("apng".into()),
+        "png" => Ok("png".into()),
         "webp" => Ok("webp".into()),
+        "jpg" | "jpeg" => Ok("jpg".into()),
+        "bmp" => Ok("bmp".into()),
         "json" => Ok("lottie".into()),
-        _ => Err(format!("Unsupported format: .{ext}. Use gif, apng, png, webp, or json (Lottie).")),
+        _ => Err(format!("Unsupported format: .{ext}. Supported: gif, apng, png, webp, jpg, bmp, json (Lottie).")),
     }
 }
 
@@ -84,10 +87,13 @@ mod tests {
     fn test_detect_format() {
         assert_eq!(detect_format("wave.gif").unwrap(), "gif");
         assert_eq!(detect_format("smile.apng").unwrap(), "apng");
-        assert_eq!(detect_format("star.png").unwrap(), "apng");
+        assert_eq!(detect_format("star.png").unwrap(), "png");
         assert_eq!(detect_format("anim.webp").unwrap(), "webp");
+        assert_eq!(detect_format("photo.jpg").unwrap(), "jpg");
+        assert_eq!(detect_format("photo.jpeg").unwrap(), "jpg");
+        assert_eq!(detect_format("icon.bmp").unwrap(), "bmp");
         assert_eq!(detect_format("fancy.json").unwrap(), "lottie");
-        assert!(detect_format("photo.jpg").is_err());
+        assert!(detect_format("video.mp4").is_err());
     }
 
     #[test]

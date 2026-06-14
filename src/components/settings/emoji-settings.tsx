@@ -5,7 +5,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { api } from '@/api'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
-import { convertFileSrc } from '@tauri-apps/api/core'
 import type { Emoji, EmojiPack } from '@/types'
 
 interface PackDetail {
@@ -19,14 +18,18 @@ function PackCard({
   onDelete,
   onImport,
   onDeleteEmoji,
+  onRenameEmoji,
 }: {
   detail: PackDetail
   onDelete?: () => void
   onImport: () => void
   onDeleteEmoji: (id: string) => void
+  onRenameEmoji: (id: string, newName: string) => void
 }) {
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
 
   return (
     <div className="border border-border rounded-lg overflow-hidden">
@@ -63,9 +66,30 @@ function PackCard({
                   alt={e.name}
                   className="w-10 h-10 object-contain rounded"
                 />
-                <p className="text-[9px] text-muted-foreground text-center truncate mt-0.5">
-                  {e.name}
-                </p>
+                {editingId === e.id ? (
+                  <input
+                    autoFocus
+                    value={editName}
+                    onChange={(ev) => setEditName(ev.target.value)}
+                    onBlur={() => {
+                      if (editName.trim() && editName.trim() !== e.name) onRenameEmoji(e.id, editName.trim())
+                      setEditingId(null)
+                    }}
+                    onKeyDown={(ev) => {
+                      if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur()
+                      if (ev.key === 'Escape') setEditingId(null)
+                    }}
+                    className="w-full text-[9px] text-center bg-transparent border-b border-accent outline-none mt-0.5"
+                  />
+                ) : (
+                  <p
+                    className="text-[9px] text-muted-foreground text-center truncate mt-0.5 cursor-pointer hover:text-foreground"
+                    onClick={() => { setEditingId(e.id); setEditName(e.name) }}
+                    title={t('settings.emoji.clickToRename')}
+                  >
+                    {e.name}
+                  </p>
+                )}
                 {detail.pack.is_builtin === 0 && (
                   <button
                     className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
@@ -115,7 +139,7 @@ export function EmojiSettings() {
       const urls: Record<string, string> = {}
       for (const e of emojis) {
         const path = await api.getEmojiFileUrl(e.id)
-        urls[e.id] = convertFileSrc(path)
+        urls[e.id] = path
       }
       result.push({ pack, emojis, urls })
     }
@@ -141,7 +165,7 @@ export function EmojiSettings() {
   const handleImport = useCallback(async (packId: string) => {
     const files = await dialogOpen({
       multiple: true,
-      filters: [{ name: 'Images', extensions: ['gif', 'apng', 'png', 'webp', 'json'] }],
+      filters: [{ name: 'Images', extensions: ['gif', 'apng', 'png', 'webp', 'jpg', 'jpeg', 'bmp', 'json'] }],
     })
     if (!files) return
     const paths = Array.isArray(files) ? files : [files]
@@ -152,6 +176,11 @@ export function EmojiSettings() {
 
   const handleDeleteEmoji = useCallback(async (id: string) => {
     await api.deleteEmoji(id)
+    await refresh()
+  }, [refresh])
+
+  const handleRenameEmoji = useCallback(async (id: string, newName: string) => {
+    await api.renameEmoji(id, newName)
     await refresh()
   }, [refresh])
 
@@ -188,6 +217,7 @@ export function EmojiSettings() {
             onDelete={() => handleDelete(d.pack.id)}
             onImport={() => handleImport(d.pack.id)}
             onDeleteEmoji={handleDeleteEmoji}
+            onRenameEmoji={handleRenameEmoji}
           />
         ))}
         {details.length === 0 && (

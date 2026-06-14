@@ -1,6 +1,7 @@
 pub mod apply_patch;
 pub mod ask_user;
 pub mod backend;
+pub mod custom;
 pub mod delete_file;
 pub mod edit_file;
 pub mod glob_files;
@@ -272,6 +273,10 @@ impl ToolRegistry {
         #[cfg(not(target_os = "android"))]
         tools.push(Box::new(run_command::RunCommandTool));
         Self { tools }
+    }
+
+    pub fn register(&mut self, tool: Box<dyn Tool>) {
+        self.tools.push(tool);
     }
 
     pub fn definitions(&self) -> Vec<crate::provider::ToolDefinition> {

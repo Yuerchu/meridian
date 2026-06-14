@@ -10,4 +10,7 @@ pub mod preference;
 pub mod prompt_template;
 pub mod project;
 pub mod provider;
+pub mod custom_tool;
+pub mod tool_category;
 pub mod tool_permission;
+pub mod tool_preset;

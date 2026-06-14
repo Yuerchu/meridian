@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { api } from '@/api'
-import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, TemplateVariable, ToolInfo } from '@/types'
+import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
 
 function AssistantEditor({
   assistant,
@@ -37,7 +37,11 @@ function AssistantEditor({
   const [showTemplates, setShowTemplates] = useState(false)
   const [allPacks, setAllPacks] = useState<EmojiPack[]>([])
   const [assignedPackIds, setAssignedPackIds] = useState<Set<string>>(new Set())
-  const [toolMode, setToolMode] = useState<'all' | 'custom'>(assistant.enabled_tools ? 'custom' : 'all')
+  const [toolPresets, setToolPresets] = useState<ToolPreset[]>([])
+  const [selectedPresetId, setSelectedPresetId] = useState(assistant.tool_preset_id ?? '')
+  const [toolMode, setToolMode] = useState<'all' | 'preset' | 'custom'>(
+    assistant.tool_preset_id ? 'preset' : assistant.enabled_tools ? 'custom' : 'all',
+  )
   const [selectedTools, setSelectedTools] = useState<Set<string>>(() => {
     if (assistant.enabled_tools) {
       try { return new Set(JSON.parse(assistant.enabled_tools) as string[]) } catch { /* ignore */ }
@@ -58,6 +62,7 @@ function AssistantEditor({
     api.listPromptTemplates().then(setTemplates)
     api.listTemplateVariables().then(setTemplateVars)
     api.listEmojiPacks().then(setAllPacks)
+    api.listToolPresets().then(setToolPresets)
     api.listAssistantEmojiPacks(assistant.id).then((packs) =>
       setAssignedPackIds(new Set(packs.map((p) => p.id))),
     )
@@ -66,6 +71,9 @@ function AssistantEditor({
   async function handleSave() {
     const enabledTools = toolMode === 'custom'
       ? JSON.stringify([...selectedTools])
+      : null
+    const toolPresetId = toolMode === 'preset' && selectedPresetId
+      ? selectedPresetId
       : null
     await onSave(assistant.id, {
       name,
@@ -77,6 +85,7 @@ function AssistantEditor({
       enabledTools,
       thinkingEnabled: thinkingEnabled ? 1 : 0,
       thinkingBudget: thinkingBudget ? parseInt(thinkingBudget) : null,
+      toolPresetId,
     })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -233,11 +242,30 @@ function AssistantEditor({
             size="sm" variant={toolMode === 'all' ? 'default' : 'outline'}
             onClick={() => setToolMode('all')}
           >{t('settings.assistant.toolsAll')}</Button>
+          {toolPresets.length > 0 && (
+            <Button
+              size="sm" variant={toolMode === 'preset' ? 'default' : 'outline'}
+              onClick={() => setToolMode('preset')}
+            >{t('settings.tools.preset')}</Button>
+          )}
           <Button
             size="sm" variant={toolMode === 'custom' ? 'default' : 'outline'}
             onClick={() => setToolMode('custom')}
           >{t('settings.assistant.toolsCustom')}</Button>
         </div>
+        {toolMode === 'preset' && (
+          <Select value={selectedPresetId || '_none'} onValueChange={(v) => { if (v) setSelectedPresetId(v === '_none' ? '' : v) }}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="_none">{t('settings.assistant.selectModel')}</SelectItem>
+              {toolPresets.map((p) => (
+                <SelectItem key={p.id} value={p.id}>{p.name}{p.description ? ` — ${p.description}` : ''}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
         {toolMode === 'custom' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-1 max-h-40 overflow-y-auto p-2 border border-border rounded-lg">
             {allTools.map((tool) => (

@@ -4,7 +4,6 @@ import { Smile, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { api } from '@/api'
-import { convertFileSrc } from '@tauri-apps/api/core'
 import type { Emoji, EmojiPack } from '@/types'
 
 interface PackWithEmojis {
@@ -40,7 +39,7 @@ export function EmojiPicker({
         result.push({ pack, emojis })
         for (const e of emojis) {
           const path = await api.getEmojiFileUrl(e.id)
-          urlMap[e.id] = convertFileSrc(path)
+          urlMap[e.id] = path
         }
       }
 
@@ -63,7 +62,7 @@ export function EmojiPicker({
     for (const e of results) {
       if (!urlMap[e.id]) {
         const path = await api.getEmojiFileUrl(e.id)
-        urlMap[e.id] = convertFileSrc(path)
+        urlMap[e.id] = path
       }
     }
     setUrls(urlMap)

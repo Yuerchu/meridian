@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, Conversation, Emoji, EmojiPack, McpServer, McpToolDef, Message, ModelInfo, Project, PromptTemplate, Provider, SafRootEntry, TemplateVariable, ToolInfo } from './types'
+import type { Assistant, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Message, ModelInfo, Project, PromptTemplate, Provider, SafRootEntry, TemplateVariable, ToolCategory, ToolInfo, ToolPreset } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -71,6 +71,7 @@ export const api = {
     enabledTools?: string | null
     thinkingEnabled?: number
     thinkingBudget?: number | null
+    toolPresetId?: string | null
   }) =>
     invoke<Assistant>('update_assistant', {
       id,
@@ -83,6 +84,7 @@ export const api = {
       enabledTools: updates.enabledTools !== undefined ? updates.enabledTools : null,
       thinkingEnabled: updates.thinkingEnabled ?? null,
       thinkingBudget: updates.thinkingBudget !== undefined ? updates.thinkingBudget : null,
+      toolPresetId: updates.toolPresetId !== undefined ? updates.toolPresetId : null,
     }),
 
   deleteAssistant: (id: string) =>
@@ -294,6 +296,9 @@ export const api = {
   deleteEmoji: (id: string) =>
     invoke<void>('delete_emoji', { id }),
 
+  renameEmoji: (id: string, newName: string) =>
+    invoke<Emoji>('rename_emoji', { id, newName }),
+
   searchEmojis: (query: string) =>
     invoke<Emoji[]>('search_emojis', { query }),
 
@@ -308,4 +313,88 @@ export const api = {
 
   getEmojiFileUrl: (emojiId: string) =>
     invoke<string>('get_emoji_file_url', { emojiId }),
+
+  // Tool System
+  listToolCategories: () =>
+    invoke<ToolCategory[]>('list_tool_categories'),
+
+  listCustomTools: () =>
+    invoke<CustomTool[]>('list_custom_tools'),
+
+  createCustomTool: (params: {
+    name: string
+    description: string
+    command: string
+    categoryId?: string
+    parametersSchema?: string
+    argsTemplate?: string
+    workingDirectory?: string
+    timeoutMs?: number
+    permission?: string
+  }) =>
+    invoke<CustomTool>('create_custom_tool', {
+      name: params.name,
+      description: params.description,
+      command: params.command,
+      categoryId: params.categoryId ?? null,
+      parametersSchema: params.parametersSchema ?? null,
+      argsTemplate: params.argsTemplate ?? null,
+      workingDirectory: params.workingDirectory ?? null,
+      timeoutMs: params.timeoutMs ?? null,
+      permission: params.permission ?? null,
+    }),
+
+  updateCustomTool: (id: string, updates: {
+    name?: string
+    description?: string
+    command?: string
+    categoryId?: string | null
+    parametersSchema?: string
+    argsTemplate?: string | null
+    workingDirectory?: string | null
+    timeoutMs?: number | null
+    permission?: string
+    isEnabled?: number
+  }) =>
+    invoke<CustomTool>('update_custom_tool', {
+      id,
+      name: updates.name ?? null,
+      description: updates.description ?? null,
+      command: updates.command ?? null,
+      categoryId: updates.categoryId !== undefined ? updates.categoryId : null,
+      parametersSchema: updates.parametersSchema ?? null,
+      argsTemplate: updates.argsTemplate !== undefined ? updates.argsTemplate : null,
+      workingDirectory: updates.workingDirectory !== undefined ? updates.workingDirectory : null,
+      timeoutMs: updates.timeoutMs !== undefined ? updates.timeoutMs : null,
+      permission: updates.permission ?? null,
+      isEnabled: updates.isEnabled ?? null,
+    }),
+
+  deleteCustomTool: (id: string) =>
+    invoke<void>('delete_custom_tool', { id }),
+
+  listToolPresets: () =>
+    invoke<ToolPreset[]>('list_tool_presets'),
+
+  createToolPreset: (name: string, toolNames: string, description?: string) =>
+    invoke<ToolPreset>('create_tool_preset', {
+      name,
+      toolNames,
+      description: description ?? null,
+    }),
+
+  updateToolPreset: (id: string, updates: {
+    name?: string
+    description?: string | null
+    toolNames?: string
+  }) =>
+    invoke<ToolPreset>('update_tool_preset', {
+      id,
+      name: updates.name ?? null,
+      description: updates.description !== undefined ? updates.description : null,
+      toolNames: updates.toolNames ?? null,
+    }),
+
+  deleteToolPreset: (id: string) =>
+    invoke<void>('delete_tool_preset', { id }),
 }

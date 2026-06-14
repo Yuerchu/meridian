@@ -22,6 +22,13 @@ pub fn create_emoji(conn: &mut SqliteConnection, new: &NewEmoji) -> QueryResult<
     emojis::table.find(new.id).first::<Emoji>(conn)
 }
 
+pub fn rename_emoji(conn: &mut SqliteConnection, id: &str, new_name: &str) -> QueryResult<Emoji> {
+    diesel::update(emojis::table.find(id))
+        .set(emojis::name.eq(new_name))
+        .execute(conn)?;
+    emojis::table.find(id).first::<Emoji>(conn)
+}
+
 pub fn delete_emoji(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
     diesel::delete(emojis::table.find(id)).execute(conn)?;
     Ok(())

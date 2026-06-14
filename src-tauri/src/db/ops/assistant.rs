@@ -73,6 +73,7 @@ mod tests {
             enabled_tools: None,
             thinking_enabled: 0,
             thinking_budget: None,
+            tool_preset_id: None,
         }
     }
 

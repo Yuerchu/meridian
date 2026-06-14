@@ -67,6 +67,7 @@ export interface Assistant {
   enabled_tools: string | null
   thinking_enabled: number
   thinking_budget: number | null
+  tool_preset_id: string | null
 }
 
 export type ThinkingLevel = 'default' | 'off' | 'low' | 'medium' | 'high' | 'max'
@@ -160,6 +161,44 @@ export interface TemplateVariable {
   name: string
   description_en: string
   description_zh: string
+}
+
+export interface ToolCategory {
+  id: string
+  name: string
+  description: string | null
+  icon: string | null
+  sort_order: number
+  created_at: number
+}
+
+export interface CustomTool {
+  id: string
+  name: string
+  description: string
+  category_id: string | null
+  parameters_schema: string
+  command: string
+  args_template: string | null
+  working_directory: string | null
+  timeout_ms: number | null
+  permission: string
+  is_enabled: number
+  sort_order: number
+  created_at: number
+  updated_at: number
+}
+
+export interface ToolPreset {
+  id: string
+  name: string
+  description: string | null
+  icon: string | null
+  tool_names: string
+  is_builtin: number
+  sort_order: number
+  created_at: number
+  updated_at: number
 }
 
 export interface StreamChunk {

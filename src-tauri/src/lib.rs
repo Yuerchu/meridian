@@ -22,8 +22,11 @@ use db::models::assistant::{Assistant, AssistantUpdate, NewAssistant};
 use db::models::conversation::Conversation;
 use db::models::mcp_server::{McpServer, McpServerUpdate, NewMcpServer};
 use db::models::message::{Message, NewMessage};
+use db::models::custom_tool::{CustomTool, CustomToolUpdate, NewCustomTool};
 use db::models::emoji::{Emoji, NewEmoji};
 use db::models::emoji_pack::{EmojiPack, NewEmojiPack};
+use db::models::tool_category::{NewToolCategory, ToolCategory};
+use db::models::tool_preset::{NewToolPreset, ToolPreset, ToolPresetUpdate};
 use db::models::prompt_template::{NewPromptTemplate, PromptTemplate, PromptTemplateUpdate};
 use db::models::provider::{NewProvider, Provider, ProviderUpdate};
 use provider::models::ModelInfo;
@@ -422,6 +425,7 @@ async fn create_assistant(
             enabled_tools: None,
             thinking_enabled: 0,
             thinking_budget: None,
+            tool_preset_id: None,
         };
         db::ops::assistant::create_assistant(&mut conn, &new).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
@@ -440,6 +444,7 @@ async fn update_assistant(
     enabled_tools: Option<Option<String>>,
     thinking_enabled: Option<i32>,
     thinking_budget: Option<Option<i32>>,
+    tool_preset_id: Option<Option<String>>,
 ) -> Result<Assistant, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
@@ -454,6 +459,7 @@ async fn update_assistant(
             enabled_tools,
             thinking_enabled,
             thinking_budget,
+            tool_preset_id,
             updated_at: Some(now_ms()),
             ..Default::default()
         };
@@ -1140,6 +1146,13 @@ fn delete_emoji(app: tauri::AppHandle, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn rename_emoji(app: tauri::AppHandle, id: String, new_name: String) -> Result<Emoji, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji::rename_emoji(&mut conn, &id, &new_name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 fn search_emojis(app: tauri::AppHandle, query: String) -> Result<Vec<Emoji>, String> {
     let pool = app.state::<AppDb>();
     let mut conn = get_conn(&pool.0)?;
@@ -1188,7 +1201,168 @@ fn get_emoji_file_url(app: tauri::AppHandle, emoji_id: String) -> Result<String,
     let e = db::ops::emoji::get_emoji(&mut conn, &emoji_id).map_err(|e| e.to_string())?;
     let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
     let path = emoji::emoji_path(&data_dir, &e.pack_id, &e.file_name);
-    Ok(path.to_string_lossy().into_owned())
+    let bytes = std::fs::read(&path).map_err(|err| format!("Cannot read emoji file: {err}"))?;
+    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
+    let mime = match e.file_format.as_str() {
+        "gif" => "image/gif",
+        "apng" | "png" => "image/png",
+        "webp" => "image/webp",
+        "jpg" => "image/jpeg",
+        "bmp" => "image/bmp",
+        "lottie" => "application/json",
+        _ => "application/octet-stream",
+    };
+    Ok(format!("data:{mime};base64,{b64}"))
+}
+
+// --- Tool System (categories, custom tools, presets) ---
+
+#[tauri::command]
+fn list_tool_categories(app: tauri::AppHandle) -> Result<Vec<ToolCategory>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::tool_category::list_categories(&mut conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_custom_tools(app: tauri::AppHandle) -> Result<Vec<CustomTool>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::custom_tool::list_tools(&mut conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_custom_tool(
+    app: tauri::AppHandle,
+    name: String,
+    description: String,
+    command: String,
+    category_id: Option<String>,
+    parameters_schema: Option<String>,
+    args_template: Option<String>,
+    working_directory: Option<String>,
+    timeout_ms: Option<i32>,
+    permission: Option<String>,
+) -> Result<CustomTool, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    let schema = parameters_schema.as_deref().unwrap_or(r#"{"type":"object","properties":{}}"#);
+    let perm = permission.as_deref().unwrap_or("ask");
+    db::ops::custom_tool::create_tool(&mut conn, &NewCustomTool {
+        id: &id,
+        name: &name,
+        description: &description,
+        category_id: category_id.as_deref(),
+        parameters_schema: schema,
+        command: &command,
+        args_template: args_template.as_deref(),
+        working_directory: working_directory.as_deref(),
+        timeout_ms,
+        permission: perm,
+        is_enabled: 1,
+        sort_order: 0,
+        created_at: now,
+        updated_at: now,
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_custom_tool(
+    app: tauri::AppHandle,
+    id: String,
+    name: Option<String>,
+    description: Option<String>,
+    command: Option<String>,
+    category_id: Option<Option<String>>,
+    parameters_schema: Option<String>,
+    args_template: Option<Option<String>>,
+    working_directory: Option<Option<String>>,
+    timeout_ms: Option<Option<i32>>,
+    permission: Option<String>,
+    is_enabled: Option<i32>,
+) -> Result<CustomTool, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::custom_tool::update_tool(&mut conn, &id, &CustomToolUpdate {
+        name,
+        description,
+        command,
+        category_id,
+        parameters_schema,
+        args_template,
+        working_directory,
+        timeout_ms,
+        permission,
+        is_enabled,
+        updated_at: Some(now_ms()),
+        ..Default::default()
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_custom_tool(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::custom_tool::delete_tool(&mut conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_tool_presets(app: tauri::AppHandle) -> Result<Vec<ToolPreset>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::tool_preset::list_presets(&mut conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_tool_preset(
+    app: tauri::AppHandle,
+    name: String,
+    description: Option<String>,
+    tool_names: String,
+) -> Result<ToolPreset, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    db::ops::tool_preset::create_preset(&mut conn, &NewToolPreset {
+        id: &id,
+        name: &name,
+        description: description.as_deref(),
+        icon: None,
+        tool_names: &tool_names,
+        is_builtin: 0,
+        sort_order: 0,
+        created_at: now,
+        updated_at: now,
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_tool_preset(
+    app: tauri::AppHandle,
+    id: String,
+    name: Option<String>,
+    description: Option<Option<String>>,
+    tool_names: Option<String>,
+) -> Result<ToolPreset, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::tool_preset::update_preset(&mut conn, &id, &ToolPresetUpdate {
+        name,
+        description,
+        tool_names,
+        updated_at: Some(now_ms()),
+        ..Default::default()
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_tool_preset(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::tool_preset::delete_preset(&mut conn, &id).map_err(|e| e.to_string())
 }
 
 // --- Chat command (with agent loop + tools + approval) ---
@@ -1284,7 +1458,10 @@ async fn chat(
             let list: Vec<String> = emojis.iter().take(100).map(|e| {
                 format!("[emoji:{}]", e.name)
             }).collect();
-            Some(list.join(", "))
+            Some(format!(
+                "You can use stickers in your responses. Copy the EXACT syntax below (do NOT rename or translate):\n{}",
+                list.join("\n")
+            ))
         }).await.ok().flatten();
         if let Some(names) = emoji_names {
             tmpl_ctx.set("emoji_list", &names);
@@ -1367,9 +1544,20 @@ async fn chat(
         let mgr = mcp.0.lock().await;
         all_tool_defs.extend(mgr.all_tool_definitions());
     }
-    let enabled_tools: Option<Vec<String>> = assistant.as_ref()
-        .and_then(|a| a.enabled_tools.as_ref())
-        .and_then(|json| serde_json::from_str(json).ok());
+    // Resolve tool filtering: preset > enabled_tools > all
+    let enabled_tools: Option<Vec<String>> = if let Some(ref preset_id) = assistant.as_ref().and_then(|a| a.tool_preset_id.as_ref()) {
+        let pool2 = pool.clone();
+        let pid = preset_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2).ok()?;
+            let preset = db::ops::tool_preset::get_preset(&mut conn, &pid).ok()?;
+            serde_json::from_str(&preset.tool_names).ok()
+        }).await.ok().flatten()
+    } else {
+        assistant.as_ref()
+            .and_then(|a| a.enabled_tools.as_ref())
+            .and_then(|json| serde_json::from_str(json).ok())
+    };
     let tool_defs: Vec<_> = if let Some(ref enabled) = enabled_tools {
         all_tool_defs.into_iter().filter(|t| enabled.contains(&t.name)).collect()
     } else {
@@ -1667,6 +1855,7 @@ pub fn run() {
                         enabled_tools: None,
                         thinking_enabled: 0,
                         thinking_budget: None,
+                        tool_preset_id: None,
                     });
                 }
             }
@@ -1744,7 +1933,7 @@ pub fn run() {
                 if db::ops::prompt_template::count_templates(&mut conn).unwrap_or(0) == 0 {
                     let now = now_ms();
                     let templates = [
-                        ("casual_friend", "Casual Friend", "随意朋友", "character", "You are {{assistant_name}}, a casual and friendly chat partner. Talk naturally, use slang, emoji, and informal language. Be playful and genuine. The current time is {{current_time}} on {{current_date}} ({{day_of_week}})."),
+                        ("casual_friend", "Casual Friend", "随意朋友", "character", "You are {{assistant_name}}, a casual and friendly chat partner. Talk naturally, use slang, emoji, and informal language. Be playful and genuine. The current time is {{current_time}} on {{current_date}} ({{day_of_week}}).\n\n{{chat_style_hint}}\n\nExample of segmented response:\nwhat\n---\nno way lol\n---\n[emoji:shocked]"),
                         ("professional", "Professional Assistant", "专业助手", "character", "You are {{assistant_name}}, a professional and knowledgeable assistant. Respond in a structured, clear, and formal manner. Provide thorough and accurate answers. Current date: {{current_date}}."),
                         ("code_expert", "Code Expert", "代码专家", "coding", "You are {{assistant_name}}, an expert software engineer. Write clean, efficient, and well-documented code. Explain technical concepts clearly. Use code blocks with language tags. Current date: {{current_date}}."),
                         ("creative_writer", "Creative Writer", "创意写手", "character", "You are {{assistant_name}}, a creative and expressive writer. Use vivid language, metaphors, and storytelling techniques. Be imaginative and emotionally engaging."),
@@ -1767,8 +1956,53 @@ pub fn run() {
                 }
             }
 
+            // Seed built-in tool categories and presets
+            {
+                let mut conn = pool.get().expect("db connection");
+                if db::ops::tool_category::count_categories(&mut conn).unwrap_or(0) == 0 {
+                    let now = now_ms();
+                    let cats = [
+                        ("cat_interaction", "Interaction", "User interaction tools", 0),
+                        ("cat_filesystem", "Filesystem", "File and directory operations", 1),
+                        ("cat_system", "System", "System and shell commands", 2),
+                        ("cat_coding", "Coding", "Code analysis and editing", 3),
+                    ];
+                    for (id, name, desc, order) in &cats {
+                        let _ = db::ops::tool_category::create_category(&mut conn, &NewToolCategory {
+                            id, name, description: Some(desc), icon: None, sort_order: *order, created_at: now,
+                        });
+                    }
+                }
+                if db::ops::tool_preset::count_presets(&mut conn).unwrap_or(0) == 0 {
+                    let now = now_ms();
+                    let presets = [
+                        ("preset_coding", "Coding Agent", "All tools for coding tasks", r#"["ask_user","read_file","write_file","edit_file","apply_patch","run_command","list_directory","search_files","glob_files"]"#, 0),
+                        ("preset_research", "Research", "Minimal tools for research and reading", r#"["ask_user","read_file","list_directory","search_files","glob_files"]"#, 1),
+                        ("preset_writing", "Writing", "Tools for writing and editing files", r#"["ask_user","read_file","write_file","edit_file"]"#, 2),
+                    ];
+                    for (id, name, desc, tools_json, order) in &presets {
+                        let _ = db::ops::tool_preset::create_preset(&mut conn, &NewToolPreset {
+                            id, name, description: Some(desc), icon: None,
+                            tool_names: tools_json, is_builtin: 1, sort_order: *order,
+                            created_at: now, updated_at: now,
+                        });
+                    }
+                }
+            }
+
+            // Load custom tools from DB into tool registry
+            let mut registry = tools::ToolRegistry::new();
+            {
+                let mut conn = pool.get().expect("db connection");
+                if let Ok(custom_tools) = db::ops::custom_tool::list_enabled_tools(&mut conn) {
+                    for ct in &custom_tools {
+                        registry.register(Box::new(tools::custom::CustomToolExecutor::from_db(ct)));
+                    }
+                }
+            }
+
             app.manage(AppDb(pool));
-            app.manage(AppTools(Arc::new(tools::ToolRegistry::new())));
+            app.manage(AppTools(registry));
             app.manage(ApprovalWaiters(Mutex::new(HashMap::new())));
             app.manage(ActiveChats(Mutex::new(HashMap::new())));
             app.manage(AppMcp(Arc::new(Mutex::new(mcp::McpManager::new()))));
@@ -1813,9 +2047,12 @@ pub fn run() {
             list_prompt_templates, create_prompt_template, update_prompt_template,
             delete_prompt_template, list_template_variables,
             list_emoji_packs, create_emoji_pack, delete_emoji_pack,
-            list_emojis, import_emojis, delete_emoji, search_emojis,
+            list_emojis, import_emojis, delete_emoji, rename_emoji, search_emojis,
             assign_emoji_pack, unassign_emoji_pack, list_assistant_emoji_packs,
             get_emoji_file_url,
+            list_tool_categories,
+            list_custom_tools, create_custom_tool, update_custom_tool, delete_custom_tool,
+            list_tool_presets, create_tool_preset, update_tool_preset, delete_tool_preset,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

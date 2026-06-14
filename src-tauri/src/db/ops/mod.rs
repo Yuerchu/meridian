@@ -7,4 +7,7 @@ pub mod message;
 pub mod preference;
 pub mod prompt_template;
 pub mod project;
+pub mod custom_tool;
 pub mod provider;
+pub mod tool_category;
+pub mod tool_preset;

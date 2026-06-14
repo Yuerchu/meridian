@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Cloud, Bot, Settings2, Info, Plug, Radio, BookTemplate, Smile } from 'lucide-react'
+import { Cloud, Bot, Settings2, Info, Plug, Radio, BookTemplate, Smile, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProviderSettings } from './provider-settings'
 import { AssistantSettings } from './assistant-settings'
@@ -9,9 +9,10 @@ import { McpSettings } from './mcp-settings'
 import { OneBotSettings } from './onebot-settings'
 import { TemplateGallery } from './template-gallery'
 import { EmojiSettings } from './emoji-settings'
+import { ToolMarketplace } from './tool-marketplace'
 import { About } from './about'
 
-type SettingsTab = 'provider' | 'assistants' | 'templates' | 'emoji' | 'mcp' | 'onebot' | 'general' | 'about'
+type SettingsTab = 'provider' | 'assistants' | 'templates' | 'emoji' | 'tools' | 'mcp' | 'onebot' | 'general' | 'about'
 
 export default function SettingsPage() {
   const { t } = useTranslation()
@@ -22,6 +23,7 @@ export default function SettingsPage() {
     { id: 'assistants', label: t('settings.assistants'), icon: Bot },
     { id: 'templates', label: t('settings.templates'), icon: BookTemplate },
     { id: 'emoji', label: t('settings.emoji'), icon: Smile },
+    { id: 'tools', label: t('settings.toolsTab'), icon: Wrench },
     { id: 'mcp', label: t('settings.mcp'), icon: Plug },
     { id: 'onebot', label: t('settings.onebot'), icon: Radio },
     { id: 'general', label: t('settings.general'), icon: Settings2 },
@@ -53,6 +55,7 @@ export default function SettingsPage() {
         {activeTab === 'assistants' && <AssistantSettings />}
         {activeTab === 'templates' && <TemplateGallery />}
         {activeTab === 'emoji' && <EmojiSettings />}
+        {activeTab === 'tools' && <ToolMarketplace />}
         {activeTab === 'mcp' && <McpSettings />}
         {activeTab === 'onebot' && <OneBotSettings />}
         {activeTab === 'general' && <GeneralSettings />}

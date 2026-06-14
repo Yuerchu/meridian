@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { api } from '@/api'
 import type { Emoji } from '@/types'
-import { convertFileSrc } from '@tauri-apps/api/core'
 
 export interface EmojiMap {
   [name: string]: { emoji: Emoji; url: string }
@@ -27,7 +26,7 @@ export function useEmojiMap(assistantId: string | null) {
       const newMap: EmojiMap = {}
       for (const e of allEmojis) {
         const url = await api.getEmojiFileUrl(e.id)
-        newMap[e.name] = { emoji: e, url: convertFileSrc(url) }
+        newMap[e.name] = { emoji: e, url }
       }
       if (!cancelled) setMap(newMap)
     }
@@ -66,7 +65,7 @@ export function renderEmojisInText(
           src={entry.url}
           alt={emojiName}
           title={emojiName}
-          className="inline-block h-6 w-6 align-text-bottom"
+          className="emoji-sticker block my-2 max-w-[120px] max-h-[120px] w-auto h-auto rounded"
         />,
       )
     } else {

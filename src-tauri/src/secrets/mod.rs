@@ -138,18 +138,12 @@ pub fn environment_id_from_path(path: &Path) -> String {
     format!("env-{short}")
 }
 
-pub(crate) fn compute_keyring_account(data_dir: &Path) -> String {
-    let canonical = data_dir
-        .canonicalize()
-        .unwrap_or_else(|_| data_dir.to_path_buf())
-        .to_string_lossy()
-        .into_owned();
-    let mut hasher = Sha256::new();
-    hasher.update(canonical.as_bytes());
-    let digest = hasher.finalize();
-    let hex = format!("{digest:x}");
-    let short = hex.get(..16).unwrap_or(hex.as_str());
-    format!("secrets|{short}")
+pub(crate) fn compute_keyring_account(_data_dir: &Path) -> String {
+    // Use a fixed account name so that release and dev builds share the same
+    // passphrase when they share the same app_data_dir. Previously this was
+    // based on the canonicalized data_dir path hash, which broke when the
+    // binary location differed between builds.
+    "secrets|meridian".to_string()
 }
 
 pub(crate) fn keyring_service() -> &'static str {

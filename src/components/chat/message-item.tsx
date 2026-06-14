@@ -7,7 +7,7 @@ import { Bot, Copy, Check, Trash2, RefreshCw, ChevronDown, ChevronRight, Lightbu
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ToolCallBlock } from './tool-call-block'
-import { EmojiText } from './emoji-renderer'
+import { renderEmojisInText } from './emoji-renderer'
 import type { ContentBlock, Message } from '@/types'
 import type { EmojiMap } from './emoji-renderer'
 
@@ -77,35 +77,40 @@ const proseClasses = cn(
   "prose-td:border prose-td:border-border",
 )
 
-function EmojiAwareText({ children, emojiMap }: { children: React.ReactNode; emojiMap?: EmojiMap }) {
-  if (!emojiMap || Object.keys(emojiMap).length === 0) return <>{children}</>
-  return (
-    <>
-      {React.Children.map(children, (child) => {
-        if (typeof child === 'string' && child.includes('[emoji:')) {
-          return <EmojiText text={child} emojiMap={emojiMap} />
-        }
-        return child
-      })}
-    </>
-  )
+function preprocessEmojis(content: string, emojiMap?: EmojiMap): string {
+  if (!emojiMap || Object.keys(emojiMap).length === 0) return content
+  return content.replace(/\[emoji:([^\]]+)\]/g, (full, name) => {
+    const entry = emojiMap[name]
+    if (entry) return `![sticker:${name}](${entry.url})`
+    return full
+  })
 }
 
 const MarkdownContent = React.memo(function MarkdownContent({ content, isStreaming, emojiMap }: { content: string; isStreaming?: boolean; emojiMap?: EmojiMap }) {
+  const processed = useMemo(() => preprocessEmojis(content, emojiMap), [content, emojiMap])
+
   const components = useMemo(() => ({
     code: CodeBlock as never,
-    p: ({ children, ...props }: React.HTMLAttributes<HTMLParagraphElement>) => (
-      <p {...props}><EmojiAwareText emojiMap={emojiMap}>{children}</EmojiAwareText></p>
-    ),
-    li: ({ children, ...props }: React.HTMLAttributes<HTMLLIElement>) => (
-      <li {...props}><EmojiAwareText emojiMap={emojiMap}>{children}</EmojiAwareText></li>
-    ),
-  }), [emojiMap])
+    img: ({ alt, src, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
+      if (alt?.startsWith('sticker:')) {
+        return (
+          <img
+            src={src}
+            alt={alt.slice(8)}
+            title={alt.slice(8)}
+            className="emoji-sticker block my-2 max-w-[120px] max-h-[120px] w-auto h-auto rounded"
+            {...props}
+          />
+        )
+      }
+      return <img alt={alt} src={src} {...props} />
+    },
+  }), [])
 
   return (
     <div className={proseClasses}>
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={components}>
-        {content}
+        {processed}
       </ReactMarkdown>
       {isStreaming && (
         <span className="inline-block w-2 h-4 ml-0.5 bg-muted-foreground animate-pulse" />
@@ -142,12 +147,32 @@ function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; i
   )
 }
 
+function TextBubbles({ content, isStreaming, emojiMap }: { content: string; isStreaming?: boolean; emojiMap?: EmojiMap }) {
+  const segments = content.split(/\n---\n/).map((s) => s.trim()).filter(Boolean)
+  if (segments.length <= 1) {
+    return <MarkdownContent content={content} isStreaming={isStreaming} emojiMap={emojiMap} />
+  }
+  return (
+    <div className="space-y-2">
+      {segments.map((seg, i) => (
+        <div key={i} className="rounded-xl bg-accent/30 px-3.5 py-2">
+          <MarkdownContent
+            content={seg}
+            isStreaming={isStreaming && i === segments.length - 1}
+            emojiMap={emojiMap}
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 function AssistantBlock({ block, isLast, isStreaming, isLastMessage, emojiMap }: { block: ContentBlock; isLast: boolean; isStreaming?: boolean; isLastMessage?: boolean; emojiMap?: EmojiMap }) {
   if (block.type === 'thinking') {
     return <ThinkingBlock text={block.text} isStreaming={isLast && isStreaming} defaultExpanded={!!isLastMessage && isLast} />
   }
   if (block.type === 'text') {
-    return <MarkdownContent content={block.text} isStreaming={isLast && isStreaming} emojiMap={emojiMap} />
+    return <TextBubbles content={block.text} isStreaming={isLast && isStreaming} emojiMap={emojiMap} />
   }
   if (block.type === 'tool_call') {
     return <MemoToolCallBlock data={block.data} />
@@ -174,7 +199,7 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
       <div className="flex justify-end group">
         <div className="max-w-[80%] rounded-2xl bg-accent px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
           {emojiMap && Object.keys(emojiMap).length > 0
-            ? <EmojiText text={message.content} emojiMap={emojiMap} />
+            ? renderEmojisInText(message.content, emojiMap)
             : message.content}
         </div>
       </div>

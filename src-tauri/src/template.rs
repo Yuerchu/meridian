@@ -40,6 +40,7 @@ pub fn build_context(assistant_name: Option<&str>, user_name: Option<&str>) -> T
     ctx.set("current_date", now.format("%Y-%m-%d").to_string());
     ctx.set("current_datetime", now.format("%Y-%m-%d %H:%M").to_string());
     ctx.set("day_of_week", now.format("%A").to_string());
+    ctx.set("chat_style_hint", "To send multiple short messages instead of one long reply, separate them with a line containing only --- (three dashes). Each segment will be shown as a separate chat bubble. Use this for casual, human-like conversation flow.");
 
     ctx
 }
@@ -86,6 +87,11 @@ pub fn available_variables() -> Vec<TemplateVariable> {
             name: "emoji_list",
             description_en: "List of available emoji from assigned packs",
             description_zh: "已分配表情包中的可用表情列表",
+        },
+        TemplateVariable {
+            name: "chat_style_hint",
+            description_en: "Hint for segmented chat-style responses (use --- to split)",
+            description_zh: "分句消息风格提示（用 --- 分隔多条消息）",
         },
     ]
 }
