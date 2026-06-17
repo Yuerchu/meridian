@@ -113,6 +113,7 @@ diesel::table! {
         args -> Nullable<Text>,
         env -> Nullable<Text>,
         url -> Nullable<Text>,
+        headers -> Nullable<Text>,
         is_enabled -> Integer,
         sort_order -> Integer,
         created_at -> BigInt,

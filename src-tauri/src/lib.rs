@@ -30,7 +30,7 @@ use db::models::tool_preset::{NewToolPreset, ToolPreset, ToolPresetUpdate};
 use db::models::prompt_template::{NewPromptTemplate, PromptTemplate, PromptTemplateUpdate};
 use db::models::provider::{NewProvider, Provider, ProviderUpdate};
 use provider::models::ModelInfo;
-use provider::{ChatMessage, ChatParams, ChatProvider};
+use provider::{ChatMessage, ChatParams};
 use secrets::{SecretName, SecretScope, SecretsManager};
 use tauri::{Emitter, Manager};
 use tokio::sync::{oneshot, Mutex};
@@ -752,6 +752,7 @@ async fn create_mcp_server(
     args: Option<String>,
     env: Option<String>,
     url: Option<String>,
+    headers: Option<String>,
 ) -> Result<McpServer, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
@@ -762,6 +763,7 @@ async fn create_mcp_server(
             id: &id, name: &name, transport_type: &transport_type,
             command: command.as_deref(), args: args.as_deref(),
             env: env.as_deref(), url: url.as_deref(),
+            headers: headers.as_deref(),
             is_enabled: 1, sort_order: 0, created_at: now, updated_at: now,
         }).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
@@ -772,18 +774,20 @@ async fn update_mcp_server(
     app: tauri::AppHandle,
     id: String,
     name: Option<String>,
+    transport_type: Option<String>,
     command: Option<Option<String>>,
     args: Option<Option<String>>,
     env: Option<Option<String>>,
+    url: Option<Option<String>>,
+    headers: Option<Option<String>>,
     is_enabled: Option<i32>,
 ) -> Result<McpServer, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::mcp_server::update_mcp_server(&mut conn, &id, &McpServerUpdate {
-            name, command, args, env, is_enabled,
+            name, transport_type, command, args, env, url, headers, is_enabled,
             updated_at: Some(now_ms()),
-            ..Default::default()
         }).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
@@ -2066,7 +2070,7 @@ pub fn run() {
             }
 
             app.manage(AppDb(pool));
-            app.manage(AppTools(registry));
+            app.manage(AppTools(Arc::new(registry)));
             app.manage(ApprovalWaiters(Mutex::new(HashMap::new())));
             app.manage(ActiveChats(Mutex::new(HashMap::new())));
             app.manage(AppMcp(Arc::new(Mutex::new(mcp::McpManager::new()))));
