@@ -36,11 +36,19 @@ pub async fn handle_message(
     let self_id = event.self_id.unwrap_or(0);
     let is_group = event.message_type.as_deref() == Some("group");
 
-    // Group messages: only respond when @mentioned
-    if is_group {
-        if !format::is_at_bot(message, self_id) {
-            return vec![];
+    // In group chats, check for pending approval before the @mention gate —
+    // approval replies ("Y") don't need to @mention the bot.
+    if is_group && !format::is_at_bot(message, self_id) {
+        let session_key = SessionKey::group(event.group_id.unwrap_or(0));
+        let has_pending = state.pending_approvals.lock().await
+            .contains_key(&session_key.to_string());
+        if has_pending {
+            let text = format::segments_to_text(message, Some(self_id));
+            if !text.is_empty() {
+                return handle_text_message(event, state, user_id, &text).await;
+            }
         }
+        return vec![];
     }
 
     let text = format::segments_to_text(message, Some(self_id));

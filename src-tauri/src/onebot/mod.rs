@@ -299,15 +299,18 @@ async fn handle_connection(
                 }
             }
             "message" => {
-                let actions = handler::handle_message(&event, &state).await;
-                let sinks = state.ws_sinks.lock().await;
-                if let Some(sink) = sinks.get(&conn_id) {
-                    for action in actions {
-                        if let Ok(json) = serde_json::to_string(&action) {
-                            let _ = sink.send(json).await;
+                let state = state.clone();
+                tokio::spawn(async move {
+                    let actions = handler::handle_message(&event, &state).await;
+                    let sinks = state.ws_sinks.lock().await;
+                    if let Some(sink) = sinks.get(&conn_id) {
+                        for action in actions {
+                            if let Ok(json) = serde_json::to_string(&action) {
+                                let _ = sink.send(json).await;
+                            }
                         }
                     }
-                }
+                });
             }
             _ => {
                 tracing::debug!("Unhandled OneBot event type: {}", event.post_type);
