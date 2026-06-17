@@ -179,6 +179,7 @@ diesel::table! {
         sort_order -> Integer,
         created_at -> BigInt,
         updated_at -> BigInt,
+        api_format -> Text,
     }
 }
 

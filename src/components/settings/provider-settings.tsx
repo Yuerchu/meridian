@@ -23,6 +23,7 @@ function ProviderEditor({
   const [name, setName] = useState(provider.name)
   const [providerType, setProviderType] = useState(provider.provider_type)
   const [baseUrl, setBaseUrl] = useState(provider.base_url)
+  const [apiFormat, setApiFormat] = useState(provider.api_format || 'chat_completions')
   const [apiKey, setApiKey] = useState('')
   const [hasKey, setHasKey] = useState(false)
   const [keySaved, setKeySaved] = useState(false)
@@ -36,11 +37,11 @@ function ProviderEditor({
   }, [provider.id])
 
   const handleSave = useCallback(async () => {
-    await api.updateProvider(provider.id, { name, providerType, baseUrl })
+    await api.updateProvider(provider.id, { name, providerType, baseUrl, apiFormat })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
     onUpdate()
-  }, [provider.id, name, providerType, baseUrl, onUpdate])
+  }, [provider.id, name, providerType, baseUrl, apiFormat, onUpdate])
 
   const handleSaveKey = useCallback(async () => {
     if (!apiKey.trim()) return
@@ -96,6 +97,21 @@ function ProviderEditor({
           placeholder={providerType === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
         />
       </div>
+
+      {providerType !== 'anthropic' && (
+        <div className="space-y-1.5">
+          <label className="block text-[11px] text-muted-foreground">{t('settings.provider.apiFormat')}</label>
+          <Select value={apiFormat} onValueChange={(v) => v && setApiFormat(v)}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="responses">{t('settings.provider.apiFormatResponses')}</SelectItem>
+              <SelectItem value="chat_completions">{t('settings.provider.apiFormatChatCompletions')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <Button size="sm" onClick={handleSave}>{t('common.save')}</Button>
@@ -184,7 +200,7 @@ export function ProviderSettings() {
   }, [refresh, selectedId])
 
   const handleCreate = useCallback(async () => {
-    const p = await api.createProvider('New Provider', 'openai', 'https://api.openai.com/v1')
+    const p = await api.createProvider('New Provider', 'openai', 'https://api.openai.com/v1', 'responses')
     await refresh()
     setSelectedId(p.id)
   }, [refresh])

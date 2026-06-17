@@ -94,14 +94,15 @@ export const api = {
   listProviders: () =>
     invoke<Provider[]>('list_providers'),
 
-  createProvider: (name: string, providerType: string, baseUrl: string) =>
-    invoke<Provider>('create_provider', { name, providerType, baseUrl }),
+  createProvider: (name: string, providerType: string, baseUrl: string, apiFormat?: string) =>
+    invoke<Provider>('create_provider', { name, providerType, baseUrl, apiFormat: apiFormat ?? null }),
 
   updateProvider: (id: string, updates: {
     name?: string
     providerType?: string
     baseUrl?: string
     isEnabled?: number
+    apiFormat?: string
   }) =>
     invoke<Provider>('update_provider', {
       id,
@@ -109,6 +110,7 @@ export const api = {
       providerType: updates.providerType ?? null,
       baseUrl: updates.baseUrl ?? null,
       isEnabled: updates.isEnabled ?? null,
+      apiFormat: updates.apiFormat ?? null,
     }),
 
   deleteProvider: (id: string) =>

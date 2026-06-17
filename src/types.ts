@@ -81,6 +81,7 @@ export interface Provider {
   sort_order: number
   created_at: number
   updated_at: number
+  api_format: string
 }
 
 export interface ModelInfo {

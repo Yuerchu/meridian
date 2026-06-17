@@ -266,7 +266,7 @@ pub(crate) fn resolve_provider_config(
     secrets: &SecretsManager,
     pool: &DbPool,
     assistant: Option<&Assistant>,
-) -> Result<(String, String, String, String), String> {
+) -> Result<(String, String, String, String, String), String> {
     if let Some(provider_id) = assistant.and_then(|a| a.provider_id.as_deref()) {
         let mut conn = get_conn(pool)?;
         let provider = db::ops::provider::get_provider(&mut conn, provider_id)
@@ -277,7 +277,7 @@ pub(crate) fn resolve_provider_config(
             .and_then(|a| a.model_id.clone())
             .unwrap_or_else(|| "gpt-4.1-mini".into());
         let base_url = provider.base_url.trim_end_matches('/').to_string();
-        return Ok((provider.provider_type, base_url, api_key, model));
+        return Ok((provider.provider_type, base_url, api_key, model, provider.api_format));
     }
 
     // Fallback: first enabled provider
@@ -289,7 +289,7 @@ pub(crate) fn resolve_provider_config(
                     .and_then(|a| a.model_id.clone())
                     .unwrap_or_else(|| "gpt-4.1-mini".into());
                 let base_url = p.base_url.trim_end_matches('/').to_string();
-                return Ok((p.provider_type, base_url, api_key, model));
+                return Ok((p.provider_type, base_url, api_key, model, p.api_format));
             }
         }
     }
@@ -516,12 +516,14 @@ async fn create_provider(
     name: String,
     provider_type: String,
     base_url: String,
+    api_format: Option<String>,
 ) -> Result<Provider, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
+        let format = api_format.as_deref().unwrap_or("chat_completions");
         db::ops::provider::create_provider(&mut conn, &NewProvider {
             id: &id,
             name: &name,
@@ -531,6 +533,7 @@ async fn create_provider(
             sort_order: 0,
             created_at: now,
             updated_at: now,
+            api_format: format,
         }).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
@@ -543,6 +546,7 @@ async fn update_provider(
     provider_type: Option<String>,
     base_url: Option<String>,
     is_enabled: Option<i32>,
+    api_format: Option<String>,
 ) -> Result<Provider, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
@@ -552,6 +556,7 @@ async fn update_provider(
             provider_type,
             base_url,
             is_enabled,
+            api_format,
             updated_at: Some(now_ms()),
             ..Default::default()
         };
@@ -1437,7 +1442,7 @@ async fn chat(
     };
 
     // Resolve provider config (with optional overrides)
-    let (mut provider_type, mut base_url, mut api_key, model) =
+    let (mut provider_type, mut base_url, mut api_key, model, mut api_format) =
         resolve_provider_config(&secrets.0, &pool, assistant.as_ref())?;
 
     let model = model_override.unwrap_or(model);
@@ -1446,19 +1451,20 @@ async fn chat(
         let pool2 = pool.clone();
         let pid2 = pid.clone();
         let secrets2 = secrets.0.clone();
-        let (pt, bu, ak) = tokio::task::spawn_blocking(move || {
+        let (pt, bu, ak, af) = tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool2)?;
             let p = db::ops::provider::get_provider(&mut conn, &pid2).map_err(|e| e.to_string())?;
             let ak = get_provider_api_key(&secrets2, &pid2)
                 .ok_or_else(|| format!("API Key not set for provider '{}'", p.name))?;
-            Ok::<_, String>((p.provider_type, p.base_url.trim_end_matches('/').to_string(), ak))
+            Ok::<_, String>((p.provider_type, p.base_url.trim_end_matches('/').to_string(), ak, p.api_format))
         }).await.map_err(|e| e.to_string())??;
         provider_type = pt;
         base_url = bu;
         api_key = ak;
+        api_format = af;
     }
 
-    let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key);
+    let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
 
     // Build messages with history (resolve template variables in system prompt)
     let file_access = build_file_access(&pool).await;
@@ -1955,6 +1961,7 @@ pub fn run() {
                                 sort_order: 0,
                                 created_at: now,
                                 updated_at: now,
+                                api_format: "chat_completions",
                             },
                         ) {
                             let key_name = provider_secret_name(&provider.id);

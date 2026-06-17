@@ -118,9 +118,9 @@ pub async fn headless_chat(
     };
 
     // Resolve provider
-    let (provider_type, base_url, api_key, model) =
+    let (provider_type, base_url, api_key, model, api_format) =
         resolve_provider_config(secrets, pool, assistant.as_ref())?;
-    let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key);
+    let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
 
     // Build messages
     let system_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
