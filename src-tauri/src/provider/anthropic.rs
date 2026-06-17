@@ -225,11 +225,21 @@ impl ChatProvider for AnthropicProvider {
                                 }
                             }
                             "message_delta" => {
-                                // usage and stop_reason handled at Done
+                                if let Some(ref delta) = parsed.delta {
+                                    if let Some(ref sr) = delta.stop_reason {
+                                        let usage = parsed.usage.map(|u| TokenUsage {
+                                            prompt_tokens: u.input_tokens,
+                                            completion_tokens: u.output_tokens,
+                                            total_tokens: None,
+                                        });
+                                        out.push(Ok(StreamEvent::Done {
+                                            usage,
+                                            finish_reason: Some(sr.clone()),
+                                        }));
+                                    }
+                                }
                             }
-                            "message_stop" => {
-                                // We'll handle Done after the stream ends
-                            }
+                            "message_stop" => {}
                             _ => {}
                         }
                         out

@@ -307,7 +307,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
   const selectedAssistant = assistants.find((a) => a.id === selectedAssistantId)
   const contextInfo = useMemo(() => {
     const contextLimit = selectedAssistant?.context_limit ?? 128000
-    const estimatedTokens = messages.reduce((sum, m) => sum + Math.ceil(m.content.length / 4) + 4, 0)
+    const estimatedTokens = messages.reduce((sum, m) => sum + [...m.content].length + 4, 0)
     return { messageCount: visibleMessages.length, estimatedTokens, contextLimit }
   }, [messages, visibleMessages.length, selectedAssistant?.context_limit])
 

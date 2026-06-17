@@ -213,9 +213,32 @@ pub(crate) fn extract_tool_calls_from_blocks(blocks_json: &str) -> Vec<provider:
     }).collect()
 }
 
+fn estimate_tokens(content: &str) -> usize {
+    content.chars().count() + 4
+}
+
+pub(crate) const MAX_STREAM_RETRIES: u32 = 5;
+pub(crate) const STREAM_RETRY_BASE: std::time::Duration = std::time::Duration::from_millis(200);
+
+pub(crate) fn is_context_window_error(err: &str) -> bool {
+    let e = err.to_lowercase();
+    e.contains("context_length_exceeded") || e.contains("context window")
+        || e.contains("maximum context length") || e.contains("too many tokens")
+        || e.contains("exceeds the model")
+}
+
+pub(crate) fn is_retryable_stream_error(err: &str) -> bool {
+    if is_context_window_error(err) { return false; }
+    let e = err.to_lowercase();
+    e.contains("timeout") || e.contains("network") || e.contains("connection")
+        || e.contains("status: 429") || e.contains("status: 5")
+        || e.contains("idle timeout")
+}
+
 pub(crate) fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_limit: usize, keep_recent: usize) {
-    let total_tokens: usize = messages.iter().map(|m| m.content.len() / 4 + 4).sum();
-    if total_tokens <= context_limit {
+    let total_tokens: usize = messages.iter().map(|m| estimate_tokens(&m.content)).sum();
+    let safe_limit = context_limit * 4 / 5;
+    if total_tokens <= safe_limit {
         return;
     }
     let has_system = messages.first().is_some_and(|m| m.role == "system");
@@ -899,6 +922,8 @@ pub(crate) struct StreamResult {
     pub(crate) finish_reason: Option<String>,
 }
 
+const STREAM_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
 async fn consume_stream(
     mut stream: provider::ChatStream,
     app: &tauri::AppHandle,
@@ -909,47 +934,50 @@ async fn consume_stream(
 
     let mut text = String::new();
     let mut reasoning = String::new();
-    let mut tool_acc: Vec<(String, String, String)> = Vec::new(); // (id, name, args_buffer)
+    let mut tool_acc: Vec<(String, String, String)> = Vec::new();
     let mut usage = None;
     let mut finish_reason = None;
 
     loop {
         tokio::select! {
             _ = cancel.cancelled() => { break; }
-            chunk = stream.next() => {
+            chunk = tokio::time::timeout(STREAM_IDLE_TIMEOUT, stream.next()) => {
                 match chunk {
-                    Some(Ok(provider::StreamEvent::Text(s))) => {
+                    Err(_) => {
+                        return Err("Stream idle timeout".to_string());
+                    }
+                    Ok(Some(Ok(provider::StreamEvent::Text(s)))) => {
                         text.push_str(&s);
                         app.emit("chat-stream", serde_json::json!({
                             "content": s, "done": false, "message_id": message_id,
                         })).map_err(|e| e.to_string())?;
                     }
-                    Some(Ok(provider::StreamEvent::Reasoning(s))) => {
+                    Ok(Some(Ok(provider::StreamEvent::Reasoning(s)))) => {
                         reasoning.push_str(&s);
                         app.emit("chat-stream", serde_json::json!({
                             "type": "reasoning", "content": s,
                             "done": false, "message_id": message_id,
                         })).map_err(|e| e.to_string())?;
                     }
-                    Some(Ok(provider::StreamEvent::ToolCallStart { index, id, name })) => {
+                    Ok(Some(Ok(provider::StreamEvent::ToolCallStart { index, id, name }))) => {
                         while tool_acc.len() <= index {
                             tool_acc.push((String::new(), String::new(), String::new()));
                         }
                         tool_acc[index] = (id, name, String::new());
                     }
-                    Some(Ok(provider::StreamEvent::ToolCallDelta { index, arguments })) => {
+                    Ok(Some(Ok(provider::StreamEvent::ToolCallDelta { index, arguments }))) => {
                         if let Some(entry) = tool_acc.get_mut(index) {
                             entry.2.push_str(&arguments);
                         }
                     }
-                    Some(Ok(provider::StreamEvent::Done { usage: u, finish_reason: fr })) => {
+                    Ok(Some(Ok(provider::StreamEvent::Done { usage: u, finish_reason: fr }))) => {
                         usage = u;
                         finish_reason = fr;
                     }
-                    Some(Err(e)) => {
+                    Ok(Some(Err(e))) => {
                         return Err(e.to_string());
                     }
-                    None => { break; }
+                    Ok(None) => { break; }
                 }
             }
         }
@@ -1585,11 +1613,40 @@ async fn chat(
     loop {
         if cancel.is_cancelled() { break; }
 
-        let stream = provider.stream_chat_with_tools(
-            chat_messages.clone(), tool_defs.clone(), params.clone()
-        ).await.map_err(|e| e.to_string())?;
-
-        let result = consume_stream(stream, &app, &cancel, &assistant_msg_id).await?;
+        let result = {
+            let mut _last_err = String::new();
+            let mut attempt = 0u32;
+            loop {
+                if attempt > 0 {
+                    tokio::time::sleep(crate::client::backoff(STREAM_RETRY_BASE, attempt as u64)).await;
+                }
+                let stream_result = provider.stream_chat_with_tools(
+                    chat_messages.clone(), tool_defs.clone(), params.clone()
+                ).await;
+                let try_result = match stream_result {
+                    Ok(stream) => consume_stream(stream, &app, &cancel, &assistant_msg_id).await,
+                    Err(e) => Err(e.to_string()),
+                };
+                match try_result {
+                    Ok(r) => break r,
+                    Err(e) if is_context_window_error(&e) => {
+                        let aggressive_keep = (keep_recent / 2).max(2);
+                        trim_to_context_limit(&mut chat_messages, context_limit / 2, aggressive_keep);
+                        let stream = provider.stream_chat_with_tools(
+                            chat_messages.clone(), tool_defs.clone(), params.clone()
+                        ).await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
+                        break consume_stream(stream, &app, &cancel, &assistant_msg_id)
+                            .await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
+                    }
+                    Err(e) if is_retryable_stream_error(&e) && attempt < MAX_STREAM_RETRIES => {
+                        _last_err = e;
+                        attempt += 1;
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+        };
 
         if let Some(ref u) = result.usage {
             total_input_tokens += u.prompt_tokens.unwrap_or(0);
@@ -1607,7 +1664,7 @@ async fn chat(
         if result.tool_calls.is_empty() { break; }
 
         // Discard tool calls if response was truncated
-        if result.finish_reason.as_deref() == Some("length") { break; }
+        if matches!(result.finish_reason.as_deref(), Some("length") | Some("max_tokens")) { break; }
 
         chat_messages.push(ChatMessage::assistant_with_tools(
             &result.text, if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) }, result.tool_calls.clone()
