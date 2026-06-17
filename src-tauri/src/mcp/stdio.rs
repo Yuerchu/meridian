@@ -4,6 +4,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 
 use super::protocol::{JsonRpcRequest, JsonRpcResponse};
+use super::McpTransport;
 
 pub struct StdioTransport {
     child: Child,
@@ -57,30 +58,7 @@ impl StdioTransport {
         Ok(())
     }
 
-    pub async fn notify(
-        &mut self,
-        method: &str,
-        params: Option<serde_json::Value>,
-    ) -> Result<(), String> {
-        let body = serde_json::json!({
-            "jsonrpc": "2.0",
-            "method": method,
-            "params": params.unwrap_or(serde_json::Value::Null),
-        });
-        self.send_raw(&body.to_string()).await
-    }
-
-    pub async fn request(
-        &mut self,
-        method: &str,
-        params: Option<serde_json::Value>,
-    ) -> Result<serde_json::Value, String> {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let req = JsonRpcRequest::new(id, method, params);
-        let body = serde_json::to_string(&req).map_err(|e| e.to_string())?;
-        self.send_raw(&body).await?;
-
-        let read_fut = async {
+    async fn read_response(&mut self) -> Result<serde_json::Value, String> {
         loop {
             let mut header_line = String::new();
             self.reader
@@ -124,14 +102,40 @@ impl StdioTransport {
 
             return resp.result.ok_or_else(|| "empty result".to_string());
         }
-        };
+    }
+}
 
-        tokio::time::timeout(std::time::Duration::from_secs(30), read_fut)
+#[async_trait::async_trait]
+impl McpTransport for StdioTransport {
+    async fn request(
+        &mut self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value, String> {
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let req = JsonRpcRequest::new(id, method, params);
+        let body = serde_json::to_string(&req).map_err(|e| e.to_string())?;
+        self.send_raw(&body).await?;
+
+        tokio::time::timeout(std::time::Duration::from_secs(30), self.read_response())
             .await
             .map_err(|_| format!("MCP request '{}' timed out after 30s", method))?
     }
 
-    pub async fn shutdown(&mut self) {
+    async fn notify(
+        &mut self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<(), String> {
+        let body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params.unwrap_or(serde_json::Value::Null),
+        });
+        self.send_raw(&body.to_string()).await
+    }
+
+    async fn shutdown(&mut self) {
         let _ = self.child.kill().await;
     }
 }

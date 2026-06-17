@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Cloud, Bot, Settings2, Info, Plug } from 'lucide-react'
+import { Cloud, Bot, Settings2, Info, Plug, Radio, BookTemplate, Smile, Wrench } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProviderSettings } from './provider-settings'
 import { AssistantSettings } from './assistant-settings'
 import { GeneralSettings } from './general-settings'
 import { McpSettings } from './mcp-settings'
+import { OneBotSettings } from './onebot-settings'
+import { TemplateGallery } from './template-gallery'
+import { EmojiSettings } from './emoji-settings'
+import { ToolMarketplace } from './tool-marketplace'
 import { About } from './about'
 
-type SettingsTab = 'provider' | 'assistants' | 'mcp' | 'general' | 'about'
+type SettingsTab = 'provider' | 'assistants' | 'templates' | 'emoji' | 'tools' | 'mcp' | 'onebot' | 'general' | 'about'
 
 export default function SettingsPage() {
   const { t } = useTranslation()
@@ -17,20 +21,24 @@ export default function SettingsPage() {
   const tabs: Array<{ id: SettingsTab; label: string; icon: React.ElementType }> = [
     { id: 'provider', label: t('settings.provider'), icon: Cloud },
     { id: 'assistants', label: t('settings.assistants'), icon: Bot },
+    { id: 'templates', label: t('settings.templates'), icon: BookTemplate },
+    { id: 'emoji', label: t('settings.emoji'), icon: Smile },
+    { id: 'tools', label: t('settings.toolsTab'), icon: Wrench },
     { id: 'mcp', label: t('settings.mcp'), icon: Plug },
+    { id: 'onebot', label: t('settings.onebot'), icon: Radio },
     { id: 'general', label: t('settings.general'), icon: Settings2 },
     { id: 'about', label: t('settings.about'), icon: Info },
   ]
 
   return (
-    <div className="flex h-full">
-      <nav className="w-48 border-r border-border p-3 space-y-1 flex-shrink-0">
+    <div className="flex flex-col md:flex-row h-full">
+      <nav className="flex md:flex-col md:w-48 md:border-r border-border md:p-3 md:space-y-1 flex-shrink-0 overflow-x-auto border-b md:border-b-0 p-1 gap-1">
         {tabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={cn(
-              'w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors',
+              'flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors whitespace-nowrap flex-shrink-0 md:w-full',
               activeTab === tab.id
                 ? 'bg-accent text-accent-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
@@ -42,10 +50,14 @@ export default function SettingsPage() {
         ))}
       </nav>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
         {activeTab === 'provider' && <ProviderSettings />}
         {activeTab === 'assistants' && <AssistantSettings />}
+        {activeTab === 'templates' && <TemplateGallery />}
+        {activeTab === 'emoji' && <EmojiSettings />}
+        {activeTab === 'tools' && <ToolMarketplace />}
         {activeTab === 'mcp' && <McpSettings />}
+        {activeTab === 'onebot' && <OneBotSettings />}
         {activeTab === 'general' && <GeneralSettings />}
         {activeTab === 'about' && <About />}
       </div>

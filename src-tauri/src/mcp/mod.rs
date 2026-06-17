@@ -1,5 +1,6 @@
 pub mod protocol;
 pub mod stdio;
+pub mod streamable_http;
 
 use std::collections::HashMap;
 use serde::Serialize;
@@ -8,6 +9,14 @@ use crate::db::models::mcp_server::McpServer;
 use crate::provider::ToolDefinition;
 use protocol::{McpCallToolResult, McpToolsListResult};
 use stdio::StdioTransport;
+use streamable_http::StreamableHttpTransport;
+
+#[async_trait::async_trait]
+pub trait McpTransport: Send {
+    async fn request(&mut self, method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value, String>;
+    async fn notify(&mut self, method: &str, params: Option<serde_json::Value>) -> Result<(), String>;
+    async fn shutdown(&mut self);
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct McpToolDef {
@@ -20,7 +29,7 @@ pub struct McpToolDef {
 }
 
 pub struct McpManager {
-    clients: HashMap<String, StdioTransport>,
+    clients: HashMap<String, Box<dyn McpTransport>>,
     pub tools: Vec<McpToolDef>,
 }
 
@@ -31,15 +40,7 @@ fn sanitize_name(s: &str) -> String {
 }
 
 fn build_qualified_name(server_name: &str, tool_name: &str) -> String {
-    format!("mcp__{}_{}", sanitize_name(server_name), sanitize_name(tool_name))
-}
-
-pub fn parse_mcp_tool_name(qualified: &str) -> Option<(String, String)> {
-    let rest = qualified.strip_prefix("mcp__")?;
-    let sep = rest.find('_')?;
-    let server = &rest[..sep];
-    let tool = &rest[sep + 1..];
-    Some((server.to_string(), tool.to_string()))
+    format!("mcp__{}__{}", sanitize_name(server_name), sanitize_name(tool_name))
 }
 
 impl McpManager {
@@ -51,19 +52,26 @@ impl McpManager {
     }
 
     pub async fn connect_server(&mut self, server: &McpServer) -> Result<(), String> {
-        if server.transport_type != "stdio" {
-            return Err(format!("unsupported transport: {}", server.transport_type));
-        }
-
-        let command = server.command.as_deref().ok_or("missing command")?;
-        let args: Vec<String> = server.args.as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default();
-        let env: HashMap<String, String> = server.env.as_deref()
-            .and_then(|s| serde_json::from_str(s).ok())
-            .unwrap_or_default();
-
-        let mut transport = StdioTransport::spawn(command, &args, &env, None).await?;
+        let mut transport: Box<dyn McpTransport> = match server.transport_type.as_str() {
+            "stdio" => {
+                let command = server.command.as_deref().ok_or("missing command")?;
+                let args: Vec<String> = server.args.as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or_default();
+                let env: HashMap<String, String> = server.env.as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or_default();
+                Box::new(StdioTransport::spawn(command, &args, &env, None).await?)
+            }
+            "streamablehttp" => {
+                let url = server.url.as_deref().ok_or("missing URL")?;
+                let headers: HashMap<String, String> = server.headers.as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or_default();
+                Box::new(StreamableHttpTransport::new(url, &headers)?)
+            }
+            other => return Err(format!("unsupported transport: {}", other)),
+        };
 
         transport.request("initialize", Some(serde_json::json!({
             "protocolVersion": "2024-11-05",
@@ -105,21 +113,15 @@ impl McpManager {
         qualified_name: &str,
         args: serde_json::Value,
     ) -> Result<String, String> {
-        let (server_name, tool_name) = parse_mcp_tool_name(qualified_name)
-            .ok_or("invalid MCP tool name")?;
-
-        let server_id = self.tools.iter()
-            .find(|t| sanitize_name(&t.server_name) == server_name && sanitize_name(&t.name) == tool_name)
-            .map(|t| t.server_id.clone())
+        let tool_def = self.tools.iter()
+            .find(|t| t.qualified_name == qualified_name)
             .ok_or_else(|| format!("MCP tool not found: {qualified_name}"))?;
+
+        let server_id = tool_def.server_id.clone();
+        let original_name = tool_def.name.clone();
 
         let transport = self.clients.get_mut(&server_id)
             .ok_or("MCP server not connected")?;
-
-        let original_name = self.tools.iter()
-            .find(|t| t.qualified_name == qualified_name)
-            .map(|t| t.name.clone())
-            .ok_or("tool not found")?;
 
         let result = transport.request("tools/call", Some(serde_json::json!({
             "name": original_name,

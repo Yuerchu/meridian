@@ -145,3 +145,19 @@ body {
     @apply h-full overflow-hidden;
   }
 }
+
+.prose img.emoji-sticker {
+  display: block !important;
+  margin: 0.5rem 0 !important;
+  max-width: 120px;
+  max-height: 120px;
+  width: auto;
+  height: auto;
+}
+
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}

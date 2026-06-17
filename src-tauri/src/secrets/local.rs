@@ -84,7 +84,19 @@ impl LocalSecretsBackend {
         let ciphertext = fs::read(&path)
             .with_context(|| format!("failed to read secrets file at {}", path.display()))?;
         let passphrase = self.load_or_create_passphrase()?;
-        let plaintext = decrypt_with_passphrase(&ciphertext, &passphrase)?;
+        let plaintext = match decrypt_with_passphrase(&ciphertext, &passphrase) {
+            Ok(pt) => pt,
+            Err(_) => {
+                let backup = path.with_extension("age.bak");
+                warn!(
+                    "Failed to decrypt secrets file (passphrase mismatch). \
+                     Backing up to {} and starting fresh.",
+                    backup.display()
+                );
+                let _ = fs::rename(&path, &backup);
+                return Ok(SecretsFile::new_empty());
+            }
+        };
         let mut parsed: SecretsFile = serde_json::from_slice(&plaintext).with_context(|| {
             format!(
                 "failed to deserialize decrypted secrets file at {}",

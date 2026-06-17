@@ -102,7 +102,7 @@ function App() {
         onCreateProject={handleCreateProject}
       />
       <SidebarInset className="flex flex-col overflow-hidden">
-        <header className="flex items-center h-12 gap-2 px-4 pt-[env(safe-area-inset-top)] border-b border-border select-none shrink-0" data-tauri-drag-region>
+        <header className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] pb-2 border-b border-border select-none shrink-0" data-tauri-drag-region>
           <SidebarTrigger className="-ml-1" />
           <span className="text-sm font-medium">
             {page === 'settings'

@@ -1,6 +1,14 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    assistant_emoji_packs (assistant_id, pack_id) {
+        assistant_id -> Text,
+        pack_id -> Text,
+        created_at -> BigInt,
+    }
+}
+
+diesel::table! {
     assistants (id) {
         id -> Text,
         name -> Text,
@@ -21,6 +29,7 @@ diesel::table! {
         enabled_tools -> Nullable<Text>,
         thinking_enabled -> Integer,
         thinking_budget -> Nullable<Integer>,
+        tool_preset_id -> Nullable<Text>,
     }
 }
 
@@ -51,6 +60,51 @@ diesel::table! {
 }
 
 diesel::table! {
+    custom_tools (id) {
+        id -> Text,
+        name -> Text,
+        description -> Text,
+        category_id -> Nullable<Text>,
+        parameters_schema -> Text,
+        command -> Text,
+        args_template -> Nullable<Text>,
+        working_directory -> Nullable<Text>,
+        timeout_ms -> Nullable<Integer>,
+        permission -> Text,
+        is_enabled -> Integer,
+        sort_order -> Integer,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    emoji_packs (id) {
+        id -> Text,
+        name -> Text,
+        description -> Nullable<Text>,
+        cover_image -> Nullable<Text>,
+        is_builtin -> Integer,
+        sort_order -> Integer,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    emojis (id) {
+        id -> Text,
+        pack_id -> Text,
+        name -> Text,
+        tags -> Nullable<Text>,
+        file_name -> Text,
+        file_format -> Text,
+        sort_order -> Integer,
+        created_at -> BigInt,
+    }
+}
+
+diesel::table! {
     mcp_servers (id) {
         id -> Text,
         name -> Text,
@@ -59,6 +113,7 @@ diesel::table! {
         args -> Nullable<Text>,
         env -> Nullable<Text>,
         url -> Nullable<Text>,
+        headers -> Nullable<Text>,
         is_enabled -> Integer,
         sort_order -> Integer,
         created_at -> BigInt,
@@ -102,6 +157,20 @@ diesel::table! {
 }
 
 diesel::table! {
+    prompt_templates (id) {
+        id -> Text,
+        name -> Text,
+        description -> Nullable<Text>,
+        category -> Text,
+        template_text -> Text,
+        is_builtin -> Integer,
+        sort_order -> Integer,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
     providers (id) {
         id -> Text,
         name -> Text,
@@ -111,6 +180,18 @@ diesel::table! {
         sort_order -> Integer,
         created_at -> BigInt,
         updated_at -> BigInt,
+        api_format -> Text,
+    }
+}
+
+diesel::table! {
+    tool_categories (id) {
+        id -> Text,
+        name -> Text,
+        description -> Nullable<Text>,
+        icon -> Nullable<Text>,
+        sort_order -> Integer,
+        created_at -> BigInt,
     }
 }
 
@@ -125,13 +206,48 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    tool_presets (id) {
+        id -> Text,
+        name -> Text,
+        description -> Nullable<Text>,
+        icon -> Nullable<Text>,
+        tool_names -> Text,
+        is_builtin -> Integer,
+        sort_order -> Integer,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::joinable!(assistant_emoji_packs -> assistants (assistant_id));
+diesel::joinable!(assistant_emoji_packs -> emoji_packs (pack_id));
 diesel::joinable!(assistants -> providers (provider_id));
+diesel::joinable!(assistants -> tool_presets (tool_preset_id));
 diesel::joinable!(attachments -> messages (message_id));
 diesel::joinable!(conversations -> assistants (assistant_id));
 diesel::joinable!(conversations -> projects (project_id));
+diesel::joinable!(custom_tools -> tool_categories (category_id));
+diesel::joinable!(emojis -> emoji_packs (pack_id));
 diesel::joinable!(messages -> conversations (conversation_id));
 diesel::joinable!(messages -> providers (provider_id));
 diesel::joinable!(tool_permissions -> mcp_servers (mcp_server_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    assistants,attachments,conversations,mcp_servers,messages,preferences,projects,providers,tool_permissions,);
+    assistant_emoji_packs,
+    assistants,
+    attachments,
+    conversations,
+    custom_tools,
+    emoji_packs,
+    emojis,
+    mcp_servers,
+    messages,
+    preferences,
+    projects,
+    prompt_templates,
+    providers,
+    tool_categories,
+    tool_permissions,
+    tool_presets,
+);

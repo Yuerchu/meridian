@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Check, RefreshCw, Trash2, Cloud, Key } from 'lucide-react'
+import { Plus, Check, RefreshCw, Trash2, Cloud, Key, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
 import type { Provider, ModelInfo } from '@/types'
 
@@ -22,6 +23,7 @@ function ProviderEditor({
   const [name, setName] = useState(provider.name)
   const [providerType, setProviderType] = useState(provider.provider_type)
   const [baseUrl, setBaseUrl] = useState(provider.base_url)
+  const [apiFormat, setApiFormat] = useState(provider.api_format || 'chat_completions')
   const [apiKey, setApiKey] = useState('')
   const [hasKey, setHasKey] = useState(false)
   const [keySaved, setKeySaved] = useState(false)
@@ -35,19 +37,24 @@ function ProviderEditor({
   }, [provider.id])
 
   const handleSave = useCallback(async () => {
-    await api.updateProvider(provider.id, { name, providerType, baseUrl })
+    await api.updateProvider(provider.id, { name, providerType, baseUrl, apiFormat })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
     onUpdate()
-  }, [provider.id, name, providerType, baseUrl, onUpdate])
+  }, [provider.id, name, providerType, baseUrl, apiFormat, onUpdate])
 
   const handleSaveKey = useCallback(async () => {
     if (!apiKey.trim()) return
-    await api.setProviderKey(provider.id, apiKey.trim())
-    setHasKey(true)
-    setApiKey('')
-    setKeySaved(true)
-    setTimeout(() => setKeySaved(false), 2000)
+    try {
+      await api.setProviderKey(provider.id, apiKey.trim())
+      setHasKey(true)
+      setApiKey('')
+      setKeySaved(true)
+      setTimeout(() => setKeySaved(false), 2000)
+    } catch (err) {
+      console.error('Failed to save key:', err)
+      alert(String(err))
+    }
   }, [provider.id, apiKey])
 
   const handleFetchModels = useCallback(async () => {
@@ -90,6 +97,21 @@ function ProviderEditor({
           placeholder={providerType === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
         />
       </div>
+
+      {providerType !== 'anthropic' && (
+        <div className="space-y-1.5">
+          <label className="block text-[11px] text-muted-foreground">{t('settings.provider.apiFormat')}</label>
+          <Select value={apiFormat} onValueChange={(v) => v && setApiFormat(v)}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="responses">{t('settings.provider.apiFormatResponses')}</SelectItem>
+              <SelectItem value="chat_completions">{t('settings.provider.apiFormatChatCompletions')}</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div className="flex items-center gap-2">
         <Button size="sm" onClick={handleSave}>{t('common.save')}</Button>
@@ -157,6 +179,7 @@ function ProviderEditor({
 
 export function ProviderSettings() {
   const { t } = useTranslation()
+  const isMobile = useIsMobile()
   const [providers, setProviders] = useState<Provider[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -177,7 +200,7 @@ export function ProviderSettings() {
   }, [refresh, selectedId])
 
   const handleCreate = useCallback(async () => {
-    const p = await api.createProvider('New Provider', 'openai', 'https://api.openai.com/v1')
+    const p = await api.createProvider('New Provider', 'openai', 'https://api.openai.com/v1', 'responses')
     await refresh()
     setSelectedId(p.id)
   }, [refresh])
@@ -196,6 +219,63 @@ export function ProviderSettings() {
 
   const selected = providers.find((p) => p.id === selectedId)
 
+  const providerList = (
+    <>
+      {providers.map((p) => (
+        <button
+          key={p.id}
+          onClick={() => setSelectedId(p.id)}
+          className={cn(
+            'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors',
+            selectedId === p.id
+              ? 'bg-accent text-accent-foreground'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+          )}
+        >
+          <Cloud className="w-4 h-4 flex-shrink-0" />
+          <span className="truncate">{p.name}</span>
+        </button>
+      ))}
+      {providers.length === 0 && (
+        <p className="text-xs text-muted-foreground px-3">{t('settings.provider.noProviders')}</p>
+      )}
+    </>
+  )
+
+  if (isMobile) {
+    return (
+      <div className="max-w-3xl">
+        {selected ? (
+          <>
+            <button
+              onClick={() => setSelectedId(null)}
+              className="flex items-center gap-2 text-sm text-muted-foreground mb-4 hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              {t('common.back')}
+            </button>
+            <ProviderEditor
+              key={selected.id}
+              provider={selected}
+              onUpdate={refresh}
+              onDelete={handleDelete}
+            />
+          </>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-medium">{t('settings.provider.title')}</h2>
+              <Button variant="ghost" size="icon" onClick={handleCreate} title={t('settings.provider.addProvider')}>
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+            {providerList}
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="flex gap-6 max-w-3xl">
       <div className="w-44 flex-shrink-0 space-y-2">
@@ -205,24 +285,7 @@ export function ProviderSettings() {
             <Plus className="w-4 h-4" />
           </Button>
         </div>
-        {providers.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => setSelectedId(p.id)}
-            className={cn(
-              'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors',
-              selectedId === p.id
-                ? 'bg-accent text-accent-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-            )}
-          >
-            <Cloud className="w-4 h-4 flex-shrink-0" />
-            <span className="truncate">{p.name}</span>
-          </button>
-        ))}
-        {providers.length === 0 && (
-          <p className="text-xs text-muted-foreground px-3">{t('settings.provider.noProviders')}</p>
-        )}
+        {providerList}
       </div>
 
       <div className="flex-1 min-w-0">

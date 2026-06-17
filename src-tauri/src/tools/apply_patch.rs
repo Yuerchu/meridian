@@ -1,6 +1,5 @@
 use async_trait::async_trait;
 use super::{Permission, Tool, ToolContext};
-use std::path::PathBuf;
 
 pub struct ApplyPatchTool;
 
@@ -39,9 +38,9 @@ impl Tool for ApplyPatchTool {
         let patch = args["patch"]
             .as_str()
             .ok_or("missing 'patch' argument")?;
-        let base_path = args["base_path"].as_str()
-            .map(|p| context.resolve_path(p))
-            .or_else(|| context.working_directory.as_ref().map(PathBuf::from));
+        let base_str: Option<String> = args["base_path"].as_str()
+            .map(str::to_string)
+            .or_else(|| context.working_directory.clone());
 
         let file_patches = parse_unified_diff(patch)?;
         if file_patches.is_empty() {
@@ -51,31 +50,26 @@ impl Tool for ApplyPatchTool {
         let mut applied = Vec::new();
 
         for fp in &file_patches {
-            let path = if let Some(ref base) = base_path {
-                base.join(&fp.path)
+            let is_absolute =
+                std::path::Path::new(&fp.path).is_absolute() || fp.path.starts_with('/');
+            let joined = if is_absolute {
+                fp.path.clone()
+            } else if let Some(ref base) = base_str {
+                format!("{base}/{}", fp.path)
             } else {
-                PathBuf::from(&fp.path)
+                fp.path.clone()
             };
+            let target = context.resolve_and_validate(&joined)?;
 
             let original = if fp.is_new_file {
                 String::new()
             } else {
-                tokio::fs::read_to_string(&path)
-                    .await
-                    .map_err(|e| format!("failed to read '{}': {}", path.display(), e))?
+                super::backend::read_to_string(&target).await?
             };
 
             let result = apply_hunks(&original, &fp.hunks)?;
 
-            if let Some(parent) = path.parent() {
-                tokio::fs::create_dir_all(parent)
-                    .await
-                    .map_err(|e| format!("failed to create directory: {e}"))?;
-            }
-
-            tokio::fs::write(&path, result)
-                .await
-                .map_err(|e| format!("failed to write '{}': {}", path.display(), e))?;
+            super::backend::write_string(&target, &result).await?;
 
             applied.push(fp.path.clone());
         }

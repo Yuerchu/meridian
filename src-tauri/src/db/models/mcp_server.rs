@@ -13,6 +13,7 @@ pub struct McpServer {
     pub args: Option<String>,
     pub env: Option<String>,
     pub url: Option<String>,
+    pub headers: Option<String>,
     pub is_enabled: i32,
     pub sort_order: i32,
     pub created_at: i64,
@@ -29,6 +30,7 @@ pub struct NewMcpServer<'a> {
     pub args: Option<&'a str>,
     pub env: Option<&'a str>,
     pub url: Option<&'a str>,
+    pub headers: Option<&'a str>,
     pub is_enabled: i32,
     pub sort_order: i32,
     pub created_at: i64,
@@ -44,6 +46,7 @@ pub struct McpServerUpdate {
     pub args: Option<Option<String>>,
     pub env: Option<Option<String>>,
     pub url: Option<Option<String>>,
+    pub headers: Option<Option<String>>,
     pub is_enabled: Option<i32>,
     pub updated_at: Option<i64>,
 }

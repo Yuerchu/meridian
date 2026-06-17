@@ -1,9 +1,16 @@
+#[cfg(target_os = "android")]
+mod android_bridge;
 mod client;
 mod db;
+mod emoji;
 mod keyring;
 mod mcp;
+#[cfg(not(target_os = "android"))]
+mod onebot;
+mod platform;
 mod provider;
 mod secrets;
+mod template;
 mod tools;
 
 use std::collections::HashMap;
@@ -15,23 +22,29 @@ use db::models::assistant::{Assistant, AssistantUpdate, NewAssistant};
 use db::models::conversation::Conversation;
 use db::models::mcp_server::{McpServer, McpServerUpdate, NewMcpServer};
 use db::models::message::{Message, NewMessage};
+use db::models::custom_tool::{CustomTool, CustomToolUpdate, NewCustomTool};
+use db::models::emoji::{Emoji, NewEmoji};
+use db::models::emoji_pack::{EmojiPack, NewEmojiPack};
+use db::models::tool_category::{NewToolCategory, ToolCategory};
+use db::models::tool_preset::{NewToolPreset, ToolPreset, ToolPresetUpdate};
+use db::models::prompt_template::{NewPromptTemplate, PromptTemplate, PromptTemplateUpdate};
 use db::models::provider::{NewProvider, Provider, ProviderUpdate};
 use provider::models::ModelInfo;
-use provider::{ChatMessage, ChatParams, ChatProvider, ToolCall};
+use provider::{ChatMessage, ChatParams};
 use secrets::{SecretName, SecretScope, SecretsManager};
 use tauri::{Emitter, Manager};
 use tokio::sync::{oneshot, Mutex};
 use tokio_util::sync::CancellationToken;
 
-struct AppSecrets(Arc<SecretsManager>);
-struct AppDb(DbPool);
-struct AppTools(tools::ToolRegistry);
-struct AppMcp(Arc<Mutex<mcp::McpManager>>);
+pub(crate) struct AppSecrets(pub(crate) Arc<SecretsManager>);
+pub(crate) struct AppDb(pub(crate) DbPool);
+pub(crate) struct AppTools(pub(crate) Arc<tools::ToolRegistry>);
+pub(crate) struct AppMcp(pub(crate) Arc<Mutex<mcp::McpManager>>);
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ApprovalDecision {
     Approved,
-    Denied,
+    Denied(Option<String>),
     Response(String),
 }
 
@@ -53,18 +66,104 @@ pub fn take_bytes_at_char_boundary(s: &str, max_bytes: usize) -> &str {
     &s[..end]
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis() as i64
 }
 
-fn get_conn(pool: &DbPool) -> Result<db::PooledConn, String> {
+pub(crate) fn get_conn(pool: &DbPool) -> Result<db::PooledConn, String> {
     pool.get().map_err(|e| format!("db connection error: {e}"))
 }
 
-fn build_messages(
+/// Build the file access policy for tool execution.
+/// Desktop: unrestricted (legacy working_directory validation only).
+/// Android: whitelist of authorized roots from preferences + system grants.
+async fn build_file_access(pool: &DbPool) -> tools::FileAccess {
+    #[cfg(target_os = "android")]
+    {
+        let pool = pool.clone();
+        let prefs = tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().ok()?;
+            let manage = db::ops::preference::get_preference(&mut conn, "android.manage_storage_enabled")
+                .ok()
+                .flatten();
+            let saf = db::ops::preference::get_preference(&mut conn, "android.saf_roots")
+                .ok()
+                .flatten();
+            Some((manage, saf))
+        })
+        .await
+        .ok()
+        .flatten();
+        let (manage_pref, saf_pref) = prefs.unwrap_or((None, None));
+
+        let mut roots = Vec::new();
+        if manage_pref.as_deref() == Some("true")
+            && android_bridge::is_manage_storage_granted().unwrap_or(false)
+        {
+            let shared = std::path::PathBuf::from("/storage/emulated/0");
+            roots.push(tools::AccessRoot {
+                virtual_prefix: "/storage/emulated/0".to_string(),
+                kind: tools::RootKind::RealPath(shared.clone()),
+            });
+            roots.push(tools::AccessRoot {
+                virtual_prefix: "/sdcard".to_string(),
+                kind: tools::RootKind::RealPath(shared),
+            });
+        }
+        if let Some(json) = saf_pref {
+            if let Ok(entries) = serde_json::from_str::<Vec<platform::SafRootEntry>>(&json) {
+                for e in entries {
+                    roots.push(tools::AccessRoot {
+                        virtual_prefix: e.virtual_prefix,
+                        kind: tools::RootKind::SafTree { tree_uri: e.uri },
+                    });
+                }
+            }
+        }
+        tools::FileAccess::Roots(roots)
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = pool;
+        tools::FileAccess::default()
+    }
+}
+
+/// Describe accessible file roots for the system prompt so the model knows
+/// what paths it may use. Empty string when not in roots mode.
+fn file_access_prompt(file_access: &tools::FileAccess) -> String {
+    let tools::FileAccess::Roots(roots) = file_access else {
+        return String::new();
+    };
+    if roots.is_empty() {
+        return "\n\n# File access\nNo file locations are currently authorized on this device. \
+                If the user asks for file operations, tell them to grant access in \
+                Settings (an authorized directory or 'All files access')."
+            .to_string();
+    }
+    let mut out = String::from(
+        "\n\n# File access\nYou can access files under these locations (use absolute paths):\n",
+    );
+    for root in roots {
+        match &root.kind {
+            tools::RootKind::RealPath(_) => {
+                out.push_str(&format!("- {} (direct access)\n", root.virtual_prefix));
+            }
+            tools::RootKind::SafTree { .. } => {
+                out.push_str(&format!(
+                    "- {} (user-authorized directory; recursive search/glob unavailable)\n",
+                    root.virtual_prefix
+                ));
+            }
+        }
+    }
+    out
+}
+
+pub(crate) fn build_messages(
     system_prompt: &str,
     history: &[Message],
     user_message: &str,
@@ -98,7 +197,7 @@ fn build_messages(
     msgs
 }
 
-fn extract_tool_calls_from_blocks(blocks_json: &str) -> Vec<provider::ToolCall> {
+pub(crate) fn extract_tool_calls_from_blocks(blocks_json: &str) -> Vec<provider::ToolCall> {
     let blocks: Vec<serde_json::Value> = match serde_json::from_str(blocks_json) {
         Ok(v) => v,
         Err(_) => return Vec::new(),
@@ -114,9 +213,32 @@ fn extract_tool_calls_from_blocks(blocks_json: &str) -> Vec<provider::ToolCall> 
     }).collect()
 }
 
-fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_limit: usize, keep_recent: usize) {
-    let total_tokens: usize = messages.iter().map(|m| m.content.len() / 4 + 4).sum();
-    if total_tokens <= context_limit {
+fn estimate_tokens(content: &str) -> usize {
+    content.chars().count() + 4
+}
+
+pub(crate) const MAX_STREAM_RETRIES: u32 = 5;
+pub(crate) const STREAM_RETRY_BASE: std::time::Duration = std::time::Duration::from_millis(200);
+
+pub(crate) fn is_context_window_error(err: &str) -> bool {
+    let e = err.to_lowercase();
+    e.contains("context_length_exceeded") || e.contains("context window")
+        || e.contains("maximum context length") || e.contains("too many tokens")
+        || e.contains("exceeds the model")
+}
+
+pub(crate) fn is_retryable_stream_error(err: &str) -> bool {
+    if is_context_window_error(err) { return false; }
+    let e = err.to_lowercase();
+    e.contains("timeout") || e.contains("network") || e.contains("connection")
+        || e.contains("status: 429") || e.contains("status: 5")
+        || e.contains("idle timeout")
+}
+
+pub(crate) fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_limit: usize, keep_recent: usize) {
+    let total_tokens: usize = messages.iter().map(|m| estimate_tokens(&m.content)).sum();
+    let safe_limit = context_limit * 4 / 5;
+    if total_tokens <= safe_limit {
         return;
     }
     let has_system = messages.first().is_some_and(|m| m.role == "system");
@@ -131,20 +253,20 @@ fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_limit: usize, 
     *messages = trimmed;
 }
 
-fn provider_secret_name(provider_id: &str) -> String {
+pub(crate) fn provider_secret_name(provider_id: &str) -> String {
     format!("PROVIDER_{}_KEY", provider_id.replace('-', "_").to_uppercase())
 }
 
-fn get_provider_api_key(secrets: &SecretsManager, provider_id: &str) -> Option<String> {
+pub(crate) fn get_provider_api_key(secrets: &SecretsManager, provider_id: &str) -> Option<String> {
     let key = provider_secret_name(provider_id);
     secrets.get(&SecretScope::Global, &SecretName::new(&key).unwrap()).ok().flatten()
 }
 
-fn resolve_provider_config(
+pub(crate) fn resolve_provider_config(
     secrets: &SecretsManager,
     pool: &DbPool,
     assistant: Option<&Assistant>,
-) -> Result<(String, String, String, String), String> {
+) -> Result<(String, String, String, String, String), String> {
     if let Some(provider_id) = assistant.and_then(|a| a.provider_id.as_deref()) {
         let mut conn = get_conn(pool)?;
         let provider = db::ops::provider::get_provider(&mut conn, provider_id)
@@ -155,7 +277,7 @@ fn resolve_provider_config(
             .and_then(|a| a.model_id.clone())
             .unwrap_or_else(|| "gpt-4.1-mini".into());
         let base_url = provider.base_url.trim_end_matches('/').to_string();
-        return Ok((provider.provider_type, base_url, api_key, model));
+        return Ok((provider.provider_type, base_url, api_key, model, provider.api_format));
     }
 
     // Fallback: first enabled provider
@@ -167,7 +289,7 @@ fn resolve_provider_config(
                     .and_then(|a| a.model_id.clone())
                     .unwrap_or_else(|| "gpt-4.1-mini".into());
                 let base_url = p.base_url.trim_end_matches('/').to_string();
-                return Ok((p.provider_type, base_url, api_key, model));
+                return Ok((p.provider_type, base_url, api_key, model, p.api_format));
             }
         }
     }
@@ -326,6 +448,7 @@ async fn create_assistant(
             enabled_tools: None,
             thinking_enabled: 0,
             thinking_budget: None,
+            tool_preset_id: None,
         };
         db::ops::assistant::create_assistant(&mut conn, &new).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
@@ -344,6 +467,7 @@ async fn update_assistant(
     enabled_tools: Option<Option<String>>,
     thinking_enabled: Option<i32>,
     thinking_budget: Option<Option<i32>>,
+    tool_preset_id: Option<Option<String>>,
 ) -> Result<Assistant, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
@@ -358,6 +482,7 @@ async fn update_assistant(
             enabled_tools,
             thinking_enabled,
             thinking_budget,
+            tool_preset_id,
             updated_at: Some(now_ms()),
             ..Default::default()
         };
@@ -391,12 +516,14 @@ async fn create_provider(
     name: String,
     provider_type: String,
     base_url: String,
+    api_format: Option<String>,
 ) -> Result<Provider, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
+        let format = api_format.as_deref().unwrap_or("chat_completions");
         db::ops::provider::create_provider(&mut conn, &NewProvider {
             id: &id,
             name: &name,
@@ -406,6 +533,7 @@ async fn create_provider(
             sort_order: 0,
             created_at: now,
             updated_at: now,
+            api_format: format,
         }).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
@@ -418,6 +546,7 @@ async fn update_provider(
     provider_type: Option<String>,
     base_url: Option<String>,
     is_enabled: Option<i32>,
+    api_format: Option<String>,
 ) -> Result<Provider, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
@@ -427,6 +556,7 @@ async fn update_provider(
             provider_type,
             base_url,
             is_enabled,
+            api_format,
             updated_at: Some(now_ms()),
             ..Default::default()
         };
@@ -510,11 +640,11 @@ async fn approve_tool_call(app: tauri::AppHandle, call_id: String) -> Result<(),
 }
 
 #[tauri::command]
-async fn deny_tool_call(app: tauri::AppHandle, call_id: String) -> Result<(), String> {
+async fn deny_tool_call(app: tauri::AppHandle, call_id: String, reason: Option<String>) -> Result<(), String> {
     let waiters = app.state::<ApprovalWaiters>();
     let mut map = waiters.0.lock().await;
     if let Some(tx) = map.remove(&call_id) {
-        let _ = tx.send(ApprovalDecision::Denied);
+        let _ = tx.send(ApprovalDecision::Denied(reason));
     }
     Ok(())
 }
@@ -622,6 +752,7 @@ async fn create_mcp_server(
     args: Option<String>,
     env: Option<String>,
     url: Option<String>,
+    headers: Option<String>,
 ) -> Result<McpServer, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
@@ -632,6 +763,7 @@ async fn create_mcp_server(
             id: &id, name: &name, transport_type: &transport_type,
             command: command.as_deref(), args: args.as_deref(),
             env: env.as_deref(), url: url.as_deref(),
+            headers: headers.as_deref(),
             is_enabled: 1, sort_order: 0, created_at: now, updated_at: now,
         }).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
@@ -642,18 +774,20 @@ async fn update_mcp_server(
     app: tauri::AppHandle,
     id: String,
     name: Option<String>,
+    transport_type: Option<String>,
     command: Option<Option<String>>,
     args: Option<Option<String>>,
     env: Option<Option<String>>,
+    url: Option<Option<String>>,
+    headers: Option<Option<String>>,
     is_enabled: Option<i32>,
 ) -> Result<McpServer, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::mcp_server::update_mcp_server(&mut conn, &id, &McpServerUpdate {
-            name, command, args, env, is_enabled,
+            name, transport_type, command, args, env, url, headers, is_enabled,
             updated_at: Some(now_ms()),
-            ..Default::default()
         }).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
@@ -732,6 +866,542 @@ async fn stop_chat(app: tauri::AppHandle, conversation_id: String) -> Result<(),
     Ok(())
 }
 
+// --- OneBot commands ---
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+async fn get_onebot_status(app: tauri::AppHandle) -> Result<onebot::OneBotStatus, String> {
+    let ob = app.state::<onebot::AppOneBot>();
+    let server = ob.0.lock().await;
+    Ok(server.status())
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+async fn get_onebot_config(app: tauri::AppHandle) -> Result<onebot::OneBotConfig, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    Ok(onebot::load_config(&pool))
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+async fn save_onebot_config(app: tauri::AppHandle, config: onebot::OneBotConfig) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    onebot::save_config(&pool, &config)
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+async fn start_onebot(app: tauri::AppHandle) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    let config = onebot::load_config(&pool);
+
+    let ob = app.state::<onebot::AppOneBot>();
+    let mut server_guard = ob.0.lock().await;
+
+    // Recreate server with fresh config
+    let new_server = onebot::OneBotServer::new(
+        pool,
+        app.state::<AppSecrets>().0.clone(),
+        app.state::<AppTools>().0.clone(),
+        app.state::<AppMcp>().0.clone(),
+        config,
+    );
+    new_server.start()?;
+    *server_guard = new_server;
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+async fn stop_onebot(app: tauri::AppHandle) -> Result<(), String> {
+    let ob = app.state::<onebot::AppOneBot>();
+    let server = ob.0.lock().await;
+    server.stop();
+    Ok(())
+}
+
+// --- Stream consumption helper ---
+
+pub(crate) struct StreamResult {
+    pub(crate) text: String,
+    pub(crate) reasoning: String,
+    pub(crate) tool_calls: Vec<provider::ToolCall>,
+    pub(crate) usage: Option<provider::TokenUsage>,
+    pub(crate) finish_reason: Option<String>,
+}
+
+const STREAM_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+
+async fn consume_stream(
+    mut stream: provider::ChatStream,
+    app: &tauri::AppHandle,
+    cancel: &tokio_util::sync::CancellationToken,
+    message_id: &str,
+) -> Result<StreamResult, String> {
+    use futures::StreamExt;
+
+    let mut text = String::new();
+    let mut reasoning = String::new();
+    let mut tool_acc: Vec<(String, String, String)> = Vec::new();
+    let mut usage = None;
+    let mut finish_reason = None;
+
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => { break; }
+            chunk = tokio::time::timeout(STREAM_IDLE_TIMEOUT, stream.next()) => {
+                match chunk {
+                    Err(_) => {
+                        return Err("Stream idle timeout".to_string());
+                    }
+                    Ok(Some(Ok(provider::StreamEvent::Text(s)))) => {
+                        text.push_str(&s);
+                        app.emit("chat-stream", serde_json::json!({
+                            "content": s, "done": false, "message_id": message_id,
+                        })).map_err(|e| e.to_string())?;
+                    }
+                    Ok(Some(Ok(provider::StreamEvent::Reasoning(s)))) => {
+                        reasoning.push_str(&s);
+                        app.emit("chat-stream", serde_json::json!({
+                            "type": "reasoning", "content": s,
+                            "done": false, "message_id": message_id,
+                        })).map_err(|e| e.to_string())?;
+                    }
+                    Ok(Some(Ok(provider::StreamEvent::ToolCallStart { index, id, name }))) => {
+                        while tool_acc.len() <= index {
+                            tool_acc.push((String::new(), String::new(), String::new()));
+                        }
+                        tool_acc[index] = (id, name, String::new());
+                    }
+                    Ok(Some(Ok(provider::StreamEvent::ToolCallDelta { index, arguments }))) => {
+                        if let Some(entry) = tool_acc.get_mut(index) {
+                            entry.2.push_str(&arguments);
+                        }
+                    }
+                    Ok(Some(Ok(provider::StreamEvent::Done { usage: u, finish_reason: fr }))) => {
+                        usage = u;
+                        finish_reason = fr;
+                    }
+                    Ok(Some(Err(e))) => {
+                        return Err(e.to_string());
+                    }
+                    Ok(None) => { break; }
+                }
+            }
+        }
+    }
+
+    let tool_calls: Vec<provider::ToolCall> = if cancel.is_cancelled() {
+        vec![]
+    } else {
+        tool_acc.into_iter()
+            .filter(|(id, _, _)| !id.is_empty())
+            .map(|(id, name, args)| provider::ToolCall { id, name, arguments: args })
+            .collect()
+    };
+
+    Ok(StreamResult { text, reasoning, tool_calls, usage, finish_reason })
+}
+
+// --- Prompt Templates ---
+
+#[tauri::command]
+fn list_prompt_templates(app: tauri::AppHandle) -> Result<Vec<PromptTemplate>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::prompt_template::list_templates(&mut conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_prompt_template(
+    app: tauri::AppHandle,
+    name: String,
+    category: String,
+    template_text: String,
+    description: Option<String>,
+) -> Result<PromptTemplate, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    db::ops::prompt_template::create_template(&mut conn, &NewPromptTemplate {
+        id: &id,
+        name: &name,
+        description: description.as_deref(),
+        category: &category,
+        template_text: &template_text,
+        is_builtin: 0,
+        sort_order: 0,
+        created_at: now,
+        updated_at: now,
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_prompt_template(
+    app: tauri::AppHandle,
+    id: String,
+    name: Option<String>,
+    description: Option<Option<String>>,
+    category: Option<String>,
+    template_text: Option<String>,
+) -> Result<PromptTemplate, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::prompt_template::update_template(&mut conn, &id, &PromptTemplateUpdate {
+        name,
+        description,
+        category,
+        template_text,
+        updated_at: Some(now_ms()),
+        ..Default::default()
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_prompt_template(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::prompt_template::delete_template(&mut conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_template_variables() -> Result<serde_json::Value, String> {
+    let vars: Vec<serde_json::Value> = template::available_variables()
+        .into_iter()
+        .map(|v| serde_json::json!({
+            "name": v.name,
+            "description_en": v.description_en,
+            "description_zh": v.description_zh,
+        }))
+        .collect();
+    Ok(serde_json::json!(vars))
+}
+
+// --- Emoji Packs ---
+
+#[tauri::command]
+fn list_emoji_packs(app: tauri::AppHandle) -> Result<Vec<EmojiPack>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji_pack::list_packs(&mut conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_emoji_pack(
+    app: tauri::AppHandle,
+    name: String,
+    description: Option<String>,
+) -> Result<EmojiPack, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    emoji::ensure_pack_dir(&data_dir, &id)?;
+    db::ops::emoji_pack::create_pack(&mut conn, &NewEmojiPack {
+        id: &id,
+        name: &name,
+        description: description.as_deref(),
+        cover_image: None,
+        is_builtin: 0,
+        sort_order: 0,
+        created_at: now,
+        updated_at: now,
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_emoji_pack(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let pack = db::ops::emoji_pack::get_pack(&mut conn, &id).map_err(|e| e.to_string())?;
+    if pack.is_builtin == 1 {
+        return Err("Cannot delete built-in emoji pack".into());
+    }
+    db::ops::emoji_pack::delete_pack(&mut conn, &id).map_err(|e| e.to_string())?;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    emoji::delete_pack_dir(&data_dir, &id);
+    Ok(())
+}
+
+#[tauri::command]
+fn list_emojis(app: tauri::AppHandle, pack_id: String) -> Result<Vec<Emoji>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji::list_by_pack(&mut conn, &pack_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn import_emojis(
+    app: tauri::AppHandle,
+    pack_id: String,
+    file_paths: Vec<String>,
+) -> Result<Vec<Emoji>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let now = now_ms();
+    let count = db::ops::emoji::count_by_pack(&mut conn, &pack_id)
+        .map_err(|e| e.to_string())? as i32;
+
+    let mut imported = Vec::new();
+    for (i, path_str) in file_paths.iter().enumerate() {
+        let source = std::path::Path::new(path_str);
+        let (file_name, format) = emoji::import_file(&data_dir, &pack_id, source)?;
+        let emoji_name = source
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("emoji")
+            .to_string();
+        let id = uuid::Uuid::new_v4().to_string();
+        let e = db::ops::emoji::create_emoji(&mut conn, &NewEmoji {
+            id: &id,
+            pack_id: &pack_id,
+            name: &emoji_name,
+            tags: None,
+            file_name: &file_name,
+            file_format: &format,
+            sort_order: count + i as i32,
+            created_at: now,
+        }).map_err(|e| e.to_string())?;
+        imported.push(e);
+    }
+    Ok(imported)
+}
+
+#[tauri::command]
+fn delete_emoji(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let e = db::ops::emoji::get_emoji(&mut conn, &id).map_err(|e| e.to_string())?;
+    db::ops::emoji::delete_emoji(&mut conn, &id).map_err(|e| e.to_string())?;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    emoji::delete_file(&data_dir, &e.pack_id, &e.file_name);
+    Ok(())
+}
+
+#[tauri::command]
+fn rename_emoji(app: tauri::AppHandle, id: String, new_name: String) -> Result<Emoji, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji::rename_emoji(&mut conn, &id, &new_name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn search_emojis(app: tauri::AppHandle, query: String) -> Result<Vec<Emoji>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji::search_emojis(&mut conn, &query).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn assign_emoji_pack(
+    app: tauri::AppHandle,
+    assistant_id: String,
+    pack_id: String,
+) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji_pack::assign_pack(&mut conn, &assistant_id, &pack_id, now_ms())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn unassign_emoji_pack(
+    app: tauri::AppHandle,
+    assistant_id: String,
+    pack_id: String,
+) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji_pack::unassign_pack(&mut conn, &assistant_id, &pack_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_assistant_emoji_packs(
+    app: tauri::AppHandle,
+    assistant_id: String,
+) -> Result<Vec<EmojiPack>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::emoji_pack::list_packs_for_assistant(&mut conn, &assistant_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn get_emoji_file_url(app: tauri::AppHandle, emoji_id: String) -> Result<String, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let e = db::ops::emoji::get_emoji(&mut conn, &emoji_id).map_err(|e| e.to_string())?;
+    let data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let path = emoji::emoji_path(&data_dir, &e.pack_id, &e.file_name);
+    let bytes = std::fs::read(&path).map_err(|err| format!("Cannot read emoji file: {err}"))?;
+    let b64 = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes);
+    let mime = match e.file_format.as_str() {
+        "gif" => "image/gif",
+        "apng" | "png" => "image/png",
+        "webp" => "image/webp",
+        "jpg" => "image/jpeg",
+        "bmp" => "image/bmp",
+        "lottie" => "application/json",
+        _ => "application/octet-stream",
+    };
+    Ok(format!("data:{mime};base64,{b64}"))
+}
+
+// --- Tool System (categories, custom tools, presets) ---
+
+#[tauri::command]
+fn list_tool_categories(app: tauri::AppHandle) -> Result<Vec<ToolCategory>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::tool_category::list_categories(&mut conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_custom_tools(app: tauri::AppHandle) -> Result<Vec<CustomTool>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::custom_tool::list_tools(&mut conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_custom_tool(
+    app: tauri::AppHandle,
+    name: String,
+    description: String,
+    command: String,
+    category_id: Option<String>,
+    parameters_schema: Option<String>,
+    args_template: Option<String>,
+    working_directory: Option<String>,
+    timeout_ms: Option<i32>,
+    permission: Option<String>,
+) -> Result<CustomTool, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    let schema = parameters_schema.as_deref().unwrap_or(r#"{"type":"object","properties":{}}"#);
+    let perm = permission.as_deref().unwrap_or("ask");
+    db::ops::custom_tool::create_tool(&mut conn, &NewCustomTool {
+        id: &id,
+        name: &name,
+        description: &description,
+        category_id: category_id.as_deref(),
+        parameters_schema: schema,
+        command: &command,
+        args_template: args_template.as_deref(),
+        working_directory: working_directory.as_deref(),
+        timeout_ms,
+        permission: perm,
+        is_enabled: 1,
+        sort_order: 0,
+        created_at: now,
+        updated_at: now,
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_custom_tool(
+    app: tauri::AppHandle,
+    id: String,
+    name: Option<String>,
+    description: Option<String>,
+    command: Option<String>,
+    category_id: Option<Option<String>>,
+    parameters_schema: Option<String>,
+    args_template: Option<Option<String>>,
+    working_directory: Option<Option<String>>,
+    timeout_ms: Option<Option<i32>>,
+    permission: Option<String>,
+    is_enabled: Option<i32>,
+) -> Result<CustomTool, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::custom_tool::update_tool(&mut conn, &id, &CustomToolUpdate {
+        name,
+        description,
+        command,
+        category_id,
+        parameters_schema,
+        args_template,
+        working_directory,
+        timeout_ms,
+        permission,
+        is_enabled,
+        updated_at: Some(now_ms()),
+        ..Default::default()
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_custom_tool(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::custom_tool::delete_tool(&mut conn, &id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn list_tool_presets(app: tauri::AppHandle) -> Result<Vec<ToolPreset>, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::tool_preset::list_presets(&mut conn).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn create_tool_preset(
+    app: tauri::AppHandle,
+    name: String,
+    description: Option<String>,
+    tool_names: String,
+) -> Result<ToolPreset, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    db::ops::tool_preset::create_preset(&mut conn, &NewToolPreset {
+        id: &id,
+        name: &name,
+        description: description.as_deref(),
+        icon: None,
+        tool_names: &tool_names,
+        is_builtin: 0,
+        sort_order: 0,
+        created_at: now,
+        updated_at: now,
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn update_tool_preset(
+    app: tauri::AppHandle,
+    id: String,
+    name: Option<String>,
+    description: Option<Option<String>>,
+    tool_names: Option<String>,
+) -> Result<ToolPreset, String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::tool_preset::update_preset(&mut conn, &id, &ToolPresetUpdate {
+        name,
+        description,
+        tool_names,
+        updated_at: Some(now_ms()),
+        ..Default::default()
+    }).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn delete_tool_preset(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>();
+    let mut conn = get_conn(&pool.0)?;
+    db::ops::tool_preset::delete_preset(&mut conn, &id).map_err(|e| e.to_string())
+}
+
 // --- Chat command (with agent loop + tools + approval) ---
 
 #[tauri::command]
@@ -776,7 +1446,7 @@ async fn chat(
     };
 
     // Resolve provider config (with optional overrides)
-    let (mut provider_type, mut base_url, mut api_key, model) =
+    let (mut provider_type, mut base_url, mut api_key, model, mut api_format) =
         resolve_provider_config(&secrets.0, &pool, assistant.as_ref())?;
 
     let model = model_override.unwrap_or(model);
@@ -785,26 +1455,62 @@ async fn chat(
         let pool2 = pool.clone();
         let pid2 = pid.clone();
         let secrets2 = secrets.0.clone();
-        let (pt, bu, ak) = tokio::task::spawn_blocking(move || {
+        let (pt, bu, ak, af) = tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool2)?;
             let p = db::ops::provider::get_provider(&mut conn, &pid2).map_err(|e| e.to_string())?;
             let ak = get_provider_api_key(&secrets2, &pid2)
                 .ok_or_else(|| format!("API Key not set for provider '{}'", p.name))?;
-            Ok::<_, String>((p.provider_type, p.base_url.trim_end_matches('/').to_string(), ak))
+            Ok::<_, String>((p.provider_type, p.base_url.trim_end_matches('/').to_string(), ak, p.api_format))
         }).await.map_err(|e| e.to_string())??;
         provider_type = pt;
         base_url = bu;
         api_key = ak;
+        api_format = af;
     }
 
-    let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key);
+    let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
 
-    // Build messages with history
-    let system_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
+    // Build messages with history (resolve template variables in system prompt)
+    let file_access = build_file_access(&pool).await;
+    let raw_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
+    let user_name = {
+        let pool2 = pool.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2).ok()?;
+            db::ops::preference::get_preference(&mut conn, "user_name").ok().flatten()
+        }).await.ok().flatten()
+    };
+    let mut tmpl_ctx = template::build_context(
+        assistant.as_ref().map(|a| a.name.as_str()),
+        user_name.as_deref(),
+    );
+    if let Some(ref a) = assistant {
+        let pool2 = pool.clone();
+        let aid = a.id.clone();
+        let emoji_names: Option<String> = tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2).ok()?;
+            let pack_ids = db::ops::emoji_pack::list_assigned_pack_ids(&mut conn, &aid).ok()?;
+            if pack_ids.is_empty() { return None; }
+            let emojis = db::ops::emoji::list_emojis_for_packs(&mut conn, &pack_ids).ok()?;
+            if emojis.is_empty() { return None; }
+            let list: Vec<String> = emojis.iter().take(100).map(|e| {
+                format!("[emoji:{}]", e.name)
+            }).collect();
+            Some(format!(
+                "You can use stickers in your responses. Copy the EXACT syntax below (do NOT rename or translate):\n{}",
+                list.join("\n")
+            ))
+        }).await.ok().flatten();
+        if let Some(names) = emoji_names {
+            tmpl_ctx.set("emoji_list", &names);
+        }
+    }
+    let system_prompt_resolved = template::resolve(raw_prompt, &tmpl_ctx);
+    let system_prompt = format!("{}{}", system_prompt_resolved, file_access_prompt(&file_access));
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
-    let mut chat_messages = build_messages(system_prompt, &history, &message);
+    let mut chat_messages = build_messages(system_prompt.trim(), &history, &message);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
     let (thinking_enabled, thinking_budget, thinking_effort) = {
@@ -876,15 +1582,25 @@ async fn chat(
         let mgr = mcp.0.lock().await;
         all_tool_defs.extend(mgr.all_tool_definitions());
     }
-    let enabled_tools: Option<Vec<String>> = assistant.as_ref()
-        .and_then(|a| a.enabled_tools.as_ref())
-        .and_then(|json| serde_json::from_str(json).ok());
+    // Resolve tool filtering: preset > enabled_tools > all
+    let enabled_tools: Option<Vec<String>> = if let Some(ref preset_id) = assistant.as_ref().and_then(|a| a.tool_preset_id.as_ref()) {
+        let pool2 = pool.clone();
+        let pid = preset_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2).ok()?;
+            let preset = db::ops::tool_preset::get_preset(&mut conn, &pid).ok()?;
+            serde_json::from_str(&preset.tool_names).ok()
+        }).await.ok().flatten()
+    } else {
+        assistant.as_ref()
+            .and_then(|a| a.enabled_tools.as_ref())
+            .and_then(|json| serde_json::from_str(json).ok())
+    };
     let tool_defs: Vec<_> = if let Some(ref enabled) = enabled_tools {
         all_tool_defs.into_iter().filter(|t| enabled.contains(&t.name)).collect()
     } else {
         all_tool_defs
     };
-    let has_tools = !tool_defs.is_empty();
     let shell_type = {
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
@@ -895,6 +1611,7 @@ async fn chat(
     let tool_context = tools::ToolContext {
         working_directory: project_path,
         shell: shell_type.map(|s| tools::ShellType::from_str(&s)).unwrap_or_else(tools::ShellType::default_for_platform),
+        file_access,
     };
 
     let mut full_content = String::new();
@@ -902,267 +1619,219 @@ async fn chat(
     let mut total_input_tokens = 0i32;
     let mut total_output_tokens = 0i32;
 
-    if has_tools {
-        // Agent loop: runs until model stops issuing tool calls (like Codex)
+    // Unified streaming agent loop: always streams, handles tools when present
+    loop {
+        if cancel.is_cancelled() { break; }
 
-        loop {
-            if cancel.is_cancelled() { break; }
-
-            let response = provider.chat_with_tools(
-                chat_messages.clone(), tool_defs.clone(), params.clone()
-            ).await.map_err(|e| e.to_string())?;
-
-            if let Some(ref u) = response.usage {
-                total_input_tokens += u.prompt_tokens.unwrap_or(0);
-                total_output_tokens += u.completion_tokens.unwrap_or(0);
-            }
-
-            if let Some(ref reasoning) = response.reasoning_content {
-                if !reasoning.is_empty() {
-                    blocks.push(serde_json::json!({"type": "thinking", "text": reasoning}));
-                    app.emit("chat-stream", serde_json::json!({
-                        "type": "reasoning", "content": reasoning,
-                        "done": false, "message_id": &assistant_msg_id,
-                    })).map_err(|e| e.to_string())?;
+        let result = {
+            let mut _last_err = String::new();
+            let mut attempt = 0u32;
+            loop {
+                if attempt > 0 {
+                    tokio::time::sleep(crate::client::backoff(STREAM_RETRY_BASE, attempt as u64)).await;
+                }
+                let stream_result = provider.stream_chat_with_tools(
+                    chat_messages.clone(), tool_defs.clone(), params.clone()
+                ).await;
+                let try_result = match stream_result {
+                    Ok(stream) => consume_stream(stream, &app, &cancel, &assistant_msg_id).await,
+                    Err(e) => Err(e.to_string()),
+                };
+                match try_result {
+                    Ok(r) => break r,
+                    Err(e) if is_context_window_error(&e) => {
+                        let aggressive_keep = (keep_recent / 2).max(2);
+                        trim_to_context_limit(&mut chat_messages, context_limit / 2, aggressive_keep);
+                        let stream = provider.stream_chat_with_tools(
+                            chat_messages.clone(), tool_defs.clone(), params.clone()
+                        ).await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
+                        break consume_stream(stream, &app, &cancel, &assistant_msg_id)
+                            .await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
+                    }
+                    Err(e) if is_retryable_stream_error(&e) && attempt < MAX_STREAM_RETRIES => {
+                        _last_err = e;
+                        attempt += 1;
+                        continue;
+                    }
+                    Err(e) => return Err(e),
                 }
             }
+        };
 
-            if !response.text.is_empty() {
-                full_content.push_str(&response.text);
-                blocks.push(serde_json::json!({"type": "text", "text": &response.text}));
+        if let Some(ref u) = result.usage {
+            total_input_tokens += u.prompt_tokens.unwrap_or(0);
+            total_output_tokens += u.completion_tokens.unwrap_or(0);
+        }
+
+        if !result.reasoning.is_empty() {
+            blocks.push(serde_json::json!({"type": "thinking", "text": &result.reasoning}));
+        }
+        if !result.text.is_empty() {
+            full_content.push_str(&result.text);
+            blocks.push(serde_json::json!({"type": "text", "text": &result.text}));
+        }
+
+        if result.tool_calls.is_empty() { break; }
+
+        // Discard tool calls if response was truncated
+        if matches!(result.finish_reason.as_deref(), Some("length") | Some("max_tokens")) { break; }
+
+        chat_messages.push(ChatMessage::assistant_with_tools(
+            &result.text, if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) }, result.tool_calls.clone()
+        ));
+
+        for tc in &result.tool_calls {
+            if cancel.is_cancelled() { break; }
+
+            app.emit("chat-stream", serde_json::json!({
+                "type": "tool_call",
+                "call_id": tc.id,
+                "tool_name": tc.name,
+                "arguments": tc.arguments,
+                "message_id": &assistant_msg_id,
+            })).map_err(|e| e.to_string())?;
+
+            let tool_allowed = enabled_tools.as_ref()
+                .map(|e| e.contains(&tc.name))
+                .unwrap_or(true);
+            let is_mcp = tc.name.starts_with("mcp__");
+            let tool = if tool_allowed && !is_mcp { tool_registry.0.get(&tc.name) } else { None };
+            let result = if !tool_allowed {
+                "Tool not available for this assistant.".to_string()
+            } else if is_mcp {
+                let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
+                let mcp = app.state::<AppMcp>();
+                let mut mgr = mcp.0.lock().await;
+                match mgr.call_tool(&tc.name, args).await {
+                    Ok(output) => output,
+                    Err(e) => format!("MCP error: {e}"),
+                }
+            } else if tc.name == "ask_user" {
+                let (tx, rx) = oneshot::channel();
+                {
+                    let waiters = app.state::<ApprovalWaiters>();
+                    let mut map = waiters.0.lock().await;
+                    map.insert(tc.id.clone(), tx);
+                }
                 app.emit("chat-stream", serde_json::json!({
-                    "content": &response.text, "done": false, "message_id": &assistant_msg_id,
-                })).map_err(|e| e.to_string())?;
-            }
-
-            if response.tool_calls.is_empty() {
-                break;
-            }
-
-            chat_messages.push(ChatMessage::assistant_with_tools(
-                &response.text, response.reasoning_content.clone(), response.tool_calls.clone()
-            ));
-
-            for tc in &response.tool_calls {
-                if cancel.is_cancelled() { break; }
-
-                app.emit("chat-stream", serde_json::json!({
-                    "type": "tool_call",
+                    "type": "tool_approval_req",
                     "call_id": tc.id,
                     "tool_name": tc.name,
                     "arguments": tc.arguments,
                     "message_id": &assistant_msg_id,
                 })).map_err(|e| e.to_string())?;
-
-                let tool_allowed = enabled_tools.as_ref()
-                    .map(|e| e.contains(&tc.name))
-                    .unwrap_or(true);
-                let is_mcp = tc.name.starts_with("mcp__");
-                let tool = if tool_allowed && !is_mcp { tool_registry.0.get(&tc.name) } else { None };
-                let result = if !tool_allowed {
-                    "Tool not available for this assistant.".to_string()
-                } else if is_mcp {
-                    let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
-                    let mcp = app.state::<AppMcp>();
-                    let mut mgr = mcp.0.lock().await;
-                    match mgr.call_tool(&tc.name, args).await {
-                        Ok(output) => output,
-                        Err(e) => format!("MCP error: {e}"),
-                    }
-                } else if tc.name == "ask_user" {
-                    let (tx, rx) = oneshot::channel();
-                    {
-                        let waiters = app.state::<ApprovalWaiters>();
-                        let mut map = waiters.0.lock().await;
-                        map.insert(tc.id.clone(), tx);
-                    }
-                    app.emit("chat-stream", serde_json::json!({
-                        "type": "tool_approval_req",
-                        "call_id": tc.id,
-                        "tool_name": tc.name,
-                        "arguments": tc.arguments,
-                        "message_id": &assistant_msg_id,
-                    })).map_err(|e| e.to_string())?;
-                    match rx.await {
-                        Ok(ApprovalDecision::Response(text)) => text,
-                        _ => "User did not respond.".to_string(),
-                    }
-                } else if let Some(tool) = tool {
-                    let permission = tool.default_permission();
-                    let approved = match permission {
-                        tools::Permission::Always => true,
-                        tools::Permission::Never => false,
-                        tools::Permission::Ask => {
-                            let (tx, rx) = oneshot::channel();
-                            {
-                                let waiters = app.state::<ApprovalWaiters>();
-                                let mut map = waiters.0.lock().await;
-                                map.insert(tc.id.clone(), tx);
-                            }
-                            app.emit("chat-stream", serde_json::json!({
-                                "type": "tool_approval_req",
-                                "call_id": tc.id,
-                                "tool_name": tc.name,
-                                "arguments": tc.arguments,
-                                "message_id": &assistant_msg_id,
-                            })).map_err(|e| e.to_string())?;
-                            match rx.await {
-                                Ok(ApprovalDecision::Approved) => true,
-                                _ => false,
-                            }
+                match rx.await {
+                    Ok(ApprovalDecision::Response(text)) => text,
+                    _ => "User did not respond.".to_string(),
+                }
+            } else if let Some(tool) = tool {
+                let permission = tool.default_permission();
+                let (approved, deny_reason): (bool, Option<String>) = match permission {
+                    tools::Permission::Always => (true, None),
+                    tools::Permission::Never => (false, None),
+                    tools::Permission::Ask => {
+                        let (tx, rx) = oneshot::channel();
+                        {
+                            let waiters = app.state::<ApprovalWaiters>();
+                            let mut map = waiters.0.lock().await;
+                            map.insert(tc.id.clone(), tx);
                         }
-                    };
-                    if approved {
-                        let args: serde_json::Value = serde_json::from_str(&tc.arguments)
-                            .unwrap_or_default();
-                        match tool.execute(args, &tool_context).await {
-                            Ok(output) => output,
-                            Err(e) => format!("Error: {e}"),
+                        app.emit("chat-stream", serde_json::json!({
+                            "type": "tool_approval_req",
+                            "call_id": tc.id,
+                            "tool_name": tc.name,
+                            "arguments": tc.arguments,
+                            "message_id": &assistant_msg_id,
+                        })).map_err(|e| e.to_string())?;
+                        match rx.await {
+                            Ok(ApprovalDecision::Approved) => (true, None),
+                            Ok(ApprovalDecision::Denied(reason)) => (false, reason),
+                            _ => (false, None),
                         }
-                    } else {
-                        "Tool call denied by user.".to_string()
                     }
-                } else {
-                    format!("Unknown tool: {}", tc.name)
                 };
+                if approved {
+                    let args: serde_json::Value = serde_json::from_str(&tc.arguments)
+                        .unwrap_or_default();
+                    match tool.execute(args, &tool_context).await {
+                        Ok(output) => output,
+                        Err(e) => format!("Error: {e}"),
+                    }
+                } else if let Some(reason) = deny_reason {
+                    format!("Tool call denied by user. Reason: {reason}")
+                } else {
+                    "Tool call denied by user.".to_string()
+                }
+            } else {
+                format!("Unknown tool: {}", tc.name)
+            };
 
-                app.emit("chat-stream", serde_json::json!({
-                    "type": "tool_result",
+            app.emit("chat-stream", serde_json::json!({
+                "type": "tool_result",
+                "call_id": tc.id,
+                "result": &result,
+                "message_id": &assistant_msg_id,
+            })).map_err(|e| e.to_string())?;
+
+            blocks.push(serde_json::json!({
+                "type": "tool_call",
+                "data": {
                     "call_id": tc.id,
-                    "result": &result,
-                    "message_id": &assistant_msg_id,
-                })).map_err(|e| e.to_string())?;
-
-                // Collect block for persistence
-                blocks.push(serde_json::json!({
-                    "type": "tool_call",
-                    "data": {
-                        "call_id": tc.id,
-                        "tool_name": tc.name,
-                        "arguments": tc.arguments,
-                        "status": "completed",
-                        "result": &result
-                    }
-                }));
-
-                // Persist tool result as a separate message (for model context)
-                {
-                    let pool = pool.clone();
-                    let conv_id = conversation_id.clone();
-                    let tool_msg_id = uuid::Uuid::new_v4().to_string();
-                    let call_id = tc.id.clone();
-                    let tool_result = result.clone();
-                    let _ = tokio::task::spawn_blocking(move || {
-                        if let Ok(mut conn) = pool.get() {
-                            let _ = db::ops::message::insert_message(&mut conn, &NewMessage {
-                                id: &tool_msg_id, conversation_id: &conv_id, role: "tool",
-                                content: &tool_result, provider_id: None, model_id: None,
-                                input_tokens: None, output_tokens: None,
-                                tool_calls: None, tool_call_id: Some(&call_id),
-                                sort_order: 0, created_at: now,
-                            });
-                        }
-                    }).await;
+                    "tool_name": tc.name,
+                    "arguments": tc.arguments,
+                    "status": "completed",
+                    "result": &result
                 }
+            }));
 
-                chat_messages.push(ChatMessage::tool_result(&tc.id, &result));
+            {
+                let pool = pool.clone();
+                let conv_id = conversation_id.clone();
+                let tool_msg_id = uuid::Uuid::new_v4().to_string();
+                let call_id = tc.id.clone();
+                let tool_result = result.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Ok(mut conn) = pool.get() {
+                        let _ = db::ops::message::insert_message(&mut conn, &NewMessage {
+                            id: &tool_msg_id, conversation_id: &conv_id, role: "tool",
+                            content: &tool_result, provider_id: None, model_id: None,
+                            input_tokens: None, output_tokens: None,
+                            tool_calls: None, tool_call_id: Some(&call_id),
+                            sort_order: 0, created_at: now,
+                        });
+                    }
+                }).await;
             }
 
-            if cancel.is_cancelled() { break; }
-            trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
+            chat_messages.push(ChatMessage::tool_result(&tc.id, &result));
         }
 
-        // Persist assistant message: content + blocks JSON + tokens
-        {
-            let pool = pool.clone();
-            let msg_id = assistant_msg_id.clone();
-            let content = full_content.clone();
-            let blocks_json = if blocks.is_empty() { None } else {
-                serde_json::to_string(&blocks).ok()
-            };
-            let inp = total_input_tokens;
-            let out = total_output_tokens;
-            tokio::task::spawn_blocking(move || {
-                if let Ok(mut conn) = pool.get() {
-                    let _ = db::ops::message::update_content_and_tool_calls(
-                        &mut conn, &msg_id, &content, blocks_json.as_deref()
-                    );
-                    if inp > 0 || out > 0 {
-                        let _ = db::ops::message::update_tokens(
-                            &mut conn, &msg_id, Some(inp), Some(out)
-                        );
-                    }
+        if cancel.is_cancelled() { break; }
+        trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
+    }
+
+    // Persist assistant message
+    {
+        let pool = pool.clone();
+        let msg_id = assistant_msg_id.clone();
+        let content = full_content.clone();
+        let blocks_json = if blocks.is_empty() { None } else {
+            serde_json::to_string(&blocks).ok()
+        };
+        let inp = total_input_tokens;
+        let out = total_output_tokens;
+        tokio::task::spawn_blocking(move || {
+            if let Ok(mut conn) = pool.get() {
+                if let Some(ref bj) = blocks_json {
+                    let _ = db::ops::message::update_content_and_tool_calls(&mut conn, &msg_id, &content, Some(bj));
+                } else {
+                    let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
                 }
-            }).await.map_err(|e| e.to_string())?;
-        }
-    } else {
-        // Simple streaming (no tools)
-        let mut stream = provider.stream_chat(chat_messages, params.clone())
-            .await.map_err(|e| e.to_string())?;
-        let mut reasoning_buf = String::new();
-
-        use futures::StreamExt;
-        loop {
-            tokio::select! {
-                _ = cancel.cancelled() => { break; }
-                chunk = stream.next() => {
-                    match chunk {
-                        Some(Ok(provider::StreamEvent::Text(content))) => {
-                            full_content.push_str(&content);
-                            app.emit("chat-stream", serde_json::json!({
-                                "content": content, "done": false, "message_id": &assistant_msg_id,
-                            })).map_err(|e| e.to_string())?;
-                        }
-                        Some(Ok(provider::StreamEvent::Reasoning(content))) => {
-                            reasoning_buf.push_str(&content);
-                            app.emit("chat-stream", serde_json::json!({
-                                "type": "reasoning", "content": content,
-                                "done": false, "message_id": &assistant_msg_id,
-                            })).map_err(|e| e.to_string())?;
-                        }
-                        Some(Err(e)) => {
-                            let pool = pool.clone();
-                            let msg_id = assistant_msg_id.clone();
-                            let content = full_content.clone();
-                            let _ = tokio::task::spawn_blocking(move || {
-                                if let Ok(mut conn) = pool.get() {
-                                    let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
-                                }
-                            }).await;
-                            {
-                                let chats = app.state::<ActiveChats>();
-                                chats.0.lock().await.remove(&conversation_id);
-                            }
-                            return Err(e.to_string());
-                        }
-                        None => { break; }
-                    }
+                if inp > 0 || out > 0 {
+                    let _ = db::ops::message::update_tokens(&mut conn, &msg_id, Some(inp), Some(out));
                 }
             }
-        }
-
-        // Persist final content (with reasoning as blocks if present)
-        {
-            let pool = pool.clone();
-            let msg_id = assistant_msg_id.clone();
-            let content = full_content.clone();
-            let blocks_json = if reasoning_buf.is_empty() { None } else {
-                let b = vec![
-                    serde_json::json!({"type": "thinking", "text": reasoning_buf}),
-                    serde_json::json!({"type": "text", "text": &content}),
-                ];
-                serde_json::to_string(&b).ok()
-            };
-            tokio::task::spawn_blocking(move || {
-                if let Ok(mut conn) = pool.get() {
-                    if let Some(ref bj) = blocks_json {
-                        let _ = db::ops::message::update_content_and_tool_calls(&mut conn, &msg_id, &content, Some(bj));
-                    } else {
-                        let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
-                    }
-                }
-            }).await.map_err(|e| e.to_string())?;
-        }
+        }).await.map_err(|e| e.to_string())?;
     }
 
     // Clean up cancel token
@@ -1212,9 +1881,6 @@ async fn chat(
 pub fn run() {
     tracing_subscriber::fmt::init();
 
-    #[cfg(target_os = "android")]
-    android_keyring::set_android_keyring_credential_builder();
-
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -1256,6 +1922,7 @@ pub fn run() {
                         enabled_tools: None,
                         thinking_enabled: 0,
                         thinking_budget: None,
+                        tool_preset_id: None,
                     });
                 }
             }
@@ -1298,6 +1965,7 @@ pub fn run() {
                                 sort_order: 0,
                                 created_at: now,
                                 updated_at: now,
+                                api_format: "chat_completions",
                             },
                         ) {
                             let key_name = provider_secret_name(&provider.id);
@@ -1327,11 +1995,94 @@ pub fn run() {
                 }
             }
 
+            // Seed built-in prompt templates on first run
+            {
+                let mut conn = pool.get().expect("db connection");
+                if db::ops::prompt_template::count_templates(&mut conn).unwrap_or(0) == 0 {
+                    let now = now_ms();
+                    let templates = [
+                        ("casual_friend", "Casual Friend", "随意朋友", "character", "You are {{assistant_name}}, a casual and friendly chat partner. Talk naturally, use slang, emoji, and informal language. Be playful and genuine. The current time is {{current_time}} on {{current_date}} ({{day_of_week}}).\n\n{{chat_style_hint}}\n\nExample of segmented response:\nwhat\n---\nno way lol\n---\n[emoji:shocked]"),
+                        ("professional", "Professional Assistant", "专业助手", "character", "You are {{assistant_name}}, a professional and knowledgeable assistant. Respond in a structured, clear, and formal manner. Provide thorough and accurate answers. Current date: {{current_date}}."),
+                        ("code_expert", "Code Expert", "代码专家", "coding", "You are {{assistant_name}}, an expert software engineer. Write clean, efficient, and well-documented code. Explain technical concepts clearly. Use code blocks with language tags. Current date: {{current_date}}."),
+                        ("creative_writer", "Creative Writer", "创意写手", "character", "You are {{assistant_name}}, a creative and expressive writer. Use vivid language, metaphors, and storytelling techniques. Be imaginative and emotionally engaging."),
+                        ("study_buddy", "Study Buddy", "学习伙伴", "character", "You are {{assistant_name}}, a patient and encouraging study partner for {{user_name}}. Break down complex topics into simple explanations. Use analogies and examples. Ask follow-up questions to check understanding. Current date: {{current_date}}."),
+                    ];
+                    for (i, (id_suffix, name, desc, category, text)) in templates.iter().enumerate() {
+                        let id = format!("builtin_{id_suffix}");
+                        let _ = db::ops::prompt_template::create_template(&mut conn, &NewPromptTemplate {
+                            id: &id,
+                            name,
+                            description: Some(desc),
+                            category,
+                            template_text: text,
+                            is_builtin: 1,
+                            sort_order: i as i32,
+                            created_at: now,
+                            updated_at: now,
+                        });
+                    }
+                }
+            }
+
+            // Seed built-in tool categories and presets
+            {
+                let mut conn = pool.get().expect("db connection");
+                if db::ops::tool_category::count_categories(&mut conn).unwrap_or(0) == 0 {
+                    let now = now_ms();
+                    let cats = [
+                        ("cat_interaction", "Interaction", "User interaction tools", 0),
+                        ("cat_filesystem", "Filesystem", "File and directory operations", 1),
+                        ("cat_system", "System", "System and shell commands", 2),
+                        ("cat_coding", "Coding", "Code analysis and editing", 3),
+                    ];
+                    for (id, name, desc, order) in &cats {
+                        let _ = db::ops::tool_category::create_category(&mut conn, &NewToolCategory {
+                            id, name, description: Some(desc), icon: None, sort_order: *order, created_at: now,
+                        });
+                    }
+                }
+                if db::ops::tool_preset::count_presets(&mut conn).unwrap_or(0) == 0 {
+                    let now = now_ms();
+                    let presets = [
+                        ("preset_coding", "Coding Agent", "All tools for coding tasks", r#"["ask_user","read_file","write_file","edit_file","apply_patch","run_command","list_directory","search_files","glob_files"]"#, 0),
+                        ("preset_research", "Research", "Minimal tools for research and reading", r#"["ask_user","read_file","list_directory","search_files","glob_files"]"#, 1),
+                        ("preset_writing", "Writing", "Tools for writing and editing files", r#"["ask_user","read_file","write_file","edit_file"]"#, 2),
+                    ];
+                    for (id, name, desc, tools_json, order) in &presets {
+                        let _ = db::ops::tool_preset::create_preset(&mut conn, &NewToolPreset {
+                            id, name, description: Some(desc), icon: None,
+                            tool_names: tools_json, is_builtin: 1, sort_order: *order,
+                            created_at: now, updated_at: now,
+                        });
+                    }
+                }
+            }
+
+            // Load custom tools from DB into tool registry
+            let mut registry = tools::ToolRegistry::new();
+            {
+                let mut conn = pool.get().expect("db connection");
+                if let Ok(custom_tools) = db::ops::custom_tool::list_enabled_tools(&mut conn) {
+                    for ct in &custom_tools {
+                        registry.register(Box::new(tools::custom::CustomToolExecutor::from_db(ct)));
+                    }
+                }
+            }
+
             app.manage(AppDb(pool));
-            app.manage(AppTools(tools::ToolRegistry::new()));
+            app.manage(AppTools(Arc::new(registry)));
             app.manage(ApprovalWaiters(Mutex::new(HashMap::new())));
             app.manage(ActiveChats(Mutex::new(HashMap::new())));
             app.manage(AppMcp(Arc::new(Mutex::new(mcp::McpManager::new()))));
+
+            #[cfg(not(target_os = "android"))]
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    onebot::maybe_start(handle).await;
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1349,9 +2100,60 @@ pub fn run() {
             list_mcp_servers, create_mcp_server, update_mcp_server, delete_mcp_server,
             connect_mcp_server, disconnect_mcp_server, list_mcp_tools, list_all_tool_names,
             approve_tool_call, deny_tool_call, respond_to_ask,
+            platform::get_platform, platform::get_manage_storage_status, platform::request_manage_storage,
+            platform::pick_saf_directory, platform::list_saf_roots, platform::remove_saf_root,
+            #[cfg(not(target_os = "android"))]
+            get_onebot_status,
+            #[cfg(not(target_os = "android"))]
+            get_onebot_config,
+            #[cfg(not(target_os = "android"))]
+            save_onebot_config,
+            #[cfg(not(target_os = "android"))]
+            start_onebot,
+            #[cfg(not(target_os = "android"))]
+            stop_onebot,
+            list_prompt_templates, create_prompt_template, update_prompt_template,
+            delete_prompt_template, list_template_variables,
+            list_emoji_packs, create_emoji_pack, delete_emoji_pack,
+            list_emojis, import_emojis, delete_emoji, rename_emoji, search_emojis,
+            assign_emoji_pack, unassign_emoji_pack, list_assistant_emoji_packs,
+            get_emoji_file_url,
+            list_tool_categories,
+            list_custom_tools, create_custom_tool, update_custom_tool, delete_custom_tool,
+            list_tool_presets, create_tool_preset, update_tool_preset, delete_tool_preset,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+/// Called from MainActivity.onCreate to initialize ndk-context and
+/// android-keyring before any Rust code touches the Android keystore.
+/// Tauri itself does NOT initialize ndk-context; this JNI entry is required.
+#[cfg(target_os = "android")]
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_initNdkContext(
+    env: jni::JNIEnv,
+    _class: jni::objects::JObject,
+    context: jni::objects::JObject,
+) {
+    use std::ffi::c_void;
+    use std::sync::OnceLock;
+    use jni::objects::GlobalRef;
+
+    static REF: OnceLock<Option<GlobalRef>> = OnceLock::new();
+    REF.get_or_init(|| match env.new_global_ref(&context) {
+        Ok(ref_) => {
+            let vm = env.get_java_vm().unwrap();
+            let vm = vm.get_java_vm_pointer() as *mut c_void;
+            unsafe {
+                ndk_context::initialize_android_context(vm, ref_.as_obj().as_raw() as _);
+            }
+            android_keyring::set_android_keyring_credential_builder();
+            Some(ref_)
+        }
+        Err(_) => None,
+    });
 }
 
 #[cfg(test)]

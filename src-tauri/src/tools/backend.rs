@@ -1,0 +1,180 @@
+//! Unified file I/O layer dispatching on ResolvedTarget.
+//! Real paths use tokio::fs directly; SAF targets go through the Android
+//! ContentResolver bridge (crate::android_bridge). Keeping the dispatch here
+//! means individual tools never need to know about SAF.
+
+use super::ResolvedTarget;
+
+pub struct DirEntry {
+    pub name: String,
+    pub is_dir: bool,
+    pub is_symlink: bool,
+    pub size: Option<u64>,
+}
+
+#[cfg(not(target_os = "android"))]
+fn saf_unsupported<T>() -> Result<T, String> {
+    Err("SAF paths are only supported on Android".to_string())
+}
+
+pub async fn read_to_string(target: &ResolvedTarget) -> Result<String, String> {
+    match target {
+        ResolvedTarget::Real(path) => tokio::fs::read_to_string(path)
+            .await
+            .map_err(|e| format!("failed to read file '{}': {}", path.display(), e)),
+        #[cfg(target_os = "android")]
+        ResolvedTarget::Saf { tree_uri, rel } => crate::android_bridge::saf_read(tree_uri, rel).await,
+        #[cfg(not(target_os = "android"))]
+        ResolvedTarget::Saf { .. } => saf_unsupported(),
+    }
+}
+
+/// Write content, creating parent directories as needed.
+pub async fn write_string(target: &ResolvedTarget, content: &str) -> Result<(), String> {
+    match target {
+        ResolvedTarget::Real(path) => {
+            if let Some(parent) = path.parent() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| format!("failed to create directory: {e}"))?;
+            }
+            tokio::fs::write(path, content)
+                .await
+                .map_err(|e| format!("failed to write file '{}': {}", path.display(), e))
+        }
+        #[cfg(target_os = "android")]
+        ResolvedTarget::Saf { tree_uri, rel } => {
+            crate::android_bridge::saf_write(tree_uri, rel, content).await
+        }
+        #[cfg(not(target_os = "android"))]
+        ResolvedTarget::Saf { .. } => saf_unsupported(),
+    }
+}
+
+pub async fn list_dir(target: &ResolvedTarget) -> Result<Vec<DirEntry>, String> {
+    match target {
+        ResolvedTarget::Real(path) => {
+            let path = path.clone();
+            tokio::task::spawn_blocking(move || {
+                let entries = std::fs::read_dir(&path)
+                    .map_err(|e| format!("failed to read directory '{}': {}", path.display(), e))?;
+                let mut result = Vec::new();
+                for entry in entries {
+                    let entry = entry.map_err(|e| format!("failed to read entry: {e}"))?;
+                    let metadata = entry
+                        .metadata()
+                        .map_err(|e| format!("failed to read metadata: {e}"))?;
+                    result.push(DirEntry {
+                        name: entry.file_name().to_string_lossy().to_string(),
+                        is_dir: metadata.is_dir(),
+                        is_symlink: metadata.is_symlink(),
+                        size: metadata.is_file().then(|| metadata.len()),
+                    });
+                }
+                Ok(result)
+            })
+            .await
+            .map_err(|e| format!("task failed: {e}"))?
+        }
+        #[cfg(target_os = "android")]
+        ResolvedTarget::Saf { tree_uri, rel } => crate::android_bridge::saf_list(tree_uri, rel).await,
+        #[cfg(not(target_os = "android"))]
+        ResolvedTarget::Saf { .. } => saf_unsupported(),
+    }
+}
+
+/// Delete a file or directory. Non-recursive directory deletion only succeeds
+/// when the directory is empty.
+pub async fn delete(target: &ResolvedTarget, recursive: bool) -> Result<(), String> {
+    match target {
+        ResolvedTarget::Real(path) => {
+            let meta = tokio::fs::symlink_metadata(path)
+                .await
+                .map_err(|e| format!("cannot access '{}': {}", path.display(), e))?;
+            if meta.is_dir() {
+                if recursive {
+                    tokio::fs::remove_dir_all(path)
+                        .await
+                        .map_err(|e| format!("failed to delete directory '{}': {}", path.display(), e))
+                } else {
+                    tokio::fs::remove_dir(path).await.map_err(|e| {
+                        format!(
+                            "failed to delete directory '{}' (not empty? pass recursive: true): {}",
+                            path.display(),
+                            e
+                        )
+                    })
+                }
+            } else {
+                tokio::fs::remove_file(path)
+                    .await
+                    .map_err(|e| format!("failed to delete file '{}': {}", path.display(), e))
+            }
+        }
+        #[cfg(target_os = "android")]
+        ResolvedTarget::Saf { tree_uri, rel } => {
+            crate::android_bridge::saf_delete(tree_uri, rel, recursive).await
+        }
+        #[cfg(not(target_os = "android"))]
+        ResolvedTarget::Saf { .. } => saf_unsupported(),
+    }
+}
+
+/// Move/rename. Real paths use rename with a copy+delete fallback for files
+/// across filesystems. SAF targets must stay within the same tree.
+pub async fn rename(from: &ResolvedTarget, to: &ResolvedTarget) -> Result<(), String> {
+    match (from, to) {
+        (ResolvedTarget::Real(src), ResolvedTarget::Real(dst)) => {
+            if let Some(parent) = dst.parent() {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| format!("failed to create directory: {e}"))?;
+            }
+            match tokio::fs::rename(src, dst).await {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    let meta = tokio::fs::symlink_metadata(src)
+                        .await
+                        .map_err(|e| format!("cannot access '{}': {}", src.display(), e))?;
+                    if meta.is_file() {
+                        tokio::fs::copy(src, dst).await.map_err(|e| {
+                            format!("failed to move '{}' to '{}': {}", src.display(), dst.display(), e)
+                        })?;
+                        tokio::fs::remove_file(src).await.map_err(|e| {
+                            format!("moved but failed to remove source '{}': {}", src.display(), e)
+                        })
+                    } else {
+                        Err(format!(
+                            "failed to move '{}' to '{}': {}",
+                            src.display(),
+                            dst.display(),
+                            e
+                        ))
+                    }
+                }
+            }
+        }
+        #[cfg(target_os = "android")]
+        (
+            ResolvedTarget::Saf { tree_uri: from_tree, rel: from_rel },
+            ResolvedTarget::Saf { tree_uri: to_tree, rel: to_rel },
+        ) => {
+            if from_tree != to_tree {
+                return Err(
+                    "moving between different SAF directories is not supported; \
+                     enable 'All files access' in Settings for cross-directory moves"
+                        .to_string(),
+                );
+            }
+            crate::android_bridge::saf_rename(from_tree, from_rel, to_rel).await
+        }
+        #[cfg(target_os = "android")]
+        _ => Err(
+            "moving between a SAF directory and a regular path is not supported; \
+             enable 'All files access' in Settings for cross-location moves"
+                .to_string(),
+        ),
+        #[cfg(not(target_os = "android"))]
+        _ => saf_unsupported(),
+    }
+}

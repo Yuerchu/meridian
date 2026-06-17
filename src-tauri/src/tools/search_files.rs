@@ -47,14 +47,20 @@ impl Tool for SearchFilesTool {
         let path_str = args["path"]
             .as_str()
             .ok_or("missing 'path' argument")?;
-        let resolved = context.resolve_path(path_str);
-        context.validate_path(&resolved)?;
-        let path = resolved.to_string_lossy().to_string();
+        let path_buf = match context.resolve_and_validate(path_str)? {
+            super::ResolvedTarget::Real(p) => p,
+            super::ResolvedTarget::Saf { .. } => {
+                return Err(
+                    "recursive search is not supported in SAF-authorized directories; \
+                     enable 'All files access' in Settings to search there"
+                        .to_string(),
+                );
+            }
+        };
         let max_results = args["max_results"]
             .as_u64()
             .unwrap_or(50) as usize;
 
-        let path_buf = std::path::PathBuf::from(path);
         tokio::task::spawn_blocking(move || search(&path_buf, &pattern, max_results))
             .await
             .map_err(|e| format!("task failed: {e}"))?

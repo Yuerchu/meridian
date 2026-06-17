@@ -2,6 +2,7 @@ pub mod anthropic;
 pub mod deepseek;
 pub mod models;
 pub mod openai_compat;
+pub mod openai_responses;
 pub mod registry;
 
 use async_trait::async_trait;
@@ -61,6 +62,9 @@ impl Default for ChatParams {
 pub enum StreamEvent {
     Text(String),
     Reasoning(String),
+    ToolCallStart { index: usize, id: String, name: String },
+    ToolCallDelta { index: usize, arguments: String },
+    Done { usage: Option<TokenUsage>, finish_reason: Option<String> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -107,11 +111,20 @@ pub type ChatStream = Pin<Box<dyn futures::Stream<Item = Result<StreamEvent, Pro
 
 #[async_trait]
 pub trait ChatProvider: Send + Sync {
+    async fn stream_chat_with_tools(
+        &self,
+        messages: Vec<ChatMessage>,
+        tools: Vec<ToolDefinition>,
+        params: ChatParams,
+    ) -> Result<ChatStream, ProviderError>;
+
     async fn stream_chat(
         &self,
         messages: Vec<ChatMessage>,
         params: ChatParams,
-    ) -> Result<ChatStream, ProviderError>;
+    ) -> Result<ChatStream, ProviderError> {
+        self.stream_chat_with_tools(messages, vec![], params).await
+    }
 
     async fn chat(
         &self,

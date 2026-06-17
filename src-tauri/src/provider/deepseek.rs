@@ -1,10 +1,10 @@
 use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::stream::StreamExt;
-use serde::Deserialize;
 
 use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
 use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ToolCall, ToolDefinition, TokenUsage};
+use super::openai_compat::{ChatChunk, parse_openai_sse_events};
 
 pub struct DeepSeekProvider {
     base_url: String,
@@ -53,6 +53,9 @@ impl DeepSeekProvider {
             "messages": Self::serialize_messages(messages),
             "stream": stream,
         });
+        if stream {
+            body["stream_options"] = serde_json::json!({"include_usage": true});
+        }
         if let Some(m) = params.max_tokens {
             body["max_tokens"] = serde_json::json!(m);
         }
@@ -90,78 +93,42 @@ impl DeepSeekProvider {
     }
 }
 
-#[derive(Deserialize)]
-struct ChatChunk {
-    choices: Vec<ChunkChoice>,
-}
-
-#[derive(Deserialize)]
-struct ChunkChoice {
-    delta: Option<Delta>,
-    message: Option<FullMessage>,
-}
-
-#[derive(Deserialize)]
-struct Delta {
-    content: Option<String>,
-    reasoning_content: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct FullMessage {
-    content: Option<String>,
-    reasoning_content: Option<String>,
-    tool_calls: Option<Vec<FullToolCall>>,
-}
-
-#[derive(Deserialize)]
-struct FullToolCall {
-    id: String,
-    function: FullToolCallFunction,
-}
-
-#[derive(Deserialize)]
-struct FullToolCallFunction {
-    name: String,
-    arguments: String,
-}
-
 #[async_trait]
 impl ChatProvider for DeepSeekProvider {
-    async fn stream_chat(
+    async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,
+        tools: Vec<ToolDefinition>,
         params: ChatParams,
     ) -> Result<ChatStream, ProviderError> {
+        let tools_opt = if tools.is_empty() { None } else { Some(tools.as_slice()) };
         let transport = ReqwestTransport::new(reqwest::Client::new());
-        let req = self.build_request(&messages, None, &params, true);
+        let req = self.build_request(&messages, tools_opt, &params, true);
         let resp = transport.stream(req).await?;
 
         let stream = resp.bytes
             .map(|r| r.map_err(ProviderError::Transport))
             .eventsource()
-            .filter_map(|event| async {
-                match event {
+            .flat_map(move |event| {
+                let events: Vec<Result<StreamEvent, ProviderError>> = match event {
                     Ok(ev) => {
                         if ev.data == "[DONE]" {
-                            return None;
+                            return futures::stream::iter(vec![]);
                         }
                         match serde_json::from_str::<ChatChunk>(&ev.data) {
                             Ok(chunk) => {
-                                let delta = chunk.choices.first()?.delta.as_ref()?;
-                                if let Some(ref r) = delta.reasoning_content {
-                                    if !r.is_empty() {
-                                        return Some(Ok(StreamEvent::Reasoning(r.clone())));
-                                    }
+                                let (mut stream_events, finish_reason, usage) = parse_openai_sse_events(&chunk);
+                                if finish_reason.is_some() || usage.is_some() {
+                                    stream_events.push(StreamEvent::Done { usage, finish_reason });
                                 }
-                                let content = delta.content.clone().unwrap_or_default();
-                                if content.is_empty() { None } else { Some(Ok(StreamEvent::Text(content))) }
+                                stream_events.into_iter().map(Ok).collect()
                             }
-                            Err(e) => Some(Err(ProviderError::Parse(e.to_string()))),
+                            Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
                         }
                     }
-                    Err(e) => Some(Err(ProviderError::Parse(e.to_string()))),
-                }
+                    Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
+                };
+                futures::stream::iter(events)
             });
 
         Ok(Box::pin(stream))

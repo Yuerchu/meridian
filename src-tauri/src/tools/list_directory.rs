@@ -35,48 +35,35 @@ impl Tool for ListDirectoryTool {
             .as_str()
             .ok_or("missing 'path' argument")?;
 
-        let path = context.resolve_path(path_str);
-        context.validate_path(&path)?;
-        tokio::task::spawn_blocking(move || list_dir(&path))
-            .await
-            .map_err(|e| format!("task failed: {e}"))?
+        let target = context.resolve_and_validate(path_str)?;
+        let entries = super::backend::list_dir(&target).await?;
+
+        let mut lines = Vec::new();
+        for entry in entries {
+            let kind = if entry.is_dir {
+                "dir "
+            } else if entry.is_symlink {
+                "link"
+            } else {
+                "file"
+            };
+
+            let size = match entry.size {
+                Some(bytes) => format_size(bytes),
+                None => "-".to_string(),
+            };
+
+            lines.push(format!("{kind}  {size:>8}  {}", entry.name));
+        }
+
+        lines.sort();
+
+        if lines.is_empty() {
+            return Ok("(empty directory)".to_string());
+        }
+
+        Ok(lines.join("\n"))
     }
-}
-
-fn list_dir(path: &std::path::Path) -> Result<String, String> {
-    let entries = std::fs::read_dir(path)
-        .map_err(|e| format!("failed to read directory '{}': {}", path.display(), e))?;
-
-    let mut lines = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|e| format!("failed to read entry: {e}"))?;
-        let metadata = entry.metadata().map_err(|e| format!("failed to read metadata: {e}"))?;
-        let name = entry.file_name().to_string_lossy().to_string();
-
-        let kind = if metadata.is_dir() {
-            "dir "
-        } else if metadata.is_symlink() {
-            "link"
-        } else {
-            "file"
-        };
-
-        let size = if metadata.is_file() {
-            format_size(metadata.len())
-        } else {
-            "-".to_string()
-        };
-
-        lines.push(format!("{kind}  {size:>8}  {name}"));
-    }
-
-    lines.sort();
-
-    if lines.is_empty() {
-        return Ok("(empty directory)".to_string());
-    }
-
-    Ok(lines.join("\n"))
 }
 
 fn format_size(bytes: u64) -> String {

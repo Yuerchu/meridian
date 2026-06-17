@@ -42,18 +42,10 @@ impl Tool for WriteFileTool {
             .as_str()
             .ok_or("missing 'content' argument")?;
 
-        let path = context.resolve_path(path_str);
+        let target = context.resolve_and_validate(path_str)?;
 
-        if let Some(parent) = path.parent() {
-            tokio::fs::create_dir_all(parent)
-                .await
-                .map_err(|e| format!("failed to create directory: {e}"))?;
-        }
+        super::backend::write_string(&target, content).await?;
 
-        tokio::fs::write(&path, content)
-            .await
-            .map_err(|e| format!("failed to write file '{}': {}", path.display(), e))?;
-
-        Ok(format!("Successfully wrote {} bytes to {}", content.len(), path.display()))
+        Ok(format!("Successfully wrote {} bytes to {}", content.len(), path_str))
     }
 }

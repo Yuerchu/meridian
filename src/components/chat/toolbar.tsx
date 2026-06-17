@@ -216,7 +216,7 @@ function ThinkingSelector({
 
 export function Toolbar(props: ToolbarProps) {
   return (
-    <div className="flex items-center gap-0.5">
+    <div className="flex items-center gap-0.5 min-w-0 overflow-x-auto scrollbar-none">
       <AssistantSelector
         assistants={props.assistants}
         currentId={props.currentAssistantId}

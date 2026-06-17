@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, Conversation, McpServer, McpToolDef, Message, ModelInfo, Project, Provider, ToolInfo } from './types'
+import type { Assistant, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Message, ModelInfo, Project, PromptTemplate, Provider, SafRootEntry, TemplateVariable, ToolCategory, ToolInfo, ToolPreset } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -71,6 +71,7 @@ export const api = {
     enabledTools?: string | null
     thinkingEnabled?: number
     thinkingBudget?: number | null
+    toolPresetId?: string | null
   }) =>
     invoke<Assistant>('update_assistant', {
       id,
@@ -83,6 +84,7 @@ export const api = {
       enabledTools: updates.enabledTools !== undefined ? updates.enabledTools : null,
       thinkingEnabled: updates.thinkingEnabled ?? null,
       thinkingBudget: updates.thinkingBudget !== undefined ? updates.thinkingBudget : null,
+      toolPresetId: updates.toolPresetId !== undefined ? updates.toolPresetId : null,
     }),
 
   deleteAssistant: (id: string) =>
@@ -92,14 +94,15 @@ export const api = {
   listProviders: () =>
     invoke<Provider[]>('list_providers'),
 
-  createProvider: (name: string, providerType: string, baseUrl: string) =>
-    invoke<Provider>('create_provider', { name, providerType, baseUrl }),
+  createProvider: (name: string, providerType: string, baseUrl: string, apiFormat?: string) =>
+    invoke<Provider>('create_provider', { name, providerType, baseUrl, apiFormat: apiFormat ?? null }),
 
   updateProvider: (id: string, updates: {
     name?: string
     providerType?: string
     baseUrl?: string
     isEnabled?: number
+    apiFormat?: string
   }) =>
     invoke<Provider>('update_provider', {
       id,
@@ -107,6 +110,7 @@ export const api = {
       providerType: updates.providerType ?? null,
       baseUrl: updates.baseUrl ?? null,
       isEnabled: updates.isEnabled ?? null,
+      apiFormat: updates.apiFormat ?? null,
     }),
 
   deleteProvider: (id: string) =>
@@ -124,8 +128,8 @@ export const api = {
   approveToolCall: (callId: string) =>
     invoke<void>('approve_tool_call', { callId }),
 
-  denyToolCall: (callId: string) =>
-    invoke<void>('deny_tool_call', { callId }),
+  denyToolCall: (callId: string, reason?: string) =>
+    invoke<void>('deny_tool_call', { callId, reason: reason ?? null }),
 
   respondToAsk: (callId: string, response: string) =>
     invoke<void>('respond_to_ask', { callId, response }),
@@ -157,30 +161,58 @@ export const api = {
   setPreference: (key: string, value: string) =>
     invoke<void>('set_preference', { key, value }),
 
+  // Platform / Android file access
+  getPlatform: () =>
+    invoke<string>('get_platform'),
+
+  getManageStorageStatus: () =>
+    invoke<boolean>('get_manage_storage_status'),
+
+  requestManageStorage: () =>
+    invoke<void>('request_manage_storage'),
+
+  pickSafDirectory: () =>
+    invoke<SafRootEntry[]>('pick_saf_directory'),
+
+  listSafRoots: () =>
+    invoke<SafRootEntry[]>('list_saf_roots'),
+
+  removeSafRoot: (uri: string) =>
+    invoke<SafRootEntry[]>('remove_saf_root', { uri }),
+
   // MCP servers
   listMcpServers: () =>
     invoke<McpServer[]>('list_mcp_servers'),
 
-  createMcpServer: (name: string, transportType: string, command?: string, args?: string, env?: string) =>
+  createMcpServer: (name: string, transportType: string, opts?: {
+    command?: string, args?: string, env?: string, url?: string, headers?: string
+  }) =>
     invoke<McpServer>('create_mcp_server', {
       name, transportType,
-      command: command ?? null, args: args ?? null,
-      env: env ?? null, url: null,
+      command: opts?.command ?? null, args: opts?.args ?? null,
+      env: opts?.env ?? null, url: opts?.url ?? null,
+      headers: opts?.headers ?? null,
     }),
 
   updateMcpServer: (id: string, updates: {
     name?: string
+    transportType?: string
     command?: string | null
     args?: string | null
     env?: string | null
+    url?: string | null
+    headers?: string | null
     isEnabled?: number
   }) =>
     invoke<McpServer>('update_mcp_server', {
       id,
       name: updates.name ?? null,
+      transportType: updates.transportType ?? null,
       command: updates.command !== undefined ? updates.command : null,
       args: updates.args !== undefined ? updates.args : null,
       env: updates.env !== undefined ? updates.env : null,
+      url: updates.url !== undefined ? updates.url : null,
+      headers: updates.headers !== undefined ? updates.headers : null,
       isEnabled: updates.isEnabled ?? null,
     }),
 
@@ -198,4 +230,182 @@ export const api = {
 
   listAllToolNames: () =>
     invoke<ToolInfo[]>('list_all_tool_names'),
+
+  // OneBot
+  getOneBotStatus: () =>
+    invoke<{ enabled: boolean; running: boolean; connected_clients: number; host: string; port: number }>('get_onebot_status'),
+
+  getOneBotConfig: () =>
+    invoke<{
+      enabled: boolean; host: string; port: number;
+      access_token: string | null; assistant_id: string | null;
+      admin_users: number[];
+    }>('get_onebot_config'),
+
+  saveOneBotConfig: (config: {
+    enabled: boolean; host: string; port: number;
+    access_token: string | null; assistant_id: string | null;
+    admin_users: number[];
+  }) =>
+    invoke<void>('save_onebot_config', { config }),
+
+  startOneBot: () =>
+    invoke<void>('start_onebot'),
+
+  stopOneBot: () =>
+    invoke<void>('stop_onebot'),
+
+  // Prompt Templates
+  listPromptTemplates: () =>
+    invoke<PromptTemplate[]>('list_prompt_templates'),
+
+  createPromptTemplate: (name: string, category: string, templateText: string, description?: string) =>
+    invoke<PromptTemplate>('create_prompt_template', {
+      name, category, templateText,
+      description: description ?? null,
+    }),
+
+  updatePromptTemplate: (id: string, updates: {
+    name?: string
+    description?: string | null
+    category?: string
+    templateText?: string
+  }) =>
+    invoke<PromptTemplate>('update_prompt_template', {
+      id,
+      name: updates.name ?? null,
+      description: updates.description !== undefined ? updates.description : null,
+      category: updates.category ?? null,
+      templateText: updates.templateText ?? null,
+    }),
+
+  deletePromptTemplate: (id: string) =>
+    invoke<void>('delete_prompt_template', { id }),
+
+  listTemplateVariables: () =>
+    invoke<TemplateVariable[]>('list_template_variables'),
+
+  // Emoji Packs
+  listEmojiPacks: () =>
+    invoke<EmojiPack[]>('list_emoji_packs'),
+
+  createEmojiPack: (name: string, description?: string) =>
+    invoke<EmojiPack>('create_emoji_pack', {
+      name,
+      description: description ?? null,
+    }),
+
+  deleteEmojiPack: (id: string) =>
+    invoke<void>('delete_emoji_pack', { id }),
+
+  listEmojis: (packId: string) =>
+    invoke<Emoji[]>('list_emojis', { packId }),
+
+  importEmojis: (packId: string, filePaths: string[]) =>
+    invoke<Emoji[]>('import_emojis', { packId, filePaths }),
+
+  deleteEmoji: (id: string) =>
+    invoke<void>('delete_emoji', { id }),
+
+  renameEmoji: (id: string, newName: string) =>
+    invoke<Emoji>('rename_emoji', { id, newName }),
+
+  searchEmojis: (query: string) =>
+    invoke<Emoji[]>('search_emojis', { query }),
+
+  assignEmojiPack: (assistantId: string, packId: string) =>
+    invoke<void>('assign_emoji_pack', { assistantId, packId }),
+
+  unassignEmojiPack: (assistantId: string, packId: string) =>
+    invoke<void>('unassign_emoji_pack', { assistantId, packId }),
+
+  listAssistantEmojiPacks: (assistantId: string) =>
+    invoke<EmojiPack[]>('list_assistant_emoji_packs', { assistantId }),
+
+  getEmojiFileUrl: (emojiId: string) =>
+    invoke<string>('get_emoji_file_url', { emojiId }),
+
+  // Tool System
+  listToolCategories: () =>
+    invoke<ToolCategory[]>('list_tool_categories'),
+
+  listCustomTools: () =>
+    invoke<CustomTool[]>('list_custom_tools'),
+
+  createCustomTool: (params: {
+    name: string
+    description: string
+    command: string
+    categoryId?: string
+    parametersSchema?: string
+    argsTemplate?: string
+    workingDirectory?: string
+    timeoutMs?: number
+    permission?: string
+  }) =>
+    invoke<CustomTool>('create_custom_tool', {
+      name: params.name,
+      description: params.description,
+      command: params.command,
+      categoryId: params.categoryId ?? null,
+      parametersSchema: params.parametersSchema ?? null,
+      argsTemplate: params.argsTemplate ?? null,
+      workingDirectory: params.workingDirectory ?? null,
+      timeoutMs: params.timeoutMs ?? null,
+      permission: params.permission ?? null,
+    }),
+
+  updateCustomTool: (id: string, updates: {
+    name?: string
+    description?: string
+    command?: string
+    categoryId?: string | null
+    parametersSchema?: string
+    argsTemplate?: string | null
+    workingDirectory?: string | null
+    timeoutMs?: number | null
+    permission?: string
+    isEnabled?: number
+  }) =>
+    invoke<CustomTool>('update_custom_tool', {
+      id,
+      name: updates.name ?? null,
+      description: updates.description ?? null,
+      command: updates.command ?? null,
+      categoryId: updates.categoryId !== undefined ? updates.categoryId : null,
+      parametersSchema: updates.parametersSchema ?? null,
+      argsTemplate: updates.argsTemplate !== undefined ? updates.argsTemplate : null,
+      workingDirectory: updates.workingDirectory !== undefined ? updates.workingDirectory : null,
+      timeoutMs: updates.timeoutMs !== undefined ? updates.timeoutMs : null,
+      permission: updates.permission ?? null,
+      isEnabled: updates.isEnabled ?? null,
+    }),
+
+  deleteCustomTool: (id: string) =>
+    invoke<void>('delete_custom_tool', { id }),
+
+  listToolPresets: () =>
+    invoke<ToolPreset[]>('list_tool_presets'),
+
+  createToolPreset: (name: string, toolNames: string, description?: string) =>
+    invoke<ToolPreset>('create_tool_preset', {
+      name,
+      toolNames,
+      description: description ?? null,
+    }),
+
+  updateToolPreset: (id: string, updates: {
+    name?: string
+    description?: string | null
+    toolNames?: string
+  }) =>
+    invoke<ToolPreset>('update_tool_preset', {
+      id,
+      name: updates.name ?? null,
+      description: updates.description !== undefined ? updates.description : null,
+      toolNames: updates.toolNames ?? null,
+    }),
+
+  deleteToolPreset: (id: string) =>
+    invoke<void>('delete_tool_preset', { id }),
 }

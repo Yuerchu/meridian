@@ -14,6 +14,7 @@ pub struct Provider {
     pub sort_order: i32,
     pub created_at: i64,
     pub updated_at: i64,
+    pub api_format: String,
 }
 
 #[derive(Debug, Insertable)]
@@ -27,6 +28,7 @@ pub struct NewProvider<'a> {
     pub sort_order: i32,
     pub created_at: i64,
     pub updated_at: i64,
+    pub api_format: &'a str,
 }
 
 #[derive(Debug, Default, AsChangeset)]
@@ -38,4 +40,5 @@ pub struct ProviderUpdate {
     pub is_enabled: Option<i32>,
     pub sort_order: Option<i32>,
     pub updated_at: Option<i64>,
+    pub api_format: Option<String>,
 }

@@ -196,7 +196,7 @@ describe('api', () => {
     it('denyToolCall sends callId', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
       await api.denyToolCall('call-2')
-      expect(mockInvoke).toHaveBeenCalledWith('deny_tool_call', { callId: 'call-2' })
+      expect(mockInvoke).toHaveBeenCalledWith('deny_tool_call', { callId: 'call-2', reason: null })
     })
 
     it('respondToAsk sends callId and response', async () => {

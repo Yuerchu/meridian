@@ -8,6 +8,7 @@ import {
   InputGroupButton,
 } from '@/components/ui/input-group'
 import { Toolbar } from './toolbar'
+import { EmojiPicker } from './emoji-picker'
 import type { Assistant, Provider, ThinkingLevel } from '@/types'
 
 interface ContextInfo {
@@ -80,7 +81,7 @@ export function InputBar({
   )
 
   return (
-    <div className="px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-2">
+    <div className="px-4 pb-[max(1rem,var(--safe-bottom))] pt-2">
       <div className="max-w-2xl mx-auto">
         <InputGroup className="rounded-2xl">
           <InputGroupTextarea
@@ -97,7 +98,7 @@ export function InputBar({
             className="min-h-[24px] max-h-[200px] py-3 px-4"
           />
           <InputGroupAddon align="block-end" className="px-2 pb-2 pt-0">
-            <div className="flex items-center justify-between w-full">
+            <div className="flex items-center justify-between w-full gap-1">
               <Toolbar
                 assistants={assistants}
                 providers={providers}
@@ -109,7 +110,11 @@ export function InputBar({
                 thinkingLevel={thinkingLevel}
                 onSelectThinkingLevel={onSelectThinkingLevel}
               />
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
+                <EmojiPicker
+                  assistantId={currentAssistantId}
+                  onSelect={(syntax) => onChange(value + syntax)}
+                />
                 {contextInfo && contextInfo.messageCount > 0 && (
                   <div className={`flex items-center gap-1.5 text-[11px] ${
                     contextInfo.estimatedTokens / contextInfo.contextLimit > 0.95

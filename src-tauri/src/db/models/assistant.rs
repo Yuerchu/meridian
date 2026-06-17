@@ -25,6 +25,7 @@ pub struct Assistant {
     pub enabled_tools: Option<String>,
     pub thinking_enabled: i32,
     pub thinking_budget: Option<i32>,
+    pub tool_preset_id: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
@@ -49,6 +50,7 @@ pub struct NewAssistant<'a> {
     pub enabled_tools: Option<&'a str>,
     pub thinking_enabled: i32,
     pub thinking_budget: Option<i32>,
+    pub tool_preset_id: Option<&'a str>,
 }
 
 #[derive(Debug, AsChangeset, Default)]
@@ -69,5 +71,6 @@ pub struct AssistantUpdate {
     pub enabled_tools: Option<Option<String>>,
     pub thinking_enabled: Option<i32>,
     pub thinking_budget: Option<Option<i32>>,
+    pub tool_preset_id: Option<Option<String>>,
     pub updated_at: Option<i64>,
 }

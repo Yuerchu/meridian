@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react'
+import React, { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
@@ -7,7 +7,9 @@ import { Bot, Copy, Check, Trash2, RefreshCw, ChevronDown, ChevronRight, Lightbu
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ToolCallBlock } from './tool-call-block'
+import { renderEmojisInText } from './emoji-renderer'
 import type { ContentBlock, Message } from '@/types'
+import type { EmojiMap } from './emoji-renderer'
 
 function useRelativeTime() {
   const { t } = useTranslation()
@@ -75,11 +77,40 @@ const proseClasses = cn(
   "prose-td:border prose-td:border-border",
 )
 
-const MarkdownContent = React.memo(function MarkdownContent({ content, isStreaming }: { content: string; isStreaming?: boolean }) {
+function preprocessEmojis(content: string, emojiMap?: EmojiMap): string {
+  if (!emojiMap || Object.keys(emojiMap).length === 0) return content
+  return content.replace(/\[emoji:([^\]]+)\]/g, (full, name) => {
+    const entry = emojiMap[name]
+    if (entry) return `![sticker:${name}](${entry.url})`
+    return full
+  })
+}
+
+const MarkdownContent = React.memo(function MarkdownContent({ content, isStreaming, emojiMap }: { content: string; isStreaming?: boolean; emojiMap?: EmojiMap }) {
+  const processed = useMemo(() => preprocessEmojis(content, emojiMap), [content, emojiMap])
+
+  const components = useMemo(() => ({
+    code: CodeBlock as never,
+    img: ({ alt, src, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
+      if (alt?.startsWith('sticker:')) {
+        return (
+          <img
+            src={src}
+            alt={alt.slice(8)}
+            title={alt.slice(8)}
+            className="emoji-sticker block my-2 max-w-[120px] max-h-[120px] w-auto h-auto rounded"
+            {...props}
+          />
+        )
+      }
+      return <img alt={alt} src={src} {...props} />
+    },
+  }), [])
+
   return (
     <div className={proseClasses}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={{ code: CodeBlock as never }}>
-        {content}
+      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={components}>
+        {processed}
       </ReactMarkdown>
       {isStreaming && (
         <span className="inline-block w-2 h-4 ml-0.5 bg-muted-foreground animate-pulse" />
@@ -90,9 +121,9 @@ const MarkdownContent = React.memo(function MarkdownContent({ content, isStreami
 
 const MemoToolCallBlock = React.memo(ToolCallBlock)
 
-function ThinkingBlock({ text, isStreaming }: { text: string; isStreaming?: boolean }) {
+function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; isStreaming?: boolean; defaultExpanded?: boolean }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(!!isStreaming)
+  const [expanded, setExpanded] = useState(!!isStreaming || !!defaultExpanded)
 
   return (
     <div className="my-2 rounded-lg border border-border/50 overflow-hidden">
@@ -116,12 +147,32 @@ function ThinkingBlock({ text, isStreaming }: { text: string; isStreaming?: bool
   )
 }
 
-function AssistantBlock({ block, isLast, isStreaming }: { block: ContentBlock; isLast: boolean; isStreaming?: boolean }) {
+function TextBubbles({ content, isStreaming, emojiMap }: { content: string; isStreaming?: boolean; emojiMap?: EmojiMap }) {
+  const segments = content.split(/\n---\n/).map((s) => s.trim()).filter(Boolean)
+  if (segments.length <= 1) {
+    return <MarkdownContent content={content} isStreaming={isStreaming} emojiMap={emojiMap} />
+  }
+  return (
+    <div className="space-y-2">
+      {segments.map((seg, i) => (
+        <div key={i} className="rounded-xl bg-accent/30 px-3.5 py-2">
+          <MarkdownContent
+            content={seg}
+            isStreaming={isStreaming && i === segments.length - 1}
+            emojiMap={emojiMap}
+          />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function AssistantBlock({ block, isLast, isStreaming, isLastMessage, emojiMap }: { block: ContentBlock; isLast: boolean; isStreaming?: boolean; isLastMessage?: boolean; emojiMap?: EmojiMap }) {
   if (block.type === 'thinking') {
-    return <ThinkingBlock text={block.text} isStreaming={isLast && isStreaming} />
+    return <ThinkingBlock text={block.text} isStreaming={isLast && isStreaming} defaultExpanded={!!isLastMessage && isLast} />
   }
   if (block.type === 'text') {
-    return <MarkdownContent content={block.text} isStreaming={isLast && isStreaming} />
+    return <TextBubbles content={block.text} isStreaming={isLast && isStreaming} emojiMap={emojiMap} />
   }
   if (block.type === 'tool_call') {
     return <MemoToolCallBlock data={block.data} />
@@ -132,11 +183,13 @@ function AssistantBlock({ block, isLast, isStreaming }: { block: ContentBlock; i
 interface MessageItemProps {
   message: Message
   isStreaming?: boolean
+  isLastMessage?: boolean
   onDelete?: (id: string) => void
   onRegenerate?: (id: string) => void
+  emojiMap?: EmojiMap
 }
 
-export function MessageItem({ message, isStreaming, onDelete, onRegenerate }: MessageItemProps) {
+export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, emojiMap }: MessageItemProps) {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime()
   const isUser = message.role === 'user'
@@ -145,7 +198,9 @@ export function MessageItem({ message, isStreaming, onDelete, onRegenerate }: Me
     return (
       <div className="flex justify-end group">
         <div className="max-w-[80%] rounded-2xl bg-accent px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
-          {message.content}
+          {emojiMap && Object.keys(emojiMap).length > 0
+            ? renderEmojisInText(message.content, emojiMap)
+            : message.content}
         </div>
       </div>
     )
@@ -166,10 +221,10 @@ export function MessageItem({ message, isStreaming, onDelete, onRegenerate }: Me
       <div className="pl-8">
         {(message._blocks && message._blocks.length > 0) ? (
           message._blocks.map((block, i) => (
-            <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} />
+            <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} emojiMap={emojiMap} />
           ))
         ) : (
-          <MarkdownContent content={message.content} isStreaming={isStreaming} />
+          <MarkdownContent content={message.content} isStreaming={isStreaming} emojiMap={emojiMap} />
         )}
 
         <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">

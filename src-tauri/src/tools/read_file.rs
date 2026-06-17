@@ -36,12 +36,9 @@ impl Tool for ReadFileTool {
         let path_str = args["path"]
             .as_str()
             .ok_or("missing 'path' argument")?;
-        let path = context.resolve_path(path_str);
-        context.validate_path(&path)?;
+        let target = context.resolve_and_validate(path_str)?;
 
-        let content = tokio::fs::read_to_string(&path)
-            .await
-            .map_err(|e| format!("failed to read file '{}': {}", path.display(), e))?;
+        let content = super::backend::read_to_string(&target).await?;
 
         if content.len() > MAX_OUTPUT_BYTES {
             let truncated = crate::take_bytes_at_char_boundary(&content, MAX_OUTPUT_BYTES);

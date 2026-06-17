@@ -5,6 +5,7 @@ import { api } from '@/api'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageItem } from './message-item'
 import { InputBar } from './input-bar'
+import { useEmojiMap } from './emoji-renderer'
 import type { Message as DbMessage, StreamChunk, Assistant, Provider, ToolCallDisplay, ContentBlock, ThinkingLevel } from '@/types'
 
 function hydrateBlocks(msgs: DbMessage[]): DbMessage[] {
@@ -69,6 +70,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('default')
+  const emojiMap = useEmojiMap(selectedAssistantId)
   const { t } = useTranslation()
   const conversationIdRef = useRef(conversationId)
   const submittingRef = useRef(false)
@@ -305,7 +307,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
   const selectedAssistant = assistants.find((a) => a.id === selectedAssistantId)
   const contextInfo = useMemo(() => {
     const contextLimit = selectedAssistant?.context_limit ?? 128000
-    const estimatedTokens = messages.reduce((sum, m) => sum + Math.ceil(m.content.length / 4) + 4, 0)
+    const estimatedTokens = messages.reduce((sum, m) => sum + [...m.content].length + 4, 0)
     return { messageCount: visibleMessages.length, estimatedTokens, contextLimit }
   }, [messages, visibleMessages.length, selectedAssistant?.context_limit])
 
@@ -317,13 +319,15 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
             {error}
           </div>
         )}
-        {visibleMessages.map((m) => (
+        {visibleMessages.map((m, i) => (
           <MessageItem
             key={m.id}
             message={m}
             isStreaming={streaming && m.id.startsWith('temp-assistant-')}
+            isLastMessage={i === visibleMessages.length - 1}
             onDelete={handleDelete}
             onRegenerate={m.role === 'assistant' ? handleRegenerate : undefined}
+            emojiMap={emojiMap}
           />
         ))}
         {messages.length === 0 && (
