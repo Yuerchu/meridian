@@ -97,6 +97,7 @@ export interface McpServer {
   args: string | null
   env: string | null
   url: string | null
+  headers: string | null
   is_enabled: number
   sort_order: number
   created_at: number

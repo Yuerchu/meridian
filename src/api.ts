@@ -184,26 +184,35 @@ export const api = {
   listMcpServers: () =>
     invoke<McpServer[]>('list_mcp_servers'),
 
-  createMcpServer: (name: string, transportType: string, command?: string, args?: string, env?: string) =>
+  createMcpServer: (name: string, transportType: string, opts?: {
+    command?: string, args?: string, env?: string, url?: string, headers?: string
+  }) =>
     invoke<McpServer>('create_mcp_server', {
       name, transportType,
-      command: command ?? null, args: args ?? null,
-      env: env ?? null, url: null,
+      command: opts?.command ?? null, args: opts?.args ?? null,
+      env: opts?.env ?? null, url: opts?.url ?? null,
+      headers: opts?.headers ?? null,
     }),
 
   updateMcpServer: (id: string, updates: {
     name?: string
+    transportType?: string
     command?: string | null
     args?: string | null
     env?: string | null
+    url?: string | null
+    headers?: string | null
     isEnabled?: number
   }) =>
     invoke<McpServer>('update_mcp_server', {
       id,
       name: updates.name ?? null,
+      transportType: updates.transportType ?? null,
       command: updates.command !== undefined ? updates.command : null,
       args: updates.args !== undefined ? updates.args : null,
       env: updates.env !== undefined ? updates.env : null,
+      url: updates.url !== undefined ? updates.url : null,
+      headers: updates.headers !== undefined ? updates.headers : null,
       isEnabled: updates.isEnabled ?? null,
     }),
 
