@@ -8,8 +8,7 @@ mod retry;
 mod sse;
 mod transport;
 
-pub use error::{StreamError, TransportError};
-pub use request::{Request, RequestBody, Response};
-pub use retry::{RetryOn, RetryPolicy, backoff, run_with_retry};
-pub use sse::sse_stream;
-pub use transport::{ByteStream, HttpTransport, ReqwestTransport, StreamResponse};
+pub use error::TransportError;
+pub use request::{Request, RequestBody};
+pub use retry::RetryPolicy;
+pub use transport::{HttpTransport, ReqwestTransport};

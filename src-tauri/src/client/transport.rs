@@ -1,5 +1,5 @@
 use crate::client::error::TransportError;
-use crate::client::request::{Request, RequestBody, Response};
+use crate::client::request::{Request, Response};
 use async_trait::async_trait;
 use bytes::Bytes;
 use futures::StreamExt;

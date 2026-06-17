@@ -15,7 +15,6 @@ mod local;
 mod sanitizer;
 
 pub use local::LocalSecretsBackend;
-pub use sanitizer::redact_secrets;
 
 use crate::keyring::{DefaultKeyringStore, KeyringStore};
 
