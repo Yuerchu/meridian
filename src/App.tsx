@@ -25,11 +25,15 @@ function App() {
   }, [])
 
   const refreshConversations = useCallback(async () => {
-    const list = activeProjectId
-      ? await api.listConversationsByProject(activeProjectId)
-      : await api.listConversations()
-    setConversations(list)
-    return list
+    if (activeProjectId) {
+      const active = await api.listConversationsByProject(activeProjectId)
+      const archived = await api.listConversationsByProject(activeProjectId, true)
+      setConversations([...active, ...archived])
+    } else {
+      const list = await api.listConversations()
+      setConversations(list)
+    }
+    return conversations
   }, [activeProjectId])
 
   useEffect(() => {

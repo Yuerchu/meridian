@@ -6,6 +6,7 @@ pub mod delete_file;
 pub mod edit_file;
 pub mod glob_files;
 pub mod list_directory;
+pub mod memory;
 pub mod move_file;
 pub mod read_file;
 #[cfg(not(target_os = "android"))]
@@ -30,6 +31,8 @@ pub struct ToolContext {
     pub working_directory: Option<String>,
     pub shell: ShellType,
     pub file_access: FileAccess,
+    pub project_id: Option<String>,
+    pub db_pool: Option<crate::db::DbPool>,
 }
 
 /// Controls which parts of the filesystem tools may touch.
@@ -269,6 +272,10 @@ impl ToolRegistry {
             Box::new(glob_files::GlobFilesTool),
             Box::new(delete_file::DeleteFileTool),
             Box::new(move_file::MoveFileTool),
+            Box::new(memory::SaveMemoryTool),
+            Box::new(memory::RecallMemoryTool),
+            Box::new(memory::ListMemoriesTool),
+            Box::new(memory::DeleteMemoryTool),
         ];
         #[cfg(not(target_os = "android"))]
         tools.push(Box::new(run_command::RunCommandTool));
@@ -304,6 +311,8 @@ mod tests {
             working_directory: None,
             shell: ShellType::Bash,
             file_access: FileAccess::Roots(roots),
+            project_id: None,
+            db_pool: None,
         }
     }
 
@@ -328,6 +337,8 @@ mod tests {
             working_directory: Some(dir.path().to_string_lossy().to_string()),
             shell: ShellType::Bash,
             file_access: FileAccess::Unrestricted,
+            project_id: None,
+            db_pool: None,
         };
         assert!(ctx.resolve_and_validate("inside.txt").is_ok());
         assert!(ctx.resolve_and_validate("../outside.txt").is_err());

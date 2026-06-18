@@ -1,6 +1,30 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct OneBotResponse {
+    pub status: Option<String>,
+    pub retcode: Option<i32>,
+    pub data: Option<serde_json::Value>,
+    pub echo: Option<String>,
+}
+
+pub enum OneBotFrame {
+    Event(OneBotEvent),
+    Response(OneBotResponse),
+}
+
+pub fn parse_frame(text: &str) -> Option<OneBotFrame> {
+    let v: serde_json::Value = serde_json::from_str(text).ok()?;
+    if v.get("post_type").is_some() {
+        serde_json::from_value(v).ok().map(OneBotFrame::Event)
+    } else if v.get("retcode").is_some() || v.get("echo").is_some() {
+        serde_json::from_value(v).ok().map(OneBotFrame::Response)
+    } else {
+        None
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub struct OneBotEvent {
     #[serde(default)]
     pub time: i64,
@@ -41,6 +65,14 @@ pub struct OneBotAction {
 }
 
 impl OneBotAction {
+    pub fn get_msg(message_id: i64, echo: String) -> Self {
+        Self {
+            action: "get_msg".into(),
+            params: serde_json::json!({ "message_id": message_id }),
+            echo: Some(echo),
+        }
+    }
+
     pub fn send_private_msg(user_id: i64, message: Vec<MessageSegment>) -> Self {
         Self {
             action: "send_private_msg".into(),
@@ -76,6 +108,13 @@ impl MessageSegment {
         Self {
             seg_type: "at".into(),
             data: serde_json::json!({ "qq": user_id.to_string() }),
+        }
+    }
+
+    pub fn reply(message_id: i64) -> Self {
+        Self {
+            seg_type: "reply".into(),
+            data: serde_json::json!({ "id": message_id.to_string() }),
         }
     }
 }

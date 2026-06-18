@@ -147,10 +147,26 @@ diesel::table! {
 }
 
 diesel::table! {
+    memories (id) {
+        id -> Text,
+        project_id -> Text,
+        key -> Text,
+        content -> Text,
+        memory_type -> Text,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
     projects (id) {
         id -> Text,
         name -> Text,
-        path -> Text,
+        path -> Nullable<Text>,
+        source_type -> Text,
+        source_id -> Nullable<Text>,
+        assistant_id -> Nullable<Text>,
+        description -> Nullable<Text>,
         created_at -> BigInt,
         updated_at -> BigInt,
     }
@@ -227,6 +243,7 @@ diesel::joinable!(assistants -> tool_presets (tool_preset_id));
 diesel::joinable!(attachments -> messages (message_id));
 diesel::joinable!(conversations -> assistants (assistant_id));
 diesel::joinable!(conversations -> projects (project_id));
+diesel::joinable!(memories -> projects (project_id));
 diesel::joinable!(custom_tools -> tool_categories (category_id));
 diesel::joinable!(emojis -> emoji_packs (pack_id));
 diesel::joinable!(messages -> conversations (conversation_id));
@@ -242,6 +259,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     emoji_packs,
     emojis,
     mcp_servers,
+    memories,
     messages,
     preferences,
     projects,

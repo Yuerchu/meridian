@@ -17,7 +17,7 @@ use crate::secrets::SecretsManager;
 use crate::tools::ToolRegistry;
 use crate::{get_conn, now_ms};
 
-use protocol::OneBotEvent;
+use protocol::{OneBotAction, OneBotFrame, OneBotResponse};
 use session::SessionManager;
 
 pub struct SharedState {
@@ -27,9 +27,43 @@ pub struct SharedState {
     pub mcp: Arc<Mutex<McpManager>>,
     pub sessions: Mutex<SessionManager>,
     pub pending_approvals: Mutex<HashMap<String, oneshot::Sender<bool>>>,
+    pub pending_api_responses: Mutex<HashMap<String, oneshot::Sender<OneBotResponse>>>,
     pub ws_sinks: Mutex<HashMap<u64, mpsc::Sender<String>>>,
     pub connected_clients: AtomicU32,
     pub config: OneBotConfig,
+}
+
+pub async fn call_api(
+    state: &Arc<SharedState>,
+    action: OneBotAction,
+) -> Result<serde_json::Value, String> {
+    let echo = action.echo.clone().unwrap_or_default();
+    let (tx, rx) = oneshot::channel();
+    {
+        let mut pending = state.pending_api_responses.lock().await;
+        pending.insert(echo.clone(), tx);
+    }
+    let json = serde_json::to_string(&action).map_err(|e| e.to_string())?;
+    {
+        let sinks = state.ws_sinks.lock().await;
+        for sink in sinks.values() {
+            let _ = sink.send(json.clone()).await;
+        }
+    }
+    match tokio::time::timeout(std::time::Duration::from_secs(10), rx).await {
+        Ok(Ok(resp)) => {
+            if resp.retcode == Some(0) {
+                Ok(resp.data.unwrap_or(serde_json::Value::Null))
+            } else {
+                Err(format!("API error: {:?}", resp.status))
+            }
+        }
+        _ => {
+            let mut pending = state.pending_api_responses.lock().await;
+            pending.remove(&echo);
+            Err("API call timed out".into())
+        }
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -125,6 +159,7 @@ impl OneBotServer {
             state: Arc::new(SharedState {
                 sessions: Mutex::new(SessionManager::new(pool.clone())),
                 pending_approvals: Mutex::new(HashMap::new()),
+                pending_api_responses: Mutex::new(HashMap::new()),
                 ws_sinks: Mutex::new(HashMap::new()),
                 connected_clients: AtomicU32::new(0),
                 config,
@@ -272,22 +307,32 @@ async fn handle_connection(
             _ => continue,
         };
 
-        let event: OneBotEvent = match serde_json::from_str(&text) {
-            Ok(e) => e,
-            Err(e) => {
-                tracing::debug!("Failed to parse OneBot event: {e}");
+        let frame = match protocol::parse_frame(&text) {
+            Some(f) => f,
+            None => {
+                tracing::debug!("Failed to parse OneBot frame");
                 continue;
             }
+        };
+
+        let event = match frame {
+            OneBotFrame::Response(resp) => {
+                if let Some(echo) = resp.echo.as_deref() {
+                    let mut pending = state.pending_api_responses.lock().await;
+                    if let Some(tx) = pending.remove(echo) {
+                        let _ = tx.send(resp);
+                    }
+                }
+                continue;
+            }
+            OneBotFrame::Event(e) => e,
         };
 
         // Validate access token on first lifecycle event
         if !token_validated {
             if let Some(ref expected) = expected_token {
-                // OneBot clients send access_token in meta_event or we check first message
-                // For simplicity, accept connection and validate token if present
-                // TODO: validate from HTTP upgrade headers for stricter security
                 token_validated = true;
-                let _ = expected; // token validation via headers is deferred to phase 3
+                let _ = expected;
             }
         }
 

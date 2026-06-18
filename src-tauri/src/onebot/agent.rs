@@ -91,6 +91,7 @@ pub async fn headless_chat(
     tool_registry: &ToolRegistry,
     mcp_manager: &Arc<Mutex<McpManager>>,
     conversation_id: &str,
+    project_id: Option<&str>,
     user_message: &str,
     assistant_id: Option<&str>,
     is_admin: bool,
@@ -122,12 +123,27 @@ pub async fn headless_chat(
         resolve_provider_config(secrets, pool, assistant.as_ref())?;
     let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
 
-    // Build messages
-    let system_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
+    // Build messages with memory injection
+    let raw_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
+    let memory_block = if let Some(pid) = project_id {
+        let pool2 = pool.clone();
+        let pid2 = pid.to_string();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool2.get().ok()?;
+            let memories = crate::db::ops::memory::list_memories(&mut conn, &pid2).ok()?;
+            crate::db::ops::memory::format_memory_block(&memories)
+        }).await.ok().flatten()
+    } else {
+        None
+    };
+    let system_prompt = match memory_block {
+        Some(ref mem) => format!("{}{}", raw_prompt, mem),
+        None => raw_prompt.to_string(),
+    };
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
-    let mut chat_messages = build_messages(system_prompt, &history, user_message);
+    let mut chat_messages = build_messages(&system_prompt, &history, user_message);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
     let params = ChatParams {
@@ -202,6 +218,8 @@ pub async fn headless_chat(
         shell: shell_type.map(|s| tools::ShellType::from_str(&s))
             .unwrap_or_else(tools::ShellType::default_for_platform),
         file_access: tools::FileAccess::default(),
+        project_id: project_id.map(|s| s.to_string()),
+        db_pool: Some(pool.clone()),
     };
 
     // Agent loop

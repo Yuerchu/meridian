@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Cloud, Bot, Settings2, Info, Plug, Radio, BookTemplate, Smile, Wrench } from 'lucide-react'
+import { Cloud, Bot, Settings2, Info, Plug, Radio, BookTemplate, Smile, Wrench, Brain } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ProviderSettings } from './provider-settings'
 import { AssistantSettings } from './assistant-settings'
@@ -10,9 +10,10 @@ import { OneBotSettings } from './onebot-settings'
 import { TemplateGallery } from './template-gallery'
 import { EmojiSettings } from './emoji-settings'
 import { ToolMarketplace } from './tool-marketplace'
+import { MemorySettings } from './memory-settings'
 import { About } from './about'
 
-type SettingsTab = 'provider' | 'assistants' | 'templates' | 'emoji' | 'tools' | 'mcp' | 'onebot' | 'general' | 'about'
+type SettingsTab = 'provider' | 'assistants' | 'templates' | 'emoji' | 'tools' | 'mcp' | 'memories' | 'onebot' | 'general' | 'about'
 
 export default function SettingsPage() {
   const { t } = useTranslation()
@@ -25,6 +26,7 @@ export default function SettingsPage() {
     { id: 'emoji', label: t('settings.emoji'), icon: Smile },
     { id: 'tools', label: t('settings.toolsTab'), icon: Wrench },
     { id: 'mcp', label: t('settings.mcp'), icon: Plug },
+    { id: 'memories', label: t('settings.memories'), icon: Brain },
     { id: 'onebot', label: t('settings.onebot'), icon: Radio },
     { id: 'general', label: t('settings.general'), icon: Settings2 },
     { id: 'about', label: t('settings.about'), icon: Info },
@@ -57,6 +59,7 @@ export default function SettingsPage() {
         {activeTab === 'emoji' && <EmojiSettings />}
         {activeTab === 'tools' && <ToolMarketplace />}
         {activeTab === 'mcp' && <McpSettings />}
+        {activeTab === 'memories' && <MemorySettings />}
         {activeTab === 'onebot' && <OneBotSettings />}
         {activeTab === 'general' && <GeneralSettings />}
         {activeTab === 'about' && <About />}

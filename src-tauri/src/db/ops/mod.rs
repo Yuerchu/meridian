@@ -3,6 +3,7 @@ pub mod conversation;
 pub mod emoji;
 pub mod emoji_pack;
 pub mod mcp_server;
+pub mod memory;
 pub mod message;
 pub mod preference;
 pub mod prompt_template;

@@ -15,6 +15,18 @@ pub fn get_project(conn: &mut SqliteConnection, id: &str) -> QueryResult<Project
     projects::table.find(id).first::<Project>(conn)
 }
 
+pub fn find_project_by_source(
+    conn: &mut SqliteConnection,
+    source_type: &str,
+    source_id: &str,
+) -> QueryResult<Option<Project>> {
+    projects::table
+        .filter(projects::source_type.eq(source_type))
+        .filter(projects::source_id.eq(source_id))
+        .first::<Project>(conn)
+        .optional()
+}
+
 pub fn create_project(conn: &mut SqliteConnection, new: &NewProject) -> QueryResult<Project> {
     diesel::insert_into(projects::table)
         .values(new)

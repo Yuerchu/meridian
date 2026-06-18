@@ -18,3 +18,8 @@ pub fn set_preference(conn: &mut SqliteConnection, key: &str, value: &str, now: 
         .execute(conn)?;
     Ok(())
 }
+
+pub fn delete_preference(conn: &mut SqliteConnection, key: &str) -> QueryResult<()> {
+    diesel::delete(preferences::table.find(key)).execute(conn)?;
+    Ok(())
+}

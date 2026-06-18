@@ -7,10 +7,8 @@ use super::agent::{self, ApprovalFn};
 use super::format;
 use super::protocol::{MessageSegment, OneBotAction, OneBotEvent};
 use super::session::{SessionKey, SessionKind};
-use super::SharedState;
+use super::{call_api, SharedState};
 
-/// Process an incoming OneBot message event.
-/// Returns a list of actions to send back (may be multiple for long messages).
 pub async fn handle_message(
     event: &OneBotEvent,
     state: &Arc<SharedState>,
@@ -25,9 +23,8 @@ pub async fn handle_message(
     }) {
         Some(m) if !m.is_null() => m,
         _ => {
-            // Try raw_message as fallback
             if let Some(ref raw) = event.raw_message {
-                return handle_text_message(event, state, user_id, raw).await;
+                return handle_text_message(event, state, user_id, raw, None).await;
             }
             return vec![];
         }
@@ -36,8 +33,6 @@ pub async fn handle_message(
     let self_id = event.self_id.unwrap_or(0);
     let is_group = event.message_type.as_deref() == Some("group");
 
-    // In group chats, check for pending approval before the @mention gate —
-    // approval replies ("Y") don't need to @mention the bot.
     if is_group && !format::is_at_bot(message, self_id) {
         let session_key = SessionKey::group(event.group_id.unwrap_or(0));
         let has_pending = state.pending_approvals.lock().await
@@ -45,18 +40,19 @@ pub async fn handle_message(
         if has_pending {
             let text = format::segments_to_text(message, Some(self_id));
             if !text.is_empty() {
-                return handle_text_message(event, state, user_id, &text).await;
+                return handle_text_message(event, state, user_id, &text, None).await;
             }
         }
         return vec![];
     }
 
+    let reply_message_id = format::extract_reply_message_id(message);
     let text = format::segments_to_text(message, Some(self_id));
     if text.is_empty() {
         return vec![];
     }
 
-    handle_text_message(event, state, user_id, &text).await
+    handle_text_message(event, state, user_id, &text, reply_message_id).await
 }
 
 async fn handle_text_message(
@@ -64,9 +60,11 @@ async fn handle_text_message(
     state: &Arc<SharedState>,
     user_id: i64,
     text: &str,
+    reply_to_message_id: Option<i64>,
 ) -> Vec<OneBotAction> {
     let is_group = event.message_type.as_deref() == Some("group");
     let group_id = event.group_id;
+    let event_message_id = event.message_id;
 
     let session_key = if is_group {
         SessionKey::group(group_id.unwrap_or(0))
@@ -82,32 +80,62 @@ async fn handle_text_message(
                 || text.trim().eq_ignore_ascii_case("yes");
             let _ = tx.send(approved);
             let reply = if approved { "已批准执行。" } else { "已拒绝。" };
-            return build_reply(event, reply);
+            return build_reply(event, reply, None);
         }
     }
 
     let is_admin = state.config.admin_users.contains(&user_id);
 
-    // Resolve conversation
-    let conversation_id = {
+    let nickname = event.sender.as_ref()
+        .and_then(|s| s.card.as_deref().or(s.nickname.as_deref()))
+        .unwrap_or("Unknown");
+    let title = match session_key.kind {
+        SessionKind::Private => format!("[QQ] {}", nickname),
+        SessionKind::Group => format!("[QQ] 群{}", group_id.unwrap_or(0)),
+    };
+
+    // Handle reset/new commands
+    let trimmed = text.trim();
+    if trimmed == "/reset" || trimmed == "/new" {
         let mut sessions = state.sessions.lock().await;
-        let nickname = event.sender.as_ref()
-            .and_then(|s| s.card.as_deref().or(s.nickname.as_deref()))
-            .unwrap_or("Unknown");
-        let title = match session_key.kind {
-            SessionKind::Private => format!("[QQ] {}", nickname),
-            SessionKind::Group => format!("[QQ] 群{}", group_id.unwrap_or(0)),
-        };
+        match sessions.reset_conversation(&session_key, &title, state.config.assistant_id.as_deref()) {
+            Ok(_) => return build_reply(event, "已重置对话。新的对话已创建。", event_message_id),
+            Err(e) => return build_reply(event, &format!("重置失败: {e}"), event_message_id),
+        }
+    }
+
+    // Resolve project + conversation
+    let (project_id, conversation_id) = {
+        let mut sessions = state.sessions.lock().await;
         match sessions.get_or_create(&session_key, &title, state.config.assistant_id.as_deref()) {
-            Ok(id) => id,
+            Ok(ids) => ids,
             Err(e) => {
                 tracing::error!("Session error: {e}");
-                return build_reply(event, &format!("内部错误: {e}"));
+                return build_reply(event, &format!("内部错误: {e}"), event_message_id);
             }
         }
     };
 
-    // Build approval callback that sends a message via WS and waits for reply
+    // Build enriched message with sender info and quoted message
+    let sender_prefix = if is_group {
+        Some(format!("{}({})", nickname, user_id))
+    } else {
+        None
+    };
+
+    let quoted = if let Some(reply_id) = reply_to_message_id {
+        fetch_quoted_message(state, reply_id).await
+    } else {
+        None
+    };
+
+    let enriched_text = format::format_enriched_message(
+        text,
+        sender_prefix.as_deref(),
+        quoted.as_ref().map(|(s, c)| (s.as_str(), c.as_str())),
+    );
+
+    // Build approval callback
     let approval_fn: ApprovalFn = {
         let state = state.clone();
         let session_str = session_key.to_string();
@@ -118,9 +146,6 @@ async fn handle_text_message(
         Box::new(move |tc: crate::provider::ToolCall| {
             let state = state.clone();
             let session_str = session_str.clone();
-            let event_user_id = event_user_id;
-            let event_group_id = event_group_id;
-            let event_is_group = event_is_group;
 
             Box::pin(async move {
                 let prompt = format!(
@@ -129,7 +154,6 @@ async fn handle_text_message(
                     truncate_args(&tc.arguments, 500),
                 );
 
-                // Send approval request
                 let approval_msg = if event_is_group {
                     OneBotAction::send_group_msg(
                         event_group_id.unwrap_or(0),
@@ -147,7 +171,6 @@ async fn handle_text_message(
                     Err(_) => return false,
                 };
 
-                // Send the approval request via the WS sink
                 {
                     let sinks = state.ws_sinks.lock().await;
                     for sink in sinks.values() {
@@ -155,18 +178,15 @@ async fn handle_text_message(
                     }
                 }
 
-                // Register pending approval and wait
                 let (tx, rx) = oneshot::channel();
                 {
                     let mut approvals = state.pending_approvals.lock().await;
                     approvals.insert(session_str.clone(), tx);
                 }
 
-                // Wait with 60-second timeout
                 match tokio::time::timeout(std::time::Duration::from_secs(60), rx).await {
                     Ok(Ok(approved)) => approved,
                     _ => {
-                        // Timeout or channel closed — remove pending and deny
                         let mut approvals = state.pending_approvals.lock().await;
                         approvals.remove(&session_str);
                         false
@@ -184,7 +204,8 @@ async fn handle_text_message(
         &state.tools,
         &state.mcp,
         &conversation_id,
-        text,
+        Some(project_id.as_str()),
+        &enriched_text,
         state.config.assistant_id.as_deref(),
         is_admin,
         &approval_fn,
@@ -198,19 +219,46 @@ async fn handle_text_message(
                 return vec![];
             }
             let chunks = format::split_long_message(&reply_text);
-            chunks.iter().flat_map(|chunk| build_reply(event, chunk)).collect()
+            chunks.iter().enumerate().flat_map(|(i, chunk)| {
+                let reply_id = if i == 0 { event_message_id } else { None };
+                build_reply(event, chunk, reply_id)
+            }).collect()
         }
         Err(e) => {
             tracing::error!("Chat error for {}: {e}", session_key);
-            build_reply(event, &format!("处理消息时出错: {e}"))
+            build_reply(event, &format!("处理消息时出错: {e}"), event_message_id)
         }
     }
 }
 
-fn build_reply(event: &OneBotEvent, text: &str) -> Vec<OneBotAction> {
-    let segments = format::text_to_segments(text);
-    let is_group = event.message_type.as_deref() == Some("group");
+async fn fetch_quoted_message(
+    state: &Arc<SharedState>,
+    message_id: i64,
+) -> Option<(String, String)> {
+    let echo = uuid::Uuid::new_v4().to_string();
+    let action = OneBotAction::get_msg(message_id, echo);
+    let data = call_api(state, action).await.ok()?;
 
+    let sender = data.get("sender").and_then(|s| {
+        s.get("card").and_then(|v| v.as_str()).filter(|s| !s.is_empty())
+            .or_else(|| s.get("nickname").and_then(|v| v.as_str()))
+    }).unwrap_or("Unknown").to_string();
+
+    let content = data.get("message").and_then(|m| {
+        Some(format::segments_to_text(m, None))
+    }).filter(|s| !s.is_empty())?;
+
+    Some((sender, content))
+}
+
+fn build_reply(event: &OneBotEvent, text: &str, reply_to_id: Option<i64>) -> Vec<OneBotAction> {
+    let mut segments = Vec::new();
+    if let Some(id) = reply_to_id {
+        segments.push(MessageSegment::reply(id));
+    }
+    segments.extend(format::text_to_rich_segments(text));
+
+    let is_group = event.message_type.as_deref() == Some("group");
     if is_group {
         let group_id = event.group_id.unwrap_or(0);
         vec![OneBotAction::send_group_msg(group_id, segments)]

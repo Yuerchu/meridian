@@ -8,7 +8,11 @@ use crate::db::schema::projects;
 pub struct Project {
     pub id: String,
     pub name: String,
-    pub path: String,
+    pub path: Option<String>,
+    pub source_type: String,
+    pub source_id: Option<String>,
+    pub assistant_id: Option<String>,
+    pub description: Option<String>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -18,7 +22,11 @@ pub struct Project {
 pub struct NewProject<'a> {
     pub id: &'a str,
     pub name: &'a str,
-    pub path: &'a str,
+    pub path: Option<&'a str>,
+    pub source_type: &'a str,
+    pub source_id: Option<&'a str>,
+    pub assistant_id: Option<&'a str>,
+    pub description: Option<&'a str>,
     pub created_at: i64,
     pub updated_at: i64,
 }
@@ -27,6 +35,8 @@ pub struct NewProject<'a> {
 #[diesel(table_name = projects)]
 pub struct ProjectUpdate {
     pub name: Option<String>,
-    pub path: Option<String>,
+    pub path: Option<Option<String>>,
+    pub assistant_id: Option<Option<String>>,
+    pub description: Option<Option<String>>,
     pub updated_at: Option<i64>,
 }

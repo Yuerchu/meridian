@@ -76,6 +76,8 @@ mod tests {
             working_directory: Some(wd.to_string_lossy().to_string()),
             shell: ShellType::Bash,
             file_access: FileAccess::Unrestricted,
+            project_id: None,
+            db_pool: None,
         }
     }
 

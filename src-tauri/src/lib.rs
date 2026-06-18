@@ -671,25 +671,53 @@ async fn list_projects(app: tauri::AppHandle) -> Result<Vec<db::models::project:
 }
 
 #[tauri::command]
-async fn create_project(app: tauri::AppHandle, name: String, path: String) -> Result<db::models::project::Project, String> {
+async fn create_project(
+    app: tauri::AppHandle,
+    name: String,
+    path: Option<String>,
+    source_type: Option<String>,
+    source_id: Option<String>,
+    assistant_id: Option<String>,
+    description: Option<String>,
+) -> Result<db::models::project::Project, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
+        let st = source_type.as_deref().unwrap_or("local");
         db::ops::project::create_project(&mut conn, &db::models::project::NewProject {
-            id: &id, name: &name, path: &path, created_at: now, updated_at: now,
+            id: &id,
+            name: &name,
+            path: path.as_deref(),
+            source_type: st,
+            source_id: source_id.as_deref(),
+            assistant_id: assistant_id.as_deref(),
+            description: description.as_deref(),
+            created_at: now,
+            updated_at: now,
         }).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-async fn update_project(app: tauri::AppHandle, id: String, name: Option<String>, path: Option<String>) -> Result<db::models::project::Project, String> {
+async fn update_project(
+    app: tauri::AppHandle,
+    id: String,
+    name: Option<String>,
+    path: Option<String>,
+    assistant_id: Option<String>,
+    description: Option<String>,
+) -> Result<db::models::project::Project, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::project::update_project(&mut conn, &id, &db::models::project::ProjectUpdate {
-            name, path, updated_at: Some(now_ms()),
+            name,
+            path: path.map(Some),
+            assistant_id: assistant_id.map(Some),
+            description: description.map(Some),
+            updated_at: Some(now_ms()),
         }).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
@@ -700,6 +728,70 @@ async fn delete_project(app: tauri::AppHandle, id: String) -> Result<(), String>
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::project::delete_project(&mut conn, &id).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+// --- Memory commands ---
+
+#[tauri::command]
+async fn list_memories(app: tauri::AppHandle, project_id: String) -> Result<Vec<db::models::memory::Memory>, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::memory::list_memories(&mut conn, &project_id).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn save_memory(
+    app: tauri::AppHandle,
+    project_id: String,
+    key: String,
+    content: String,
+    memory_type: Option<String>,
+) -> Result<db::models::memory::Memory, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = now_ms();
+        let mt = memory_type.as_deref().unwrap_or("general");
+        db::ops::memory::upsert_memory(&mut conn, &db::models::memory::NewMemory {
+            id: &id,
+            project_id: &project_id,
+            key: &key,
+            content: &content,
+            memory_type: mt,
+            created_at: now,
+            updated_at: now,
+        }).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn update_memory(
+    app: tauri::AppHandle,
+    id: String,
+    content: Option<String>,
+    memory_type: Option<String>,
+) -> Result<db::models::memory::Memory, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::memory::update_memory(&mut conn, &id, &db::models::memory::MemoryUpdate {
+            content,
+            memory_type,
+            updated_at: Some(now_ms()),
+        }).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn delete_memory(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::memory::delete_memory(&mut conn, &id).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
 
@@ -1424,7 +1516,7 @@ async fn chat(
     }
 
     // Load conversation + assistant + history + project path
-    let (assistant, history, conv_title, project_path) = {
+    let (assistant, history, conv_title, project_path, project_id) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         let aid_override = assistant_id.clone();
@@ -1438,10 +1530,11 @@ async fn chat(
                 .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok());
             let history = db::ops::message::list_messages(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;
-            let project_path = conv.project_id.as_deref()
-                .and_then(|pid| db::ops::project::get_project(&mut conn, pid).ok())
-                .map(|p| p.path);
-            Ok::<_, String>((assistant, history, conv.title, project_path))
+            let project = conv.project_id.as_deref()
+                .and_then(|pid| db::ops::project::get_project(&mut conn, pid).ok());
+            let project_path = project.as_ref().and_then(|p| p.path.clone());
+            let project_id = project.as_ref().map(|p| p.id.clone());
+            Ok::<_, String>((assistant, history, conv.title, project_path, project_id))
         }).await.map_err(|e| e.to_string())??
     };
 
@@ -1506,7 +1599,21 @@ async fn chat(
         }
     }
     let system_prompt_resolved = template::resolve(raw_prompt, &tmpl_ctx);
-    let system_prompt = format!("{}{}", system_prompt_resolved, file_access_prompt(&file_access));
+    let memory_block = if let Some(ref pid) = project_id {
+        let pool2 = pool.clone();
+        let pid2 = pid.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool2.get().ok()?;
+            let memories = db::ops::memory::list_memories(&mut conn, &pid2).ok()?;
+            db::ops::memory::format_memory_block(&memories)
+        }).await.ok().flatten()
+    } else {
+        None
+    };
+    let system_prompt = match memory_block {
+        Some(ref mem) => format!("{}{}{}", system_prompt_resolved, file_access_prompt(&file_access), mem),
+        None => format!("{}{}", system_prompt_resolved, file_access_prompt(&file_access)),
+    };
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
@@ -1612,6 +1719,8 @@ async fn chat(
         working_directory: project_path,
         shell: shell_type.map(|s| tools::ShellType::from_str(&s)).unwrap_or_else(tools::ShellType::default_for_platform),
         file_access,
+        project_id,
+        db_pool: Some(pool.clone()),
     };
 
     let mut full_content = String::new();
@@ -2096,6 +2205,7 @@ pub fn run() {
             set_provider_key, get_provider_key_exists, fetch_provider_models,
             list_projects, create_project, update_project, delete_project,
             list_conversations_by_project,
+            list_memories, save_memory, update_memory, delete_memory,
             get_preference, set_preference,
             list_mcp_servers, create_mcp_server, update_mcp_server, delete_mcp_server,
             connect_mcp_server, disconnect_mcp_server, list_mcp_tools, list_all_tool_names,

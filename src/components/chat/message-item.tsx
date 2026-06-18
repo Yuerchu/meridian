@@ -86,8 +86,56 @@ function preprocessEmojis(content: string, emojiMap?: EmojiMap): string {
   })
 }
 
+function preprocessMentions(content: string): string {
+  return content.replace(
+    /\[@([^\]]*)\((\d+)\)\]/g,
+    '<span class="inline-flex items-center px-1 py-0.5 rounded bg-blue-500/20 text-blue-300 text-xs font-medium">@$1</span>',
+  )
+}
+
+interface ParsedOneBotContent {
+  senderPrefix: string | null
+  quotedMessage: { sender: string; content: string } | null
+  body: string
+}
+
+function parseOneBotContent(content: string): ParsedOneBotContent {
+  let remaining = content
+
+  let quotedMessage: ParsedOneBotContent['quotedMessage'] = null
+  const quoteMatch = remaining.match(
+    /^<quoted_message sender="([^"]+)">([\s\S]*?)<\/quoted_message>\n?/,
+  )
+  if (quoteMatch) {
+    quotedMessage = { sender: quoteMatch[1], content: quoteMatch[2] }
+    remaining = remaining.slice(quoteMatch[0].length)
+  }
+
+  let senderPrefix: string | null = null
+  const senderMatch = remaining.match(/^\[([^\]]+\(\d+\))\]\s*/)
+  if (senderMatch) {
+    senderPrefix = senderMatch[1]
+    remaining = remaining.slice(senderMatch[0].length)
+  }
+
+  return { senderPrefix, quotedMessage, body: remaining }
+}
+
+function QuotedMessageBlock({ sender, content }: { sender: string; content: string }) {
+  return (
+    <div className="mb-2 pl-3 border-l-2 border-muted-foreground/30 text-xs text-muted-foreground">
+      <span className="font-medium">{sender}</span>
+      <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap">{content}</p>
+    </div>
+  )
+}
+
 const MarkdownContent = React.memo(function MarkdownContent({ content, isStreaming, emojiMap }: { content: string; isStreaming?: boolean; emojiMap?: EmojiMap }) {
-  const processed = useMemo(() => preprocessEmojis(content, emojiMap), [content, emojiMap])
+  const processed = useMemo(() => {
+    let result = preprocessEmojis(content, emojiMap)
+    result = preprocessMentions(result)
+    return result
+  }, [content, emojiMap])
 
   const components = useMemo(() => ({
     code: CodeBlock as never,
@@ -195,12 +243,24 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
   const isUser = message.role === 'user'
 
   if (isUser) {
+    const { senderPrefix, quotedMessage, body } = parseOneBotContent(message.content)
+
     return (
       <div className="flex justify-end group">
-        <div className="max-w-[80%] rounded-2xl bg-accent px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap">
-          {emojiMap && Object.keys(emojiMap).length > 0
-            ? renderEmojisInText(message.content, emojiMap)
-            : message.content}
+        <div className="max-w-[80%]">
+          {senderPrefix && (
+            <div className="text-xs text-muted-foreground/60 mb-1 text-right">{senderPrefix}</div>
+          )}
+          <div className="rounded-2xl bg-accent px-4 py-2.5 text-sm leading-relaxed">
+            {quotedMessage && (
+              <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
+            )}
+            <div className="whitespace-pre-wrap">
+              {emojiMap && Object.keys(emojiMap).length > 0
+                ? renderEmojisInText(body, emojiMap)
+                : body}
+            </div>
+          </div>
         </div>
       </div>
     )

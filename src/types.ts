@@ -1,7 +1,21 @@
 export interface Project {
   id: string
   name: string
-  path: string
+  path: string | null
+  source_type: string
+  source_id: string | null
+  assistant_id: string | null
+  description: string | null
+  created_at: number
+  updated_at: number
+}
+
+export interface Memory {
+  id: string
+  project_id: string
+  key: string
+  content: string
+  memory_type: string
   created_at: number
   updated_at: number
 }

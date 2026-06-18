@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Message, ModelInfo, Project, PromptTemplate, Provider, SafRootEntry, TemplateVariable, ToolCategory, ToolInfo, ToolPreset } from './types'
+import type { Assistant, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, Message, ModelInfo, Project, PromptTemplate, Provider, SafRootEntry, TemplateVariable, ToolCategory, ToolInfo, ToolPreset } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -138,14 +138,23 @@ export const api = {
   listProjects: () =>
     invoke<Project[]>('list_projects'),
 
-  createProject: (name: string, path: string) =>
-    invoke<Project>('create_project', { name, path }),
+  createProject: (name: string, path?: string, sourceType?: string, sourceId?: string, assistantId?: string, description?: string) =>
+    invoke<Project>('create_project', {
+      name,
+      path: path ?? null,
+      sourceType: sourceType ?? null,
+      sourceId: sourceId ?? null,
+      assistantId: assistantId ?? null,
+      description: description ?? null,
+    }),
 
-  updateProject: (id: string, updates: { name?: string; path?: string }) =>
+  updateProject: (id: string, updates: { name?: string; path?: string; assistantId?: string; description?: string }) =>
     invoke<Project>('update_project', {
       id,
       name: updates.name ?? null,
       path: updates.path ?? null,
+      assistantId: updates.assistantId ?? null,
+      description: updates.description ?? null,
     }),
 
   deleteProject: (id: string) =>
@@ -153,6 +162,19 @@ export const api = {
 
   listConversationsByProject: (projectId: string, archived = false) =>
     invoke<Conversation[]>('list_conversations_by_project', { projectId, archived }),
+
+  // Memories
+  listMemories: (projectId: string) =>
+    invoke<Memory[]>('list_memories', { projectId }),
+
+  saveMemory: (projectId: string, key: string, content: string, memoryType?: string) =>
+    invoke<Memory>('save_memory', { projectId, key, content, memoryType: memoryType ?? null }),
+
+  updateMemory: (id: string, content?: string, memoryType?: string) =>
+    invoke<Memory>('update_memory', { id, content: content ?? null, memoryType: memoryType ?? null }),
+
+  deleteMemory: (id: string) =>
+    invoke<void>('delete_memory', { id }),
 
   // Preferences
   getPreference: (key: string) =>

@@ -1,6 +1,13 @@
+use std::sync::LazyLock;
+
+use regex::Regex;
+
 use super::protocol::MessageSegment;
 
 const MAX_MSG_LEN: usize = 4000;
+
+static AT_MENTION_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\[@[^(\]]*\((\d+)\)\]").unwrap());
 
 /// Extract plain text from OneBot message segments (array format).
 /// Strips @bot mentions when `self_id` is provided.
@@ -24,20 +31,20 @@ pub fn segments_to_text(message: &serde_json::Value, self_id: Option<i64>) -> St
                 }
             }
             "at" => {
-                let qq = data
-                    .and_then(|d| d.get("qq"))
-                    .and_then(|v| v.as_str().or_else(|| v.as_i64().map(|_| "")));
                 let qq_id: Option<i64> = data
                     .and_then(|d| d.get("qq"))
                     .and_then(|v| v.as_str().and_then(|s| s.parse().ok()).or(v.as_i64()));
-                // Skip @bot mention
                 if let (Some(sid), Some(qid)) = (self_id, qq_id) {
                     if sid == qid {
                         continue;
                     }
                 }
-                if let Some(_) = qq {
-                    text.push_str("[at]");
+                if let Some(qid) = qq_id {
+                    let name = data.and_then(|d| d.get("name")).and_then(|v| v.as_str());
+                    match name {
+                        Some(n) if !n.is_empty() => text.push_str(&format!("[@{}({})]", n, qid)),
+                        _ => text.push_str(&format!("[@{}]", qid)),
+                    }
                 }
             }
             "image" => {
@@ -83,6 +90,60 @@ pub fn is_at_bot(message: &serde_json::Value, self_id: i64) -> bool {
 /// Convert plain text into OneBot message segments.
 pub fn text_to_segments(text: &str) -> Vec<MessageSegment> {
     vec![MessageSegment::text(text)]
+}
+
+pub fn extract_reply_message_id(message: &serde_json::Value) -> Option<i64> {
+    let segments = message.as_array()?;
+    segments.iter().find_map(|seg| {
+        if seg.get("type").and_then(|v| v.as_str()) == Some("reply") {
+            seg.get("data")
+                .and_then(|d| d.get("id"))
+                .and_then(|v| v.as_str().and_then(|s| s.parse().ok()).or(v.as_i64()))
+        } else {
+            None
+        }
+    })
+}
+
+pub fn format_enriched_message(
+    text: &str,
+    sender_prefix: Option<&str>,
+    quoted_message: Option<(&str, &str)>,
+) -> String {
+    let mut result = String::new();
+    if let Some((sender, content)) = quoted_message {
+        result.push_str(&format!(
+            "<quoted_message sender=\"{}\">{}</quoted_message>\n",
+            sender, content
+        ));
+    }
+    if let Some(prefix) = sender_prefix {
+        result.push_str(&format!("[{}] ", prefix));
+    }
+    result.push_str(text);
+    result
+}
+
+pub fn text_to_rich_segments(text: &str) -> Vec<MessageSegment> {
+    let mut segments = Vec::new();
+    let mut last_end = 0;
+    for cap in AT_MENTION_RE.captures_iter(text) {
+        let full_match = cap.get(0).unwrap();
+        if full_match.start() > last_end {
+            segments.push(MessageSegment::text(&text[last_end..full_match.start()]));
+        }
+        if let Ok(qq) = cap[1].parse::<i64>() {
+            segments.push(MessageSegment::at(qq));
+        }
+        last_end = full_match.end();
+    }
+    if last_end < text.len() {
+        segments.push(MessageSegment::text(&text[last_end..]));
+    }
+    if segments.is_empty() {
+        segments.push(MessageSegment::text(text));
+    }
+    segments
 }
 
 /// Split a long message into chunks respecting a max length.

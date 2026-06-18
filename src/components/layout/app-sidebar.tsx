@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { MessageSquare, Plus, Settings, Trash2, FolderOpen, FolderPlus } from 'lucide-react'
+import { MessageSquare, MessageCircle, Plus, Settings, Trash2, FolderOpen, FolderPlus, Users, Archive } from 'lucide-react'
 import type { Conversation, Project } from '@/types'
 import {
   Sidebar,
@@ -89,6 +89,14 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
   )
 }
 
+function ProjectIcon({ sourceType }: { sourceType: string }) {
+  switch (sourceType) {
+    case 'onebot_private': return <MessageCircle />
+    case 'onebot_group': return <Users />
+    default: return <FolderOpen />
+  }
+}
+
 export function AppSidebar({
   conversations,
   activeId,
@@ -146,7 +154,7 @@ export function AppSidebar({
                     isActive={project.id === activeProjectId}
                     onClick={() => onSelectProject(project.id)}
                   >
-                    <FolderOpen />
+                    <ProjectIcon sourceType={project.source_type} />
                     <span>{project.name}</span>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -174,8 +182,9 @@ export function AppSidebar({
                   <SidebarMenuButton
                     isActive={conv.id === activeId}
                     onClick={() => onSelect(conv.id)}
+                    className={conv.is_archived ? 'opacity-50' : undefined}
                   >
-                    <MessageSquare />
+                    {conv.is_archived ? <Archive /> : <MessageSquare />}
                     <span>{conv.title ?? t('sidebar.newChat')}</span>
                   </SidebarMenuButton>
                   <SidebarMenuAction
