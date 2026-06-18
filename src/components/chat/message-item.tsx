@@ -284,7 +284,16 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
   }, [handleCancelEdit, handleSaveEdit])
 
   if (isUser) {
-    const { senderPrefix, quotedMessage, body } = parseOneBotContent(message.content)
+    const isMultimodal = message.content.startsWith('[')
+    let contentParts: { type: string; text?: string; image_url?: { url: string }; file?: { url: string; name: string; mime_type: string } }[] | null = null
+    let textContent = message.content
+    if (isMultimodal) {
+      try {
+        contentParts = JSON.parse(message.content)
+        textContent = contentParts?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? ''
+      } catch { /* not JSON, treat as plain text */ }
+    }
+    const { senderPrefix, quotedMessage, body } = parseOneBotContent(textContent)
 
     return (
       <div className="flex justify-end group">
@@ -326,6 +335,22 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
           ) : (
             <>
               <div className="rounded-2xl bg-accent px-4 py-2.5 text-sm leading-relaxed">
+                {contentParts && contentParts.some((p) => p.type === 'image_url') && (
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {contentParts.filter((p) => p.type === 'image_url').map((p, i) => (
+                      <img key={i} src={p.image_url?.url} alt="" className="max-w-[200px] max-h-[200px] rounded-lg object-cover" />
+                    ))}
+                  </div>
+                )}
+                {contentParts && contentParts.some((p) => p.type === 'file') && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {contentParts.filter((p) => p.type === 'file').map((p, i) => (
+                      <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-background/50 rounded">
+                        {p.file?.name ?? 'file'}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 {quotedMessage && (
                   <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
                 )}

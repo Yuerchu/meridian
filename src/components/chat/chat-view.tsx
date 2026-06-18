@@ -4,7 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import { api } from '@/api'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageItem } from './message-item'
-import { InputBar } from './input-bar'
+import { InputBar, type AttachedFile } from './input-bar'
 import { useEmojiMap } from './emoji-renderer'
 import type { Message as DbMessage, StreamChunk, Assistant, Provider, ToolCallDisplay, ContentBlock, OpenAIToolCall, ThinkingLevel } from '@/types'
 
@@ -102,6 +102,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('default')
+  const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const emojiMap = useEmojiMap(selectedAssistantId)
   const { t } = useTranslation()
   const conversationIdRef = useRef(conversationId)
@@ -296,12 +297,29 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     }
   }, [])
 
-  const sendMessage = useCallback((text: string, addUserBubble: boolean) => {
+  const sendMessage = useCallback(async (text: string, addUserBubble: boolean, files?: AttachedFile[]) => {
     if (!text || streaming || submittingRef.current) return
     submittingRef.current = true
     setStreaming(true)
     setError(null)
     const now = Date.now()
+
+    let messageContent = text
+    if (files && files.length > 0) {
+      try {
+        const parts: unknown[] = [{ type: 'text', text }]
+        for (const f of files) {
+          const part = await api.uploadFile(conversationId, f.path)
+          parts.push(part)
+        }
+        messageContent = JSON.stringify(parts)
+      } catch (err) {
+        setError(String(err))
+        setStreaming(false)
+        submittingRef.current = false
+        return
+      }
+    }
 
     if (addUserBubble) {
       setMessages((prev) => [
@@ -310,7 +328,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
           id: `temp-user-${now}`,
           conversation_id: conversationId,
           role: 'user',
-          content: text,
+          content: messageContent,
           provider_id: null,
           model_id: null,
           input_tokens: null,
@@ -327,7 +345,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     }
 
     api
-      .chat(conversationId, text, selectedModelId ?? undefined, selectedProviderId ?? undefined, thinkingLevel !== 'default' ? thinkingLevel : undefined, selectedAssistantId ?? undefined)
+      .chat(conversationId, messageContent, selectedModelId ?? undefined, selectedProviderId ?? undefined, thinkingLevel !== 'default' ? thinkingLevel : undefined, selectedAssistantId ?? undefined)
       .catch((err) => {
         setError(String(err))
         setStreaming(false)
@@ -339,9 +357,11 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
   const handleSubmit = useCallback(() => {
     const text = input.trim()
     if (!text) return
+    const files = [...attachedFiles]
     setInput('')
-    sendMessage(text, true)
-  }, [input, sendMessage])
+    setAttachedFiles([])
+    sendMessage(text, true, files.length > 0 ? files : undefined)
+  }, [input, sendMessage, attachedFiles])
 
   const handleRegenerate = useCallback((messageId: string) => {
     const msgIndex = messages.findIndex((m) => m.id === messageId)
@@ -410,6 +430,9 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
         thinkingLevel={thinkingLevel}
         onSelectThinkingLevel={setThinkingLevel}
         contextInfo={contextInfo}
+        attachedFiles={attachedFiles}
+        onAttachFiles={(files) => setAttachedFiles((prev) => [...prev, ...files])}
+        onRemoveFile={(idx) => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
       />
     </div>
   )

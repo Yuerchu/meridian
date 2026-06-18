@@ -48,6 +48,29 @@ impl AnthropicProvider {
                         }]
                     });
                 }
+                if m.content.starts_with('[') {
+                    if let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(&m.content) {
+                        let anthropic_parts: Vec<serde_json::Value> = parts.iter().map(|p| {
+                            match p.get("type").and_then(|t| t.as_str()) {
+                                Some("image_url") => {
+                                    if let Some(url) = p.pointer("/image_url/url").and_then(|u| u.as_str()) {
+                                        if let Some(data_uri) = url.strip_prefix("data:") {
+                                            if let Some((media_type, b64)) = data_uri.split_once(";base64,") {
+                                                return serde_json::json!({
+                                                    "type": "image",
+                                                    "source": { "type": "base64", "media_type": media_type, "data": b64 }
+                                                });
+                                            }
+                                        }
+                                    }
+                                    p.clone()
+                                }
+                                _ => p.clone()
+                            }
+                        }).collect();
+                        return serde_json::json!({"role": m.role, "content": anthropic_parts});
+                    }
+                }
                 serde_json::json!({"role": m.role, "content": m.content})
             })
             .collect()

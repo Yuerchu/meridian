@@ -149,6 +149,7 @@ pub async fn headless_chat(
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
     let mut chat_messages = build_messages(&system_prompt, &history, user_message);
+    crate::resolve_file_uris_in_messages(&mut chat_messages);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
     let params = ChatParams {

@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { open } from '@tauri-apps/plugin-dialog'
-import { MessageSquare, MessageCircle, Plus, Settings, Trash2, FolderOpen, FolderPlus, Users, Archive } from 'lucide-react'
+import { open, save } from '@tauri-apps/plugin-dialog'
+import { MessageSquare, MessageCircle, Plus, Settings, Trash2, FolderOpen, FolderPlus, Users, Archive, MoreHorizontal, Download } from 'lucide-react'
 import type { Conversation, Project } from '@/types'
+import { api } from '@/api'
 import {
   Sidebar,
   SidebarContent,
@@ -16,6 +17,13 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface AppSidebarProps {
   conversations: Conversation[]
@@ -187,14 +195,32 @@ export function AppSidebar({
                     {conv.is_archived ? <Archive /> : <MessageSquare />}
                     <span>{conv.title ?? t('sidebar.newChat')}</span>
                   </SidebarMenuButton>
-                  <SidebarMenuAction
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onDelete(conv.id)
-                    }}
-                  >
-                    <Trash2 />
-                  </SidebarMenuAction>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger render={<SidebarMenuAction />}>
+                      <MoreHorizontal />
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start">
+                      <DropdownMenuItem onClick={async () => {
+                        const path = await save({ defaultPath: `${conv.title ?? 'chat'}_sft.jsonl`, filters: [{ name: 'JSONL', extensions: ['jsonl'] }] })
+                        if (path) await api.exportConversation(conv.id, 'sft', path)
+                      }}>
+                        <Download />
+                        {t('sidebar.exportSft')}
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={async () => {
+                        const path = await save({ defaultPath: `${conv.title ?? 'chat'}_dpo.jsonl`, filters: [{ name: 'JSONL', extensions: ['jsonl'] }] })
+                        if (path) await api.exportConversation(conv.id, 'dpo', path)
+                      }}>
+                        <Download />
+                        {t('sidebar.exportDpo')}
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="text-destructive" onClick={() => onDelete(conv.id)}>
+                        <Trash2 />
+                        {t('sidebar.delete')}
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>

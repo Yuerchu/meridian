@@ -32,6 +32,12 @@ export const api = {
   rateMessage: (id: string, rating: number | null) =>
     invoke<void>('rate_message', { id, rating }),
 
+  exportConversation: (conversationId: string, format: string, outputPath?: string) =>
+    invoke<string>('export_conversation', { conversationId, format, outputPath: outputPath ?? null }),
+
+  uploadFile: (conversationId: string, filePath: string) =>
+    invoke<unknown>('upload_file', { conversationId, filePath }),
+
   stopChat: (conversationId: string) =>
     invoke<void>('stop_chat', { conversationId }),
 

@@ -1,6 +1,7 @@
 import { useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUp, Square } from 'lucide-react'
+import { open } from '@tauri-apps/plugin-dialog'
+import { ArrowUp, Square, Paperclip, X as XIcon } from 'lucide-react'
 import {
   InputGroup,
   InputGroupTextarea,
@@ -17,6 +18,11 @@ interface ContextInfo {
   contextLimit: number
 }
 
+export interface AttachedFile {
+  path: string
+  name: string
+}
+
 interface InputBarProps {
   value: string
   onChange: (value: string) => void
@@ -24,6 +30,9 @@ interface InputBarProps {
   onStop?: () => void
   disabled?: boolean
   streaming?: boolean
+  attachedFiles?: AttachedFile[]
+  onAttachFiles?: (files: AttachedFile[]) => void
+  onRemoveFile?: (index: number) => void
   assistants: Assistant[]
   providers: Provider[]
   currentAssistantId: string | null
@@ -53,6 +62,9 @@ export function InputBar({
   thinkingLevel,
   onSelectThinkingLevel,
   contextInfo,
+  attachedFiles = [],
+  onAttachFiles,
+  onRemoveFile,
 }: InputBarProps) {
   const { t } = useTranslation()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -84,6 +96,21 @@ export function InputBar({
     <div className="px-4 pb-[max(1rem,var(--safe-bottom))] pt-2">
       <div className="max-w-2xl mx-auto">
         <InputGroup className="rounded-2xl">
+          {attachedFiles.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+              {attachedFiles.map((f, i) => (
+                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-muted rounded-md">
+                  <Paperclip className="w-3 h-3" />
+                  <span className="max-w-[120px] truncate">{f.name}</span>
+                  {onRemoveFile && (
+                    <button onClick={() => onRemoveFile(i)} className="hover:text-destructive">
+                      <XIcon className="w-3 h-3" />
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          )}
           <InputGroupTextarea
             ref={textareaRef}
             value={value}
@@ -111,6 +138,24 @@ export function InputBar({
                 onSelectThinkingLevel={onSelectThinkingLevel}
               />
               <div className="flex items-center gap-2 shrink-0">
+                {onAttachFiles && (
+                  <button
+                    className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                    title={t('chat.attach')}
+                    onClick={async () => {
+                      const paths = await open({ multiple: true })
+                      if (paths) {
+                        const files = (Array.isArray(paths) ? paths : [paths]).map((p) => ({
+                          path: p,
+                          name: p.replace(/\\/g, '/').split('/').pop() ?? 'file',
+                        }))
+                        onAttachFiles(files)
+                      }
+                    }}
+                  >
+                    <Paperclip className="w-4 h-4" />
+                  </button>
+                )}
                 <EmojiPicker
                   assistantId={currentAssistantId}
                   onSelect={(syntax) => onChange(value + syntax)}

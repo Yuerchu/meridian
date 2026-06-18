@@ -74,9 +74,18 @@ impl OpenAICompatProvider {
     }
 }
 
+fn content_value(content: &str) -> serde_json::Value {
+    if content.starts_with('[') {
+        if let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(content) {
+            return serde_json::Value::Array(parts);
+        }
+    }
+    serde_json::Value::String(content.to_string())
+}
+
 pub fn serialize_openai_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
     messages.iter().map(|m| {
-        let mut msg = serde_json::json!({ "role": m.role, "content": m.content });
+        let mut msg = serde_json::json!({ "role": m.role, "content": content_value(&m.content) });
         if let Some(ref tool_calls) = m.tool_calls {
             msg["tool_calls"] = serde_json::json!(tool_calls.iter().map(|tc| {
                 serde_json::json!({
