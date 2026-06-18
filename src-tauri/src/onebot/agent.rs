@@ -54,6 +54,11 @@ async fn consume_stream_headless(
                             entry.2.push_str(&arguments);
                         }
                     }
+                    Ok(Some(Ok(StreamEvent::ToolCallDone { index, arguments }))) => {
+                        if let Some(entry) = tool_acc.get_mut(index) {
+                            entry.2 = arguments;
+                        }
+                    }
                     Ok(Some(Ok(StreamEvent::Done { usage: u, finish_reason: fr }))) => {
                         usage = u;
                         finish_reason = fr;
@@ -180,26 +185,19 @@ pub async fn headless_chat(
     // Persist user message
     let now = now_ms();
     let user_msg_id = uuid::Uuid::new_v4().to_string();
-    let assistant_msg_id = uuid::Uuid::new_v4().to_string();
+    let mut assistant_msg_id = String::new();
     {
         let pool = pool.clone();
         let conv_id = conversation_id.to_string();
         let msg = user_message.to_string();
         let msg_id = user_msg_id.clone();
-        let asst_id = assistant_msg_id.clone();
-        let model_clone = params.model.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
             crate::db::ops::message::insert_message(&mut conn, &NewMessage {
                 id: &msg_id, conversation_id: &conv_id, role: "user", content: &msg,
                 provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
                 tool_calls: None, tool_call_id: None, sort_order: 0, created_at: now,
-            }).map_err(|e| e.to_string())?;
-            crate::db::ops::message::insert_message(&mut conn, &NewMessage {
-                id: &asst_id, conversation_id: &conv_id, role: "assistant", content: "",
-                provider_id: None, model_id: Some(&model_clone), input_tokens: None,
-                output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
-                created_at: now,
+                reasoning_content: None, rating: None, schema_version: 2,
             }).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
@@ -222,14 +220,32 @@ pub async fn headless_chat(
         db_pool: Some(pool.clone()),
     };
 
-    // Agent loop
-    let mut full_content = String::new();
-    let mut blocks: Vec<serde_json::Value> = Vec::new();
+    // Agent loop: each iteration creates a new assistant message
     let mut total_input_tokens = 0i32;
     let mut total_output_tokens = 0i32;
+    let mut last_assistant_text = String::new();
 
     loop {
         if cancel.is_cancelled() { break; }
+
+        // Create a new assistant message for this iteration
+        assistant_msg_id = uuid::Uuid::new_v4().to_string();
+        {
+            let pool = pool.clone();
+            let conv_id = conversation_id.to_string();
+            let msg_id = assistant_msg_id.clone();
+            let model_clone = params.model.clone();
+            tokio::task::spawn_blocking(move || {
+                let mut conn = get_conn(&pool)?;
+                crate::db::ops::message::insert_message(&mut conn, &NewMessage {
+                    id: &msg_id, conversation_id: &conv_id, role: "assistant", content: "",
+                    provider_id: None, model_id: Some(&model_clone), input_tokens: None,
+                    output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
+                    created_at: now, reasoning_content: None, rating: None, schema_version: 2,
+                }).map_err(|e| e.to_string())?;
+                Ok::<_, String>(())
+            }).await.map_err(|e| e.to_string())??;
+        }
 
         let result = {
             let mut _last_err = String::new();
@@ -271,16 +287,36 @@ pub async fn headless_chat(
             total_output_tokens += u.completion_tokens.unwrap_or(0);
         }
 
-        if !result.reasoning.is_empty() {
-            blocks.push(serde_json::json!({"type": "thinking", "text": &result.reasoning}));
-        }
-        if !result.text.is_empty() {
-            full_content.push_str(&result.text);
-            blocks.push(serde_json::json!({"type": "text", "text": &result.text}));
+        let has_tool_calls = !result.tool_calls.is_empty()
+            && !matches!(result.finish_reason.as_deref(), Some("length") | Some("max_tokens"));
+
+        // Persist this iteration's assistant message in OpenAI format
+        let tool_calls_json = if has_tool_calls {
+            Some(crate::serialize_tool_calls_openai(&result.tool_calls))
+        } else {
+            None
+        };
+        {
+            let pool = pool.clone();
+            let msg_id = assistant_msg_id.clone();
+            let content = result.text.clone();
+            let reasoning = if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) };
+            let tc_json = tool_calls_json.clone();
+            let inp = result.usage.as_ref().and_then(|u| u.prompt_tokens);
+            let out = result.usage.as_ref().and_then(|u| u.completion_tokens);
+            tokio::task::spawn_blocking(move || {
+                if let Ok(mut conn) = pool.get() {
+                    let _ = crate::db::ops::message::update_assistant_message(
+                        &mut conn, &msg_id, &content,
+                        reasoning.as_deref(), tc_json.as_deref(), inp, out,
+                    );
+                }
+            }).await.map_err(|e| e.to_string())?;
         }
 
-        if result.tool_calls.is_empty() { break; }
-        if matches!(result.finish_reason.as_deref(), Some("length") | Some("max_tokens")) { break; }
+        last_assistant_text = result.text.clone();
+
+        if !has_tool_calls { break; }
 
         chat_messages.push(ChatMessage::assistant_with_tools(
             &result.text,
@@ -295,14 +331,14 @@ pub async fn headless_chat(
             let tool = if !is_mcp { tool_registry.get(&tc.name) } else { None };
 
             let tool_result = if is_mcp {
-                let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
+                let args: serde_json::Value = serde_json::from_str(&tc.arguments)
+                    .unwrap_or_else(|_| serde_json::json!({}));
                 let mut mgr = mcp_manager.lock().await;
                 match mgr.call_tool(&tc.name, args).await {
                     Ok(output) => output,
                     Err(e) => format!("MCP error: {e}"),
                 }
             } else if tc.name == "ask_user" {
-                // ask_user: forward the question via approval_fn, return approval as text
                 let approved = (approval_fn)(tc.clone()).await;
                 if approved {
                     "User approved.".to_string()
@@ -317,7 +353,8 @@ pub async fn headless_chat(
                     tools::Permission::Ask => (approval_fn)(tc.clone()).await,
                 };
                 if approved {
-                    let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
+                    let args: serde_json::Value = serde_json::from_str(&tc.arguments)
+                        .unwrap_or_else(|_| serde_json::json!({}));
                     match tool.execute(args, &tool_context).await {
                         Ok(output) => output,
                         Err(e) => format!("Error: {e}"),
@@ -329,18 +366,6 @@ pub async fn headless_chat(
                 format!("Unknown tool: {}", tc.name)
             };
 
-            blocks.push(serde_json::json!({
-                "type": "tool_call",
-                "data": {
-                    "call_id": tc.id,
-                    "tool_name": tc.name,
-                    "arguments": tc.arguments,
-                    "status": "completed",
-                    "result": &tool_result
-                }
-            }));
-
-            // Persist tool message
             {
                 let pool = pool.clone();
                 let conv_id = conversation_id.to_string();
@@ -355,6 +380,7 @@ pub async fn headless_chat(
                             input_tokens: None, output_tokens: None,
                             tool_calls: None, tool_call_id: Some(&call_id),
                             sort_order: 0, created_at: now,
+                            reasoning_content: None, rating: None, schema_version: 2,
                         });
                     }
                 }).await;
@@ -367,29 +393,5 @@ pub async fn headless_chat(
         trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
     }
 
-    // Persist assistant message
-    {
-        let pool = pool.clone();
-        let msg_id = assistant_msg_id.clone();
-        let content = full_content.clone();
-        let blocks_json = if blocks.is_empty() { None } else {
-            serde_json::to_string(&blocks).ok()
-        };
-        let inp = total_input_tokens;
-        let out = total_output_tokens;
-        tokio::task::spawn_blocking(move || {
-            if let Ok(mut conn) = pool.get() {
-                if let Some(ref bj) = blocks_json {
-                    let _ = crate::db::ops::message::update_content_and_tool_calls(&mut conn, &msg_id, &content, Some(bj));
-                } else {
-                    let _ = crate::db::ops::message::update_content(&mut conn, &msg_id, &content);
-                }
-                if inp > 0 || out > 0 {
-                    let _ = crate::db::ops::message::update_tokens(&mut conn, &msg_id, Some(inp), Some(out));
-                }
-            }
-        }).await.map_err(|e| e.to_string())?;
-    }
-
-    Ok(full_content)
+    Ok(last_assistant_text)
 }

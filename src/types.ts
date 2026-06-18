@@ -45,6 +45,12 @@ export type ContentBlock =
   | { type: 'thinking'; text: string }
   | { type: 'tool_call'; data: ToolCallDisplay }
 
+export interface OpenAIToolCall {
+  id: string
+  type: 'function'
+  function: { name: string; arguments: string }
+}
+
 export interface Message {
   id: string
   conversation_id: string
@@ -58,6 +64,9 @@ export interface Message {
   tool_call_id: string | null
   sort_order: number
   created_at: number
+  reasoning_content: string | null
+  rating: number | null
+  schema_version: number
   _blocks?: ContentBlock[]
 }
 
@@ -222,6 +231,7 @@ export interface StreamChunk {
   content?: string
   done?: boolean
   message_id?: string
+  conversation_id?: string
   call_id?: string
   tool_name?: string
   arguments?: string

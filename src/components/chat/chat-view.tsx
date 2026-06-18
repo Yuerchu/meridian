@@ -6,15 +6,47 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageItem } from './message-item'
 import { InputBar } from './input-bar'
 import { useEmojiMap } from './emoji-renderer'
-import type { Message as DbMessage, StreamChunk, Assistant, Provider, ToolCallDisplay, ContentBlock, ThinkingLevel } from '@/types'
+import type { Message as DbMessage, StreamChunk, Assistant, Provider, ToolCallDisplay, ContentBlock, OpenAIToolCall, ThinkingLevel } from '@/types'
 
 function hydrateBlocks(msgs: DbMessage[]): DbMessage[] {
   return msgs.map((m) => {
-    if (m.role === 'assistant' && m.tool_calls) {
+    if (m.role !== 'assistant') return m
+
+    if (m.schema_version >= 2) {
+      const blocks: ContentBlock[] = []
+      if (m.reasoning_content) {
+        blocks.push({ type: 'thinking', text: m.reasoning_content })
+      }
+      if (m.content) {
+        blocks.push({ type: 'text', text: m.content })
+      }
+      if (m.tool_calls) {
+        try {
+          const tcs = JSON.parse(m.tool_calls) as OpenAIToolCall[]
+          for (const tc of tcs) {
+            const toolMsg = msgs.find((tm) => tm.role === 'tool' && tm.tool_call_id === tc.id)
+            blocks.push({
+              type: 'tool_call',
+              data: {
+                call_id: tc.id,
+                tool_name: tc.function.name,
+                arguments: tc.function.arguments,
+                status: 'completed',
+                result: toolMsg?.content,
+              },
+            })
+          }
+        } catch { /* ignore */ }
+      }
+      return { ...m, _blocks: blocks.length > 0 ? blocks : undefined }
+    }
+
+    // Legacy v1 format
+    if (m.tool_calls) {
       try {
         const blocks = JSON.parse(m.tool_calls) as ContentBlock[]
         return { ...m, _blocks: blocks }
-      } catch { /* ignore malformed JSON */ }
+      } catch { /* ignore */ }
     }
     return m
   })
@@ -118,7 +150,33 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     })
   }, [])
 
+  const handleEdit = useCallback((id: string, content: string) => {
+    api.updateMessageContent(id, content).then(() => {
+      setMessages((prev) => prev.map((m) => m.id === id ? { ...m, content } : m))
+    }).catch((err) => {
+      setError(String(err))
+    })
+  }, [])
+
+  const handleRate = useCallback((id: string, rating: number | null) => {
+    setMessages((prev) => prev.map((m) => m.id === id ? { ...m, rating } : m))
+    api.rateMessage(id, rating).catch(() => {
+      setMessages((prev) => prev.map((m) => m.id === id ? { ...m, rating: null } : m))
+    })
+  }, [])
+
   useEffect(() => {
+    const findAssistantMsg = (msgs: DbMessage[], messageId?: string): number => {
+      if (messageId) {
+        const idx = msgs.findIndex((m) => m.id === messageId)
+        if (idx >= 0) return idx
+      }
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === 'assistant') return i
+      }
+      return -1
+    }
+
     const promise = listen<StreamChunk>('chat-stream', (event) => {
       const p = event.payload
 
@@ -131,13 +189,37 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
         return
       }
 
+      if (p.type === 'turn_start' && p.message_id) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: p.message_id!,
+            conversation_id: conversationIdRef.current,
+            role: 'assistant' as const,
+            content: '',
+            provider_id: null,
+            model_id: null,
+            input_tokens: null,
+            output_tokens: null,
+            tool_calls: null,
+            tool_call_id: null,
+            sort_order: prev.length,
+            created_at: Date.now(),
+            reasoning_content: null,
+            rating: null,
+            schema_version: 2,
+          },
+        ])
+        return
+      }
+
       if ((p.type === 'tool_call' || p.type === 'tool_approval_req' || p.type === 'tool_result') && p.call_id) {
         setMessages((prev) => {
-          const lastIdx = prev.length - 1
-          const last = prev[lastIdx]
-          if (!last || last.role !== 'assistant') return prev
+          const targetIdx = findAssistantMsg(prev, p.message_id)
+          if (targetIdx < 0) return prev
+          const target = prev[targetIdx]
 
-          const blocks = [...(last._blocks ?? [])]
+          const blocks = [...(target._blocks ?? [])]
 
           if (p.type === 'tool_call') {
             blocks.push({
@@ -164,7 +246,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
           }
 
           const updated = [...prev]
-          updated[lastIdx] = { ...last, _blocks: blocks }
+          updated[targetIdx] = { ...target, _blocks: blocks }
           return updated
         })
         return
@@ -172,39 +254,40 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
 
       if (p.type === 'reasoning' && p.content) {
         setMessages((prev) => {
-          const last = prev[prev.length - 1]
-          if (last?.role === 'assistant') {
-            const blocks = [...(last._blocks ?? [])]
-            const lastBlock = blocks[blocks.length - 1]
-            if (lastBlock?.type === 'thinking') {
-              blocks[blocks.length - 1] = { type: 'thinking', text: lastBlock.text + p.content }
-            } else {
-              blocks.push({ type: 'thinking', text: p.content! })
-            }
-            return [...prev.slice(0, -1), { ...last, _blocks: blocks }]
+          const targetIdx = findAssistantMsg(prev, p.message_id)
+          if (targetIdx < 0) return prev
+          const target = prev[targetIdx]
+
+          const blocks = [...(target._blocks ?? [])]
+          const lastBlock = blocks[blocks.length - 1]
+          if (lastBlock?.type === 'thinking') {
+            blocks[blocks.length - 1] = { type: 'thinking', text: lastBlock.text + p.content }
+          } else {
+            blocks.push({ type: 'thinking', text: p.content! })
           }
-          return prev
+          const updated = [...prev]
+          updated[targetIdx] = { ...target, _blocks: blocks }
+          return updated
         })
         return
       }
 
       if (p.content) {
         setMessages((prev) => {
-          const last = prev[prev.length - 1]
-          if (last?.role === 'assistant') {
-            const blocks = [...(last._blocks ?? [])]
-            const lastBlock = blocks[blocks.length - 1]
-            if (lastBlock?.type === 'text') {
-              blocks[blocks.length - 1] = { type: 'text', text: lastBlock.text + p.content }
-            } else {
-              blocks.push({ type: 'text', text: p.content! })
-            }
-            return [
-              ...prev.slice(0, -1),
-              { ...last, content: last.content + p.content, _blocks: blocks },
-            ]
+          const targetIdx = findAssistantMsg(prev, p.message_id)
+          if (targetIdx < 0) return prev
+          const target = prev[targetIdx]
+
+          const blocks = [...(target._blocks ?? [])]
+          const lastBlock = blocks[blocks.length - 1]
+          if (lastBlock?.type === 'text') {
+            blocks[blocks.length - 1] = { type: 'text', text: lastBlock.text + p.content }
+          } else {
+            blocks.push({ type: 'text', text: p.content! })
           }
-          return prev
+          const updated = [...prev]
+          updated[targetIdx] = { ...target, content: target.content + p.content, _blocks: blocks }
+          return updated
         })
       }
     })
@@ -236,38 +319,9 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
           tool_call_id: null,
           sort_order: prev.length,
           created_at: now,
-        },
-        {
-          id: `temp-assistant-${now}`,
-          conversation_id: conversationId,
-          role: 'assistant',
-          content: '',
-          provider_id: selectedProviderId,
-          model_id: selectedModelId,
-          input_tokens: null,
-          output_tokens: null,
-          tool_calls: null,
-          tool_call_id: null,
-          sort_order: prev.length + 1,
-          created_at: now,
-        },
-      ])
-    } else {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `temp-assistant-${now}`,
-          conversation_id: conversationId,
-          role: 'assistant',
-          content: '',
-          provider_id: selectedProviderId,
-          model_id: selectedModelId,
-          input_tokens: null,
-          output_tokens: null,
-          tool_calls: null,
-          tool_call_id: null,
-          sort_order: prev.length,
-          created_at: now,
+          reasoning_content: null,
+          rating: null,
+          schema_version: 2,
         },
       ])
     }
@@ -323,10 +377,12 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
           <MessageItem
             key={m.id}
             message={m}
-            isStreaming={streaming && m.id.startsWith('temp-assistant-')}
+            isStreaming={streaming && i === visibleMessages.length - 1 && m.role === 'assistant'}
             isLastMessage={i === visibleMessages.length - 1}
             onDelete={handleDelete}
             onRegenerate={m.role === 'assistant' ? handleRegenerate : undefined}
+            onEdit={m.role === 'user' && !streaming ? handleEdit : undefined}
+            onRate={m.role === 'assistant' ? handleRate : undefined}
             emojiMap={emojiMap}
           />
         ))}

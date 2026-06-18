@@ -50,6 +50,27 @@ pub fn update_content_and_tool_calls(
     Ok(())
 }
 
+pub fn update_assistant_message(
+    conn: &mut SqliteConnection,
+    id: &str,
+    content: &str,
+    reasoning_content: Option<&str>,
+    tool_calls: Option<&str>,
+    input_tokens: Option<i32>,
+    output_tokens: Option<i32>,
+) -> QueryResult<()> {
+    diesel::update(messages::table.find(id))
+        .set((
+            messages::content.eq(content),
+            messages::reasoning_content.eq(reasoning_content),
+            messages::tool_calls.eq(tool_calls),
+            messages::input_tokens.eq(input_tokens),
+            messages::output_tokens.eq(output_tokens),
+        ))
+        .execute(conn)?;
+    Ok(())
+}
+
 pub fn update_tokens(
     conn: &mut SqliteConnection,
     id: &str,
@@ -61,6 +82,17 @@ pub fn update_tokens(
             messages::input_tokens.eq(input_tokens),
             messages::output_tokens.eq(output_tokens),
         ))
+        .execute(conn)?;
+    Ok(())
+}
+
+pub fn update_rating(
+    conn: &mut SqliteConnection,
+    id: &str,
+    rating: Option<i32>,
+) -> QueryResult<()> {
+    diesel::update(messages::table.find(id))
+        .set(messages::rating.eq(rating))
         .execute(conn)?;
     Ok(())
 }

@@ -176,14 +176,19 @@ pub(crate) fn build_messages(
         match m.role.as_str() {
             "user" => msgs.push(ChatMessage::user(&m.content)),
             "assistant" => {
-                if let Some(ref tc_json) = m.tool_calls {
-                    let tool_calls = extract_tool_calls_from_blocks(tc_json);
-                    if !tool_calls.is_empty() {
-                        msgs.push(ChatMessage::assistant_with_tools(&m.content, None, tool_calls));
-                        continue;
-                    }
+                let tool_calls = if m.schema_version >= 2 {
+                    parse_openai_tool_calls(m.tool_calls.as_deref())
+                } else {
+                    m.tool_calls.as_deref()
+                        .map(|tc| extract_tool_calls_from_blocks(tc))
+                        .unwrap_or_default()
+                };
+                let reasoning = m.reasoning_content.clone();
+                if !tool_calls.is_empty() {
+                    msgs.push(ChatMessage::assistant_with_tools(&m.content, reasoning, tool_calls));
+                } else {
+                    msgs.push(ChatMessage { role: "assistant".into(), content: m.content.clone(), reasoning_content: reasoning, tool_calls: None, tool_call_id: None });
                 }
-                msgs.push(ChatMessage { role: "assistant".into(), content: m.content.clone(), reasoning_content: None, tool_calls: None, tool_call_id: None });
             }
             "tool" => {
                 if let Some(ref call_id) = m.tool_call_id {
@@ -211,6 +216,32 @@ pub(crate) fn extract_tool_calls_from_blocks(blocks_json: &str) -> Vec<provider:
             arguments: data.get("arguments")?.as_str()?.to_string(),
         })
     }).collect()
+}
+
+pub(crate) fn parse_openai_tool_calls(json: Option<&str>) -> Vec<provider::ToolCall> {
+    let Some(json) = json else { return vec![] };
+    let arr: Vec<serde_json::Value> = match serde_json::from_str(json) {
+        Ok(v) => v,
+        Err(_) => return vec![],
+    };
+    arr.iter().filter_map(|tc| {
+        let func = tc.get("function")?;
+        Some(provider::ToolCall {
+            id: tc.get("id")?.as_str()?.to_string(),
+            name: func.get("name")?.as_str()?.to_string(),
+            arguments: func.get("arguments")?.as_str()?.to_string(),
+        })
+    }).collect()
+}
+
+pub(crate) fn serialize_tool_calls_openai(tool_calls: &[provider::ToolCall]) -> String {
+    serde_json::to_string(
+        &tool_calls.iter().map(|tc| serde_json::json!({
+            "id": tc.id,
+            "type": "function",
+            "function": { "name": tc.name, "arguments": tc.arguments }
+        })).collect::<Vec<_>>()
+    ).unwrap_or_default()
 }
 
 fn estimate_tokens(content: &str) -> usize {
@@ -384,6 +415,15 @@ async fn load_messages(app: tauri::AppHandle, conversation_id: String) -> Result
 }
 
 #[tauri::command]
+async fn update_message_content(app: tauri::AppHandle, id: String, content: String) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::message::update_content(&mut conn, &id, &content).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn delete_message(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
@@ -399,6 +439,15 @@ async fn delete_messages_from(app: tauri::AppHandle, conversation_id: String, fr
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::message::delete_messages_from(&mut conn, &conversation_id, from_sort_order)
             .map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn rate_message(app: tauri::AppHandle, id: String, rating: Option<i32>) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::message::update_rating(&mut conn, &id, rating).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
 
@@ -1071,6 +1120,11 @@ async fn consume_stream(
                             entry.2.push_str(&arguments);
                         }
                     }
+                    Ok(Some(Ok(provider::StreamEvent::ToolCallDone { index, arguments }))) => {
+                        if let Some(entry) = tool_acc.get_mut(index) {
+                            entry.2 = arguments;
+                        }
+                    }
                     Ok(Some(Ok(provider::StreamEvent::Done { usage: u, finish_reason: fr }))) => {
                         usage = u;
                         finish_reason = fr;
@@ -1644,7 +1698,7 @@ async fn chat(
 
     // Persist user message
     let user_msg_id = uuid::Uuid::new_v4().to_string();
-    let assistant_msg_id = uuid::Uuid::new_v4().to_string();
+    let mut assistant_msg_id = String::new();
     let now = now_ms();
 
     {
@@ -1658,24 +1712,7 @@ async fn chat(
                 id: &msg_id, conversation_id: &conv_id, role: "user", content: &msg,
                 provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
                 tool_calls: None, tool_call_id: None, sort_order: 0, created_at: now,
-            }).map_err(|e| e.to_string())?;
-            Ok::<_, String>(())
-        }).await.map_err(|e| e.to_string())??;
-    }
-
-    // Persist placeholder assistant message
-    {
-        let pool = pool.clone();
-        let conv_id = conversation_id.clone();
-        let msg_id = assistant_msg_id.clone();
-        let model_clone = model.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool)?;
-            db::ops::message::insert_message(&mut conn, &NewMessage {
-                id: &msg_id, conversation_id: &conv_id, role: "assistant", content: "",
-                provider_id: None, model_id: Some(&model_clone), input_tokens: None,
-                output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
-                created_at: now,
+                reasoning_content: None, rating: None, schema_version: 2,
             }).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
@@ -1723,14 +1760,36 @@ async fn chat(
         db_pool: Some(pool.clone()),
     };
 
-    let mut full_content = String::new();
-    let mut blocks: Vec<serde_json::Value> = Vec::new();
     let mut total_input_tokens = 0i32;
     let mut total_output_tokens = 0i32;
+    let mut last_assistant_text = String::new();
 
-    // Unified streaming agent loop: always streams, handles tools when present
+    // Unified streaming agent loop: each iteration creates a new assistant message
     loop {
         if cancel.is_cancelled() { break; }
+
+        // Create a new assistant message for this iteration
+        assistant_msg_id = uuid::Uuid::new_v4().to_string();
+        {
+            let pool = pool.clone();
+            let conv_id = conversation_id.clone();
+            let msg_id = assistant_msg_id.clone();
+            let model_clone = model.clone();
+            tokio::task::spawn_blocking(move || {
+                let mut conn = get_conn(&pool)?;
+                db::ops::message::insert_message(&mut conn, &NewMessage {
+                    id: &msg_id, conversation_id: &conv_id, role: "assistant", content: "",
+                    provider_id: None, model_id: Some(&model_clone), input_tokens: None,
+                    output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
+                    created_at: now, reasoning_content: None, rating: None, schema_version: 2,
+                }).map_err(|e| e.to_string())?;
+                Ok::<_, String>(())
+            }).await.map_err(|e| e.to_string())??;
+        }
+
+        app.emit("chat-stream", serde_json::json!({
+            "type": "turn_start", "message_id": &assistant_msg_id, "conversation_id": &conversation_id,
+        })).map_err(|e| e.to_string())?;
 
         let result = {
             let mut _last_err = String::new();
@@ -1772,18 +1831,36 @@ async fn chat(
             total_output_tokens += u.completion_tokens.unwrap_or(0);
         }
 
-        if !result.reasoning.is_empty() {
-            blocks.push(serde_json::json!({"type": "thinking", "text": &result.reasoning}));
-        }
-        if !result.text.is_empty() {
-            full_content.push_str(&result.text);
-            blocks.push(serde_json::json!({"type": "text", "text": &result.text}));
+        let has_tool_calls = !result.tool_calls.is_empty()
+            && !matches!(result.finish_reason.as_deref(), Some("length") | Some("max_tokens"));
+
+        // Persist this iteration's assistant message in OpenAI format
+        let tool_calls_json = if has_tool_calls {
+            Some(serialize_tool_calls_openai(&result.tool_calls))
+        } else {
+            None
+        };
+        {
+            let pool = pool.clone();
+            let msg_id = assistant_msg_id.clone();
+            let content = result.text.clone();
+            let reasoning = if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) };
+            let tc_json = tool_calls_json.clone();
+            let inp = result.usage.as_ref().and_then(|u| u.prompt_tokens);
+            let out = result.usage.as_ref().and_then(|u| u.completion_tokens);
+            tokio::task::spawn_blocking(move || {
+                if let Ok(mut conn) = pool.get() {
+                    let _ = db::ops::message::update_assistant_message(
+                        &mut conn, &msg_id, &content,
+                        reasoning.as_deref(), tc_json.as_deref(), inp, out,
+                    );
+                }
+            }).await.map_err(|e| e.to_string())?;
         }
 
-        if result.tool_calls.is_empty() { break; }
+        last_assistant_text = result.text.clone();
 
-        // Discard tool calls if response was truncated
-        if matches!(result.finish_reason.as_deref(), Some("length") | Some("max_tokens")) { break; }
+        if !has_tool_calls { break; }
 
         chat_messages.push(ChatMessage::assistant_with_tools(
             &result.text, if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) }, result.tool_calls.clone()
@@ -1808,7 +1885,8 @@ async fn chat(
             let result = if !tool_allowed {
                 "Tool not available for this assistant.".to_string()
             } else if is_mcp {
-                let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
+                let args: serde_json::Value = serde_json::from_str(&tc.arguments)
+                    .unwrap_or_else(|_| serde_json::json!({}));
                 let mcp = app.state::<AppMcp>();
                 let mut mgr = mcp.0.lock().await;
                 match mgr.call_tool(&tc.name, args).await {
@@ -1861,7 +1939,7 @@ async fn chat(
                 };
                 if approved {
                     let args: serde_json::Value = serde_json::from_str(&tc.arguments)
-                        .unwrap_or_default();
+                        .unwrap_or_else(|_| serde_json::json!({}));
                     match tool.execute(args, &tool_context).await {
                         Ok(output) => output,
                         Err(e) => format!("Error: {e}"),
@@ -1882,17 +1960,6 @@ async fn chat(
                 "message_id": &assistant_msg_id,
             })).map_err(|e| e.to_string())?;
 
-            blocks.push(serde_json::json!({
-                "type": "tool_call",
-                "data": {
-                    "call_id": tc.id,
-                    "tool_name": tc.name,
-                    "arguments": tc.arguments,
-                    "status": "completed",
-                    "result": &result
-                }
-            }));
-
             {
                 let pool = pool.clone();
                 let conv_id = conversation_id.clone();
@@ -1907,6 +1974,7 @@ async fn chat(
                             input_tokens: None, output_tokens: None,
                             tool_calls: None, tool_call_id: Some(&call_id),
                             sort_order: 0, created_at: now,
+                            reasoning_content: None, rating: None, schema_version: 2,
                         });
                     }
                 }).await;
@@ -1917,30 +1985,6 @@ async fn chat(
 
         if cancel.is_cancelled() { break; }
         trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
-    }
-
-    // Persist assistant message
-    {
-        let pool = pool.clone();
-        let msg_id = assistant_msg_id.clone();
-        let content = full_content.clone();
-        let blocks_json = if blocks.is_empty() { None } else {
-            serde_json::to_string(&blocks).ok()
-        };
-        let inp = total_input_tokens;
-        let out = total_output_tokens;
-        tokio::task::spawn_blocking(move || {
-            if let Ok(mut conn) = pool.get() {
-                if let Some(ref bj) = blocks_json {
-                    let _ = db::ops::message::update_content_and_tool_calls(&mut conn, &msg_id, &content, Some(bj));
-                } else {
-                    let _ = db::ops::message::update_content(&mut conn, &msg_id, &content);
-                }
-                if inp > 0 || out > 0 {
-                    let _ = db::ops::message::update_tokens(&mut conn, &msg_id, Some(inp), Some(out));
-                }
-            }
-        }).await.map_err(|e| e.to_string())?;
     }
 
     // Clean up cancel token
@@ -1959,7 +2003,7 @@ async fn chat(
         let title_messages = vec![ChatMessage::user(&format!(
             "Generate a short title (max 6 words, no quotes, no punctuation) for this conversation:\nUser: {}\nAssistant: {}",
             &message,
-            take_bytes_at_char_boundary(&full_content, 300)
+            take_bytes_at_char_boundary(&last_assistant_text, 300)
         ))];
         let title_params = ChatParams {
             model: params.model,
@@ -2199,7 +2243,7 @@ pub fn run() {
             set_secret, get_secret, delete_secret,
             list_conversations, create_conversation,
             update_conversation_title, toggle_pin_conversation, delete_conversation,
-            load_messages, delete_message, delete_messages_from,
+            load_messages, update_message_content, delete_message, delete_messages_from, rate_message,
             list_assistants, create_assistant, update_assistant, delete_assistant,
             list_providers, create_provider, update_provider, delete_provider,
             set_provider_key, get_provider_key_exists, fetch_provider_models,

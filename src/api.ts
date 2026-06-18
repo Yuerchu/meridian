@@ -20,11 +20,17 @@ export const api = {
   loadMessages: (conversationId: string) =>
     invoke<Message[]>('load_messages', { conversationId }),
 
+  updateMessageContent: (id: string, content: string) =>
+    invoke<void>('update_message_content', { id, content }),
+
   deleteMessage: (id: string) =>
     invoke<void>('delete_message', { id }),
 
   deleteMessagesFrom: (conversationId: string, fromSortOrder: number) =>
     invoke<void>('delete_messages_from', { conversationId, fromSortOrder }),
+
+  rateMessage: (id: string, rating: number | null) =>
+    invoke<void>('rate_message', { id, rating }),
 
   stopChat: (conversationId: string) =>
     invoke<void>('stop_chat', { conversationId }),

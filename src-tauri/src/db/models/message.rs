@@ -18,6 +18,9 @@ pub struct Message {
     pub tool_call_id: Option<String>,
     pub sort_order: i32,
     pub created_at: i64,
+    pub reasoning_content: Option<String>,
+    pub rating: Option<i32>,
+    pub schema_version: i32,
 }
 
 #[derive(Debug, Insertable)]
@@ -35,4 +38,7 @@ pub struct NewMessage<'a> {
     pub tool_call_id: Option<&'a str>,
     pub sort_order: i32,
     pub created_at: i64,
+    pub reasoning_content: Option<&'a str>,
+    pub rating: Option<i32>,
+    pub schema_version: i32,
 }

@@ -135,6 +135,9 @@ diesel::table! {
         tool_call_id -> Nullable<Text>,
         sort_order -> Integer,
         created_at -> BigInt,
+        reasoning_content -> Nullable<Text>,
+        rating -> Nullable<Integer>,
+        schema_version -> Integer,
     }
 }
 

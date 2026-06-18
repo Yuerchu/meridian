@@ -1,9 +1,9 @@
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
-import { Bot, Copy, Check, Trash2, RefreshCw, ChevronDown, ChevronRight, Lightbulb } from 'lucide-react'
+import { Bot, Copy, Check, Trash2, RefreshCw, ChevronDown, ChevronRight, Lightbulb, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { ToolCallBlock } from './tool-call-block'
@@ -234,13 +234,54 @@ interface MessageItemProps {
   isLastMessage?: boolean
   onDelete?: (id: string) => void
   onRegenerate?: (id: string) => void
+  onEdit?: (id: string, content: string) => void
+  onRate?: (id: string, rating: number | null) => void
   emojiMap?: EmojiMap
 }
 
-export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, emojiMap }: MessageItemProps) {
+export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, onEdit, onRate, emojiMap }: MessageItemProps) {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime()
   const isUser = message.role === 'user'
+  const [editing, setEditing] = useState(false)
+  const [editText, setEditText] = useState('')
+  const editRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    if (editing && editRef.current) {
+      const ta = editRef.current
+      ta.focus()
+      ta.setSelectionRange(ta.value.length, ta.value.length)
+      ta.style.height = 'auto'
+      ta.style.height = ta.scrollHeight + 'px'
+    }
+  }, [editing])
+
+  const handleStartEdit = useCallback(() => {
+    setEditText(message.content)
+    setEditing(true)
+  }, [message.content])
+
+  const handleSaveEdit = useCallback(() => {
+    const trimmed = editText.trim()
+    if (trimmed && trimmed !== message.content && onEdit) {
+      onEdit(message.id, trimmed)
+    }
+    setEditing(false)
+  }, [editText, message.content, message.id, onEdit])
+
+  const handleCancelEdit = useCallback(() => {
+    setEditing(false)
+  }, [])
+
+  const handleEditKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      handleCancelEdit()
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSaveEdit()
+    }
+  }, [handleCancelEdit, handleSaveEdit])
 
   if (isUser) {
     const { senderPrefix, quotedMessage, body } = parseOneBotContent(message.content)
@@ -251,16 +292,72 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
           {senderPrefix && (
             <div className="text-xs text-muted-foreground/60 mb-1 text-right">{senderPrefix}</div>
           )}
-          <div className="rounded-2xl bg-accent px-4 py-2.5 text-sm leading-relaxed">
-            {quotedMessage && (
-              <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
-            )}
-            <div className="whitespace-pre-wrap">
-              {emojiMap && Object.keys(emojiMap).length > 0
-                ? renderEmojisInText(body, emojiMap)
-                : body}
+          {editing ? (
+            <div className="rounded-2xl bg-accent px-4 py-2.5">
+              <textarea
+                ref={editRef}
+                value={editText}
+                onChange={(e) => {
+                  setEditText(e.target.value)
+                  e.target.style.height = 'auto'
+                  e.target.style.height = e.target.scrollHeight + 'px'
+                }}
+                onKeyDown={handleEditKeyDown}
+                className="w-full min-w-[200px] bg-transparent text-sm leading-relaxed resize-none outline-none"
+                rows={1}
+              />
+              <div className="flex justify-end gap-1 mt-1.5">
+                <button
+                  onClick={handleCancelEdit}
+                  className="px-2 py-0.5 rounded text-xs text-muted-foreground hover:bg-background/50 transition-colors"
+                  title="Esc"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={handleSaveEdit}
+                  className="px-2 py-0.5 rounded text-xs text-primary hover:bg-background/50 transition-colors"
+                  title="Enter"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="rounded-2xl bg-accent px-4 py-2.5 text-sm leading-relaxed">
+                {quotedMessage && (
+                  <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
+                )}
+                <div className="whitespace-pre-wrap">
+                  {emojiMap && Object.keys(emojiMap).length > 0
+                    ? renderEmojisInText(body, emojiMap)
+                    : body}
+                </div>
+              </div>
+              <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                {onEdit && (
+                  <button
+                    onClick={handleStartEdit}
+                    className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                    title={t('chat.edit')}
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <CopyButton text={message.content} />
+                {onDelete && (
+                  <button
+                    onClick={() => onDelete(message.id)}
+                    className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
+                    title={t('chat.delete')}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     )
@@ -297,6 +394,30 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
           )}
           <div className="flex gap-1">
             <CopyButton text={message.content} />
+            {onRate && !isStreaming && (
+              <>
+                <button
+                  onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}
+                  className={cn(
+                    'p-1 rounded hover:bg-accent transition-colors',
+                    message.rating === 1 ? 'text-green-500' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  title={t('chat.thumbsUp')}
+                >
+                  <ThumbsUp className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}
+                  className={cn(
+                    'p-1 rounded hover:bg-accent transition-colors',
+                    message.rating === -1 ? 'text-red-500' : 'text-muted-foreground hover:text-foreground',
+                  )}
+                  title={t('chat.thumbsDown')}
+                >
+                  <ThumbsDown className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
             {onRegenerate && !isStreaming && (
               <button
                 onClick={() => onRegenerate(message.id)}
