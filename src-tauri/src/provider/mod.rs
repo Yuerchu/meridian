@@ -59,13 +59,18 @@ impl Default for ChatParams {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamEvent {
-    Text(String),
-    Reasoning(String),
+    MessageStart { message_id: String },
+    Text { content: String },
+    Reasoning { content: String },
     ToolCallStart { index: usize, id: String, name: String },
     ToolCallDelta { index: usize, arguments: String },
-    Done { usage: Option<TokenUsage>, finish_reason: Option<String> },
+    ToolCallDone { index: usize, arguments: String },
+    UsageUpdate { usage: TokenUsage },
+    Stop { reason: String, usage: Option<TokenUsage> },
+    Error { message: String },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,11 +87,21 @@ pub struct ToolCall {
     pub arguments: String,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct TokenUsage {
     pub prompt_tokens: Option<i32>,
     pub completion_tokens: Option<i32>,
     pub total_tokens: Option<i32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProviderCapabilities {
+    pub supports_tools: bool,
+    pub supports_streaming_tools: bool,
+    pub supports_thinking: bool,
+    pub supports_images: bool,
+    pub max_context_tokens: Option<u32>,
+    pub max_output_tokens: Option<u32>,
 }
 
 pub struct AgentResponse {
@@ -112,6 +127,14 @@ pub type ChatStream = Pin<Box<dyn futures::Stream<Item = Result<StreamEvent, Pro
 
 #[async_trait]
 pub trait ChatProvider: Send + Sync {
+    fn capabilities(&self, _model: &str) -> ProviderCapabilities {
+        ProviderCapabilities {
+            supports_tools: true,
+            supports_streaming_tools: true,
+            ..Default::default()
+        }
+    }
+
     async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,

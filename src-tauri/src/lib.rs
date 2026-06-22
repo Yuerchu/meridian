@@ -2,6 +2,7 @@
 mod android_bridge;
 mod client;
 mod db;
+mod edit_session;
 mod emoji;
 mod files;
 mod keyring;
@@ -10,6 +11,8 @@ mod mcp;
 mod onebot;
 mod platform;
 mod provider;
+#[cfg(not(target_os = "android"))]
+mod sandbox;
 mod secrets;
 mod template;
 mod tools;
@@ -51,6 +54,7 @@ pub enum ApprovalDecision {
 
 struct ApprovalWaiters(Mutex<HashMap<String, oneshot::Sender<ApprovalDecision>>>);
 struct ActiveChats(Mutex<HashMap<String, CancellationToken>>);
+struct EditSessions(Mutex<HashMap<String, Arc<tokio::sync::Mutex<edit_session::EditSession>>>>);
 
 pub fn take_bytes_at_char_boundary(s: &str, max_bytes: usize) -> &str {
     if s.len() <= max_bytes {
@@ -315,7 +319,44 @@ pub(crate) fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_lim
         trimmed.push(messages[0].clone());
     }
     trimmed.extend_from_slice(&messages[start..]);
+    remove_orphan_tool_messages(&mut trimmed);
     *messages = trimmed;
+}
+
+pub(crate) fn remove_orphan_tool_messages(messages: &mut Vec<ChatMessage>) {
+    let mut valid_call_ids = std::collections::HashSet::new();
+    for m in messages.iter() {
+        if let Some(ref tcs) = m.tool_calls {
+            for tc in tcs {
+                valid_call_ids.insert(tc.id.clone());
+            }
+        }
+    }
+    messages.retain(|m| {
+        if m.role == "tool" {
+            if let Some(ref id) = m.tool_call_id {
+                return valid_call_ids.contains(id);
+            }
+        }
+        true
+    });
+    // Also remove assistant tool_calls whose results were dropped
+    let mut valid_result_ids = std::collections::HashSet::new();
+    for m in messages.iter() {
+        if m.role == "tool" {
+            if let Some(ref id) = m.tool_call_id {
+                valid_result_ids.insert(id.clone());
+            }
+        }
+    }
+    for m in messages.iter_mut() {
+        if let Some(ref mut tcs) = m.tool_calls {
+            tcs.retain(|tc| valid_result_ids.contains(&tc.id));
+            if tcs.is_empty() {
+                m.tool_calls = None;
+            }
+        }
+    }
 }
 
 pub(crate) fn provider_secret_name(provider_id: &str) -> String {
@@ -858,6 +899,102 @@ async fn fetch_provider_models(
         .map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+async fn get_provider_capabilities(
+    app: tauri::AppHandle,
+    provider_id: String,
+    model_id: String,
+) -> Result<provider::ProviderCapabilities, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    let (provider_type, api_format) = {
+        let pid = provider_id.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| e.to_string())?;
+            let p = db::ops::provider::get_provider(&mut conn, &pid).map_err(|e| e.to_string())?;
+            Ok::<_, String>((p.provider_type, p.api_format))
+        }).await.map_err(|e| e.to_string())??
+    };
+    Ok(provider::registry::get_capabilities(&provider_type, Some(&api_format), &model_id))
+}
+
+// --- Edit Session commands ---
+
+#[derive(serde::Serialize)]
+struct StagedEditInfo {
+    path: String,
+    diff: String,
+    tool_name: String,
+}
+
+#[tauri::command]
+async fn list_staged_edits(
+    app: tauri::AppHandle,
+    conversation_id: String,
+) -> Result<Vec<StagedEditInfo>, String> {
+    let sessions = app.state::<EditSessions>();
+    let map = sessions.0.lock().await;
+    if let Some(session) = map.get(&conversation_id) {
+        let s = session.lock().await;
+        Ok(s.pending_files().into_iter().map(|(p, e)| StagedEditInfo {
+            path: p.display().to_string(),
+            diff: e.diff.clone(),
+            tool_name: e.tool_name.clone(),
+        }).collect())
+    } else {
+        Ok(vec![])
+    }
+}
+
+#[tauri::command]
+async fn approve_staged_edit(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    path: String,
+) -> Result<(), String> {
+    let sessions = app.state::<EditSessions>();
+    let map = sessions.0.lock().await;
+    let session = map.get(&conversation_id).ok_or("No edit session for this conversation")?;
+    let mut s = session.lock().await;
+    let pb = std::path::PathBuf::from(&path);
+    let edit = s.approve(&pb).ok_or("No staged edit for this path")?;
+    let target = tools::ResolvedTarget::Real(pb);
+    tools::backend::write_string(&target, &edit.proposed).await?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn approve_all_staged_edits(
+    app: tauri::AppHandle,
+    conversation_id: String,
+) -> Result<usize, String> {
+    let sessions = app.state::<EditSessions>();
+    let map = sessions.0.lock().await;
+    let session = map.get(&conversation_id).ok_or("No edit session for this conversation")?;
+    let mut s = session.lock().await;
+    let edits = s.approve_all();
+    let count = edits.len();
+    for (path, edit) in edits {
+        let target = tools::ResolvedTarget::Real(path);
+        tools::backend::write_string(&target, &edit.proposed).await?;
+    }
+    Ok(count)
+}
+
+#[tauri::command]
+async fn reject_staged_edit(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    path: String,
+) -> Result<(), String> {
+    let sessions = app.state::<EditSessions>();
+    let map = sessions.0.lock().await;
+    let session = map.get(&conversation_id).ok_or("No edit session for this conversation")?;
+    let mut s = session.lock().await;
+    let pb = std::path::PathBuf::from(&path);
+    s.reject(&pb).ok_or("No staged edit for this path")?;
+    Ok(())
+}
+
 // --- Tool approval commands ---
 
 #[tauri::command]
@@ -1278,39 +1415,47 @@ async fn consume_stream(
                     Err(_) => {
                         return Err("Stream idle timeout".to_string());
                     }
-                    Ok(Some(Ok(provider::StreamEvent::Text(s)))) => {
-                        text.push_str(&s);
+                    Ok(Some(Ok(provider::StreamEvent::Text { content: ref s }))) => {
+                        text.push_str(s);
                         app.emit("chat-stream", serde_json::json!({
-                            "content": s, "done": false, "message_id": message_id,
+                            "type": "text", "content": s, "message_id": message_id,
                         })).map_err(|e| e.to_string())?;
                     }
-                    Ok(Some(Ok(provider::StreamEvent::Reasoning(s)))) => {
-                        reasoning.push_str(&s);
+                    Ok(Some(Ok(provider::StreamEvent::Reasoning { content: ref s }))) => {
+                        reasoning.push_str(s);
                         app.emit("chat-stream", serde_json::json!({
-                            "type": "reasoning", "content": s,
-                            "done": false, "message_id": message_id,
+                            "type": "reasoning", "content": s, "message_id": message_id,
                         })).map_err(|e| e.to_string())?;
                     }
-                    Ok(Some(Ok(provider::StreamEvent::ToolCallStart { index, id, name }))) => {
+                    Ok(Some(Ok(provider::StreamEvent::ToolCallStart { index, ref id, ref name }))) => {
                         while tool_acc.len() <= index {
                             tool_acc.push((String::new(), String::new(), String::new()));
                         }
-                        tool_acc[index] = (id, name, String::new());
+                        tool_acc[index] = (id.clone(), name.clone(), String::new());
                     }
-                    Ok(Some(Ok(provider::StreamEvent::ToolCallDelta { index, arguments }))) => {
+                    Ok(Some(Ok(provider::StreamEvent::ToolCallDelta { index, ref arguments }))) => {
                         if let Some(entry) = tool_acc.get_mut(index) {
-                            entry.2.push_str(&arguments);
+                            entry.2.push_str(arguments);
                         }
                     }
-                    Ok(Some(Ok(provider::StreamEvent::ToolCallDelta { index, arguments }))) => {
+                    Ok(Some(Ok(provider::StreamEvent::ToolCallDone { index, ref arguments }))) => {
                         if let Some(entry) = tool_acc.get_mut(index) {
-                            entry.2 = arguments;
+                            entry.2 = arguments.clone();
                         }
                     }
-                    Ok(Some(Ok(provider::StreamEvent::Done { usage: u, finish_reason: fr }))) => {
-                        usage = u;
-                        finish_reason = fr;
+                    Ok(Some(Ok(provider::StreamEvent::UsageUpdate { usage: ref u }))) => {
+                        usage = Some(u.clone());
                     }
+                    Ok(Some(Ok(provider::StreamEvent::Stop { ref reason, usage: ref u }))) => {
+                        if let Some(u) = u {
+                            usage = Some(u.clone());
+                        }
+                        finish_reason = Some(reason.clone());
+                    }
+                    Ok(Some(Ok(provider::StreamEvent::Error { ref message }))) => {
+                        tracing::warn!("stream error: {message}");
+                    }
+                    Ok(Some(Ok(provider::StreamEvent::MessageStart { .. }))) => {}
                     Ok(Some(Err(e))) => {
                         return Err(e.to_string());
                     }
@@ -1855,6 +2000,7 @@ async fn chat(
 
     let mut chat_messages = build_messages(system_prompt.trim(), &history, &message);
     resolve_file_uris_in_messages(&mut chat_messages);
+    remove_orphan_tool_messages(&mut chat_messages);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
     let (thinking_enabled, thinking_budget, thinking_effort) = {
@@ -1941,6 +2087,9 @@ async fn chat(
         file_access,
         project_id,
         db_pool: Some(pool.clone()),
+        edit_session: None,
+        #[cfg(not(target_os = "android"))]
+        sandbox_policy: None,
     };
 
     let mut total_input_tokens = 0i32;
@@ -1971,7 +2120,7 @@ async fn chat(
         }
 
         app.emit("chat-stream", serde_json::json!({
-            "type": "turn_start", "message_id": &assistant_msg_id, "conversation_id": &conversation_id,
+            "type": "message_start", "message_id": &assistant_msg_id, "conversation_id": &conversation_id,
         })).map_err(|e| e.to_string())?;
 
         let result = {
@@ -2177,7 +2326,8 @@ async fn chat(
     }
 
     app.emit("chat-stream", serde_json::json!({
-        "content": "", "done": true, "message_id": &assistant_msg_id,
+        "type": "stop", "reason": "end_turn", "done": true,
+        "message_id": &assistant_msg_id,
         "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
     })).map_err(|e| e.to_string())?;
 
@@ -2409,6 +2559,7 @@ pub fn run() {
             app.manage(AppTools(Arc::new(registry)));
             app.manage(ApprovalWaiters(Mutex::new(HashMap::new())));
             app.manage(ActiveChats(Mutex::new(HashMap::new())));
+            app.manage(EditSessions(Mutex::new(HashMap::new())));
             app.manage(AppMcp(Arc::new(Mutex::new(mcp::McpManager::new()))));
 
             #[cfg(not(target_os = "android"))]
@@ -2429,13 +2580,14 @@ pub fn run() {
             load_messages, update_message_content, delete_message, delete_messages_from, rate_message, export_conversation, upload_file,
             list_assistants, create_assistant, update_assistant, delete_assistant,
             list_providers, create_provider, update_provider, delete_provider,
-            set_provider_key, get_provider_key_exists, fetch_provider_models,
+            set_provider_key, get_provider_key_exists, fetch_provider_models, get_provider_capabilities,
             list_projects, create_project, update_project, delete_project,
             list_conversations_by_project,
             list_memories, save_memory, update_memory, delete_memory,
             get_preference, set_preference,
             list_mcp_servers, create_mcp_server, update_mcp_server, delete_mcp_server,
             connect_mcp_server, disconnect_mcp_server, list_mcp_tools, list_all_tool_names,
+            list_staged_edits, approve_staged_edit, approve_all_staged_edits, reject_staged_edit,
             approve_tool_call, deny_tool_call, respond_to_ask,
             platform::get_platform, platform::get_manage_storage_status, platform::request_manage_storage,
             platform::pick_saf_directory, platform::list_saf_roots, platform::remove_saf_root,
@@ -2618,6 +2770,30 @@ mod tests {
         trim_to_context_limit(&mut msgs, 10, 2);
         let last = msgs.last().unwrap();
         assert_eq!(last.content, "msg-9");
+    }
+
+    #[test]
+    fn test_trim_removes_orphan_tool_results() {
+        use provider::ToolCall;
+        let mut msgs = vec![
+            chat_msg("system", "sys"),
+            ChatMessage::assistant_with_tools("I'll call a tool", None, vec![
+                ToolCall { id: "call_1".into(), name: "read_file".into(), arguments: "{}".into() },
+            ]),
+            ChatMessage::tool_result("call_1", "file content"),
+            chat_msg("user", &"x".repeat(500)),
+            chat_msg("assistant", &"y".repeat(500)),
+        ];
+        trim_to_context_limit(&mut msgs, 100, 2);
+        for m in &msgs {
+            if m.role == "tool" {
+                let id = m.tool_call_id.as_deref().unwrap();
+                let has_call = msgs.iter().any(|am| {
+                    am.tool_calls.as_ref().is_some_and(|tcs| tcs.iter().any(|tc| tc.id == id))
+                });
+                assert!(has_call, "orphan tool result with call_id={id} should have been removed");
+            }
+        }
     }
 
     #[test]

@@ -161,12 +161,12 @@ pub fn parse_openai_sse_events(chunk: &ChatChunk) -> (Vec<StreamEvent>, Option<S
         if let Some(ref delta) = choice.delta {
             if let Some(ref r) = delta.reasoning_content {
                 if !r.is_empty() {
-                    events.push(StreamEvent::Reasoning(r.clone()));
+                    events.push(StreamEvent::Reasoning { content: r.clone() });
                 }
             }
             if let Some(ref c) = delta.content {
                 if !c.is_empty() {
-                    events.push(StreamEvent::Text(c.clone()));
+                    events.push(StreamEvent::Text { content: c.clone() });
                 }
             }
             if let Some(ref tcs) = delta.tool_calls {
@@ -224,8 +224,11 @@ impl ChatProvider for OpenAICompatProvider {
                         match serde_json::from_str::<ChatChunk>(&ev.data) {
                             Ok(chunk) => {
                                 let (mut stream_events, finish_reason, usage) = parse_openai_sse_events(&chunk);
-                                if finish_reason.is_some() || usage.is_some() {
-                                    stream_events.push(StreamEvent::Done { usage, finish_reason });
+                                if let Some(u) = usage {
+                                    stream_events.push(StreamEvent::UsageUpdate { usage: u });
+                                }
+                                if let Some(fr) = finish_reason {
+                                    stream_events.push(StreamEvent::Stop { reason: fr, usage: None });
                                 }
                                 stream_events.into_iter().map(Ok).collect()
                             }

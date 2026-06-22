@@ -178,7 +178,7 @@ fn parse_responses_event(
                 Ok(v) => {
                     if let Some(delta) = v["delta"].as_str() {
                         if !delta.is_empty() {
-                            return vec![Ok(StreamEvent::Text(delta.to_string()))];
+                            return vec![Ok(StreamEvent::Text { content: delta.to_string() })];
                         }
                     }
                     vec![]
@@ -192,7 +192,7 @@ fn parse_responses_event(
                 Ok(v) => {
                     if let Some(delta) = v["delta"].as_str() {
                         if !delta.is_empty() {
-                            return vec![Ok(StreamEvent::Reasoning(delta.to_string()))];
+                            return vec![Ok(StreamEvent::Reasoning { content: delta.to_string() })];
                         }
                     }
                     vec![]
@@ -207,17 +207,40 @@ fn parse_responses_event(
                     let item = &v["item"];
                     if item["type"].as_str() == Some("function_call") {
                         let call_id = item["call_id"].as_str().unwrap_or("").to_string();
+                        let item_id = item["id"].as_str().unwrap_or("").to_string();
                         let name = item["name"].as_str().unwrap_or("").to_string();
                         let index = state.next_index;
                         state.next_index += 1;
                         if !call_id.is_empty() {
                             state.call_id_to_index.insert(call_id.clone(), index);
                         }
+                        if !item_id.is_empty() && item_id != call_id {
+                            state.call_id_to_index.insert(item_id, index);
+                        }
                         return vec![Ok(StreamEvent::ToolCallStart {
                             index,
                             id: call_id,
                             name,
                         })];
+                    }
+                    vec![]
+                }
+                Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
+            }
+        }
+        "response.output_item.done" => {
+            let parsed: Result<serde_json::Value, _> = serde_json::from_str(data);
+            match parsed {
+                Ok(v) => {
+                    let item = &v["item"];
+                    if item["type"].as_str() == Some("function_call") {
+                        let call_id = item["call_id"].as_str()
+                            .or_else(|| item["id"].as_str())
+                            .unwrap_or("");
+                        let arguments = item["arguments"].as_str().unwrap_or("{}").to_string();
+                        if let Some(&index) = state.call_id_to_index.get(call_id) {
+                            return vec![Ok(StreamEvent::ToolCallDone { index, arguments })];
+                        }
                     }
                     vec![]
                 }
@@ -246,6 +269,25 @@ fn parse_responses_event(
                 Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
             }
         }
+        "response.function_call_arguments.done" => {
+            let parsed: Result<serde_json::Value, _> = serde_json::from_str(data);
+            match parsed {
+                Ok(v) => {
+                    let arguments = v["arguments"].as_str().unwrap_or("{}").to_string();
+                    let call_id = v["call_id"].as_str()
+                        .or_else(|| v["item_id"].as_str())
+                        .unwrap_or("");
+                    if let Some(&index) = state.call_id_to_index.get(call_id) {
+                        return vec![Ok(StreamEvent::ToolCallDone {
+                            index,
+                            arguments,
+                        })];
+                    }
+                    vec![]
+                }
+                Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
+            }
+        }
         "response.completed" => {
             let parsed: Result<serde_json::Value, _> = serde_json::from_str(data);
             match parsed {
@@ -258,7 +300,12 @@ fn parse_responses_event(
                         completion_tokens: u.output_tokens.map(|v| v as i32),
                         total_tokens: u.total_tokens.map(|v| v as i32),
                     });
-                    vec![Ok(StreamEvent::Done { usage, finish_reason: Some("stop".into()) })]
+                    let mut events = Vec::new();
+                    if let Some(u) = usage {
+                        events.push(Ok(StreamEvent::UsageUpdate { usage: u }));
+                    }
+                    events.push(Ok(StreamEvent::Stop { reason: "stop".into(), usage: None }));
+                    events
                 }
                 Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
             }
@@ -295,10 +342,12 @@ fn parse_responses_event(
                         completion_tokens: u.output_tokens.map(|v| v as i32),
                         total_tokens: u.total_tokens.map(|v| v as i32),
                     });
-                    vec![Ok(StreamEvent::Done {
-                        usage,
-                        finish_reason: Some(reason.to_string()),
-                    })]
+                    let mut events = Vec::new();
+                    if let Some(u) = usage {
+                        events.push(Ok(StreamEvent::UsageUpdate { usage: u }));
+                    }
+                    events.push(Ok(StreamEvent::Stop { reason: reason.to_string(), usage: None }));
+                    events
                 }
                 Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
             }
@@ -309,6 +358,17 @@ fn parse_responses_event(
 
 #[async_trait]
 impl ChatProvider for OpenAIResponsesProvider {
+    fn capabilities(&self, _model: &str) -> super::ProviderCapabilities {
+        super::ProviderCapabilities {
+            supports_tools: true,
+            supports_streaming_tools: true,
+            supports_thinking: true,
+            supports_images: true,
+            max_context_tokens: Some(200_000),
+            max_output_tokens: Some(100_000),
+        }
+    }
+
     async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,

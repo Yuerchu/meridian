@@ -37,32 +37,39 @@ async fn consume_stream_headless(
                     Err(_) => {
                         return Err("Stream idle timeout".to_string());
                     }
-                    Ok(Some(Ok(StreamEvent::Text(s)))) => {
-                        text.push_str(&s);
+                    Ok(Some(Ok(StreamEvent::Text { content: ref s }))) => {
+                        text.push_str(s);
                     }
-                    Ok(Some(Ok(StreamEvent::Reasoning(s)))) => {
-                        reasoning.push_str(&s);
+                    Ok(Some(Ok(StreamEvent::Reasoning { content: ref s }))) => {
+                        reasoning.push_str(s);
                     }
-                    Ok(Some(Ok(StreamEvent::ToolCallStart { index, id, name }))) => {
+                    Ok(Some(Ok(StreamEvent::ToolCallStart { index, ref id, ref name }))) => {
                         while tool_acc.len() <= index {
                             tool_acc.push((String::new(), String::new(), String::new()));
                         }
-                        tool_acc[index] = (id, name, String::new());
+                        tool_acc[index] = (id.clone(), name.clone(), String::new());
                     }
-                    Ok(Some(Ok(StreamEvent::ToolCallDelta { index, arguments }))) => {
+                    Ok(Some(Ok(StreamEvent::ToolCallDelta { index, ref arguments }))) => {
                         if let Some(entry) = tool_acc.get_mut(index) {
-                            entry.2.push_str(&arguments);
+                            entry.2.push_str(arguments);
                         }
                     }
-                    Ok(Some(Ok(StreamEvent::ToolCallDelta { index, arguments }))) => {
+                    Ok(Some(Ok(StreamEvent::ToolCallDone { index, ref arguments }))) => {
                         if let Some(entry) = tool_acc.get_mut(index) {
-                            entry.2 = arguments;
+                            entry.2 = arguments.clone();
                         }
                     }
-                    Ok(Some(Ok(StreamEvent::Done { usage: u, finish_reason: fr }))) => {
-                        usage = u;
-                        finish_reason = fr;
+                    Ok(Some(Ok(StreamEvent::UsageUpdate { usage: ref u }))) => {
+                        usage = Some(u.clone());
                     }
+                    Ok(Some(Ok(StreamEvent::Stop { ref reason, usage: ref u }))) => {
+                        if let Some(u) = u {
+                            usage = Some(u.clone());
+                        }
+                        finish_reason = Some(reason.clone());
+                    }
+                    Ok(Some(Ok(StreamEvent::Error { .. }))) => {}
+                    Ok(Some(Ok(StreamEvent::MessageStart { .. }))) => {}
                     Ok(Some(Err(e))) => {
                         return Err(e.to_string());
                     }
@@ -150,6 +157,7 @@ pub async fn headless_chat(
 
     let mut chat_messages = build_messages(&system_prompt, &history, user_message);
     crate::resolve_file_uris_in_messages(&mut chat_messages);
+    crate::remove_orphan_tool_messages(&mut chat_messages);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
     let params = ChatParams {
@@ -219,6 +227,9 @@ pub async fn headless_chat(
         file_access: tools::FileAccess::default(),
         project_id: project_id.map(|s| s.to_string()),
         db_pool: Some(pool.clone()),
+        edit_session: None,
+        #[cfg(not(target_os = "android"))]
+        sandbox_policy: None,
     };
 
     // Agent loop: each iteration creates a new assistant message

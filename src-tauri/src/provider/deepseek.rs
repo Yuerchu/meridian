@@ -95,6 +95,17 @@ impl DeepSeekProvider {
 
 #[async_trait]
 impl ChatProvider for DeepSeekProvider {
+    fn capabilities(&self, _model: &str) -> super::ProviderCapabilities {
+        super::ProviderCapabilities {
+            supports_tools: true,
+            supports_streaming_tools: true,
+            supports_thinking: true,
+            supports_images: false,
+            max_context_tokens: Some(64_000),
+            max_output_tokens: Some(16_000),
+        }
+    }
+
     async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,
@@ -118,8 +129,11 @@ impl ChatProvider for DeepSeekProvider {
                         match serde_json::from_str::<ChatChunk>(&ev.data) {
                             Ok(chunk) => {
                                 let (mut stream_events, finish_reason, usage) = parse_openai_sse_events(&chunk);
-                                if finish_reason.is_some() || usage.is_some() {
-                                    stream_events.push(StreamEvent::Done { usage, finish_reason });
+                                if let Some(u) = usage {
+                                    stream_events.push(StreamEvent::UsageUpdate { usage: u });
+                                }
+                                if let Some(fr) = finish_reason {
+                                    stream_events.push(StreamEvent::Stop { reason: fr, usage: None });
                                 }
                                 stream_events.into_iter().map(Ok).collect()
                             }

@@ -44,8 +44,22 @@ impl Tool for WriteFileTool {
 
         let target = context.resolve_and_validate(path_str)?;
 
-        super::backend::write_string(&target, content).await?;
-
-        Ok(format!("Successfully wrote {} bytes to {}", content.len(), path_str))
+        if let Some(ref session) = context.edit_session {
+            let resolved_path = match &target {
+                super::ResolvedTarget::Real(p) => p.clone(),
+                super::ResolvedTarget::Saf { .. } => {
+                    super::backend::write_string(&target, content).await?;
+                    return Ok(format!("Successfully wrote {} bytes to {}", content.len(), path_str));
+                }
+            };
+            let original = super::backend::read_to_string(&target).await.ok();
+            let mut session = session.lock().await;
+            session.stage_write(resolved_path.clone(), original, content.to_string(), "write_file");
+            let diff = session.get(&resolved_path).unwrap().diff.clone();
+            Ok(format!("Staged write to {path_str} (pending approval).\n\n{diff}"))
+        } else {
+            super::backend::write_string(&target, content).await?;
+            Ok(format!("Successfully wrote {} bytes to {}", content.len(), path_str))
+        }
     }
 }

@@ -15,6 +15,7 @@ pub mod search_files;
 pub mod write_file;
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -26,13 +27,15 @@ pub enum Permission {
     Never,
 }
 
-#[derive(Debug, Clone)]
 pub struct ToolContext {
     pub working_directory: Option<String>,
     pub shell: ShellType,
     pub file_access: FileAccess,
     pub project_id: Option<String>,
     pub db_pool: Option<crate::db::DbPool>,
+    pub edit_session: Option<Arc<tokio::sync::Mutex<crate::edit_session::EditSession>>>,
+    #[cfg(not(target_os = "android"))]
+    pub sandbox_policy: Option<crate::sandbox::SandboxPolicy>,
 }
 
 /// Controls which parts of the filesystem tools may touch.
@@ -313,6 +316,9 @@ mod tests {
             file_access: FileAccess::Roots(roots),
             project_id: None,
             db_pool: None,
+            edit_session: None,
+            #[cfg(not(target_os = "android"))]
+            sandbox_policy: None,
         }
     }
 
@@ -339,6 +345,9 @@ mod tests {
             file_access: FileAccess::Unrestricted,
             project_id: None,
             db_pool: None,
+            edit_session: None,
+            #[cfg(not(target_os = "android"))]
+            sandbox_policy: None,
         };
         assert!(ctx.resolve_and_validate("inside.txt").is_ok());
         assert!(ctx.resolve_and_validate("../outside.txt").is_err());

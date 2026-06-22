@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, Message, ModelInfo, Project, PromptTemplate, Provider, SafRootEntry, TemplateVariable, ToolCategory, ToolInfo, ToolPreset } from './types'
+import type { Assistant, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, Message, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, TemplateVariable, ToolCategory, ToolInfo, ToolPreset } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -137,6 +137,9 @@ export const api = {
   fetchProviderModels: (providerId: string) =>
     invoke<ModelInfo[]>('fetch_provider_models', { providerId }),
 
+  getProviderCapabilities: (providerId: string, modelId: string) =>
+    invoke<ProviderCapabilities>('get_provider_capabilities', { providerId, modelId }),
+
   approveToolCall: (callId: string) =>
     invoke<void>('approve_tool_call', { callId }),
 
@@ -145,6 +148,18 @@ export const api = {
 
   respondToAsk: (callId: string, response: string) =>
     invoke<void>('respond_to_ask', { callId, response }),
+
+  listStagedEdits: (conversationId: string) =>
+    invoke<Array<{ path: string; diff: string; tool_name: string }>>('list_staged_edits', { conversationId }),
+
+  approveStagedEdit: (conversationId: string, path: string) =>
+    invoke<void>('approve_staged_edit', { conversationId, path }),
+
+  approveAllStagedEdits: (conversationId: string) =>
+    invoke<number>('approve_all_staged_edits', { conversationId }),
+
+  rejectStagedEdit: (conversationId: string, path: string) =>
+    invoke<void>('reject_staged_edit', { conversationId, path }),
 
   // Projects
   listProjects: () =>

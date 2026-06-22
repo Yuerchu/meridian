@@ -6,7 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { MessageItem } from './message-item'
 import { InputBar, type AttachedFile } from './input-bar'
 import { useEmojiMap } from './emoji-renderer'
-import type { Message as DbMessage, StreamChunk, Assistant, Provider, ToolCallDisplay, ContentBlock, OpenAIToolCall, ThinkingLevel } from '@/types'
+import type { Message as DbMessage, StreamChunk, Assistant, Provider, ProviderCapabilities, ToolCallDisplay, ContentBlock, OpenAIToolCall, ThinkingLevel } from '@/types'
 
 function hydrateBlocks(msgs: DbMessage[]): DbMessage[] {
   return msgs.map((m) => {
@@ -103,6 +103,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('default')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
+  const [capabilities, setCapabilities] = useState<ProviderCapabilities | null>(null)
   const emojiMap = useEmojiMap(selectedAssistantId)
   const { t } = useTranslation()
   const conversationIdRef = useRef(conversationId)
@@ -140,6 +141,14 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     setSelectedModelId(modelId)
     setSelectedProviderId(providerId)
   }, [])
+
+  useEffect(() => {
+    if (selectedProviderId && selectedModelId) {
+      api.getProviderCapabilities(selectedProviderId, selectedModelId)
+        .then(setCapabilities)
+        .catch(() => setCapabilities(null))
+    }
+  }, [selectedProviderId, selectedModelId])
 
   const handleStop = useCallback(() => {
     api.stopChat(conversationId)
@@ -181,7 +190,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     const promise = listen<StreamChunk>('chat-stream', (event) => {
       const p = event.payload
 
-      if (p.done) {
+      if (p.type === 'stop' || p.done) {
         setStreaming(false)
         submittingRef.current = false
         api.loadMessages(conversationIdRef.current).then((msgs) => {
@@ -190,7 +199,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
         return
       }
 
-      if (p.type === 'turn_start' && p.message_id) {
+      if (p.type === 'message_start' && p.message_id) {
         setMessages((prev) => [
           ...prev,
           {
@@ -273,7 +282,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
         return
       }
 
-      if (p.content) {
+      if (p.type === 'text' && p.content) {
         setMessages((prev) => {
           const targetIdx = findAssistantMsg(prev, p.message_id)
           if (targetIdx < 0) return prev
@@ -429,6 +438,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
         onSelectModel={handleSelectModel}
         thinkingLevel={thinkingLevel}
         onSelectThinkingLevel={setThinkingLevel}
+        capabilities={capabilities}
         contextInfo={contextInfo}
         attachedFiles={attachedFiles}
         onAttachFiles={(files) => setAttachedFiles((prev) => [...prev, ...files])}

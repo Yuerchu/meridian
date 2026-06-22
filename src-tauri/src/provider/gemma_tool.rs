@@ -362,14 +362,14 @@ impl GemmaParseState {
             let after = &text[pos + TOOL_CALL_START.len()..];
             let mut events = Vec::new();
             if !before.is_empty() {
-                events.push(StreamEvent::Text(before.to_string()));
+                events.push(StreamEvent::Text { content: before.to_string() });
             }
             self.in_tool_call = true;
             self.tool_call_buffer = after.to_string();
             events.extend(self.try_complete_tool_call());
             events
         } else {
-            vec![StreamEvent::Text(text.to_string())]
+            vec![StreamEvent::Text { content: text.to_string() }]
         }
     }
 
@@ -406,10 +406,10 @@ impl GemmaParseState {
     fn flush(&mut self) -> Vec<StreamEvent> {
         if self.in_tool_call && !self.tool_call_buffer.is_empty() {
             self.in_tool_call = false;
-            vec![StreamEvent::Text(format!(
+            vec![StreamEvent::Text { content: format!(
                 "{TOOL_CALL_START}{}",
                 std::mem::take(&mut self.tool_call_buffer)
-            ))]
+            ) }]
         } else {
             vec![]
         }
@@ -425,19 +425,13 @@ fn adapt_gemma_stream(inner: ChatStream) -> ChatStream {
 
         while let Some(event) = inner.next().await {
             let out = match event {
-                Ok(StreamEvent::Text(text)) => {
-                    state.process_text(&text).into_iter().map(Ok).collect()
+                Ok(StreamEvent::Text { content }) => {
+                    state.process_text(&content).into_iter().map(Ok).collect()
                 }
-                Ok(StreamEvent::Done {
-                    usage,
-                    finish_reason,
-                }) => {
+                Ok(StreamEvent::Stop { reason, usage }) => {
                     let mut evs: Vec<Result<StreamEvent, ProviderError>> =
                         state.flush().into_iter().map(Ok).collect();
-                    evs.push(Ok(StreamEvent::Done {
-                        usage,
-                        finish_reason,
-                    }));
+                    evs.push(Ok(StreamEvent::Stop { reason, usage }));
                     evs
                 }
                 other => vec![other],
@@ -514,9 +508,11 @@ impl ChatProvider for GemmaToolProvider {
                                 Ok(chunk) => {
                                     let (mut stream_events, finish_reason, usage) =
                                         parse_openai_sse_events(&chunk);
-                                    if finish_reason.is_some() || usage.is_some() {
-                                        stream_events
-                                            .push(StreamEvent::Done { usage, finish_reason });
+                                    if let Some(u) = usage {
+                                        stream_events.push(StreamEvent::UsageUpdate { usage: u });
+                                    }
+                                    if let Some(fr) = finish_reason {
+                                        stream_events.push(StreamEvent::Stop { reason: fr, usage: None });
                                     }
                                     stream_events.into_iter().map(Ok).collect()
                                 }
@@ -666,7 +662,7 @@ mod tests {
         let mut state = GemmaParseState::new();
         let events = state.process_text("hello world");
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0], StreamEvent::Text(s) if s == "hello world"));
+        assert!(matches!(&events[0], StreamEvent::Text { content } if content == "hello world"));
     }
 
     #[test]
@@ -676,7 +672,7 @@ mod tests {
             "说明文字<|tool_call>call:test{key:<|\"|>val<|\"|>}<tool_call|>",
         );
         assert!(events.len() >= 3);
-        assert!(matches!(&events[0], StreamEvent::Text(s) if s == "说明文字"));
+        assert!(matches!(&events[0], StreamEvent::Text { content } if content == "说明文字"));
         assert!(matches!(&events[1], StreamEvent::ToolCallStart { name, .. } if name == "test"));
     }
 

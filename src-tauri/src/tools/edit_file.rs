@@ -80,9 +80,23 @@ impl Tool for EditFileTool {
             content.replacen(old_string, new_string, 1)
         };
 
-        super::backend::write_string(&target, &new_content).await?;
-
         let replaced = if replace_all { count } else { 1 };
-        Ok(format!("Replaced {} occurrence(s) in {}", replaced, file_path))
+
+        if let Some(ref session) = context.edit_session {
+            let resolved_path = match &target {
+                super::ResolvedTarget::Real(p) => p.clone(),
+                super::ResolvedTarget::Saf { .. } => {
+                    super::backend::write_string(&target, &new_content).await?;
+                    return Ok(format!("Replaced {} occurrence(s) in {}", replaced, file_path));
+                }
+            };
+            let mut session = session.lock().await;
+            session.stage_write(resolved_path.clone(), Some(content), new_content, "edit_file");
+            let diff = session.get(&resolved_path).unwrap().diff.clone();
+            Ok(format!("Staged edit of {} occurrence(s) in {file_path} (pending approval).\n\n{diff}", replaced))
+        } else {
+            super::backend::write_string(&target, &new_content).await?;
+            Ok(format!("Replaced {} occurrence(s) in {}", replaced, file_path))
+        }
     }
 }
