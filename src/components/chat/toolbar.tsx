@@ -5,7 +5,7 @@ import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
-import type { Assistant, Provider, ModelInfo, ThinkingLevel } from '@/types'
+import type { Assistant, Provider, ProviderCapabilities, ModelInfo, ThinkingLevel } from '@/types'
 
 interface ToolbarProps {
   assistants: Assistant[]
@@ -17,6 +17,7 @@ interface ToolbarProps {
   onSelectModel: (modelId: string, providerId: string) => void
   thinkingLevel: ThinkingLevel
   onSelectThinkingLevel: (level: ThinkingLevel) => void
+  capabilities?: ProviderCapabilities | null
 }
 
 function AssistantSelector({
@@ -229,11 +230,15 @@ export function Toolbar(props: ToolbarProps) {
         currentProviderId={props.currentProviderId}
         onSelect={props.onSelectModel}
       />
-      <span className="text-border text-xs">·</span>
-      <ThinkingSelector
-        current={props.thinkingLevel}
-        onSelect={props.onSelectThinkingLevel}
-      />
+      {props.capabilities?.supports_thinking !== false && (
+        <>
+          <span className="text-border text-xs">·</span>
+          <ThinkingSelector
+            current={props.thinkingLevel}
+            onSelect={props.onSelectThinkingLevel}
+          />
+        </>
+      )}
     </div>
   )
 }

@@ -62,13 +62,23 @@ impl Tool for RunCommandTool {
         };
         cmd.current_dir(&cwd);
 
+        if let Some(ref policy) = context.sandbox_policy {
+            crate::sandbox::apply_sandbox(&mut cmd, policy)
+                .map_err(|e| format!("sandbox setup failed: {e}"))?;
+        }
+
         #[cfg(target_os = "windows")]
         {
             use std::os::windows::process::CommandExt;
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
 
-        let output = match tokio::time::timeout(COMMAND_TIMEOUT, cmd.output()).await {
+        let timeout = context.sandbox_policy
+            .as_ref()
+            .map(|p| p.timeout)
+            .unwrap_or(COMMAND_TIMEOUT);
+
+        let output = match tokio::time::timeout(timeout, cmd.output()).await {
             Ok(result) => result,
             Err(_) => return Err(format!("command timed out after {}s", COMMAND_TIMEOUT.as_secs())),
         };

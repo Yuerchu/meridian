@@ -226,10 +226,20 @@ export interface ToolPreset {
   updated_at: number
 }
 
+export interface ProviderCapabilities {
+  supports_tools: boolean
+  supports_streaming_tools: boolean
+  supports_thinking: boolean
+  supports_images: boolean
+  max_context_tokens: number | null
+  max_output_tokens: number | null
+}
+
 export interface StreamChunk {
   type?: string
   content?: string
   done?: boolean
+  reason?: string
   message_id?: string
   conversation_id?: string
   call_id?: string

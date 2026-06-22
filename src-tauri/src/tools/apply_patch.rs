@@ -69,7 +69,17 @@ impl Tool for ApplyPatchTool {
 
             let result = apply_hunks(&original, &fp.hunks)?;
 
-            super::backend::write_string(&target, &result).await?;
+            if let Some(ref session) = context.edit_session {
+                if let super::ResolvedTarget::Real(ref p) = target {
+                    let orig = if fp.is_new_file { None } else { Some(original) };
+                    let mut session = session.lock().await;
+                    session.stage_write(p.clone(), orig, result, "apply_patch");
+                } else {
+                    super::backend::write_string(&target, &result).await?;
+                }
+            } else {
+                super::backend::write_string(&target, &result).await?;
+            }
 
             applied.push(fp.path.clone());
         }

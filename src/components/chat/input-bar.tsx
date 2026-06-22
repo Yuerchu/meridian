@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/input-group'
 import { Toolbar } from './toolbar'
 import { EmojiPicker } from './emoji-picker'
-import type { Assistant, Provider, ThinkingLevel } from '@/types'
+import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
 interface ContextInfo {
   messageCount: number
@@ -42,6 +42,7 @@ interface InputBarProps {
   onSelectModel: (modelId: string, providerId: string) => void
   thinkingLevel: ThinkingLevel
   onSelectThinkingLevel: (level: ThinkingLevel) => void
+  capabilities?: ProviderCapabilities | null
   contextInfo?: ContextInfo
 }
 
@@ -61,6 +62,7 @@ export function InputBar({
   onSelectModel,
   thinkingLevel,
   onSelectThinkingLevel,
+  capabilities,
   contextInfo,
   attachedFiles = [],
   onAttachFiles,
@@ -136,9 +138,10 @@ export function InputBar({
                 onSelectModel={onSelectModel}
                 thinkingLevel={thinkingLevel}
                 onSelectThinkingLevel={onSelectThinkingLevel}
+                capabilities={capabilities}
               />
               <div className="flex items-center gap-2 shrink-0">
-                {onAttachFiles && (
+                {onAttachFiles && capabilities?.supports_images !== false && (
                   <button
                     className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
                     title={t('chat.attach')}

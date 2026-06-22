@@ -183,6 +183,17 @@ struct AnthropicUsage {
 
 #[async_trait]
 impl ChatProvider for AnthropicProvider {
+    fn capabilities(&self, _model: &str) -> super::ProviderCapabilities {
+        super::ProviderCapabilities {
+            supports_tools: true,
+            supports_streaming_tools: true,
+            supports_thinking: true,
+            supports_images: true,
+            max_context_tokens: Some(200_000),
+            max_output_tokens: Some(64_000),
+        }
+    }
+
     async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,
@@ -225,7 +236,7 @@ impl ChatProvider for AnthropicProvider {
                                         Some("thinking_delta") => {
                                             if let Some(ref t) = delta.thinking {
                                                 if !t.is_empty() {
-                                                    out.push(Ok(StreamEvent::Reasoning(t.clone())));
+                                                    out.push(Ok(StreamEvent::Reasoning { content: t.clone() }));
                                                 }
                                             }
                                         }
@@ -240,7 +251,7 @@ impl ChatProvider for AnthropicProvider {
                                         _ => {
                                             if let Some(ref t) = delta.text {
                                                 if !t.is_empty() {
-                                                    out.push(Ok(StreamEvent::Text(t.clone())));
+                                                    out.push(Ok(StreamEvent::Text { content: t.clone() }));
                                                 }
                                             }
                                         }
@@ -255,9 +266,9 @@ impl ChatProvider for AnthropicProvider {
                                             completion_tokens: u.output_tokens,
                                             total_tokens: None,
                                         });
-                                        out.push(Ok(StreamEvent::Done {
+                                        out.push(Ok(StreamEvent::Stop {
+                                            reason: sr.clone(),
                                             usage,
-                                            finish_reason: Some(sr.clone()),
                                         }));
                                     }
                                 }

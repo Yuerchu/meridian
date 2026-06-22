@@ -86,6 +86,9 @@ mod tests {
             file_access: FileAccess::Unrestricted,
             project_id: None,
             db_pool: None,
+            edit_session: None,
+            #[cfg(not(target_os = "android"))]
+            sandbox_policy: None,
         }
     }
 
@@ -151,6 +154,9 @@ mod tests {
             }]),
             project_id: None,
             db_pool: None,
+            edit_session: None,
+            #[cfg(not(target_os = "android"))]
+            sandbox_policy: None,
         };
         let result = DeleteFileTool
             .execute(serde_json::json!({"path": "/sdcard", "recursive": true}), &c)
