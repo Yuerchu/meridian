@@ -151,6 +151,7 @@ describe('api', () => {
         name: 'OpenAI',
         providerType: 'openai',
         baseUrl: 'https://api.openai.com',
+        apiFormat: null,
       })
     })
 
@@ -163,6 +164,7 @@ describe('api', () => {
         providerType: null,
         baseUrl: null,
         isEnabled: null,
+        apiFormat: null,
       })
     })
 
