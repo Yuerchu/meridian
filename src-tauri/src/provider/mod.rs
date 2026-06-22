@@ -1,5 +1,6 @@
 pub mod anthropic;
 pub mod deepseek;
+pub mod gemma_tool;
 pub mod models;
 pub mod openai_compat;
 pub mod openai_responses;

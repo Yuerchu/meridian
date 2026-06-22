@@ -54,7 +54,7 @@ async fn consume_stream_headless(
                             entry.2.push_str(&arguments);
                         }
                     }
-                    Ok(Some(Ok(StreamEvent::ToolCallDone { index, arguments }))) => {
+                    Ok(Some(Ok(StreamEvent::ToolCallDelta { index, arguments }))) => {
                         if let Some(entry) = tool_acc.get_mut(index) {
                             entry.2 = arguments;
                         }

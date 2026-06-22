@@ -1302,7 +1302,7 @@ async fn consume_stream(
                             entry.2.push_str(&arguments);
                         }
                     }
-                    Ok(Some(Ok(provider::StreamEvent::ToolCallDone { index, arguments }))) => {
+                    Ok(Some(Ok(provider::StreamEvent::ToolCallDelta { index, arguments }))) => {
                         if let Some(entry) = tool_acc.get_mut(index) {
                             entry.2 = arguments;
                         }
@@ -2511,6 +2511,9 @@ mod tests {
             tool_call_id: None,
             sort_order: 0,
             created_at: 0,
+            reasoning_content: None,
+            rating: None,
+            schema_version: 2,
         }
     }
 

@@ -76,6 +76,7 @@
   "settings.provider.apiFormat": "API 格式",
   "settings.provider.apiFormatResponses": "Responses API",
   "settings.provider.apiFormatChatCompletions": "Chat Completions API",
+  "settings.provider.apiFormatGemmaTool": "Gemma Tool Calling",
   "settings.provider.apiKey": "API 密钥",
   "settings.provider.apiKeyPlaceholderSet": "••••••••• (已设置)",
   "settings.provider.apiKeyPlaceholder": "输入 API 密钥…",
