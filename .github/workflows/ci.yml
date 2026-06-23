@@ -60,3 +60,30 @@ jobs:
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test
+
+  android-check:
+    runs-on: ubuntu-latest
+    name: Check (android-aarch64)
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: check-android-aarch64
+
+      - name: Cargo check for Android
+        working-directory: src-tauri
+        run: |
+          NDK=$ANDROID_NDK_LATEST_HOME
+          TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
+          export CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android34-clang
+          export CXX_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android34-clang++
+          export AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android34-clang
+          cargo check --target aarch64-linux-android
