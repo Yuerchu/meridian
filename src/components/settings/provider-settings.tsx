@@ -108,6 +108,7 @@ function ProviderEditor({
             <SelectContent>
               <SelectItem value="responses">{t('settings.provider.apiFormatResponses')}</SelectItem>
               <SelectItem value="chat_completions">{t('settings.provider.apiFormatChatCompletions')}</SelectItem>
+              <SelectItem value="gemma_tool">{t('settings.provider.apiFormatGemmaTool')}</SelectItem>
             </SelectContent>
           </Select>
         </div>

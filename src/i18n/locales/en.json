@@ -76,6 +76,7 @@
   "settings.provider.apiFormat": "API Format",
   "settings.provider.apiFormatResponses": "Responses API",
   "settings.provider.apiFormatChatCompletions": "Chat Completions API",
+  "settings.provider.apiFormatGemmaTool": "Gemma Tool Calling",
   "settings.provider.apiKey": "API Key",
   "settings.provider.apiKeyPlaceholderSet": "••••••••• (already set)",
   "settings.provider.apiKeyPlaceholder": "Enter API key...",
