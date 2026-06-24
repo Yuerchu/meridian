@@ -37,6 +37,12 @@ use provider::models::ModelInfo;
 use provider::{ChatMessage, ChatParams};
 use secrets::{SecretName, SecretScope, SecretsManager};
 use tauri::{Emitter, Manager};
+#[cfg(desktop)]
+use tauri::image::Image;
+#[cfg(desktop)]
+use tauri::menu::{MenuBuilder, MenuItem};
+#[cfg(desktop)]
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tokio::sync::{oneshot, Mutex};
 use tokio_util::sync::CancellationToken;
 
@@ -2568,6 +2574,64 @@ pub fn run() {
                 tauri::async_runtime::spawn(async move {
                     onebot::maybe_start(handle).await;
                 });
+            }
+
+            #[cfg(desktop)]
+            {
+                let show_i = MenuItem::with_id(app, "show", "显示窗口", true, None::<&str>)?;
+                let quit_i = MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?;
+                let menu = MenuBuilder::new(app)
+                    .item(&show_i)
+                    .separator()
+                    .item(&quit_i)
+                    .build()?;
+
+                TrayIconBuilder::with_id("main-tray")
+                    .icon(Image::from_bytes(include_bytes!("../icons/32x32.png"))?)
+                    .tooltip("Meridian")
+                    .menu(&menu)
+                    .show_menu_on_left_click(false)
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "show" => {
+                            if let Some(w) = app.get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.set_focus();
+                            }
+                        }
+                        "quit" => app.exit(0),
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            let app = tray.app_handle();
+                            if let Some(w) = app.get_webview_window("main") {
+                                if w.is_visible().unwrap_or(false) {
+                                    let _ = w.hide();
+                                } else {
+                                    let _ = w.show();
+                                    let _ = w.set_focus();
+                                }
+                            }
+                        }
+                    })
+                    .build(app)?;
+
+                if let Some(window) = app.get_webview_window("main") {
+                    let handle = app.handle().clone();
+                    window.on_window_event(move |event| {
+                        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                            api.prevent_close();
+                            if let Some(w) = handle.get_webview_window("main") {
+                                let _ = w.hide();
+                            }
+                        }
+                    });
+                }
             }
 
             Ok(())
