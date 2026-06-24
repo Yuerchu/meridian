@@ -41,31 +41,24 @@ impl Tool for RunCommandTool {
 
         let cwd = context.working_dir_or_current();
 
-        let mut cmd = match context.shell {
-            ShellType::Cmd => {
-                let mut c = tokio::process::Command::new("cmd");
-                c.args(["/C", command]);
-                c
-            }
+        let shell_argv: Vec<String> = match context.shell {
+            ShellType::Cmd => vec!["cmd".into(), "/C".into(), command.into()],
             ShellType::PowerShell => {
-                let ps = find_powershell();
-                let mut c = tokio::process::Command::new(ps);
-                c.args(["-NoProfile", "-Command", command]);
-                c
+                vec![find_powershell().into(), "-NoProfile".into(), "-Command".into(), command.into()]
             }
             ShellType::Bash => {
-                let bash = find_bash();
-                let mut c = tokio::process::Command::new(bash);
-                c.args(["-c", command]);
-                c
+                vec![find_bash().into(), "-c".into(), command.into()]
             }
         };
-        cmd.current_dir(&cwd);
 
         if let Some(ref policy) = context.sandbox_policy {
-            crate::sandbox::apply_sandbox(&mut cmd, policy)
-                .map_err(|e| format!("sandbox setup failed: {e}"))?;
+            let output = crate::sandbox::execute_sandboxed(&shell_argv, &cwd, policy).await?;
+            return format_output(output);
         }
+
+        let mut cmd = tokio::process::Command::new(&shell_argv[0]);
+        cmd.args(&shell_argv[1..]);
+        cmd.current_dir(&cwd);
 
         #[cfg(target_os = "windows")]
         {
@@ -73,54 +66,51 @@ impl Tool for RunCommandTool {
             cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
         }
 
-        let timeout = context.sandbox_policy
-            .as_ref()
-            .map(|p| p.timeout)
-            .unwrap_or(COMMAND_TIMEOUT);
-
-        let output = match tokio::time::timeout(timeout, cmd.output()).await {
+        let output = match tokio::time::timeout(COMMAND_TIMEOUT, cmd.output()).await {
             Ok(result) => result,
             Err(_) => return Err(format!("command timed out after {}s", COMMAND_TIMEOUT.as_secs())),
         };
 
         match output {
-            Ok(output) => {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                let exit_code = output.status.code().unwrap_or(-1);
-
-                let mut result = String::new();
-                if !stdout.is_empty() {
-                    result.push_str(&stdout);
-                }
-                if !stderr.is_empty() {
-                    if !result.is_empty() {
-                        result.push('\n');
-                    }
-                    result.push_str("[stderr] ");
-                    result.push_str(&stderr);
-                }
-                if exit_code != 0 {
-                    result.push_str(&format!("\n[exit code: {}]", exit_code));
-                }
-                if result.is_empty() {
-                    result = "(no output)".to_string();
-                }
-
-                if result.len() > MAX_OUTPUT_BYTES {
-                    let truncated = crate::take_bytes_at_char_boundary(&result, MAX_OUTPUT_BYTES);
-                    return Ok(format!(
-                        "{}...\n\n(output truncated at 256KB, total {} bytes)",
-                        truncated,
-                        result.len()
-                    ));
-                }
-
-                Ok(result)
-            }
+            Ok(output) => format_output(output),
             Err(e) => Err(format!("failed to execute command: {e}")),
         }
     }
+}
+
+fn format_output(output: std::process::Output) -> Result<String, String> {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let exit_code = output.status.code().unwrap_or(-1);
+
+    let mut result = String::new();
+    if !stdout.is_empty() {
+        result.push_str(&stdout);
+    }
+    if !stderr.is_empty() {
+        if !result.is_empty() {
+            result.push('\n');
+        }
+        result.push_str("[stderr] ");
+        result.push_str(&stderr);
+    }
+    if exit_code != 0 {
+        result.push_str(&format!("\n[exit code: {}]", exit_code));
+    }
+    if result.is_empty() {
+        result = "(no output)".to_string();
+    }
+
+    if result.len() > MAX_OUTPUT_BYTES {
+        let truncated = crate::take_bytes_at_char_boundary(&result, MAX_OUTPUT_BYTES);
+        return Ok(format!(
+            "{}...\n\n(output truncated at 256KB, total {} bytes)",
+            truncated,
+            result.len()
+        ));
+    }
+
+    Ok(result)
 }
 
 fn find_powershell() -> &'static str {

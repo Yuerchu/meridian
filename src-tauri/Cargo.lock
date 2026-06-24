@@ -2704,6 +2704,7 @@ dependencies = [
  "chrono",
  "diesel",
  "diesel_migrations",
+ "dirs",
  "eventsource-stream",
  "futures",
  "glob",
@@ -2718,6 +2719,7 @@ dependencies = [
  "rand 0.9.4",
  "regex",
  "reqwest 0.12.28",
+ "sandbox-windows",
  "serde",
  "serde_json",
  "sha2",
@@ -2734,6 +2736,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4090,6 +4093,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
+]
+
+[[package]]
+name = "sandbox-types"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "dunce",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "sandbox-windows"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "dunce",
+ "glob",
+ "rand 0.8.6",
+ "sandbox-types",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
