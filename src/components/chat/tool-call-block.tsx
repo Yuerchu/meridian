@@ -1,7 +1,9 @@
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import { AnimatePresence, motion } from 'motion/react'
 import { Wrench, Check, X, Loader2, MessageCircleQuestion, Send, SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/api'
 import type { ToolCallDisplay } from '@/types'
@@ -80,14 +82,15 @@ function QuestionBlock({
     return (
       <div className="flex items-center justify-between py-1">
         <span className="text-sm text-muted-foreground line-through">{q.question}</span>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => onUnskip(q.id)}
-          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0 ml-2"
+          className="text-[11px] text-muted-foreground shrink-0 ml-2"
         >
           <Undo2 className="w-3 h-3" />
           {t('chat.tool.undo')}
-        </button>
+        </Button>
       </div>
     )
   }
@@ -96,14 +99,15 @@ function QuestionBlock({
     <div className="space-y-1.5">
       <div className="flex items-start justify-between gap-2">
         <div className="text-sm text-foreground font-medium">{q.question}</div>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="xs"
           onClick={() => onSkip(q.id)}
-          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors shrink-0 mt-0.5"
+          className="text-[11px] text-muted-foreground shrink-0 mt-0.5"
         >
           <SkipForward className="w-3 h-3" />
           {t('chat.tool.skipQuestion')}
-        </button>
+        </Button>
       </div>
 
       {hasOptions && (
@@ -114,14 +118,14 @@ function QuestionBlock({
               : value.selected === opt.label
 
             return (
-              <button
+              <Button
                 key={opt.label}
-                type="button"
+                variant="ghost"
                 onClick={() => isMulti ? toggleMulti(opt.label) : selectSingle(opt.label)}
-                className={`w-full flex items-start gap-2 px-2.5 py-1.5 rounded-md text-left transition-colors ${
+                className={`w-full justify-start gap-2 h-auto px-2.5 py-1.5 text-left ${
                   checked
                     ? 'bg-accent/80 text-accent-foreground'
-                    : 'hover:bg-accent/40 text-muted-foreground'
+                    : 'text-muted-foreground'
                 }`}
               >
                 <span className="mt-0.5 shrink-0">
@@ -140,18 +144,18 @@ function QuestionBlock({
                     <span className="block text-[11px] text-muted-foreground">{opt.description}</span>
                   )}
                 </span>
-              </button>
+              </Button>
             )
           })}
         </div>
       )}
 
-      <input
+      <Input
         type="text"
         value={value.notes}
         onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
         placeholder={hasOptions ? t('chat.tool.notesPlaceholder') : t('chat.tool.askUserPlaceholder')}
-        className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-ring"
+        className="text-xs"
         autoFocus={!hasOptions}
       />
     </div>
@@ -294,13 +298,13 @@ function PendingApproval({ callId }: { callId: string }) {
 
   return (
     <div className="px-3 py-2 border-t border-border bg-muted/10 space-y-2">
-      <input
+      <Input
         type="text"
         value={feedback}
         onChange={(e) => setFeedback(e.target.value)}
         onKeyDown={(e) => { if (e.key === 'Enter') api.denyToolCall(callId, feedback || undefined) }}
         placeholder={t('chat.tool.denyReasonPlaceholder')}
-        className="w-full px-2.5 py-1.5 text-xs bg-background border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-ring"
+        className="text-xs"
         autoFocus
       />
       <div className="flex gap-2">
@@ -339,19 +343,34 @@ export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
 
   return (
     <div className="my-3 border border-border rounded-lg overflow-hidden text-xs">
-      <button
+      <Button
+        variant="ghost"
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 px-3 py-2 bg-muted/30 w-full text-left hover:bg-muted/50 transition-colors"
+        className="flex items-center gap-2 px-3 py-2 bg-muted/30 w-full text-left hover:bg-muted/50 h-auto rounded-none"
       >
         <Wrench className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="font-medium text-foreground">{data.tool_name}</span>
-        {data.status === 'running' && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground ml-auto" />}
-        {data.status === 'completed' && <Check className="w-3 h-3 text-green-500 ml-auto" />}
-        {data.status === 'denied' && <X className="w-3 h-3 text-destructive ml-auto" />}
+        <AnimatePresence mode="wait">
+          {data.status === 'running' && (
+            <motion.span key="running" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
+              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+            </motion.span>
+          )}
+          {data.status === 'completed' && (
+            <motion.span key="done" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
+              <Check className="w-3 h-3 text-green-500" />
+            </motion.span>
+          )}
+          {data.status === 'denied' && (
+            <motion.span key="denied" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
+              <X className="w-3 h-3 text-destructive" />
+            </motion.span>
+          )}
+        </AnimatePresence>
         {expanded
           ? <ChevronDown className="w-3 h-3 text-muted-foreground" />
           : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
-      </button>
+      </Button>
 
       {expanded && (
         <>

@@ -2,7 +2,9 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listen } from '@tauri-apps/api/event'
 import { api } from '@/api'
+import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import AnimatedContent from '@/components/AnimatedContent'
 import { MessageItem } from './message-item'
 import { InputBar, type AttachedFile } from './input-bar'
 import { useEmojiMap } from './emoji-renderer'
@@ -91,9 +93,14 @@ function AutoScrollArea({ children, dep }: { children: React.ReactNode; dep: unk
   )
 }
 
-function ChatViewInner({ conversationId }: { conversationId: string }) {
+function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsumed }: {
+  conversationId: string
+  initialMessage?: string | null
+  onInitialMessageConsumed?: () => void
+}) {
   const [messages, setMessages] = useState<DbMessage[]>([])
   const [streaming, setStreaming] = useState(false)
+  const [compacting, setCompacting] = useState(false)
   const [input, setInput] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [assistants, setAssistants] = useState<Assistant[]>([])
@@ -104,6 +111,8 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('default')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [capabilities, setCapabilities] = useState<ProviderCapabilities | null>(null)
+  const [compactCursor, setCompactCursor] = useState<number | null>(null)
+  const [showCompactedMessages, setShowCompactedMessages] = useState(false)
   const emojiMap = useEmojiMap(selectedAssistantId)
   const { t } = useTranslation()
   const conversationIdRef = useRef(conversationId)
@@ -112,6 +121,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
 
   useEffect(() => {
     api.loadMessages(conversationId).then((msgs) => setMessages(hydrateBlocks(msgs)))
+    api.getConversation(conversationId).then((conv) => setCompactCursor(conv.compact_cursor))
   }, [conversationId])
 
   useEffect(() => {
@@ -218,6 +228,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
             reasoning_content: null,
             rating: null,
             schema_version: 2,
+            is_compact_summary: 0,
           },
         ])
         return
@@ -306,6 +317,38 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     }
   }, [])
 
+  useEffect(() => {
+    const startPromise = listen<{ conversation_id: string }>('compact-start', (event) => {
+      if (event.payload.conversation_id === conversationIdRef.current) {
+        setCompacting(true)
+      }
+    })
+    const donePromise = listen<{ conversation_id: string }>('compact-done', (event) => {
+      if (event.payload.conversation_id === conversationIdRef.current) {
+        setCompacting(false)
+        setShowCompactedMessages(false)
+        api.loadMessages(conversationIdRef.current).then((msgs) => setMessages(hydrateBlocks(msgs)))
+        api.getConversation(conversationIdRef.current).then((conv) => setCompactCursor(conv.compact_cursor))
+      }
+    })
+    return () => {
+      startPromise.then((fn) => fn())
+      donePromise.then((fn) => fn())
+    }
+  }, [])
+
+  const handleCompact = useCallback(async (instructions?: string) => {
+    setCompacting(true)
+    setError(null)
+    try {
+      await api.compact(conversationId, instructions)
+    } catch (err) {
+      setError(String(err))
+    } finally {
+      setCompacting(false)
+    }
+  }, [conversationId])
+
   const sendMessage = useCallback(async (text: string, addUserBubble: boolean, files?: AttachedFile[]) => {
     if (!text || streaming || submittingRef.current) return
     submittingRef.current = true
@@ -349,6 +392,7 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
           reasoning_content: null,
           rating: null,
           schema_version: 2,
+          is_compact_summary: 0,
         },
       ])
     }
@@ -363,14 +407,31 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
       })
   }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, selectedAssistantId])
 
+  const initialMessageSent = useRef(false)
+  useEffect(() => {
+    if (initialMessage && !initialMessageSent.current) {
+      initialMessageSent.current = true
+      onInitialMessageConsumed?.()
+      sendMessage(initialMessage, true)
+    }
+  }, [initialMessage])
+
   const handleSubmit = useCallback(() => {
     const text = input.trim()
     if (!text) return
+
+    if (text.startsWith('/compact')) {
+      const instructions = text.slice('/compact'.length).trim() || undefined
+      setInput('')
+      handleCompact(instructions)
+      return
+    }
+
     const files = [...attachedFiles]
     setInput('')
     setAttachedFiles([])
     sendMessage(text, true, files.length > 0 ? files : undefined)
-  }, [input, sendMessage, attachedFiles])
+  }, [input, sendMessage, attachedFiles, handleCompact])
 
   const handleRegenerate = useCallback((messageId: string) => {
     const msgIndex = messages.findIndex((m) => m.id === messageId)
@@ -384,15 +445,27 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
     })
   }, [messages, conversationId, sendMessage])
 
-  const visibleMessages = messages.filter((m) => m.role === 'user' || m.role === 'assistant')
-  const lastMsg = visibleMessages[visibleMessages.length - 1]
+  const visibleMessages = messages.filter((m) => (m.role === 'user' || m.role === 'assistant') && m.is_compact_summary !== 1)
+  const compactedMessages = compactCursor != null
+    ? visibleMessages.filter((m) => m.sort_order < compactCursor)
+    : []
+  const activeMessages = compactCursor != null
+    ? visibleMessages.filter((m) => m.sort_order >= compactCursor)
+    : visibleMessages
+  const compactSummary = messages.find((m) => m.is_compact_summary === 1)
+  const lastMsg = activeMessages[activeMessages.length - 1]
 
   const selectedAssistant = assistants.find((a) => a.id === selectedAssistantId)
   const contextInfo = useMemo(() => {
     const contextLimit = selectedAssistant?.context_limit ?? 128000
-    const estimatedTokens = messages.reduce((sum, m) => sum + [...m.content].length + 4, 0)
-    return { messageCount: visibleMessages.length, estimatedTokens, contextLimit }
-  }, [messages, visibleMessages.length, selectedAssistant?.context_limit])
+    const activeOnly = compactCursor != null
+      ? messages.filter((m) => m.sort_order >= compactCursor || m.is_compact_summary === 1)
+      : messages
+    const estimatedTokens = activeOnly.reduce((sum, m) => sum + [...m.content].length + 4, 0)
+    const autoCompactEnabled = selectedAssistant?.auto_compact_enabled === 1
+    const autoCompactThreshold = Math.max(0, contextLimit - 33000)
+    return { messageCount: activeMessages.length, estimatedTokens, contextLimit, autoCompactEnabled, autoCompactThreshold }
+  }, [messages, activeMessages.length, selectedAssistant?.context_limit, selectedAssistant?.auto_compact_enabled, compactCursor])
 
   return (
     <div className="flex flex-col h-full">
@@ -402,19 +475,98 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
             {error}
           </div>
         )}
-        {visibleMessages.map((m, i) => (
-          <MessageItem
-            key={m.id}
-            message={m}
-            isStreaming={streaming && i === visibleMessages.length - 1 && m.role === 'assistant'}
-            isLastMessage={i === visibleMessages.length - 1}
-            onDelete={handleDelete}
-            onRegenerate={m.role === 'assistant' ? handleRegenerate : undefined}
-            onEdit={m.role === 'user' && !streaming ? handleEdit : undefined}
-            onRate={m.role === 'assistant' ? handleRate : undefined}
-            emojiMap={emojiMap}
-          />
-        ))}
+
+        {compactedMessages.length > 0 && (
+          <>
+            {showCompactedMessages ? (
+              <>
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowCompactedMessages(false)}
+                  className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground py-2"
+                >
+                  {t('chat.compact.hideCompacted', { count: compactedMessages.length })}
+                </Button>
+                {compactedMessages.map((m) => (
+                  <div key={m.id} className="opacity-40">
+                    <MessageItem
+                      message={m}
+                      isStreaming={false}
+                      isLastMessage={false}
+                      onDelete={handleDelete}
+                      emojiMap={emojiMap}
+                    />
+                  </div>
+                ))}
+              </>
+            ) : (
+              <Button
+                variant="ghost"
+                onClick={() => setShowCompactedMessages(true)}
+                className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground py-2"
+              >
+                {t('chat.compact.showCompacted', { count: compactedMessages.length })}
+              </Button>
+            )}
+            <div className="flex items-center gap-2 py-3 px-2">
+              <div className="flex-1 border-t border-muted-foreground/20" />
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  if (compactSummary) {
+                    const el = document.getElementById('compact-summary')
+                    if (el) el.classList.toggle('hidden')
+                  }
+                }}
+                className="text-xs text-muted-foreground/60 hover:text-muted-foreground whitespace-nowrap h-auto px-2 py-0"
+              >
+                {t('chat.compact.boundary', { count: compactedMessages.length })}
+              </Button>
+              <div className="flex-1 border-t border-muted-foreground/20" />
+            </div>
+            {compactSummary && (
+              <div id="compact-summary" className="hidden px-4 py-2 mb-2 text-xs text-muted-foreground bg-muted/30 rounded-lg border border-muted-foreground/10 whitespace-pre-wrap">
+                {compactSummary.content}
+              </div>
+            )}
+          </>
+        )}
+
+        {compacting && (
+          <div className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground animate-pulse">
+            {t('chat.compact.inProgress')}
+          </div>
+        )}
+
+        {activeMessages.map((m, i) => {
+          const messageEl = (
+            <MessageItem
+              key={m.id}
+              message={m}
+              isStreaming={streaming && i === activeMessages.length - 1 && m.role === 'assistant'}
+              isLastMessage={i === activeMessages.length - 1}
+              onDelete={handleDelete}
+              onRegenerate={m.role === 'assistant' ? handleRegenerate : undefined}
+              onEdit={m.role === 'user' && !streaming ? handleEdit : undefined}
+              onRate={m.role === 'assistant' ? handleRate : undefined}
+              emojiMap={emojiMap}
+            />
+          )
+          if (i >= activeMessages.length - 6) {
+            return (
+              <AnimatedContent
+                key={m.id}
+                distance={20}
+                duration={0.4}
+                threshold={0.05}
+                container="[data-slot='scroll-area-viewport']"
+              >
+                {messageEl}
+              </AnimatedContent>
+            )
+          }
+          return <div key={m.id}>{messageEl}</div>
+        })}
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
             {t('chat.startHint')}
@@ -448,6 +600,19 @@ function ChatViewInner({ conversationId }: { conversationId: string }) {
   )
 }
 
-export function ChatView({ conversationId }: { conversationId: string }) {
-  return <ChatViewInner key={conversationId} conversationId={conversationId} />
+interface ChatViewProps {
+  conversationId: string
+  initialMessage?: string | null
+  onInitialMessageConsumed?: () => void
+}
+
+export function ChatView({ conversationId, initialMessage, onInitialMessageConsumed }: ChatViewProps) {
+  return (
+    <ChatViewInner
+      key={conversationId}
+      conversationId={conversationId}
+      initialMessage={initialMessage}
+      onInitialMessageConsumed={onInitialMessageConsumed}
+    />
+  )
 }

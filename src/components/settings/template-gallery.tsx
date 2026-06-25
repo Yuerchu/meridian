@@ -29,23 +29,24 @@ function TemplateCard({
 
   return (
     <div className="border border-border rounded-lg overflow-hidden">
-      <button
+      <Button
+        variant="ghost"
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent/50 transition-colors text-left"
+        className="w-full justify-start h-auto px-3 py-2.5 text-sm"
       >
         {expanded ? (
-          <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <ChevronDown className="w-4 h-4 text-muted-foreground" />
         ) : (
-          <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
         )}
-        <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+        <Icon className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="flex-1 truncate">{template.name}</span>
         {template.is_builtin === 1 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground flex-shrink-0">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
             {t('settings.template.builtin')}
           </span>
         )}
-      </button>
+      </Button>
       {expanded && (
         <div className="px-3 pb-3 space-y-2">
           {template.description && (

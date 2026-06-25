@@ -27,6 +27,7 @@ function AssistantEditor({
   const [modelId, setModelId] = useState(assistant.model_id ?? '')
   const [temperature, setTemperature] = useState(assistant.temperature?.toString() ?? '')
   const [contextLimit, setContextLimit] = useState(assistant.context_limit.toString())
+  const [autoCompactEnabled, setAutoCompactEnabled] = useState(assistant.auto_compact_enabled !== 0)
   const [thinkingEnabled, setThinkingEnabled] = useState(assistant.thinking_enabled !== 0)
   const [thinkingBudget, setThinkingBudget] = useState(assistant.thinking_budget?.toString() ?? '')
   const [models, setModels] = useState<ModelInfo[]>([])
@@ -86,6 +87,7 @@ function AssistantEditor({
       thinkingEnabled: thinkingEnabled ? 1 : 0,
       thinkingBudget: thinkingBudget ? parseInt(thinkingBudget) : null,
       toolPresetId,
+      autoCompactEnabled: autoCompactEnabled ? 1 : 0,
     })
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
@@ -114,16 +116,17 @@ function AssistantEditor({
         {showTemplates && (
           <div className="border border-border rounded-lg p-2 space-y-1 max-h-48 overflow-y-auto">
             {templates.map((tpl) => (
-              <button
+              <Button
                 key={tpl.id}
-                className="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-accent/50 transition-colors"
+                variant="ghost"
+                className="w-full justify-start h-auto px-2 py-1.5 text-xs"
                 onClick={() => { setSystemPrompt(tpl.template_text); setShowTemplates(false) }}
               >
                 <span className="font-medium">{tpl.name}</span>
                 {tpl.description && (
                   <span className="text-muted-foreground ml-2">{tpl.description}</span>
                 )}
-              </button>
+              </Button>
             ))}
           </div>
         )}
@@ -136,14 +139,16 @@ function AssistantEditor({
         {templateVars.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {templateVars.map((v) => (
-              <button
+              <Button
                 key={v.name}
-                className="text-[10px] px-1.5 py-0.5 rounded bg-accent/50 text-muted-foreground hover:bg-accent transition-colors font-mono"
+                variant="outline"
+                size="xs"
+                className="text-[10px] px-1.5 py-0.5 bg-accent/50 text-muted-foreground hover:bg-accent font-mono"
                 onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
                 title={v.description_en}
               >
                 {`{{${v.name}}}`}
-              </button>
+              </Button>
             ))}
           </div>
         )}
@@ -209,6 +214,17 @@ function AssistantEditor({
             onChange={(e) => setContextLimit(e.target.value)}
           />
         </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="block text-[11px] text-muted-foreground">{t('settings.assistant.autoCompact')}</label>
+        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+          <Checkbox
+            checked={autoCompactEnabled}
+            onCheckedChange={(checked) => setAutoCompactEnabled(!!checked)}
+          />
+          <span>{t('settings.assistant.autoCompactHint')}</span>
+        </label>
       </div>
 
       <div className="space-y-1.5">
@@ -403,24 +419,25 @@ export function AssistantSettings() {
 
           return (
             <div key={a.id} className="border border-border rounded-lg overflow-hidden">
-              <button
+              <Button
+                variant="ghost"
                 onClick={() => setExpandedId(isExpanded ? null : a.id)}
-                className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent/50 transition-colors text-left"
+                className="w-full justify-start h-auto px-3 py-2.5 text-sm"
               >
                 {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 ) : (
-                  <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 )}
                 <span className="flex-1 truncate">{a.name}</span>
-                {isDefault && <Star className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="currentColor" />}
+                {isDefault && <Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" />}
                 {providerName && (
-                  <span className="text-[11px] text-muted-foreground flex-shrink-0">{providerName}</span>
+                  <span className="text-[11px] text-muted-foreground">{providerName}</span>
                 )}
                 {a.model_id && (
-                  <span className="text-[11px] text-muted-foreground/60 flex-shrink-0">{a.model_id}</span>
+                  <span className="text-[11px] text-muted-foreground/60">{a.model_id}</span>
                 )}
-              </button>
+              </Button>
               {isExpanded && (
                 <AssistantEditor
                   assistant={a}

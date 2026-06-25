@@ -33,9 +33,10 @@ function PackCard({
 
   return (
     <div className="border border-border rounded-lg overflow-hidden">
-      <button
+      <Button
+        variant="ghost"
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-accent/50 transition-colors text-left"
+        className="w-full flex items-center gap-2 px-3 py-2.5 h-auto text-sm justify-start rounded-none"
       >
         {expanded ? (
           <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
@@ -43,14 +44,14 @@ function PackCard({
           <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
         )}
         <Package className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-        <span className="flex-1 truncate">{detail.pack.name}</span>
+        <span className="flex-1 truncate text-left">{detail.pack.name}</span>
         <span className="text-[11px] text-muted-foreground">{detail.emojis.length}</span>
         {detail.pack.is_builtin === 1 && (
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
             {t('settings.template.builtin')}
           </span>
         )}
-      </button>
+      </Button>
 
       {expanded && (
         <div className="px-3 pb-3 space-y-3">
@@ -67,7 +68,7 @@ function PackCard({
                   className="w-10 h-10 object-contain rounded"
                 />
                 {editingId === e.id ? (
-                  <input
+                  <Input
                     autoFocus
                     value={editName}
                     onChange={(ev) => setEditName(ev.target.value)}
@@ -79,7 +80,7 @@ function PackCard({
                       if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur()
                       if (ev.key === 'Escape') setEditingId(null)
                     }}
-                    className="w-full text-[9px] text-center bg-transparent border-b border-accent outline-none mt-0.5"
+                    className="w-full h-auto text-[9px] text-center bg-transparent border-0 border-b border-accent rounded-none px-0 py-0 mt-0.5 focus-visible:ring-0"
                   />
                 ) : (
                   <p
@@ -91,12 +92,14 @@ function PackCard({
                   </p>
                 )}
                 {detail.pack.is_builtin === 0 && (
-                  <button
-                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="absolute -top-1 -right-1 !size-4 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={() => onDeleteEmoji(e.id)}
                   >
-                    <Trash2 className="w-2.5 h-2.5" />
-                  </button>
+                    <Trash2 className="!size-2.5" />
+                  </Button>
                 )}
               </div>
             ))}

@@ -223,19 +223,20 @@ export function ProviderSettings() {
   const providerList = (
     <>
       {providers.map((p) => (
-        <button
+        <Button
           key={p.id}
+          variant="ghost"
           onClick={() => setSelectedId(p.id)}
           className={cn(
-            'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-left transition-colors',
+            'w-full justify-start h-auto px-3 py-2 text-sm',
             selectedId === p.id
               ? 'bg-accent text-accent-foreground'
               : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
           )}
         >
-          <Cloud className="w-4 h-4 flex-shrink-0" />
+          <Cloud className="w-4 h-4" />
           <span className="truncate">{p.name}</span>
-        </button>
+        </Button>
       ))}
       {providers.length === 0 && (
         <p className="text-xs text-muted-foreground px-3">{t('settings.provider.noProviders')}</p>
@@ -248,13 +249,14 @@ export function ProviderSettings() {
       <div className="max-w-3xl">
         {selected ? (
           <>
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setSelectedId(null)}
-              className="flex items-center gap-2 text-sm text-muted-foreground mb-4 hover:text-foreground transition-colors"
+              className="text-sm text-muted-foreground mb-4 hover:text-foreground"
             >
               <ArrowLeft className="w-4 h-4" />
               {t('common.back')}
-            </button>
+            </Button>
             <ProviderEditor
               key={selected.id}
               provider={selected}

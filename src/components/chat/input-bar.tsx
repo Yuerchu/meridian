@@ -2,12 +2,15 @@ import { useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowUp, Square, Paperclip, X as XIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import {
   InputGroup,
   InputGroupTextarea,
   InputGroupAddon,
   InputGroupButton,
 } from '@/components/ui/input-group'
+import CountUp from '@/components/CountUp'
+import { usePrevious } from '@/hooks/use-previous'
 import { Toolbar } from './toolbar'
 import { EmojiPicker } from './emoji-picker'
 import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
@@ -16,6 +19,8 @@ interface ContextInfo {
   messageCount: number
   estimatedTokens: number
   contextLimit: number
+  autoCompactEnabled: boolean
+  autoCompactThreshold: number
 }
 
 export interface AttachedFile {
@@ -70,6 +75,7 @@ export function InputBar({
 }: InputBarProps) {
   const { t } = useTranslation()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const prevTokens = usePrevious(contextInfo?.estimatedTokens ?? 0)
 
   useEffect(() => {
     textareaRef.current?.focus()
@@ -105,9 +111,9 @@ export function InputBar({
                   <Paperclip className="w-3 h-3" />
                   <span className="max-w-[120px] truncate">{f.name}</span>
                   {onRemoveFile && (
-                    <button onClick={() => onRemoveFile(i)} className="hover:text-destructive">
+                    <Button variant="ghost" size="icon-xs" onClick={() => onRemoveFile(i)} className="hover:text-destructive size-4">
                       <XIcon className="w-3 h-3" />
-                    </button>
+                    </Button>
                   )}
                 </span>
               ))}
@@ -142,8 +148,10 @@ export function InputBar({
               />
               <div className="flex items-center gap-2 shrink-0">
                 {onAttachFiles && capabilities?.supports_images !== false && (
-                  <button
-                    className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className="text-muted-foreground hover:text-foreground"
                     title={t('chat.attach')}
                     onClick={async () => {
                       const paths = await open({ multiple: true })
@@ -157,7 +165,7 @@ export function InputBar({
                     }}
                   >
                     <Paperclip className="w-4 h-4" />
-                  </button>
+                  </Button>
                 )}
                 <EmojiPicker
                   assistantId={currentAssistantId}
@@ -172,7 +180,18 @@ export function InputBar({
                         : 'text-muted-foreground/60'
                   }`}>
                     <span>≡ {contextInfo.messageCount}</span>
-                    <span>↑ {contextInfo.estimatedTokens.toLocaleString()}</span>
+                    <span>↑ <CountUp from={prevTokens ?? 0} to={contextInfo.estimatedTokens} duration={0.8} separator="," /></span>
+                    {contextInfo.autoCompactEnabled && contextInfo.autoCompactThreshold > 0 && (
+                      <span className={
+                        contextInfo.estimatedTokens / contextInfo.autoCompactThreshold > 0.95
+                          ? 'text-destructive'
+                          : contextInfo.estimatedTokens / contextInfo.autoCompactThreshold > 0.8
+                            ? 'text-yellow-500'
+                            : ''
+                      }>
+                        {Math.max(0, Math.round((1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100))}% {t('chat.compact.untilAutoCompact')}
+                      </span>
+                    )}
                   </div>
                 )}
                 {streaming ? (

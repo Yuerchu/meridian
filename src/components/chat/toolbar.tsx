@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bot, ChevronDown, Cpu, Check, Star, Lightbulb } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
@@ -42,14 +43,15 @@ function AssistantSelector({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-52 p-1 bg-popover border-border">
         {assistants.map((a) => (
-          <button
+          <Button
             key={a.id}
+            variant="ghost"
             onClick={() => {
               onSelect(a.id)
               setOpen(false)
             }}
             className={cn(
-              'w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs text-left transition-colors',
+              'w-full flex items-center gap-2 px-2.5 py-1.5 h-auto text-xs justify-start',
               a.id === currentId
                 ? 'bg-accent text-accent-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
@@ -58,7 +60,7 @@ function AssistantSelector({
             {a.is_default === 1 && <Star className="w-3 h-3 text-amber-500 flex-shrink-0" fill="currentColor" />}
             <span className="flex-1 truncate">{a.name}</span>
             {a.id === currentId && <Check className="w-3 h-3 text-muted-foreground" />}
-          </button>
+          </Button>
         ))}
       </PopoverContent>
     </Popover>
@@ -126,14 +128,15 @@ function ModelSelector({
                 {g.provider.name}
               </div>
               {g.models.map((m) => (
-                <button
+                <Button
                   key={`${g.provider.id}-${m.id}`}
+                  variant="ghost"
                   onClick={() => {
                     onSelect(m.id, g.provider.id)
                     setOpen(false)
                   }}
                   className={cn(
-                    'w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs text-left transition-colors',
+                    'w-full flex items-center gap-2 px-2.5 py-1.5 h-auto text-xs justify-start',
                     m.id === currentModelId && g.provider.id === currentProviderId
                       ? 'bg-accent text-accent-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
@@ -143,7 +146,7 @@ function ModelSelector({
                   {m.id === currentModelId && g.provider.id === currentProviderId && (
                     <Check className="w-3 h-3 text-muted-foreground flex-shrink-0" />
                   )}
-                </button>
+                </Button>
               ))}
             </div>
           ))}
@@ -196,11 +199,12 @@ function ThinkingSelector({
           {t('toolbar.thinking')}
         </div>
         {THINKING_LEVELS.map((level) => (
-          <button
+          <Button
             key={level.id}
+            variant="ghost"
             onClick={() => { onSelect(level.id); setOpen(false) }}
             className={cn(
-              'w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs text-left transition-colors',
+              'w-full flex items-center justify-between px-2.5 py-1.5 h-auto text-xs',
               level.id === current
                 ? 'bg-accent text-accent-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
@@ -208,7 +212,7 @@ function ThinkingSelector({
           >
             <span>{t(level.labelKey)}</span>
             <span className="text-[10px] text-muted-foreground/60">{t(level.descKey)}</span>
-          </button>
+          </Button>
         ))}
       </PopoverContent>
     </Popover>

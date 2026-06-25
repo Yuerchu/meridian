@@ -7,6 +7,7 @@ import { Bot, Copy, Check, Trash2, RefreshCw, ChevronDown, ChevronRight, Lightbu
 import CountUp from '@/components/CountUp'
 import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
+import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   ContextMenu,
@@ -49,13 +50,15 @@ function CopyButton({ text }: { text: string }) {
   }, [text])
 
   return (
-    <button
+    <Button
+      variant="ghost"
+      size="icon-xs"
       onClick={handleCopy}
-      className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+      className="text-muted-foreground hover:text-foreground"
       title={t('chat.copy')}
     >
       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-    </button>
+    </Button>
   )
 }
 
@@ -192,17 +195,18 @@ function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; i
 
   return (
     <div className="my-2 rounded-lg border border-border/50 overflow-hidden">
-      <button
+      <Button
+        variant="ghost"
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 w-full px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent/30 transition-colors"
+        className="w-full justify-start h-auto px-3 py-1.5 text-xs text-muted-foreground rounded-none"
       >
-        <Lightbulb className="w-3.5 h-3.5 text-blue-400/70" />
+        <Lightbulb className="text-blue-400/70" />
         <span>{t('chat.thinking')}</span>
         {isStreaming && <span className="inline-block w-1.5 h-3 ml-1 bg-muted-foreground/50 animate-pulse" />}
         {expanded
-          ? <ChevronDown className="w-3 h-3 ml-auto" />
-          : <ChevronRight className="w-3 h-3 ml-auto" />}
-      </button>
+          ? <ChevronDown className="!size-3 ml-auto" />
+          : <ChevronRight className="!size-3 ml-auto" />}
+      </Button>
       {expanded && (
         <div className="px-3 pb-2 text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
           {text}
@@ -342,20 +346,24 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
                   rows={1}
                 />
                 <div className="flex justify-end gap-1 mt-1.5">
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={handleCancelEdit}
-                    className="px-2 py-0.5 rounded text-xs text-muted-foreground hover:bg-background/50 transition-colors"
+                    className="text-muted-foreground hover:bg-background/50"
                     title="Esc"
                   >
                     <X className="w-3.5 h-3.5" />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={handleSaveEdit}
-                    className="px-2 py-0.5 rounded text-xs text-primary hover:bg-background/50 transition-colors"
+                    className="text-primary hover:bg-background/50"
                     title="Enter"
                   >
                     <Check className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -388,23 +396,27 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
                 </div>
                 <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   {onEdit && (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
                       onClick={handleStartEdit}
-                      className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                      className="text-muted-foreground hover:text-foreground"
                       title={t('chat.edit')}
                     >
                       <Pencil className="w-3.5 h-3.5" />
-                    </button>
+                    </Button>
                   )}
                   <CopyButton text={message.content} />
                   {onDelete && (
-                    <button
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
                       onClick={() => setShowDeleteConfirm(true)}
-                      className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
+                      className="text-muted-foreground hover:text-destructive"
                       title={t('chat.delete')}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    </Button>
                   )}
                 </div>
               </>
@@ -504,45 +516,51 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
               <CopyButton text={message.content} />
               {onRate && !isStreaming && (
                 <>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}
                     className={cn(
-                      'p-1 rounded hover:bg-accent transition-colors',
                       message.rating === 1 ? 'text-green-500' : 'text-muted-foreground hover:text-foreground',
                     )}
                     title={t('chat.thumbsUp')}
                   >
                     <ThumbsUp className="w-3.5 h-3.5" />
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
                     onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}
                     className={cn(
-                      'p-1 rounded hover:bg-accent transition-colors',
                       message.rating === -1 ? 'text-red-500' : 'text-muted-foreground hover:text-foreground',
                     )}
                     title={t('chat.thumbsDown')}
                   >
                     <ThumbsDown className="w-3.5 h-3.5" />
-                  </button>
+                  </Button>
                 </>
               )}
               {onRegenerate && !isStreaming && (
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   onClick={() => onRegenerate(message.id)}
-                  className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                  className="text-muted-foreground hover:text-foreground"
                   title={t('chat.regenerate')}
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                </button>
+                </Button>
               )}
               {onDelete && (
-                <button
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
+                  className="text-muted-foreground hover:text-destructive"
                   title={t('chat.delete')}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                </Button>
               )}
             </div>
           </div>

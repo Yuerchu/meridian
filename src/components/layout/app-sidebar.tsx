@@ -10,6 +10,8 @@ import SpotlightCard from '@/components/SpotlightCard'
 import type { Conversation, Project } from '@/types'
 import type { SettingsTab } from '@/components/settings'
 import { api } from '@/api'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import {
   Sidebar,
   SidebarContent,
@@ -77,42 +79,43 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
 
   return (
     <div className="px-2 py-1.5 space-y-1.5">
-      <input
+      <Input
         type="text"
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder={t('sidebar.projectName')}
-        className="w-full px-2 py-1 text-xs bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
+        className="h-7 text-xs"
         autoFocus
         onKeyDown={(e) => {
           if (e.key === 'Enter' && name.trim() && path.trim()) onSubmit(name.trim(), path.trim())
           else if (e.key === 'Escape') onCancel()
         }}
       />
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
         onClick={handleBrowse}
-        className="w-full flex items-center gap-1.5 px-2 py-1 text-xs bg-background border border-border rounded hover:bg-accent/40 transition-colors text-left"
+        className="w-full justify-start text-xs"
       >
-        <FolderOpen className="w-3 h-3 text-muted-foreground shrink-0" />
+        <FolderOpen className="text-muted-foreground" />
         <span className={path ? 'text-foreground truncate' : 'text-muted-foreground'}>
           {path || t('sidebar.browsePath')}
         </span>
-      </button>
+      </Button>
       <div className="flex gap-1">
-        <button
+        <Button
+          variant="secondary"
+          size="xs"
           onClick={() => name.trim() && path.trim() && onSubmit(name.trim(), path.trim())}
           disabled={!name.trim() || !path.trim()}
-          className="flex-1 px-2 py-1 text-xs bg-accent text-accent-foreground rounded hover:bg-accent/80 disabled:opacity-50"
+          className="flex-1"
         >
           {t('common.save')}
-        </button>
-        <button
-          onClick={onCancel}
-          className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground rounded"
-        >
+        </Button>
+        <Button variant="ghost" size="xs" onClick={onCancel}>
           ✕
-        </button>
+        </Button>
       </div>
     </div>
   )
@@ -152,7 +155,7 @@ function InlineRenameInput({ value, onSubmit, onCancel }: { value: string; onSub
   }, [])
 
   return (
-    <input
+    <Input
       ref={inputRef}
       type="text"
       value={text}
@@ -165,7 +168,7 @@ function InlineRenameInput({ value, onSubmit, onCancel }: { value: string; onSub
         if (text.trim() && text.trim() !== value) onSubmit(text.trim())
         else onCancel()
       }}
-      className="w-full px-1 py-0 text-sm bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
+      className="h-auto px-1 py-0 text-sm rounded"
     />
   )
 }
@@ -252,12 +255,14 @@ export function AppSidebar({
         <SidebarGroup>
           <SidebarGroupLabel>
             <span>{t('sidebar.projects')}</span>
-            <button
+            <Button
+              variant="ghost"
+              size="icon-xs"
               onClick={() => setShowNewProject(true)}
-              className="ml-auto p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+              className="ml-auto size-5 text-muted-foreground"
             >
-              <FolderPlus className="w-3.5 h-3.5" />
-            </button>
+              <FolderPlus />
+            </Button>
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>

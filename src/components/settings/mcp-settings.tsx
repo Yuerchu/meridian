@@ -4,6 +4,7 @@ import { Plus, Plug, PlugZap, Trash2, ArrowLeft, ClipboardPaste } from 'lucide-r
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
@@ -58,8 +59,8 @@ function JsonImportDialog({
 
   return (
     <div className="space-y-3">
-      <textarea
-        className="w-full h-40 px-3 py-2 rounded-md border border-input bg-transparent text-sm font-mono resize-none focus:outline-none focus:ring-1 focus:ring-ring"
+      <Textarea
+        className="h-40 font-mono resize-none"
         placeholder={t('settings.mcp.importJsonPlaceholder')}
         value={text}
         onChange={(e) => { setText(e.target.value); setError(false) }}
@@ -315,24 +316,25 @@ export function McpSettings() {
   const serverList = (
     <div className="space-y-1">
       {servers.map((s) => (
-        <button
+        <Button
           key={s.id}
+          variant="ghost"
           onClick={() => setSelectedId(s.id)}
           className={cn(
-            'w-full text-left px-3 py-2 rounded-lg text-sm transition-colors',
+            'w-full justify-start h-auto px-3 py-2',
             selectedId === s.id
               ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+              : 'text-muted-foreground',
           )}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 w-full">
             <Plug className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="truncate">{s.name}</span>
             <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">
               {s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
             </span>
           </div>
-        </button>
+        </Button>
       ))}
     </div>
   )
@@ -358,13 +360,14 @@ export function McpSettings() {
           </>
         ) : selected ? (
           <>
-            <button
+            <Button
+              variant="ghost"
               onClick={() => setSelectedId(null)}
-              className="flex items-center gap-2 text-sm text-muted-foreground mb-4 hover:text-foreground transition-colors"
+              className="text-muted-foreground mb-4"
             >
-              <ArrowLeft className="w-4 h-4" />
+              <ArrowLeft />
               {t('common.back')}
-            </button>
+            </Button>
             <McpServerEditor
               key={selected.id}
               server={selected}

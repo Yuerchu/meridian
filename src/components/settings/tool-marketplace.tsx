@@ -178,9 +178,10 @@ export function ToolMarketplace() {
             const isExpanded = expandedToolId === ct.id
             return (
               <div key={ct.id} className="border border-border rounded-lg overflow-hidden">
-                <button
+                <Button
+                  variant="ghost"
                   onClick={() => setExpandedToolId(isExpanded ? null : ct.id)}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-accent/50 transition-colors text-left"
+                  className="w-full justify-start h-auto px-3 py-2 text-xs"
                 >
                   {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                   <Terminal className="w-3.5 h-3.5 text-muted-foreground" />
@@ -189,7 +190,7 @@ export function ToolMarketplace() {
                   {ct.is_enabled === 0 && (
                     <span className="text-[10px] text-muted-foreground bg-accent px-1 rounded">{t('settings.tools.disabled')}</span>
                   )}
-                </button>
+                </Button>
                 {isExpanded && (
                   <div className="px-3 pb-3">
                     <CustomToolEditor
