@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import {
   MessageSquare, MessageCircle, Plus, Settings, Trash2, FolderOpen, FolderPlus,
-  Users, Archive, MoreHorizontal, Download, ArrowLeft, Pin, PinOff, Pencil,
+  Users, Archive, Download, ArrowLeft, Pin, PinOff, Pencil,
   Cloud, Bot, BookTemplate, Smile, Wrench, Plug, Brain, Radio, Settings2, Info,
 } from 'lucide-react'
 import SpotlightCard from '@/components/SpotlightCard'
@@ -19,17 +19,9 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
-  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
 } from '@/components/ui/sidebar'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -270,38 +262,36 @@ export function AppSidebar({
                 </SidebarMenuButton>
               </SidebarMenuItem>
               {projects.map((project) => (
-                <SidebarMenuItem key={project.id}>
-                  <ContextMenu>
-                    <ContextMenuTrigger>
-                      <SidebarMenuButton
-                        isActive={project.id === activeProjectId}
-                        onClick={() => onSelectProject(project.id)}
-                      >
-                        <ProjectIcon sourceType={project.source_type} />
-                        {renamingProjectId === project.id ? (
-                          <InlineRenameInput
-                            value={project.name}
-                            onSubmit={(v) => { onRenameProject(project.id, v); setRenamingProjectId(null) }}
-                            onCancel={() => setRenamingProjectId(null)}
-                          />
-                        ) : (
-                          <span>{project.name}</span>
-                        )}
-                      </SidebarMenuButton>
-                    </ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuItem onClick={() => setRenamingProjectId(project.id)}>
-                        <Pencil />
-                        {t('contextMenu.rename')}
-                      </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem variant="destructive" onClick={() => onDeleteProject(project.id)}>
-                        <Trash2 />
-                        {t('sidebar.delete')}
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
-                </SidebarMenuItem>
+                <ContextMenu key={project.id}>
+                  <ContextMenuTrigger render={<SidebarMenuItem />}>
+                    <SidebarMenuButton
+                      isActive={project.id === activeProjectId}
+                      onClick={() => onSelectProject(project.id)}
+                    >
+                      <ProjectIcon sourceType={project.source_type} />
+                      {renamingProjectId === project.id ? (
+                        <InlineRenameInput
+                          value={project.name}
+                          onSubmit={(v) => { onRenameProject(project.id, v); setRenamingProjectId(null) }}
+                          onCancel={() => setRenamingProjectId(null)}
+                        />
+                      ) : (
+                        <span>{project.name}</span>
+                      )}
+                    </SidebarMenuButton>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem onClick={() => setRenamingProjectId(project.id)}>
+                      <Pencil />
+                      {t('contextMenu.rename')}
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem variant="destructive" onClick={() => onDeleteProject(project.id)}>
+                      <Trash2 />
+                      {t('sidebar.delete')}
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
               ))}
               {showNewProject && (
                 <NewProjectForm
@@ -331,74 +321,52 @@ export function AppSidebar({
                   if (path) await api.exportConversation(conv.id, 'dpo', path)
                 }
                 return (
-                  <SidebarMenuItem key={conv.id}>
-                    <ContextMenu>
-                      <ContextMenuTrigger>
-                        <SpotlightCard className="rounded-md" spotlightColor="rgba(255, 255, 255, 0.06)">
-                          <SidebarMenuButton
-                            isActive={conv.id === activeId}
-                            onClick={() => onSelect(conv.id)}
-                            className={conv.is_archived ? 'opacity-50' : undefined}
-                          >
-                            {conv.is_archived ? <Archive /> : <MessageSquare />}
-                            {renamingConvId === conv.id ? (
-                              <InlineRenameInput
-                                value={conv.title ?? ''}
-                                onSubmit={(v) => { onRename(conv.id, v); setRenamingConvId(null) }}
-                                onCancel={() => setRenamingConvId(null)}
-                              />
-                            ) : (
-                              <span>{conv.title ?? t('sidebar.newChat')}</span>
-                            )}
-                          </SidebarMenuButton>
-                        </SpotlightCard>
-                      </ContextMenuTrigger>
-                      <ContextMenuContent>
-                        <ContextMenuItem onClick={() => onTogglePin(conv.id)}>
-                          {conv.is_pinned ? <PinOff /> : <Pin />}
-                          {conv.is_pinned ? t('contextMenu.unpin') : t('contextMenu.pin')}
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => setRenamingConvId(conv.id)}>
-                          <Pencil />
-                          {t('contextMenu.rename')}
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem onClick={exportSft}>
-                          <Download />
-                          {t('sidebar.exportSft')}
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={exportDpo}>
-                          <Download />
-                          {t('sidebar.exportDpo')}
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem variant="destructive" onClick={() => onDelete(conv.id)}>
-                          <Trash2 />
-                          {t('sidebar.delete')}
-                        </ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger render={<SidebarMenuAction />}>
-                        <MoreHorizontal />
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent side="right" align="start">
-                        <DropdownMenuItem onClick={exportSft}>
-                          <Download />
-                          {t('sidebar.exportSft')}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={exportDpo}>
-                          <Download />
-                          {t('sidebar.exportDpo')}
-                        </DropdownMenuItem>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem className="text-destructive" onClick={() => onDelete(conv.id)}>
-                          <Trash2 />
-                          {t('sidebar.delete')}
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </SidebarMenuItem>
+                  <ContextMenu key={conv.id}>
+                    <ContextMenuTrigger render={<SidebarMenuItem />}>
+                      <SpotlightCard className="rounded-md" spotlightColor="rgba(255, 255, 255, 0.06)">
+                        <SidebarMenuButton
+                          isActive={conv.id === activeId}
+                          onClick={() => onSelect(conv.id)}
+                          className={conv.is_archived ? 'opacity-50' : undefined}
+                        >
+                          {conv.is_archived ? <Archive /> : <MessageSquare />}
+                          {renamingConvId === conv.id ? (
+                            <InlineRenameInput
+                              value={conv.title ?? ''}
+                              onSubmit={(v) => { onRename(conv.id, v); setRenamingConvId(null) }}
+                              onCancel={() => setRenamingConvId(null)}
+                            />
+                          ) : (
+                            <span>{conv.title ?? t('sidebar.newChat')}</span>
+                          )}
+                        </SidebarMenuButton>
+                      </SpotlightCard>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem onClick={() => onTogglePin(conv.id)}>
+                        {conv.is_pinned ? <PinOff /> : <Pin />}
+                        {conv.is_pinned ? t('contextMenu.unpin') : t('contextMenu.pin')}
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={() => setRenamingConvId(conv.id)}>
+                        <Pencil />
+                        {t('contextMenu.rename')}
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem onClick={exportSft}>
+                        <Download />
+                        {t('sidebar.exportSft')}
+                      </ContextMenuItem>
+                      <ContextMenuItem onClick={exportDpo}>
+                        <Download />
+                        {t('sidebar.exportDpo')}
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem variant="destructive" onClick={() => onDelete(conv.id)}>
+                        <Trash2 />
+                        {t('sidebar.delete')}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 )
               })}
             </SidebarMenu>
