@@ -29,6 +29,14 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import {
+  AlertDialog,
+  AlertDialogPopup,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogClose,
+  AlertDialogFooter,
+} from '@/components/ui/alert-dialog'
 
 interface AppSidebarProps {
   conversations: Conversation[]
@@ -186,6 +194,7 @@ export function AppSidebar({
   const [showNewProject, setShowNewProject] = useState(false)
   const [renamingConvId, setRenamingConvId] = useState<string | null>(null)
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'conversation' | 'project'; id: string } | null>(null)
 
   if (page === 'settings') {
     return (
@@ -286,7 +295,7 @@ export function AppSidebar({
                       {t('contextMenu.rename')}
                     </ContextMenuItem>
                     <ContextMenuSeparator />
-                    <ContextMenuItem variant="destructive" onClick={() => onDeleteProject(project.id)}>
+                    <ContextMenuItem variant="destructive" onClick={() => setDeleteTarget({ type: 'project', id: project.id })}>
                       <Trash2 />
                       {t('sidebar.delete')}
                     </ContextMenuItem>
@@ -361,7 +370,7 @@ export function AppSidebar({
                         {t('sidebar.exportDpo')}
                       </ContextMenuItem>
                       <ContextMenuSeparator />
-                      <ContextMenuItem variant="destructive" onClick={() => onDelete(conv.id)}>
+                      <ContextMenuItem variant="destructive" onClick={() => setDeleteTarget({ type: 'conversation', id: conv.id })}>
                         <Trash2 />
                         {t('sidebar.delete')}
                       </ContextMenuItem>
@@ -384,6 +393,29 @@ export function AppSidebar({
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
+
+      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
+        <AlertDialogPopup>
+          <AlertDialogTitle>{t('confirm.title')}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {deleteTarget?.type === 'project' ? t('confirm.deleteProject') : t('confirm.deleteConversation')}
+          </AlertDialogDescription>
+          <AlertDialogFooter>
+            <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
+              {t('common.cancel')}
+            </AlertDialogClose>
+            <AlertDialogClose
+              className="bg-destructive text-white hover:bg-destructive/80"
+              onClick={() => {
+                if (deleteTarget?.type === 'conversation') onDelete(deleteTarget.id)
+                else if (deleteTarget?.type === 'project') onDeleteProject(deleteTarget.id)
+              }}
+            >
+              {t('common.confirm')}
+            </AlertDialogClose>
+          </AlertDialogFooter>
+        </AlertDialogPopup>
+      </AlertDialog>
     </Sidebar>
   )
 }

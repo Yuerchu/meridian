@@ -15,6 +15,14 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import {
+  AlertDialog,
+  AlertDialogPopup,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogClose,
+  AlertDialogFooter,
+} from '@/components/ui/alert-dialog'
 import { ToolCallBlock } from './tool-call-block'
 import { renderEmojisInText } from './emoji-renderer'
 import type { ContentBlock, Message } from '@/types'
@@ -256,6 +264,7 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
   const [editText, setEditText] = useState('')
   const editRef = useRef<HTMLTextAreaElement>(null)
   const [selectedText, setSelectedText] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const handleContextMenuOpenChange = useCallback((open: boolean) => {
     if (open) {
@@ -311,7 +320,7 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
     }
     const { senderPrefix, quotedMessage, body } = parseOneBotContent(textContent)
 
-    return (
+    const userContent = (
       <ContextMenu onOpenChange={handleContextMenuOpenChange}>
         <ContextMenuTrigger className="flex justify-end group">
           <div className="max-w-[80%]">
@@ -390,7 +399,7 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
                   <CopyButton text={message.content} />
                   {onDelete && (
                     <button
-                      onClick={() => onDelete(message.id)}
+                      onClick={() => setShowDeleteConfirm(true)}
                       className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
                       title={t('chat.delete')}
                     >
@@ -424,7 +433,7 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
           </ContextMenuItem>
           <ContextMenuSeparator />
           {onDelete && (
-            <ContextMenuItem variant="destructive" onClick={() => onDelete(message.id)}>
+            <ContextMenuItem variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
               <Trash2 />
               {t('chat.delete')}
             </ContextMenuItem>
@@ -432,9 +441,34 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
         </ContextMenuContent>
       </ContextMenu>
     )
+
+    return (
+      <>
+        {userContent}
+        {onDelete && (
+          <AlertDialog open={showDeleteConfirm} onOpenChange={(open) => { if (!open) setShowDeleteConfirm(false) }}>
+            <AlertDialogPopup>
+              <AlertDialogTitle>{t('confirm.title')}</AlertDialogTitle>
+              <AlertDialogDescription>{t('confirm.deleteMessage')}</AlertDialogDescription>
+              <AlertDialogFooter>
+                <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
+                  {t('common.cancel')}
+                </AlertDialogClose>
+                <AlertDialogClose
+                  className="bg-destructive text-white hover:bg-destructive/80"
+                  onClick={() => onDelete(message.id)}
+                >
+                  {t('common.confirm')}
+                </AlertDialogClose>
+              </AlertDialogFooter>
+            </AlertDialogPopup>
+          </AlertDialog>
+        )}
+      </>
+    )
   }
 
-  return (
+  const assistantContent = (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
       <ContextMenuTrigger className="group">
         <div className="flex items-center gap-2 mb-1.5">
@@ -503,7 +537,7 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
               )}
               {onDelete && (
                 <button
-                  onClick={() => onDelete(message.id)}
+                  onClick={() => setShowDeleteConfirm(true)}
                   className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
                   title={t('chat.delete')}
                 >
@@ -548,12 +582,37 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
         )}
         <ContextMenuSeparator />
         {onDelete && (
-          <ContextMenuItem variant="destructive" onClick={() => onDelete(message.id)}>
+          <ContextMenuItem variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
             <Trash2 />
             {t('chat.delete')}
           </ContextMenuItem>
         )}
       </ContextMenuContent>
     </ContextMenu>
+  )
+
+  return (
+    <>
+      {assistantContent}
+      {onDelete && (
+        <AlertDialog open={showDeleteConfirm} onOpenChange={(open) => { if (!open) setShowDeleteConfirm(false) }}>
+          <AlertDialogPopup>
+            <AlertDialogTitle>{t('confirm.title')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('confirm.deleteMessage')}</AlertDialogDescription>
+            <AlertDialogFooter>
+              <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
+                {t('common.cancel')}
+              </AlertDialogClose>
+              <AlertDialogClose
+                className="bg-destructive text-white hover:bg-destructive/80"
+                onClick={() => onDelete(message.id)}
+              >
+                {t('common.confirm')}
+              </AlertDialogClose>
+            </AlertDialogFooter>
+          </AlertDialogPopup>
+        </AlertDialog>
+      )}
+    </>
   )
 }
