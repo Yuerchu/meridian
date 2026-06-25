@@ -4,8 +4,17 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
 import { Bot, Copy, Check, Trash2, RefreshCw, ChevronDown, ChevronRight, Lightbulb, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import CountUp from '@/components/CountUp'
+import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { ToolCallBlock } from './tool-call-block'
 import { renderEmojisInText } from './emoji-renderer'
 import type { ContentBlock, Message } from '@/types'
@@ -246,6 +255,13 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState('')
   const editRef = useRef<HTMLTextAreaElement>(null)
+  const [selectedText, setSelectedText] = useState('')
+
+  const handleContextMenuOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      setSelectedText(window.getSelection()?.toString()?.trim() ?? '')
+    }
+  }, [])
 
   useEffect(() => {
     if (editing && editRef.current) {
@@ -296,174 +312,248 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
     const { senderPrefix, quotedMessage, body } = parseOneBotContent(textContent)
 
     return (
-      <div className="flex justify-end group">
-        <div className="max-w-[80%]">
-          {senderPrefix && (
-            <div className="text-xs text-muted-foreground/60 mb-1 text-right">{senderPrefix}</div>
-          )}
-          {editing ? (
-            <div className="rounded-2xl bg-accent px-4 py-2.5">
-              <textarea
-                ref={editRef}
-                value={editText}
-                onChange={(e) => {
-                  setEditText(e.target.value)
-                  e.target.style.height = 'auto'
-                  e.target.style.height = e.target.scrollHeight + 'px'
-                }}
-                onKeyDown={handleEditKeyDown}
-                className="w-full min-w-[200px] bg-transparent text-sm leading-relaxed resize-none outline-none"
-                rows={1}
-              />
-              <div className="flex justify-end gap-1 mt-1.5">
-                <button
-                  onClick={handleCancelEdit}
-                  className="px-2 py-0.5 rounded text-xs text-muted-foreground hover:bg-background/50 transition-colors"
-                  title="Esc"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={handleSaveEdit}
-                  className="px-2 py-0.5 rounded text-xs text-primary hover:bg-background/50 transition-colors"
-                  title="Enter"
-                >
-                  <Check className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              <div className="rounded-2xl bg-accent px-4 py-2.5 text-sm leading-relaxed">
-                {contentParts && contentParts.some((p) => p.type === 'image_url') && (
-                  <div className="flex flex-wrap gap-2 mb-2">
-                    {contentParts.filter((p) => p.type === 'image_url').map((p, i) => (
-                      <img key={i} src={p.image_url?.url} alt="" className="max-w-[200px] max-h-[200px] rounded-lg object-cover" />
-                    ))}
-                  </div>
-                )}
-                {contentParts && contentParts.some((p) => p.type === 'file') && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {contentParts.filter((p) => p.type === 'file').map((p, i) => (
-                      <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-background/50 rounded">
-                        {p.file?.name ?? 'file'}
-                      </span>
-                    ))}
-                  </div>
-                )}
-                {quotedMessage && (
-                  <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
-                )}
-                <div className="whitespace-pre-wrap">
-                  {emojiMap && Object.keys(emojiMap).length > 0
-                    ? renderEmojisInText(body, emojiMap)
-                    : body}
+      <ContextMenu onOpenChange={handleContextMenuOpenChange}>
+        <ContextMenuTrigger className="flex justify-end group">
+          <div className="max-w-[80%]">
+            {senderPrefix && (
+              <div className="text-xs text-muted-foreground/60 mb-1 text-right">{senderPrefix}</div>
+            )}
+            {editing ? (
+              <div className="rounded-2xl bg-accent px-4 py-2.5">
+                <textarea
+                  ref={editRef}
+                  value={editText}
+                  onChange={(e) => {
+                    setEditText(e.target.value)
+                    e.target.style.height = 'auto'
+                    e.target.style.height = e.target.scrollHeight + 'px'
+                  }}
+                  onKeyDown={handleEditKeyDown}
+                  className="w-full min-w-[200px] bg-transparent text-sm leading-relaxed resize-none outline-none"
+                  rows={1}
+                />
+                <div className="flex justify-end gap-1 mt-1.5">
+                  <button
+                    onClick={handleCancelEdit}
+                    className="px-2 py-0.5 rounded text-xs text-muted-foreground hover:bg-background/50 transition-colors"
+                    title="Esc"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={handleSaveEdit}
+                    className="px-2 py-0.5 rounded text-xs text-primary hover:bg-background/50 transition-colors"
+                    title="Enter"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
-              <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                {onEdit && (
-                  <button
-                    onClick={handleStartEdit}
-                    className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                    title={t('chat.edit')}
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                )}
-                <CopyButton text={message.content} />
-                {onDelete && (
-                  <button
-                    onClick={() => onDelete(message.id)}
-                    className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
-                    title={t('chat.delete')}
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
+            ) : (
+              <>
+                <div className="rounded-2xl bg-accent px-4 py-2.5 text-sm leading-relaxed">
+                  {contentParts && contentParts.some((p) => p.type === 'image_url') && (
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {contentParts.filter((p) => p.type === 'image_url').map((p, i) => (
+                        <img key={i} src={p.image_url?.url} alt="" className="max-w-[200px] max-h-[200px] rounded-lg object-cover" />
+                      ))}
+                    </div>
+                  )}
+                  {contentParts && contentParts.some((p) => p.type === 'file') && (
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {contentParts.filter((p) => p.type === 'file').map((p, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-background/50 rounded">
+                          {p.file?.name ?? 'file'}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {quotedMessage && (
+                    <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
+                  )}
+                  <div className="whitespace-pre-wrap">
+                    {emojiMap && Object.keys(emojiMap).length > 0
+                      ? renderEmojisInText(body, emojiMap)
+                      : body}
+                  </div>
+                </div>
+                <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {onEdit && (
+                    <button
+                      onClick={handleStartEdit}
+                      className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                      title={t('chat.edit')}
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                  <CopyButton text={message.content} />
+                  {onDelete && (
+                    <button
+                      onClick={() => onDelete(message.id)}
+                      className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
+                      title={t('chat.delete')}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          {selectedText && (
+            <>
+              <ContextMenuItem onClick={() => navigator.clipboard.writeText(selectedText)}>
+                <Copy />
+                {t('contextMenu.copySelection')}
+              </ContextMenuItem>
+              <ContextMenuSeparator />
             </>
           )}
-        </div>
-      </div>
+          {onEdit && (
+            <ContextMenuItem onClick={handleStartEdit}>
+              <Pencil />
+              {t('chat.edit')}
+            </ContextMenuItem>
+          )}
+          <ContextMenuItem onClick={() => navigator.clipboard.writeText(message.content)}>
+            <Copy />
+            {t('chat.copy')}
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          {onDelete && (
+            <ContextMenuItem variant="destructive" onClick={() => onDelete(message.id)}>
+              <Trash2 />
+              {t('chat.delete')}
+            </ContextMenuItem>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
     )
   }
 
   return (
-    <div className="group">
-      <div className="flex items-center gap-2 mb-1.5">
-        <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
-          <Bot className="w-3.5 h-3.5 text-muted-foreground" />
-        </div>
-        {message.model_id && (
-          <span className="text-xs text-muted-foreground">{message.model_id}</span>
-        )}
-        <span className="text-xs text-muted-foreground/60">{relativeTime(message.created_at)}</span>
-      </div>
-
-      <div className="pl-8">
-        {(message._blocks && message._blocks.length > 0) ? (
-          message._blocks.map((block, i) => (
-            <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} emojiMap={emojiMap} />
-          ))
-        ) : (
-          <MarkdownContent content={message.content} isStreaming={isStreaming} emojiMap={emojiMap} />
-        )}
-
-        <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          {(message.input_tokens || message.output_tokens) && (
-            <span className="text-[11px] text-muted-foreground/50 mr-1">
-              {message.input_tokens && message.output_tokens
-                ? `${message.input_tokens.toLocaleString()} + ${message.output_tokens.toLocaleString()} tokens`
-                : `${(message.output_tokens ?? message.input_tokens)!.toLocaleString()} tokens`}
-            </span>
+    <ContextMenu onOpenChange={handleContextMenuOpenChange}>
+      <ContextMenuTrigger className="group">
+        <div className="flex items-center gap-2 mb-1.5">
+          <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
+            <Bot className="w-3.5 h-3.5 text-muted-foreground" />
+          </div>
+          {message.model_id && (
+            isLastMessage
+              ? <DecryptedText text={message.model_id} animateOn="view" speed={25} sequential className="text-xs text-muted-foreground" />
+              : <span className="text-xs text-muted-foreground">{message.model_id}</span>
           )}
-          <div className="flex gap-1">
-            <CopyButton text={message.content} />
-            {onRate && !isStreaming && (
-              <>
+          <span className="text-xs text-muted-foreground/60">{relativeTime(message.created_at)}</span>
+        </div>
+
+        <div className="pl-8">
+          {(message._blocks && message._blocks.length > 0) ? (
+            message._blocks.map((block, i) => (
+              <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} emojiMap={emojiMap} />
+            ))
+          ) : (
+            <MarkdownContent content={message.content} isStreaming={isStreaming} emojiMap={emojiMap} />
+          )}
+
+          <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            {(message.input_tokens || message.output_tokens) && (
+              <span className="text-[11px] text-muted-foreground/50 mr-1">
+                {message.input_tokens && message.output_tokens
+                  ? <><CountUp to={message.input_tokens} separator="," duration={1} /> + <CountUp to={message.output_tokens} separator="," duration={1} /> tokens</>
+                  : <><CountUp to={(message.output_tokens ?? message.input_tokens)!} separator="," duration={1} /> tokens</>}
+              </span>
+            )}
+            <div className="flex gap-1">
+              <CopyButton text={message.content} />
+              {onRate && !isStreaming && (
+                <>
+                  <button
+                    onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}
+                    className={cn(
+                      'p-1 rounded hover:bg-accent transition-colors',
+                      message.rating === 1 ? 'text-green-500' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                    title={t('chat.thumbsUp')}
+                  >
+                    <ThumbsUp className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}
+                    className={cn(
+                      'p-1 rounded hover:bg-accent transition-colors',
+                      message.rating === -1 ? 'text-red-500' : 'text-muted-foreground hover:text-foreground',
+                    )}
+                    title={t('chat.thumbsDown')}
+                  >
+                    <ThumbsDown className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
+              {onRegenerate && !isStreaming && (
                 <button
-                  onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}
-                  className={cn(
-                    'p-1 rounded hover:bg-accent transition-colors',
-                    message.rating === 1 ? 'text-green-500' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                  title={t('chat.thumbsUp')}
+                  onClick={() => onRegenerate(message.id)}
+                  className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
+                  title={t('chat.regenerate')}
                 >
-                  <ThumbsUp className="w-3.5 h-3.5" />
+                  <RefreshCw className="w-3.5 h-3.5" />
                 </button>
+              )}
+              {onDelete && (
                 <button
-                  onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}
-                  className={cn(
-                    'p-1 rounded hover:bg-accent transition-colors',
-                    message.rating === -1 ? 'text-red-500' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                  title={t('chat.thumbsDown')}
+                  onClick={() => onDelete(message.id)}
+                  className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
+                  title={t('chat.delete')}
                 >
-                  <ThumbsDown className="w-3.5 h-3.5" />
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
-              </>
-            )}
-            {onRegenerate && !isStreaming && (
-              <button
-                onClick={() => onRegenerate(message.id)}
-                className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-                title={t('chat.regenerate')}
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-              </button>
-            )}
-            {onDelete && (
-              <button
-                onClick={() => onDelete(message.id)}
-                className="p-1 rounded hover:bg-accent text-muted-foreground hover:text-destructive transition-colors"
-                title={t('chat.delete')}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            )}
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        {selectedText && (
+          <>
+            <ContextMenuItem onClick={() => navigator.clipboard.writeText(selectedText)}>
+              <Copy />
+              {t('contextMenu.copySelection')}
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+          </>
+        )}
+        <ContextMenuItem onClick={() => navigator.clipboard.writeText(message.content)}>
+          <Copy />
+          {t('chat.copy')}
+        </ContextMenuItem>
+        {onRate && !isStreaming && (
+          <>
+            <ContextMenuItem onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}>
+              <ThumbsUp className={message.rating === 1 ? 'text-green-500' : ''} />
+              {t('chat.thumbsUp')}
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}>
+              <ThumbsDown className={message.rating === -1 ? 'text-red-500' : ''} />
+              {t('chat.thumbsDown')}
+            </ContextMenuItem>
+          </>
+        )}
+        {onRegenerate && !isStreaming && (
+          <ContextMenuItem onClick={() => onRegenerate(message.id)}>
+            <RefreshCw />
+            {t('chat.regenerate')}
+          </ContextMenuItem>
+        )}
+        <ContextMenuSeparator />
+        {onDelete && (
+          <ContextMenuItem variant="destructive" onClick={() => onDelete(message.id)}>
+            <Trash2 />
+            {t('chat.delete')}
+          </ContextMenuItem>
+        )}
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }

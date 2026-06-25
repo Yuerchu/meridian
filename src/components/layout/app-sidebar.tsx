@@ -1,8 +1,14 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open, save } from '@tauri-apps/plugin-dialog'
-import { MessageSquare, MessageCircle, Plus, Settings, Trash2, FolderOpen, FolderPlus, Users, Archive, MoreHorizontal, Download } from 'lucide-react'
+import {
+  MessageSquare, MessageCircle, Plus, Settings, Trash2, FolderOpen, FolderPlus,
+  Users, Archive, MoreHorizontal, Download, ArrowLeft, Pin, PinOff, Pencil,
+  Cloud, Bot, BookTemplate, Smile, Wrench, Plug, Brain, Radio, Settings2, Info,
+} from 'lucide-react'
+import SpotlightCard from '@/components/SpotlightCard'
 import type { Conversation, Project } from '@/types'
+import type { SettingsTab } from '@/components/settings'
 import { api } from '@/api'
 import {
   Sidebar,
@@ -24,6 +30,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 
 interface AppSidebarProps {
   conversations: Conversation[]
@@ -31,11 +44,19 @@ interface AppSidebarProps {
   onSelect: (id: string) => void
   onCreate: () => void
   onDelete: (id: string) => void
+  onRename: (id: string, newTitle: string) => void
+  onTogglePin: (id: string) => void
+  page: 'chat' | 'settings'
   onOpenSettings: () => void
+  onCloseSettings: () => void
+  settingsTab: SettingsTab
+  onSettingsTabChange: (tab: SettingsTab) => void
   projects: Project[]
   activeProjectId: string | null
   onSelectProject: (id: string | null) => void
   onCreateProject: (name: string, path: string) => void
+  onDeleteProject: (id: string) => void
+  onRenameProject: (id: string, newName: string) => void
 }
 
 function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path: string) => void; onCancel: () => void }) {
@@ -105,20 +126,112 @@ function ProjectIcon({ sourceType }: { sourceType: string }) {
   }
 }
 
+const settingsTabs: Array<{ id: SettingsTab; labelKey: string; icon: React.ElementType }> = [
+  { id: 'provider', labelKey: 'settings.provider', icon: Cloud },
+  { id: 'assistants', labelKey: 'settings.assistants', icon: Bot },
+  { id: 'templates', labelKey: 'settings.templates', icon: BookTemplate },
+  { id: 'emoji', labelKey: 'settings.emoji', icon: Smile },
+  { id: 'tools', labelKey: 'settings.toolsTab', icon: Wrench },
+  { id: 'mcp', labelKey: 'settings.mcp', icon: Plug },
+  { id: 'memories', labelKey: 'settings.memories', icon: Brain },
+  { id: 'onebot', labelKey: 'settings.onebot', icon: Radio },
+  { id: 'general', labelKey: 'settings.general', icon: Settings2 },
+  { id: 'about', labelKey: 'settings.about', icon: Info },
+]
+
+function InlineRenameInput({ value, onSubmit, onCancel }: { value: string; onSubmit: (v: string) => void; onCancel: () => void }) {
+  const [text, setText] = useState(value)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    const el = inputRef.current
+    if (el) {
+      el.focus()
+      el.select()
+    }
+  }, [])
+
+  return (
+    <input
+      ref={inputRef}
+      type="text"
+      value={text}
+      onChange={(e) => setText(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && text.trim()) onSubmit(text.trim())
+        else if (e.key === 'Escape') onCancel()
+      }}
+      onBlur={() => {
+        if (text.trim() && text.trim() !== value) onSubmit(text.trim())
+        else onCancel()
+      }}
+      className="w-full px-1 py-0 text-sm bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-ring"
+    />
+  )
+}
+
 export function AppSidebar({
   conversations,
   activeId,
   onSelect,
   onCreate,
   onDelete,
+  onRename,
+  onTogglePin,
+  page,
   onOpenSettings,
+  onCloseSettings,
+  settingsTab,
+  onSettingsTabChange,
   projects,
   activeProjectId,
   onSelectProject,
   onCreateProject,
+  onDeleteProject,
+  onRenameProject,
 }: AppSidebarProps) {
   const { t } = useTranslation()
   const [showNewProject, setShowNewProject] = useState(false)
+  const [renamingConvId, setRenamingConvId] = useState<string | null>(null)
+  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
+
+  if (page === 'settings') {
+    return (
+      <Sidebar variant="inset" collapsible="icon">
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton onClick={onCloseSettings}>
+                <ArrowLeft />
+                <span>{t('settings.backToApp')}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
+
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel>{t('settings.title')}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {settingsTabs.map((tab) => (
+                  <SidebarMenuItem key={tab.id}>
+                    <SidebarMenuButton
+                      isActive={settingsTab === tab.id}
+                      onClick={() => onSettingsTabChange(tab.id)}
+                    >
+                      <tab.icon />
+                      <span>{t(tab.labelKey)}</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
+    )
+  }
 
   return (
     <Sidebar variant="inset" collapsible="icon">
@@ -158,13 +271,36 @@ export function AppSidebar({
               </SidebarMenuItem>
               {projects.map((project) => (
                 <SidebarMenuItem key={project.id}>
-                  <SidebarMenuButton
-                    isActive={project.id === activeProjectId}
-                    onClick={() => onSelectProject(project.id)}
-                  >
-                    <ProjectIcon sourceType={project.source_type} />
-                    <span>{project.name}</span>
-                  </SidebarMenuButton>
+                  <ContextMenu>
+                    <ContextMenuTrigger>
+                      <SidebarMenuButton
+                        isActive={project.id === activeProjectId}
+                        onClick={() => onSelectProject(project.id)}
+                      >
+                        <ProjectIcon sourceType={project.source_type} />
+                        {renamingProjectId === project.id ? (
+                          <InlineRenameInput
+                            value={project.name}
+                            onSubmit={(v) => { onRenameProject(project.id, v); setRenamingProjectId(null) }}
+                            onCancel={() => setRenamingProjectId(null)}
+                          />
+                        ) : (
+                          <span>{project.name}</span>
+                        )}
+                      </SidebarMenuButton>
+                    </ContextMenuTrigger>
+                    <ContextMenuContent>
+                      <ContextMenuItem onClick={() => setRenamingProjectId(project.id)}>
+                        <Pencil />
+                        {t('contextMenu.rename')}
+                      </ContextMenuItem>
+                      <ContextMenuSeparator />
+                      <ContextMenuItem variant="destructive" onClick={() => onDeleteProject(project.id)}>
+                        <Trash2 />
+                        {t('sidebar.delete')}
+                      </ContextMenuItem>
+                    </ContextMenuContent>
+                  </ContextMenu>
                 </SidebarMenuItem>
               ))}
               {showNewProject && (
@@ -185,44 +321,86 @@ export function AppSidebar({
           <SidebarGroupLabel>{t('sidebar.conversations')}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {conversations.map((conv) => (
-                <SidebarMenuItem key={conv.id}>
-                  <SidebarMenuButton
-                    isActive={conv.id === activeId}
-                    onClick={() => onSelect(conv.id)}
-                    className={conv.is_archived ? 'opacity-50' : undefined}
-                  >
-                    {conv.is_archived ? <Archive /> : <MessageSquare />}
-                    <span>{conv.title ?? t('sidebar.newChat')}</span>
-                  </SidebarMenuButton>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger render={<SidebarMenuAction />}>
-                      <MoreHorizontal />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent side="right" align="start">
-                      <DropdownMenuItem onClick={async () => {
-                        const path = await save({ defaultPath: `${conv.title ?? 'chat'}_sft.jsonl`, filters: [{ name: 'JSONL', extensions: ['jsonl'] }] })
-                        if (path) await api.exportConversation(conv.id, 'sft', path)
-                      }}>
-                        <Download />
-                        {t('sidebar.exportSft')}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={async () => {
-                        const path = await save({ defaultPath: `${conv.title ?? 'chat'}_dpo.jsonl`, filters: [{ name: 'JSONL', extensions: ['jsonl'] }] })
-                        if (path) await api.exportConversation(conv.id, 'dpo', path)
-                      }}>
-                        <Download />
-                        {t('sidebar.exportDpo')}
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive" onClick={() => onDelete(conv.id)}>
-                        <Trash2 />
-                        {t('sidebar.delete')}
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </SidebarMenuItem>
-              ))}
+              {conversations.map((conv) => {
+                const exportSft = async () => {
+                  const path = await save({ defaultPath: `${conv.title ?? 'chat'}_sft.jsonl`, filters: [{ name: 'JSONL', extensions: ['jsonl'] }] })
+                  if (path) await api.exportConversation(conv.id, 'sft', path)
+                }
+                const exportDpo = async () => {
+                  const path = await save({ defaultPath: `${conv.title ?? 'chat'}_dpo.jsonl`, filters: [{ name: 'JSONL', extensions: ['jsonl'] }] })
+                  if (path) await api.exportConversation(conv.id, 'dpo', path)
+                }
+                return (
+                  <SidebarMenuItem key={conv.id}>
+                    <ContextMenu>
+                      <ContextMenuTrigger>
+                        <SpotlightCard className="rounded-md" spotlightColor="rgba(255, 255, 255, 0.06)">
+                          <SidebarMenuButton
+                            isActive={conv.id === activeId}
+                            onClick={() => onSelect(conv.id)}
+                            className={conv.is_archived ? 'opacity-50' : undefined}
+                          >
+                            {conv.is_archived ? <Archive /> : <MessageSquare />}
+                            {renamingConvId === conv.id ? (
+                              <InlineRenameInput
+                                value={conv.title ?? ''}
+                                onSubmit={(v) => { onRename(conv.id, v); setRenamingConvId(null) }}
+                                onCancel={() => setRenamingConvId(null)}
+                              />
+                            ) : (
+                              <span>{conv.title ?? t('sidebar.newChat')}</span>
+                            )}
+                          </SidebarMenuButton>
+                        </SpotlightCard>
+                      </ContextMenuTrigger>
+                      <ContextMenuContent>
+                        <ContextMenuItem onClick={() => onTogglePin(conv.id)}>
+                          {conv.is_pinned ? <PinOff /> : <Pin />}
+                          {conv.is_pinned ? t('contextMenu.unpin') : t('contextMenu.pin')}
+                        </ContextMenuItem>
+                        <ContextMenuItem onClick={() => setRenamingConvId(conv.id)}>
+                          <Pencil />
+                          {t('contextMenu.rename')}
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem onClick={exportSft}>
+                          <Download />
+                          {t('sidebar.exportSft')}
+                        </ContextMenuItem>
+                        <ContextMenuItem onClick={exportDpo}>
+                          <Download />
+                          {t('sidebar.exportDpo')}
+                        </ContextMenuItem>
+                        <ContextMenuSeparator />
+                        <ContextMenuItem variant="destructive" onClick={() => onDelete(conv.id)}>
+                          <Trash2 />
+                          {t('sidebar.delete')}
+                        </ContextMenuItem>
+                      </ContextMenuContent>
+                    </ContextMenu>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger render={<SidebarMenuAction />}>
+                        <MoreHorizontal />
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent side="right" align="start">
+                        <DropdownMenuItem onClick={exportSft}>
+                          <Download />
+                          {t('sidebar.exportSft')}
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={exportDpo}>
+                          <Download />
+                          {t('sidebar.exportDpo')}
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-destructive" onClick={() => onDelete(conv.id)}>
+                          <Trash2 />
+                          {t('sidebar.delete')}
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </SidebarMenuItem>
+                )
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
