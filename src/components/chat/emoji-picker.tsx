@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Smile, Search } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/api'
 import type { Emoji, EmojiPack } from '@/types'
 
@@ -101,7 +102,7 @@ export function EmojiPicker({
             </div>
           </div>
 
-          <div className="max-h-56 overflow-y-auto p-2">
+          <ScrollArea className="max-h-56"><div className="p-2">
             {search.trim() ? (
               <div className="grid grid-cols-6 gap-1">
                 {searchResults.map((e) => (
@@ -154,7 +155,7 @@ export function EmojiPicker({
                 {t('chat.emojiNoPacks')}
               </p>
             )}
-          </div>
+          </div></ScrollArea>
         </div>
       )}
     </div>

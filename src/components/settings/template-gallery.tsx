@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/api'
 import type { PromptTemplate, TemplateVariable } from '@/types'
 
@@ -52,9 +53,11 @@ function TemplateCard({
           {template.description && (
             <p className="text-xs text-muted-foreground">{template.description}</p>
           )}
-          <pre className="text-xs bg-accent/30 rounded-md p-2.5 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono leading-relaxed">
-            {template.template_text}
-          </pre>
+          <ScrollArea className="max-h-40">
+            <pre className="text-xs bg-accent/30 rounded-md p-2.5 whitespace-pre-wrap break-words font-mono leading-relaxed">
+              {template.template_text}
+            </pre>
+          </ScrollArea>
           <div className="flex items-center gap-2 pt-1">
             {onApply && (
               <Button size="sm" onClick={() => onApply(template.template_text)}>
