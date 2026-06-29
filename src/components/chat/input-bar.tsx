@@ -1,8 +1,15 @@
-import { useRef, useCallback, useEffect } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowUp, Square, Paperclip, X as XIcon } from 'lucide-react'
+import { ArrowUp, Square, Paperclip, X as XIcon, Scissors, Copy, ClipboardPaste, TextSelect } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import {
   InputGroup,
   InputGroupTextarea,
@@ -76,9 +83,57 @@ export function InputBar({
   const { t } = useTranslation()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const prevTokens = usePrevious(contextInfo?.estimatedTokens ?? 0)
+  const [selectedText, setSelectedText] = useState('')
 
   useEffect(() => {
     textareaRef.current?.focus()
+  }, [])
+
+  const handleContextMenuOpen = useCallback((open: boolean) => {
+    if (open) {
+      setSelectedText(window.getSelection()?.toString() ?? '')
+    }
+  }, [])
+
+  const handleCut = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const start = el.selectionStart
+    const end = el.selectionEnd
+    if (start === end) return
+    navigator.clipboard.writeText(el.value.slice(start, end))
+    onChange(el.value.slice(0, start) + el.value.slice(end))
+    requestAnimationFrame(() => {
+      el.selectionStart = start
+      el.selectionEnd = start
+    })
+  }, [onChange])
+
+  const handleCopy = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    const text = el.value.slice(el.selectionStart, el.selectionEnd)
+    if (text) navigator.clipboard.writeText(text)
+  }, [])
+
+  const handlePaste = useCallback(async () => {
+    const el = textareaRef.current
+    if (!el) return
+    const clip = await navigator.clipboard.readText()
+    const start = el.selectionStart
+    const end = el.selectionEnd
+    onChange(el.value.slice(0, start) + clip + el.value.slice(end))
+    requestAnimationFrame(() => {
+      const pos = start + clip.length
+      el.selectionStart = pos
+      el.selectionEnd = pos
+    })
+  }, [onChange])
+
+  const handleSelectAll = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.select()
   }, [])
 
   const adjustHeight = useCallback(() => {
@@ -103,6 +158,8 @@ export function InputBar({
   return (
     <div className="px-4 pb-[max(1rem,var(--safe-bottom))] pt-2">
       <div className="max-w-2xl mx-auto">
+        <ContextMenu onOpenChange={handleContextMenuOpen}>
+        <ContextMenuTrigger>
         <InputGroup className="rounded-2xl">
           {attachedFiles.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
@@ -218,6 +275,35 @@ export function InputBar({
             </div>
           </InputGroupAddon>
         </InputGroup>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          {selectedText && (
+            <>
+              <ContextMenuItem onClick={handleCut}>
+                <Scissors />
+                {t('contextMenu.cut')}
+                <span className="ml-auto text-xs text-muted-foreground">Ctrl+X</span>
+              </ContextMenuItem>
+              <ContextMenuItem onClick={handleCopy}>
+                <Copy />
+                {t('chat.copy')}
+                <span className="ml-auto text-xs text-muted-foreground">Ctrl+C</span>
+              </ContextMenuItem>
+            </>
+          )}
+          <ContextMenuItem onClick={handlePaste}>
+            <ClipboardPaste />
+            {t('contextMenu.paste')}
+            <span className="ml-auto text-xs text-muted-foreground">Ctrl+V</span>
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={handleSelectAll}>
+            <TextSelect />
+            {t('contextMenu.selectAll')}
+            <span className="ml-auto text-xs text-muted-foreground">Ctrl+A</span>
+          </ContextMenuItem>
+        </ContextMenuContent>
+        </ContextMenu>
       </div>
     </div>
   )
