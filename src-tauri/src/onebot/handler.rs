@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use tauri::Emitter;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
@@ -101,6 +102,45 @@ async fn handle_text_message(
         match sessions.reset_conversation(&session_key, &title, state.config.assistant_id.as_deref()) {
             Ok(_) => return build_reply(event, "已重置对话。新的对话已创建。", event_message_id),
             Err(e) => return build_reply(event, &format!("重置失败: {e}"), event_message_id),
+        }
+    }
+
+    if trimmed == "/compact" || trimmed.starts_with("/compact ") {
+        let custom_instructions = trimmed.strip_prefix("/compact").unwrap().trim();
+        let custom_instructions = if custom_instructions.is_empty() { None } else { Some(custom_instructions.to_string()) };
+
+        // Need conversation_id for compact — resolve session first
+        let (_, conversation_id) = {
+            let mut sessions = state.sessions.lock().await;
+            match sessions.get_or_create(&session_key, &title, state.config.assistant_id.as_deref()) {
+                Ok(ids) => ids,
+                Err(e) => return build_reply(event, &format!("内部错误: {e}"), event_message_id),
+            }
+        };
+
+        let pool = &state.pool;
+        let secrets = &state.secrets;
+        let (assistant, keep_recent) = {
+            let pool = pool.clone();
+            let conv_id = conversation_id.clone();
+            match tokio::task::spawn_blocking(move || {
+                let mut conn = crate::get_conn(&pool)?;
+                let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
+                    .map_err(|e| e.to_string())?;
+                let assistant = conv.assistant_id.as_deref()
+                    .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
+                let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
+                Ok::<_, String>((assistant, keep_recent))
+            }).await {
+                Ok(Ok(r)) => r,
+                Ok(Err(e)) => return build_reply(event, &format!("Compact 失败: {e}"), event_message_id),
+                Err(e) => return build_reply(event, &format!("Compact 失败: {e}"), event_message_id),
+            }
+        };
+
+        match crate::do_compact(pool, secrets.as_ref(), &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await {
+            Ok(_) => return build_reply(event, "对话上下文已压缩。", event_message_id),
+            Err(e) => return build_reply(event, &format!("Compact 失败: {e}"), event_message_id),
         }
     }
 
@@ -210,8 +250,13 @@ async fn handle_text_message(
         is_admin,
         &approval_fn,
         &cancel,
+        state.app_handle.as_ref(),
     )
     .await;
+
+    if let Some(ref app) = state.app_handle {
+        let _ = app.emit("conversation-updated", serde_json::json!({"id": conversation_id}));
+    }
 
     match response {
         Ok(reply_text) => {

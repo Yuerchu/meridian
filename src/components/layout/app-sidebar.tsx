@@ -7,6 +7,7 @@ import {
   Cloud, Bot, BookTemplate, Smile, Wrench, Plug, Brain, Radio, Settings2, Info,
 } from 'lucide-react'
 import SpotlightCard from '@/components/SpotlightCard'
+import { useConversationStore } from '@/stores/conversation-store'
 import type { Conversation, Project } from '@/types'
 import type { SettingsTab } from '@/components/settings'
 import { api } from '@/api'
@@ -141,6 +142,22 @@ const settingsTabs: Array<{ id: SettingsTab; labelKey: string; icon: React.Eleme
   { id: 'general', labelKey: 'settings.general', icon: Settings2 },
   { id: 'about', labelKey: 'settings.about', icon: Info },
 ]
+
+function ConversationIndicator({ conversationId, activeId }: { conversationId: string; activeId: string | null }) {
+  const session = useConversationStore((s) => s.sessions[conversationId])
+  if (!session || conversationId === activeId) return null
+
+  if (session.pendingApproval || session.pendingAskUser) {
+    return <span className="size-2 shrink-0 rounded-full bg-amber-500 animate-pulse" />
+  }
+  if (session.streaming) {
+    return <span className="size-2 shrink-0 rounded-full bg-blue-500 animate-pulse" />
+  }
+  if (session.fulfilledUnseen) {
+    return <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
+  }
+  return null
+}
 
 function InlineRenameInput({ value, onSubmit, onCancel }: { value: string; onSubmit: (v: string) => void; onCancel: () => void }) {
   const [text, setText] = useState(value)
@@ -351,8 +368,9 @@ export function AppSidebar({
                               onCancel={() => setRenamingConvId(null)}
                             />
                           ) : (
-                            <span>{conv.title ?? t('sidebar.newChat')}</span>
+                            <span className="flex-1 truncate">{conv.title ?? t('sidebar.newChat')}</span>
                           )}
+                          <ConversationIndicator conversationId={conv.id} activeId={activeId} />
                         </SidebarMenuButton>
                       </SpotlightCard>
                     </ContextMenuTrigger>

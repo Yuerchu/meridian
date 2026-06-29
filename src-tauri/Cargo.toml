@@ -57,6 +57,7 @@ uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
 similar = "2"
 dirs = "6"
+tauri-plugin-notification = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3.6", default-features = false, features = ["crypto-rust", "windows-native"] }

@@ -1,6 +1,5 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { listen } from '@tauri-apps/api/event'
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -8,51 +7,8 @@ import AnimatedContent from '@/components/AnimatedContent'
 import { MessageItem } from './message-item'
 import { InputBar, type AttachedFile } from './input-bar'
 import { useEmojiMap } from './emoji-renderer'
-import type { Message as DbMessage, StreamChunk, Assistant, Provider, ProviderCapabilities, ToolCallDisplay, ContentBlock, OpenAIToolCall, ThinkingLevel } from '@/types'
-
-function hydrateBlocks(msgs: DbMessage[]): DbMessage[] {
-  return msgs.map((m) => {
-    if (m.role !== 'assistant') return m
-
-    if (m.schema_version >= 2) {
-      const blocks: ContentBlock[] = []
-      if (m.reasoning_content) {
-        blocks.push({ type: 'thinking', text: m.reasoning_content })
-      }
-      if (m.content) {
-        blocks.push({ type: 'text', text: m.content })
-      }
-      if (m.tool_calls) {
-        try {
-          const tcs = JSON.parse(m.tool_calls) as OpenAIToolCall[]
-          for (const tc of tcs) {
-            const toolMsg = msgs.find((tm) => tm.role === 'tool' && tm.tool_call_id === tc.id)
-            blocks.push({
-              type: 'tool_call',
-              data: {
-                call_id: tc.id,
-                tool_name: tc.function.name,
-                arguments: tc.function.arguments,
-                status: 'completed',
-                result: toolMsg?.content,
-              },
-            })
-          }
-        } catch { /* ignore */ }
-      }
-      return { ...m, _blocks: blocks.length > 0 ? blocks : undefined }
-    }
-
-    // Legacy v1 format
-    if (m.tool_calls) {
-      try {
-        const blocks = JSON.parse(m.tool_calls) as ContentBlock[]
-        return { ...m, _blocks: blocks }
-      } catch { /* ignore */ }
-    }
-    return m
-  })
-}
+import { useConversationStore } from '@/stores/conversation-store'
+import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
 function AutoScrollArea({ children, dep }: { children: React.ReactNode; dep: unknown }) {
   const rootRef = useRef<HTMLDivElement>(null)
@@ -98,11 +54,19 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   initialMessage?: string | null
   onInitialMessageConsumed?: () => void
 }) {
-  const [messages, setMessages] = useState<DbMessage[]>([])
-  const [streaming, setStreaming] = useState(false)
-  const [compacting, setCompacting] = useState(false)
+  const session = useConversationStore((s) => s.sessions[conversationId])
+  const storeEnsureSession = useConversationStore((s) => s.ensureSession)
+  const storeLoadMessages = useConversationStore((s) => s.loadMessages)
+  const storeSetStreaming = useConversationStore((s) => s.setStreaming)
+  const storeSetError = useConversationStore((s) => s.setError)
+
+  const messages = session?.messages ?? []
+  const streaming = session?.streaming ?? false
+  const compacting = session?.compacting ?? false
+  const error = session?.error ?? null
+  const compactCursor = session?.compactCursor ?? null
+
   const [input, setInput] = useState('')
-  const [error, setError] = useState<string | null>(null)
   const [assistants, setAssistants] = useState<Assistant[]>([])
   const [providers, setProviders] = useState<Provider[]>([])
   const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null)
@@ -111,17 +75,16 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('default')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [capabilities, setCapabilities] = useState<ProviderCapabilities | null>(null)
-  const [compactCursor, setCompactCursor] = useState<number | null>(null)
   const [showCompactedMessages, setShowCompactedMessages] = useState(false)
   const emojiMap = useEmojiMap(selectedAssistantId)
   const { t } = useTranslation()
-  const conversationIdRef = useRef(conversationId)
   const submittingRef = useRef(false)
-  conversationIdRef.current = conversationId
 
   useEffect(() => {
-    api.loadMessages(conversationId).then((msgs) => setMessages(hydrateBlocks(msgs)))
-    api.getConversation(conversationId).then((conv) => setCompactCursor(conv.compact_cursor))
+    storeEnsureSession(conversationId)
+    if (!session || session.messages.length === 0) {
+      storeLoadMessages(conversationId)
+    }
   }, [conversationId])
 
   useEffect(() => {
@@ -166,194 +129,38 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
 
   const handleDelete = useCallback((id: string) => {
     api.deleteMessage(id).then(() => {
-      setMessages((prev) => prev.filter((m) => m.id !== id))
+      storeLoadMessages(conversationId)
     })
-  }, [])
+  }, [conversationId, storeLoadMessages])
 
   const handleEdit = useCallback((id: string, content: string) => {
     api.updateMessageContent(id, content).then(() => {
-      setMessages((prev) => prev.map((m) => m.id === id ? { ...m, content } : m))
+      storeLoadMessages(conversationId)
     }).catch((err) => {
-      setError(String(err))
+      storeSetError(conversationId, String(err))
     })
-  }, [])
+  }, [conversationId, storeLoadMessages, storeSetError])
 
   const handleRate = useCallback((id: string, rating: number | null) => {
-    setMessages((prev) => prev.map((m) => m.id === id ? { ...m, rating } : m))
-    api.rateMessage(id, rating).catch(() => {
-      setMessages((prev) => prev.map((m) => m.id === id ? { ...m, rating: null } : m))
+    api.rateMessage(id, rating).then(() => {
+      storeLoadMessages(conversationId)
     })
-  }, [])
-
-  useEffect(() => {
-    const findAssistantMsg = (msgs: DbMessage[], messageId?: string): number => {
-      if (messageId) {
-        const idx = msgs.findIndex((m) => m.id === messageId)
-        if (idx >= 0) return idx
-      }
-      for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].role === 'assistant') return i
-      }
-      return -1
-    }
-
-    const promise = listen<StreamChunk>('chat-stream', (event) => {
-      const p = event.payload
-
-      if (p.type === 'stop' || p.done) {
-        setStreaming(false)
-        submittingRef.current = false
-        api.loadMessages(conversationIdRef.current).then((msgs) => {
-          setMessages(hydrateBlocks(msgs))
-        })
-        return
-      }
-
-      if (p.type === 'message_start' && p.message_id) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: p.message_id!,
-            conversation_id: conversationIdRef.current,
-            role: 'assistant' as const,
-            content: '',
-            provider_id: null,
-            model_id: null,
-            input_tokens: null,
-            output_tokens: null,
-            tool_calls: null,
-            tool_call_id: null,
-            sort_order: prev.length,
-            created_at: Date.now(),
-            reasoning_content: null,
-            rating: null,
-            schema_version: 2,
-            is_compact_summary: 0,
-          },
-        ])
-        return
-      }
-
-      if ((p.type === 'tool_call' || p.type === 'tool_approval_req' || p.type === 'tool_result') && p.call_id) {
-        setMessages((prev) => {
-          const targetIdx = findAssistantMsg(prev, p.message_id)
-          if (targetIdx < 0) return prev
-          const target = prev[targetIdx]
-
-          const blocks = [...(target._blocks ?? [])]
-
-          if (p.type === 'tool_call') {
-            blocks.push({
-              type: 'tool_call',
-              data: {
-                call_id: p.call_id!,
-                tool_name: p.tool_name!,
-                arguments: p.arguments ?? '{}',
-                status: 'running',
-              },
-            })
-          } else {
-            const idx = blocks.findIndex(
-              (b) => b.type === 'tool_call' && b.data.call_id === p.call_id,
-            )
-            if (idx >= 0 && blocks[idx].type === 'tool_call') {
-              const tc = blocks[idx] as { type: 'tool_call'; data: ToolCallDisplay }
-              if (p.type === 'tool_approval_req') {
-                blocks[idx] = { type: 'tool_call', data: { ...tc.data, status: 'pending' } }
-              } else if (p.type === 'tool_result') {
-                blocks[idx] = { type: 'tool_call', data: { ...tc.data, status: 'completed', result: p.result } }
-              }
-            }
-          }
-
-          const updated = [...prev]
-          updated[targetIdx] = { ...target, _blocks: blocks }
-          return updated
-        })
-        return
-      }
-
-      if (p.type === 'reasoning' && p.content) {
-        setMessages((prev) => {
-          const targetIdx = findAssistantMsg(prev, p.message_id)
-          if (targetIdx < 0) return prev
-          const target = prev[targetIdx]
-
-          const blocks = [...(target._blocks ?? [])]
-          const lastBlock = blocks[blocks.length - 1]
-          if (lastBlock?.type === 'thinking') {
-            blocks[blocks.length - 1] = { type: 'thinking', text: lastBlock.text + p.content }
-          } else {
-            blocks.push({ type: 'thinking', text: p.content! })
-          }
-          const updated = [...prev]
-          updated[targetIdx] = { ...target, _blocks: blocks }
-          return updated
-        })
-        return
-      }
-
-      if (p.type === 'text' && p.content) {
-        setMessages((prev) => {
-          const targetIdx = findAssistantMsg(prev, p.message_id)
-          if (targetIdx < 0) return prev
-          const target = prev[targetIdx]
-
-          const blocks = [...(target._blocks ?? [])]
-          const lastBlock = blocks[blocks.length - 1]
-          if (lastBlock?.type === 'text') {
-            blocks[blocks.length - 1] = { type: 'text', text: lastBlock.text + p.content }
-          } else {
-            blocks.push({ type: 'text', text: p.content! })
-          }
-          const updated = [...prev]
-          updated[targetIdx] = { ...target, content: target.content + p.content, _blocks: blocks }
-          return updated
-        })
-      }
-    })
-    return () => {
-      promise.then((fn) => fn())
-    }
-  }, [])
-
-  useEffect(() => {
-    const startPromise = listen<{ conversation_id: string }>('compact-start', (event) => {
-      if (event.payload.conversation_id === conversationIdRef.current) {
-        setCompacting(true)
-      }
-    })
-    const donePromise = listen<{ conversation_id: string }>('compact-done', (event) => {
-      if (event.payload.conversation_id === conversationIdRef.current) {
-        setCompacting(false)
-        setShowCompactedMessages(false)
-        api.loadMessages(conversationIdRef.current).then((msgs) => setMessages(hydrateBlocks(msgs)))
-        api.getConversation(conversationIdRef.current).then((conv) => setCompactCursor(conv.compact_cursor))
-      }
-    })
-    return () => {
-      startPromise.then((fn) => fn())
-      donePromise.then((fn) => fn())
-    }
-  }, [])
+  }, [conversationId, storeLoadMessages])
 
   const handleCompact = useCallback(async (instructions?: string) => {
-    setCompacting(true)
-    setError(null)
+    storeSetError(conversationId, null)
     try {
       await api.compact(conversationId, instructions)
     } catch (err) {
-      setError(String(err))
-    } finally {
-      setCompacting(false)
+      storeSetError(conversationId, String(err))
     }
-  }, [conversationId])
+  }, [conversationId, storeSetError])
 
   const sendMessage = useCallback(async (text: string, addUserBubble: boolean, files?: AttachedFile[]) => {
     if (!text || streaming || submittingRef.current) return
     submittingRef.current = true
-    setStreaming(true)
-    setError(null)
+    storeSetStreaming(conversationId, true)
+    storeSetError(conversationId, null)
     const now = Date.now()
 
     let messageContent = text
@@ -366,46 +173,65 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         }
         messageContent = JSON.stringify(parts)
       } catch (err) {
-        setError(String(err))
-        setStreaming(false)
+        storeSetError(conversationId, String(err))
+        storeSetStreaming(conversationId, false)
         submittingRef.current = false
         return
       }
     }
 
     if (addUserBubble) {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: `temp-user-${now}`,
-          conversation_id: conversationId,
-          role: 'user',
-          content: messageContent,
-          provider_id: null,
-          model_id: null,
-          input_tokens: null,
-          output_tokens: null,
-          tool_calls: null,
-          tool_call_id: null,
-          sort_order: prev.length,
-          created_at: now,
-          reasoning_content: null,
-          rating: null,
-          schema_version: 2,
-          is_compact_summary: 0,
-        },
-      ])
+      useConversationStore.setState((state) => {
+        const session = state.sessions[conversationId]
+        if (!session) return state
+        return {
+          sessions: {
+            ...state.sessions,
+            [conversationId]: {
+              ...session,
+              messages: [
+                ...session.messages,
+                {
+                  id: `temp-user-${now}`,
+                  conversation_id: conversationId,
+                  role: 'user' as const,
+                  content: messageContent,
+                  provider_id: null,
+                  model_id: null,
+                  input_tokens: null,
+                  output_tokens: null,
+                  tool_calls: null,
+                  tool_call_id: null,
+                  sort_order: session.messages.length,
+                  created_at: now,
+                  reasoning_content: null,
+                  rating: null,
+                  schema_version: 2,
+                  is_compact_summary: 0,
+                },
+              ],
+            },
+          },
+        }
+      })
     }
 
     api
       .chat(conversationId, messageContent, selectedModelId ?? undefined, selectedProviderId ?? undefined, thinkingLevel !== 'default' ? thinkingLevel : undefined, selectedAssistantId ?? undefined)
       .catch((err) => {
-        setError(String(err))
-        setStreaming(false)
+        storeSetError(conversationId, String(err))
+        storeSetStreaming(conversationId, false)
         submittingRef.current = false
-        api.loadMessages(conversationId).then((msgs) => setMessages(hydrateBlocks(msgs)))
+        storeLoadMessages(conversationId)
       })
-  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, selectedAssistantId])
+  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, selectedAssistantId, storeSetStreaming, storeSetError, storeLoadMessages])
+
+  // Reset submittingRef when streaming ends
+  useEffect(() => {
+    if (!streaming) {
+      submittingRef.current = false
+    }
+  }, [streaming])
 
   const initialMessageSent = useRef(false)
   useEffect(() => {
@@ -440,10 +266,11 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     if (!userMsg) return
     const targetMsg = messages[msgIndex]
     api.deleteMessagesFrom(conversationId, targetMsg.sort_order).then(() => {
-      setMessages((prev) => prev.filter((m) => m.sort_order < targetMsg.sort_order))
-      sendMessage(userMsg.content, false)
+      storeLoadMessages(conversationId).then(() => {
+        sendMessage(userMsg.content, false)
+      })
     })
-  }, [messages, conversationId, sendMessage])
+  }, [messages, conversationId, sendMessage, storeLoadMessages])
 
   const visibleMessages = messages.filter((m) => (m.role === 'user' || m.role === 'assistant') && m.is_compact_summary !== 1)
   const compactedMessages = compactCursor != null
@@ -609,7 +436,6 @@ interface ChatViewProps {
 export function ChatView({ conversationId, initialMessage, onInitialMessageConsumed }: ChatViewProps) {
   return (
     <ChatViewInner
-      key={conversationId}
       conversationId={conversationId}
       initialMessage={initialMessage}
       onInitialMessageConsumed={onInitialMessageConsumed}

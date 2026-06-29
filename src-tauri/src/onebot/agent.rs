@@ -2,6 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
+use tauri::Emitter;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -20,6 +21,9 @@ const STREAM_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(
 async fn consume_stream_headless(
     mut stream: ChatStream,
     cancel: &CancellationToken,
+    app: Option<&tauri::AppHandle>,
+    message_id: &str,
+    conversation_id: &str,
 ) -> Result<StreamResult, String> {
     use futures::StreamExt;
 
@@ -39,9 +43,21 @@ async fn consume_stream_headless(
                     }
                     Ok(Some(Ok(StreamEvent::Text { content: ref s }))) => {
                         text.push_str(s);
+                        if let Some(app) = app {
+                            let _ = app.emit("chat-stream", serde_json::json!({
+                                "type": "text", "content": s, "message_id": message_id,
+                                "conversation_id": conversation_id,
+                            }));
+                        }
                     }
                     Ok(Some(Ok(StreamEvent::Reasoning { content: ref s }))) => {
                         reasoning.push_str(s);
+                        if let Some(app) = app {
+                            let _ = app.emit("chat-stream", serde_json::json!({
+                                "type": "reasoning", "content": s, "message_id": message_id,
+                                "conversation_id": conversation_id,
+                            }));
+                        }
                     }
                     Ok(Some(Ok(StreamEvent::ToolCallStart { index, ref id, ref name }))) => {
                         while tool_acc.len() <= index {
@@ -92,10 +108,11 @@ async fn consume_stream_headless(
     Ok(StreamResult { text, reasoning, tool_calls, usage, finish_reason })
 }
 
-/// Run a headless chat session (no Tauri events, no UI approval flow).
+/// Run a headless chat session with optional Tauri event streaming.
 ///
 /// - `is_admin`: controls whether tools are available at all
 /// - `approval_fn`: called for Ask-permission tools (admin only); returns true to approve
+/// - `app`: when `Some`, emits `chat-stream` events for real-time UI updates
 #[allow(clippy::too_many_arguments)]
 pub async fn headless_chat(
     pool: &DbPool,
@@ -109,9 +126,10 @@ pub async fn headless_chat(
     is_admin: bool,
     approval_fn: &ApprovalFn,
     cancel: &CancellationToken,
+    app: Option<&tauri::AppHandle>,
 ) -> Result<String, String> {
-    // Load assistant + history
-    let (assistant, history) = {
+    // Load assistant + history + compact_cursor
+    let (assistant, history, compact_cursor) = {
         let pool = pool.clone();
         let conv_id = conversation_id.to_string();
         let aid = assistant_id.map(String::from);
@@ -119,12 +137,13 @@ pub async fn headless_chat(
             let mut conn = get_conn(&pool)?;
             let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;
+            let compact_cursor = conv.compact_cursor;
             let effective_aid = aid.as_deref().or(conv.assistant_id.as_deref());
             let assistant = effective_aid
                 .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
             let history = crate::db::ops::message::list_messages(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;
-            Ok::<_, String>((assistant, history))
+            Ok::<_, String>((assistant, history, compact_cursor))
         })
         .await
         .map_err(|e| e.to_string())??
@@ -155,7 +174,7 @@ pub async fn headless_chat(
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
-    let mut chat_messages = build_messages(&system_prompt, &history, user_message);
+    let mut chat_messages = build_messages(&system_prompt, &history, user_message, compact_cursor);
     crate::resolve_file_uris_in_messages(&mut chat_messages);
     crate::remove_orphan_tool_messages(&mut chat_messages);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
@@ -206,7 +225,7 @@ pub async fn headless_chat(
                 id: &msg_id, conversation_id: &conv_id, role: "user", content: &msg,
                 provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
                 tool_calls: None, tool_call_id: None, sort_order: 0, created_at: now,
-                reasoning_content: None, rating: None, schema_version: 2,
+                reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
             }).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
@@ -254,9 +273,17 @@ pub async fn headless_chat(
                     provider_id: None, model_id: Some(&model_clone), input_tokens: None,
                     output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
                     created_at: now, reasoning_content: None, rating: None, schema_version: 2,
+                    is_compact_summary: 0,
                 }).map_err(|e| e.to_string())?;
                 Ok::<_, String>(())
             }).await.map_err(|e| e.to_string())??;
+        }
+
+        if let Some(app) = app {
+            let _ = app.emit("chat-stream", serde_json::json!({
+                "type": "message_start", "message_id": &assistant_msg_id,
+                "conversation_id": conversation_id,
+            }));
         }
 
         let result = {
@@ -270,7 +297,7 @@ pub async fn headless_chat(
                     chat_messages.clone(), tool_defs.clone(), params.clone()
                 ).await;
                 let try_result = match stream_result {
-                    Ok(stream) => consume_stream_headless(stream, cancel).await,
+                    Ok(stream) => consume_stream_headless(stream, cancel, app, &assistant_msg_id, conversation_id).await,
                     Err(e) => Err(e.to_string()),
                 };
                 match try_result {
@@ -281,7 +308,7 @@ pub async fn headless_chat(
                         let stream = provider.stream_chat_with_tools(
                             chat_messages.clone(), tool_defs.clone(), params.clone()
                         ).await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
-                        break consume_stream_headless(stream, cancel)
+                        break consume_stream_headless(stream, cancel, app, &assistant_msg_id, conversation_id)
                             .await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
                     }
                     Err(e) if is_retryable_stream_error(&e) && attempt < MAX_STREAM_RETRIES => {
@@ -339,6 +366,16 @@ pub async fn headless_chat(
         for tc in &result.tool_calls {
             if cancel.is_cancelled() { break; }
 
+            if let Some(app) = app {
+                let _ = app.emit("chat-stream", serde_json::json!({
+                    "type": "tool_call",
+                    "call_id": tc.id, "tool_name": tc.name,
+                    "arguments": tc.arguments,
+                    "message_id": &assistant_msg_id,
+                    "conversation_id": conversation_id,
+                }));
+            }
+
             let is_mcp = tc.name.starts_with("mcp__");
             let tool = if !is_mcp { tool_registry.get(&tc.name) } else { None };
 
@@ -378,6 +415,15 @@ pub async fn headless_chat(
                 format!("Unknown tool: {}", tc.name)
             };
 
+            if let Some(app) = app {
+                let _ = app.emit("chat-stream", serde_json::json!({
+                    "type": "tool_result",
+                    "call_id": tc.id, "result": &tool_result,
+                    "message_id": &assistant_msg_id,
+                    "conversation_id": conversation_id,
+                }));
+            }
+
             {
                 let pool = pool.clone();
                 let conv_id = conversation_id.to_string();
@@ -393,6 +439,7 @@ pub async fn headless_chat(
                             tool_calls: None, tool_call_id: Some(&call_id),
                             sort_order: 0, created_at: now,
                             reasoning_content: None, rating: None, schema_version: 2,
+                            is_compact_summary: 0,
                         });
                     }
                 }).await;
@@ -403,6 +450,15 @@ pub async fn headless_chat(
 
         if cancel.is_cancelled() { break; }
         trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
+    }
+
+    if let Some(app) = app {
+        let _ = app.emit("chat-stream", serde_json::json!({
+            "type": "stop", "reason": "end_turn", "done": true,
+            "message_id": &assistant_msg_id,
+            "conversation_id": conversation_id,
+            "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
+        }));
     }
 
     Ok(last_assistant_text)

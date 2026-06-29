@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { listen } from '@tauri-apps/api/event'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { ChatView } from '@/components/chat/chat-view'
@@ -10,36 +9,28 @@ import type { SettingsTab } from '@/components/settings'
 import { api } from '@/api'
 import DecryptedText from '@/components/DecryptedText'
 import { useContextMenuGuard } from '@/hooks/use-context-menu-guard'
-import type { Conversation, Project } from '@/types'
+import { useGlobalEventListener } from '@/hooks/use-global-event-listener'
+import { useConversationStore } from '@/stores/conversation-store'
 
 type Page = 'chat' | 'settings'
 
 function App() {
   const { t } = useTranslation()
   useContextMenuGuard()
+  useGlobalEventListener()
+
   const [page, setPage] = useState<Page>('chat')
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('provider')
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [activeId, setActiveId] = useState<string | null>(null)
-  const [projects, setProjects] = useState<Project[]>([])
-  const [activeProjectId, setActiveProjectId] = useState<string | null>(null)
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null)
 
-  const refreshProjects = useCallback(async () => {
-    const list = await api.listProjects()
-    setProjects(list)
-  }, [])
-
-  const refreshConversations = useCallback(async () => {
-    if (activeProjectId) {
-      const active = await api.listConversationsByProject(activeProjectId)
-      const archived = await api.listConversationsByProject(activeProjectId, true)
-      setConversations([...active, ...archived])
-    } else {
-      const list = await api.listConversations()
-      setConversations(list)
-    }
-    return conversations
-  }, [activeProjectId])
+  const conversations = useConversationStore((s) => s.conversations)
+  const activeId = useConversationStore((s) => s.activeId)
+  const projects = useConversationStore((s) => s.projects)
+  const activeProjectId = useConversationStore((s) => s.activeProjectId)
+  const storeSetActiveId = useConversationStore((s) => s.setActiveId)
+  const storeSetActiveProjectId = useConversationStore((s) => s.setActiveProjectId)
+  const refreshConversations = useConversationStore((s) => s.refreshConversations)
+  const refreshProjects = useConversationStore((s) => s.refreshProjects)
 
   useEffect(() => {
     refreshProjects()
@@ -47,46 +38,49 @@ function App() {
 
   useEffect(() => {
     refreshConversations()
-  }, [refreshConversations])
-
-  useEffect(() => {
-    const promise = listen('conversation-updated', () => {
-      refreshConversations()
-    })
-    return () => { promise.then((fn) => fn()) }
-  }, [refreshConversations])
+  }, [refreshConversations, activeProjectId])
 
   const handleCreate = useCallback(async () => {
     const conv = await api.createConversation(undefined, activeProjectId ?? undefined)
-    const list = await refreshConversations()
-    setActiveId(conv.id)
+    await refreshConversations()
+    storeSetActiveId(conv.id)
     setPage('chat')
-    return list
-  }, [refreshConversations, activeProjectId])
+  }, [refreshConversations, activeProjectId, storeSetActiveId])
+
+  const handleCreateWithMessage = useCallback(async (text: string) => {
+    const conv = await api.createConversation(undefined, activeProjectId ?? undefined)
+    await refreshConversations()
+    setPendingMessage(text)
+    storeSetActiveId(conv.id)
+    setPage('chat')
+  }, [refreshConversations, activeProjectId, storeSetActiveId])
 
   const handleDelete = useCallback(
     async (id: string) => {
+      const session = useConversationStore.getState().sessions[id]
+      if (session?.streaming) {
+        await api.stopChat(id)
+      }
       await api.deleteConversation(id)
       await refreshConversations()
       if (activeId === id) {
-        setActiveId(null)
+        storeSetActiveId(null)
       }
     },
-    [activeId, refreshConversations],
+    [activeId, refreshConversations, storeSetActiveId],
   )
 
   const handleSelect = useCallback(
     (id: string) => {
-      setActiveId(id)
+      storeSetActiveId(id)
       setPage('chat')
     },
-    [],
+    [storeSetActiveId],
   )
 
   const handleSelectProject = useCallback((id: string | null) => {
-    setActiveProjectId(id)
-    setActiveId(null)
-  }, [])
+    storeSetActiveProjectId(id)
+  }, [storeSetActiveProjectId])
 
   const handleCreateProject = useCallback(async (name: string, path: string) => {
     await api.createProject(name, path)
@@ -107,9 +101,9 @@ function App() {
     await api.deleteProject(id)
     await refreshProjects()
     if (activeProjectId === id) {
-      setActiveProjectId(null)
+      storeSetActiveProjectId(null)
     }
-  }, [refreshProjects, activeProjectId])
+  }, [refreshProjects, activeProjectId, storeSetActiveProjectId])
 
   const handleRenameProject = useCallback(async (id: string, newName: string) => {
     await api.updateProject(id, { name: newName })
@@ -158,9 +152,13 @@ function App() {
           {page === 'settings' ? (
             <SettingsPage activeTab={settingsTab} />
           ) : activeId ? (
-            <ChatView conversationId={activeId} />
+            <ChatView
+              conversationId={activeId}
+              initialMessage={pendingMessage}
+              onInitialMessageConsumed={() => setPendingMessage(null)}
+            />
           ) : (
-            <EmptyState onCreate={handleCreate} />
+            <EmptyState onSubmit={handleCreateWithMessage} />
           )}
         </main>
       </SidebarInset>

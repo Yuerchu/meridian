@@ -178,39 +178,53 @@ pub(crate) fn build_messages(
     system_prompt: &str,
     history: &[Message],
     user_message: &str,
+    compact_cursor: Option<i32>,
 ) -> Vec<ChatMessage> {
     let mut msgs = Vec::new();
     if !system_prompt.is_empty() {
         msgs.push(ChatMessage { role: "system".into(), content: system_prompt.into(), reasoning_content: None, tool_calls: None, tool_call_id: None });
     }
-    for m in history {
-        match m.role.as_str() {
-            "user" => msgs.push(ChatMessage::user(&m.content)),
-            "assistant" => {
-                let tool_calls = if m.schema_version >= 2 {
-                    parse_openai_tool_calls(m.tool_calls.as_deref())
-                } else {
-                    m.tool_calls.as_deref()
-                        .map(|tc| extract_tool_calls_from_blocks(tc))
-                        .unwrap_or_default()
-                };
-                let reasoning = m.reasoning_content.clone();
-                if !tool_calls.is_empty() {
-                    msgs.push(ChatMessage::assistant_with_tools(&m.content, reasoning, tool_calls));
-                } else {
-                    msgs.push(ChatMessage { role: "assistant".into(), content: m.content.clone(), reasoning_content: reasoning, tool_calls: None, tool_call_id: None });
-                }
-            }
-            "tool" => {
-                if let Some(ref call_id) = m.tool_call_id {
-                    msgs.push(ChatMessage::tool_result(call_id, &m.content));
-                }
-            }
-            _ => {}
+    if let Some(cursor) = compact_cursor {
+        if let Some(summary) = history.iter().find(|m| m.is_compact_summary == 1) {
+            msgs.push(ChatMessage::user(&summary.content));
+        }
+        for m in history.iter().filter(|m| m.sort_order >= cursor && m.is_compact_summary == 0) {
+            push_history_message(&mut msgs, m);
+        }
+    } else {
+        for m in history.iter().filter(|m| m.is_compact_summary == 0) {
+            push_history_message(&mut msgs, m);
         }
     }
     msgs.push(ChatMessage::user(user_message));
     msgs
+}
+
+fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message) {
+    match m.role.as_str() {
+        "user" => msgs.push(ChatMessage::user(&m.content)),
+        "assistant" => {
+            let tool_calls = if m.schema_version >= 2 {
+                parse_openai_tool_calls(m.tool_calls.as_deref())
+            } else {
+                m.tool_calls.as_deref()
+                    .map(|tc| extract_tool_calls_from_blocks(tc))
+                    .unwrap_or_default()
+            };
+            let reasoning = m.reasoning_content.clone();
+            if !tool_calls.is_empty() {
+                msgs.push(ChatMessage::assistant_with_tools(&m.content, reasoning, tool_calls));
+            } else {
+                msgs.push(ChatMessage { role: "assistant".into(), content: m.content.clone(), reasoning_content: reasoning, tool_calls: None, tool_call_id: None });
+            }
+        }
+        "tool" => {
+            if let Some(ref call_id) = m.tool_call_id {
+                msgs.push(ChatMessage::tool_result(call_id, &m.content));
+            }
+        }
+        _ => {}
+    }
 }
 
 pub(crate) fn extract_tool_calls_from_blocks(blocks_json: &str) -> Vec<provider::ToolCall> {
@@ -407,6 +421,148 @@ pub(crate) fn resolve_provider_config(
     }
 
     Err("No provider configured. Go to Settings → Provider to add one.".into())
+}
+
+// --- Compact ---
+
+const COMPACT_PROMPT: &str = "You are a summarization assistant. Given the conversation below, produce a concise structured summary that preserves all essential context for continuing the task. Include:\n\n1. **Primary Request**: What the user originally asked for\n2. **Key Context**: Important facts, constraints, decisions, file paths, and code details\n3. **Current State**: What has been accomplished so far\n4. **Pending Tasks**: Any outstanding items or next steps\n\nBe thorough but concise. Do NOT use tool calls. Respond with ONLY the summary text.";
+
+pub(crate) async fn do_compact(
+    pool: &DbPool,
+    secrets: &SecretsManager,
+    conversation_id: &str,
+    assistant: Option<&Assistant>,
+    keep_recent: usize,
+    custom_instructions: Option<&str>,
+) -> Result<i32, String> {
+    let history = {
+        let pool = pool.clone();
+        let conv_id = conversation_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            db::ops::message::list_messages(&mut conn, &conv_id).map_err(|e| e.to_string())
+        }).await.map_err(|e| e.to_string())??
+    };
+
+    let active_messages: Vec<&Message> = history.iter()
+        .filter(|m| m.is_compact_summary == 0)
+        .collect();
+
+    let min_messages = keep_recent * 2 + 2;
+    if active_messages.len() < min_messages {
+        return Err("Not enough messages to compact".into());
+    }
+
+    let boundary_idx = active_messages.len() - keep_recent * 2;
+    let cursor_sort_order = active_messages[boundary_idx].sort_order;
+
+    let mut conversation_text = String::new();
+    for m in &active_messages[..boundary_idx] {
+        let role_label = match m.role.as_str() {
+            "user" => "User",
+            "assistant" => "Assistant",
+            "tool" => "Tool Result",
+            _ => continue,
+        };
+        conversation_text.push_str(&format!("### {}\n{}\n\n", role_label, m.content));
+    }
+
+    let mut compact_system = COMPACT_PROMPT.to_string();
+    if let Some(instructions) = custom_instructions {
+        compact_system.push_str(&format!("\n\nAdditional instructions: {instructions}"));
+    }
+
+    let compact_messages = vec![
+        provider::ChatMessage { role: "system".into(), content: compact_system, reasoning_content: None, tool_calls: None, tool_call_id: None },
+        provider::ChatMessage::user(&conversation_text),
+    ];
+
+    let (provider_type, base_url, api_key, model, api_format) =
+        resolve_provider_config(secrets, pool, assistant)?;
+    let prov = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
+
+    let params = provider::ChatParams {
+        model,
+        temperature: Some(0.3),
+        max_tokens: Some(4096),
+        ..provider::ChatParams::default()
+    };
+
+    let summary = prov.chat(compact_messages, params).await
+        .map_err(|e| format!("Compact summarization failed: {e}"))?;
+
+    {
+        let pool = pool.clone();
+        let conv_id = conversation_id.to_string();
+        let summary_content = summary;
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            db::ops::message::delete_compact_summaries(&mut conn, &conv_id)
+                .map_err(|e| e.to_string())?;
+            let msg_id = uuid::Uuid::new_v4().to_string();
+            let now = now_ms();
+            db::ops::message::insert_message(&mut conn, &NewMessage {
+                id: &msg_id, conversation_id: &conv_id, role: "user",
+                content: &summary_content,
+                provider_id: None, model_id: None,
+                input_tokens: None, output_tokens: None,
+                tool_calls: None, tool_call_id: None,
+                sort_order: -1, created_at: now,
+                reasoning_content: None, rating: None,
+                schema_version: 2, is_compact_summary: 1,
+            }).map_err(|e| e.to_string())?;
+            db::ops::conversation::update_compact_cursor(&mut conn, &conv_id, Some(cursor_sort_order), now)
+                .map_err(|e| e.to_string())?;
+            Ok::<_, String>(())
+        }).await.map_err(|e| e.to_string())??;
+    }
+
+    Ok(cursor_sort_order)
+}
+
+#[tauri::command]
+async fn compact(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    custom_instructions: Option<String>,
+) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    let secrets = app.state::<AppSecrets>();
+
+    let (assistant, keep_recent) = {
+        let pool = pool.clone();
+        let conv_id = conversation_id.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id)
+                .map_err(|e| e.to_string())?;
+            let assistant = conv.assistant_id.as_deref()
+                .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok());
+            let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
+            Ok::<_, String>((assistant, keep_recent))
+        }).await.map_err(|e| e.to_string())??
+    };
+
+    app.emit("compact-start", serde_json::json!({
+        "conversation_id": &conversation_id,
+    })).map_err(|e| e.to_string())?;
+
+    do_compact(&pool, &secrets.0, &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await?;
+
+    app.emit("compact-done", serde_json::json!({
+        "conversation_id": &conversation_id,
+    })).map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_conversation(app: tauri::AppHandle, id: String) -> Result<Conversation, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::conversation::get_conversation(&mut conn, &id).map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
 }
 
 // --- Secret commands ---
@@ -727,6 +883,7 @@ async fn create_assistant(
             thinking_enabled: 0,
             thinking_budget: None,
             tool_preset_id: None,
+            auto_compact_enabled: 0,
         };
         db::ops::assistant::create_assistant(&mut conn, &new).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
@@ -746,6 +903,7 @@ async fn update_assistant(
     thinking_enabled: Option<i32>,
     thinking_budget: Option<Option<i32>>,
     tool_preset_id: Option<Option<String>>,
+    auto_compact_enabled: Option<i32>,
 ) -> Result<Assistant, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
@@ -761,6 +919,7 @@ async fn update_assistant(
             thinking_enabled,
             thinking_budget,
             tool_preset_id,
+            auto_compact_enabled,
             updated_at: Some(now_ms()),
             ..Default::default()
         };
@@ -1372,6 +1531,7 @@ async fn start_onebot(app: tauri::AppHandle) -> Result<(), String> {
         app.state::<AppTools>().0.clone(),
         app.state::<AppMcp>().0.clone(),
         config,
+        Some(app.clone()),
     );
     new_server.start()?;
     *server_guard = new_server;
@@ -1404,6 +1564,7 @@ async fn consume_stream(
     app: &tauri::AppHandle,
     cancel: &tokio_util::sync::CancellationToken,
     message_id: &str,
+    conversation_id: &str,
 ) -> Result<StreamResult, String> {
     use futures::StreamExt;
 
@@ -1425,12 +1586,14 @@ async fn consume_stream(
                         text.push_str(s);
                         app.emit("chat-stream", serde_json::json!({
                             "type": "text", "content": s, "message_id": message_id,
+                            "conversation_id": conversation_id,
                         })).map_err(|e| e.to_string())?;
                     }
                     Ok(Some(Ok(provider::StreamEvent::Reasoning { content: ref s }))) => {
                         reasoning.push_str(s);
                         app.emit("chat-stream", serde_json::json!({
                             "type": "reasoning", "content": s, "message_id": message_id,
+                            "conversation_id": conversation_id,
                         })).map_err(|e| e.to_string())?;
                     }
                     Ok(Some(Ok(provider::StreamEvent::ToolCallStart { index, ref id, ref name }))) => {
@@ -1903,7 +2066,7 @@ async fn chat(
     }
 
     // Load conversation + assistant + history + project path
-    let (assistant, history, conv_title, project_path, project_id) = {
+    let (assistant, history, conv_title, project_path, project_id, compact_cursor) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         let aid_override = assistant_id.clone();
@@ -1911,6 +2074,7 @@ async fn chat(
             let mut conn = get_conn(&pool)?;
             let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;
+            let compact_cursor = conv.compact_cursor;
             let effective_aid = aid_override.as_deref()
                 .or(conv.assistant_id.as_deref());
             let assistant = effective_aid
@@ -1921,7 +2085,7 @@ async fn chat(
                 .and_then(|pid| db::ops::project::get_project(&mut conn, pid).ok());
             let project_path = project.as_ref().and_then(|p| p.path.clone());
             let project_id = project.as_ref().map(|p| p.id.clone());
-            Ok::<_, String>((assistant, history, conv.title, project_path, project_id))
+            Ok::<_, String>((assistant, history, conv.title, project_path, project_id, compact_cursor))
         }).await.map_err(|e| e.to_string())??
     };
 
@@ -2003,8 +2167,46 @@ async fn chat(
     };
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
+    let auto_compact = assistant.as_ref().map(|a| a.auto_compact_enabled != 0).unwrap_or(false);
 
-    let mut chat_messages = build_messages(system_prompt.trim(), &history, &message);
+    // Auto-compact: if enabled and tokens exceed threshold, compact before sending
+    let original_cursor = compact_cursor;
+    let mut compact_cursor = compact_cursor;
+    if auto_compact {
+        let pre_msgs = build_messages(system_prompt.trim(), &history, &message, compact_cursor);
+        let total_tokens: usize = pre_msgs.iter().map(|m| estimate_tokens(&m.content)).sum();
+        let threshold = context_limit.saturating_sub(33000);
+        if total_tokens > threshold && history.len() > keep_recent * 2 + 2 {
+            app.emit("compact-start", serde_json::json!({
+                "conversation_id": &conversation_id,
+            })).ok();
+            match do_compact(&pool, &secrets.0, &conversation_id, assistant.as_ref(), keep_recent, None).await {
+                Ok(new_cursor) => {
+                    compact_cursor = Some(new_cursor);
+                    app.emit("compact-done", serde_json::json!({
+                        "conversation_id": &conversation_id,
+                    })).ok();
+                }
+                Err(e) => {
+                    tracing::warn!("Auto-compact failed: {e}");
+                }
+            }
+        }
+    }
+
+    // Reload history if auto-compact changed the cursor
+    let history = if compact_cursor != original_cursor {
+        let pool2 = pool.clone();
+        let conv_id = conversation_id.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2).ok()?;
+            db::ops::message::list_messages(&mut conn, &conv_id).ok()
+        }).await.ok().flatten().unwrap_or(history)
+    } else {
+        history
+    };
+
+    let mut chat_messages = build_messages(system_prompt.trim(), &history, &message, compact_cursor);
     resolve_file_uris_in_messages(&mut chat_messages);
     remove_orphan_tool_messages(&mut chat_messages);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
@@ -2047,7 +2249,7 @@ async fn chat(
                 id: &msg_id, conversation_id: &conv_id, role: "user", content: &msg,
                 provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
                 tool_calls: None, tool_call_id: None, sort_order: 0, created_at: now,
-                reasoning_content: None, rating: None, schema_version: 2,
+                reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
             }).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
@@ -2120,6 +2322,7 @@ async fn chat(
                     provider_id: None, model_id: Some(&model_clone), input_tokens: None,
                     output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
                     created_at: now, reasoning_content: None, rating: None, schema_version: 2,
+                    is_compact_summary: 0,
                 }).map_err(|e| e.to_string())?;
                 Ok::<_, String>(())
             }).await.map_err(|e| e.to_string())??;
@@ -2140,7 +2343,7 @@ async fn chat(
                     chat_messages.clone(), tool_defs.clone(), params.clone()
                 ).await;
                 let try_result = match stream_result {
-                    Ok(stream) => consume_stream(stream, &app, &cancel, &assistant_msg_id).await,
+                    Ok(stream) => consume_stream(stream, &app, &cancel, &assistant_msg_id, &conversation_id).await,
                     Err(e) => Err(e.to_string()),
                 };
                 match try_result {
@@ -2151,7 +2354,7 @@ async fn chat(
                         let stream = provider.stream_chat_with_tools(
                             chat_messages.clone(), tool_defs.clone(), params.clone()
                         ).await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
-                        break consume_stream(stream, &app, &cancel, &assistant_msg_id)
+                        break consume_stream(stream, &app, &cancel, &assistant_msg_id, &conversation_id)
                             .await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
                     }
                     Err(e) if is_retryable_stream_error(&e) && attempt < MAX_STREAM_RETRIES => {
@@ -2213,6 +2416,7 @@ async fn chat(
                 "tool_name": tc.name,
                 "arguments": tc.arguments,
                 "message_id": &assistant_msg_id,
+                "conversation_id": &conversation_id,
             })).map_err(|e| e.to_string())?;
 
             let tool_allowed = enabled_tools.as_ref()
@@ -2244,6 +2448,7 @@ async fn chat(
                     "tool_name": tc.name,
                     "arguments": tc.arguments,
                     "message_id": &assistant_msg_id,
+                    "conversation_id": &conversation_id,
                 })).map_err(|e| e.to_string())?;
                 match rx.await {
                     Ok(ApprovalDecision::Response(text)) => text,
@@ -2267,6 +2472,7 @@ async fn chat(
                             "tool_name": tc.name,
                             "arguments": tc.arguments,
                             "message_id": &assistant_msg_id,
+                            "conversation_id": &conversation_id,
                         })).map_err(|e| e.to_string())?;
                         match rx.await {
                             Ok(ApprovalDecision::Approved) => (true, None),
@@ -2296,6 +2502,7 @@ async fn chat(
                 "call_id": tc.id,
                 "result": &result,
                 "message_id": &assistant_msg_id,
+                "conversation_id": &conversation_id,
             })).map_err(|e| e.to_string())?;
 
             {
@@ -2313,6 +2520,7 @@ async fn chat(
                             tool_calls: None, tool_call_id: Some(&call_id),
                             sort_order: 0, created_at: now,
                             reasoning_content: None, rating: None, schema_version: 2,
+                            is_compact_summary: 0,
                         });
                     }
                 }).await;
@@ -2334,6 +2542,7 @@ async fn chat(
     app.emit("chat-stream", serde_json::json!({
         "type": "stop", "reason": "end_turn", "done": true,
         "message_id": &assistant_msg_id,
+        "conversation_id": &conversation_id,
         "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
     })).map_err(|e| e.to_string())?;
 
@@ -2374,6 +2583,7 @@ pub fn run() {
     tracing_subscriber::fmt::init();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
@@ -2415,6 +2625,7 @@ pub fn run() {
                         thinking_enabled: 0,
                         thinking_budget: None,
                         tool_preset_id: None,
+                        auto_compact_enabled: 0,
                     });
                 }
             }
@@ -2639,8 +2850,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             chat, stop_chat,
             set_secret, get_secret, delete_secret,
-            list_conversations, create_conversation,
-            update_conversation_title, toggle_pin_conversation, delete_conversation,
+            list_conversations, create_conversation, get_conversation,
+            update_conversation_title, toggle_pin_conversation, delete_conversation, compact,
             load_messages, update_message_content, delete_message, delete_messages_from, rate_message, export_conversation, upload_file,
             list_assistants, create_assistant, update_assistant, delete_assistant,
             list_providers, create_provider, update_provider, delete_provider,
@@ -2730,6 +2941,7 @@ mod tests {
             reasoning_content: None,
             rating: None,
             schema_version: 2,
+            is_compact_summary: 0,
         }
     }
 
@@ -2761,7 +2973,7 @@ mod tests {
     #[test]
     fn test_build_messages_with_system() {
         let history = vec![msg("1", "user", "hi")];
-        let msgs = build_messages("You are a helper", &history, "new question");
+        let msgs = build_messages("You are a helper", &history, "new question", None);
         assert_eq!(msgs[0].role, "system");
         assert_eq!(msgs[0].content, "You are a helper");
         assert_eq!(msgs[1].role, "user");
@@ -2772,7 +2984,7 @@ mod tests {
 
     #[test]
     fn test_build_messages_empty_system() {
-        let msgs = build_messages("", &[], "hello");
+        let msgs = build_messages("", &[], "hello", None);
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].role, "user");
     }
@@ -2784,7 +2996,7 @@ mod tests {
             msg("2", "tool", "result"),
             msg("3", "assistant", "a"),
         ];
-        let msgs = build_messages("sys", &history, "new");
+        let msgs = build_messages("sys", &history, "new", None);
         assert_eq!(msgs.len(), 4);
         assert_eq!(msgs[0].role, "system");
         assert_eq!(msgs[1].role, "user");

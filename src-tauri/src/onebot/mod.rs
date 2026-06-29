@@ -31,6 +31,7 @@ pub struct SharedState {
     pub ws_sinks: Mutex<HashMap<u64, mpsc::Sender<String>>>,
     pub connected_clients: AtomicU32,
     pub config: OneBotConfig,
+    pub app_handle: Option<tauri::AppHandle>,
 }
 
 pub async fn call_api(
@@ -153,6 +154,7 @@ impl OneBotServer {
         tools: Arc<ToolRegistry>,
         mcp: Arc<Mutex<McpManager>>,
         config: OneBotConfig,
+        app_handle: Option<tauri::AppHandle>,
     ) -> Self {
         let (shutdown_tx, _) = watch::channel(false);
         Self {
@@ -167,6 +169,7 @@ impl OneBotServer {
                 secrets,
                 tools,
                 mcp,
+                app_handle,
             }),
             shutdown_tx,
             running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -386,6 +389,7 @@ pub async fn maybe_start(handle: tauri::AppHandle) {
             handle.state::<crate::AppTools>().0.clone(),
             handle.state::<crate::AppMcp>().0.clone(),
             config,
+            Some(handle.clone()),
         );
         handle.manage(AppOneBot(Arc::new(Mutex::new(server))));
         return;
@@ -395,7 +399,7 @@ pub async fn maybe_start(handle: tauri::AppHandle) {
     let tools = handle.state::<crate::AppTools>().0.clone();
     let mcp = handle.state::<crate::AppMcp>().0.clone();
 
-    let server = OneBotServer::new(pool, secrets, tools, mcp, config);
+    let server = OneBotServer::new(pool, secrets, tools, mcp, config, Some(handle.clone()));
     if let Err(e) = server.start() {
         tracing::error!("Failed to auto-start OneBot server: {e}");
     }
