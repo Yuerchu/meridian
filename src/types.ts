@@ -30,6 +30,7 @@ export interface Conversation {
   created_at: number
   updated_at: number
   project_id: string | null
+  compact_cursor: number | null
 }
 
 export interface ToolCallDisplay {
@@ -67,6 +68,7 @@ export interface Message {
   reasoning_content: string | null
   rating: number | null
   schema_version: number
+  is_compact_summary: number
   _blocks?: ContentBlock[]
 }
 
@@ -91,6 +93,7 @@ export interface Assistant {
   thinking_enabled: number
   thinking_budget: number | null
   tool_preset_id: string | null
+  auto_compact_enabled: number
 }
 
 export type ThinkingLevel = 'default' | 'off' | 'low' | 'medium' | 'high' | 'max'

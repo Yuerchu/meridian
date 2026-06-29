@@ -15,6 +15,7 @@ pub struct Conversation {
     pub created_at: i64,
     pub updated_at: i64,
     pub project_id: Option<String>,
+    pub compact_cursor: Option<i32>,
 }
 
 #[derive(Debug, Insertable)]

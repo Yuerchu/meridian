@@ -104,6 +104,21 @@ pub fn archive_conversation(
     Ok(())
 }
 
+pub fn update_compact_cursor(
+    conn: &mut SqliteConnection,
+    id: &str,
+    cursor: Option<i32>,
+    now: i64,
+) -> QueryResult<()> {
+    diesel::update(conversations::table.find(id))
+        .set((
+            conversations::compact_cursor.eq(cursor),
+            conversations::updated_at.eq(now),
+        ))
+        .execute(conn)?;
+    Ok(())
+}
+
 pub fn delete_conversation(
     conn: &mut SqliteConnection,
     id: &str,

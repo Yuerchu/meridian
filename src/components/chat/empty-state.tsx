@@ -1,37 +1,82 @@
+import { useRef, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Compass, Code, Languages } from 'lucide-react'
+import { ArrowUp } from 'lucide-react'
+import ShinyText from '@/components/ShinyText'
+import {
+  InputGroup,
+  InputGroupTextarea,
+  InputGroupAddon,
+  InputGroupButton,
+} from '@/components/ui/input-group'
 
 interface EmptyStateProps {
-  onCreate: () => void
+  onSubmit: (text: string) => void
+  disabled?: boolean
 }
 
-export function EmptyState({ onCreate }: EmptyStateProps) {
+export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
   const { t } = useTranslation()
+  const [value, setValue] = useState('')
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
-  const suggestions = [
-    { icon: Compass, textKey: 'chat.empty.suggest.explain', color: 'text-blue-400' },
-    { icon: Code, textKey: 'chat.empty.suggest.code', color: 'text-green-400' },
-    { icon: Languages, textKey: 'chat.empty.suggest.translate', color: 'text-purple-400' },
-  ]
+  const adjustHeight = useCallback(() => {
+    const el = textareaRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
+  }, [])
+
+  const handleSubmit = useCallback(() => {
+    const text = value.trim()
+    if (!text || disabled) return
+    onSubmit(text)
+  }, [value, disabled, onSubmit])
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        handleSubmit()
+      }
+    },
+    [handleSubmit],
+  )
 
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-8 px-4">
-      <div className="text-center">
-        <h1 className="text-2xl font-semibold tracking-tight mb-2">{t('chat.empty.title')}</h1>
-        <p className="text-sm text-muted-foreground">{t('chat.empty.subtitle')}</p>
-      </div>
-
-      <div className="flex flex-col gap-2 w-full max-w-sm">
-        {suggestions.map((s) => (
-          <button
-            key={s.textKey}
-            onClick={onCreate}
-            className="flex items-center gap-3 px-4 py-3 rounded-xl border border-border hover:border-muted-foreground hover:bg-accent/50 text-sm text-foreground text-left transition-colors"
-          >
-            <s.icon className={`w-4 h-4 flex-shrink-0 ${s.color}`} />
-            <span>{t(s.textKey)}</span>
-          </button>
-        ))}
+    <div className="flex flex-col items-center justify-center h-full px-4">
+      <div className="w-full max-w-2xl">
+        <h1 className="text-center mb-6">
+          <ShinyText text={t('chat.empty.subtitle')} speed={3} className="text-lg font-medium text-muted-foreground" />
+        </h1>
+        <InputGroup className="rounded-2xl">
+          <InputGroupTextarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => {
+              setValue(e.target.value)
+              adjustHeight()
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder={t('chat.placeholder')}
+            disabled={disabled}
+            rows={1}
+            autoFocus
+            className="min-h-[24px] max-h-[200px] py-3 px-4"
+          />
+          <InputGroupAddon align="block-end" className="px-2 pb-2 pt-0">
+            <div className="flex items-center justify-end w-full">
+              <InputGroupButton
+                size="icon-sm"
+                variant="default"
+                onClick={handleSubmit}
+                disabled={disabled || !value.trim()}
+                className="rounded-full"
+              >
+                <ArrowUp className="size-4" strokeWidth={2.5} />
+              </InputGroupButton>
+            </div>
+          </InputGroupAddon>
+        </InputGroup>
       </div>
     </div>
   )

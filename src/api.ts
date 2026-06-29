@@ -17,6 +17,15 @@ export const api = {
   deleteConversation: (id: string) =>
     invoke<void>('delete_conversation', { id }),
 
+  getConversation: (id: string) =>
+    invoke<Conversation>('get_conversation', { id }),
+
+  compact: (conversationId: string, customInstructions?: string) =>
+    invoke<void>('compact', {
+      conversationId,
+      customInstructions: customInstructions ?? null,
+    }),
+
   loadMessages: (conversationId: string) =>
     invoke<Message[]>('load_messages', { conversationId }),
 
@@ -84,6 +93,7 @@ export const api = {
     thinkingEnabled?: number
     thinkingBudget?: number | null
     toolPresetId?: string | null
+    autoCompactEnabled?: number
   }) =>
     invoke<Assistant>('update_assistant', {
       id,
@@ -97,6 +107,7 @@ export const api = {
       thinkingEnabled: updates.thinkingEnabled ?? null,
       thinkingBudget: updates.thinkingBudget !== undefined ? updates.thinkingBudget : null,
       toolPresetId: updates.toolPresetId !== undefined ? updates.toolPresetId : null,
+      autoCompactEnabled: updates.autoCompactEnabled ?? null,
     }),
 
   deleteAssistant: (id: string) =>

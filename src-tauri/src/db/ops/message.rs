@@ -105,6 +105,19 @@ pub fn delete_message(
     Ok(())
 }
 
+pub fn delete_compact_summaries(
+    conn: &mut SqliteConnection,
+    conversation_id: &str,
+) -> QueryResult<()> {
+    diesel::delete(
+        messages::table
+            .filter(messages::conversation_id.eq(conversation_id))
+            .filter(messages::is_compact_summary.eq(1)),
+    )
+    .execute(conn)?;
+    Ok(())
+}
+
 pub fn delete_messages_from(
     conn: &mut SqliteConnection,
     conversation_id: &str,

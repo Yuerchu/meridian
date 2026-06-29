@@ -21,6 +21,7 @@ pub struct Message {
     pub reasoning_content: Option<String>,
     pub rating: Option<i32>,
     pub schema_version: i32,
+    pub is_compact_summary: i32,
 }
 
 #[derive(Debug, Insertable)]
@@ -41,4 +42,5 @@ pub struct NewMessage<'a> {
     pub reasoning_content: Option<&'a str>,
     pub rating: Option<i32>,
     pub schema_version: i32,
+    pub is_compact_summary: i32,
 }

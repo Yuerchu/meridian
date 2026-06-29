@@ -74,6 +74,7 @@ mod tests {
             thinking_enabled: 0,
             thinking_budget: None,
             tool_preset_id: None,
+            auto_compact_enabled: 0,
         }
     }
 

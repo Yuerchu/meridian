@@ -118,3 +118,67 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }}
           tauriScript: pnpm tauri
+
+  build-android:
+    needs: test
+    runs-on: ubuntu-latest
+    name: Build (android-aarch64)
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: build-android-aarch64
+
+      - run: pnpm install
+
+      - name: Decode keystore
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > $RUNNER_TEMP/keystore.jks
+
+      - name: Build Android APK
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/keystore.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          NDK=$ANDROID_NDK_LATEST_HOME
+          TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
+          export CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android34-clang
+          export CXX_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android34-clang++
+          export AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/aarch64-linux-android34-clang
+          pnpm tauri android build --target aarch64 --apk
+
+      - name: Upload APK to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -type f | head -1)
+          VERSION=${{ github.ref_name }}
+          gh release upload "$VERSION" "$APK#Meridian_${VERSION#v}_aarch64.apk" --clobber

@@ -30,6 +30,7 @@ diesel::table! {
         thinking_enabled -> Integer,
         thinking_budget -> Nullable<Integer>,
         tool_preset_id -> Nullable<Text>,
+        auto_compact_enabled -> Integer,
     }
 }
 
@@ -56,6 +57,7 @@ diesel::table! {
         created_at -> BigInt,
         updated_at -> BigInt,
         project_id -> Nullable<Text>,
+        compact_cursor -> Nullable<Integer>,
     }
 }
 
@@ -138,6 +140,7 @@ diesel::table! {
         reasoning_content -> Nullable<Text>,
         rating -> Nullable<Integer>,
         schema_version -> Integer,
+        is_compact_summary -> Integer,
     }
 }
 
