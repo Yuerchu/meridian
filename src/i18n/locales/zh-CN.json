@@ -59,6 +59,7 @@
   "common.cancel": "取消",
   "common.confirm": "确定",
   "toolbar.noAssistant": "无助手",
+  "toolbar.models": "模型",
   "toolbar.selectModel": "选择模型",
   "toolbar.loadingModels": "加载模型中…",
   "toolbar.noModels": "无可用模型。请在设置 → 服务商中获取模型列表。",

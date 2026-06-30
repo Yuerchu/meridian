@@ -59,6 +59,7 @@
   "common.cancel": "Cancel",
   "common.confirm": "Confirm",
   "toolbar.noAssistant": "No Assistant",
+  "toolbar.models": "Models",
   "toolbar.selectModel": "Select model",
   "toolbar.loadingModels": "Loading models...",
   "toolbar.noModels": "No models available. Fetch models in Settings → Provider.",

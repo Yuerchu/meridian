@@ -13,11 +13,11 @@ pub struct McpServer {
     pub args: Option<String>,
     pub env: Option<String>,
     pub url: Option<String>,
-    pub headers: Option<String>,
     pub is_enabled: i32,
     pub sort_order: i32,
     pub created_at: i64,
     pub updated_at: i64,
+    pub headers: Option<String>,
 }
 
 #[derive(Debug, Insertable)]

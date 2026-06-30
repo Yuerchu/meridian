@@ -47,6 +47,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    cached_models (id) {
+        id -> Nullable<Integer>,
+        provider_id -> Text,
+        model_id -> Text,
+        model_name -> Text,
+        fetched_at -> BigInt,
+    }
+}
+
+diesel::table! {
     conversations (id) {
         id -> Text,
         title -> Nullable<Text>,
@@ -115,9 +125,21 @@ diesel::table! {
         args -> Nullable<Text>,
         env -> Nullable<Text>,
         url -> Nullable<Text>,
-        headers -> Nullable<Text>,
         is_enabled -> Integer,
         sort_order -> Integer,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+        headers -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    memories (id) {
+        id -> Text,
+        project_id -> Text,
+        key -> Text,
+        content -> Text,
+        memory_type -> Text,
         created_at -> BigInt,
         updated_at -> BigInt,
     }
@@ -148,18 +170,6 @@ diesel::table! {
     preferences (key) {
         key -> Text,
         value -> Text,
-        updated_at -> BigInt,
-    }
-}
-
-diesel::table! {
-    memories (id) {
-        id -> Text,
-        project_id -> Text,
-        key -> Text,
-        content -> Text,
-        memory_type -> Text,
-        created_at -> BigInt,
         updated_at -> BigInt,
     }
 }
@@ -247,31 +257,16 @@ diesel::joinable!(assistant_emoji_packs -> emoji_packs (pack_id));
 diesel::joinable!(assistants -> providers (provider_id));
 diesel::joinable!(assistants -> tool_presets (tool_preset_id));
 diesel::joinable!(attachments -> messages (message_id));
+diesel::joinable!(cached_models -> providers (provider_id));
 diesel::joinable!(conversations -> assistants (assistant_id));
 diesel::joinable!(conversations -> projects (project_id));
-diesel::joinable!(memories -> projects (project_id));
 diesel::joinable!(custom_tools -> tool_categories (category_id));
 diesel::joinable!(emojis -> emoji_packs (pack_id));
+diesel::joinable!(memories -> projects (project_id));
 diesel::joinable!(messages -> conversations (conversation_id));
 diesel::joinable!(messages -> providers (provider_id));
+diesel::joinable!(projects -> assistants (assistant_id));
 diesel::joinable!(tool_permissions -> mcp_servers (mcp_server_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    assistant_emoji_packs,
-    assistants,
-    attachments,
-    conversations,
-    custom_tools,
-    emoji_packs,
-    emojis,
-    mcp_servers,
-    memories,
-    messages,
-    preferences,
-    projects,
-    prompt_templates,
-    providers,
-    tool_categories,
-    tool_permissions,
-    tool_presets,
-);
+    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,messages,preferences,projects,prompt_templates,providers,tool_categories,tool_permissions,tool_presets,);

@@ -61,7 +61,7 @@ function ProviderEditor({
     setFetchingModels(true)
     setModelsError(null)
     try {
-      const list = await api.fetchProviderModels(provider.id)
+      const list = await api.fetchProviderModels(provider.id, true)
       setModels(list)
     } catch (err) {
       setModelsError(String(err))

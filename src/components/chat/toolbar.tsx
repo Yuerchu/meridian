@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bot, ChevronDown, Cpu, Check, Star, Lightbulb } from 'lucide-react'
+import { Bot, ChevronDown, Cpu, Check, Star, Lightbulb, RefreshCw } from 'lucide-react'
+import { ModelIcon } from '@lobehub/icons'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -88,15 +89,15 @@ function ModelSelector({
   const [groups, setGroups] = useState<GroupedModels[]>([])
   const [loading, setLoading] = useState(false)
 
-  const loadModels = useCallback(async () => {
-    if (groups.length > 0) return
+  const loadModels = useCallback(async (forceRefresh = false) => {
+    if (!forceRefresh && groups.length > 0) return
     setLoading(true)
     const results = await Promise.allSettled(
       providers
         .filter((p) => p.is_enabled)
         .map(async (p) => ({
           provider: p,
-          models: await api.fetchProviderModels(p.id),
+          models: await api.fetchProviderModels(p.id, forceRefresh),
         })),
     )
     setGroups(
@@ -115,11 +116,23 @@ function ModelSelector({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
-        <Cpu className="w-3.5 h-3.5" />
+        {currentModelId ? <ModelIcon model={currentModelId} size={14} /> : <Cpu className="w-3.5 h-3.5" />}
         <span className="max-w-[160px] truncate">{currentModelId ?? t('toolbar.selectModel')}</span>
         <ChevronDown className="w-3 h-3" />
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-0 bg-popover border-border">
+        <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('toolbar.models')}</span>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-5 w-5"
+            onClick={() => loadModels(true)}
+            disabled={loading}
+          >
+            <RefreshCw className={cn('w-3 h-3', loading && 'animate-spin')} />
+          </Button>
+        </div>
         <ScrollArea className="h-72 p-1">
           {loading && <div className="px-3 py-2 text-xs text-muted-foreground">{t('toolbar.loadingModels')}</div>}
           {groups.map((g) => (
@@ -142,6 +155,7 @@ function ModelSelector({
                       : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
                   )}
                 >
+                  <ModelIcon model={m.id} size={14} className="flex-shrink-0" />
                   <span className="flex-1 truncate">{m.name}</span>
                   {m.id === currentModelId && g.provider.id === currentProviderId && (
                     <Check className="w-3 h-3 text-muted-foreground flex-shrink-0" />

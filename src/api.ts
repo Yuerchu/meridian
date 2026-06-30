@@ -145,8 +145,8 @@ export const api = {
   getProviderKeyExists: (providerId: string) =>
     invoke<boolean>('get_provider_key_exists', { providerId }),
 
-  fetchProviderModels: (providerId: string) =>
-    invoke<ModelInfo[]>('fetch_provider_models', { providerId }),
+  fetchProviderModels: (providerId: string, forceRefresh?: boolean) =>
+    invoke<ModelInfo[]>('fetch_provider_models', { providerId, forceRefresh: forceRefresh ?? null }),
 
   getProviderCapabilities: (providerId: string, modelId: string) =>
     invoke<ProviderCapabilities>('get_provider_capabilities', { providerId, modelId }),
