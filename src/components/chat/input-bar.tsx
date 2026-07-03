@@ -16,6 +16,15 @@ import {
   InputGroupAddon,
   InputGroupButton,
 } from '@/components/ui/input-group'
+import {
+  Attachment,
+  AttachmentAction,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+} from '@/components/ui/attachment'
 import CountUp from '@/components/CountUp'
 import { usePrevious } from '@/hooks/use-previous'
 import { Toolbar } from './toolbar'
@@ -162,19 +171,29 @@ export function InputBar({
         <ContextMenuTrigger>
         <InputGroup className="rounded-2xl">
           {attachedFiles.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+            <AttachmentGroup className="px-3 pt-2.5">
               {attachedFiles.map((f, i) => (
-                <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-muted rounded-md">
-                  <Paperclip className="w-3 h-3" />
-                  <span className="max-w-[120px] truncate">{f.name}</span>
+                <Attachment key={i} size="xs" state="done">
+                  <AttachmentMedia>
+                    <Paperclip />
+                  </AttachmentMedia>
+                  <AttachmentContent>
+                    <AttachmentTitle className="max-w-[120px]">{f.name}</AttachmentTitle>
+                  </AttachmentContent>
                   {onRemoveFile && (
-                    <Button variant="ghost" size="icon-xs" onClick={() => onRemoveFile(i)} className="hover:text-destructive size-4">
-                      <XIcon className="w-3 h-3" />
-                    </Button>
+                    <AttachmentActions>
+                      <AttachmentAction
+                        aria-label={t('chat.removeAttachment', { name: f.name })}
+                        onClick={() => onRemoveFile(i)}
+                        className="hover:text-destructive"
+                      >
+                        <XIcon />
+                      </AttachmentAction>
+                    </AttachmentActions>
                   )}
-                </span>
+                </Attachment>
               ))}
-            </div>
+            </AttachmentGroup>
           )}
           <InputGroupTextarea
             ref={textareaRef}

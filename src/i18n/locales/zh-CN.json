@@ -11,6 +11,7 @@
   "chat.stop": "停止生成",
   "chat.startHint": "发送消息开始对话",
   "chat.scrollToBottom": "滚动到最新消息",
+  "chat.removeAttachment": "移除 {{name}}",
   "chat.noConversation": "未选择对话",
   "chat.newChat": "新对话",
   "chat.time.justNow": "刚刚",
