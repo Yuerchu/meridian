@@ -161,3 +161,21 @@ body {
   --safe-left: env(safe-area-inset-left, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
 }
+
+/* MessageScrollerViewport 引用的 scrollbar utilities（shadcn 包只发布了 no-scrollbar，这几个需自行定义） */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+@utility scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
+}
+
+@utility scrollbar-thumb-transparent {
+  scrollbar-color: transparent transparent;
+}
+
+@utility scrollbar-track-transparent {
+  scrollbar-color: transparent transparent;
+}

@@ -517,7 +517,7 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
   const assistantContent = (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
       <ContextMenuTrigger render={<Message align="start" />}>
-        <MessageAvatar>
+        <MessageAvatar className="size-8">
           <Bot className="w-3.5 h-3.5 text-muted-foreground" />
         </MessageAvatar>
         <MessageContent>
