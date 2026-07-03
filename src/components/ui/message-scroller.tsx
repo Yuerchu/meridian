@@ -39,8 +39,10 @@ function MessageScrollerViewport({
   return (
     <MessageScrollerPrimitive.Viewport
       data-slot="message-scroller-viewport"
+      // scroll-fade-b（滚动驱动 mask 动画）与 contain-content 在 WebView2
+      // 滚动时产生内容错位残影，与 content-visibility 崩溃同源，一并移除
       className={cn(
-        "size-full min-h-0 min-w-0 scroll-fade-b scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain contain-content data-autoscrolling:scrollbar-thumb-transparent data-autoscrolling:scrollbar-track-transparent",
+        "size-full min-h-0 min-w-0 scrollbar-thin scrollbar-gutter-stable overflow-y-auto overscroll-contain data-autoscrolling:scrollbar-thumb-transparent data-autoscrolling:scrollbar-track-transparent",
         className
       )}
       {...props}
