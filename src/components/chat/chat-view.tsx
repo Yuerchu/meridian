@@ -49,6 +49,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [capabilities, setCapabilities] = useState<ProviderCapabilities | null>(null)
   const [showCompactedMessages, setShowCompactedMessages] = useState(false)
+  const [showCompactSummary, setShowCompactSummary] = useState(false)
   const emojiMap = useEmojiMap(selectedAssistantId)
   const { t } = useTranslation()
   const submittingRef = useRef(false)
@@ -312,24 +313,19 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
                 {t('chat.compact.showCompacted', { count: compactedMessages.length })}
               </Button>
             )}
-            <div className="flex items-center gap-2 py-3 px-2">
-              <div className="flex-1 border-t border-muted-foreground/20" />
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  if (compactSummary) {
-                    const el = document.getElementById('compact-summary')
-                    if (el) el.classList.toggle('hidden')
-                  }
-                }}
-                className="text-xs text-muted-foreground/60 hover:text-muted-foreground whitespace-nowrap h-auto px-2 py-0"
-              >
-                {t('chat.compact.boundary', { count: compactedMessages.length })}
-              </Button>
-              <div className="flex-1 border-t border-muted-foreground/20" />
-            </div>
-            {compactSummary && (
-              <div id="compact-summary" className="hidden px-4 py-2 mb-2 text-xs text-muted-foreground bg-muted/30 rounded-lg border border-muted-foreground/10 whitespace-pre-wrap">
+            <Marker variant="separator" className="py-3 px-2">
+              <MarkerContent>
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowCompactSummary((v) => !v)}
+                  className="text-xs text-muted-foreground/60 hover:text-muted-foreground whitespace-nowrap h-auto px-2 py-0"
+                >
+                  {t('chat.compact.boundary', { count: compactedMessages.length })}
+                </Button>
+              </MarkerContent>
+            </Marker>
+            {compactSummary && showCompactSummary && (
+              <div className="px-4 py-2 mb-2 text-xs text-muted-foreground bg-muted/30 rounded-lg border border-muted-foreground/10 whitespace-pre-wrap">
                 {compactSummary.content}
               </div>
             )}
