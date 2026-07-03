@@ -13,12 +13,14 @@ import {
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
 import { Spinner } from '@/components/ui/spinner'
-import AnimatedContent from '@/components/AnimatedContent'
+import { motion } from 'motion/react'
 import { MessageItem } from './message-item'
 import { InputBar, type AttachedFile } from './input-bar'
 import { useEmojiMap } from './emoji-renderer'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
+
+const MotionMessageScrollerItem = motion.create(MessageScrollerItem)
 
 function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsumed }: {
   conversationId: string
@@ -358,20 +360,23 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
               emojiMap={emojiMap}
             />
           )
+          if (i >= activeMessages.length - 6) {
+            return (
+              <MotionMessageScrollerItem
+                key={m.id}
+                messageId={m.id}
+                scrollAnchor={m.role === 'user'}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
+              >
+                {messageEl}
+              </MotionMessageScrollerItem>
+            )
+          }
           return (
             <MessageScrollerItem key={m.id} messageId={m.id} scrollAnchor={m.role === 'user'}>
-              {i >= activeMessages.length - 6 ? (
-                <AnimatedContent
-                  distance={20}
-                  duration={0.4}
-                  threshold={0.05}
-                  container="[data-slot='message-scroller-viewport']"
-                >
-                  {messageEl}
-                </AnimatedContent>
-              ) : (
-                messageEl
-              )}
+              {messageEl}
             </MessageScrollerItem>
           )
         })}
