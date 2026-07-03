@@ -70,10 +70,9 @@ function MessageScrollerItem({
     <MessageScrollerPrimitive.Item
       data-slot="message-scroller-item"
       scrollAnchor={scrollAnchor}
-      className={cn(
-        "min-w-0 shrink-0 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]",
-        className
-      )}
+      // content-visibility:auto 在 WebView2 打开长对话时触发渲染进程崩溃
+      // (STATUS_ACCESS_VIOLATION)，去掉它换稳定
+      className={cn("min-w-0 shrink-0", className)}
       {...props}
     />
   )
