@@ -1,7 +1,6 @@
 import { useRef, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowUp } from 'lucide-react'
-import ShinyText from '@/components/ShinyText'
 import {
   InputGroup,
   InputGroupTextarea,
@@ -46,7 +45,7 @@ export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
     <div className="flex flex-col items-center justify-center h-full px-4">
       <div className="w-full max-w-2xl">
         <h1 className="text-center mb-6">
-          <ShinyText text={t('chat.empty.subtitle')} speed={3} className="text-lg font-medium text-muted-foreground" />
+          <span className="shimmer shimmer-duration-3000 text-lg font-medium text-muted-foreground">{t('chat.empty.subtitle')}</span>
         </h1>
         <InputGroup className="rounded-2xl">
           <InputGroupTextarea

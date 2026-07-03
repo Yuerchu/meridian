@@ -8,7 +8,6 @@ import CountUp from '@/components/CountUp'
 import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   Message,
   MessageAvatar,
@@ -97,11 +96,11 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
         <span>{lang ?? 'code'}</span>
         <CopyButton text={code} />
       </div>
-      <ScrollArea className="w-full">
+      <div className="w-full overflow-x-auto scroll-fade-x">
         <pre className="p-3 text-[13px] leading-relaxed !bg-transparent !m-0 w-fit min-w-full">
           <code className={className} {...props}>{children}</code>
         </pre>
-      </ScrollArea>
+      </div>
     </div>
   )
 }
