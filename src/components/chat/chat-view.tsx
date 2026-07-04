@@ -2,52 +2,25 @@ import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import AnimatedContent from '@/components/AnimatedContent'
+import {
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from '@/components/ui/message-scroller'
+import { Bubble, BubbleContent } from '@/components/ui/bubble'
+import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
+import { Spinner } from '@/components/ui/spinner'
+import { motion } from 'motion/react'
 import { MessageItem } from './message-item'
 import { InputBar, type AttachedFile } from './input-bar'
 import { useEmojiMap } from './emoji-renderer'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
-function AutoScrollArea({ children, dep }: { children: React.ReactNode; dep: unknown }) {
-  const rootRef = useRef<HTMLDivElement>(null)
-  const stickRef = useRef(true)
-
-  function getViewport() {
-    return rootRef.current?.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]') ?? null
-  }
-
-  useEffect(() => {
-    if (stickRef.current) {
-      requestAnimationFrame(() => {
-        const el = getViewport()
-        if (el) el.scrollTop = el.scrollHeight
-      })
-    }
-  }, [dep])
-
-  useEffect(() => {
-    const el = getViewport()
-    if (!el) return
-    function handleScroll() {
-      if (!el) return
-      stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
-    }
-    el.addEventListener('scroll', handleScroll)
-    return () => el.removeEventListener('scroll', handleScroll)
-  }, [])
-
-  return (
-    <div ref={rootRef} className="flex-1 min-h-0">
-      <ScrollArea className="h-full">
-        <div className="px-4 py-6 space-y-6">
-          {children}
-        </div>
-      </ScrollArea>
-    </div>
-  )
-}
+const MotionMessageScrollerItem = motion.create(MessageScrollerItem)
 
 function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsumed }: {
   conversationId: string
@@ -76,6 +49,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [capabilities, setCapabilities] = useState<ProviderCapabilities | null>(null)
   const [showCompactedMessages, setShowCompactedMessages] = useState(false)
+  const [showCompactSummary, setShowCompactSummary] = useState(false)
   const emojiMap = useEmojiMap(selectedAssistantId)
   const { t } = useTranslation()
   const submittingRef = useRef(false)
@@ -280,7 +254,6 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     ? visibleMessages.filter((m) => m.sort_order >= compactCursor)
     : visibleMessages
   const compactSummary = messages.find((m) => m.is_compact_summary === 1)
-  const lastMsg = activeMessages[activeMessages.length - 1]
 
   const selectedAssistant = assistants.find((a) => a.id === selectedAssistantId)
   const contextInfo = useMemo(() => {
@@ -296,15 +269,20 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
 
   return (
     <div className="flex flex-col h-full">
-      <AutoScrollArea dep={lastMsg ? `${lastMsg.id}:${lastMsg.content.length}:${lastMsg._blocks?.length ?? 0}` : null}>
+      <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={48}>
+        <MessageScroller className="flex-1 min-h-0">
+          <MessageScrollerViewport>
+            <MessageScrollerContent className="px-4 py-6">
         {error && (
-          <div className="p-3 bg-destructive/10 border border-destructive/30 rounded-lg text-sm text-destructive break-all">
-            {error}
-          </div>
+          <MessageScrollerItem messageId="__error">
+            <Bubble variant="destructive">
+              <BubbleContent className="break-all">{error}</BubbleContent>
+            </Bubble>
+          </MessageScrollerItem>
         )}
 
         {compactedMessages.length > 0 && (
-          <>
+          <MessageScrollerItem messageId="__compact-region" className="space-y-6">
             {showCompactedMessages ? (
               <>
                 <Button
@@ -335,40 +313,39 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
                 {t('chat.compact.showCompacted', { count: compactedMessages.length })}
               </Button>
             )}
-            <div className="flex items-center gap-2 py-3 px-2">
-              <div className="flex-1 border-t border-muted-foreground/20" />
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  if (compactSummary) {
-                    const el = document.getElementById('compact-summary')
-                    if (el) el.classList.toggle('hidden')
-                  }
-                }}
-                className="text-xs text-muted-foreground/60 hover:text-muted-foreground whitespace-nowrap h-auto px-2 py-0"
-              >
-                {t('chat.compact.boundary', { count: compactedMessages.length })}
-              </Button>
-              <div className="flex-1 border-t border-muted-foreground/20" />
-            </div>
-            {compactSummary && (
-              <div id="compact-summary" className="hidden px-4 py-2 mb-2 text-xs text-muted-foreground bg-muted/30 rounded-lg border border-muted-foreground/10 whitespace-pre-wrap">
+            <Marker variant="separator" className="py-3 px-2">
+              <MarkerContent>
+                <Button
+                  variant="ghost"
+                  onClick={() => setShowCompactSummary((v) => !v)}
+                  className="text-xs text-muted-foreground/60 hover:text-muted-foreground whitespace-nowrap h-auto px-2 py-0"
+                >
+                  {t('chat.compact.boundary', { count: compactedMessages.length })}
+                </Button>
+              </MarkerContent>
+            </Marker>
+            {compactSummary && showCompactSummary && (
+              <div className="px-4 py-2 mb-2 text-xs text-muted-foreground bg-muted/30 rounded-lg border border-muted-foreground/10 whitespace-pre-wrap">
                 {compactSummary.content}
               </div>
             )}
-          </>
+          </MessageScrollerItem>
         )}
 
         {compacting && (
-          <div className="flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground animate-pulse">
-            {t('chat.compact.inProgress')}
-          </div>
+          <MessageScrollerItem messageId="__compacting">
+            <Marker role="status" className="justify-center py-3">
+              <MarkerIcon>
+                <Spinner />
+              </MarkerIcon>
+              <MarkerContent className="shimmer text-xs">{t('chat.compact.inProgress')}</MarkerContent>
+            </Marker>
+          </MessageScrollerItem>
         )}
 
         {activeMessages.map((m, i) => {
           const messageEl = (
             <MessageItem
-              key={m.id}
               message={m}
               isStreaming={streaming && i === activeMessages.length - 1 && m.role === 'assistant'}
               isLastMessage={i === activeMessages.length - 1}
@@ -381,25 +358,34 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
           )
           if (i >= activeMessages.length - 6) {
             return (
-              <AnimatedContent
+              <MotionMessageScrollerItem
                 key={m.id}
-                distance={20}
-                duration={0.4}
-                threshold={0.05}
-                container="[data-slot='scroll-area-viewport']"
+                messageId={m.id}
+                scrollAnchor={m.role === 'user'}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
               >
                 {messageEl}
-              </AnimatedContent>
+              </MotionMessageScrollerItem>
             )
           }
-          return <div key={m.id}>{messageEl}</div>
+          return (
+            <MessageScrollerItem key={m.id} messageId={m.id} scrollAnchor={m.role === 'user'}>
+              {messageEl}
+            </MessageScrollerItem>
+          )
         })}
         {messages.length === 0 && (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+          <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
             {t('chat.startHint')}
           </div>
         )}
-      </AutoScrollArea>
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <MessageScrollerButton aria-label={t('chat.scrollToBottom')} />
+        </MessageScroller>
+      </MessageScrollerProvider>
 
       <InputBar
         value={input}

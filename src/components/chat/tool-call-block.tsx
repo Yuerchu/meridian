@@ -4,7 +4,6 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Wrench, Check, X, Loader2, MessageCircleQuestion, Send, SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck, ChevronDown, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/api'
 import type { ToolCallDisplay } from '@/types'
 
@@ -250,11 +249,11 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
 
       {data.result && (
         <div className="border-t border-border bg-muted/10">
-          <ScrollArea className="max-h-40">
+          <div className="max-h-40 overflow-y-auto scroll-fade-y">
             <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px]">
               {data.result}
             </pre>
-          </ScrollArea>
+          </div>
         </div>
       )}
     </div>
@@ -394,11 +393,11 @@ export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
 
           {data.result && (
             <div className="border-t border-border bg-muted/10">
-              <ScrollArea className="max-h-40">
+              <div className="max-h-40 overflow-y-auto scroll-fade-y">
                 <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px]">
                   {data.result.length > 1000 ? `${data.result.slice(0, 1000)}...` : data.result}
                 </pre>
-              </ScrollArea>
+              </div>
             </div>
           )}
         </>

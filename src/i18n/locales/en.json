@@ -10,6 +10,8 @@
   "chat.sendHint": "Send (Enter)",
   "chat.stop": "Stop generating",
   "chat.startHint": "Send a message to start",
+  "chat.scrollToBottom": "Scroll to latest message",
+  "chat.removeAttachment": "Remove {{name}}",
   "chat.noConversation": "No conversation selected",
   "chat.newChat": "New Chat",
   "chat.time.justNow": "just now",

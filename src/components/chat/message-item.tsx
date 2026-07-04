@@ -3,12 +3,31 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
-import { Bot, Copy, Check, Trash2, RefreshCw, ChevronDown, ChevronRight, Lightbulb, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Bot, Copy, Check, Trash2, RefreshCw, ChevronRight, FileText, Lightbulb, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
 import CountUp from '@/components/CountUp'
 import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Message,
+  MessageAvatar,
+  MessageContent,
+  MessageFooter,
+  MessageHeader,
+} from '@/components/ui/message'
+import { Bubble, BubbleContent, BubbleGroup } from '@/components/ui/bubble'
+import {
+  Attachment,
+  AttachmentContent,
+  AttachmentGroup,
+  AttachmentMedia,
+  AttachmentTitle,
+} from '@/components/ui/attachment'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -26,7 +45,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ToolCallBlock } from './tool-call-block'
 import { renderEmojisInText } from './emoji-renderer'
-import type { ContentBlock, Message } from '@/types'
+import type { ContentBlock, Message as MessageData } from '@/types'
 import type { EmojiMap } from './emoji-renderer'
 
 function useRelativeTime() {
@@ -77,11 +96,11 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
         <span>{lang ?? 'code'}</span>
         <CopyButton text={code} />
       </div>
-      <ScrollArea className="w-full">
+      <div className="w-full overflow-x-auto scroll-fade-x">
         <pre className="p-3 text-[13px] leading-relaxed !bg-transparent !m-0 w-fit min-w-full">
           <code className={className} {...props}>{children}</code>
         </pre>
-      </ScrollArea>
+      </div>
     </div>
   )
 }
@@ -143,7 +162,7 @@ function parseOneBotContent(content: string): ParsedOneBotContent {
 
 function QuotedMessageBlock({ sender, content }: { sender: string; content: string }) {
   return (
-    <div className="mb-2 pl-3 border-l-2 border-muted-foreground/30 text-xs text-muted-foreground">
+    <div className="mb-2 pl-3 border-l-2 border-primary-foreground/30 text-xs text-primary-foreground/70">
       <span className="font-medium">{sender}</span>
       <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap">{content}</p>
     </div>
@@ -191,28 +210,30 @@ const MemoToolCallBlock = React.memo(ToolCallBlock)
 
 function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; isStreaming?: boolean; defaultExpanded?: boolean }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(!!isStreaming || !!defaultExpanded)
 
   return (
-    <div className="my-2 rounded-lg border border-border/50 overflow-hidden">
-      <Button
-        variant="ghost"
-        onClick={() => setExpanded(!expanded)}
-        className="w-full justify-start h-auto px-3 py-1.5 text-xs text-muted-foreground rounded-none"
+    <Collapsible
+      defaultOpen={!!isStreaming || !!defaultExpanded}
+      className="my-2 rounded-lg border border-border/50 overflow-hidden"
+    >
+      <CollapsibleTrigger
+        render={
+          <Button
+            variant="ghost"
+            className="group/thinking w-full justify-start h-auto px-3 py-1.5 text-xs text-muted-foreground rounded-none"
+          />
+        }
       >
         <Lightbulb className="text-blue-400/70" />
-        <span>{t('chat.thinking')}</span>
-        {isStreaming && <span className="inline-block w-1.5 h-3 ml-1 bg-muted-foreground/50 animate-pulse" />}
-        {expanded
-          ? <ChevronDown className="!size-3 ml-auto" />
-          : <ChevronRight className="!size-3 ml-auto" />}
-      </Button>
-      {expanded && (
+        <span className={isStreaming ? 'shimmer' : undefined}>{t('chat.thinking')}</span>
+        <ChevronRight className="!size-3 ml-auto transition-transform group-data-[panel-open]/thinking:rotate-90" />
+      </CollapsibleTrigger>
+      <CollapsibleContent>
         <div className="px-3 pb-2 text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
           {text}
         </div>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -222,17 +243,19 @@ function TextBubbles({ content, isStreaming, emojiMap }: { content: string; isSt
     return <MarkdownContent content={content} isStreaming={isStreaming} emojiMap={emojiMap} />
   }
   return (
-    <div className="space-y-2">
+    <BubbleGroup>
       {segments.map((seg, i) => (
-        <div key={i} className="rounded-xl bg-accent/30 px-3.5 py-2">
-          <MarkdownContent
-            content={seg}
-            isStreaming={isStreaming && i === segments.length - 1}
-            emojiMap={emojiMap}
-          />
-        </div>
+        <Bubble key={i} variant="muted">
+          <BubbleContent>
+            <MarkdownContent
+              content={seg}
+              isStreaming={isStreaming && i === segments.length - 1}
+              emojiMap={emojiMap}
+            />
+          </BubbleContent>
+        </Bubble>
       ))}
-    </div>
+    </BubbleGroup>
   )
 }
 
@@ -250,7 +273,7 @@ function AssistantBlock({ block, isLast, isStreaming, isLastMessage, emojiMap }:
 }
 
 interface MessageItemProps {
-  message: Message
+  message: MessageData
   isStreaming?: boolean
   isLastMessage?: boolean
   onDelete?: (id: string) => void
@@ -324,77 +347,88 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
     }
     const { senderPrefix, quotedMessage, body } = parseOneBotContent(textContent)
 
+    const hasAttachments = !!contentParts && contentParts.some((p) => p.type === 'image_url' || p.type === 'file')
+
     const userContent = (
       <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-        <ContextMenuTrigger className="flex justify-end group">
-          <div className="max-w-[80%]">
+        <ContextMenuTrigger render={<Message align="end" />}>
+          <MessageContent>
             {senderPrefix && (
-              <div className="text-xs text-muted-foreground/60 mb-1 text-right">{senderPrefix}</div>
+              <MessageHeader className="justify-end text-muted-foreground/60 font-normal">{senderPrefix}</MessageHeader>
+            )}
+            {hasAttachments && (
+              <AttachmentGroup className="items-start max-w-[80%]">
+                {contentParts!.filter((p) => p.type === 'image_url').map((p, i) => (
+                  <Attachment key={`img-${i}`} size="sm" orientation="vertical">
+                    <AttachmentMedia variant="image">
+                      <img src={p.image_url?.url} alt="" />
+                    </AttachmentMedia>
+                  </Attachment>
+                ))}
+                {contentParts!.filter((p) => p.type === 'file').map((p, i) => (
+                  <Attachment key={`file-${i}`} size="sm">
+                    <AttachmentMedia>
+                      <FileText />
+                    </AttachmentMedia>
+                    <AttachmentContent>
+                      <AttachmentTitle>{p.file?.name ?? 'file'}</AttachmentTitle>
+                    </AttachmentContent>
+                  </Attachment>
+                ))}
+              </AttachmentGroup>
             )}
             {editing ? (
-              <div className="rounded-2xl bg-accent px-4 py-2.5">
-                <textarea
-                  ref={editRef}
-                  value={editText}
-                  onChange={(e) => {
-                    setEditText(e.target.value)
-                    e.target.style.height = 'auto'
-                    e.target.style.height = e.target.scrollHeight + 'px'
-                  }}
-                  onKeyDown={handleEditKeyDown}
-                  className="w-full min-w-[200px] bg-transparent text-sm leading-relaxed resize-none outline-none"
-                  rows={1}
-                />
-                <div className="flex justify-end gap-1 mt-1.5">
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={handleCancelEdit}
-                    className="text-muted-foreground hover:bg-background/50"
-                    title="Esc"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    onClick={handleSaveEdit}
-                    className="text-primary hover:bg-background/50"
-                    title="Enter"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                  </Button>
-                </div>
-              </div>
+              <Bubble align="end" variant="outline">
+                <BubbleContent>
+                  <textarea
+                    ref={editRef}
+                    value={editText}
+                    onChange={(e) => {
+                      setEditText(e.target.value)
+                      e.target.style.height = 'auto'
+                      e.target.style.height = e.target.scrollHeight + 'px'
+                    }}
+                    onKeyDown={handleEditKeyDown}
+                    className="w-full min-w-[200px] bg-transparent text-sm leading-relaxed resize-none outline-none"
+                    rows={1}
+                  />
+                  <div className="flex justify-end gap-1 mt-1.5">
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={handleCancelEdit}
+                      className="text-muted-foreground"
+                      title="Esc"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      onClick={handleSaveEdit}
+                      className="text-primary"
+                      title="Enter"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
+                </BubbleContent>
+              </Bubble>
             ) : (
               <>
-                <div className="rounded-2xl bg-accent px-4 py-2.5 text-sm leading-relaxed">
-                  {contentParts && contentParts.some((p) => p.type === 'image_url') && (
-                    <div className="flex flex-wrap gap-2 mb-2">
-                      {contentParts.filter((p) => p.type === 'image_url').map((p, i) => (
-                        <img key={i} src={p.image_url?.url} alt="" className="max-w-[200px] max-h-[200px] rounded-lg object-cover" />
-                      ))}
+                <Bubble align="end" variant="default">
+                  <BubbleContent>
+                    {quotedMessage && (
+                      <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
+                    )}
+                    <div className="whitespace-pre-wrap">
+                      {emojiMap && Object.keys(emojiMap).length > 0
+                        ? renderEmojisInText(body, emojiMap)
+                        : body}
                     </div>
-                  )}
-                  {contentParts && contentParts.some((p) => p.type === 'file') && (
-                    <div className="flex flex-wrap gap-1.5 mb-2">
-                      {contentParts.filter((p) => p.type === 'file').map((p, i) => (
-                        <span key={i} className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-background/50 rounded">
-                          {p.file?.name ?? 'file'}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {quotedMessage && (
-                    <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
-                  )}
-                  <div className="whitespace-pre-wrap">
-                    {emojiMap && Object.keys(emojiMap).length > 0
-                      ? renderEmojisInText(body, emojiMap)
-                      : body}
-                  </div>
-                </div>
-                <div className="flex justify-end gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  </BubbleContent>
+                </Bubble>
+                <MessageFooter className="gap-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
                   {onEdit && (
                     <Button
                       variant="ghost"
@@ -418,10 +452,10 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
                       <Trash2 className="w-3.5 h-3.5" />
                     </Button>
                   )}
-                </div>
+                </MessageFooter>
               </>
             )}
-          </div>
+          </MessageContent>
         </ContextMenuTrigger>
         <ContextMenuContent>
           {selectedText && (
@@ -482,31 +516,35 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
 
   const assistantContent = (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-      <ContextMenuTrigger className="group">
-        <div className="flex items-center gap-2 mb-1.5">
-          <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center">
-            <Bot className="w-3.5 h-3.5 text-muted-foreground" />
-          </div>
-          {message.model_id && (
-            isLastMessage
-              ? <DecryptedText text={message.model_id} animateOn="view" speed={25} sequential className="text-xs text-muted-foreground" />
-              : <span className="text-xs text-muted-foreground">{message.model_id}</span>
-          )}
-          <span className="text-xs text-muted-foreground/60">{relativeTime(message.created_at)}</span>
-        </div>
+      <ContextMenuTrigger render={<Message align="start" />}>
+        <MessageAvatar className="size-8">
+          <Bot className="w-3.5 h-3.5 text-muted-foreground" />
+        </MessageAvatar>
+        <MessageContent>
+          <MessageHeader className="gap-2">
+            {message.model_id && (
+              isLastMessage
+                ? <DecryptedText text={message.model_id} animateOn="view" speed={25} sequential className="text-xs text-muted-foreground" />
+                : <span className="text-xs text-muted-foreground">{message.model_id}</span>
+            )}
+            <span className="text-xs text-muted-foreground/60 font-normal">{relativeTime(message.created_at)}</span>
+          </MessageHeader>
 
-        <div className="pl-8">
-          {(message._blocks && message._blocks.length > 0) ? (
-            message._blocks.map((block, i) => (
-              <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} emojiMap={emojiMap} />
-            ))
-          ) : (
-            <MarkdownContent content={message.content} isStreaming={isStreaming} emojiMap={emojiMap} />
-          )}
+          <Bubble variant="ghost" className="w-full">
+            <BubbleContent className="w-full">
+              {(message._blocks && message._blocks.length > 0) ? (
+                message._blocks.map((block, i) => (
+                  <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} emojiMap={emojiMap} />
+                ))
+              ) : (
+                <MarkdownContent content={message.content} isStreaming={isStreaming} emojiMap={emojiMap} />
+              )}
+            </BubbleContent>
+          </Bubble>
 
-          <div className="flex items-center gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <MessageFooter className="gap-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
             {(message.input_tokens || message.output_tokens) && (
-              <span className="text-[11px] text-muted-foreground/50 mr-1">
+              <span className="text-[11px] text-muted-foreground/50 mr-1 font-normal">
                 {message.input_tokens && message.output_tokens
                   ? <><CountUp to={message.input_tokens} separator="," duration={1} /> + <CountUp to={message.output_tokens} separator="," duration={1} /> tokens</>
                   : <><CountUp to={(message.output_tokens ?? message.input_tokens)!} separator="," duration={1} /> tokens</>}
@@ -563,8 +601,8 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
                 </Button>
               )}
             </div>
-          </div>
-        </div>
+          </MessageFooter>
+        </MessageContent>
       </ContextMenuTrigger>
       <ContextMenuContent>
         {selectedText && (

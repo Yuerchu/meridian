@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getVersion } from '@tauri-apps/api/app'
-import ShinyText from '@/components/ShinyText'
 
 export function About() {
   const { t } = useTranslation()
@@ -19,7 +18,7 @@ export function About() {
 
       <div className="space-y-4 text-sm text-foreground">
         <div>
-          <ShinyText text={t('app.name')} speed={3} className="text-xl font-semibold" />
+          <span className="shimmer shimmer-duration-3000 text-xl font-semibold">{t('app.name')}</span>
           {version && <div className="text-muted-foreground mt-0.5">v{version}</div>}
         </div>
 
