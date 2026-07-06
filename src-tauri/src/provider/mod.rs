@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub mod capabilities;
 pub mod deepseek;
 pub mod gemma_tool;
 pub mod models;
@@ -102,6 +103,11 @@ pub struct ProviderCapabilities {
     pub supports_images: bool,
     pub max_context_tokens: Option<u32>,
     pub max_output_tokens: Option<u32>,
+    pub supports_pdf: bool,
+    pub supports_temperature: bool,
+    pub supports_top_p: bool,
+    pub supports_reasoning_effort: bool,
+    pub max_temperature: Option<f32>,
 }
 
 pub struct AgentResponse {

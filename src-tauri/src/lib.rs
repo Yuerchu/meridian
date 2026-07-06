@@ -2276,7 +2276,7 @@ async fn chat(
         }
     };
 
-    let params = ChatParams {
+    let mut params = ChatParams {
         model: model.clone(),
         temperature: assistant.as_ref().and_then(|a| a.temperature.map(|t| t as f64)),
         top_p: assistant.as_ref().and_then(|a| a.top_p.map(|t| t as f64)),
@@ -2285,6 +2285,8 @@ async fn chat(
         thinking_budget,
         thinking_effort,
     };
+    let caps = provider::capabilities::resolve(&provider_type, Some(&api_format), &model);
+    provider::capabilities::filter_params(&mut params, &caps);
 
     // Persist user message
     let user_msg_id = uuid::Uuid::new_v4().to_string();

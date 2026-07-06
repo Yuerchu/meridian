@@ -358,17 +358,6 @@ fn parse_responses_event(
 
 #[async_trait]
 impl ChatProvider for OpenAIResponsesProvider {
-    fn capabilities(&self, _model: &str) -> super::ProviderCapabilities {
-        super::ProviderCapabilities {
-            supports_tools: true,
-            supports_streaming_tools: true,
-            supports_thinking: true,
-            supports_images: true,
-            max_context_tokens: Some(200_000),
-            max_output_tokens: Some(100_000),
-        }
-    }
-
     async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,

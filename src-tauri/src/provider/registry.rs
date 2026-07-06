@@ -1,4 +1,5 @@
-use super::{ChatProvider, ProviderCapabilities};
+use super::ChatProvider;
+use super::ProviderCapabilities;
 use super::anthropic::AnthropicProvider;
 use super::deepseek::DeepSeekProvider;
 use super::gemma_tool::GemmaToolProvider;
@@ -23,12 +24,5 @@ pub fn create_provider(
 }
 
 pub fn get_capabilities(provider_type: &str, api_format: Option<&str>, model: &str) -> ProviderCapabilities {
-    match provider_type {
-        "anthropic" => AnthropicProvider::new("", "").capabilities(model),
-        "deepseek" => DeepSeekProvider::new("", "").capabilities(model),
-        _ => match api_format {
-            Some("responses") => OpenAIResponsesProvider::new("", "").capabilities(model),
-            _ => OpenAICompatProvider::new("", "").capabilities(model),
-        },
-    }
+    super::capabilities::resolve(provider_type, api_format, model)
 }

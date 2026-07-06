@@ -236,6 +236,11 @@ export interface ProviderCapabilities {
   supports_images: boolean
   max_context_tokens: number | null
   max_output_tokens: number | null
+  supports_pdf?: boolean
+  supports_temperature?: boolean
+  supports_top_p?: boolean
+  supports_reasoning_effort?: boolean
+  max_temperature?: number | null
 }
 
 export interface StreamChunk {

@@ -187,13 +187,18 @@ const THINKING_LEVELS: Array<{ id: ThinkingLevel; labelKey: string; descKey: str
 function ThinkingSelector({
   current,
   onSelect,
+  supportsReasoningEffort,
 }: {
   current: ThinkingLevel
   onSelect: (level: ThinkingLevel) => void
+  supportsReasoningEffort: boolean
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const isActive = current !== 'default' && current !== 'off'
+  const levels = supportsReasoningEffort
+    ? THINKING_LEVELS
+    : THINKING_LEVELS.filter((l) => l.id === 'default' || l.id === 'off')
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -212,7 +217,7 @@ function ThinkingSelector({
         <div className="px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
           {t('toolbar.thinking')}
         </div>
-        {THINKING_LEVELS.map((level) => (
+        {levels.map((level) => (
           <Button
             key={level.id}
             variant="ghost"
@@ -254,6 +259,7 @@ export function Toolbar(props: ToolbarProps) {
           <ThinkingSelector
             current={props.thinkingLevel}
             onSelect={props.onSelectThinkingLevel}
+            supportsReasoningEffort={props.capabilities?.supports_reasoning_effort !== false}
           />
         </>
       )}
