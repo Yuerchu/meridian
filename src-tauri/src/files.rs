@@ -8,20 +8,24 @@ pub fn conversation_files_dir(app_data_dir: &Path, conversation_id: &str) -> Pat
     files_dir(app_data_dir).join(conversation_id)
 }
 
-pub fn store_file(app_data_dir: &Path, conversation_id: &str, src_path: &Path) -> Result<String, String> {
+pub fn alloc_dest(app_data_dir: &Path, conversation_id: &str, ext: &str) -> Result<(PathBuf, String), String> {
     let dest_dir = conversation_files_dir(app_data_dir, conversation_id);
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-
-    let ext = src_path.extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("bin");
     let file_id = uuid::Uuid::new_v4().to_string();
     let dest_name = format!("{file_id}.{ext}");
     let dest_path = dest_dir.join(&dest_name);
+    let uri = format!("file:///{}", dest_path.to_string_lossy().replace('\\', "/"));
+    Ok((dest_path, uri))
+}
+
+pub fn store_file(app_data_dir: &Path, conversation_id: &str, src_path: &Path) -> Result<String, String> {
+    let ext = src_path.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("bin");
+    let (dest_path, uri) = alloc_dest(app_data_dir, conversation_id, ext)?;
 
     std::fs::copy(src_path, &dest_path).map_err(|e| e.to_string())?;
 
-    let uri = format!("file:///{}", dest_path.to_string_lossy().replace('\\', "/"));
     Ok(uri)
 }
 

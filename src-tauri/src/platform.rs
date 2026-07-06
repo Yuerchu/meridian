@@ -2,6 +2,16 @@
 //! All commands are registered on every platform; non-Android builds return
 //! inert values so the frontend can call them unconditionally.
 
+#[derive(Clone, Copy, Default, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WindowInsets {
+    pub top: f32,
+    pub right: f32,
+    pub bottom: f32,
+    pub left: f32,
+    pub ime_bottom: f32,
+}
+
 /// Persisted SAF root entry, stored as a JSON array under the
 /// "android.saf_roots" preference key.
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
@@ -63,6 +73,18 @@ pub fn get_platform() -> &'static str {
         "ios"
     } else {
         "unknown"
+    }
+}
+
+#[tauri::command]
+pub fn get_window_insets() -> WindowInsets {
+    #[cfg(target_os = "android")]
+    {
+        crate::android_bridge::current_insets()
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        WindowInsets::default()
     }
 }
 
@@ -148,6 +170,24 @@ pub async fn list_saf_roots(app: tauri::AppHandle) -> Result<Vec<SafRootEntry>, 
         let _ = app;
         Ok(Vec::new())
     }
+}
+
+/// Resolve the display name of a file path or content:// URI.
+/// On Android, content:// URIs are resolved via the ContentResolver.
+#[tauri::command]
+pub async fn resolve_file_name(path: String) -> Result<String, String> {
+    #[cfg(target_os = "android")]
+    {
+        if path.starts_with("content://") {
+            let stat = crate::android_bridge::content_stat(&path).await?;
+            return Ok(stat.name.unwrap_or_else(|| "file".to_string()));
+        }
+    }
+    Ok(std::path::Path::new(&path)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("file")
+        .to_string())
 }
 
 /// Remove an authorized SAF directory and release its persisted grant.

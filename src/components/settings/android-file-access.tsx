@@ -108,7 +108,7 @@ export function AndroidFileAccess() {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 shrink-0"
+                  className="shrink-0"
                   onClick={() => handleRemove(root.uri)}
                   aria-label={t('settings.fileAccess.removeDir')}
                 >

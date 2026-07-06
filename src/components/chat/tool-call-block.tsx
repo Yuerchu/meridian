@@ -249,7 +249,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
 
       {data.result && (
         <div className="border-t border-border bg-muted/10">
-          <div className="max-h-40 overflow-y-auto scroll-fade-y">
+          <div className="max-h-40 overflow-y-auto ">
             <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px]">
               {data.result}
             </pre>
@@ -345,7 +345,7 @@ export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
       <Button
         variant="ghost"
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-2 px-3 py-2 bg-muted/30 w-full text-left hover:bg-muted/50 h-auto rounded-none"
+        className="flex items-center justify-start gap-2 px-3 py-2 bg-muted/30 w-full hover:bg-muted/50 h-auto rounded-none"
       >
         <Wrench className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="font-medium text-foreground">{data.tool_name}</span>
@@ -393,7 +393,7 @@ export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
 
           {data.result && (
             <div className="border-t border-border bg-muted/10">
-              <div className="max-h-40 overflow-y-auto scroll-fade-y">
+              <div className="max-h-40 overflow-y-auto ">
                 <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px]">
                   {data.result.length > 1000 ? `${data.result.slice(0, 1000)}...` : data.result}
                 </pre>

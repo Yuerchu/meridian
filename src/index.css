@@ -140,6 +140,7 @@ body {
   }
   html {
     @apply font-sans overflow-hidden h-full;
+    -webkit-tap-highlight-color: transparent;
   }
   body, #root {
     @apply h-full overflow-hidden;
@@ -156,10 +157,10 @@ body {
 }
 
 :root {
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
-  --safe-left: env(safe-area-inset-left, 0px);
-  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-top: var(--native-inset-top, env(safe-area-inset-top, 0px));
+  --safe-bottom: var(--native-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-left: var(--native-inset-left, env(safe-area-inset-left, 0px));
+  --safe-right: var(--native-inset-right, env(safe-area-inset-right, 0px));
 }
 
 /* MessageScrollerViewport 引用的 scrollbar utilities（shadcn 包只发布了 no-scrollbar，这几个需自行定义） */
@@ -178,4 +179,22 @@ body {
 
 @utility scrollbar-track-transparent {
   scrollbar-color: transparent transparent;
+}
+
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility touch-hitbox {
+  @media (pointer: coarse) {
+    position: relative;
+    &::after {
+      content: '';
+      position: absolute;
+      inset: min(0px, calc((100% - 2.75rem) / 2));
+    }
+  }
 }

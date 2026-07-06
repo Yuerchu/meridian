@@ -2,9 +2,12 @@ package cn.yuxiaoqiu.meridian
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.documentfile.provider.DocumentFile
 
 class MainActivity : TauriActivity() {
@@ -18,18 +21,18 @@ class MainActivity : TauriActivity() {
   private lateinit var safLauncher: ActivityResultLauncher<Intent>
   private var pendingSafReq: Int = -1
 
-  /** Initialize ndk-context + android-keyring. Must be called before any Rust
-   *  code touches the Android keystore. Implemented in lib.rs. */
   private external fun initNdkContext(context: android.content.Context)
-
-  /** Implemented in Rust: src/android_bridge.rs (nativeOnSafResult). */
   external fun nativeOnSafResult(reqId: Int, uri: String?, name: String?)
+  private external fun nativeOnInsetsChanged(
+    top: Float, right: Float, bottom: Float, left: Float, imeBottom: Float)
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     initNdkContext(applicationContext)
     super.onCreate(savedInstanceState)
     instance = this
+    pendingSafReq = savedInstanceState?.getInt("pendingSafReq", -1) ?: -1
+
     safLauncher = registerForActivityResult(
       ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -38,16 +41,30 @@ class MainActivity : TauriActivity() {
       if (reqId < 0) return@registerForActivityResult
       val uri = result.data?.data
       if (result.resultCode == RESULT_OK && uri != null) {
-        contentResolver.takePersistableUriPermission(
-          uri,
-          Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        )
-        val name = DocumentFile.fromTreeUri(this, uri)?.name ?: "directory"
-        nativeOnSafResult(reqId, uri.toString(), name)
+        try {
+          contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+          )
+        } catch (_: SecurityException) {
+          nativeOnSafResult(reqId, null, null)
+          return@registerForActivityResult
+        }
+        Thread {
+          val name = try { DocumentFile.fromTreeUri(this, uri)?.name } catch (_: Exception) { null }
+          nativeOnSafResult(reqId, uri.toString(), name ?: "directory")
+        }.start()
       } else {
         nativeOnSafResult(reqId, null, null)
       }
     }
+
+    setupInsetsListener()
+  }
+
+  override fun onSaveInstanceState(outState: Bundle) {
+    super.onSaveInstanceState(outState)
+    outState.putInt("pendingSafReq", pendingSafReq)
   }
 
   override fun onDestroy() {
@@ -66,5 +83,20 @@ class MainActivity : TauriActivity() {
       )
       safLauncher.launch(intent)
     }
+  }
+
+  private fun setupInsetsListener() {
+    val content = findViewById<View>(android.R.id.content)
+    ViewCompat.setOnApplyWindowInsetsListener(content) { _, insets ->
+      val bars = insets.getInsets(
+        WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
+      val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
+      val d = resources.displayMetrics.density
+      val imeExtra = maxOf(0f, (ime.bottom - bars.bottom) / d)
+      nativeOnInsetsChanged(
+        bars.top / d, bars.right / d, bars.bottom / d, bars.left / d, imeExtra)
+      insets
+    }
+    ViewCompat.requestApplyInsets(content)
   }
 }

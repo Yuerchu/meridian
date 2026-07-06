@@ -51,6 +51,8 @@ pub(crate) struct AppDb(pub(crate) DbPool);
 pub(crate) struct AppTools(pub(crate) Arc<tools::ToolRegistry>);
 pub(crate) struct AppMcp(pub(crate) Arc<Mutex<mcp::McpManager>>);
 
+pub(crate) static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum ApprovalDecision {
     Approved,
@@ -123,14 +125,35 @@ async fn build_file_access(pool: &DbPool) -> tools::FileAccess {
                 virtual_prefix: "/sdcard".to_string(),
                 kind: tools::RootKind::RealPath(shared),
             });
+            if let Ok(rd) = std::fs::read_dir("/storage") {
+                for entry in rd.flatten() {
+                    let name = entry.file_name().to_string_lossy().to_string();
+                    if name == "emulated" || name == "self" { continue; }
+                    let p = entry.path();
+                    if p.is_dir() {
+                        roots.push(tools::AccessRoot {
+                            virtual_prefix: format!("/storage/{name}"),
+                            kind: tools::RootKind::RealPath(p),
+                        });
+                    }
+                }
+            }
         }
+        let valid_uris: Option<std::collections::HashSet<String>> =
+            tokio::task::spawn_blocking(|| android_bridge::persisted_tree_uris())
+                .await
+                .ok()
+                .and_then(|r| r.ok())
+                .map(|v| v.into_iter().collect());
         if let Some(json) = saf_pref {
             if let Ok(entries) = serde_json::from_str::<Vec<platform::SafRootEntry>>(&json) {
                 for e in entries {
-                    roots.push(tools::AccessRoot {
-                        virtual_prefix: e.virtual_prefix,
-                        kind: tools::RootKind::SafTree { tree_uri: e.uri },
-                    });
+                    if valid_uris.as_ref().is_none_or(|s| s.contains(&e.uri)) {
+                        roots.push(tools::AccessRoot {
+                            virtual_prefix: e.virtual_prefix,
+                            kind: tools::RootKind::SafTree { tree_uri: e.uri },
+                        });
+                    }
                 }
             }
         }
@@ -815,6 +838,34 @@ async fn export_conversation(app: tauri::AppHandle, conversation_id: String, for
 #[tauri::command]
 async fn upload_file(app: tauri::AppHandle, conversation_id: String, file_path: String) -> Result<serde_json::Value, String> {
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+
+    // Android: handle content:// URIs from SAF file picker
+    #[cfg(target_os = "android")]
+    if file_path.starts_with("content://") {
+        let stat = android_bridge::content_stat(&file_path).await?;
+        let original_name = stat.name.unwrap_or_else(|| "file".to_string());
+        let ext = original_name.rsplit('.').next()
+            .filter(|e| e.len() <= 10 && !e.contains('/'))
+            .unwrap_or("bin");
+        let (dest_path, uri) = files::alloc_dest(&app_data_dir, &conversation_id, ext)?;
+        android_bridge::content_copy(&file_path, dest_path.to_str().ok_or("invalid path")?).await?;
+        let mime = stat.mime.unwrap_or_else(|| {
+            mime_guess::from_path(&original_name).first_or_octet_stream().to_string()
+        });
+        let content_part = if mime.starts_with("image/") {
+            serde_json::json!({
+                "type": "image_url",
+                "image_url": { "url": uri }
+            })
+        } else {
+            serde_json::json!({
+                "type": "file",
+                "file": { "url": uri, "mime_type": mime, "name": original_name }
+            })
+        };
+        return Ok(content_part);
+    }
+
     let src = std::path::Path::new(&file_path);
     let uri = files::store_file(&app_data_dir, &conversation_id, src)?;
 
@@ -2642,6 +2693,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            let _ = APP_HANDLE.set(app.handle().clone());
             let data_dir = app.path().app_data_dir()
                 .expect("failed to resolve app data dir");
             std::fs::create_dir_all(&data_dir).expect("failed to create app data dir");
@@ -2919,8 +2971,8 @@ pub fn run() {
             connect_mcp_server, disconnect_mcp_server, list_mcp_tools, list_all_tool_names,
             list_staged_edits, approve_staged_edit, approve_all_staged_edits, reject_staged_edit,
             approve_tool_call, deny_tool_call, respond_to_ask,
-            platform::get_platform, platform::get_manage_storage_status, platform::request_manage_storage,
-            platform::pick_saf_directory, platform::list_saf_roots, platform::remove_saf_root,
+            platform::get_platform, platform::get_window_insets, platform::get_manage_storage_status, platform::request_manage_storage,
+            platform::pick_saf_directory, platform::list_saf_roots, platform::remove_saf_root, platform::resolve_file_name,
             #[cfg(not(target_os = "android"))]
             get_onebot_status,
             #[cfg(not(target_os = "android"))]

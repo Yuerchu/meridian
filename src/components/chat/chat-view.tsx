@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
+import { useImeBottom } from '@/hooks/use-android-insets'
 import { Button } from '@/components/ui/button'
 import {
   MessageScroller,
@@ -15,12 +16,20 @@ import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
 import { Spinner } from '@/components/ui/spinner'
 import { motion } from 'motion/react'
 import { MessageItem } from './message-item'
+import { useMessageScroller } from '@/components/ui/message-scroller'
 import { InputBar, type AttachedFile } from './input-bar'
 import { useEmojiMap } from './emoji-renderer'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
 const MotionMessageScrollerItem = motion.create(MessageScrollerItem)
+
+function ImeScrollSync() {
+  const ime = useImeBottom()
+  const { scrollToEnd } = useMessageScroller()
+  useEffect(() => { if (ime > 0) scrollToEnd() }, [ime, scrollToEnd])
+  return null
+}
 
 function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsumed }: {
   conversationId: string
@@ -270,6 +279,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   return (
     <div className="flex flex-col h-full">
       <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={48}>
+        <ImeScrollSync />
         <MessageScroller className="flex-1 min-h-0">
           <MessageScrollerViewport>
             <MessageScrollerContent className="px-4 py-6">

@@ -52,7 +52,7 @@ export function GeneralSettings() {
         </Select>
       </div>
 
-      {platform !== 'android' && (
+      {platform !== null && platform !== 'android' && (
         <div className="space-y-1.5">
           <label className="block text-xs font-medium text-muted-foreground">
             {t('settings.general.shell')}

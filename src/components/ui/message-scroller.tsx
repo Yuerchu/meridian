@@ -7,6 +7,7 @@ import {
 } from "@shadcn/react/message-scroller"
 
 import { cn } from "@/lib/utils"
+import { usePlatform } from "@/hooks/use-platform"
 import { Button } from "@/components/ui/button"
 import { ArrowDownIcon } from "lucide-react"
 
@@ -68,13 +69,18 @@ function MessageScrollerItem({
   scrollAnchor = false,
   ...props
 }: React.ComponentProps<typeof MessageScrollerPrimitive.Item>) {
+  const platform = usePlatform()
   return (
     <MessageScrollerPrimitive.Item
       data-slot="message-scroller-item"
       scrollAnchor={scrollAnchor}
-      // content-visibility:auto 在 WebView2 打开长对话时触发渲染进程崩溃
-      // (STATUS_ACCESS_VIOLATION)，去掉它换稳定
-      className={cn("min-w-0 shrink-0", className)}
+      // content-visibility:auto crashes WebView2 (STATUS_ACCESS_VIOLATION).
+      // Android WebView is unaffected — restore the optimization there only.
+      className={cn(
+        "min-w-0 shrink-0",
+        platform === 'android' && "[content-visibility:auto] [contain-intrinsic-size:auto_120px]",
+        className,
+      )}
       {...props}
     />
   )

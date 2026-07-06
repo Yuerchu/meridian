@@ -37,7 +37,7 @@ function AssistantSelector({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+      <PopoverTrigger className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors touch-hitbox">
         <Bot className="w-3.5 h-3.5" />
         <span className="max-w-[120px] truncate">{current?.name ?? t('toolbar.noAssistant')}</span>
         <ChevronDown className="w-3 h-3" />
@@ -115,7 +115,7 @@ function ModelSelector({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors">
+      <PopoverTrigger className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors touch-hitbox">
         {currentModelId ? <ModelIcon model={currentModelId} size={14} /> : <Cpu className="w-3.5 h-3.5" />}
         <span className="max-w-[160px] truncate">{currentModelId ?? t('toolbar.selectModel')}</span>
         <ChevronDown className="w-3 h-3" />
@@ -203,7 +203,7 @@ function ThinkingSelector({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger className={cn(
-        'flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors',
+        'flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors touch-hitbox',
         isActive
           ? 'text-blue-400 hover:text-blue-300 hover:bg-accent'
           : 'text-muted-foreground hover:text-foreground hover:bg-accent',

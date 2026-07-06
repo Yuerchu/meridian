@@ -43,6 +43,7 @@ import {
   AlertDialogClose,
   AlertDialogFooter,
 } from '@/components/ui/alert-dialog'
+import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { ToolCallBlock } from './tool-call-block'
 import { renderEmojisInText } from './emoji-renderer'
 import type { ContentBlock, Message as MessageData } from '@/types'
@@ -96,7 +97,7 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
         <span>{lang ?? 'code'}</span>
         <CopyButton text={code} />
       </div>
-      <div className="w-full overflow-x-auto scroll-fade-x">
+      <div className="w-full overflow-x-auto">
         <pre className="p-3 text-[13px] leading-relaxed !bg-transparent !m-0 w-fit min-w-full">
           <code className={className} {...props}>{children}</code>
         </pre>
@@ -329,7 +330,7 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
   const handleEditKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       handleCancelEdit()
-    } else if (e.key === 'Enter' && !e.shiftKey) {
+    } else if (isSubmitKey(e)) {
       e.preventDefault()
       handleSaveEdit()
     }
@@ -428,7 +429,7 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
                     </div>
                   </BubbleContent>
                 </Bubble>
-                <MessageFooter className="gap-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
+                <MessageFooter className="gap-1 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
                   {onEdit && (
                     <Button
                       variant="ghost"
@@ -542,7 +543,7 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
             </BubbleContent>
           </Bubble>
 
-          <MessageFooter className="gap-1 opacity-0 group-hover/message:opacity-100 transition-opacity">
+          <MessageFooter className="gap-1 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
             {(message.input_tokens || message.output_tokens) && (
               <span className="text-[11px] text-muted-foreground/50 mr-1 font-normal">
                 {message.input_tokens && message.output_tokens

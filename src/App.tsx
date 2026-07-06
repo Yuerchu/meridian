@@ -9,6 +9,7 @@ import type { SettingsTab } from '@/components/settings'
 import { api } from '@/api'
 import DecryptedText from '@/components/DecryptedText'
 import { useContextMenuGuard } from '@/hooks/use-context-menu-guard'
+import { useAndroidInsets } from '@/hooks/use-android-insets'
 import { useGlobalEventListener } from '@/hooks/use-global-event-listener'
 import { useConversationStore } from '@/stores/conversation-store'
 
@@ -18,6 +19,7 @@ function App() {
   const { t } = useTranslation()
   useContextMenuGuard()
   useGlobalEventListener()
+  useAndroidInsets()
 
   const [page, setPage] = useState<Page>('chat')
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('provider')
@@ -136,7 +138,7 @@ function App() {
         onRenameProject={handleRenameProject}
       />
       <SidebarInset className="flex flex-col overflow-hidden">
-        <header className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] pb-[var(--safe-top)] border-b border-border select-none shrink-0" data-tauri-drag-region>
+        <header className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] border-b border-border select-none shrink-0" data-tauri-drag-region>
           <SidebarTrigger className="-ml-1" />
           <span className="text-sm font-medium">
             {page === 'settings'

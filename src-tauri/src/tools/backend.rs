@@ -23,7 +23,78 @@ pub async fn read_to_string(target: &ResolvedTarget) -> Result<String, String> {
             .await
             .map_err(|e| format!("failed to read file '{}': {}", path.display(), e)),
         #[cfg(target_os = "android")]
-        ResolvedTarget::Saf { tree_uri, rel } => crate::android_bridge::saf_read(tree_uri, rel).await,
+        ResolvedTarget::Saf { tree_uri, rel, display } => {
+            crate::android_bridge::saf_read(tree_uri, rel, -1)
+                .await
+                .map(|r| r.content)
+                .map_err(|e| format!("'{display}': {e}"))
+        }
+        #[cfg(not(target_os = "android"))]
+        ResolvedTarget::Saf { .. } => saf_unsupported(),
+    }
+}
+
+pub struct CappedRead {
+    pub content: String,
+    pub truncated: bool,
+    pub total_size: Option<u64>,
+}
+
+pub async fn read_capped(target: &ResolvedTarget, max_bytes: usize) -> Result<CappedRead, String> {
+    match target {
+        ResolvedTarget::Real(path) => {
+            let meta = tokio::fs::metadata(path).await
+                .map_err(|e| format!("cannot access '{}': {}", path.display(), e))?;
+            let file_size = meta.len();
+            if file_size <= max_bytes as u64 {
+                let content = tokio::fs::read_to_string(path).await
+                    .map_err(|e| format!("failed to read file '{}': {}", path.display(), e))?;
+                return Ok(CappedRead { content, truncated: false, total_size: Some(file_size) });
+            }
+            let path = path.clone();
+            let result = tokio::task::spawn_blocking(move || {
+                use std::io::Read;
+                let mut f = std::fs::File::open(&path)
+                    .map_err(|e| format!("failed to open '{}': {}", path.display(), e))?;
+                let mut buf = vec![0u8; max_bytes];
+                let mut total = 0;
+                while total < max_bytes {
+                    match f.read(&mut buf[total..]) {
+                        Ok(0) => break,
+                        Ok(n) => total += n,
+                        Err(e) => return Err(format!("read error: {e}")),
+                    }
+                }
+                let buf = &buf[..total];
+                match std::str::from_utf8(buf) {
+                    Ok(s) => Ok(CappedRead {
+                        content: s.to_string(),
+                        truncated: true,
+                        total_size: Some(file_size),
+                    }),
+                    Err(e) if e.error_len().is_none() && e.valid_up_to() > 0 => {
+                        Ok(CappedRead {
+                            content: std::str::from_utf8(&buf[..e.valid_up_to()]).unwrap().to_string(),
+                            truncated: true,
+                            total_size: Some(file_size),
+                        })
+                    }
+                    Err(_) => Err(format!("'{}' is not valid UTF-8 (binary file?)", path.display())),
+                }
+            }).await.map_err(|e| format!("task failed: {e}"))?;
+            result
+        }
+        #[cfg(target_os = "android")]
+        ResolvedTarget::Saf { tree_uri, rel, display } => {
+            let r = crate::android_bridge::saf_read(tree_uri, rel, max_bytes as i64)
+                .await
+                .map_err(|e| format!("'{display}': {e}"))?;
+            Ok(CappedRead {
+                content: r.content,
+                truncated: r.truncated,
+                total_size: r.size,
+            })
+        }
         #[cfg(not(target_os = "android"))]
         ResolvedTarget::Saf { .. } => saf_unsupported(),
     }
@@ -43,8 +114,9 @@ pub async fn write_string(target: &ResolvedTarget, content: &str) -> Result<(), 
                 .map_err(|e| format!("failed to write file '{}': {}", path.display(), e))
         }
         #[cfg(target_os = "android")]
-        ResolvedTarget::Saf { tree_uri, rel } => {
+        ResolvedTarget::Saf { tree_uri, rel, display } => {
             crate::android_bridge::saf_write(tree_uri, rel, content).await
+                .map_err(|e| format!("'{}': {}", display, e))
         }
         #[cfg(not(target_os = "android"))]
         ResolvedTarget::Saf { .. } => saf_unsupported(),
@@ -77,7 +149,10 @@ pub async fn list_dir(target: &ResolvedTarget) -> Result<Vec<DirEntry>, String> 
             .map_err(|e| format!("task failed: {e}"))?
         }
         #[cfg(target_os = "android")]
-        ResolvedTarget::Saf { tree_uri, rel } => crate::android_bridge::saf_list(tree_uri, rel).await,
+        ResolvedTarget::Saf { tree_uri, rel, display } => {
+            crate::android_bridge::saf_list(tree_uri, rel).await
+                .map_err(|e| format!("'{}': {}", display, e))
+        }
         #[cfg(not(target_os = "android"))]
         ResolvedTarget::Saf { .. } => saf_unsupported(),
     }
@@ -112,8 +187,9 @@ pub async fn delete(target: &ResolvedTarget, recursive: bool) -> Result<(), Stri
             }
         }
         #[cfg(target_os = "android")]
-        ResolvedTarget::Saf { tree_uri, rel } => {
+        ResolvedTarget::Saf { tree_uri, rel, display } => {
             crate::android_bridge::saf_delete(tree_uri, rel, recursive).await
+                .map_err(|e| format!("'{}': {}", display, e))
         }
         #[cfg(not(target_os = "android"))]
         ResolvedTarget::Saf { .. } => saf_unsupported(),
@@ -156,8 +232,8 @@ pub async fn rename(from: &ResolvedTarget, to: &ResolvedTarget) -> Result<(), St
         }
         #[cfg(target_os = "android")]
         (
-            ResolvedTarget::Saf { tree_uri: from_tree, rel: from_rel },
-            ResolvedTarget::Saf { tree_uri: to_tree, rel: to_rel },
+            ResolvedTarget::Saf { tree_uri: from_tree, rel: from_rel, display: from_display },
+            ResolvedTarget::Saf { tree_uri: to_tree, rel: to_rel, display: _to_display },
         ) => {
             if from_tree != to_tree {
                 return Err(
@@ -167,6 +243,7 @@ pub async fn rename(from: &ResolvedTarget, to: &ResolvedTarget) -> Result<(), St
                 );
             }
             crate::android_bridge::saf_rename(from_tree, from_rel, to_rel).await
+                .map_err(|e| format!("'{}': {}", from_display, e))
         }
         #[cfg(target_os = "android")]
         _ => Err(

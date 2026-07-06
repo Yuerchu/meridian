@@ -144,22 +144,43 @@ fn walk_and_search(
     Ok(())
 }
 
+const MAX_FILE_SIZE: u64 = 2 * 1024 * 1024; // 2 MB
+
 fn search_file(
     path: &std::path::Path,
     re: &Regex,
     max_results: usize,
     matches: &mut Vec<String>,
 ) {
+    // Skip files larger than 2 MB
+    let meta = match std::fs::metadata(path) {
+        Ok(m) => m,
+        Err(_) => return,
+    };
+    if meta.len() > MAX_FILE_SIZE {
+        return;
+    }
+
+    // Read first 512 bytes to probe for binary content (NUL byte)
+    let probe = match std::fs::File::open(path) {
+        Ok(mut f) => {
+            use std::io::Read;
+            let mut buf = [0u8; 512];
+            match f.read(&mut buf) {
+                Ok(n) => buf[..n].to_vec(),
+                Err(_) => return,
+            }
+        }
+        Err(_) => return,
+    };
+    if probe.contains(&0) {
+        return;
+    }
+
     let content = match std::fs::read(path) {
         Ok(c) => c,
         Err(_) => return,
     };
-
-    // Skip binary files (check first 512 bytes for null bytes)
-    let check_len = content.len().min(512);
-    if content[..check_len].contains(&0) {
-        return;
-    }
 
     let text = match std::str::from_utf8(&content) {
         Ok(t) => t,
@@ -174,7 +195,7 @@ fn search_file(
         }
         if re.is_match(line) {
             let display_line = if line.len() > MAX_LINE_LEN {
-                format!("{}...", &line[..MAX_LINE_LEN])
+                format!("{}...", crate::take_bytes_at_char_boundary(line, MAX_LINE_LEN))
             } else {
                 line.to_string()
             };

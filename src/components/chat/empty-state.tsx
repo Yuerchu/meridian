@@ -1,6 +1,7 @@
 import { useRef, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowUp } from 'lucide-react'
+import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import {
   InputGroup,
   InputGroupTextarea,
@@ -33,7 +34,7 @@ export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (isSubmitKey(e)) {
         e.preventDefault()
         handleSubmit()
       }

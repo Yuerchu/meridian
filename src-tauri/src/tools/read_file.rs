@@ -38,17 +38,19 @@ impl Tool for ReadFileTool {
             .ok_or("missing 'path' argument")?;
         let target = context.resolve_and_validate(path_str)?;
 
-        let content = super::backend::read_to_string(&target).await?;
+        let capped = super::backend::read_capped(&target, MAX_OUTPUT_BYTES).await?;
 
-        if content.len() > MAX_OUTPUT_BYTES {
-            let truncated = crate::take_bytes_at_char_boundary(&content, MAX_OUTPUT_BYTES);
+        if capped.truncated {
+            let size_info = capped.total_size
+                .map(|s| format!(", total {} bytes", s))
+                .unwrap_or_default();
             return Ok(format!(
-                "{}...\n\n(file truncated at 256KB, total {} bytes)",
-                truncated,
-                content.len()
+                "{}...\n\n(file truncated at 256KB{})",
+                capped.content,
+                size_info
             ));
         }
 
-        Ok(content)
+        Ok(capped.content)
     }
 }

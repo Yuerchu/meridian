@@ -67,7 +67,7 @@ pub enum RootKind {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResolvedTarget {
     Real(PathBuf),
-    Saf { tree_uri: String, rel: String },
+    Saf { tree_uri: String, rel: String, display: String },
 }
 
 /// Lexically normalize a slash-separated path into segments, resolving "." and "..".
@@ -209,6 +209,7 @@ impl ToolContext {
                             RootKind::SafTree { tree_uri } => ResolvedTarget::Saf {
                                 tree_uri: tree_uri.clone(),
                                 rel: rest.join("/"),
+                                display: format!("{}/{}", root.virtual_prefix, rest.join("/")),
                             },
                         });
                     }
@@ -394,6 +395,7 @@ mod tests {
             ResolvedTarget::Saf {
                 tree_uri: "content://tree/primary%3ADownload".to_string(),
                 rel: "sub/a.txt".to_string(),
+                display: "/saf/Download/sub/a.txt".to_string(),
             }
         );
         assert!(ctx.resolve_and_validate("/saf/Other/a.txt").is_err());

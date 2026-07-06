@@ -225,6 +225,9 @@ export const api = {
   getPlatform: () =>
     invoke<string>('get_platform'),
 
+  getWindowInsets: () =>
+    invoke<{ top: number; bottom: number; left: number; right: number; imeBottom: number }>('get_window_insets'),
+
   getManageStorageStatus: () =>
     invoke<boolean>('get_manage_storage_status'),
 
@@ -239,6 +242,9 @@ export const api = {
 
   removeSafRoot: (uri: string) =>
     invoke<SafRootEntry[]>('remove_saf_root', { uri }),
+
+  resolveFileName: (path: string) =>
+    invoke<string>('resolve_file_name', { path }),
 
   // MCP servers
   listMcpServers: () =>

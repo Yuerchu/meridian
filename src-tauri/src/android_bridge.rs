@@ -1,9 +1,8 @@
 //! JNI bridge to the Android side (FileBridge.kt / MainActivity.kt).
 //! Only compiled on Android. SAF file operations and permission queries live here.
 //!
-//! ndk-context is initialized by Tauri's tao android binding before any of
-//! these functions can be reached (they are only called from IPC commands or
-//! tool execution, both of which require the app to be running).
+//! ndk-context is initialized by `initNdkContext` (called from MainActivity.onCreate
+//! via lib.rs `Java_..._initNdkContext`), NOT by Tauri/tao itself.
 #![cfg(target_os = "android")]
 
 use std::collections::HashMap;
@@ -11,7 +10,7 @@ use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use jni::objects::{JClass, JObject, JString, JValue};
-use jni::sys::jint;
+use jni::sys::{jfloat, jint};
 use jni::JNIEnv;
 use tokio::sync::oneshot;
 
@@ -32,6 +31,9 @@ fn java_vm() -> Result<jni::JavaVM, String> {
 /// Pending Java exceptions are converted into Err strings.
 /// Uses `attach_current_thread_permanently` to avoid the GlobalRef-drop-on-
 /// detached-thread warning that `AttachGuard` causes with jni 0.21.
+/// All local references created inside `f` (and by `describe_exception`) are
+/// released when the local frame pops, preventing table overflow on the
+/// permanently-attached tokio blocking threads.
 fn with_env<T>(
     f: impl FnOnce(&mut JNIEnv, &JObject) -> Result<T, jni::errors::Error>,
 ) -> Result<T, String> {
@@ -40,12 +42,18 @@ fn with_env<T>(
         .attach_current_thread_permanently()
         .map_err(|e| format!("failed to attach JNI thread: {e}"))?;
     let ctx = ndk_context::android_context();
+    // context is a global ref from ndk-context, not a frame-local ref — safe to
+    // borrow across the local frame boundary.
     let context = unsafe { JObject::from_raw(ctx.context().cast()) };
-    match f(&mut env, &context) {
-        Ok(v) => Ok(v),
-        Err(jni::errors::Error::JavaException) => Err(describe_exception(&mut env)),
-        Err(e) => Err(format!("JNI error: {e}")),
-    }
+    let outcome: Result<Result<T, String>, jni::errors::Error> =
+        env.with_local_frame(32, |env| {
+            Ok(match f(env, &context) {
+                Ok(v) => Ok(v),
+                Err(jni::errors::Error::JavaException) => Err(describe_exception(env)),
+                Err(e) => Err(format!("JNI error: {e}")),
+            })
+        });
+    outcome.unwrap_or_else(|e| Err(format!("JNI local frame error: {e}")))
 }
 
 fn describe_exception(env: &mut JNIEnv) -> String {
@@ -56,7 +64,14 @@ fn describe_exception(env: &mut JNIEnv) -> String {
     if let Ok(msg) = env.call_method(&throwable, "toString", "()Ljava/lang/String;", &[]) {
         if let Ok(obj) = msg.l() {
             if let Ok(s) = env.get_string(&JString::from(obj)) {
-                return s.into();
+                let s: String = s.into();
+                if s.contains("SecurityException") {
+                    return format!(
+                        "Directory authorization has been revoked or expired. \
+                         Ask the user to re-authorize this folder in Settings > File Access. \
+                         ({})", s);
+                }
+                return s;
             }
         }
     }
@@ -65,27 +80,26 @@ fn describe_exception(env: &mut JNIEnv) -> String {
 
 /// Load the FileBridge class once and cache it as a GlobalRef.
 /// Subsequent calls return the cached reference.
+/// Uses double-checked init instead of `get_or_init` so errors propagate
+/// instead of panicking (a race loser's GlobalRef is harmlessly dropped).
 fn bridge_class<'l>(env: &mut JNIEnv<'l>, context: &JObject) -> Result<JClass<'l>, jni::errors::Error> {
-    let global = BRIDGE_REF.get_or_init(|| {
+    if BRIDGE_REF.get().is_none() {
         let loader = env
-            .call_method(context, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])
-            .unwrap()
-            .l()
-            .unwrap();
-        let class_name = env.new_string(BRIDGE_CLASS).unwrap();
+            .call_method(context, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?
+            .l()?;
+        let class_name = env.new_string(BRIDGE_CLASS)?;
         let cls = env
             .call_method(
                 &loader,
                 "loadClass",
                 "(Ljava/lang/String;)Ljava/lang/Class;",
                 &[JValue::Object(&class_name)],
-            )
-            .unwrap()
-            .l()
-            .unwrap();
-        env.new_global_ref(&cls).unwrap()
-    });
-    // Reinterpret the GlobalRef as a local JClass scoped to this env
+            )?
+            .l()?;
+        let global = env.new_global_ref(&cls)?;
+        let _ = BRIDGE_REF.set(global);
+    }
+    let global = BRIDGE_REF.get().expect("just initialized above");
     let local = env.new_local_ref(global.as_obj())?;
     Ok(JClass::from(local))
 }
@@ -116,6 +130,34 @@ pub fn open_manage_storage_settings() -> Result<(), String> {
     })
 }
 
+// ---- Window insets ----
+
+static CURRENT_INSETS: Mutex<crate::platform::WindowInsets> =
+    Mutex::new(crate::platform::WindowInsets { top: 0.0, right: 0.0, bottom: 0.0, left: 0.0, ime_bottom: 0.0 });
+
+pub fn current_insets() -> crate::platform::WindowInsets {
+    *CURRENT_INSETS.lock().unwrap()
+}
+
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnInsetsChanged(
+    _env: JNIEnv,
+    _this: JObject,
+    top: jfloat,
+    right: jfloat,
+    bottom: jfloat,
+    left: jfloat,
+    ime_bottom: jfloat,
+) {
+    let insets = crate::platform::WindowInsets { top, right, bottom, left, ime_bottom };
+    *CURRENT_INSETS.lock().unwrap() = insets;
+    if let Some(app) = crate::APP_HANDLE.get() {
+        use tauri::Emitter;
+        let _ = app.emit("insets-changed", insets);
+    }
+}
+
 // ---- SAF directory picker ----
 
 type SafPickResult = Option<(String, String)>; // (tree_uri, display_name), None = cancelled
@@ -129,6 +171,13 @@ fn saf_waiters() -> &'static Mutex<HashMap<i32, oneshot::Sender<SafPickResult>>>
 
 /// Launch the system directory picker. Resolves to None if the user cancels.
 pub async fn pick_directory() -> Result<SafPickResult, String> {
+    {
+        let waiters = saf_waiters().lock().unwrap();
+        if !waiters.is_empty() {
+            return Err("a directory picker is already open".to_string());
+        }
+    }
+
     let req_id = NEXT_SAF_REQ.fetch_add(1, Ordering::Relaxed);
     let (tx, rx) = oneshot::channel();
     saf_waiters().lock().unwrap().insert(req_id, tx);
@@ -155,8 +204,14 @@ pub async fn pick_directory() -> Result<SafPickResult, String> {
         }
     }
 
-    rx.await
-        .map_err(|_| "directory picker closed unexpectedly".to_string())
+    match tokio::time::timeout(std::time::Duration::from_secs(300), rx).await {
+        Ok(Ok(r)) => Ok(r),
+        Ok(Err(_)) => Err("directory picker closed unexpectedly".to_string()),
+        Err(_) => {
+            saf_waiters().lock().unwrap().remove(&req_id);
+            Err("directory picker timed out".to_string())
+        }
+    }
 }
 
 /// Called from MainActivity's ActivityResult callback.
@@ -172,16 +227,18 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnSafResult
     let result: SafPickResult = if uri.is_null() {
         None
     } else {
-        let uri_str: String = match env.get_string(&uri) {
-            Ok(s) => s.into(),
-            Err(_) => return,
-        };
-        let name_str: String = if name.is_null() {
-            "directory".to_string()
-        } else {
-            env.get_string(&name).map(Into::into).unwrap_or_else(|_| "directory".to_string())
-        };
-        Some((uri_str, name_str))
+        match env.get_string(&uri) {
+            Ok(s) => {
+                let uri_str: String = s.into();
+                let name_str: String = if name.is_null() {
+                    "directory".to_string()
+                } else {
+                    env.get_string(&name).map(Into::into).unwrap_or_else(|_| "directory".to_string())
+                };
+                Some((uri_str, name_str))
+            }
+            Err(_) => None,
+        }
     };
     if let Some(tx) = saf_waiters().lock().unwrap().remove(&req_id) {
         let _ = tx.send(result);
@@ -214,6 +271,20 @@ pub fn release_persisted_uri(tree_uri: &str) -> Result<(), String> {
     })
 }
 
+pub fn persisted_tree_uris() -> Result<Vec<String>, String> {
+    let json = with_env(|env, context| {
+        let cls = bridge_class(env, context)?;
+        let s = env.call_static_method(
+            &cls,
+            "persistedTreeUris",
+            "(Landroid/content/Context;)Ljava/lang/String;",
+            &[JValue::Object(context)],
+        )?.l()?;
+        env.get_string(&JString::from(s)).map(Into::into)
+    })?;
+    serde_json::from_str(&json).map_err(|e| format!("invalid uri list: {e}"))
+}
+
 // ---- SAF file operations (blocking JNI wrapped in spawn_blocking) ----
 
 fn call_saf_string(
@@ -236,17 +307,38 @@ fn call_saf_string(
     })
 }
 
-pub async fn saf_read(tree_uri: &str, rel: &str) -> Result<String, String> {
+#[derive(serde::Deserialize)]
+pub struct SafRead {
+    pub content: String,
+    pub truncated: bool,
+    pub size: Option<u64>,
+}
+
+pub async fn saf_read(tree_uri: &str, rel: &str, max_bytes: i64) -> Result<SafRead, String> {
     let (tree, rel) = (tree_uri.to_string(), rel.to_string());
-    tokio::task::spawn_blocking(move || {
-        call_saf_string(
-            "safRead",
-            "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
-            vec![tree, rel],
-        )
+    let json = tokio::task::spawn_blocking(move || {
+        with_env(|env, context| {
+            let cls = bridge_class(env, context)?;
+            let jtree = env.new_string(&tree)?;
+            let jrel = env.new_string(&rel)?;
+            let result = env.call_static_method(
+                &cls,
+                "safRead",
+                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;J)Ljava/lang/String;",
+                &[
+                    JValue::Object(context),
+                    JValue::Object(&jtree),
+                    JValue::Object(&jrel),
+                    JValue::Long(max_bytes),
+                ],
+            )?.l()?;
+            let s = env.get_string(&JString::from(result))?;
+            Ok(String::from(s))
+        })
     })
     .await
-    .map_err(|e| format!("task failed: {e}"))?
+    .map_err(|e| format!("task failed: {e}"))??;
+    serde_json::from_str(&json).map_err(|e| format!("invalid safRead response: {e}"))
 }
 
 pub async fn saf_write(tree_uri: &str, rel: &str, content: &str) -> Result<(), String> {
@@ -352,6 +444,53 @@ pub async fn saf_rename(tree_uri: &str, from_rel: &str, to_rel: &str) -> Result<
                     JValue::Object(&tree),
                     JValue::Object(&from),
                     JValue::Object(&to),
+                ],
+            )?;
+            Ok(())
+        })
+    })
+    .await
+    .map_err(|e| format!("task failed: {e}"))?
+}
+
+// ---- Content URI helpers (for attachment upload) ----
+
+pub async fn content_stat(uri: &str) -> Result<ContentStat, String> {
+    let uri = uri.to_string();
+    let json = tokio::task::spawn_blocking(move || {
+        call_saf_string(
+            "contentStat",
+            "(Landroid/content/Context;Ljava/lang/String;)Ljava/lang/String;",
+            vec![uri],
+        )
+    })
+    .await
+    .map_err(|e| format!("task failed: {e}"))??;
+    serde_json::from_str(&json).map_err(|e| format!("invalid content stat: {e}"))
+}
+
+#[derive(serde::Deserialize)]
+pub struct ContentStat {
+    pub name: Option<String>,
+    pub size: Option<u64>,
+    pub mime: Option<String>,
+}
+
+pub async fn content_copy(uri: &str, dest_abs: &str) -> Result<(), String> {
+    let (uri, dest) = (uri.to_string(), dest_abs.to_string());
+    tokio::task::spawn_blocking(move || {
+        with_env(|env, context| {
+            let cls = bridge_class(env, context)?;
+            let juri = env.new_string(&uri)?;
+            let jdest = env.new_string(&dest)?;
+            env.call_static_method(
+                &cls,
+                "contentCopy",
+                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V",
+                &[
+                    JValue::Object(context),
+                    JValue::Object(&juri),
+                    JValue::Object(&jdest),
                 ],
             )?;
             Ok(())

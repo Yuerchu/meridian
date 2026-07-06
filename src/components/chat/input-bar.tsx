@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowUp, Square, Paperclip, X as XIcon, Scissors, Copy, ClipboardPaste, TextSelect } from 'lucide-react'
+import { api } from '@/api'
 import { Button } from '@/components/ui/button'
 import {
   ContextMenu,
@@ -26,6 +27,7 @@ import {
   AttachmentTitle,
 } from '@/components/ui/attachment'
 import CountUp from '@/components/CountUp'
+import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { usePrevious } from '@/hooks/use-previous'
 import { Toolbar } from './toolbar'
 import { EmojiPicker } from './emoji-picker'
@@ -152,9 +154,13 @@ export function InputBar({
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`
   }, [])
 
+  useEffect(() => {
+    adjustHeight()
+  }, [value, adjustHeight])
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
+      if (isSubmitKey(e)) {
         e.preventDefault()
         if (!disabled && value.trim()) {
           onSubmit()
@@ -200,7 +206,6 @@ export function InputBar({
             value={value}
             onChange={(e) => {
               onChange(e.target.value)
-              adjustHeight()
             }}
             onKeyDown={handleKeyDown}
             placeholder={t('chat.placeholder')}
@@ -232,10 +237,12 @@ export function InputBar({
                     onClick={async () => {
                       const paths = await open({ multiple: true })
                       if (paths) {
-                        const files = (Array.isArray(paths) ? paths : [paths]).map((p) => ({
-                          path: p,
-                          name: p.replace(/\\/g, '/').split('/').pop() ?? 'file',
-                        }))
+                        const files = await Promise.all(
+                          (Array.isArray(paths) ? paths : [paths]).map(async (p) => ({
+                            path: p,
+                            name: await api.resolveFileName(p).catch(() => p.replace(/\\/g, '/').split('/').pop() ?? 'file'),
+                          }))
+                        )
                         onAttachFiles(files)
                       }
                     }}
