@@ -424,7 +424,7 @@ pub(crate) fn resolve_provider_config(
             .ok_or_else(|| format!("API Key not set for provider '{}'", provider.name))?;
         let model = assistant
             .and_then(|a| a.model_id.clone())
-            .unwrap_or_else(|| "gpt-4.1-mini".into());
+            .ok_or("No model configured. Go to Settings → Assistant to set a model.")?;
         let base_url = provider.base_url.trim_end_matches('/').to_string();
         return Ok((provider.provider_type, base_url, api_key, model, provider.api_format));
     }
@@ -436,7 +436,7 @@ pub(crate) fn resolve_provider_config(
             if let Some(api_key) = get_provider_api_key(secrets, &p.id) {
                 let model = assistant
                     .and_then(|a| a.model_id.clone())
-                    .unwrap_or_else(|| "gpt-4.1-mini".into());
+                    .ok_or("No model configured. Go to Settings → Assistant to set a model.")?;
                 let base_url = p.base_url.trim_end_matches('/').to_string();
                 return Ok((p.provider_type, base_url, api_key, model, p.api_format));
             }

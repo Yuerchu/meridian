@@ -58,6 +58,7 @@ impl std::fmt::Display for SessionKey {
 struct CachedSession {
     project_id: String,
     conversation_id: String,
+    model_override: Option<String>,
 }
 
 pub struct SessionManager {
@@ -166,8 +167,19 @@ impl SessionManager {
         self.cache.insert(cache_key, CachedSession {
             project_id: project.id.clone(),
             conversation_id: conversation_id.clone(),
+            model_override: None,
         });
         Ok((project.id, conversation_id))
+    }
+
+    pub fn get_model_override(&self, key: &SessionKey) -> Option<String> {
+        self.cache.get(&key.pref_key()).and_then(|s| s.model_override.clone())
+    }
+
+    pub fn set_model_override(&mut self, key: &SessionKey, model: Option<String>) {
+        if let Some(session) = self.cache.get_mut(&key.pref_key()) {
+            session.model_override = model;
+        }
     }
 
     /// Archive the current conversation and create a new one under the same project.
@@ -213,6 +225,7 @@ impl SessionManager {
         self.cache.insert(cache_key, CachedSession {
             project_id: project.id,
             conversation_id: conv_id.clone(),
+            model_override: None,
         });
         Ok(conv_id)
     }

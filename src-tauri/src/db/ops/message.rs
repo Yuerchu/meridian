@@ -118,6 +118,16 @@ pub fn delete_compact_summaries(
     Ok(())
 }
 
+pub fn count_messages(
+    conn: &mut SqliteConnection,
+    conversation_id: &str,
+) -> QueryResult<i64> {
+    messages::table
+        .filter(messages::conversation_id.eq(conversation_id))
+        .count()
+        .get_result(conn)
+}
+
 pub fn delete_messages_from(
     conn: &mut SqliteConnection,
     conversation_id: &str,

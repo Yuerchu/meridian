@@ -1,4 +1,5 @@
 mod agent;
+mod command;
 mod format;
 mod handler;
 mod protocol;

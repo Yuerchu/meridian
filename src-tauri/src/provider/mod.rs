@@ -49,7 +49,7 @@ pub struct ChatParams {
 impl Default for ChatParams {
     fn default() -> Self {
         Self {
-            model: "gpt-4.1-mini".to_string(),
+            model: String::new(),
             temperature: None,
             top_p: None,
             max_tokens: None,

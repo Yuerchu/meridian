@@ -5,6 +5,7 @@ use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use super::agent::{self, ApprovalFn};
+use super::command::{self, SlashCommand};
 use super::format;
 use super::protocol::{MessageSegment, OneBotAction, OneBotEvent};
 use super::session::{SessionKey, SessionKind};
@@ -95,60 +96,22 @@ async fn handle_text_message(
         SessionKind::Group => format!("[QQ] 群{}", group_id.unwrap_or(0)),
     };
 
-    // Handle reset/new commands
-    let trimmed = text.trim();
-    if trimmed == "/reset" || trimmed == "/new" {
-        let mut sessions = state.sessions.lock().await;
-        match sessions.reset_conversation(&session_key, &title, state.config.assistant_id.as_deref()) {
-            Ok(_) => return build_reply(event, "已重置对话。新的对话已创建。", event_message_id),
-            Err(e) => return build_reply(event, &format!("重置失败: {e}"), event_message_id),
-        }
+    // Slash command dispatch
+    if let Some((cmd, args)) = command::parse_command(text) {
+        return dispatch_command(
+            event, state, &session_key, &title, is_admin, cmd, args, event_message_id,
+        ).await;
     }
 
-    if trimmed == "/compact" || trimmed.starts_with("/compact ") {
-        let custom_instructions = trimmed.strip_prefix("/compact").unwrap().trim();
-        let custom_instructions = if custom_instructions.is_empty() { None } else { Some(custom_instructions.to_string()) };
+    // --- Normal message processing ---
 
-        // Need conversation_id for compact — resolve session first
-        let (_, conversation_id) = {
-            let mut sessions = state.sessions.lock().await;
-            match sessions.get_or_create(&session_key, &title, state.config.assistant_id.as_deref()) {
-                Ok(ids) => ids,
-                Err(e) => return build_reply(event, &format!("内部错误: {e}"), event_message_id),
-            }
-        };
-
-        let pool = &state.pool;
-        let secrets = &state.secrets;
-        let (assistant, keep_recent) = {
-            let pool = pool.clone();
-            let conv_id = conversation_id.clone();
-            match tokio::task::spawn_blocking(move || {
-                let mut conn = crate::get_conn(&pool)?;
-                let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
-                    .map_err(|e| e.to_string())?;
-                let assistant = conv.assistant_id.as_deref()
-                    .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
-                let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
-                Ok::<_, String>((assistant, keep_recent))
-            }).await {
-                Ok(Ok(r)) => r,
-                Ok(Err(e)) => return build_reply(event, &format!("Compact 失败: {e}"), event_message_id),
-                Err(e) => return build_reply(event, &format!("Compact 失败: {e}"), event_message_id),
-            }
-        };
-
-        match crate::do_compact(pool, secrets.as_ref(), &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await {
-            Ok(_) => return build_reply(event, "对话上下文已压缩。", event_message_id),
-            Err(e) => return build_reply(event, &format!("Compact 失败: {e}"), event_message_id),
-        }
-    }
-
-    // Resolve project + conversation
-    let (project_id, conversation_id) = {
+    let (project_id, conversation_id, model_override) = {
         let mut sessions = state.sessions.lock().await;
         match sessions.get_or_create(&session_key, &title, state.config.assistant_id.as_deref()) {
-            Ok(ids) => ids,
+            Ok((pid, cid)) => {
+                let ovr = sessions.get_model_override(&session_key);
+                (pid, cid, ovr)
+            }
             Err(e) => {
                 tracing::error!("Session error: {e}");
                 return build_reply(event, &format!("内部错误: {e}"), event_message_id);
@@ -156,7 +119,6 @@ async fn handle_text_message(
         }
     };
 
-    // Build enriched message with sender info and quoted message
     let sender_prefix = if is_group {
         Some(format!("{}({})", nickname, user_id))
     } else {
@@ -175,7 +137,6 @@ async fn handle_text_message(
         quoted.as_ref().map(|(s, c)| (s.as_str(), c.as_str())),
     );
 
-    // Build approval callback
     let approval_fn: ApprovalFn = {
         let state = state.clone();
         let session_str = session_key.to_string();
@@ -247,6 +208,7 @@ async fn handle_text_message(
         Some(project_id.as_str()),
         &enriched_text,
         state.config.assistant_id.as_deref(),
+        model_override.as_deref(),
         is_admin,
         &approval_fn,
         &cancel,
@@ -274,6 +236,215 @@ async fn handle_text_message(
             build_reply(event, &format!("处理消息时出错: {e}"), event_message_id)
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Slash command dispatch
+// ---------------------------------------------------------------------------
+
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_command(
+    event: &OneBotEvent,
+    state: &Arc<SharedState>,
+    session_key: &SessionKey,
+    title: &str,
+    is_admin: bool,
+    cmd: SlashCommand,
+    args: &str,
+    reply_to: Option<i64>,
+) -> Vec<OneBotAction> {
+    match cmd {
+        SlashCommand::Help => {
+            build_reply(event, &SlashCommand::help_text(), reply_to)
+        }
+        SlashCommand::New => {
+            let mut sessions = state.sessions.lock().await;
+            match sessions.reset_conversation(session_key, title, state.config.assistant_id.as_deref()) {
+                Ok(_) => build_reply(event, "已重置对话。新的对话已创建。", reply_to),
+                Err(e) => build_reply(event, &format!("重置失败: {e}"), reply_to),
+            }
+        }
+        SlashCommand::Compact => {
+            dispatch_compact(event, state, session_key, title, args, reply_to).await
+        }
+        SlashCommand::Model => {
+            dispatch_model(event, state, session_key, title, args, reply_to).await
+        }
+        SlashCommand::Status => {
+            dispatch_status(event, state, session_key, title, is_admin, reply_to).await
+        }
+    }
+}
+
+async fn dispatch_compact(
+    event: &OneBotEvent,
+    state: &Arc<SharedState>,
+    session_key: &SessionKey,
+    title: &str,
+    args: &str,
+    reply_to: Option<i64>,
+) -> Vec<OneBotAction> {
+    let custom_instructions = if args.is_empty() { None } else { Some(args.to_string()) };
+
+    let (_, conversation_id) = {
+        let mut sessions = state.sessions.lock().await;
+        match sessions.get_or_create(session_key, title, state.config.assistant_id.as_deref()) {
+            Ok(ids) => ids,
+            Err(e) => return build_reply(event, &format!("内部错误: {e}"), reply_to),
+        }
+    };
+
+    let pool = &state.pool;
+    let secrets = &state.secrets;
+    let (assistant, keep_recent) = {
+        let pool = pool.clone();
+        let conv_id = conversation_id.clone();
+        match tokio::task::spawn_blocking(move || {
+            let mut conn = crate::get_conn(&pool)?;
+            let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
+                .map_err(|e| e.to_string())?;
+            let assistant = conv.assistant_id.as_deref()
+                .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
+            let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
+            Ok::<_, String>((assistant, keep_recent))
+        }).await {
+            Ok(Ok(r)) => r,
+            Ok(Err(e)) => return build_reply(event, &format!("Compact 失败: {e}"), reply_to),
+            Err(e) => return build_reply(event, &format!("Compact 失败: {e}"), reply_to),
+        }
+    };
+
+    match crate::do_compact(pool, secrets.as_ref(), &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await {
+        Ok(_) => build_reply(event, "对话上下文已压缩。", reply_to),
+        Err(e) => build_reply(event, &format!("Compact 失败: {e}"), reply_to),
+    }
+}
+
+async fn dispatch_model(
+    event: &OneBotEvent,
+    state: &Arc<SharedState>,
+    session_key: &SessionKey,
+    title: &str,
+    args: &str,
+    reply_to: Option<i64>,
+) -> Vec<OneBotAction> {
+    // Ensure session exists, get conversation_id and current override
+    let (conversation_id, model_override) = {
+        let mut sessions = state.sessions.lock().await;
+        let (_, cid) = match sessions.get_or_create(session_key, title, state.config.assistant_id.as_deref()) {
+            Ok(ids) => ids,
+            Err(e) => return build_reply(event, &format!("内部错误: {e}"), reply_to),
+        };
+
+        if args.eq_ignore_ascii_case("reset") || args.eq_ignore_ascii_case("default") {
+            sessions.set_model_override(session_key, None);
+            return build_reply(event, "已恢复默认模型。", reply_to);
+        }
+
+        if !args.is_empty() {
+            sessions.set_model_override(session_key, Some(args.to_string()));
+            return build_reply(event, &format!("已切换模型: {}\n发送 /model reset 恢复默认", args), reply_to);
+        }
+
+        let ovr = sessions.get_model_override(session_key);
+        (cid, ovr)
+    };
+
+    // Show current model info
+    let pool = pool_clone(&state.pool);
+    let assistant_id = state.config.assistant_id.clone();
+    let conv_id = conversation_id;
+    let info = tokio::task::spawn_blocking(move || {
+        let mut conn = crate::get_conn(&pool)?;
+        let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
+            .map_err(|e| e.to_string())?;
+        let effective_aid = assistant_id.as_deref().or(conv.assistant_id.as_deref());
+        let assistant = effective_aid
+            .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
+        let model = assistant.as_ref().and_then(|a| a.model_id.clone())
+            .unwrap_or_else(|| "未配置".into());
+        let name = assistant.as_ref().map(|a| a.name.clone());
+        Ok::<_, String>((model, name))
+    }).await;
+
+    match info {
+        Ok(Ok((default_model, assistant_name))) => {
+            let reply = if let Some(ref ovr) = model_override {
+                format!("当前模型: {} (手动切换)\n助手默认: {}\n发送 /model reset 恢复默认", ovr, default_model)
+            } else {
+                let source = assistant_name
+                    .map(|n| format!("来源: 助手「{}」", n))
+                    .unwrap_or_else(|| "来源: 系统默认".into());
+                format!("当前模型: {}\n{}", default_model, source)
+            };
+            build_reply(event, &reply, reply_to)
+        }
+        Ok(Err(e)) => build_reply(event, &format!("获取模型信息失败: {e}"), reply_to),
+        Err(e) => build_reply(event, &format!("获取模型信息失败: {e}"), reply_to),
+    }
+}
+
+async fn dispatch_status(
+    event: &OneBotEvent,
+    state: &Arc<SharedState>,
+    session_key: &SessionKey,
+    title: &str,
+    is_admin: bool,
+    reply_to: Option<i64>,
+) -> Vec<OneBotAction> {
+    let (conversation_id, model_override) = {
+        let mut sessions = state.sessions.lock().await;
+        let (_, cid) = match sessions.get_or_create(session_key, title, state.config.assistant_id.as_deref()) {
+            Ok(ids) => ids,
+            Err(e) => return build_reply(event, &format!("内部错误: {e}"), reply_to),
+        };
+        let ovr = sessions.get_model_override(session_key);
+        (cid, ovr)
+    };
+
+    let pool = pool_clone(&state.pool);
+    let assistant_id = state.config.assistant_id.clone();
+    let conv_id = conversation_id;
+    let info = tokio::task::spawn_blocking(move || {
+        let mut conn = crate::get_conn(&pool)?;
+        let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
+            .map_err(|e| e.to_string())?;
+        let effective_aid = assistant_id.as_deref().or(conv.assistant_id.as_deref());
+        let assistant = effective_aid
+            .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
+        let assistant_name = assistant.as_ref().map(|a| a.name.clone())
+            .unwrap_or_else(|| "未配置".into());
+        let model = assistant.as_ref().and_then(|a| a.model_id.clone())
+            .unwrap_or_else(|| "未配置".into());
+        let context_limit = assistant.as_ref().map(|a| a.context_limit).unwrap_or(128000);
+        let msg_count = crate::db::ops::message::count_messages(&mut conn, &conv_id)
+            .unwrap_or(0);
+        Ok::<_, String>((assistant_name, model, context_limit, msg_count))
+    }).await;
+
+    match info {
+        Ok(Ok((assistant_name, default_model, context_limit, msg_count))) => {
+            let model_display = model_override
+                .map(|ovr| format!("{} (手动切换)", ovr))
+                .unwrap_or(default_model);
+            let tools_display = if is_admin { "已启用" } else { "未启用" };
+            let reply = format!(
+                "助手: {}\n模型: {}\n消息: {} 条\n上下文上限: {}\n工具: {}",
+                assistant_name, model_display, msg_count, context_limit, tools_display,
+            );
+            build_reply(event, &reply, reply_to)
+        }
+        Ok(Err(e)) => build_reply(event, &format!("获取状态失败: {e}"), reply_to),
+        Err(e) => build_reply(event, &format!("获取状态失败: {e}"), reply_to),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn pool_clone(pool: &crate::db::DbPool) -> crate::db::DbPool {
+    pool.clone()
 }
 
 async fn fetch_quoted_message(

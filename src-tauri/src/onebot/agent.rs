@@ -123,6 +123,7 @@ pub async fn headless_chat(
     project_id: Option<&str>,
     user_message: &str,
     assistant_id: Option<&str>,
+    model_override: Option<&str>,
     is_admin: bool,
     approval_fn: &ApprovalFn,
     cancel: &CancellationToken,
@@ -180,7 +181,9 @@ pub async fn headless_chat(
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
     let params = ChatParams {
-        model: assistant.as_ref().and_then(|a| a.model_id.clone()).unwrap_or(model),
+        model: model_override.map(String::from)
+            .or_else(|| assistant.as_ref().and_then(|a| a.model_id.clone()))
+            .unwrap_or(model),
         temperature: assistant.as_ref().and_then(|a| a.temperature.map(|t| t as f64)),
         top_p: assistant.as_ref().and_then(|a| a.top_p.map(|t| t as f64)),
         max_tokens: assistant.as_ref().and_then(|a| a.max_tokens),

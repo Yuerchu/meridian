@@ -56,6 +56,7 @@ diesel_migrations = "2"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
 similar = "2"
+strum = { version = "0.27", features = ["derive"] }
 dirs = "6"
 tauri-plugin-notification = "2"
 
