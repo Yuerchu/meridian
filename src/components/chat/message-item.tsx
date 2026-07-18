@@ -82,12 +82,24 @@ function CopyButton({ text }: { text: string }) {
   )
 }
 
+// After rehype-highlight, children is a tree of React elements, so the code
+// text has to be collected recursively rather than via String(children).
+function extractText(node: React.ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node)
+  if (Array.isArray(node)) return node.map(extractText).join('')
+  if (React.isValidElement(node)) return extractText((node.props as { children?: React.ReactNode }).children)
+  return ''
+}
+
 function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLElement>) {
   const match = /language-(\w+)/.exec(className || '')
   const lang = match ? match[1] : null
-  const code = String(children).replace(/\n$/, '')
+  const rawCode = extractText(children)
+  const code = rawCode.replace(/\n$/, '')
 
-  if (!className) {
+  // Fenced blocks without a language get no className; they still contain a
+  // trailing newline, while inline code never contains one.
+  if (!className && !rawCode.includes('\n')) {
     return <code className="px-1.5 py-0.5 bg-muted rounded text-[13px]" {...props}>{children}</code>
   }
 
@@ -127,10 +139,7 @@ function preprocessEmojis(content: string, emojiMap?: EmojiMap): string {
 }
 
 function preprocessMentions(content: string): string {
-  return content.replace(
-    /\[@([^\]]*)\((\d+)\)\]/g,
-    '<span class="inline-flex items-center px-1 py-0.5 rounded bg-blue-500/20 text-blue-300 text-xs font-medium">@$1</span>',
-  )
+  return content.replace(/\[@([^\]]*)\((\d+)\)\]/g, '**@$1**')
 }
 
 interface ParsedOneBotContent {
@@ -170,12 +179,12 @@ function QuotedMessageBlock({ sender, content }: { sender: string; content: stri
   )
 }
 
-const MarkdownContent = React.memo(function MarkdownContent({ content, isStreaming, emojiMap }: { content: string; isStreaming?: boolean; emojiMap?: EmojiMap }) {
+const MarkdownContent = React.memo(function MarkdownContent({ content, isStreaming, oneBot, emojiMap }: { content: string; isStreaming?: boolean; oneBot?: boolean; emojiMap?: EmojiMap }) {
   const processed = useMemo(() => {
     let result = preprocessEmojis(content, emojiMap)
-    result = preprocessMentions(result)
+    if (oneBot) result = preprocessMentions(result)
     return result
-  }, [content, emojiMap])
+  }, [content, emojiMap, oneBot])
 
   const components = useMemo(() => ({
     code: CodeBlock as never,
@@ -238,10 +247,12 @@ function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; i
   )
 }
 
-function TextBubbles({ content, isStreaming, emojiMap }: { content: string; isStreaming?: boolean; emojiMap?: EmojiMap }) {
-  const segments = content.split(/\n---\n/).map((s) => s.trim()).filter(Boolean)
+function TextBubbles({ content, isStreaming, oneBot, emojiMap }: { content: string; isStreaming?: boolean; oneBot?: boolean; emojiMap?: EmojiMap }) {
+  // The \n---\n bubble-splitting protocol only exists for OneBot conversations;
+  // in normal chats a markdown horizontal rule must stay a single message.
+  const segments = oneBot ? content.split(/\n---\n/).map((s) => s.trim()).filter(Boolean) : [content]
   if (segments.length <= 1) {
-    return <MarkdownContent content={content} isStreaming={isStreaming} emojiMap={emojiMap} />
+    return <MarkdownContent content={content} isStreaming={isStreaming} oneBot={oneBot} emojiMap={emojiMap} />
   }
   return (
     <BubbleGroup>
@@ -251,6 +262,7 @@ function TextBubbles({ content, isStreaming, emojiMap }: { content: string; isSt
             <MarkdownContent
               content={seg}
               isStreaming={isStreaming && i === segments.length - 1}
+              oneBot={oneBot}
               emojiMap={emojiMap}
             />
           </BubbleContent>
@@ -260,17 +272,24 @@ function TextBubbles({ content, isStreaming, emojiMap }: { content: string; isSt
   )
 }
 
-function AssistantBlock({ block, isLast, isStreaming, isLastMessage, emojiMap }: { block: ContentBlock; isLast: boolean; isStreaming?: boolean; isLastMessage?: boolean; emojiMap?: EmojiMap }) {
+function AssistantBlock({ block, isLast, isStreaming, isLastMessage, oneBot, emojiMap }: { block: ContentBlock; isLast: boolean; isStreaming?: boolean; isLastMessage?: boolean; oneBot?: boolean; emojiMap?: EmojiMap }) {
   if (block.type === 'thinking') {
     return <ThinkingBlock text={block.text} isStreaming={isLast && isStreaming} defaultExpanded={!!isLastMessage && isLast} />
   }
   if (block.type === 'text') {
-    return <TextBubbles content={block.text} isStreaming={isLast && isStreaming} emojiMap={emojiMap} />
+    return <TextBubbles content={block.text} isStreaming={isLast && isStreaming} oneBot={oneBot} emojiMap={emojiMap} />
   }
   if (block.type === 'tool_call') {
     return <MemoToolCallBlock data={block.data} />
   }
   return null
+}
+
+interface UserContentPart {
+  type: string
+  text?: string
+  image_url?: { url: string }
+  file?: { url: string; name: string; mime_type: string }
 }
 
 interface MessageItemProps {
@@ -281,13 +300,36 @@ interface MessageItemProps {
   onRegenerate?: (id: string) => void
   onEdit?: (id: string, content: string) => void
   onRate?: (id: string, rating: number | null) => void
+  isOneBot?: boolean
   emojiMap?: EmojiMap
 }
 
-export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, onEdit, onRate, emojiMap }: MessageItemProps) {
+export const MessageItem = React.memo(function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, onEdit, onRate, isOneBot, emojiMap }: MessageItemProps) {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime()
   const isUser = message.role === 'user'
+
+  // User messages with attachments are stored as a JSON array of parts. Only
+  // treat the content as multimodal when every element actually looks like a
+  // part; arbitrary text such as "[null]" or "[1,2,3]" must stay plain text.
+  const parsedUser = useMemo(() => {
+    let contentParts: UserContentPart[] | null = null
+    let textContent = message.content
+    if (message.role === 'user' && message.content.startsWith('[')) {
+      try {
+        const parsed: unknown = JSON.parse(message.content)
+        if (
+          Array.isArray(parsed) &&
+          parsed.length > 0 &&
+          parsed.every((p) => typeof p === 'object' && p !== null && typeof (p as { type?: unknown }).type === 'string')
+        ) {
+          contentParts = parsed as UserContentPart[]
+          textContent = contentParts.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n')
+        }
+      } catch { /* not JSON, treat as plain text */ }
+    }
+    return { contentParts, textContent }
+  }, [message.role, message.content])
   const [editing, setEditing] = useState(false)
   const [editText, setEditText] = useState('')
   const editRef = useRef<HTMLTextAreaElement>(null)
@@ -337,16 +379,10 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
   }, [handleCancelEdit, handleSaveEdit])
 
   if (isUser) {
-    const isMultimodal = message.content.startsWith('[')
-    let contentParts: { type: string; text?: string; image_url?: { url: string }; file?: { url: string; name: string; mime_type: string } }[] | null = null
-    let textContent = message.content
-    if (isMultimodal) {
-      try {
-        contentParts = JSON.parse(message.content)
-        textContent = contentParts?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('\n') ?? ''
-      } catch { /* not JSON, treat as plain text */ }
-    }
-    const { senderPrefix, quotedMessage, body } = parseOneBotContent(textContent)
+    const { contentParts, textContent } = parsedUser
+    const { senderPrefix, quotedMessage, body } = isOneBot
+      ? parseOneBotContent(textContent)
+      : { senderPrefix: null, quotedMessage: null, body: textContent }
 
     const hasAttachments = !!contentParts && contentParts.some((p) => p.type === 'image_url' || p.type === 'file')
 
@@ -535,10 +571,10 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
             <BubbleContent className="w-full">
               {(message._blocks && message._blocks.length > 0) ? (
                 message._blocks.map((block, i) => (
-                  <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} emojiMap={emojiMap} />
+                  <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} oneBot={isOneBot} emojiMap={emojiMap} />
                 ))
               ) : (
-                <MarkdownContent content={message.content} isStreaming={isStreaming} emojiMap={emojiMap} />
+                <MarkdownContent content={message.content} isStreaming={isStreaming} oneBot={isOneBot} emojiMap={emojiMap} />
               )}
             </BubbleContent>
           </Bubble>
@@ -672,4 +708,4 @@ export function MessageItem({ message, isStreaming, isLastMessage, onDelete, onR
       )}
     </>
   )
-}
+})

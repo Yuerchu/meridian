@@ -49,6 +49,7 @@ ignore = "0.4"
 glob = "0.3"
 # OneBot WebSocket server (desktop only)
 tokio-tungstenite = "0.26"
+percent-encoding = "2"
 # Database
 diesel = { version = "2", features = ["sqlite", "r2d2"] }
 libsqlite3-sys = { version = "0.37", features = ["bundled"] }

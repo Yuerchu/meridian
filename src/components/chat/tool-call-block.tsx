@@ -335,7 +335,10 @@ export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
 
   let parsedArgs: Record<string, unknown> = {}
   try {
-    parsedArgs = JSON.parse(data.arguments)
+    const parsed = JSON.parse(data.arguments)
+    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+      parsedArgs = parsed
+    }
   } catch {
     // ignore
   }

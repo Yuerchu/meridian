@@ -16,6 +16,8 @@ import type { Memory, Project } from '@/types'
 
 const MEMORY_TYPES = ['general', 'preference', 'fact', 'instruction'] as const
 
+const MEMORY_TYPE_OPTIONS = MEMORY_TYPES.map((mt) => ({ value: mt, label: mt }))
+
 export function MemorySettings() {
   const { t } = useTranslation()
   const [projects, setProjects] = useState<Project[]>([])
@@ -71,6 +73,8 @@ export function MemorySettings() {
     setEditType(m.memory_type)
   }
 
+  const projectOptions = projects.map((p) => ({ value: p.id, label: p.name }))
+
   return (
     <div className="space-y-6 max-w-2xl">
       <div>
@@ -80,13 +84,13 @@ export function MemorySettings() {
 
       <div>
         <label className="text-sm font-medium">{t('settings.memory.selectProject')}</label>
-        <Select value={selectedProjectId ?? ''} onValueChange={(v) => setSelectedProjectId(v || null)}>
+        <Select value={selectedProjectId ?? ''} onValueChange={(v) => setSelectedProjectId(v || null)} items={projectOptions}>
           <SelectTrigger className="mt-1 w-full">
             <SelectValue placeholder={t('settings.memory.selectProject')} />
           </SelectTrigger>
           <SelectContent>
-            {projects.map((p) => (
-              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+            {projectOptions.map((o) => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -121,13 +125,13 @@ export function MemorySettings() {
                 className="resize-y"
               />
               <div className="flex items-center gap-2">
-                <Select value={newType} onValueChange={(v) => { if (v) setNewType(v) }}>
+                <Select value={newType} onValueChange={(v) => { if (v) setNewType(v) }} items={MEMORY_TYPE_OPTIONS}>
                   <SelectTrigger className="w-auto">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {MEMORY_TYPES.map((mt) => (
-                      <SelectItem key={mt} value={mt}>{mt}</SelectItem>
+                    {MEMORY_TYPE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -166,13 +170,13 @@ export function MemorySettings() {
                     autoFocus
                   />
                   <div className="flex items-center gap-2">
-                    <Select value={editType} onValueChange={(v) => { if (v) setEditType(v) }}>
+                    <Select value={editType} onValueChange={(v) => { if (v) setEditType(v) }} items={MEMORY_TYPE_OPTIONS}>
                       <SelectTrigger className="w-auto">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {MEMORY_TYPES.map((mt) => (
-                          <SelectItem key={mt} value={mt}>{mt}</SelectItem>
+                        {MEMORY_TYPE_OPTIONS.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>

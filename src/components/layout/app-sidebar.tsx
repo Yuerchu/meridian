@@ -11,6 +11,7 @@ import { useConversationStore } from '@/stores/conversation-store'
 import type { Conversation, Project } from '@/types'
 import type { SettingsTab } from '@/components/settings'
 import { api } from '@/api'
+import { usePlatform } from '@/hooks/use-platform'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
@@ -211,6 +212,7 @@ export function AppSidebar({
   onRenameProject,
 }: AppSidebarProps) {
   const { t } = useTranslation()
+  const platform = usePlatform()
   const [showNewProject, setShowNewProject] = useState(false)
   const [renamingConvId, setRenamingConvId] = useState<string | null>(null)
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
@@ -235,7 +237,7 @@ export function AppSidebar({
             <SidebarGroupLabel>{t('settings.title')}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {settingsTabs.map((tab) => (
+                {settingsTabs.filter((tab) => tab.id !== 'onebot' || platform !== 'android').map((tab) => (
                   <SidebarMenuItem key={tab.id}>
                     <SidebarMenuButton
                       isActive={settingsTab === tab.id}

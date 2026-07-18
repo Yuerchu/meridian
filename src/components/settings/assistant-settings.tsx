@@ -94,6 +94,19 @@ function AssistantEditor({
     setTimeout(() => setSaved(false), 2000)
   }
 
+  const providerOptions = [
+    { value: '_default', label: t('settings.assistant.providerDefault') },
+    ...providers.map((p) => ({ value: p.id, label: p.name })),
+  ]
+  const modelOptions = [
+    { value: '_none', label: t('settings.assistant.selectModel') },
+    ...models.map((m) => ({ value: m.id, label: m.name })),
+  ]
+  const presetOptions = [
+    { value: '_none', label: t('settings.assistant.selectModel') },
+    ...toolPresets.map((p) => ({ value: p.id, label: `${p.name}${p.description ? ` — ${p.description}` : ''}` })),
+  ]
+
   return (
     <div className="space-y-4 pl-7 pr-2 pb-4">
       <div className="space-y-1.5">
@@ -158,14 +171,17 @@ function AssistantEditor({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label className="block text-[11px] text-muted-foreground">{t('settings.assistant.provider')}</label>
-          <Select value={providerId || '_default'} onValueChange={(v) => { setProviderId(!v || v === '_default' ? '' : v); setModelId('') }}>
+          <Select
+            value={providerId || '_default'}
+            onValueChange={(v) => { setProviderId(!v || v === '_default' ? '' : v); setModelId('') }}
+            items={providerOptions}
+          >
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="_default">{t('settings.assistant.providerDefault')}</SelectItem>
-              {providers.map((p) => (
-                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              {providerOptions.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -173,14 +189,17 @@ function AssistantEditor({
         <div className="space-y-1.5">
           <label className="block text-[11px] text-muted-foreground">{t('settings.assistant.model')}</label>
           {models.length > 0 ? (
-            <Select value={modelId || '_none'} onValueChange={(v) => setModelId(!v || v === '_none' ? '' : v)}>
+            <Select
+              value={modelId || '_none'}
+              onValueChange={(v) => setModelId(!v || v === '_none' ? '' : v)}
+              items={modelOptions}
+            >
               <SelectTrigger className="w-full">
                 <SelectValue placeholder={t('settings.assistant.selectModel')} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="_none">{t('settings.assistant.selectModel')}</SelectItem>
-                {models.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                {modelOptions.map((o) => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -271,14 +290,17 @@ function AssistantEditor({
           >{t('settings.assistant.toolsCustom')}</Button>
         </div>
         {toolMode === 'preset' && (
-          <Select value={selectedPresetId || '_none'} onValueChange={(v) => { if (v) setSelectedPresetId(v === '_none' ? '' : v) }}>
+          <Select
+            value={selectedPresetId || '_none'}
+            onValueChange={(v) => { if (v) setSelectedPresetId(v === '_none' ? '' : v) }}
+            items={presetOptions}
+          >
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="_none">{t('settings.assistant.selectModel')}</SelectItem>
-              {toolPresets.map((p) => (
-                <SelectItem key={p.id} value={p.id}>{p.name}{p.description ? ` — ${p.description}` : ''}</SelectItem>
+              {presetOptions.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
               ))}
             </SelectContent>
           </Select>

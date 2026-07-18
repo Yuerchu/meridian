@@ -25,8 +25,15 @@ pub async fn handle_message(
     }) {
         Some(m) if !m.is_null() => m,
         _ => {
+            // Fallback for clients that only send raw_message. In a group this
+            // would bypass the @bot gate below, so ignore it there; a group
+            // message with a null `message` array is anomalous anyway.
+            if event.message_type.as_deref() == Some("group") {
+                return vec![];
+            }
             if let Some(ref raw) = event.raw_message {
-                return handle_text_message(event, state, user_id, raw, None).await;
+                let parsed = format::ParsedMessage::from_text(raw);
+                return handle_text_message(event, state, user_id, parsed, None).await;
             }
             return vec![];
         }
@@ -37,33 +44,38 @@ pub async fn handle_message(
 
     if is_group && !format::is_at_bot(message, self_id) {
         let session_key = SessionKey::group(event.group_id.unwrap_or(0));
-        let has_pending = state.pending_approvals.lock().await
-            .contains_key(&session_key.to_string());
-        if has_pending {
+        // Only the user who triggered a pending approval may answer it without
+        // @mentioning the bot; everyone else's un-addressed messages are ignored.
+        let is_initiator = state.pending_approvals.lock().await
+            .get(&session_key.to_string())
+            .is_some_and(|(uid, _)| *uid == user_id);
+        if is_initiator {
             let text = format::segments_to_text(message, Some(self_id));
             if !text.is_empty() {
-                return handle_text_message(event, state, user_id, &text, None).await;
+                let parsed = format::ParsedMessage::from_text(&text);
+                return handle_text_message(event, state, user_id, parsed, None).await;
             }
         }
         return vec![];
     }
 
     let reply_message_id = format::extract_reply_message_id(message);
-    let text = format::segments_to_text(message, Some(self_id));
-    if text.is_empty() {
+    let parsed = format::parse_segments(message, Some(self_id));
+    if parsed.text.is_empty() && !parsed.has_media() {
         return vec![];
     }
 
-    handle_text_message(event, state, user_id, &text, reply_message_id).await
+    handle_text_message(event, state, user_id, parsed, reply_message_id).await
 }
 
 async fn handle_text_message(
     event: &OneBotEvent,
     state: &Arc<SharedState>,
     user_id: i64,
-    text: &str,
+    parsed: format::ParsedMessage,
     reply_to_message_id: Option<i64>,
 ) -> Vec<OneBotAction> {
+    let text = parsed.text.as_str();
     let is_group = event.message_type.as_deref() == Some("group");
     let group_id = event.group_id;
     let event_message_id = event.message_id;
@@ -74,10 +86,41 @@ async fn handle_text_message(
         SessionKey::private(user_id)
     };
 
-    // Check for pending tool approval first
+    let is_admin = state.config.admin_users.contains(&user_id);
+
+    // Admin decision on a pending friend/group request ("同意 N" / "拒绝 N [理由]").
+    // Checked before the Y/N tool approval so a decision is never read as a tool
+    // denial; only intercepts when the id actually refers to a pending request.
+    if is_admin && !is_group {
+        if let Some(decision) = command::parse_request_decision(text) {
+            // Remove under the lock so two concurrent decisions on the same id
+            // can't both fire the API; the loser sees None and reports missing.
+            let (removed, had_any) = {
+                let mut map = state.pending_requests.lock().await;
+                let had_any = !map.is_empty();
+                (map.remove(&decision.id), had_any)
+            };
+            match removed {
+                Some(req) => return handle_request_decision(event, state, decision, req).await,
+                None if had_any => {
+                    return build_reply(
+                        event,
+                        &format!("没有找到编号 {} 的待处理请求", decision.id),
+                        None,
+                    );
+                }
+                None => {} // no pending requests at all — treat as normal chat
+            }
+        }
+    }
+
+    // Check for pending tool approval
     {
         let mut approvals = state.pending_approvals.lock().await;
-        if let Some(tx) = approvals.remove(&session_key.to_string()) {
+        let is_initiator = approvals.get(&session_key.to_string())
+            .is_some_and(|(uid, _)| *uid == user_id);
+        if is_initiator {
+            let (_, tx) = approvals.remove(&session_key.to_string()).unwrap();
             let approved = text.trim().eq_ignore_ascii_case("y")
                 || text.trim().eq_ignore_ascii_case("yes");
             let _ = tx.send(approved);
@@ -85,8 +128,6 @@ async fn handle_text_message(
             return build_reply(event, reply, None);
         }
     }
-
-    let is_admin = state.config.admin_users.contains(&user_id);
 
     let nickname = event.sender.as_ref()
         .and_then(|s| s.card.as_deref().or(s.nickname.as_deref()))
@@ -104,6 +145,19 @@ async fn handle_text_message(
     }
 
     // --- Normal message processing ---
+
+    // Acknowledge receipt: emoji reaction in groups, typing indicator in private.
+    // Fire-and-forget; failures are silent.
+    if is_group {
+        let emoji = &state.config.ack_emoji_id;
+        if !emoji.is_empty() && emoji != "0" {
+            if let Some(mid) = event_message_id {
+                super::send_action_nowait(state, &OneBotAction::set_msg_emoji_like(mid, emoji)).await;
+            }
+        }
+    } else {
+        super::send_action_nowait(state, &OneBotAction::set_input_status(user_id, 1)).await;
+    }
 
     let (project_id, conversation_id, model_override) = {
         let mut sessions = state.sessions.lock().await;
@@ -131,11 +185,27 @@ async fn handle_text_message(
         None
     };
 
+    let media = super::media::process_media(
+        state, event, &parsed, &conversation_id, model_override.as_deref(),
+    ).await;
+
     let enriched_text = format::format_enriched_message(
-        text,
+        &media.text,
         sender_prefix.as_deref(),
         quoted.as_ref().map(|(s, c)| (s.as_str(), c.as_str())),
     );
+
+    // With images the content becomes OpenAI-style parts JSON; the existing
+    // resolve_file_uris_in_messages pipeline converts file:/// URIs to base64.
+    let user_content = if media.image_uris.is_empty() {
+        enriched_text
+    } else {
+        let mut parts = vec![serde_json::json!({ "type": "text", "text": enriched_text })];
+        parts.extend(media.image_uris.iter().map(|uri| {
+            serde_json::json!({ "type": "image_url", "image_url": { "url": uri } })
+        }));
+        serde_json::Value::Array(parts).to_string()
+    };
 
     let approval_fn: ApprovalFn = {
         let state = state.clone();
@@ -167,22 +237,12 @@ async fn handle_text_message(
                     OneBotAction::send_private_msg(event_user_id, vec![MessageSegment::text(&prompt)])
                 };
 
-                let json = match serde_json::to_string(&approval_msg) {
-                    Ok(j) => j,
-                    Err(_) => return false,
-                };
-
-                {
-                    let sinks = state.ws_sinks.lock().await;
-                    for sink in sinks.values() {
-                        let _ = sink.send(json.clone()).await;
-                    }
-                }
+                super::send_action_nowait(&state, &approval_msg).await;
 
                 let (tx, rx) = oneshot::channel();
                 {
                     let mut approvals = state.pending_approvals.lock().await;
-                    approvals.insert(session_str.clone(), tx);
+                    approvals.insert(session_str.clone(), (event_user_id, tx));
                 }
 
                 match tokio::time::timeout(std::time::Duration::from_secs(60), rx).await {
@@ -198,6 +258,7 @@ async fn handle_text_message(
     };
 
     let cancel = CancellationToken::new();
+    let qq_tools = super::qq_tools::QqToolExecutor::new(state.clone(), session_key.clone());
 
     let response = agent::headless_chat(
         &state.pool,
@@ -206,13 +267,14 @@ async fn handle_text_message(
         &state.mcp,
         &conversation_id,
         Some(project_id.as_str()),
-        &enriched_text,
+        &user_content,
         state.config.assistant_id.as_deref(),
         model_override.as_deref(),
         is_admin,
         &approval_fn,
         &cancel,
         state.app_handle.as_ref(),
+        Some(&qq_tools),
     )
     .await;
 
@@ -234,6 +296,143 @@ async fn handle_text_message(
         Err(e) => {
             tracing::error!("Chat error for {}: {e}", session_key);
             build_reply(event, &format!("处理消息时出错: {e}"), event_message_id)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Friend / group request approval flow
+// ---------------------------------------------------------------------------
+
+/// Handle an incoming request event: number it, stash it, notify admins.
+pub async fn handle_request(
+    event: &OneBotEvent,
+    state: &Arc<SharedState>,
+) -> Vec<OneBotAction> {
+    use super::{PendingRequest, RequestKind};
+
+    let Some(flag) = event.flag.clone() else {
+        tracing::warn!("request event without flag, ignoring");
+        return vec![];
+    };
+    let user_id = event.user_id.unwrap_or(0);
+
+    let kind = match event.request_type.as_deref() {
+        Some("friend") => RequestKind::Friend,
+        Some("group") => match event.sub_type.as_deref() {
+            Some("add") => RequestKind::GroupAdd,
+            Some("invite") => RequestKind::GroupInvite,
+            other => {
+                tracing::debug!("Unhandled group request sub_type: {other:?}");
+                return vec![];
+            }
+        },
+        other => {
+            tracing::debug!("Unhandled request_type: {other:?}");
+            return vec![];
+        }
+    };
+
+    let id = state.request_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+    let now = crate::now_ms();
+    {
+        let mut pending = state.pending_requests.lock().await;
+        pending.retain(|_, r| now - r.created_at < 24 * 3600 * 1000);
+        pending.insert(id, PendingRequest {
+            kind,
+            flag,
+            user_id,
+            group_id: event.group_id,
+            created_at: now,
+        });
+    }
+
+    if state.config.admin_users.is_empty() {
+        tracing::warn!("request #{id} received but no admin_users configured");
+        return vec![];
+    }
+
+    let comment = event.comment.as_deref().filter(|s| !s.is_empty()).unwrap_or("(无)");
+    let text = match kind {
+        RequestKind::Friend => format!(
+            "收到好友申请 #{id}\n申请人: {user_id}\n验证消息: {comment}\n来源: {}\n\n回复「同意 {id}」或「拒绝 {id} [理由]」处理",
+            event.via.as_deref().filter(|s| !s.is_empty()).unwrap_or("(未知)"),
+        ),
+        RequestKind::GroupAdd => {
+            let invitor = event.invitor_id
+                .filter(|i| *i > 0)
+                .map(|i| format!("\n邀请人: {i}"))
+                .unwrap_or_default();
+            format!(
+                "收到入群申请 #{id}(群 {})\n申请人: {user_id}\n验证消息: {comment}{invitor}\n\n回复「同意 {id}」或「拒绝 {id} [理由]」处理",
+                event.group_id.unwrap_or(0),
+            )
+        }
+        RequestKind::GroupInvite => {
+            let source = event.source_group_id
+                .filter(|g| *g > 0)
+                .map(|g| format!("\n来源群: {g}"))
+                .unwrap_or_default();
+            format!(
+                "收到群邀请 #{id}\n邀请人: {user_id}\n目标群: {}{source}\n\n回复「同意 {id}」或「拒绝 {id}」处理",
+                event.group_id.unwrap_or(0),
+            )
+        }
+    };
+
+    state.config.admin_users.iter()
+        .map(|admin| OneBotAction::send_private_msg(*admin, format::text_to_rich_segments(&text)))
+        .collect()
+}
+
+async fn handle_request_decision(
+    event: &OneBotEvent,
+    state: &Arc<SharedState>,
+    decision: command::RequestDecision,
+    req: super::PendingRequest,
+) -> Vec<OneBotAction> {
+    use super::RequestKind;
+
+    let echo = uuid::Uuid::new_v4().to_string();
+    let action = match req.kind {
+        RequestKind::Friend => OneBotAction::set_friend_add_request(
+            // llbot sets the remark via a separate call that throws on a rejected
+            // stranger and fails the whole action, so only send it on approval.
+            &req.flag,
+            decision.approve,
+            if decision.approve { decision.reason.as_deref() } else { None },
+            echo,
+        ),
+        RequestKind::GroupAdd => OneBotAction::set_group_add_request(
+            &req.flag, "add", decision.approve, decision.reason.as_deref(), echo,
+        ),
+        RequestKind::GroupInvite => OneBotAction::set_group_add_request(
+            &req.flag, "invite", decision.approve, decision.reason.as_deref(), echo,
+        ),
+    };
+
+    let verb = if decision.approve { "同意" } else { "拒绝" };
+    let what = match req.kind {
+        RequestKind::Friend => format!("好友申请 #{}(QQ {})", decision.id, req.user_id),
+        RequestKind::GroupAdd => format!(
+            "入群申请 #{}(QQ {} → 群 {})",
+            decision.id, req.user_id, req.group_id.unwrap_or(0),
+        ),
+        RequestKind::GroupInvite => format!("群邀请 #{}(群 {})", decision.id, req.group_id.unwrap_or(0)),
+    };
+
+    match call_api(state, action).await {
+        // The request was already removed at intercept time; nothing to do here.
+        Ok(_) => build_reply(event, &format!("已{verb}{what}"), None),
+        Err(e) => {
+            // Put it back so the admin can retry; created_at is preserved, so the
+            // 24h expiry sweep still applies.
+            state.pending_requests.lock().await.insert(decision.id, req);
+            build_reply(
+                event,
+                &format!("操作失败: {e}\n可稍后重试「{verb} {}」", decision.id),
+                None,
+            )
         }
     }
 }
@@ -427,7 +626,7 @@ async fn dispatch_status(
             let model_display = model_override
                 .map(|ovr| format!("{} (手动切换)", ovr))
                 .unwrap_or(default_model);
-            let tools_display = if is_admin { "已启用" } else { "未启用" };
+            let tools_display = if is_admin { "已启用" } else { "仅聊天记录查询" };
             let reply = format!(
                 "助手: {}\n模型: {}\n消息: {} 条\n上下文上限: {}\n工具: {}",
                 assistant_name, model_display, msg_count, context_limit, tools_display,
@@ -485,9 +684,10 @@ fn build_reply(event: &OneBotEvent, text: &str, reply_to_id: Option<i64>) -> Vec
 }
 
 fn truncate_args(args: &str, max_len: usize) -> String {
-    if args.len() <= max_len {
-        args.to_string()
+    let shown = crate::take_bytes_at_char_boundary(args, max_len);
+    if shown.len() < args.len() {
+        format!("{shown}...")
     } else {
-        format!("{}...", &args[..args.floor_char_boundary(max_len)])
+        shown.to_string()
     }
 }

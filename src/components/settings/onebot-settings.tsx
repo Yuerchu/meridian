@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,7 @@ interface OneBotConfig {
   access_token: string | null
   assistant_id: string | null
   admin_users: number[]
+  ack_emoji_id: string
 }
 
 interface OneBotStatus {
@@ -29,61 +30,101 @@ export function OneBotSettings() {
   const [config, setConfig] = useState<OneBotConfig>({
     enabled: false, host: '0.0.0.0', port: 6700,
     access_token: null, assistant_id: null, admin_users: [],
+    ack_emoji_id: '76',
   })
   const [status, setStatus] = useState<OneBotStatus | null>(null)
   const [assistants, setAssistants] = useState<Assistant[]>([])
   const [adminInput, setAdminInput] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+  }, [])
 
   const loadData = useCallback(async () => {
-    const [cfg, sts, assts] = await Promise.all([
-      api.getOneBotConfig(),
-      api.getOneBotStatus(),
-      api.listAssistants(),
-    ])
-    setConfig(cfg)
-    setStatus(sts)
-    setAssistants(assts)
-    setAdminInput(cfg.admin_users.join(', '))
+    try {
+      const [cfg, sts, assts] = await Promise.all([
+        api.getOneBotConfig(),
+        api.getOneBotStatus(),
+        api.listAssistants(),
+      ])
+      setConfig(cfg)
+      setStatus(sts)
+      setAssistants(assts)
+      setAdminInput(cfg.admin_users.join(', '))
+    } catch (err) {
+      setError(String(err))
+    }
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
 
   useEffect(() => {
     const interval = setInterval(async () => {
-      const sts = await api.getOneBotStatus()
-      setStatus(sts)
+      try {
+        const sts = await api.getOneBotStatus()
+        setStatus(sts)
+      } catch {
+        // ignore polling errors
+      }
     }, 3000)
     return () => clearInterval(interval)
   }, [])
 
   const handleSave = async () => {
     setSaving(true)
-    const adminUsers = adminInput
-      .split(/[,，\s]+/)
-      .map(s => parseInt(s.trim(), 10))
-      .filter(n => !isNaN(n) && n > 0)
+    setError(null)
+    try {
+      const adminUsers = adminInput
+        .split(/[,，\s]+/)
+        .map(s => parseInt(s.trim(), 10))
+        .filter(n => !isNaN(n) && n > 0)
 
-    const newConfig = { ...config, admin_users: adminUsers }
-    await api.saveOneBotConfig(newConfig)
-    setConfig(newConfig)
-    setSaving(false)
+      const newConfig = { ...config, admin_users: adminUsers }
+      await api.saveOneBotConfig(newConfig)
+      setConfig(newConfig)
+      setSaved(true)
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+      savedTimerRef.current = setTimeout(() => setSaved(false), 2000)
+      return true
+    } catch (err) {
+      setError(String(err))
+      return false
+    } finally {
+      setSaving(false)
+    }
   }
 
   const handleStart = async () => {
-    await handleSave()
-    await api.startOneBot()
-    const sts = await api.getOneBotStatus()
-    setStatus(sts)
+    if (!(await handleSave())) return
+    try {
+      await api.startOneBot()
+      const sts = await api.getOneBotStatus()
+      setStatus(sts)
+    } catch (err) {
+      setError(String(err))
+    }
   }
 
   const handleStop = async () => {
-    await api.stopOneBot()
-    const sts = await api.getOneBotStatus()
-    setStatus(sts)
+    try {
+      await api.stopOneBot()
+      const sts = await api.getOneBotStatus()
+      setStatus(sts)
+    } catch (err) {
+      setError(String(err))
+    }
   }
 
   const running = status?.running ?? false
+
+  const assistantOptions = [
+    { value: '_default', label: 'Default' },
+    ...assistants.map((a) => ({ value: a.id, label: a.name })),
+  ]
 
   return (
     <div className="max-w-lg space-y-6">
@@ -124,8 +165,10 @@ export function OneBotSettings() {
           </label>
           <Input
             type="number"
+            min={1}
+            max={65535}
             value={config.port}
-            onChange={(e) => setConfig({ ...config, port: parseInt(e.target.value, 10) || 6700 })}
+            onChange={(e) => setConfig({ ...config, port: Math.min(65535, Math.max(1, parseInt(e.target.value, 10) || 6700)) })}
             placeholder="6700"
           />
         </div>
@@ -150,14 +193,14 @@ export function OneBotSettings() {
         <Select
           value={config.assistant_id ?? '_default'}
           onValueChange={(v) => setConfig({ ...config, assistant_id: v === '_default' ? null : v })}
+          items={assistantOptions}
         >
           <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="_default">Default</SelectItem>
-            {assistants.map((a) => (
-              <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+            {assistantOptions.map((o) => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -180,9 +223,27 @@ export function OneBotSettings() {
         </p>
       </div>
 
+      <div className="space-y-1.5">
+        <label className="block text-xs font-medium text-muted-foreground">
+          {t('settings.onebot.ackEmoji')}
+        </label>
+        <Input
+          value={config.ack_emoji_id}
+          onChange={(e) => setConfig({ ...config, ack_emoji_id: e.target.value })}
+          placeholder="76"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          {t('settings.onebot.ackEmojiHint')}
+        </p>
+      </div>
+
+      {error && (
+        <p className="text-[11px] text-destructive break-all">{error}</p>
+      )}
+
       <div className="flex items-center gap-3 pt-2">
         <Button variant="outline" onClick={handleSave} disabled={saving}>
-          {saving ? t('common.saved') : t('common.save')}
+          {saved ? t('common.saved') : t('common.save')}
         </Button>
         {running ? (
           <Button variant="destructive" onClick={handleStop}>

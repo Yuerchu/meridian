@@ -155,6 +155,7 @@ function App() {
             <SettingsPage activeTab={settingsTab} />
           ) : activeId ? (
             <ChatView
+              key={activeId}
               conversationId={activeId}
               initialMessage={pendingMessage}
               onInitialMessageConsumed={() => setPendingMessage(null)}

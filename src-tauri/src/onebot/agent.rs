@@ -18,6 +18,24 @@ pub type ApprovalFn = Box<dyn Fn(ToolCall) -> Pin<Box<dyn Future<Output = bool> 
 
 const STREAM_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
+struct ErrorStopGuard<'a> {
+    app: Option<&'a tauri::AppHandle>,
+    conversation_id: &'a str,
+    message_id: Option<String>,
+}
+
+impl Drop for ErrorStopGuard<'_> {
+    fn drop(&mut self) {
+        if let (Some(app), Some(message_id)) = (self.app, self.message_id.as_ref()) {
+            let _ = app.emit("chat-stream", serde_json::json!({
+                "type": "stop", "reason": "error", "done": true,
+                "message_id": message_id,
+                "conversation_id": self.conversation_id,
+            }));
+        }
+    }
+}
+
 async fn consume_stream_headless(
     mut stream: ChatStream,
     cancel: &CancellationToken,
@@ -128,6 +146,7 @@ pub async fn headless_chat(
     approval_fn: &ApprovalFn,
     cancel: &CancellationToken,
     app: Option<&tauri::AppHandle>,
+    qq_tools: Option<&super::qq_tools::QqToolExecutor>,
 ) -> Result<String, String> {
     // Load assistant + history + compact_cursor
     let (assistant, history, compact_cursor) = {
@@ -192,8 +211,8 @@ pub async fn headless_chat(
         thinking_effort: None,
     };
 
-    // Collect tool definitions: only for admin users
-    let tool_defs: Vec<provider::ToolDefinition> = if is_admin {
+    // Collect tool definitions: full registry for admin users only
+    let mut tool_defs: Vec<provider::ToolDefinition> = if is_admin {
         let enabled_tools: Option<Vec<String>> = assistant.as_ref()
             .and_then(|a| a.enabled_tools.as_ref())
             .and_then(|json| serde_json::from_str(json).ok());
@@ -212,6 +231,23 @@ pub async fn headless_chat(
     } else {
         vec![]
     };
+    // Session-scoped QQ tools are available to everyone (read-only, scope-locked)
+    if let Some(qq) = qq_tools {
+        tool_defs.extend(qq.definitions());
+    }
+    // Drop every tool when the effective model can't use them, so the provider
+    // omits the tools field entirely (some models 400 on any tools param). Also
+    // guards admins who pick a non-tool model.
+    let caps = crate::provider::registry::get_capabilities(
+        &provider_type, Some(&api_format), &params.model,
+    );
+    if !caps.supports_tools {
+        tool_defs.clear();
+    }
+    // Only tools actually offered this turn may execute; blocks non-admin (and
+    // enabled_tools-filtered) sessions from invoking registry/MCP tools by name.
+    let offered: std::collections::HashSet<String> =
+        tool_defs.iter().map(|t| t.name.clone()).collect();
 
     // Persist user message
     let now = now_ms();
@@ -258,6 +294,7 @@ pub async fn headless_chat(
     let mut total_input_tokens = 0i32;
     let mut total_output_tokens = 0i32;
     let mut last_assistant_text = String::new();
+    let mut stop_guard = ErrorStopGuard { app, conversation_id, message_id: None };
 
     loop {
         if cancel.is_cancelled() { break; }
@@ -287,6 +324,7 @@ pub async fn headless_chat(
                 "type": "message_start", "message_id": &assistant_msg_id,
                 "conversation_id": conversation_id,
             }));
+            stop_guard.message_id = Some(assistant_msg_id.clone());
         }
 
         let result = {
@@ -382,7 +420,15 @@ pub async fn headless_chat(
             let is_mcp = tc.name.starts_with("mcp__");
             let tool = if !is_mcp { tool_registry.get(&tc.name) } else { None };
 
-            let tool_result = if is_mcp {
+            let tool_result = if !offered.contains(&tc.name) {
+                format!("Unknown tool: {}", tc.name)
+            } else if let Some(qq) = qq_tools.filter(|q| q.owns(&tc.name)) {
+                // Read-only and scope-locked to this session: no approval needed
+                match qq.execute(&tc.name, &tc.arguments).await {
+                    Ok(output) => output,
+                    Err(e) => format!("Error: {e}"),
+                }
+            } else if is_mcp {
                 let args: serde_json::Value = serde_json::from_str(&tc.arguments)
                     .unwrap_or_else(|_| serde_json::json!({}));
                 let mut mgr = mcp_manager.lock().await;
@@ -455,6 +501,7 @@ pub async fn headless_chat(
         trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
     }
 
+    stop_guard.message_id = None;
     if let Some(app) = app {
         let _ = app.emit("chat-stream", serde_json::json!({
             "type": "stop", "reason": "end_turn", "done": true,

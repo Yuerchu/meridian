@@ -51,6 +51,12 @@ function CustomToolEditor({
     onSave()
   }
 
+  const permissionOptions = [
+    { value: 'always', label: t('settings.tools.permAlways') },
+    { value: 'ask', label: t('settings.tools.permAsk') },
+    { value: 'never', label: t('settings.tools.permNever') },
+  ]
+
   return (
     <div className="space-y-3 p-3 border border-border rounded-lg">
       <div className="grid grid-cols-2 gap-2">
@@ -60,12 +66,12 @@ function CustomToolEditor({
         </div>
         <div className="space-y-1">
           <label className="text-[11px] text-muted-foreground">{t('settings.tools.permission')}</label>
-          <Select value={permission} onValueChange={(v) => { if (v) setPermission(v) }}>
+          <Select value={permission} onValueChange={(v) => { if (v) setPermission(v) }} items={permissionOptions}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="always">{t('settings.tools.permAlways')}</SelectItem>
-              <SelectItem value="ask">{t('settings.tools.permAsk')}</SelectItem>
-              <SelectItem value="never">{t('settings.tools.permNever')}</SelectItem>
+              {permissionOptions.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>

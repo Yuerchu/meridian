@@ -39,6 +39,13 @@ pub struct OneBotEvent {
     pub raw_message: Option<String>,
     pub sender: Option<Sender>,
     pub meta_event_type: Option<String>,
+    // request events
+    pub request_type: Option<String>,
+    pub comment: Option<String>,
+    pub flag: Option<String>,
+    pub via: Option<String>,
+    pub invitor_id: Option<i64>,
+    pub source_group_id: Option<i64>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -93,6 +100,99 @@ impl OneBotAction {
             }),
             echo: None,
         }
+    }
+
+    /// Private-chat only: shows the "typing…" indicator (event_type 1 = typing).
+    pub fn set_input_status(user_id: i64, event_type: i32) -> Self {
+        Self {
+            action: "set_input_status".into(),
+            params: serde_json::json!({
+                "user_id": user_id,
+                "event_type": event_type,
+            }),
+            echo: None,
+        }
+    }
+
+    /// Group-chat only: reacts to a message with a QQ emoji.
+    pub fn set_msg_emoji_like(message_id: i64, emoji_id: &str) -> Self {
+        let emoji: serde_json::Value = match emoji_id.parse::<i64>() {
+            Ok(n) => n.into(),
+            Err(_) => emoji_id.into(),
+        };
+        Self {
+            action: "set_msg_emoji_like".into(),
+            params: serde_json::json!({
+                "message_id": message_id,
+                "emoji_id": emoji,
+                "set": true,
+            }),
+            echo: None,
+        }
+    }
+
+    pub fn voice_msg_to_text(message_id: i64, echo: String) -> Self {
+        Self {
+            action: "voice_msg_to_text".into(),
+            params: serde_json::json!({ "message_id": message_id }),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn ocr_image(image: &str, echo: String) -> Self {
+        Self {
+            action: "ocr_image".into(),
+            params: serde_json::json!({ "image": image }),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn get_group_msg_history(
+        group_id: i64,
+        message_seq: Option<i64>,
+        count: i64,
+        echo: String,
+    ) -> Self {
+        let mut params = serde_json::json!({ "group_id": group_id, "count": count });
+        if let Some(seq) = message_seq {
+            params["message_seq"] = seq.into();
+        }
+        Self { action: "get_group_msg_history".into(), params, echo: Some(echo) }
+    }
+
+    pub fn get_friend_msg_history(
+        user_id: i64,
+        message_seq: Option<i64>,
+        count: i64,
+        echo: String,
+    ) -> Self {
+        let mut params = serde_json::json!({ "user_id": user_id, "count": count });
+        if let Some(seq) = message_seq {
+            params["message_seq"] = seq.into();
+        }
+        Self { action: "get_friend_msg_history".into(), params, echo: Some(echo) }
+    }
+
+    pub fn set_friend_add_request(flag: &str, approve: bool, remark: Option<&str>, echo: String) -> Self {
+        let mut params = serde_json::json!({ "flag": flag, "approve": approve });
+        if let Some(r) = remark.filter(|r| !r.is_empty()) {
+            params["remark"] = r.into();
+        }
+        Self { action: "set_friend_add_request".into(), params, echo: Some(echo) }
+    }
+
+    pub fn set_group_add_request(
+        flag: &str,
+        sub_type: &str,
+        approve: bool,
+        reason: Option<&str>,
+        echo: String,
+    ) -> Self {
+        let mut params = serde_json::json!({ "flag": flag, "sub_type": sub_type, "approve": approve });
+        if let Some(r) = reason.filter(|r| !r.is_empty()) {
+            params["reason"] = r.into();
+        }
+        Self { action: "set_group_add_request".into(), params, echo: Some(echo) }
     }
 }
 

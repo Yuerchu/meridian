@@ -6,6 +6,8 @@ import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { AndroidFileAccess } from './android-file-access'
 
+const LANGUAGE_OPTIONS = LANGUAGES.map((lang) => ({ value: lang.code, label: lang.label }))
+
 const SHELLS = [
   { value: 'bash', label: 'Bash (Git Bash)' },
   { value: 'powershell', label: 'PowerShell' },
@@ -38,13 +40,13 @@ export function GeneralSettings() {
         <label className="block text-xs font-medium text-muted-foreground">
           {t('settings.general.language')}
         </label>
-        <Select value={i18n.language} onValueChange={(v) => v && setLocale(v)}>
+        <Select value={i18n.language} onValueChange={(v) => v && setLocale(v)} items={LANGUAGE_OPTIONS}>
           <SelectTrigger className="w-full max-w-xs">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {LANGUAGES.map((lang) => (
-              <SelectItem key={lang.code} value={lang.code}>
+            {LANGUAGE_OPTIONS.map((lang) => (
+              <SelectItem key={lang.value} value={lang.value}>
                 {lang.label}
               </SelectItem>
             ))}
@@ -57,7 +59,7 @@ export function GeneralSettings() {
           <label className="block text-xs font-medium text-muted-foreground">
             {t('settings.general.shell')}
           </label>
-          <Select value={shell} onValueChange={(v) => v && handleShellChange(v)}>
+          <Select value={shell} onValueChange={(v) => v && handleShellChange(v)} items={SHELLS}>
             <SelectTrigger className="w-full max-w-xs">
               <SelectValue />
             </SelectTrigger>

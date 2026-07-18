@@ -55,6 +55,7 @@ export interface ConversationSession {
   pendingApproval: string | null
   pendingAskUser: string | null
   compactCursor: number | null
+  generation: number
 }
 
 function defaultSession(): ConversationSession {
@@ -67,7 +68,41 @@ function defaultSession(): ConversationSession {
     pendingApproval: null,
     pendingAskUser: null,
     compactCursor: null,
+    generation: 0,
   }
+}
+
+// A DB snapshot can be stale while a stream is in flight: the streaming assistant
+// row still has empty content in the DB, and a just-sent user bubble may not be
+// persisted yet. Keep the local versions of those instead of overwriting them.
+function mergeSnapshot(session: ConversationSession, snapshot: Message[]): Message[] {
+  if (!session.streaming) return snapshot
+  const local = session.messages
+  const snapshotIds = new Set(snapshot.map((m) => m.id))
+  const merged = snapshot.map((m) => {
+    if (m.role === 'assistant' && !m.content && !m.tool_calls) {
+      const lm = local.find((x) => x.id === m.id)
+      if (lm?._blocks?.length) return lm
+    }
+    return m
+  })
+  const persistedUserContents = new Set(snapshot.filter((m) => m.role === 'user').map((m) => m.content))
+  let lastAssistant: Message | undefined
+  for (let i = local.length - 1; i >= 0; i--) {
+    if (local[i].role === 'assistant') {
+      lastAssistant = local[i]
+      break
+    }
+  }
+  for (const lm of local) {
+    if (snapshotIds.has(lm.id)) continue
+    if (lm.id.startsWith('temp-user-')) {
+      if (!persistedUserContents.has(lm.content)) merged.push(lm)
+    } else if (lm === lastAssistant && lm._blocks?.length) {
+      merged.push(lm)
+    }
+  }
+  return merged
 }
 
 function findAssistantMsg(msgs: Message[], messageId?: string): number {
@@ -108,6 +143,7 @@ export interface ConversationStore {
   handleCompactDone: (convId: string) => void
 
   setStreaming: (convId: string, value: boolean) => void
+  setCompacting: (convId: string, value: boolean) => void
   setError: (convId: string, error: string | null) => void
   markSeen: (convId: string) => void
 }
@@ -166,8 +202,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       if (!state.sessions[convId]) {
         state.sessions[convId] = defaultSession()
       }
-      state.sessions[convId].messages = hydrateBlocks(msgs)
-      state.sessions[convId].compactCursor = conv.compact_cursor
+      const session = state.sessions[convId]
+      session.messages = mergeSnapshot(session, hydrateBlocks(msgs))
+      session.compactCursor = conv.compact_cursor
     }))
   },
 
@@ -178,6 +215,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       }
       const session = state.sessions[convId]
       session.streaming = true
+      session.generation += 1
       session.messages.push({
         id: messageId,
         conversation_id: convId,
@@ -296,17 +334,25 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   },
 
   handleStop: (convId) => {
+    const generation = get().sessions[convId]?.generation ?? 0
+    set(produce((state: ConversationStore) => {
+      const session = state.sessions[convId]
+      if (!session) return
+      session.streaming = false
+      session.pendingApproval = null
+      session.pendingAskUser = null
+      if (convId !== state.activeId) {
+        session.fulfilledUnseen = true
+      }
+    }))
     api.loadMessages(convId).then((msgs) => {
       set(produce((state: ConversationStore) => {
         const session = state.sessions[convId]
         if (!session) return
-        session.streaming = false
-        session.messages = hydrateBlocks(msgs)
-        session.pendingApproval = null
-        session.pendingAskUser = null
-        if (convId !== state.activeId) {
-          session.fulfilledUnseen = true
-        }
+        // A new stream started while this snapshot was in flight; its own stop
+        // handler will reload, so applying the stale snapshot would clobber it.
+        if (session.generation !== generation) return
+        session.messages = mergeSnapshot(session, hydrateBlocks(msgs))
       }))
     })
   },
@@ -336,6 +382,14 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         state.sessions[convId] = defaultSession()
       }
       state.sessions[convId].streaming = value
+    }))
+  },
+
+  setCompacting: (convId, value) => {
+    set(produce((state: ConversationStore) => {
+      if (state.sessions[convId]) {
+        state.sessions[convId].compacting = value
+      }
     }))
   },
 

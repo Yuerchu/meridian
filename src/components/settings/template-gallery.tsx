@@ -99,6 +99,12 @@ function TemplateCreator({
     onCreated()
   }
 
+  const categoryOptions = [
+    { value: 'general', label: t('settings.template.categoryGeneral') },
+    { value: 'character', label: t('settings.template.categoryCharacter') },
+    { value: 'coding', label: t('settings.template.categoryCoding') },
+  ]
+
   return (
     <div className="space-y-3 border border-border rounded-lg p-3">
       <div className="grid grid-cols-2 gap-2">
@@ -107,14 +113,14 @@ function TemplateCreator({
           onChange={(e) => setName(e.target.value)}
           placeholder={t('settings.template.name')}
         />
-        <Select value={category} onValueChange={(v) => { if (v) setCategory(v) }}>
+        <Select value={category} onValueChange={(v) => { if (v) setCategory(v) }} items={categoryOptions}>
           <SelectTrigger>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="general">{t('settings.template.categoryGeneral')}</SelectItem>
-            <SelectItem value="character">{t('settings.template.categoryCharacter')}</SelectItem>
-            <SelectItem value="coding">{t('settings.template.categoryCoding')}</SelectItem>
+            {categoryOptions.map((o) => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>

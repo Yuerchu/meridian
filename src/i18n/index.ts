@@ -11,6 +11,8 @@ i18n
     resources: {
       en: { translation: en },
       'zh-CN': { translation: zhCN },
+      zh: { translation: zhCN },
+      'zh-Hans': { translation: zhCN },
     },
     fallbackLng: 'en',
     interpolation: { escapeValue: false },

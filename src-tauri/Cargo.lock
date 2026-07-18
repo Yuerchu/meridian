@@ -2748,6 +2748,7 @@ dependencies = [
  "libsqlite3-sys",
  "mime_guess",
  "ndk-context",
+ "percent-encoding",
  "pretty_assertions",
  "rand 0.9.4",
  "regex",

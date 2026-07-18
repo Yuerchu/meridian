@@ -184,7 +184,7 @@ describe('api', () => {
     it('fetchProviderModels sends providerId', async () => {
       mockInvoke.mockResolvedValueOnce([])
       await api.fetchProviderModels('p1')
-      expect(mockInvoke).toHaveBeenCalledWith('fetch_provider_models', { providerId: 'p1' })
+      expect(mockInvoke).toHaveBeenCalledWith('fetch_provider_models', { providerId: 'p1', forceRefresh: null })
     })
   })
 

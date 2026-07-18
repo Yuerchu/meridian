@@ -95,20 +95,7 @@ export const api = {
     toolPresetId?: string | null
     autoCompactEnabled?: number
   }) =>
-    invoke<Assistant>('update_assistant', {
-      id,
-      name: updates.name ?? null,
-      systemPrompt: updates.systemPrompt ?? null,
-      providerId: updates.providerId !== undefined ? updates.providerId : null,
-      modelId: updates.modelId !== undefined ? updates.modelId : null,
-      temperature: updates.temperature !== undefined ? updates.temperature : null,
-      contextLimit: updates.contextLimit ?? null,
-      enabledTools: updates.enabledTools !== undefined ? updates.enabledTools : null,
-      thinkingEnabled: updates.thinkingEnabled ?? null,
-      thinkingBudget: updates.thinkingBudget !== undefined ? updates.thinkingBudget : null,
-      toolPresetId: updates.toolPresetId !== undefined ? updates.toolPresetId : null,
-      autoCompactEnabled: updates.autoCompactEnabled ?? null,
-    }),
+    invoke<Assistant>('update_assistant', { id, updates }),
 
   deleteAssistant: (id: string) =>
     invoke<void>('delete_assistant', { id }),
@@ -270,17 +257,7 @@ export const api = {
     headers?: string | null
     isEnabled?: number
   }) =>
-    invoke<McpServer>('update_mcp_server', {
-      id,
-      name: updates.name ?? null,
-      transportType: updates.transportType ?? null,
-      command: updates.command !== undefined ? updates.command : null,
-      args: updates.args !== undefined ? updates.args : null,
-      env: updates.env !== undefined ? updates.env : null,
-      url: updates.url !== undefined ? updates.url : null,
-      headers: updates.headers !== undefined ? updates.headers : null,
-      isEnabled: updates.isEnabled ?? null,
-    }),
+    invoke<McpServer>('update_mcp_server', { id, updates }),
 
   deleteMcpServer: (id: string) =>
     invoke<void>('delete_mcp_server', { id }),
@@ -305,13 +282,13 @@ export const api = {
     invoke<{
       enabled: boolean; host: string; port: number;
       access_token: string | null; assistant_id: string | null;
-      admin_users: number[];
+      admin_users: number[]; ack_emoji_id: string;
     }>('get_onebot_config'),
 
   saveOneBotConfig: (config: {
     enabled: boolean; host: string; port: number;
     access_token: string | null; assistant_id: string | null;
-    admin_users: number[];
+    admin_users: number[]; ack_emoji_id: string;
   }) =>
     invoke<void>('save_onebot_config', { config }),
 
@@ -337,13 +314,7 @@ export const api = {
     category?: string
     templateText?: string
   }) =>
-    invoke<PromptTemplate>('update_prompt_template', {
-      id,
-      name: updates.name ?? null,
-      description: updates.description !== undefined ? updates.description : null,
-      category: updates.category ?? null,
-      templateText: updates.templateText ?? null,
-    }),
+    invoke<PromptTemplate>('update_prompt_template', { id, updates }),
 
   deletePromptTemplate: (id: string) =>
     invoke<void>('delete_prompt_template', { id }),
@@ -433,19 +404,7 @@ export const api = {
     permission?: string
     isEnabled?: number
   }) =>
-    invoke<CustomTool>('update_custom_tool', {
-      id,
-      name: updates.name ?? null,
-      description: updates.description ?? null,
-      command: updates.command ?? null,
-      categoryId: updates.categoryId !== undefined ? updates.categoryId : null,
-      parametersSchema: updates.parametersSchema ?? null,
-      argsTemplate: updates.argsTemplate !== undefined ? updates.argsTemplate : null,
-      workingDirectory: updates.workingDirectory !== undefined ? updates.workingDirectory : null,
-      timeoutMs: updates.timeoutMs !== undefined ? updates.timeoutMs : null,
-      permission: updates.permission ?? null,
-      isEnabled: updates.isEnabled ?? null,
-    }),
+    invoke<CustomTool>('update_custom_tool', { id, updates }),
 
   deleteCustomTool: (id: string) =>
     invoke<void>('delete_custom_tool', { id }),
@@ -465,12 +424,7 @@ export const api = {
     description?: string | null
     toolNames?: string
   }) =>
-    invoke<ToolPreset>('update_tool_preset', {
-      id,
-      name: updates.name ?? null,
-      description: updates.description !== undefined ? updates.description : null,
-      toolNames: updates.toolNames ?? null,
-    }),
+    invoke<ToolPreset>('update_tool_preset', { id, updates }),
 
   deleteToolPreset: (id: string) =>
     invoke<void>('delete_tool_preset', { id }),

@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Check, RefreshCw, Trash2, Cloud, Key, ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -69,6 +69,16 @@ function ProviderEditor({
     setFetchingModels(false)
   }, [provider.id])
 
+  const typeOptions = [
+    { value: 'openai', label: t('settings.provider.typeOpenAI') },
+    { value: 'anthropic', label: t('settings.provider.typeAnthropic') },
+  ]
+  const formatOptions = [
+    { value: 'responses', label: t('settings.provider.apiFormatResponses') },
+    { value: 'chat_completions', label: t('settings.provider.apiFormatChatCompletions') },
+    { value: 'gemma_tool', label: t('settings.provider.apiFormatGemmaTool') },
+  ]
+
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
@@ -78,13 +88,14 @@ function ProviderEditor({
 
       <div className="space-y-1.5">
         <label className="block text-[11px] text-muted-foreground">{t('settings.provider.type')}</label>
-        <Select value={providerType} onValueChange={(v) => v && setProviderType(v)}>
+        <Select value={providerType} onValueChange={(v) => v && setProviderType(v)} items={typeOptions}>
           <SelectTrigger className="w-full">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="openai">{t('settings.provider.typeOpenAI')}</SelectItem>
-            <SelectItem value="anthropic">{t('settings.provider.typeAnthropic')}</SelectItem>
+            {typeOptions.map((o) => (
+              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
@@ -101,14 +112,14 @@ function ProviderEditor({
       {providerType !== 'anthropic' && (
         <div className="space-y-1.5">
           <label className="block text-[11px] text-muted-foreground">{t('settings.provider.apiFormat')}</label>
-          <Select value={apiFormat} onValueChange={(v) => v && setApiFormat(v)}>
+          <Select value={apiFormat} onValueChange={(v) => v && setApiFormat(v)} items={formatOptions}>
             <SelectTrigger className="w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="responses">{t('settings.provider.apiFormatResponses')}</SelectItem>
-              <SelectItem value="chat_completions">{t('settings.provider.apiFormatChatCompletions')}</SelectItem>
-              <SelectItem value="gemma_tool">{t('settings.provider.apiFormatGemmaTool')}</SelectItem>
+              {formatOptions.map((o) => (
+                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
         </div>
@@ -184,6 +195,7 @@ export function ProviderSettings() {
   const [providers, setProviders] = useState<Provider[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const initialized = useRef(false)
 
   const refresh = useCallback(async () => {
     const list = await api.listProviders()
@@ -192,13 +204,15 @@ export function ProviderSettings() {
   }, [])
 
   useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
     refresh().then((list) => {
-      if (list.length > 0 && !selectedId) {
+      if (list.length > 0 && !isMobile) {
         setSelectedId(list[0].id)
       }
       setLoading(false)
     })
-  }, [refresh, selectedId])
+  }, [refresh, isMobile])
 
   const handleCreate = useCallback(async () => {
     const p = await api.createProvider('New Provider', 'openai', 'https://api.openai.com/v1', 'responses')

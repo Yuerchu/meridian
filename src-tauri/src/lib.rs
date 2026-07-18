@@ -90,6 +90,14 @@ pub(crate) fn get_conn(pool: &DbPool) -> Result<db::PooledConn, String> {
     pool.get().map_err(|e| format!("db connection error: {e}"))
 }
 
+fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+where
+    T: serde::Deserialize<'de>,
+    D: serde::Deserializer<'de>,
+{
+    serde::Deserialize::deserialize(de).map(Some)
+}
+
 /// Build the file access policy for tool execution.
 /// Desktop: unrestricted (legacy working_directory validation only).
 /// Android: whitelist of authorized roots from preferences + system grants.
@@ -570,12 +578,13 @@ async fn compact(
         "conversation_id": &conversation_id,
     })).map_err(|e| e.to_string())?;
 
-    do_compact(&pool, &secrets.0, &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await?;
+    let result = do_compact(&pool, &secrets.0, &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await;
 
     app.emit("compact-done", serde_json::json!({
         "conversation_id": &conversation_id,
     })).map_err(|e| e.to_string())?;
 
+    result?;
     Ok(())
 }
 
@@ -940,37 +949,49 @@ async fn create_assistant(
     }).await.map_err(|e| e.to_string())?
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AssistantPatch {
+    name: Option<String>,
+    system_prompt: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    provider_id: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    model_id: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    temperature: Option<Option<f32>>,
+    context_limit: Option<i32>,
+    #[serde(default, deserialize_with = "double_option")]
+    enabled_tools: Option<Option<String>>,
+    thinking_enabled: Option<i32>,
+    #[serde(default, deserialize_with = "double_option")]
+    thinking_budget: Option<Option<i32>>,
+    #[serde(default, deserialize_with = "double_option")]
+    tool_preset_id: Option<Option<String>>,
+    auto_compact_enabled: Option<i32>,
+}
+
 #[tauri::command]
 async fn update_assistant(
     app: tauri::AppHandle,
     id: String,
-    name: Option<String>,
-    system_prompt: Option<String>,
-    provider_id: Option<Option<String>>,
-    model_id: Option<Option<String>>,
-    temperature: Option<Option<f32>>,
-    context_limit: Option<i32>,
-    enabled_tools: Option<Option<String>>,
-    thinking_enabled: Option<i32>,
-    thinking_budget: Option<Option<i32>>,
-    tool_preset_id: Option<Option<String>>,
-    auto_compact_enabled: Option<i32>,
+    updates: AssistantPatch,
 ) -> Result<Assistant, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let changeset = AssistantUpdate {
-            name,
-            system_prompt,
-            provider_id,
-            model_id,
-            temperature,
-            context_limit,
-            enabled_tools,
-            thinking_enabled,
-            thinking_budget,
-            tool_preset_id,
-            auto_compact_enabled,
+            name: updates.name,
+            system_prompt: updates.system_prompt,
+            provider_id: updates.provider_id,
+            model_id: updates.model_id,
+            temperature: updates.temperature,
+            context_limit: updates.context_limit,
+            enabled_tools: updates.enabled_tools,
+            thinking_enabled: updates.thinking_enabled,
+            thinking_budget: updates.thinking_budget,
+            tool_preset_id: updates.tool_preset_id,
+            auto_compact_enabled: updates.auto_compact_enabled,
             updated_at: Some(now_ms()),
             ..Default::default()
         };
@@ -1498,24 +1519,42 @@ async fn create_mcp_server(
     }).await.map_err(|e| e.to_string())?
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct McpServerPatch {
+    name: Option<String>,
+    transport_type: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    command: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    args: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    env: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    url: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    headers: Option<Option<String>>,
+    is_enabled: Option<i32>,
+}
+
 #[tauri::command]
 async fn update_mcp_server(
     app: tauri::AppHandle,
     id: String,
-    name: Option<String>,
-    transport_type: Option<String>,
-    command: Option<Option<String>>,
-    args: Option<Option<String>>,
-    env: Option<Option<String>>,
-    url: Option<Option<String>>,
-    headers: Option<Option<String>>,
-    is_enabled: Option<i32>,
+    updates: McpServerPatch,
 ) -> Result<McpServer, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::mcp_server::update_mcp_server(&mut conn, &id, &McpServerUpdate {
-            name, transport_type, command, args, env, url, headers, is_enabled,
+            name: updates.name,
+            transport_type: updates.transport_type,
+            command: updates.command,
+            args: updates.args,
+            env: updates.env,
+            url: updates.url,
+            headers: updates.headers,
+            is_enabled: updates.is_enabled,
             updated_at: Some(now_ms()),
         }).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
@@ -1784,22 +1823,29 @@ fn create_prompt_template(
     }).map_err(|e| e.to_string())
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PromptTemplatePatch {
+    name: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    description: Option<Option<String>>,
+    category: Option<String>,
+    template_text: Option<String>,
+}
+
 #[tauri::command]
 fn update_prompt_template(
     app: tauri::AppHandle,
     id: String,
-    name: Option<String>,
-    description: Option<Option<String>>,
-    category: Option<String>,
-    template_text: Option<String>,
+    updates: PromptTemplatePatch,
 ) -> Result<PromptTemplate, String> {
     let pool = app.state::<AppDb>();
     let mut conn = get_conn(&pool.0)?;
     db::ops::prompt_template::update_template(&mut conn, &id, &PromptTemplateUpdate {
-        name,
-        description,
-        category,
-        template_text,
+        name: updates.name,
+        description: updates.description,
+        category: updates.category,
+        template_text: updates.template_text,
         updated_at: Some(now_ms()),
         ..Default::default()
     }).map_err(|e| e.to_string())
@@ -2051,34 +2097,44 @@ fn create_custom_tool(
     }).map_err(|e| e.to_string())
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CustomToolPatch {
+    name: Option<String>,
+    description: Option<String>,
+    command: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    category_id: Option<Option<String>>,
+    parameters_schema: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    args_template: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    working_directory: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    timeout_ms: Option<Option<i32>>,
+    permission: Option<String>,
+    is_enabled: Option<i32>,
+}
+
 #[tauri::command]
 fn update_custom_tool(
     app: tauri::AppHandle,
     id: String,
-    name: Option<String>,
-    description: Option<String>,
-    command: Option<String>,
-    category_id: Option<Option<String>>,
-    parameters_schema: Option<String>,
-    args_template: Option<Option<String>>,
-    working_directory: Option<Option<String>>,
-    timeout_ms: Option<Option<i32>>,
-    permission: Option<String>,
-    is_enabled: Option<i32>,
+    updates: CustomToolPatch,
 ) -> Result<CustomTool, String> {
     let pool = app.state::<AppDb>();
     let mut conn = get_conn(&pool.0)?;
     db::ops::custom_tool::update_tool(&mut conn, &id, &CustomToolUpdate {
-        name,
-        description,
-        command,
-        category_id,
-        parameters_schema,
-        args_template,
-        working_directory,
-        timeout_ms,
-        permission,
-        is_enabled,
+        name: updates.name,
+        description: updates.description,
+        command: updates.command,
+        category_id: updates.category_id,
+        parameters_schema: updates.parameters_schema,
+        args_template: updates.args_template,
+        working_directory: updates.working_directory,
+        timeout_ms: updates.timeout_ms,
+        permission: updates.permission,
+        is_enabled: updates.is_enabled,
         updated_at: Some(now_ms()),
         ..Default::default()
     }).map_err(|e| e.to_string())
@@ -2122,20 +2178,27 @@ fn create_tool_preset(
     }).map_err(|e| e.to_string())
 }
 
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ToolPresetPatch {
+    name: Option<String>,
+    #[serde(default, deserialize_with = "double_option")]
+    description: Option<Option<String>>,
+    tool_names: Option<String>,
+}
+
 #[tauri::command]
 fn update_tool_preset(
     app: tauri::AppHandle,
     id: String,
-    name: Option<String>,
-    description: Option<Option<String>>,
-    tool_names: Option<String>,
+    updates: ToolPresetPatch,
 ) -> Result<ToolPreset, String> {
     let pool = app.state::<AppDb>();
     let mut conn = get_conn(&pool.0)?;
     db::ops::tool_preset::update_preset(&mut conn, &id, &ToolPresetUpdate {
-        name,
-        description,
-        tool_names,
+        name: updates.name,
+        description: updates.description,
+        tool_names: updates.tool_names,
         updated_at: Some(now_ms()),
         ..Default::default()
     }).map_err(|e| e.to_string())
@@ -2293,6 +2356,9 @@ async fn chat(
                 }
                 Err(e) => {
                     tracing::warn!("Auto-compact failed: {e}");
+                    app.emit("compact-done", serde_json::json!({
+                        "conversation_id": &conversation_id,
+                    })).ok();
                 }
             }
         }

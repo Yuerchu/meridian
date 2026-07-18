@@ -7,6 +7,42 @@ import type { StreamChunk } from '@/types'
 const streamStartTimes = new Map<string, number>()
 const LONG_STREAM_THRESHOLD_MS = 30_000
 
+// Text/reasoning chunks arrive far faster than the screen refreshes; applying
+// each one individually makes every token re-render the chat. Buffer them and
+// flush at most once per frame, preserving arrival order across chunk types.
+const CHUNK_FLUSH_MS = 24
+const chunkQueue: Array<{ convId: string; messageId: string; type: 'text' | 'reasoning'; content: string }> = []
+let chunkFlushTimer: ReturnType<typeof setTimeout> | null = null
+
+function flushChunks() {
+  if (chunkFlushTimer !== null) {
+    clearTimeout(chunkFlushTimer)
+    chunkFlushTimer = null
+  }
+  if (chunkQueue.length === 0) return
+  const store = useConversationStore.getState()
+  for (const c of chunkQueue) {
+    if (c.type === 'text') {
+      store.handleText(c.convId, c.messageId, c.content)
+    } else {
+      store.handleReasoning(c.convId, c.messageId, c.content)
+    }
+  }
+  chunkQueue.length = 0
+}
+
+function enqueueChunk(convId: string, messageId: string, type: 'text' | 'reasoning', content: string) {
+  const last = chunkQueue[chunkQueue.length - 1]
+  if (last && last.convId === convId && last.messageId === messageId && last.type === type) {
+    last.content += content
+  } else {
+    chunkQueue.push({ convId, messageId, type, content })
+  }
+  if (chunkFlushTimer === null) {
+    chunkFlushTimer = setTimeout(flushChunks, CHUNK_FLUSH_MS)
+  }
+}
+
 function shouldNotify(convId: string): boolean {
   const { activeId } = useConversationStore.getState()
   return !document.hasFocus() || convId !== activeId
@@ -35,6 +71,18 @@ export function useGlobalEventListener() {
       const convId = p.conversation_id
       if (!convId) return
 
+      if (p.type === 'text' && p.content) {
+        enqueueChunk(convId, p.message_id!, 'text', p.content)
+        return
+      }
+
+      if (p.type === 'reasoning' && p.content) {
+        enqueueChunk(convId, p.message_id!, 'reasoning', p.content)
+        return
+      }
+
+      // Control events must observe all buffered chunks to keep block order.
+      flushChunks()
       const store = useConversationStore.getState()
 
       if (p.type === 'message_start' && p.message_id) {
@@ -52,16 +100,6 @@ export function useGlobalEventListener() {
           trySendNotification(getConversationTitle(convId), 'Response completed')
         }
         store.handleStop(convId)
-        return
-      }
-
-      if (p.type === 'text' && p.content) {
-        store.handleText(convId, p.message_id!, p.content)
-        return
-      }
-
-      if (p.type === 'reasoning' && p.content) {
-        store.handleReasoning(convId, p.message_id!, p.content)
         return
       }
 
