@@ -272,6 +272,7 @@ mod tests {
 
     #[tokio::test]
     #[cfg(target_os = "windows")]
+    #[ignore = "requires unrestricted TEMP write; fails inside CI / nested sandboxes"]
     async fn sandboxed_mkdir_in_temp_allowed() {
         let project_dir = tempfile::tempdir().unwrap();
         let policy = policy_for(project_dir.path());
