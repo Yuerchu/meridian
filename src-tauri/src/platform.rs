@@ -51,7 +51,7 @@ async fn save_saf_roots(pool: &crate::db::DbPool, roots: &[SafRootEntry]) -> Res
             &mut conn,
             "android.saf_roots",
             &json,
-            crate::now_ms(),
+            crate::util::now_ms(),
         )
         .map_err(|e| e.to_string())
     })
@@ -123,11 +123,11 @@ pub async fn pick_saf_directory(app: tauri::AppHandle) -> Result<Vec<SafRootEntr
         use tauri::Manager;
         let Some((uri, display_name)) = crate::android_bridge::pick_directory().await? else {
             // user cancelled; return the unchanged list
-            let pool = app.state::<crate::AppDb>().0.clone();
+            let pool = app.state::<crate::state::AppDb>().0.clone();
             return load_saf_roots(&pool).await;
         };
 
-        let pool = app.state::<crate::AppDb>().0.clone();
+        let pool = app.state::<crate::state::AppDb>().0.clone();
         let mut roots = load_saf_roots(&pool).await?;
         if roots.iter().any(|r| r.uri == uri) {
             return Ok(roots);
@@ -162,7 +162,7 @@ pub async fn list_saf_roots(app: tauri::AppHandle) -> Result<Vec<SafRootEntry>, 
     #[cfg(target_os = "android")]
     {
         use tauri::Manager;
-        let pool = app.state::<crate::AppDb>().0.clone();
+        let pool = app.state::<crate::state::AppDb>().0.clone();
         load_saf_roots(&pool).await
     }
     #[cfg(not(target_os = "android"))]
@@ -196,7 +196,7 @@ pub async fn remove_saf_root(app: tauri::AppHandle, uri: String) -> Result<Vec<S
     #[cfg(target_os = "android")]
     {
         use tauri::Manager;
-        let pool = app.state::<crate::AppDb>().0.clone();
+        let pool = app.state::<crate::state::AppDb>().0.clone();
         let mut roots = load_saf_roots(&pool).await?;
         roots.retain(|r| r.uri != uri);
         save_saf_roots(&pool, &roots).await?;

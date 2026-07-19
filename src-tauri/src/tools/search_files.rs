@@ -195,7 +195,7 @@ fn search_file(
         }
         if re.is_match(line) {
             let display_line = if line.len() > MAX_LINE_LEN {
-                format!("{}...", crate::take_bytes_at_char_boundary(line, MAX_LINE_LEN))
+                format!("{}...", crate::util::take_bytes_at_char_boundary(line, MAX_LINE_LEN))
             } else {
                 line.to_string()
             };

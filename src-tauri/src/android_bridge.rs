@@ -152,7 +152,7 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnInsetsCha
 ) {
     let insets = crate::platform::WindowInsets { top, right, bottom, left, ime_bottom };
     *CURRENT_INSETS.lock().unwrap() = insets;
-    if let Some(app) = crate::APP_HANDLE.get() {
+    if let Some(app) = crate::state::APP_HANDLE.get() {
         use tauri::Emitter;
         let _ = app.emit("insets-changed", insets);
     }
@@ -272,7 +272,7 @@ pub fn release_persisted_uri(tree_uri: &str) -> Result<(), String> {
 }
 
 pub fn persisted_tree_uris() -> Result<Vec<String>, String> {
-    let json = with_env(|env, context| {
+    let json: String = with_env(|env, context| {
         let cls = bridge_class(env, context)?;
         let s = env.call_static_method(
             &cls,
@@ -332,7 +332,8 @@ pub async fn saf_read(tree_uri: &str, rel: &str, max_bytes: i64) -> Result<SafRe
                     JValue::Long(max_bytes),
                 ],
             )?.l()?;
-            let s = env.get_string(&JString::from(result))?;
+            let jstr = JString::from(result);
+            let s = env.get_string(&jstr)?;
             Ok(String::from(s))
         })
     })

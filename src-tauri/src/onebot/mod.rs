@@ -18,7 +18,7 @@ use crate::db::DbPool;
 use crate::mcp::McpManager;
 use crate::secrets::SecretsManager;
 use crate::tools::ToolRegistry;
-use crate::{get_conn, now_ms};
+use crate::util::{get_conn, now_ms};
 
 use protocol::{OneBotAction, OneBotFrame, OneBotResponse};
 use session::SessionManager;
@@ -485,16 +485,16 @@ async fn handle_connection(
 pub async fn maybe_start(handle: tauri::AppHandle) {
     use tauri::Manager;
 
-    let pool = handle.state::<crate::AppDb>().0.clone();
+    let pool = handle.state::<crate::state::AppDb>().0.clone();
     let config = load_config(&pool);
 
     if !config.enabled {
         tracing::info!("OneBot server disabled, skipping auto-start");
         let server = OneBotServer::new(
             pool,
-            handle.state::<crate::AppSecrets>().0.clone(),
-            handle.state::<crate::AppTools>().0.clone(),
-            handle.state::<crate::AppMcp>().0.clone(),
+            handle.state::<crate::state::AppSecrets>().0.clone(),
+            handle.state::<crate::state::AppTools>().0.clone(),
+            handle.state::<crate::state::AppMcp>().0.clone(),
             config,
             Some(handle.clone()),
         );
@@ -502,9 +502,9 @@ pub async fn maybe_start(handle: tauri::AppHandle) {
         return;
     }
 
-    let secrets = handle.state::<crate::AppSecrets>().0.clone();
-    let tools = handle.state::<crate::AppTools>().0.clone();
-    let mcp = handle.state::<crate::AppMcp>().0.clone();
+    let secrets = handle.state::<crate::state::AppSecrets>().0.clone();
+    let tools = handle.state::<crate::state::AppTools>().0.clone();
+    let mcp = handle.state::<crate::state::AppMcp>().0.clone();
 
     let server = OneBotServer::new(pool, secrets, tools, mcp, config, Some(handle.clone()));
     if let Err(e) = server.start() {

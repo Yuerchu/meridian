@@ -12,7 +12,8 @@ use crate::mcp::McpManager;
 use crate::provider::{self, ChatMessage, ChatParams, ChatStream, StreamEvent, ToolCall};
 use crate::secrets::SecretsManager;
 use crate::tools::{self, ToolRegistry};
-use crate::{build_messages, get_conn, is_context_window_error, is_retryable_stream_error, now_ms, resolve_provider_config, trim_to_context_limit, StreamResult, MAX_STREAM_RETRIES, STREAM_RETRY_BASE};
+use crate::util::{get_conn, now_ms};
+use crate::agent::{build_messages, is_context_window_error, is_retryable_stream_error, resolve_provider_config, trim_to_context_limit, StreamResult, MAX_STREAM_RETRIES, STREAM_RETRY_BASE};
 
 pub type ApprovalFn = Box<dyn Fn(ToolCall) -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
 
@@ -195,8 +196,8 @@ pub async fn headless_chat(
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
     let mut chat_messages = build_messages(&system_prompt, &history, user_message, compact_cursor);
-    crate::resolve_file_uris_in_messages(&mut chat_messages);
-    crate::remove_orphan_tool_messages(&mut chat_messages);
+    crate::agent::resolve_file_uris_in_messages(&mut chat_messages);
+    crate::agent::remove_orphan_tool_messages(&mut chat_messages);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
     let params = ChatParams {
@@ -372,7 +373,7 @@ pub async fn headless_chat(
 
         // Persist this iteration's assistant message in OpenAI format
         let tool_calls_json = if has_tool_calls {
-            Some(crate::serialize_tool_calls_openai(&result.tool_calls))
+            Some(crate::agent::serialize_tool_calls_openai(&result.tool_calls))
         } else {
             None
         };
