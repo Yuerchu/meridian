@@ -102,7 +102,7 @@ fn format_output(output: std::process::Output) -> Result<String, String> {
     }
 
     if result.len() > MAX_OUTPUT_BYTES {
-        let truncated = crate::take_bytes_at_char_boundary(&result, MAX_OUTPUT_BYTES);
+        let truncated = crate::util::take_bytes_at_char_boundary(&result, MAX_OUTPUT_BYTES);
         return Ok(format!(
             "{}...\n\n(output truncated at 256KB, total {} bytes)",
             truncated,

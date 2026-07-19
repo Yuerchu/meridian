@@ -334,7 +334,7 @@ pub async fn handle_request(
     };
 
     let id = state.request_seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
-    let now = crate::now_ms();
+    let now = crate::util::now_ms();
     {
         let mut pending = state.pending_requests.lock().await;
         pending.retain(|_, r| now - r.created_at < 24 * 3600 * 1000);
@@ -499,7 +499,7 @@ async fn dispatch_compact(
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         match tokio::task::spawn_blocking(move || {
-            let mut conn = crate::get_conn(&pool)?;
+            let mut conn = crate::util::get_conn(&pool)?;
             let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;
             let assistant = conv.assistant_id.as_deref()
@@ -513,7 +513,7 @@ async fn dispatch_compact(
         }
     };
 
-    match crate::do_compact(pool, secrets.as_ref(), &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await {
+    match crate::agent::do_compact(pool, secrets.as_ref(), &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await {
         Ok(_) => build_reply(event, "对话上下文已压缩。", reply_to),
         Err(e) => build_reply(event, &format!("Compact 失败: {e}"), reply_to),
     }
@@ -554,7 +554,7 @@ async fn dispatch_model(
     let assistant_id = state.config.assistant_id.clone();
     let conv_id = conversation_id;
     let info = tokio::task::spawn_blocking(move || {
-        let mut conn = crate::get_conn(&pool)?;
+        let mut conn = crate::util::get_conn(&pool)?;
         let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
             .map_err(|e| e.to_string())?;
         let effective_aid = assistant_id.as_deref().or(conv.assistant_id.as_deref());
@@ -605,7 +605,7 @@ async fn dispatch_status(
     let assistant_id = state.config.assistant_id.clone();
     let conv_id = conversation_id;
     let info = tokio::task::spawn_blocking(move || {
-        let mut conn = crate::get_conn(&pool)?;
+        let mut conn = crate::util::get_conn(&pool)?;
         let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
             .map_err(|e| e.to_string())?;
         let effective_aid = assistant_id.as_deref().or(conv.assistant_id.as_deref());
@@ -684,7 +684,7 @@ fn build_reply(event: &OneBotEvent, text: &str, reply_to_id: Option<i64>) -> Vec
 }
 
 fn truncate_args(args: &str, max_len: usize) -> String {
-    let shown = crate::take_bytes_at_char_boundary(args, max_len);
+    let shown = crate::util::take_bytes_at_char_boundary(args, max_len);
     if shown.len() < args.len() {
         format!("{shown}...")
     } else {

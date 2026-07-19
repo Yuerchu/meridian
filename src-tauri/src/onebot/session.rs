@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use diesel::prelude::*;
 
 use crate::db::DbPool;
-use crate::{get_conn, now_ms};
+use crate::util::{get_conn, now_ms};
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct SessionKey {

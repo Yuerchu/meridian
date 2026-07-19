@@ -76,7 +76,7 @@ impl Tool for SaveMemoryTool {
             }
 
             let id = uuid::Uuid::new_v4().to_string();
-            let now = crate::now_ms();
+            let now = crate::util::now_ms();
             crate::db::ops::memory::upsert_memory(&mut conn, &NewMemory {
                 id: &id,
                 project_id: &project_id,

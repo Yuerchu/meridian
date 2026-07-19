@@ -165,7 +165,7 @@ async fn resolve_supports_images(
     let override_model = model_override.map(String::from);
 
     tokio::task::spawn_blocking(move || {
-        let mut conn = crate::get_conn(&pool).ok()?;
+        let mut conn = crate::util::get_conn(&pool).ok()?;
         let effective_aid = match config_aid {
             Some(aid) => Some(aid),
             None => crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
@@ -177,7 +177,7 @@ async fn resolve_supports_images(
         drop(conn);
 
         let (provider_type, _base_url, _api_key, resolved_model, api_format) =
-            crate::resolve_provider_config(&secrets, &pool, assistant.as_ref()).ok()?;
+            crate::agent::resolve_provider_config(&secrets, &pool, assistant.as_ref()).ok()?;
         let model = override_model
             .or_else(|| assistant.as_ref().and_then(|a| a.model_id.clone()))
             .unwrap_or(resolved_model);
