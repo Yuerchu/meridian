@@ -141,9 +141,11 @@ body {
   html {
     @apply font-sans overflow-hidden h-full;
     -webkit-tap-highlight-color: transparent;
+    overscroll-behavior: none;
   }
   body, #root {
     @apply h-full overflow-hidden;
+    overscroll-behavior: none;
   }
 }
 

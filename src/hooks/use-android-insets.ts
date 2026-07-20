@@ -42,11 +42,21 @@ export function useImeBottom(): number {
 export function useAndroidInsets() {
   useEffect(() => {
     let disposed = false
+    let removeScrollLock: (() => void) | null = null
+
     api.getPlatform().then((p) => {
       if (p !== 'android' || disposed) return
       api.getWindowInsets().then((i) => { if (!disposed) applyInsets(i) }).catch(() => {})
+
+      const resetScroll = () => { window.scrollTo(0, 0) }
+      window.addEventListener('scroll', resetScroll, { passive: true })
+      removeScrollLock = () => window.removeEventListener('scroll', resetScroll)
     })
     const un = listen<NativeInsets>('insets-changed', (e) => applyInsets(e.payload))
-    return () => { disposed = true; un.then((fn) => fn()) }
+    return () => {
+      disposed = true
+      un.then((fn) => fn())
+      removeScrollLock?.()
+    }
   }, [])
 }

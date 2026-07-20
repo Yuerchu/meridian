@@ -5,6 +5,8 @@ src-tauri/.cargo/
 src-tauri/*_dev.db
 *.apk
 *.idsig
+*.jks
+*.keystore
 icon.png
 *.log
 .DS_Store
