@@ -320,6 +320,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
                         onDelete={handleDelete}
                         isOneBot={isOneBot}
                         emojiMap={emojiMap}
+                        assistantAvatar={selectedAssistant?.avatar}
                       />
                     </ErrorBoundary>
                   </div>
@@ -365,6 +366,12 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         )}
 
         {activeMessages.map((m, i) => {
+          const prev = i > 0 ? activeMessages[i - 1] : null
+          const next = i < activeMessages.length - 1 ? activeMessages[i + 1] : null
+          const isSameGroup = (a: typeof m | null, b: typeof m | null) =>
+            a != null && b != null && a.role === 'assistant' && b.role === 'assistant' && a.model_id === b.model_id
+          const isFirstInGroup = !isSameGroup(prev, m)
+          const isLastInGroup = !isSameGroup(m, next)
           const messageEl = (
             <ErrorBoundary fallback={<div className="text-xs text-destructive py-2">{t('chat.renderError')}</div>}>
               <MessageItem
@@ -377,6 +384,9 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
                 onRate={m.role === 'assistant' ? handleRate : undefined}
                 isOneBot={isOneBot}
                 emojiMap={emojiMap}
+                assistantAvatar={selectedAssistant?.avatar}
+                isFirstInGroup={isFirstInGroup}
+                isLastInGroup={isLastInGroup}
               />
             </ErrorBoundary>
           )

@@ -302,9 +302,12 @@ interface MessageItemProps {
   onRate?: (id: string, rating: number | null) => void
   isOneBot?: boolean
   emojiMap?: EmojiMap
+  assistantAvatar?: string | null
+  isFirstInGroup?: boolean
+  isLastInGroup?: boolean
 }
 
-export const MessageItem = React.memo(function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, onEdit, onRate, isOneBot, emojiMap }: MessageItemProps) {
+export const MessageItem = React.memo(function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, onEdit, onRate, isOneBot, emojiMap, assistantAvatar, isFirstInGroup = true, isLastInGroup = true }: MessageItemProps) {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime()
   const isUser = message.role === 'user'
@@ -554,18 +557,28 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
   const assistantContent = (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
       <ContextMenuTrigger render={<Message align="start" />}>
-        <MessageAvatar className="size-8">
-          <Bot className="w-3.5 h-3.5 text-muted-foreground" />
-        </MessageAvatar>
-        <MessageContent>
-          <MessageHeader className="gap-2">
-            {message.model_id && (
-              isLastMessage
-                ? <DecryptedText text={message.model_id} animateOn="view" speed={25} sequential className="text-xs text-muted-foreground" />
-                : <span className="text-xs text-muted-foreground">{message.model_id}</span>
+        {isLastInGroup ? (
+          <MessageAvatar className="size-8">
+            {assistantAvatar ? (
+              <img src={assistantAvatar} className="size-full object-cover" />
+            ) : (
+              <Bot className="w-3.5 h-3.5 text-muted-foreground" />
             )}
-            <span className="text-xs text-muted-foreground/60 font-normal">{relativeTime(message.created_at)}</span>
-          </MessageHeader>
+          </MessageAvatar>
+        ) : (
+          <div className="min-w-8 shrink-0" />
+        )}
+        <MessageContent>
+          {isFirstInGroup && (
+            <MessageHeader className="gap-2">
+              {message.model_id && (
+                isLastMessage
+                  ? <DecryptedText text={message.model_id} animateOn="view" speed={25} sequential className="text-xs text-muted-foreground" />
+                  : <span className="text-xs text-muted-foreground">{message.model_id}</span>
+              )}
+              <span className="text-xs text-muted-foreground/60 font-normal">{relativeTime(message.created_at)}</span>
+            </MessageHeader>
+          )}
 
           <Bubble variant="ghost" className="w-full">
             <BubbleContent className="w-full">
