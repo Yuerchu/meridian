@@ -299,6 +299,7 @@ fn parse_responses_event(
                         prompt_tokens: u.input_tokens.map(|v| v as i32),
                         completion_tokens: u.output_tokens.map(|v| v as i32),
                         total_tokens: u.total_tokens.map(|v| v as i32),
+                        ..Default::default()
                     });
                     let mut events = Vec::new();
                     if let Some(u) = usage {
@@ -341,6 +342,7 @@ fn parse_responses_event(
                         prompt_tokens: u.input_tokens.map(|v| v as i32),
                         completion_tokens: u.output_tokens.map(|v| v as i32),
                         total_tokens: u.total_tokens.map(|v| v as i32),
+                        ..Default::default()
                     });
                     let mut events = Vec::new();
                     if let Some(u) = usage {
@@ -489,6 +491,7 @@ impl ChatProvider for OpenAIResponsesProvider {
             prompt_tokens: u.input_tokens.map(|v| v as i32),
             completion_tokens: u.output_tokens.map(|v| v as i32),
             total_tokens: u.total_tokens.map(|v| v as i32),
+            ..Default::default()
         });
 
         Ok(AgentResponse { text, reasoning_content, tool_calls, usage })

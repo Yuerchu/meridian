@@ -254,6 +254,7 @@ impl ChatProvider for AnthropicProvider {
                                             prompt_tokens: u.input_tokens,
                                             completion_tokens: u.output_tokens,
                                             total_tokens: None,
+                                            ..Default::default()
                                         });
                                         out.push(Ok(StreamEvent::Stop {
                                             reason: sr.clone(),
@@ -340,6 +341,7 @@ impl ChatProvider for AnthropicProvider {
             prompt_tokens: u["input_tokens"].as_i64().map(|v| v as i32),
             completion_tokens: u["output_tokens"].as_i64().map(|v| v as i32),
             total_tokens: None,
+            ..Default::default()
         });
 
         let reasoning = if reasoning_content.is_empty() { None } else { Some(reasoning_content) };

@@ -605,7 +605,6 @@ pub async fn chat(
         }
 
         if cancel.is_cancelled() { break; }
-        trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
     }
 
     // Clean up cancel token

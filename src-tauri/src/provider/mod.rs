@@ -93,6 +93,10 @@ pub struct TokenUsage {
     pub prompt_tokens: Option<i32>,
     pub completion_tokens: Option<i32>,
     pub total_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_hit_tokens: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cache_miss_tokens: Option<i32>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

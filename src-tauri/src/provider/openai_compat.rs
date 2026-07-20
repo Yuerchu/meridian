@@ -139,6 +139,8 @@ pub struct ChunkUsage {
     pub prompt_tokens: Option<i32>,
     pub completion_tokens: Option<i32>,
     pub total_tokens: Option<i32>,
+    pub prompt_cache_hit_tokens: Option<i32>,
+    pub prompt_cache_miss_tokens: Option<i32>,
 }
 
 pub fn parse_openai_sse_events(chunk: &ChatChunk) -> (Vec<StreamEvent>, Option<String>, Option<TokenUsage>) {
@@ -151,6 +153,8 @@ pub fn parse_openai_sse_events(chunk: &ChatChunk) -> (Vec<StreamEvent>, Option<S
             prompt_tokens: u.prompt_tokens,
             completion_tokens: u.completion_tokens,
             total_tokens: u.total_tokens,
+            cache_hit_tokens: u.prompt_cache_hit_tokens,
+            cache_miss_tokens: u.prompt_cache_miss_tokens,
         });
     }
 
@@ -294,6 +298,8 @@ impl ChatProvider for OpenAICompatProvider {
             prompt_tokens: u["prompt_tokens"].as_i64().map(|v| v as i32),
             completion_tokens: u["completion_tokens"].as_i64().map(|v| v as i32),
             total_tokens: u["total_tokens"].as_i64().map(|v| v as i32),
+            cache_hit_tokens: u["prompt_cache_hit_tokens"].as_i64().map(|v| v as i32),
+            cache_miss_tokens: u["prompt_cache_miss_tokens"].as_i64().map(|v| v as i32),
         });
 
         Ok(AgentResponse { text, reasoning_content, tool_calls, usage })

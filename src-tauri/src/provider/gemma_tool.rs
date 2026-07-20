@@ -574,6 +574,7 @@ impl ChatProvider for GemmaToolProvider {
             prompt_tokens: u["prompt_tokens"].as_i64().map(|v| v as i32),
             completion_tokens: u["completion_tokens"].as_i64().map(|v| v as i32),
             total_tokens: u["total_tokens"].as_i64().map(|v| v as i32),
+            ..Default::default()
         });
 
         Ok(AgentResponse {

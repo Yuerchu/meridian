@@ -100,10 +100,10 @@ fn deepseek_default() -> ProviderCapabilities {
         supports_thinking: true,
         supports_images: false,
         supports_pdf: false,
-        supports_temperature: true,
-        supports_top_p: true,
-        supports_reasoning_effort: false,
-        max_context_tokens: Some(64_000),
+        supports_temperature: false,
+        supports_top_p: false,
+        supports_reasoning_effort: true,
+        max_context_tokens: Some(128_000),
         max_output_tokens: Some(16_000),
         max_temperature: Some(2.0),
     }
@@ -233,8 +233,23 @@ static OPENAI_RULES: &[ModelRule] = &[
 ];
 
 static DEEPSEEK_RULES: &[ModelRule] = &[
+    // V4 family (thinking enabled by default, reasoning_effort supported)
+    ModelRule { prefix: "deepseek-v4-pro", patch: CapabilityPatch {
+        supports_thinking: Some(true), supports_reasoning_effort: Some(true),
+        supports_temperature: Some(false), supports_top_p: Some(false),
+        max_context_tokens: Some(Some(128_000)), max_output_tokens: Some(Some(16_000)),
+        ..P
+    }},
+    ModelRule { prefix: "deepseek-v4-flash", patch: CapabilityPatch {
+        supports_thinking: Some(true), supports_reasoning_effort: Some(true),
+        supports_temperature: Some(false), supports_top_p: Some(false),
+        max_context_tokens: Some(Some(128_000)), max_output_tokens: Some(Some(16_000)),
+        ..P
+    }},
+    // Legacy (deprecated 2026-07-24)
     ModelRule { prefix: "deepseek-reasoner", patch: CapabilityPatch {
-        supports_thinking: Some(true), supports_temperature: Some(false), supports_top_p: Some(false),
+        supports_thinking: Some(true),
+        supports_temperature: Some(false), supports_top_p: Some(false),
         max_context_tokens: Some(Some(64_000)), max_output_tokens: Some(Some(16_000)),
         ..P
     }},
@@ -326,9 +341,28 @@ mod tests {
     }
 
     #[test]
-    fn deepseek_reasoner_no_temperature() {
-        let caps = resolve("deepseek", None, "deepseek-reasoner");
+    fn deepseek_v4_pro_capabilities() {
+        let caps = resolve("deepseek", None, "deepseek-v4-pro");
         assert!(caps.supports_thinking);
+        assert!(caps.supports_reasoning_effort);
+        assert!(!caps.supports_temperature);
+        assert!(!caps.supports_top_p);
+        assert_eq!(caps.max_context_tokens, Some(128_000));
+    }
+
+    #[test]
+    fn deepseek_v4_flash_capabilities() {
+        let caps = resolve("deepseek", None, "deepseek-v4-flash");
+        assert!(caps.supports_thinking);
+        assert!(caps.supports_reasoning_effort);
+        assert!(!caps.supports_temperature);
+    }
+
+    #[test]
+    fn deepseek_unknown_model_gets_default() {
+        let caps = resolve("deepseek", None, "deepseek-future-model");
+        assert!(caps.supports_thinking);
+        assert!(caps.supports_reasoning_effort);
         assert!(!caps.supports_temperature);
     }
 

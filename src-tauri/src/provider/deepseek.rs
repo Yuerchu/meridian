@@ -22,8 +22,13 @@ impl DeepSeekProvider {
     fn serialize_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
         messages.iter().map(|m| {
             let mut msg = serde_json::json!({ "role": m.role, "content": m.content });
+            // DeepSeek requires reasoning_content only for assistant messages with
+            // tool_calls; for plain assistant replies it is ignored by the API and
+            // stripping it keeps the prefix shorter → better cache hit rate.
             if let Some(ref rc) = m.reasoning_content {
-                msg["reasoning_content"] = serde_json::json!(rc);
+                if m.tool_calls.is_some() {
+                    msg["reasoning_content"] = serde_json::json!(rc);
+                }
             }
             if let Some(ref tool_calls) = m.tool_calls {
                 msg["tool_calls"] = serde_json::json!(tool_calls.iter().map(|tc| {
@@ -188,6 +193,8 @@ impl ChatProvider for DeepSeekProvider {
             prompt_tokens: u["prompt_tokens"].as_i64().map(|v| v as i32),
             completion_tokens: u["completion_tokens"].as_i64().map(|v| v as i32),
             total_tokens: u["total_tokens"].as_i64().map(|v| v as i32),
+            cache_hit_tokens: u["prompt_cache_hit_tokens"].as_i64().map(|v| v as i32),
+            cache_miss_tokens: u["prompt_cache_miss_tokens"].as_i64().map(|v| v as i32),
         });
 
         Ok(AgentResponse { text, reasoning_content, tool_calls, usage })
