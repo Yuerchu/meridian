@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/nicr9/schemas/master/schemas/tauri/2/tauri.conf.schema.json",
   "productName": "Meridian",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "identifier": "cn.yuxiaoqiu.meridian",
   "build": {
     "frontendDist": "../dist",
