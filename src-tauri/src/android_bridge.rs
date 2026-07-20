@@ -158,6 +158,141 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnInsetsCha
     }
 }
 
+// ---- Media picker (camera / gallery) ----
+
+type MediaPickResult = Option<String>; // content:// URI, None = cancelled
+
+static MEDIA_WAITERS: OnceLock<Mutex<HashMap<i32, oneshot::Sender<MediaPickResult>>>> =
+    OnceLock::new();
+static NEXT_MEDIA_REQ: AtomicI32 = AtomicI32::new(1);
+
+fn media_waiters() -> &'static Mutex<HashMap<i32, oneshot::Sender<MediaPickResult>>> {
+    MEDIA_WAITERS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub async fn take_photo() -> Result<MediaPickResult, String> {
+    let req_id = NEXT_MEDIA_REQ.fetch_add(1, Ordering::Relaxed);
+    let (tx, rx) = oneshot::channel();
+    media_waiters().lock().unwrap().insert(req_id, tx);
+
+    let launched = with_env(|env, context| {
+        let cls = bridge_class(env, context)?;
+        env.call_static_method(
+            &cls,
+            "launchCamera",
+            "(I)Z",
+            &[JValue::Int(req_id)],
+        )?
+        .z()
+    });
+    match launched {
+        Ok(true) => {}
+        Ok(false) => {
+            media_waiters().lock().unwrap().remove(&req_id);
+            return Err("no active window to launch camera".to_string());
+        }
+        Err(e) => {
+            media_waiters().lock().unwrap().remove(&req_id);
+            return Err(e);
+        }
+    }
+
+    match tokio::time::timeout(std::time::Duration::from_secs(300), rx).await {
+        Ok(Ok(r)) => Ok(r),
+        Ok(Err(_)) => Err("camera closed unexpectedly".to_string()),
+        Err(_) => {
+            media_waiters().lock().unwrap().remove(&req_id);
+            Err("camera timed out".to_string())
+        }
+    }
+}
+
+pub async fn pick_gallery() -> Result<MediaPickResult, String> {
+    let req_id = NEXT_MEDIA_REQ.fetch_add(1, Ordering::Relaxed);
+    let (tx, rx) = oneshot::channel();
+    media_waiters().lock().unwrap().insert(req_id, tx);
+
+    let launched = with_env(|env, context| {
+        let cls = bridge_class(env, context)?;
+        env.call_static_method(
+            &cls,
+            "launchGallery",
+            "(I)Z",
+            &[JValue::Int(req_id)],
+        )?
+        .z()
+    });
+    match launched {
+        Ok(true) => {}
+        Ok(false) => {
+            media_waiters().lock().unwrap().remove(&req_id);
+            return Err("no active window to launch gallery".to_string());
+        }
+        Err(e) => {
+            media_waiters().lock().unwrap().remove(&req_id);
+            return Err(e);
+        }
+    }
+
+    match tokio::time::timeout(std::time::Duration::from_secs(300), rx).await {
+        Ok(Ok(r)) => Ok(r),
+        Ok(Err(_)) => Err("gallery picker closed unexpectedly".to_string()),
+        Err(_) => {
+            media_waiters().lock().unwrap().remove(&req_id);
+            Err("gallery picker timed out".to_string())
+        }
+    }
+}
+
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnCameraResult(
+    mut env: JNIEnv,
+    _this: JObject,
+    req_id: jint,
+    uri: JString,
+) {
+    let result: MediaPickResult = if uri.is_null() {
+        None
+    } else {
+        env.get_string(&uri).ok().map(Into::into)
+    };
+    if let Some(tx) = media_waiters().lock().unwrap().remove(&req_id) {
+        let _ = tx.send(result);
+    }
+}
+
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnGalleryResult(
+    mut env: JNIEnv,
+    _this: JObject,
+    req_id: jint,
+    uri: JString,
+) {
+    let result: MediaPickResult = if uri.is_null() {
+        None
+    } else {
+        env.get_string(&uri).ok().map(Into::into)
+    };
+    if let Some(tx) = media_waiters().lock().unwrap().remove(&req_id) {
+        let _ = tx.send(result);
+    }
+}
+
+pub fn clean_camera_cache() {
+    let _ = with_env(|env, context| {
+        let cls = bridge_class(env, context)?;
+        env.call_static_method(
+            &cls,
+            "cleanCameraCache",
+            "(Landroid/content/Context;)V",
+            &[JValue::Object(context)],
+        )?;
+        Ok(())
+    });
+}
+
 // ---- SAF directory picker ----
 
 type SafPickResult = Option<(String, String)>; // (tree_uri, display_name), None = cancelled

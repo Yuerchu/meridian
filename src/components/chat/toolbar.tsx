@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bot, ChevronDown, Cpu, Check, Star, Lightbulb, RefreshCw } from 'lucide-react'
+import { Bot, ChevronDown, ChevronLeft, ChevronRight, Cpu, Check, Star, Lightbulb, RefreshCw, Plus, Camera, ImageIcon, Paperclip } from 'lucide-react'
 import { ModelIcon } from '@lobehub/icons'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
+import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
@@ -264,5 +265,251 @@ export function Toolbar(props: ToolbarProps) {
         </>
       )}
     </div>
+  )
+}
+
+// ---- Mobile bottom-sheet options menu ----
+
+export interface MobileOptionsMenuProps extends ToolbarProps {
+  onTakePhoto: () => void
+  onPickGallery: () => void
+  onPickFile: () => void
+  supportsImages: boolean
+}
+
+type MobilePanel = 'main' | 'assistant' | 'model' | 'thinking'
+
+export function MobileOptionsMenu({
+  assistants,
+  providers,
+  currentAssistantId,
+  currentModelId,
+  currentProviderId,
+  onSelectAssistant,
+  onSelectModel,
+  thinkingLevel,
+  onSelectThinkingLevel,
+  capabilities,
+  onTakePhoto,
+  onPickGallery,
+  onPickFile,
+  supportsImages,
+}: MobileOptionsMenuProps) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const [panel, setPanel] = useState<MobilePanel>('main')
+  const [groups, setGroups] = useState<GroupedModels[]>([])
+  const [loadingModels, setLoadingModels] = useState(false)
+  const modelsLoaded = groups.length > 0
+
+  const currentAssistant = assistants.find((a) => a.id === currentAssistantId)
+  const supportsThinking = capabilities?.supports_thinking !== false
+  const supportsReasoningEffort = capabilities?.supports_reasoning_effort !== false
+  const levels = supportsReasoningEffort
+    ? THINKING_LEVELS
+    : THINKING_LEVELS.filter((l) => l.id === 'default' || l.id === 'off')
+  const thinkingLabel = thinkingLevel === 'default'
+    ? t('toolbar.thinking.default')
+    : t(`toolbar.thinking.${thinkingLevel}`)
+
+  const close = useCallback(() => {
+    setOpen(false)
+    setTimeout(() => setPanel('main'), 200)
+  }, [])
+
+  const handleAction = useCallback((action: () => void) => {
+    close()
+    action()
+  }, [close])
+
+  useEffect(() => {
+    if (panel !== 'model' || modelsLoaded) return
+    setLoadingModels(true)
+    Promise.allSettled(
+      providers.filter((p) => p.is_enabled).map(async (p) => ({
+        provider: p,
+        models: await api.fetchProviderModels(p.id, false),
+      })),
+    ).then((results) => {
+      setGroups(
+        results
+          .filter((r): r is PromiseFulfilledResult<GroupedModels> => r.status === 'fulfilled')
+          .map((r) => r.value)
+          .filter((g) => g.models.length > 0),
+      )
+      setLoadingModels(false)
+    })
+  }, [panel, modelsLoaded, providers])
+
+  const itemCls = 'flex items-center gap-3 w-full px-4 py-2.5 text-sm text-foreground active:bg-accent transition-colors'
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => {
+      setOpen(o)
+      if (!o) setTimeout(() => setPanel('main'), 200)
+    }}>
+      <SheetTrigger className="inline-flex items-center justify-center rounded-md p-1 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors touch-hitbox">
+        <Plus className="w-4 h-4" />
+      </SheetTrigger>
+      <SheetContent side="bottom" showCloseButton={false} className="pb-[max(1rem,env(safe-area-inset-bottom))] max-h-[70vh]">
+        {panel === 'main' && (
+          <div className="flex flex-col">
+            {supportsImages && (
+              <>
+                <button className={itemCls} onClick={() => handleAction(onTakePhoto)}>
+                  <Camera className="w-4 h-4 text-muted-foreground" />
+                  {t('chat.takePhoto')}
+                </button>
+                <button className={itemCls} onClick={() => handleAction(onPickGallery)}>
+                  <ImageIcon className="w-4 h-4 text-muted-foreground" />
+                  {t('chat.pickFromGallery')}
+                </button>
+              </>
+            )}
+            <button className={itemCls} onClick={() => handleAction(onPickFile)}>
+              <Paperclip className="w-4 h-4 text-muted-foreground" />
+              {t('chat.attachFile')}
+            </button>
+            <div className="h-px bg-border mx-4 my-1" />
+            <button className={cn(itemCls, 'justify-between')} onClick={() => setPanel('assistant')}>
+              <span className="flex items-center gap-3">
+                <Bot className="w-4 h-4 text-muted-foreground" />
+                <span>{currentAssistant?.name ?? t('toolbar.noAssistant')}</span>
+              </span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </button>
+            <button className={cn(itemCls, 'justify-between')} onClick={() => setPanel('model')}>
+              <span className="flex items-center gap-3">
+                {currentModelId
+                  ? <ModelIcon model={currentModelId} size={16} />
+                  : <Cpu className="w-4 h-4 text-muted-foreground" />}
+                <span className="truncate max-w-[200px]">{currentModelId ?? t('toolbar.selectModel')}</span>
+              </span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </button>
+            {supportsThinking && (
+              <button className={cn(itemCls, 'justify-between')} onClick={() => setPanel('thinking')}>
+                <span className="flex items-center gap-3">
+                  <Lightbulb className={cn('w-4 h-4', thinkingLevel !== 'default' && thinkingLevel !== 'off' ? 'text-blue-400' : 'text-muted-foreground')} />
+                  <span>{t('toolbar.thinking')}: {thinkingLabel}</span>
+                </span>
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {panel === 'assistant' && (
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+              <button className="p-1 rounded-md hover:bg-accent" onClick={() => setPanel('main')}>
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm font-medium">{t('toolbar.noAssistant').replace(/^No /, 'Select ')}</span>
+            </div>
+            <ScrollArea className="max-h-[50vh]">
+              {assistants.map((a) => (
+                <button
+                  key={a.id}
+                  className={cn(itemCls, a.id === currentAssistantId && 'bg-accent')}
+                  onClick={() => { onSelectAssistant(a.id); close() }}
+                >
+                  {a.is_default === 1 && <Star className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="currentColor" />}
+                  <span className="flex-1 truncate">{a.name}</span>
+                  {a.id === currentAssistantId && <Check className="w-4 h-4 text-muted-foreground" />}
+                </button>
+              ))}
+            </ScrollArea>
+          </div>
+        )}
+
+        {panel === 'model' && (
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+              <button className="p-1 rounded-md hover:bg-accent" onClick={() => setPanel('main')}>
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm font-medium flex-1">{t('toolbar.models')}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => {
+                  setLoadingModels(true)
+                  setGroups([])
+                  Promise.allSettled(
+                    providers.filter((p) => p.is_enabled).map(async (p) => ({
+                      provider: p,
+                      models: await api.fetchProviderModels(p.id, true),
+                    })),
+                  ).then((results) => {
+                    setGroups(
+                      results
+                        .filter((r): r is PromiseFulfilledResult<GroupedModels> => r.status === 'fulfilled')
+                        .map((r) => r.value)
+                        .filter((g) => g.models.length > 0),
+                    )
+                    setLoadingModels(false)
+                  })
+                }}
+                disabled={loadingModels}
+              >
+                <RefreshCw className={cn('w-3.5 h-3.5', loadingModels && 'animate-spin')} />
+              </Button>
+            </div>
+            <ScrollArea className="max-h-[50vh]">
+              {loadingModels && <div className="px-4 py-3 text-xs text-muted-foreground">{t('toolbar.loadingModels')}</div>}
+              {groups.map((g) => (
+                <div key={g.provider.id}>
+                  <div className="px-4 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                    {g.provider.name}
+                  </div>
+                  {g.models.map((m) => (
+                    <button
+                      key={`${g.provider.id}-${m.id}`}
+                      className={cn(
+                        itemCls,
+                        m.id === currentModelId && g.provider.id === currentProviderId && 'bg-accent',
+                      )}
+                      onClick={() => { onSelectModel(m.id, g.provider.id); close() }}
+                    >
+                      <ModelIcon model={m.id} size={16} className="flex-shrink-0" />
+                      <span className="flex-1 truncate">{m.name}</span>
+                      {m.id === currentModelId && g.provider.id === currentProviderId && (
+                        <Check className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              ))}
+              {!loadingModels && groups.length === 0 && (
+                <div className="px-4 py-3 text-xs text-muted-foreground">{t('toolbar.noModels')}</div>
+              )}
+            </ScrollArea>
+          </div>
+        )}
+
+        {panel === 'thinking' && (
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+              <button className="p-1 rounded-md hover:bg-accent" onClick={() => setPanel('main')}>
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <span className="text-sm font-medium">{t('toolbar.thinking')}</span>
+            </div>
+            {levels.map((level) => (
+              <button
+                key={level.id}
+                className={cn(itemCls, 'justify-between', level.id === thinkingLevel && 'bg-accent')}
+                onClick={() => { onSelectThinkingLevel(level.id); close() }}
+              >
+                <span>{t(level.labelKey)}</span>
+                <span className="text-xs text-muted-foreground">{t(level.descKey)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </SheetContent>
+    </Sheet>
   )
 }

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowUp, Square, Paperclip, X as XIcon, Scissors, Copy, ClipboardPaste, TextSelect } from 'lucide-react'
 import { api } from '@/api'
+import { usePlatform } from '@/hooks/use-platform'
 import { Button } from '@/components/ui/button'
 import {
   ContextMenu,
@@ -29,7 +30,7 @@ import {
 import CountUp from '@/components/CountUp'
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { usePrevious } from '@/hooks/use-previous'
-import { Toolbar } from './toolbar'
+import { Toolbar, MobileOptionsMenu } from './toolbar'
 import { EmojiPicker } from './emoji-picker'
 import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
@@ -92,6 +93,8 @@ export function InputBar({
   onRemoveFile,
 }: InputBarProps) {
   const { t } = useTranslation()
+  const platform = usePlatform()
+  const isAndroid = platform === 'android'
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const prevTokens = usePrevious(contextInfo?.estimatedTokens ?? 0)
   const [selectedText, setSelectedText] = useState('')
@@ -170,6 +173,35 @@ export function InputBar({
     [disabled, value, onSubmit],
   )
 
+  const handleTakePhoto = useCallback(async () => {
+    const uri = await api.takePhoto()
+    if (uri && onAttachFiles) {
+      const name = await api.resolveFileName(uri).catch(() => 'photo.jpg')
+      onAttachFiles([{ path: uri, name }])
+    }
+  }, [onAttachFiles])
+
+  const handlePickGallery = useCallback(async () => {
+    const uri = await api.pickGalleryImage()
+    if (uri && onAttachFiles) {
+      const name = await api.resolveFileName(uri).catch(() => 'image.jpg')
+      onAttachFiles([{ path: uri, name }])
+    }
+  }, [onAttachFiles])
+
+  const handlePickFile = useCallback(async () => {
+    const paths = await open({ multiple: true })
+    if (paths && onAttachFiles) {
+      const files = await Promise.all(
+        (Array.isArray(paths) ? paths : [paths]).map(async (p) => ({
+          path: p,
+          name: await api.resolveFileName(p).catch(() => p.replace(/\\/g, '/').split('/').pop() ?? 'file'),
+        }))
+      )
+      onAttachFiles(files)
+    }
+  }, [onAttachFiles])
+
   return (
     <div className="px-4 pb-[max(1rem,var(--safe-bottom))] pt-2">
       <div className="max-w-2xl mx-auto">
@@ -215,37 +247,45 @@ export function InputBar({
           />
           <InputGroupAddon align="block-end" className="px-2 pb-2 pt-0">
             <div className="flex items-center justify-between w-full gap-1">
-              <Toolbar
-                assistants={assistants}
-                providers={providers}
-                currentAssistantId={currentAssistantId}
-                currentModelId={currentModelId}
-                currentProviderId={currentProviderId}
-                onSelectAssistant={onSelectAssistant}
-                onSelectModel={onSelectModel}
-                thinkingLevel={thinkingLevel}
-                onSelectThinkingLevel={onSelectThinkingLevel}
-                capabilities={capabilities}
-              />
+              {isAndroid ? (
+                <MobileOptionsMenu
+                  assistants={assistants}
+                  providers={providers}
+                  currentAssistantId={currentAssistantId}
+                  currentModelId={currentModelId}
+                  currentProviderId={currentProviderId}
+                  onSelectAssistant={onSelectAssistant}
+                  onSelectModel={onSelectModel}
+                  thinkingLevel={thinkingLevel}
+                  onSelectThinkingLevel={onSelectThinkingLevel}
+                  capabilities={capabilities}
+                  onTakePhoto={handleTakePhoto}
+                  onPickGallery={handlePickGallery}
+                  onPickFile={handlePickFile}
+                  supportsImages={capabilities?.supports_images !== false}
+                />
+              ) : (
+                <Toolbar
+                  assistants={assistants}
+                  providers={providers}
+                  currentAssistantId={currentAssistantId}
+                  currentModelId={currentModelId}
+                  currentProviderId={currentProviderId}
+                  onSelectAssistant={onSelectAssistant}
+                  onSelectModel={onSelectModel}
+                  thinkingLevel={thinkingLevel}
+                  onSelectThinkingLevel={onSelectThinkingLevel}
+                  capabilities={capabilities}
+                />
+              )}
               <div className="flex items-center gap-2 shrink-0">
-                {onAttachFiles && capabilities?.supports_images !== false && (
+                {!isAndroid && onAttachFiles && capabilities?.supports_images !== false && (
                   <Button
                     variant="ghost"
                     size="icon-xs"
                     className="text-muted-foreground hover:text-foreground"
                     title={t('chat.attach')}
-                    onClick={async () => {
-                      const paths = await open({ multiple: true })
-                      if (paths) {
-                        const files = await Promise.all(
-                          (Array.isArray(paths) ? paths : [paths]).map(async (p) => ({
-                            path: p,
-                            name: await api.resolveFileName(p).catch(() => p.replace(/\\/g, '/').split('/').pop() ?? 'file'),
-                          }))
-                        )
-                        onAttachFiles(files)
-                      }
-                    }}
+                    onClick={handlePickFile}
                   >
                     <Paperclip className="w-4 h-4" />
                   </Button>

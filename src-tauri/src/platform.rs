@@ -172,6 +172,34 @@ pub async fn list_saf_roots(app: tauri::AppHandle) -> Result<Vec<SafRootEntry>, 
     }
 }
 
+/// Launch the device camera to take a photo. Returns the content:// URI of the
+/// captured image, or None if the user cancelled.
+#[tauri::command]
+pub async fn take_photo() -> Result<Option<String>, String> {
+    #[cfg(target_os = "android")]
+    {
+        crate::android_bridge::take_photo().await
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("only available on Android".to_string())
+    }
+}
+
+/// Launch the system photo picker. Returns the content:// URI of the selected
+/// image, or None if the user cancelled.
+#[tauri::command]
+pub async fn pick_gallery_image() -> Result<Option<String>, String> {
+    #[cfg(target_os = "android")]
+    {
+        crate::android_bridge::pick_gallery().await
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        Err("only available on Android".to_string())
+    }
+}
+
 /// Resolve the display name of a file path or content:// URI.
 /// On Android, content:// URIs are resolved via the ContentResolver.
 #[tauri::command]

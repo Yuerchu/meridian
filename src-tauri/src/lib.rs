@@ -244,6 +244,11 @@ pub fn run() {
             app.manage(EditSessions(Mutex::new(HashMap::new())));
             app.manage(AppMcp(Arc::new(Mutex::new(mcp::McpManager::new()))));
 
+            #[cfg(target_os = "android")]
+            {
+                std::thread::spawn(|| android_bridge::clean_camera_cache());
+            }
+
             #[cfg(not(target_os = "android"))]
             {
                 let handle = app.handle().clone();
@@ -377,6 +382,8 @@ pub fn run() {
             platform::pick_saf_directory,
             platform::list_saf_roots,
             platform::remove_saf_root,
+            platform::take_photo,
+            platform::pick_gallery_image,
             platform::resolve_file_name,
             #[cfg(not(target_os = "android"))]
             commands::onebot::get_onebot_status,

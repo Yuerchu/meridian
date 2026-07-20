@@ -1,14 +1,19 @@
 package cn.yuxiaoqiu.meridian
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.documentfile.provider.DocumentFile
+import java.io.File
 
 class MainActivity : TauriActivity() {
   companion object {
@@ -21,8 +26,20 @@ class MainActivity : TauriActivity() {
   private lateinit var safLauncher: ActivityResultLauncher<Intent>
   private var pendingSafReq: Int = -1
 
+  private lateinit var cameraLauncher: ActivityResultLauncher<Uri>
+  private var pendingCameraReq: Int = -1
+  private var pendingCameraUri: Uri? = null
+
+  private lateinit var galleryLauncher: ActivityResultLauncher<PickVisualMediaRequest>
+  private var pendingGalleryReq: Int = -1
+
+  private lateinit var cameraPermLauncher: ActivityResultLauncher<String>
+  private var pendingCameraPermReq: Int = -1
+
   private external fun initNdkContext(context: android.content.Context)
   external fun nativeOnSafResult(reqId: Int, uri: String?, name: String?)
+  external fun nativeOnCameraResult(reqId: Int, uri: String?)
+  external fun nativeOnGalleryResult(reqId: Int, uri: String?)
   private external fun nativeOnInsetsChanged(
     top: Float, right: Float, bottom: Float, left: Float, imeBottom: Float)
 
@@ -32,6 +49,10 @@ class MainActivity : TauriActivity() {
     super.onCreate(savedInstanceState)
     instance = this
     pendingSafReq = savedInstanceState?.getInt("pendingSafReq", -1) ?: -1
+    pendingCameraReq = savedInstanceState?.getInt("pendingCameraReq", -1) ?: -1
+    pendingCameraUri = savedInstanceState?.getString("pendingCameraUri")?.let { Uri.parse(it) }
+    pendingGalleryReq = savedInstanceState?.getInt("pendingGalleryReq", -1) ?: -1
+    pendingCameraPermReq = savedInstanceState?.getInt("pendingCameraPermReq", -1) ?: -1
 
     safLauncher = registerForActivityResult(
       ActivityResultContracts.StartActivityForResult()
@@ -59,12 +80,57 @@ class MainActivity : TauriActivity() {
       }
     }
 
+    cameraLauncher = registerForActivityResult(
+      ActivityResultContracts.TakePicture()
+    ) { success ->
+      val reqId = pendingCameraReq
+      val uri = pendingCameraUri
+      pendingCameraReq = -1
+      pendingCameraUri = null
+      if (reqId < 0) return@registerForActivityResult
+      if (success && uri != null) {
+        nativeOnCameraResult(reqId, uri.toString())
+      } else {
+        nativeOnCameraResult(reqId, null)
+      }
+    }
+
+    galleryLauncher = registerForActivityResult(
+      ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+      val reqId = pendingGalleryReq
+      pendingGalleryReq = -1
+      if (reqId < 0) return@registerForActivityResult
+      if (uri != null) {
+        nativeOnGalleryResult(reqId, uri.toString())
+      } else {
+        nativeOnGalleryResult(reqId, null)
+      }
+    }
+
+    cameraPermLauncher = registerForActivityResult(
+      ActivityResultContracts.RequestPermission()
+    ) { granted ->
+      val reqId = pendingCameraPermReq
+      pendingCameraPermReq = -1
+      if (reqId < 0) return@registerForActivityResult
+      if (granted) {
+        launchCamera(reqId)
+      } else {
+        nativeOnCameraResult(reqId, null)
+      }
+    }
+
     setupInsetsListener()
   }
 
   override fun onSaveInstanceState(outState: Bundle) {
     super.onSaveInstanceState(outState)
     outState.putInt("pendingSafReq", pendingSafReq)
+    outState.putInt("pendingCameraReq", pendingCameraReq)
+    outState.putString("pendingCameraUri", pendingCameraUri?.toString())
+    outState.putInt("pendingGalleryReq", pendingGalleryReq)
+    outState.putInt("pendingCameraPermReq", pendingCameraPermReq)
   }
 
   override fun onDestroy() {
@@ -82,6 +148,35 @@ class MainActivity : TauriActivity() {
           or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION
       )
       safLauncher.launch(intent)
+    }
+  }
+
+  private fun launchCamera(reqId: Int) {
+    val file = File(cacheDir, "camera_${System.currentTimeMillis()}.jpg")
+    val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+    pendingCameraReq = reqId
+    pendingCameraUri = uri
+    cameraLauncher.launch(uri)
+  }
+
+  fun launchCameraWithPermission(reqId: Int) {
+    runOnUiThread {
+      if (checkSelfPermission(android.Manifest.permission.CAMERA)
+          == PackageManager.PERMISSION_GRANTED) {
+        launchCamera(reqId)
+      } else {
+        pendingCameraPermReq = reqId
+        cameraPermLauncher.launch(android.Manifest.permission.CAMERA)
+      }
+    }
+  }
+
+  fun launchGallery(reqId: Int) {
+    runOnUiThread {
+      pendingGalleryReq = reqId
+      galleryLauncher.launch(PickVisualMediaRequest(
+        ActivityResultContracts.PickVisualMedia.ImageOnly
+      ))
     }
   }
 

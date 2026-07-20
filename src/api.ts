@@ -230,6 +230,12 @@ export const api = {
   removeSafRoot: (uri: string) =>
     invoke<SafRootEntry[]>('remove_saf_root', { uri }),
 
+  takePhoto: () =>
+    invoke<string | null>('take_photo'),
+
+  pickGalleryImage: () =>
+    invoke<string | null>('pick_gallery_image'),
+
   resolveFileName: (path: string) =>
     invoke<string>('resolve_file_name', { path }),
 

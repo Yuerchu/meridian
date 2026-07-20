@@ -63,6 +63,30 @@ object FileBridge {
   }
 
   @JvmStatic
+  fun launchCamera(reqId: Int): Boolean {
+    val activity = MainActivity.instance ?: return false
+    activity.launchCameraWithPermission(reqId)
+    return true
+  }
+
+  @JvmStatic
+  fun launchGallery(reqId: Int): Boolean {
+    val activity = MainActivity.instance ?: return false
+    activity.launchGallery(reqId)
+    return true
+  }
+
+  @JvmStatic
+  fun cleanCameraCache(context: Context) {
+    val cutoff = System.currentTimeMillis() - 24 * 3600 * 1000
+    context.cacheDir.listFiles()?.forEach { f ->
+      if (f.name.startsWith("camera_") && f.lastModified() < cutoff) {
+        f.delete()
+      }
+    }
+  }
+
+  @JvmStatic
   fun persistedTreeUris(context: Context): String {
     val arr = JSONArray()
     for (p in context.contentResolver.persistedUriPermissions) {
