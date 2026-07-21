@@ -211,7 +211,7 @@ export function InputBar({
           {attachedFiles.length > 0 && (
             <AttachmentGroup className="px-3 pt-2.5">
               {attachedFiles.map((f, i) => (
-                <Attachment key={i} size="xs" state="done">
+                <Attachment key={i} state="done">
                   <AttachmentMedia>
                     <Paperclip />
                   </AttachmentMedia>
@@ -282,7 +282,7 @@ export function InputBar({
                 {!isAndroid && onAttachFiles && capabilities?.supports_images !== false && (
                   <Button
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon"
                     className="text-muted-foreground hover:text-foreground"
                     title={t('chat.attach')}
                     onClick={handlePickFile}

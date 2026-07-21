@@ -86,7 +86,7 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
         value={name}
         onChange={(e) => setName(e.target.value)}
         placeholder={t('sidebar.projectName')}
-        className="h-7 text-xs"
+        className="text-xs"
         autoFocus
         onKeyDown={(e) => {
           if (e.key === 'Enter' && name.trim() && path.trim()) onSubmit(name.trim(), path.trim())
@@ -96,7 +96,6 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
       <Button
         type="button"
         variant="outline"
-        size="sm"
         onClick={handleBrowse}
         className="w-full justify-start text-xs"
       >
@@ -108,14 +107,13 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
       <div className="flex gap-1">
         <Button
           variant="secondary"
-          size="xs"
           onClick={() => name.trim() && path.trim() && onSubmit(name.trim(), path.trim())}
           disabled={!name.trim() || !path.trim()}
           className="flex-1"
         >
           {t('common.save')}
         </Button>
-        <Button variant="ghost" size="xs" onClick={onCancel}>
+        <Button variant="ghost" onClick={onCancel}>
           ✕
         </Button>
       </div>
@@ -276,9 +274,9 @@ export function AppSidebar({
             <span>{t('sidebar.projects')}</span>
             <Button
               variant="ghost"
-              size="icon-xs"
+              size="icon"
               onClick={() => setShowNewProject(true)}
-              className="ml-auto size-5 text-muted-foreground"
+              className="ml-auto text-muted-foreground"
             >
               <FolderPlus />
             </Button>

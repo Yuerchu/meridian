@@ -83,7 +83,7 @@ export function EmojiPicker({
         render={
           <Button
             variant="ghost"
-            size="icon-sm"
+            size="icon"
             title={t('chat.emoji')}
           />
         }
@@ -98,7 +98,7 @@ export function EmojiPicker({
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
               placeholder={t('chat.emojiSearch')}
-              className="pl-7 h-7 text-xs"
+              className="pl-7 text-xs"
             />
           </div>
         </div>

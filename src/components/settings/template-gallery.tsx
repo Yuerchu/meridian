@@ -60,14 +60,13 @@ function TemplateCard({
           </ScrollArea>
           <div className="flex items-center gap-2 pt-1">
             {onApply && (
-              <Button size="sm" onClick={() => onApply(template.template_text)}>
+              <Button onClick={() => onApply(template.template_text)}>
                 {t('settings.template.apply')}
               </Button>
             )}
             {onDelete && template.is_builtin === 0 && (
               <Button
                 variant="ghost"
-                size="sm"
                 className="ml-auto text-destructive hover:text-destructive"
                 onClick={() => onDelete(template.id)}
               >
@@ -131,7 +130,7 @@ function TemplateCreator({
         rows={4}
         className="resize-none font-mono text-xs"
       />
-      <Button size="sm" onClick={handleCreate} disabled={!name.trim() || !text.trim()}>
+      <Button onClick={handleCreate} disabled={!name.trim() || !text.trim()}>
         {t('common.save')}
       </Button>
     </div>
@@ -179,7 +178,7 @@ export function TemplateGallery({
           <h2 className="text-lg font-medium">{t('settings.template.title')}</h2>
           <p className="text-xs text-muted-foreground mt-1">{t('settings.template.subtitle')}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => setShowCreate(!showCreate)}>
+        <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
           <Plus className="w-3.5 h-3.5" />
           {t('settings.template.new')}
         </Button>

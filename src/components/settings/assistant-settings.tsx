@@ -119,8 +119,7 @@ function AssistantEditor({
           <label className="block text-[11px] text-muted-foreground">{t('settings.assistant.systemPrompt')}</label>
           <Button
             variant="ghost"
-            size="sm"
-            className="h-6 text-[11px] gap-1"
+            className="text-[11px] gap-1"
             onClick={() => setShowTemplates(!showTemplates)}
           >
             <BookTemplate className="w-3 h-3" />
@@ -156,7 +155,6 @@ function AssistantEditor({
               <Button
                 key={v.name}
                 variant="outline"
-                size="xs"
                 className="text-[10px] px-1.5 py-0.5 bg-accent/50 text-muted-foreground hover:bg-accent font-mono"
                 onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
                 title={v.description_en}
@@ -275,17 +273,17 @@ function AssistantEditor({
         <label className="block text-[11px] text-muted-foreground">{t('settings.assistant.tools')}</label>
         <div className="flex gap-2 mb-2">
           <Button
-            size="sm" variant={toolMode === 'all' ? 'default' : 'outline'}
+            variant={toolMode === 'all' ? 'default' : 'outline'}
             onClick={() => setToolMode('all')}
           >{t('settings.assistant.toolsAll')}</Button>
           {toolPresets.length > 0 && (
             <Button
-              size="sm" variant={toolMode === 'preset' ? 'default' : 'outline'}
+              variant={toolMode === 'preset' ? 'default' : 'outline'}
               onClick={() => setToolMode('preset')}
             >{t('settings.tools.preset')}</Button>
           )}
           <Button
-            size="sm" variant={toolMode === 'custom' ? 'default' : 'outline'}
+            variant={toolMode === 'custom' ? 'default' : 'outline'}
             onClick={() => setToolMode('custom')}
           >{t('settings.assistant.toolsCustom')}</Button>
         </div>
@@ -358,14 +356,14 @@ function AssistantEditor({
       )}
 
       <div className="flex items-center gap-2 pt-1">
-        <Button size="sm" onClick={handleSave}>{t('common.save')}</Button>
+        <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
           <span className="flex items-center gap-1 text-[11px] text-green-400">
             <Check className="w-3 h-3" /> {t('common.saved')}
           </span>
         )}
         {onDelete && (
-          <Button variant="ghost" size="sm" className="ml-auto text-destructive hover:text-destructive" onClick={() => onDelete(assistant.id)}>
+          <Button variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={() => onDelete(assistant.id)}>
             {t('common.delete')}
           </Button>
         )}
@@ -428,7 +426,7 @@ export function AssistantSettings() {
           <h2 className="text-lg font-medium">{t('settings.assistant.title')}</h2>
           <p className="text-xs text-muted-foreground mt-1">{t('settings.assistant.subtitle')}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleCreate}>
+        <Button variant="outline" onClick={handleCreate}>
           <Plus className="w-3.5 h-3.5" />
           {t('settings.assistant.new')}
         </Button>

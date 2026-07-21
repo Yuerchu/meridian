@@ -102,7 +102,7 @@ export function MemorySettings() {
             <span className="text-sm text-muted-foreground">
               {memories.length} {memories.length === 1 ? 'memory' : 'memories'}
             </span>
-            <Button variant="secondary" size="sm" onClick={() => setShowAdd(true)}>
+            <Button variant="secondary" onClick={() => setShowAdd(true)}>
               <Plus />
               {t('settings.memory.add')}
             </Button>
@@ -136,12 +136,12 @@ export function MemorySettings() {
                   </SelectContent>
                 </Select>
                 <div className="flex-1" />
-                <Button variant="ghost" size="icon-xs" onClick={() => setShowAdd(false)}>
+                <Button variant="ghost" size="icon" onClick={() => setShowAdd(false)}>
                   <X />
                 </Button>
                 <Button
                   variant="secondary"
-                  size="icon-xs"
+                  size="icon"
                   onClick={handleAdd}
                   disabled={!newKey.trim() || !newContent.trim()}
                 >
@@ -181,10 +181,10 @@ export function MemorySettings() {
                       </SelectContent>
                     </Select>
                     <div className="flex-1" />
-                    <Button variant="ghost" size="icon-xs" onClick={() => setEditingId(null)}>
+                    <Button variant="ghost" size="icon" onClick={() => setEditingId(null)}>
                       <X />
                     </Button>
-                    <Button variant="secondary" size="icon-xs" onClick={() => handleSaveEdit(m.id)}>
+                    <Button variant="secondary" size="icon" onClick={() => handleSaveEdit(m.id)}>
                       <Check />
                     </Button>
                   </div>
@@ -195,10 +195,10 @@ export function MemorySettings() {
                     <span className="text-sm font-medium text-foreground">{m.key}</span>
                     <span className="text-xs px-1.5 py-0.5 bg-muted rounded text-muted-foreground">{m.memory_type}</span>
                     <div className="flex-1" />
-                    <Button variant="ghost" size="icon-xs" onClick={() => startEdit(m)}>
+                    <Button variant="ghost" size="icon" onClick={() => startEdit(m)}>
                       <Pencil />
                     </Button>
-                    <Button variant="ghost" size="icon-xs" onClick={() => handleDelete(m.id)}>
+                    <Button variant="ghost" size="icon" onClick={() => handleDelete(m.id)}>
                       <Trash2 className="text-destructive" />
                     </Button>
                   </div>

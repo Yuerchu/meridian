@@ -83,7 +83,6 @@ function QuestionBlock({
         <span className="text-sm text-muted-foreground line-through">{q.question}</span>
         <Button
           variant="ghost"
-          size="xs"
           onClick={() => onUnskip(q.id)}
           className="text-[11px] text-muted-foreground shrink-0 ml-2"
         >
@@ -100,7 +99,6 @@ function QuestionBlock({
         <div className="text-sm text-foreground font-medium">{q.question}</div>
         <Button
           variant="ghost"
-          size="xs"
           onClick={() => onSkip(q.id)}
           className="text-[11px] text-muted-foreground shrink-0 mt-0.5"
         >
@@ -234,9 +232,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
           ))}
           <div className="pt-1">
             <Button
-              size="sm"
               variant="default"
-              className="h-7 text-xs"
               onClick={handleSubmit}
               disabled={!canSubmit}
             >
@@ -278,14 +274,13 @@ function PendingApproval({ callId }: { callId: string }) {
   if (!showFeedback) {
     return (
       <div className="flex gap-2 px-3 py-2 border-t border-border bg-muted/10">
-        <Button size="sm" variant="default" className="h-7 text-xs" onClick={() => { setApproved(true); api.approveToolCall(callId) }}>
+        <Button variant="default" onClick={() => { setApproved(true); api.approveToolCall(callId) }}>
           <Check className="w-3 h-3" />
           {t('chat.tool.allow')}
         </Button>
         <Button
-          size="sm"
           variant="outline"
-          className="h-7 text-xs text-destructive hover:text-destructive"
+          className="text-destructive hover:text-destructive"
           onClick={() => setShowFeedback(true)}
         >
           <X className="w-3 h-3" />
@@ -308,15 +303,14 @@ function PendingApproval({ callId }: { callId: string }) {
       />
       <div className="flex gap-2">
         <Button
-          size="sm"
           variant="outline"
-          className="h-7 text-xs text-destructive hover:text-destructive"
+          className="text-destructive hover:text-destructive"
           onClick={() => api.denyToolCall(callId, feedback || undefined)}
         >
           <X className="w-3 h-3" />
           {feedback.trim() ? t('chat.tool.denyWithReason') : t('chat.tool.deny')}
         </Button>
-        <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowFeedback(false)}>
+        <Button variant="ghost" onClick={() => setShowFeedback(false)}>
           {t('chat.tool.cancel')}
         </Button>
       </div>

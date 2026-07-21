@@ -126,7 +126,7 @@ function ProviderEditor({
       )}
 
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={handleSave}>{t('common.save')}</Button>
+        <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
           <span className="flex items-center gap-1 text-[11px] text-green-400">
             <Check className="w-3 h-3" /> {t('common.saved')}
@@ -144,7 +144,7 @@ function ProviderEditor({
             placeholder={hasKey ? t('settings.provider.apiKeyPlaceholderSet') : t('settings.provider.apiKeyPlaceholder')}
             className="flex-1"
           />
-          <Button variant="outline" size="sm" onClick={handleSaveKey} disabled={!apiKey.trim()}>
+          <Button variant="outline" onClick={handleSaveKey} disabled={!apiKey.trim()}>
             <Key className="w-3 h-3" />
             {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
           </Button>
@@ -157,7 +157,7 @@ function ProviderEditor({
       <div className="border-t border-border pt-4 space-y-3">
         <div className="flex items-center justify-between">
           <label className="text-[11px] text-muted-foreground">{t('settings.provider.models')}</label>
-          <Button variant="outline" size="sm" onClick={handleFetchModels} disabled={fetchingModels || !hasKey}>
+          <Button variant="outline" onClick={handleFetchModels} disabled={fetchingModels || !hasKey}>
             <RefreshCw className={cn("w-3 h-3", fetchingModels && "animate-spin")} />
             {t('settings.provider.fetchModels')}
           </Button>
@@ -180,7 +180,7 @@ function ProviderEditor({
       </div>
 
       <div className="border-t border-border pt-4">
-        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => onDelete(provider.id)}>
+        <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => onDelete(provider.id)}>
           <Trash2 className="w-3 h-3" />
           {t('settings.provider.deleteProvider')}
         </Button>

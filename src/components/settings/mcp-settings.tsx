@@ -69,8 +69,8 @@ function JsonImportDialog({
         <p className="text-sm text-destructive">{t('settings.mcp.importJsonError')}</p>
       )}
       <div className="flex gap-2">
-        <Button size="sm" onClick={handleSubmit}>{t('settings.mcp.importJsonSubmit')}</Button>
-        <Button size="sm" variant="outline" onClick={onCancel}>{t('settings.mcp.importJsonCancel')}</Button>
+        <Button onClick={handleSubmit}>{t('settings.mcp.importJsonSubmit')}</Button>
+        <Button variant="outline" onClick={onCancel}>{t('settings.mcp.importJsonCancel')}</Button>
       </div>
     </div>
   )
@@ -221,16 +221,16 @@ function McpServerEditor({
       )}
 
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={handleSave}>
+        <Button onClick={handleSave}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {connected ? (
-          <Button size="sm" variant="outline" onClick={handleDisconnect}>
+          <Button variant="outline" onClick={handleDisconnect}>
             <PlugZap className="w-3.5 h-3.5 mr-1.5" />
             {t('settings.mcp.disconnect')}
           </Button>
         ) : (
-          <Button size="sm" variant="outline" onClick={handleConnect} disabled={connecting}>
+          <Button variant="outline" onClick={handleConnect} disabled={connecting}>
             <Plug className="w-3.5 h-3.5 mr-1.5" />
             {connecting ? t('common.loading') : t('settings.mcp.connect')}
           </Button>
@@ -258,7 +258,7 @@ function McpServerEditor({
       )}
 
       <div className="pt-4 border-t border-border">
-        <Button size="sm" variant="destructive" onClick={() => onDelete(server.id)}>
+        <Button variant="destructive" onClick={() => onDelete(server.id)}>
           <Trash2 className="w-3.5 h-3.5 mr-1.5" />
           {t('settings.mcp.deleteServer')}
         </Button>
@@ -341,10 +341,10 @@ export function McpSettings() {
 
   const headerActions = (
     <div className="flex items-center gap-1">
-      <Button size="sm" variant="outline" onClick={() => setShowImport(true)} title={t('settings.mcp.importJson')}>
+      <Button variant="outline" onClick={() => setShowImport(true)} title={t('settings.mcp.importJson')}>
         <ClipboardPaste className="w-4 h-4" />
       </Button>
-      <Button size="sm" variant="outline" onClick={handleAdd}>
+      <Button variant="outline" onClick={handleAdd}>
         <Plus className="w-4 h-4" />
       </Button>
     </div>

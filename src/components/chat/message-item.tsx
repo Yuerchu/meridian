@@ -72,7 +72,7 @@ function CopyButton({ text }: { text: string }) {
   return (
     <Button
       variant="ghost"
-      size="icon-xs"
+      size="icon"
       onClick={handleCopy}
       className="text-muted-foreground hover:text-foreground"
       title={t('chat.copy')}
@@ -399,14 +399,14 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
             {hasAttachments && (
               <AttachmentGroup className="items-start max-w-[80%]">
                 {contentParts!.filter((p) => p.type === 'image_url').map((p, i) => (
-                  <Attachment key={`img-${i}`} size="sm" orientation="vertical">
+                  <Attachment key={`img-${i}`} orientation="vertical">
                     <AttachmentMedia variant="image">
                       <img src={p.image_url?.url} alt="" />
                     </AttachmentMedia>
                   </Attachment>
                 ))}
                 {contentParts!.filter((p) => p.type === 'file').map((p, i) => (
-                  <Attachment key={`file-${i}`} size="sm">
+                  <Attachment key={`file-${i}`}>
                     <AttachmentMedia>
                       <FileText />
                     </AttachmentMedia>
@@ -435,7 +435,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                   <div className="flex justify-end gap-1 mt-1.5">
                     <Button
                       variant="ghost"
-                      size="icon-xs"
+                      size="icon"
                       onClick={handleCancelEdit}
                       className="text-muted-foreground"
                       title="Esc"
@@ -444,7 +444,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     </Button>
                     <Button
                       variant="ghost"
-                      size="icon-xs"
+                      size="icon"
                       onClick={handleSaveEdit}
                       className="text-primary"
                       title="Enter"
@@ -472,7 +472,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                   {onEdit && (
                     <Button
                       variant="ghost"
-                      size="icon-xs"
+                      size="icon"
                       onClick={handleStartEdit}
                       className="text-muted-foreground hover:text-foreground"
                       title={t('chat.edit')}
@@ -484,7 +484,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                   {onDelete && (
                     <Button
                       variant="ghost"
-                      size="icon-xs"
+                      size="icon"
                       onClick={() => setShowDeleteConfirm(true)}
                       className="text-muted-foreground hover:text-destructive"
                       title={t('chat.delete')}
@@ -606,7 +606,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                 <>
                   <Button
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon"
                     onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}
                     className={cn(
                       message.rating === 1 ? 'text-green-500' : 'text-muted-foreground hover:text-foreground',
@@ -617,7 +617,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon"
                     onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}
                     className={cn(
                       message.rating === -1 ? 'text-red-500' : 'text-muted-foreground hover:text-foreground',
@@ -631,7 +631,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
               {onRegenerate && !isStreaming && (
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon"
                   onClick={() => onRegenerate(message.id)}
                   className="text-muted-foreground hover:text-foreground"
                   title={t('chat.regenerate')}
@@ -642,7 +642,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
               {onDelete && (
                 <Button
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon"
                   onClick={() => setShowDeleteConfirm(true)}
                   className="text-muted-foreground hover:text-destructive"
                   title={t('chat.delete')}

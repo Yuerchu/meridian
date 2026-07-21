@@ -94,7 +94,7 @@ function CustomToolEditor({
         <Input type="number" value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} className="w-32" />
       </div>
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={handleSave} disabled={!name.trim() || !command.trim()}>
+        <Button onClick={handleSave} disabled={!name.trim() || !command.trim()}>
           {t('common.save')}
         </Button>
         {saved && (
@@ -103,7 +103,7 @@ function CustomToolEditor({
           </span>
         )}
         {onDelete && (
-          <Button variant="ghost" size="sm" className="ml-auto text-destructive hover:text-destructive" onClick={onDelete}>
+          <Button variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={onDelete}>
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
         )}
@@ -165,7 +165,7 @@ export function ToolMarketplace() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium">{t('settings.tools.customSection')}</h3>
-          <Button variant="outline" size="sm" onClick={() => setShowCreate(!showCreate)}>
+          <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
             <Plus className="w-3.5 h-3.5" />
             {t('settings.tools.new')}
           </Button>

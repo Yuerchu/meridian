@@ -94,7 +94,7 @@ function PackCard({
                 {detail.pack.is_builtin === 0 && (
                   <Button
                     variant="ghost"
-                    size="icon-xs"
+                    size="icon"
                     className="absolute -top-1 -right-1 !size-4 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={() => onDeleteEmoji(e.id)}
                   >
@@ -106,14 +106,13 @@ function PackCard({
           </div>
 
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="outline" onClick={onImport}>
+            <Button variant="outline" onClick={onImport}>
               <Upload className="w-3.5 h-3.5" />
               {t('settings.emoji.import')}
             </Button>
             {onDelete && detail.pack.is_builtin === 0 && (
               <Button
                 variant="ghost"
-                size="sm"
                 className="ml-auto text-destructive hover:text-destructive"
                 onClick={onDelete}
               >
@@ -206,7 +205,7 @@ export function EmojiSettings() {
           className="flex-1"
           onKeyDown={(e) => { if (e.key === 'Enter') handleCreate() }}
         />
-        <Button variant="outline" size="sm" onClick={handleCreate} disabled={!newPackName.trim()}>
+        <Button variant="outline" onClick={handleCreate} disabled={!newPackName.trim()}>
           <Plus className="w-3.5 h-3.5" />
           {t('settings.emoji.newPack')}
         </Button>
