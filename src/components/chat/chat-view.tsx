@@ -21,7 +21,7 @@ import { useMessageScroller } from '@/components/ui/message-scroller'
 import { InputBar, type AttachedFile } from './input-bar'
 import { useEmojiMap } from './emoji-renderer'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
+import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
 
 const MotionMessageScrollerItem = motion.create(MessageScrollerItem)
 
@@ -278,7 +278,19 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     const activeOnly = compactCursor != null
       ? messages.filter((m) => m.sort_order >= compactCursor || m.is_compact_summary === 1)
       : messages
-    const estimatedTokens = activeOnly.reduce((sum, m) => sum + m.content.length + 4, 0)
+    const estimatedTokens = activeOnly.reduce((sum, m) => {
+      if (m.role === 'tool') return sum
+      let chars = m.content.length + 4
+      if (m._blocks) {
+        for (const block of m._blocks) {
+          if (block.type === 'tool_call') {
+            const d = block.data as ToolCallDisplay
+            chars += (d.arguments?.length ?? 0) + (d.result?.length ?? 0) + 4
+          }
+        }
+      }
+      return sum + chars
+    }, 0)
     const autoCompactEnabled = selectedAssistant?.auto_compact_enabled === 1
     const autoCompactThreshold = Math.max(0, contextLimit - 33000)
     return { messageCount: activeMessages.length, estimatedTokens, contextLimit, autoCompactEnabled, autoCompactThreshold }
@@ -290,7 +302,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         <ImeScrollSync />
         <MessageScroller className="flex-1 min-h-0">
           <MessageScrollerViewport>
-            <MessageScrollerContent className="px-4 py-6">
+            <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6">
         {error && (
           <MessageScrollerItem messageId="__error">
             <Bubble variant="destructive">
@@ -354,17 +366,6 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
           </MessageScrollerItem>
         )}
 
-        {compacting && (
-          <MessageScrollerItem messageId="__compacting">
-            <Marker role="status" className="justify-center py-3">
-              <MarkerIcon>
-                <Spinner />
-              </MarkerIcon>
-              <MarkerContent className="shimmer text-xs">{t('chat.compact.inProgress')}</MarkerContent>
-            </Marker>
-          </MessageScrollerItem>
-        )}
-
         {activeMessages.map((m, i) => {
           const prev = i > 0 ? activeMessages[i - 1] : null
           const next = i < activeMessages.length - 1 ? activeMessages[i + 1] : null
@@ -410,6 +411,16 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
             </MessageScrollerItem>
           )
         })}
+        {compacting && (
+          <MessageScrollerItem messageId="__compacting">
+            <Marker role="status" className="justify-center py-3">
+              <MarkerIcon>
+                <Spinner />
+              </MarkerIcon>
+              <MarkerContent className="shimmer text-xs">{t('chat.compact.inProgress')}</MarkerContent>
+            </Marker>
+          </MessageScrollerItem>
+        )}
         {messages.length === 0 && (
           <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
             {t('chat.startHint')}
@@ -439,6 +450,8 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         onSelectThinkingLevel={setThinkingLevel}
         capabilities={capabilities}
         contextInfo={contextInfo}
+        compacting={compacting}
+        onCompact={() => handleCompact()}
         attachedFiles={attachedFiles}
         onAttachFiles={(files) => setAttachedFiles((prev) => [...prev, ...files])}
         onRemoveFile={(idx) => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}

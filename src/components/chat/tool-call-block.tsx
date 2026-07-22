@@ -1,11 +1,41 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
-import { Wrench, Check, X, Loader2, MessageCircleQuestion, Send, SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck, ChevronDown, ChevronRight } from 'lucide-react'
+import {
+  Wrench, Check, X, Loader2, MessageCircleQuestion, Send,
+  SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck,
+  FileText, FilePen, FileX2, FileOutput, FolderOpen, Search,
+  FileSearch, Terminal, FileDiff, Brain, BookOpen, List, Trash2,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 import { api } from '@/api'
 import type { ToolCallDisplay } from '@/types'
+
+type LucideIcon = typeof Wrench
+
+const TOOL_ICONS: Record<string, LucideIcon> = {
+  read_file: FileText,
+  write_file: FilePen,
+  edit_file: FilePen,
+  delete_file: FileX2,
+  move_file: FileOutput,
+  list_directory: FolderOpen,
+  search_files: Search,
+  glob: FileSearch,
+  run_command: Terminal,
+  apply_patch: FileDiff,
+  save_memory: Brain,
+  recall_memory: BookOpen,
+  list_memories: List,
+  delete_memory: Trash2,
+}
 
 interface AskOption {
   label: string
@@ -256,6 +286,149 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   )
 }
 
+function getFileExtension(filePath: string): string {
+  const dot = filePath.lastIndexOf('.')
+  if (dot === -1) return ''
+  return filePath.slice(dot + 1).toLowerCase()
+}
+
+function getHljsLang(ext: string): string | null {
+  const map: Record<string, string> = {
+    js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
+    py: 'python', rb: 'ruby', rs: 'rust', go: 'go', java: 'java',
+    kt: 'kotlin', swift: 'swift', c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
+    cs: 'csharp', php: 'php', sh: 'bash', bash: 'bash', zsh: 'bash',
+    sql: 'sql', html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml',
+    css: 'css', scss: 'scss', less: 'less', json: 'json', yaml: 'yaml',
+    yml: 'yaml', toml: 'ini', ini: 'ini', md: 'markdown', lua: 'lua',
+    r: 'r', dart: 'dart', vue: 'xml', svelte: 'xml',
+  }
+  return map[ext] ?? null
+}
+
+function ReadFileResult({ result, path }: { result: string; path: string }) {
+  const ext = getFileExtension(path)
+  const lang = getHljsLang(ext)
+  const fileName = path.split(/[/\\]/).pop() ?? path
+
+  return (
+    <div className="border-t border-border bg-muted/10">
+      <div className="flex items-center gap-2 px-3 py-1 bg-muted/20 text-[11px] text-muted-foreground border-b border-border">
+        <FileText className="w-3 h-3" />
+        <span className="font-mono truncate">{fileName}</span>
+      </div>
+      <div className="max-h-60 overflow-auto">
+        <pre className="text-[11px] leading-relaxed px-3 py-2">
+          <code className={lang ? `language-${lang} hljs` : ''}>
+            {result.length > 2000 ? `${result.slice(0, 2000)}...` : result}
+          </code>
+        </pre>
+      </div>
+    </div>
+  )
+}
+
+interface SearchMatch {
+  file: string
+  line: number
+  text: string
+}
+
+function parseSearchResult(result: string): SearchMatch[] | null {
+  const lines = result.split('\n').filter(Boolean)
+  if (lines.length === 0) return null
+
+  const matches: SearchMatch[] = []
+  for (const line of lines) {
+    if (line.startsWith('(showing first') || line === 'No matches found.') continue
+    const m = line.match(/^(.+?):(\d+):(.*)$/)
+    if (m) {
+      matches.push({ file: m[1], line: parseInt(m[2], 10), text: m[3] })
+    }
+  }
+  return matches.length > 0 ? matches : null
+}
+
+function SearchResult({ result }: { result: string }) {
+  const matches = useMemo(() => parseSearchResult(result), [result])
+
+  if (!matches) {
+    return (
+      <div className="border-t border-border bg-muted/10">
+        <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px]">{result}</pre>
+      </div>
+    )
+  }
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, { line: number; text: string }[]>()
+    for (const m of matches) {
+      const existing = map.get(m.file)
+      if (existing) existing.push({ line: m.line, text: m.text })
+      else map.set(m.file, [{ line: m.line, text: m.text }])
+    }
+    return map
+  }, [matches])
+
+  return (
+    <div className="border-t border-border bg-muted/10 max-h-60 overflow-auto">
+      {Array.from(grouped.entries()).map(([file, items]) => (
+        <div key={file} className="not-first:border-t not-first:border-border/50">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-muted/20 text-[11px] text-muted-foreground">
+            <FileText className="w-3 h-3 shrink-0" />
+            <span className="font-mono truncate">{file.split(/[/\\]/).pop()}</span>
+            <span className="text-muted-foreground/50 ml-auto shrink-0">{items.length}</span>
+          </div>
+          {items.map((item, i) => (
+            <div key={i} className="flex gap-2 px-3 py-0.5 text-[11px] hover:bg-muted/20">
+              <span className="text-muted-foreground/50 font-mono w-8 text-right shrink-0">{item.line}</span>
+              <span className="text-foreground font-mono truncate">{item.text}</span>
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function CommandResult({ result }: { result: string }) {
+  return (
+    <div className="border-t border-border bg-[var(--color-muted)]/20">
+      <div className="max-h-60 overflow-auto">
+        <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px] font-mono leading-relaxed">
+          {result.length > 2000 ? `${result.slice(0, 2000)}...` : result}
+        </pre>
+      </div>
+    </div>
+  )
+}
+
+function GenericResult({ result }: { result: string }) {
+  return (
+    <div className="border-t border-border bg-muted/10">
+      <div className="max-h-40 overflow-y-auto">
+        <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px]">
+          {result.length > 1000 ? `${result.slice(0, 1000)}...` : result}
+        </pre>
+      </div>
+    </div>
+  )
+}
+
+function ToolResult({ toolName, result, args }: { toolName: string; result: string; args: Record<string, unknown> }) {
+  switch (toolName) {
+    case 'read_file':
+      return <ReadFileResult result={result} path={String(args.path ?? '')} />
+    case 'search_files':
+    case 'glob':
+      return <SearchResult result={result} />
+    case 'run_command':
+      return <CommandResult result={result} />
+    default:
+      return <GenericResult result={result} />
+  }
+}
+
 function PendingApproval({ callId }: { callId: string }) {
   const { t } = useTranslation()
   const [approved, setApproved] = useState(false)
@@ -318,62 +491,90 @@ function PendingApproval({ callId }: { callId: string }) {
   )
 }
 
+function ToolParamLabel({ name }: { name: string }) {
+  const { t } = useTranslation()
+  const key = `chat.tool.param.${name}`
+  const translated = t(key)
+  return <span className="text-muted-foreground/60">{translated !== key ? translated : name}:</span>
+}
+
+function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
+  switch (toolName) {
+    case 'read_file':
+    case 'list_directory':
+      return args.path
+        ? <span className="text-foreground font-mono text-[11px] truncate">{String(args.path)}</span>
+        : null
+    case 'run_command':
+      return args.command
+        ? <span className="text-foreground font-mono text-[11px] truncate">{String(args.command)}</span>
+        : null
+    case 'search_files':
+      return args.pattern
+        ? <span className="text-foreground font-mono text-[11px] truncate">{String(args.pattern)}</span>
+        : null
+    default:
+      return null
+  }
+}
+
 export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
   const { t } = useTranslation()
   const isCompleted = data.status === 'completed' || data.status === 'denied'
-  const [expanded, setExpanded] = useState(!isCompleted)
 
   if (data.tool_name === 'ask_user') {
     return <AskUserBlock data={data} />
   }
 
-  let parsedArgs: Record<string, unknown> = {}
-  try {
-    const parsed = JSON.parse(data.arguments)
-    if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
-      parsedArgs = parsed
-    }
-  } catch {
-    // ignore
-  }
+  const parsedArgs: Record<string, unknown> = useMemo(() => {
+    try {
+      const parsed = JSON.parse(data.arguments)
+      if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch { /* ignore */ }
+    return {}
+  }, [data.arguments])
+
+  const Icon = TOOL_ICONS[data.tool_name] ?? Wrench
+
+  const toolNameKey = `chat.tool.name.${data.tool_name}`
+  const displayName = t(toolNameKey)
+  const toolLabel = displayName !== toolNameKey ? displayName : data.tool_name
 
   return (
-    <div className="my-3 border border-border rounded-lg overflow-hidden text-xs">
-      <Button
-        variant="ghost"
-        onClick={() => setExpanded(!expanded)}
-        className="flex items-center justify-start gap-2 px-3 py-2 bg-muted/30 w-full hover:bg-muted/50 h-auto rounded-none"
-      >
-        <Wrench className="w-3.5 h-3.5 text-muted-foreground" />
-        <span className="font-medium text-foreground">{data.tool_name}</span>
-        <AnimatePresence mode="wait">
-          {data.status === 'running' && (
-            <motion.span key="running" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
-              <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-            </motion.span>
-          )}
-          {data.status === 'completed' && (
-            <motion.span key="done" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
-              <Check className="w-3 h-3 text-green-500" />
-            </motion.span>
-          )}
-          {data.status === 'denied' && (
-            <motion.span key="denied" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
-              <X className="w-3 h-3 text-destructive" />
-            </motion.span>
-          )}
-        </AnimatePresence>
-        {expanded
-          ? <ChevronDown className="w-3 h-3 text-muted-foreground" />
-          : <ChevronRight className="w-3 h-3 text-muted-foreground" />}
-      </Button>
-
-      {expanded && (
-        <>
+    <Accordion
+      defaultValue={isCompleted ? [] : ["tool"]}
+      className="my-3 rounded-lg border border-border overflow-hidden text-xs"
+    >
+      <AccordionItem value="tool" className="border-none">
+        <AccordionTrigger className="gap-2 items-center justify-start py-2 px-3 bg-muted/30 hover:bg-muted/50 text-xs font-normal hover:no-underline **:data-[slot=accordion-trigger-icon]:size-3">
+          <Icon className="!size-3.5 text-muted-foreground shrink-0" />
+          <span className="font-medium text-foreground shrink-0">{toolLabel}</span>
+          <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} />
+          <AnimatePresence mode="wait">
+            {data.status === 'running' && (
+              <motion.span key="running" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
+                <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+              </motion.span>
+            )}
+            {data.status === 'completed' && (
+              <motion.span key="done" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
+                <Check className="w-3 h-3 text-green-500" />
+              </motion.span>
+            )}
+            {data.status === 'denied' && (
+              <motion.span key="denied" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
+                <X className="w-3 h-3 text-destructive" />
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </AccordionTrigger>
+        <AccordionContent className="pb-0">
           <div className="px-3 py-2 space-y-1 text-muted-foreground">
             {Object.entries(parsedArgs).map(([key, value]) => (
               <div key={key}>
-                <span className="text-muted-foreground/60">{key}:</span>{' '}
+                <ToolParamLabel name={key} />{' '}
                 <span className="text-foreground">{String(value).length > 200 ? `${String(value).slice(0, 200)}...` : String(value)}</span>
               </div>
             ))}
@@ -389,16 +590,10 @@ export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
           )}
 
           {data.result && (
-            <div className="border-t border-border bg-muted/10">
-              <div className="max-h-40 overflow-y-auto ">
-                <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px]">
-                  {data.result.length > 1000 ? `${data.result.slice(0, 1000)}...` : data.result}
-                </pre>
-              </div>
-            </div>
+            <ToolResult toolName={data.tool_name} result={data.result} args={parsedArgs} />
           )}
-        </>
-      )}
-    </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   )
 }

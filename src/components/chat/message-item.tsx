@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
-import { Bot, Copy, Check, Trash2, RefreshCw, ChevronRight, FileText, Lightbulb, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Bot, Copy, Check, Trash2, RefreshCw, FileText, Lightbulb, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
 import CountUp from '@/components/CountUp'
 import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
@@ -24,10 +24,11 @@ import {
   AttachmentTitle,
 } from '@/components/ui/attachment'
 import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -222,28 +223,20 @@ function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; i
   const { t } = useTranslation()
 
   return (
-    <Collapsible
-      defaultOpen={!!isStreaming || !!defaultExpanded}
+    <Accordion
+      defaultValue={(isStreaming || defaultExpanded) ? ["thinking"] : []}
       className="my-2 rounded-lg border border-border/50 overflow-hidden"
     >
-      <CollapsibleTrigger
-        render={
-          <Button
-            variant="ghost"
-            className="group/thinking w-full justify-start h-auto px-3 py-1.5 text-xs text-muted-foreground rounded-none"
-          />
-        }
-      >
-        <Lightbulb className="text-blue-400/70" />
-        <span className={isStreaming ? 'shimmer' : undefined}>{t('chat.thinking')}</span>
-        <ChevronRight className="!size-3 ml-auto transition-transform group-data-[panel-open]/thinking:rotate-90" />
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="px-3 pb-2 text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
+      <AccordionItem value="thinking" className="border-none">
+        <AccordionTrigger className="gap-2 items-center justify-start py-1.5 px-3 text-xs text-muted-foreground font-normal hover:no-underline **:data-[slot=accordion-trigger-icon]:size-3">
+          <Lightbulb className="!size-3.5 text-blue-400/70" />
+          <span className={isStreaming ? 'shimmer' : undefined}>{t('chat.thinking')}</span>
+        </AccordionTrigger>
+        <AccordionContent className="px-3 text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
           {text}
-        </div>
-      </CollapsibleContent>
-    </Collapsible>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   )
 }
 

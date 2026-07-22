@@ -27,9 +27,9 @@ import {
   AttachmentMedia,
   AttachmentTitle,
 } from '@/components/ui/attachment'
-import CountUp from '@/components/CountUp'
+import { CircularProgress } from '@/components/ui/circular-progress'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
-import { usePrevious } from '@/hooks/use-previous'
 import { Toolbar, MobileOptionsMenu } from './toolbar'
 import { EmojiPicker } from './emoji-picker'
 import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
@@ -68,6 +68,8 @@ interface InputBarProps {
   onSelectThinkingLevel: (level: ThinkingLevel) => void
   capabilities?: ProviderCapabilities | null
   contextInfo?: ContextInfo
+  compacting?: boolean
+  onCompact?: () => void
 }
 
 export function InputBar({
@@ -88,6 +90,8 @@ export function InputBar({
   onSelectThinkingLevel,
   capabilities,
   contextInfo,
+  compacting,
+  onCompact,
   attachedFiles = [],
   onAttachFiles,
   onRemoveFile,
@@ -96,7 +100,6 @@ export function InputBar({
   const platform = usePlatform()
   const isAndroid = platform === 'android'
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const prevTokens = usePrevious(contextInfo?.estimatedTokens ?? 0)
   const [selectedText, setSelectedText] = useState('')
 
   useEffect(() => {
@@ -294,29 +297,49 @@ export function InputBar({
                   assistantId={currentAssistantId}
                   onSelect={(syntax) => onChange(value + syntax)}
                 />
-                {contextInfo && contextInfo.messageCount > 0 && (
-                  <div className={`flex items-center gap-1.5 text-[11px] ${
-                    contextInfo.estimatedTokens / contextInfo.contextLimit > 0.95
-                      ? 'text-destructive'
-                      : contextInfo.estimatedTokens / contextInfo.contextLimit > 0.8
-                        ? 'text-yellow-500'
-                        : 'text-muted-foreground/60'
-                  }`}>
-                    <span>≡ {contextInfo.messageCount}</span>
-                    <span>↑ <CountUp from={prevTokens ?? 0} to={contextInfo.estimatedTokens} duration={0.8} separator="," /></span>
-                    {contextInfo.autoCompactEnabled && contextInfo.autoCompactThreshold > 0 && (
-                      <span className={
-                        contextInfo.estimatedTokens / contextInfo.autoCompactThreshold > 0.95
-                          ? 'text-destructive'
-                          : contextInfo.estimatedTokens / contextInfo.autoCompactThreshold > 0.8
-                            ? 'text-yellow-500'
-                            : ''
-                      }>
-                        {Math.max(0, Math.round((1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100))}% {t('chat.compact.untilAutoCompact')}
-                      </span>
-                    )}
-                  </div>
-                )}
+                {contextInfo && contextInfo.messageCount > 0 && (() => {
+                  const ratio = contextInfo.estimatedTokens / contextInfo.contextLimit
+                  const colorClass = ratio > 0.95
+                    ? 'text-destructive'
+                    : ratio > 0.8
+                      ? 'text-yellow-500'
+                      : 'text-muted-foreground/60'
+                  return (
+                    <Tooltip>
+                      <TooltipTrigger className={compacting ? 'text-muted-foreground' : colorClass}>
+                        <CircularProgress
+                          value={contextInfo.estimatedTokens}
+                          max={contextInfo.contextLimit}
+                          size={18}
+                          strokeWidth={2.5}
+                          indeterminate={compacting}
+                        />
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="flex flex-col gap-1 text-xs tabular-nums">
+                        {compacting ? (
+                          <span>{t('chat.compact.inProgress')}</span>
+                        ) : (
+                          <>
+                            <span>{t('chat.context.messages', { count: contextInfo.messageCount })}</span>
+                            <span>{t('chat.context.tokens', { used: contextInfo.estimatedTokens.toLocaleString(), limit: contextInfo.contextLimit.toLocaleString() })}</span>
+                            {contextInfo.autoCompactEnabled && contextInfo.autoCompactThreshold > 0 && (
+                              <span>{Math.max(0, Math.round((1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100))}% {t('chat.compact.untilAutoCompact')}</span>
+                            )}
+                            {onCompact && !streaming && (
+                              <button
+                                type="button"
+                                className="mt-0.5 text-left text-background/70 hover:text-background underline underline-offset-2"
+                                onClick={onCompact}
+                              >
+                                {t('chat.compact.manual')}
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </TooltipContent>
+                    </Tooltip>
+                  )
+                })()}
                 {streaming ? (
                   <InputGroupButton
                     size="icon-sm"
