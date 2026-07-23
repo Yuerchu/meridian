@@ -2735,6 +2735,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "chrono",
+ "core-foundation 0.9.4",
  "diesel",
  "diesel_migrations",
  "dirs",

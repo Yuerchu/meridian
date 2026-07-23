@@ -1,3 +1,7 @@
+// parse_retry_after derived from codex-rs/codex-api/src/sse/responses.rs (Apache-2.0, OpenAI)
+// NOTICE: This file contains code derived from the OpenAI Codex project.
+// Changes: gate on error-string markers instead of a typed error code; clamp to 60s.
+
 use crate::provider;
 
 pub(crate) struct StreamResult {
@@ -16,6 +20,7 @@ pub(crate) fn is_context_window_error(err: &str) -> bool {
     e.contains("context_length_exceeded") || e.contains("context window")
         || e.contains("maximum context length") || e.contains("too many tokens")
         || e.contains("exceeds the model") || e.contains("status: 413")
+        || e.contains("http 413")
         || e.contains("request_too_large") || e.contains("content_too_large")
 }
 
@@ -24,5 +29,81 @@ pub(crate) fn is_retryable_stream_error(err: &str) -> bool {
     let e = err.to_lowercase();
     e.contains("timeout") || e.contains("network") || e.contains("connection")
         || e.contains("status: 429") || e.contains("status: 5")
+        || e.contains("http 429") || e.contains("http 5")
         || e.contains("idle timeout")
+}
+
+/// Extract a server-suggested retry delay ("try again in 20s") from a rate
+/// limit error message. Only consulted for errors that look rate-limited; the
+/// value comes from an untrusted response body, so it is clamped to 60s.
+pub(crate) fn parse_retry_after(err: &str) -> Option<std::time::Duration> {
+    const MAX_RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(60);
+
+    let e = err.to_lowercase();
+    if !(e.contains("429") || e.contains("rate limit") || e.contains("rate_limit")) {
+        return None;
+    }
+
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r"(?i)try again in\s*(\d+(?:\.\d+)?)\s*(s|ms|seconds?)")
+            .expect("static regex")
+    });
+
+    let captures = re.captures(err)?;
+    let value = captures.get(1)?.as_str().parse::<f64>().ok()?;
+    let unit = captures.get(2)?.as_str().to_ascii_lowercase();
+
+    let delay = if unit == "s" || unit.starts_with("second") {
+        std::time::Duration::from_secs_f64(value)
+    } else if unit == "ms" {
+        std::time::Duration::from_millis(value as u64)
+    } else {
+        return None;
+    };
+    Some(delay.min(MAX_RETRY_AFTER))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn parse_retry_after_seconds() {
+        let err = "http 429: \"Rate limit reached. Please try again in 20s.\"";
+        assert_eq!(parse_retry_after(err), Some(Duration::from_secs(20)));
+    }
+
+    #[test]
+    fn parse_retry_after_fractional_seconds() {
+        let err = "status: 429, rate limit exceeded, try again in 1.5 seconds";
+        assert_eq!(parse_retry_after(err), Some(Duration::from_secs_f64(1.5)));
+    }
+
+    #[test]
+    fn parse_retry_after_millis() {
+        let err = "429 Too Many Requests: try again in 250 ms";
+        assert_eq!(parse_retry_after(err), Some(Duration::from_millis(250)));
+    }
+
+    #[test]
+    fn parse_retry_after_requires_rate_limit_marker() {
+        assert_eq!(parse_retry_after("server error, try again in 20s"), None);
+    }
+
+    #[test]
+    fn parse_retry_after_clamps_large_values() {
+        let err = "rate limit: try again in 86400s";
+        assert_eq!(parse_retry_after(err), Some(Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn http_status_display_classifies() {
+        assert!(is_retryable_stream_error("transport: http 429: Some(\"slow down\")"));
+        assert!(is_retryable_stream_error("transport: http 503: Some(\"overloaded\")"));
+        assert!(is_context_window_error("transport: http 413: Some(\"payload too large\")"));
+        assert!(!is_retryable_stream_error("transport: http 413: Some(\"payload too large\")"));
+        assert!(!is_retryable_stream_error("http 400: bad request"));
+    }
 }

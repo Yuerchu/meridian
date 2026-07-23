@@ -63,6 +63,12 @@ impl Tool for CustomToolExecutor {
         self.perm
     }
 
+    #[cfg(target_os = "android")]
+    async fn execute(&self, _args: Value, _context: &ToolContext) -> Result<String, String> {
+        Err("Custom command tools are not supported on Android.".to_string())
+    }
+
+    #[cfg(not(target_os = "android"))]
     async fn execute(&self, args: Value, context: &ToolContext) -> Result<String, String> {
         let args_obj = args.as_object().cloned().unwrap_or_default();
 

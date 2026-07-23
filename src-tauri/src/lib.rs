@@ -14,6 +14,7 @@ mod provider;
 #[cfg(not(target_os = "android"))]
 mod sandbox;
 mod secrets;
+mod sleep_inhibitor;
 mod template;
 mod tools;
 mod util;
@@ -275,6 +276,7 @@ pub fn run() {
             app.manage(EditSessions(Mutex::new(HashMap::new())));
             app.manage(state::CompactBreakers(Mutex::new(HashMap::new())));
             app.manage(AppMcp(Arc::new(Mutex::new(mcp::McpManager::new()))));
+            app.manage(sleep_inhibitor::AppSleepInhibitor::new());
 
             #[cfg(target_os = "android")]
             {

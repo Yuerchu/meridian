@@ -2,7 +2,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
@@ -51,6 +51,11 @@ async fn consume_stream_headless(
     let mut tool_acc: Vec<(String, String, String)> = Vec::new();
     let mut usage = None;
     let mut finish_reason = None;
+    // Some OpenAI-compatible providers inline reasoning as <think> tags in the
+    // text stream instead of a separate reasoning field; route it accordingly.
+    let mut think_parser = crate::agent::InlineHiddenTagParser::new_streaming(vec![
+        crate::agent::InlineTagSpec { tag: (), open: "<think>", close: "</think>" },
+    ]);
 
     loop {
         tokio::select! {
@@ -61,12 +66,24 @@ async fn consume_stream_headless(
                         return Err("Stream idle timeout".to_string());
                     }
                     Ok(Some(Ok(StreamEvent::Text { content: ref s }))) => {
-                        text.push_str(s);
-                        if let Some(app) = app {
-                            let _ = app.emit("chat-stream", serde_json::json!({
-                                "type": "text", "content": s, "message_id": message_id,
-                                "conversation_id": conversation_id,
-                            }));
+                        let chunk = think_parser.push_str(s);
+                        if !chunk.visible_text.is_empty() {
+                            text.push_str(&chunk.visible_text);
+                            if let Some(app) = app {
+                                let _ = app.emit("chat-stream", serde_json::json!({
+                                    "type": "text", "content": &chunk.visible_text, "message_id": message_id,
+                                    "conversation_id": conversation_id,
+                                }));
+                            }
+                        }
+                        for tag in &chunk.extracted {
+                            reasoning.push_str(&tag.content);
+                            if let Some(app) = app {
+                                let _ = app.emit("chat-stream", serde_json::json!({
+                                    "type": "reasoning", "content": &tag.content, "message_id": message_id,
+                                    "conversation_id": conversation_id,
+                                }));
+                            }
                         }
                     }
                     Ok(Some(Ok(StreamEvent::Reasoning { content: ref s }))) => {
@@ -114,6 +131,28 @@ async fn consume_stream_headless(
         }
     }
 
+    let tail = think_parser.finish();
+    if !cancel.is_cancelled() {
+        if let Some(app) = app {
+            if !tail.visible_text.is_empty() {
+                let _ = app.emit("chat-stream", serde_json::json!({
+                    "type": "text", "content": &tail.visible_text, "message_id": message_id,
+                    "conversation_id": conversation_id,
+                }));
+            }
+            for tag in &tail.extracted {
+                let _ = app.emit("chat-stream", serde_json::json!({
+                    "type": "reasoning", "content": &tag.content, "message_id": message_id,
+                    "conversation_id": conversation_id,
+                }));
+            }
+        }
+    }
+    text.push_str(&tail.visible_text);
+    for tag in tail.extracted {
+        reasoning.push_str(&tag.content);
+    }
+
     let tool_calls: Vec<provider::ToolCall> = if cancel.is_cancelled() {
         vec![]
     } else {
@@ -149,6 +188,19 @@ pub async fn headless_chat(
     app: Option<&tauri::AppHandle>,
     qq_tools: Option<&super::qq_tools::QqToolExecutor>,
 ) -> Result<String, String> {
+    // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
+    let _sleep_guard = {
+        let sleep_pref = {
+            let pool = pool.clone();
+            tokio::task::spawn_blocking(move || {
+                let mut conn = pool.get().ok()?;
+                crate::db::ops::preference::get_preference(&mut conn, "sleep_inhibitor.enabled").ok().flatten()
+            }).await.ok().flatten()
+        };
+        app.filter(|_| sleep_pref.as_deref() != Some("false"))
+            .map(|a| a.state::<crate::sleep_inhibitor::AppSleepInhibitor>().begin_turn())
+    };
+
     // Load assistant + history + compact_cursor
     let (assistant, history, compact_cursor) = {
         let pool = pool.clone();
@@ -322,6 +374,8 @@ pub async fn headless_chat(
     let mut total_output_tokens = 0i32;
     let mut last_assistant_text = String::new();
     let mut stop_guard = ErrorStopGuard { app, conversation_id, message_id: None };
+    let mut loop_guard = crate::agent::ToolLoopGuard::default();
+    let mut turn_aborted = false;
 
     loop {
         if cancel.is_cancelled() { break; }
@@ -357,9 +411,12 @@ pub async fn headless_chat(
         let result = {
             let mut _last_err = String::new();
             let mut attempt = 0u32;
+            let mut retry_delay: Option<std::time::Duration> = None;
             loop {
                 if attempt > 0 {
-                    tokio::time::sleep(crate::client::backoff(STREAM_RETRY_BASE, attempt as u64)).await;
+                    let delay = retry_delay.take()
+                        .unwrap_or_else(|| crate::client::backoff(STREAM_RETRY_BASE, attempt as u64));
+                    tokio::time::sleep(delay).await;
                 }
                 let stream_result = provider.stream_chat_with_tools(
                     chat_messages.clone(), tool_defs.clone(), params.clone()
@@ -380,6 +437,7 @@ pub async fn headless_chat(
                             .await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
                     }
                     Err(e) if is_retryable_stream_error(&e) && attempt < MAX_STREAM_RETRIES => {
+                        retry_delay = crate::agent::parse_retry_after(&e);
                         _last_err = e;
                         attempt += 1;
                         continue;
@@ -448,7 +506,15 @@ pub async fn headless_chat(
             let is_mcp = tc.name.starts_with("mcp__");
             let tool = if !is_mcp { tool_registry.get(&tc.name) } else { None };
 
-            let (tool_result, outcome): (String, &'static str) = if !offered.contains(&tc.name) {
+            // Loop detection runs before approval so a stuck model can't spam
+            // the admin with approval prompts.
+            let verdict = loop_guard.observe(&tc.name, &tc.arguments);
+            let (tool_result, outcome): (String, &'static str) = if let crate::agent::LoopVerdict::Warn(n) = verdict {
+                (crate::agent::loop_warning_message(&tc.name, n), "error")
+            } else if let crate::agent::LoopVerdict::Abort(n) = verdict {
+                turn_aborted = true;
+                (crate::agent::loop_abort_message(&tc.name, n), "error")
+            } else if !offered.contains(&tc.name) {
                 (format!("Unknown tool: {}", tc.name), "error")
             } else if let Some(qq) = qq_tools.filter(|q| q.owns(&tc.name)) {
                 // Read-only and scope-locked to this session: no approval needed
@@ -518,6 +584,7 @@ pub async fn headless_chat(
             } else {
                 (format!("Unknown tool: {}", tc.name), "error")
             };
+            let tool_result = crate::agent::formatted_truncate_text(&tool_result, crate::agent::TOOL_OUTPUT_TRUNCATION);
 
             if let Some(app) = app {
                 let _ = app.emit("chat-stream", serde_json::json!({
@@ -551,9 +618,11 @@ pub async fn headless_chat(
             }
 
             chat_messages.push(ChatMessage::tool_result(&tc.id, &tool_result));
+
+            if turn_aborted { break; }
         }
 
-        if cancel.is_cancelled() { break; }
+        if cancel.is_cancelled() || turn_aborted { break; }
 
         budget.update_estimate(&chat_messages);
         if budget.needs_compact() {
@@ -571,8 +640,9 @@ pub async fn headless_chat(
 
     stop_guard.message_id = None;
     if let Some(app) = app {
+        let stop_reason = if turn_aborted { "loop_detected" } else { "end_turn" };
         let _ = app.emit("chat-stream", serde_json::json!({
-            "type": "stop", "reason": "end_turn", "done": true,
+            "type": "stop", "reason": stop_reason, "done": true,
             "message_id": &assistant_msg_id,
             "conversation_id": conversation_id,
             "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,

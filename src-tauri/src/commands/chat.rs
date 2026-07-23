@@ -34,6 +34,11 @@ async fn consume_stream(
     let mut tool_acc: Vec<(String, String, String)> = Vec::new();
     let mut usage = None;
     let mut finish_reason = None;
+    // Some OpenAI-compatible providers inline reasoning as <think> tags in the
+    // text stream instead of a separate reasoning field; route it accordingly.
+    let mut think_parser = crate::agent::InlineHiddenTagParser::new_streaming(vec![
+        crate::agent::InlineTagSpec { tag: (), open: "<think>", close: "</think>" },
+    ]);
 
     loop {
         tokio::select! {
@@ -44,11 +49,21 @@ async fn consume_stream(
                         return Err("Stream idle timeout".to_string());
                     }
                     Ok(Some(Ok(provider::StreamEvent::Text { content: ref s }))) => {
-                        text.push_str(s);
-                        app.emit("chat-stream", serde_json::json!({
-                            "type": "text", "content": s, "message_id": message_id,
-                            "conversation_id": conversation_id,
-                        })).map_err(|e| e.to_string())?;
+                        let chunk = think_parser.push_str(s);
+                        if !chunk.visible_text.is_empty() {
+                            text.push_str(&chunk.visible_text);
+                            app.emit("chat-stream", serde_json::json!({
+                                "type": "text", "content": &chunk.visible_text, "message_id": message_id,
+                                "conversation_id": conversation_id,
+                            })).map_err(|e| e.to_string())?;
+                        }
+                        for tag in &chunk.extracted {
+                            reasoning.push_str(&tag.content);
+                            app.emit("chat-stream", serde_json::json!({
+                                "type": "reasoning", "content": &tag.content, "message_id": message_id,
+                                "conversation_id": conversation_id,
+                            })).map_err(|e| e.to_string())?;
+                        }
                     }
                     Ok(Some(Ok(provider::StreamEvent::Reasoning { content: ref s }))) => {
                         reasoning.push_str(s);
@@ -93,6 +108,26 @@ async fn consume_stream(
                 }
             }
         }
+    }
+
+    let tail = think_parser.finish();
+    if !cancel.is_cancelled() {
+        if !tail.visible_text.is_empty() {
+            app.emit("chat-stream", serde_json::json!({
+                "type": "text", "content": &tail.visible_text, "message_id": message_id,
+                "conversation_id": conversation_id,
+            })).map_err(|e| e.to_string())?;
+        }
+        for tag in &tail.extracted {
+            app.emit("chat-stream", serde_json::json!({
+                "type": "reasoning", "content": &tag.content, "message_id": message_id,
+                "conversation_id": conversation_id,
+            })).map_err(|e| e.to_string())?;
+        }
+    }
+    text.push_str(&tail.visible_text);
+    for tag in tail.extracted {
+        reasoning.push_str(&tag.content);
     }
 
     let tool_calls: Vec<provider::ToolCall> = if cancel.is_cancelled() {
@@ -460,17 +495,21 @@ pub async fn chat(
     } else {
         all_tool_defs
     };
-    let (shell_type, sandbox_pref) = {
+    let (shell_type, sandbox_pref, sleep_pref) = {
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = pool2.get().ok()?;
             let shell = db::ops::preference::get_preference(&mut conn, "shell").ok().flatten();
             let sandbox = db::ops::preference::get_preference(&mut conn, "sandbox.enabled").ok().flatten();
-            Some((shell, sandbox))
-        }).await.ok().flatten().unwrap_or((None, None))
+            let sleep = db::ops::preference::get_preference(&mut conn, "sleep_inhibitor.enabled").ok().flatten();
+            Some((shell, sandbox, sleep))
+        }).await.ok().flatten().unwrap_or((None, None, None))
     };
     // Missing preference means enabled: sandbox-by-default on Windows.
     let sandbox_enabled = sandbox_pref.as_deref() != Some("false");
+    // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
+    let _sleep_guard = (sleep_pref.as_deref() != Some("false"))
+        .then(|| app.state::<crate::sleep_inhibitor::AppSleepInhibitor>().begin_turn());
     let tool_secrets = {
         let pool2 = pool.clone();
         let secrets2 = secrets.0.clone();
@@ -497,6 +536,8 @@ pub async fn chat(
     let mut total_input_tokens = 0i32;
     let mut total_output_tokens = 0i32;
     let mut last_assistant_text = String::new();
+    let mut loop_guard = crate::agent::ToolLoopGuard::default();
+    let mut turn_aborted = false;
 
     // Unified streaming agent loop: each iteration creates a new assistant message
     loop {
@@ -529,9 +570,12 @@ pub async fn chat(
         let result = {
             let mut _last_err = String::new();
             let mut attempt = 0u32;
+            let mut retry_delay: Option<std::time::Duration> = None;
             loop {
                 if attempt > 0 {
-                    tokio::time::sleep(crate::client::backoff(STREAM_RETRY_BASE, attempt as u64)).await;
+                    let delay = retry_delay.take()
+                        .unwrap_or_else(|| crate::client::backoff(STREAM_RETRY_BASE, attempt as u64));
+                    tokio::time::sleep(delay).await;
                 }
                 let stream_result = provider.stream_chat_with_tools(
                     chat_messages.clone(), tool_defs.clone(), params.clone()
@@ -579,6 +623,7 @@ pub async fn chat(
                             .await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
                     }
                     Err(e) if is_retryable_stream_error(&e) && attempt < MAX_STREAM_RETRIES => {
+                        retry_delay = crate::agent::parse_retry_after(&e);
                         _last_err = e;
                         attempt += 1;
                         continue;
@@ -646,7 +691,15 @@ pub async fn chat(
                 .unwrap_or(true);
             let is_mcp = tc.name.starts_with("mcp__");
             let tool = if tool_allowed && !is_mcp { tool_registry.0.get(&tc.name) } else { None };
-            let (result, outcome): (String, &'static str) = if !tool_allowed {
+            // Loop detection runs before approval so a stuck model can't spam
+            // the user with approval dialogs.
+            let verdict = loop_guard.observe(&tc.name, &tc.arguments);
+            let (result, outcome): (String, &'static str) = if let crate::agent::LoopVerdict::Warn(n) = verdict {
+                (crate::agent::loop_warning_message(&tc.name, n), "error")
+            } else if let crate::agent::LoopVerdict::Abort(n) = verdict {
+                turn_aborted = true;
+                (crate::agent::loop_abort_message(&tc.name, n), "error")
+            } else if !tool_allowed {
                 ("Tool not available for this assistant.".to_string(), "error")
             } else if tc.name == "ask_user" {
                 match wait_for_approval(&app, &cancel, tc, &assistant_msg_id, &conversation_id, None).await? {
@@ -734,6 +787,7 @@ pub async fn chat(
             } else {
                 (format!("Unknown tool: {}", tc.name), "error")
             };
+            let result = crate::agent::formatted_truncate_text(&result, crate::agent::TOOL_OUTPUT_TRUNCATION);
 
             app.emit("chat-stream", serde_json::json!({
                 "type": "tool_result",
@@ -766,9 +820,11 @@ pub async fn chat(
             }
 
             chat_messages.push(ChatMessage::tool_result(&tc.id, &result));
+
+            if turn_aborted { break; }
         }
 
-        if cancel.is_cancelled() { break; }
+        if cancel.is_cancelled() || turn_aborted { break; }
 
         // Mid-turn compaction check after tool calls
         budget.update_estimate(&chat_messages);
@@ -839,8 +895,9 @@ pub async fn chat(
             crate::agent::pricing::compute_cost(&usage, mc)
         });
 
+    let stop_reason = if turn_aborted { "loop_detected" } else { "end_turn" };
     let mut stop_payload = serde_json::json!({
-        "type": "stop", "reason": "end_turn", "done": true,
+        "type": "stop", "reason": stop_reason, "done": true,
         "message_id": &assistant_msg_id,
         "conversation_id": &conversation_id,
         "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
