@@ -28,7 +28,7 @@ interface OneBotStatus {
 export function OneBotSettings() {
   const { t } = useTranslation()
   const [config, setConfig] = useState<OneBotConfig>({
-    enabled: false, host: '0.0.0.0', port: 6700,
+    enabled: false, host: '127.0.0.1', port: 6700,
     access_token: null, assistant_id: null, admin_users: [],
     ack_emoji_id: '76',
   })
@@ -156,7 +156,7 @@ export function OneBotSettings() {
           <Input
             value={config.host}
             onChange={(e) => setConfig({ ...config, host: e.target.value })}
-            placeholder="0.0.0.0"
+            placeholder="127.0.0.1"
           />
         </div>
         <div className="space-y-1.5">

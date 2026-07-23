@@ -203,7 +203,11 @@ pub async fn headless_chat(
     let mut budget = TokenBudget::new(&provider_type, effective_model, context_limit, max_output, None);
 
     let mut chat_messages = build_messages(&system_prompt, &history, user_message, compact_cursor);
-    crate::agent::resolve_file_uris_in_messages(&mut chat_messages);
+    let files_root = app.and_then(|a| {
+        use tauri::Manager;
+        a.path().app_data_dir().ok()
+    }).map(|d| crate::files::files_dir(&d));
+    crate::agent::resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref());
     crate::agent::remove_orphan_tool_messages(&mut chat_messages);
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
@@ -280,13 +284,20 @@ pub async fn headless_chat(
     }
 
     // Build tool context
-    let shell_type = {
+    let (shell_type, sandbox_pref) = {
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = pool2.get().ok()?;
-            crate::db::ops::preference::get_preference(&mut conn, "shell").ok()?
-        }).await.ok().flatten()
+            let shell = crate::db::ops::preference::get_preference(&mut conn, "shell").ok().flatten();
+            let sandbox = crate::db::ops::preference::get_preference(&mut conn, "sandbox.enabled").ok().flatten();
+            Some((shell, sandbox))
+        }).await.ok().flatten().unwrap_or((None, None))
     };
+    // Missing preference means enabled. Headless sessions have no project dir,
+    // so writable roots shrink to TEMP — failures surface as escalation asks.
+    let sandbox_enabled = sandbox_pref.as_deref() != Some("false");
+    #[cfg(target_os = "android")]
+    let _ = sandbox_enabled;
     let tool_context = tools::ToolContext {
         working_directory: None,
         shell: shell_type.map(|s| tools::ShellType::from_str(&s))
@@ -296,7 +307,14 @@ pub async fn headless_chat(
         db_pool: Some(pool.clone()),
         edit_session: None,
         #[cfg(not(target_os = "android"))]
-        sandbox_policy: None,
+        sandbox_policy: crate::sandbox::default_policy_if_enabled(sandbox_enabled, None),
+        tool_secrets: {
+            let pool2 = pool.clone();
+            let secrets2 = secrets.clone();
+            tokio::task::spawn_blocking(move || crate::agent::build_tool_secrets(&secrets2, &pool2))
+                .await.map_err(|e| e.to_string())?
+        },
+        cancel: cancel.clone(),
     };
 
     // Agent loop: each iteration creates a new assistant message
@@ -430,28 +448,33 @@ pub async fn headless_chat(
             let is_mcp = tc.name.starts_with("mcp__");
             let tool = if !is_mcp { tool_registry.get(&tc.name) } else { None };
 
-            let tool_result = if !offered.contains(&tc.name) {
-                format!("Unknown tool: {}", tc.name)
+            let (tool_result, outcome): (String, &'static str) = if !offered.contains(&tc.name) {
+                (format!("Unknown tool: {}", tc.name), "error")
             } else if let Some(qq) = qq_tools.filter(|q| q.owns(&tc.name)) {
                 // Read-only and scope-locked to this session: no approval needed
                 match qq.execute(&tc.name, &tc.arguments).await {
-                    Ok(output) => output,
-                    Err(e) => format!("Error: {e}"),
+                    Ok(output) => (output, "success"),
+                    Err(e) => (format!("Error: {e}"), "error"),
                 }
             } else if is_mcp {
-                let args: serde_json::Value = serde_json::from_str(&tc.arguments)
-                    .unwrap_or_else(|_| serde_json::json!({}));
-                let mut mgr = mcp_manager.lock().await;
-                match mgr.call_tool(&tc.name, args).await {
-                    Ok(output) => output,
-                    Err(e) => format!("MCP error: {e}"),
+                // External MCP tools require approval, same as Ask tools.
+                if (approval_fn)(tc.clone()).await {
+                    let args: serde_json::Value = serde_json::from_str(&tc.arguments)
+                        .unwrap_or_else(|_| serde_json::json!({}));
+                    let mut mgr = mcp_manager.lock().await;
+                    match mgr.call_tool(&tc.name, args).await {
+                        Ok(output) => (output, "success"),
+                        Err(e) => (format!("MCP error: {e}"), "error"),
+                    }
+                } else {
+                    ("Tool call denied by user.".to_string(), "denied")
                 }
             } else if tc.name == "ask_user" {
                 let approved = (approval_fn)(tc.clone()).await;
                 if approved {
-                    "User approved.".to_string()
+                    ("User approved.".to_string(), "success")
                 } else {
-                    "User did not respond.".to_string()
+                    ("User did not respond.".to_string(), "denied")
                 }
             } else if let Some(tool) = tool {
                 let permission = tool.default_permission();
@@ -463,21 +486,44 @@ pub async fn headless_chat(
                 if approved {
                     let args: serde_json::Value = serde_json::from_str(&tc.arguments)
                         .unwrap_or_else(|_| serde_json::json!({}));
-                    match tool.execute(args, &tool_context).await {
-                        Ok(output) => output,
-                        Err(e) => format!("Error: {e}"),
+                    match tool.execute(args.clone(), &tool_context).await {
+                        Ok(output) => (output, "success"),
+                        Err(e) => match crate::tools::decode_sandbox_denied(&e) {
+                            Some(blocked) => {
+                                // Sandbox blocked the command — ask the admin
+                                // (Y/N) whether to retry without sandbox.
+                                let retry_tc = ToolCall {
+                                    id: format!("{}:retry", tc.id),
+                                    name: tc.name.clone(),
+                                    arguments: tc.arguments.clone(),
+                                };
+                                if (approval_fn)(retry_tc).await {
+                                    match tool.execute(args, &tool_context.without_sandbox()).await {
+                                        Ok(o) => (o, "success"),
+                                        Err(e2) => (format!("Error: {e2}"), "error"),
+                                    }
+                                } else {
+                                    (
+                                        format!("{blocked}\n[blocked by sandbox; user declined to retry without sandbox]"),
+                                        "denied",
+                                    )
+                                }
+                            }
+                            None => (format!("Error: {e}"), "error"),
+                        },
                     }
                 } else {
-                    "Tool call denied by user.".to_string()
+                    ("Tool call denied by user.".to_string(), "denied")
                 }
             } else {
-                format!("Unknown tool: {}", tc.name)
+                (format!("Unknown tool: {}", tc.name), "error")
             };
 
             if let Some(app) = app {
                 let _ = app.emit("chat-stream", serde_json::json!({
                     "type": "tool_result",
                     "call_id": tc.id, "result": &tool_result,
+                    "outcome": outcome,
                     "message_id": &assistant_msg_id,
                     "conversation_id": conversation_id,
                 }));

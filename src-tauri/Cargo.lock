@@ -2745,6 +2745,7 @@ dependencies = [
  "ignore",
  "jni",
  "keyring",
+ "libc",
  "libsqlite3-sys",
  "mime_guess",
  "ndk-context",
@@ -4186,8 +4187,10 @@ version = "0.1.0"
 dependencies = [
  "dirs",
  "dunce",
+ "pretty_assertions",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -4197,10 +4200,12 @@ dependencies = [
  "anyhow",
  "dunce",
  "glob",
+ "pretty_assertions",
  "rand 0.8.6",
  "sandbox-types",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "windows-sys 0.52.0",

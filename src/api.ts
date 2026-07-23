@@ -11,6 +11,9 @@ export const api = {
   updateConversationTitle: (id: string, title: string) =>
     invoke<void>('update_conversation_title', { id, title }),
 
+  setConversationAssistant: (id: string, assistantId: string | null) =>
+    invoke<void>('set_conversation_assistant', { id, assistantId }),
+
   togglePinConversation: (id: string) =>
     invoke<Conversation>('toggle_pin_conversation', { id }),
 
@@ -449,4 +452,11 @@ export const api = {
 
   deleteToolPreset: (id: string) =>
     invoke<void>('delete_tool_preset', { id }),
+
+  // Service Keys (for tool services like Tavily, Zhipu search)
+  setServiceKey: (service: string, key: string) =>
+    invoke<void>('set_service_key', { service, key }),
+
+  getServiceKeyExists: (service: string) =>
+    invoke<boolean>('get_service_key_exists', { service }),
 }

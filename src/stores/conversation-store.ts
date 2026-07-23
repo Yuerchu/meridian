@@ -136,8 +136,15 @@ export interface ConversationStore {
   handleText: (convId: string, messageId: string, content: string) => void
   handleReasoning: (convId: string, messageId: string, content: string) => void
   handleToolCall: (convId: string, messageId: string, callId: string, toolName: string, args: string) => void
-  handleToolApproval: (convId: string, messageId: string, callId: string, toolName: string, args: string) => void
-  handleToolResult: (convId: string, callId: string, result: string) => void
+  handleToolApproval: (
+    convId: string,
+    messageId: string,
+    callId: string,
+    toolName: string,
+    args: string,
+    escalation?: { originCallId: string; retryReason?: string },
+  ) => void
+  handleToolResult: (convId: string, callId: string, result: string, outcome?: string) => void
   handleStop: (convId: string) => void
   handleCompactStart: (convId: string) => void
   handleCompactDone: (convId: string) => void
@@ -295,7 +302,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }))
   },
 
-  handleToolApproval: (convId, _messageId, callId, toolName) => {
+  handleToolApproval: (convId, _messageId, callId, toolName, _args, escalation) => {
     set(produce((state: ConversationStore) => {
       const session = state.sessions[convId]
       if (!session) return
@@ -304,29 +311,43 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       } else {
         session.pendingApproval = callId
       }
+      // Escalation approvals use a synthetic "<id>:retry" call id; the block
+      // to update is the original call.
+      const targetId = escalation?.originCallId ?? callId
       for (const msg of session.messages) {
         if (!msg._blocks) continue
         for (const block of msg._blocks) {
-          if (block.type === 'tool_call' && block.data.call_id === callId) {
+          if (block.type === 'tool_call' && block.data.call_id === targetId) {
             block.data.status = 'pending'
+            if (escalation) {
+              (block.data as ToolCallDisplay).escalation_call_id = callId
+              ;(block.data as ToolCallDisplay).retry_reason = escalation.retryReason
+            }
           }
         }
       }
     }))
   },
 
-  handleToolResult: (convId, callId, result) => {
+  handleToolResult: (convId, callId, result, outcome) => {
     set(produce((state: ConversationStore) => {
       const session = state.sessions[convId]
       if (!session) return
-      if (session.pendingApproval === callId) session.pendingApproval = null
+      if (session.pendingApproval === callId || session.pendingApproval === `${callId}:retry`) {
+        session.pendingApproval = null
+      }
       if (session.pendingAskUser === callId) session.pendingAskUser = null
+      const status: ToolCallDisplay['status'] =
+        outcome === 'denied' ? 'denied'
+          : outcome === 'error' ? 'error'
+            : 'completed'
       for (const msg of session.messages) {
         if (!msg._blocks) continue
         for (const block of msg._blocks) {
           if (block.type === 'tool_call' && block.data.call_id === callId) {
-            (block.data as ToolCallDisplay).status = 'completed';
-            (block.data as ToolCallDisplay).result = result
+            (block.data as ToolCallDisplay).status = status;
+            (block.data as ToolCallDisplay).result = result;
+            (block.data as ToolCallDisplay).escalation_call_id = undefined
           }
         }
       }

@@ -10,6 +10,8 @@ pub mod cap;
 #[cfg(windows)]
 pub mod desktop;
 #[cfg(windows)]
+pub mod job;
+#[cfg(windows)]
 pub(crate) mod logging;
 #[cfg(windows)]
 pub(crate) mod path_normalization;

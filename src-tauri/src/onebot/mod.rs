@@ -135,7 +135,7 @@ impl Default for OneBotConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            host: "0.0.0.0".into(),
+            host: "127.0.0.1".into(),
             port: 6700,
             access_token: None,
             assistant_id: None,
@@ -166,7 +166,7 @@ pub fn load_config(pool: &DbPool) -> OneBotConfig {
 
     OneBotConfig {
         enabled: get("onebot.enabled").as_deref() == Some("true"),
-        host: get("onebot.host").unwrap_or_else(|| "0.0.0.0".into()),
+        host: get("onebot.host").unwrap_or_else(|| "127.0.0.1".into()),
         port: get("onebot.port").and_then(|s| s.parse().ok()).unwrap_or(6700),
         access_token: get("onebot.access_token").filter(|s| !s.is_empty()),
         assistant_id: get("onebot.assistant_id").filter(|s| !s.is_empty()),
@@ -255,6 +255,10 @@ impl OneBotServer {
         if self.is_running() {
             return Err("OneBot server is already running".into());
         }
+        validate_listen_config(
+            &self.state.config.host,
+            self.state.config.access_token.as_deref(),
+        )?;
 
         let state = self.state.clone();
         let running = self.running.clone();
@@ -350,6 +354,26 @@ impl OneBotServer {
     pub fn stop(&self) {
         let _ = self.shutdown_tx.send(true);
         self.running.store(false, Ordering::Relaxed);
+    }
+}
+
+/// Anyone who can reach the socket can submit events with an arbitrary
+/// `user_id`, i.e. impersonate an admin — so listening outside loopback
+/// without a real access token is refused outright.
+fn validate_listen_config(host: &str, access_token: Option<&str>) -> Result<(), String> {
+    let is_loopback = host.eq_ignore_ascii_case("localhost")
+        || host.parse::<std::net::IpAddr>().map(|ip| ip.is_loopback()).unwrap_or(false);
+    if is_loopback {
+        return Ok(());
+    }
+    match access_token {
+        Some(t) if t.len() >= 16 => Ok(()),
+        Some(_) => Err(
+            "OneBot access token is too short for a non-loopback address (need at least 16 characters); use a longer token or bind to 127.0.0.1".into(),
+        ),
+        None => Err(
+            "OneBot refuses to listen on a non-loopback address without an access token; set a token or bind to 127.0.0.1".into(),
+        ),
     }
 }
 
@@ -517,7 +541,22 @@ pub struct AppOneBot(pub Arc<Mutex<OneBotServer>>);
 
 #[cfg(test)]
 mod tests {
-    use super::token_matches;
+    use super::{token_matches, validate_listen_config};
+
+    #[test]
+    fn test_validate_listen_loopback_needs_no_token() {
+        assert!(validate_listen_config("127.0.0.1", None).is_ok());
+        assert!(validate_listen_config("::1", None).is_ok());
+        assert!(validate_listen_config("localhost", None).is_ok());
+    }
+
+    #[test]
+    fn test_validate_listen_non_loopback_requires_long_token() {
+        assert!(validate_listen_config("0.0.0.0", None).is_err());
+        assert!(validate_listen_config("0.0.0.0", Some("short")).is_err());
+        assert!(validate_listen_config("192.168.1.10", None).is_err());
+        assert!(validate_listen_config("0.0.0.0", Some("0123456789abcdef")).is_ok());
+    }
 
     #[test]
     fn test_token_matches_bearer_header() {

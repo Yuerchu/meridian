@@ -209,31 +209,62 @@ pub fn run() {
                         });
                     }
                 }
-                if db::ops::tool_preset::count_presets(&mut conn).unwrap_or(0) == 0 {
+                {
                     let now = now_ms();
                     let presets = [
-                        ("preset_coding", "Coding Agent", "All tools for coding tasks", r#"["ask_user","read_file","write_file","edit_file","apply_patch","run_command","list_directory","search_files","glob_files"]"#, 0),
-                        ("preset_research", "Research", "Minimal tools for research and reading", r#"["ask_user","read_file","list_directory","search_files","glob_files"]"#, 1),
+                        ("preset_coding", "Coding Agent", "All tools for coding tasks", r#"["ask_user","read_file","write_file","edit_file","apply_patch","run_command","list_directory","search_files","glob"]"#, 0),
+                        ("preset_research", "Research", "Minimal tools for research and reading", r#"["ask_user","read_file","list_directory","search_files","glob","web_search"]"#, 1),
                         ("preset_writing", "Writing", "Tools for writing and editing files", r#"["ask_user","read_file","write_file","edit_file"]"#, 2),
                     ];
+                    // Seed per id (not only on an empty table) so existing installs
+                    // pick up newly added built-in presets.
                     for (id, name, desc, tools_json, order) in &presets {
-                        let _ = db::ops::tool_preset::create_preset(&mut conn, &NewToolPreset {
-                            id, name, description: Some(desc), icon: None,
-                            tool_names: tools_json, is_builtin: 1, sort_order: *order,
-                            created_at: now, updated_at: now,
-                        });
+                        if db::ops::tool_preset::get_preset(&mut conn, id).is_err() {
+                            let _ = db::ops::tool_preset::create_preset(&mut conn, &NewToolPreset {
+                                id, name, description: Some(desc), icon: None,
+                                tool_names: tools_json, is_builtin: 1, sort_order: *order,
+                                created_at: now, updated_at: now,
+                            });
+                        }
+                    }
+                    // Repair presets from earlier seeds: "glob_files" never existed
+                    // (real tool name is "glob"), and the built-in Research preset
+                    // gained web_search.
+                    if let Ok(existing) = db::ops::tool_preset::list_presets(&mut conn) {
+                        for p in existing {
+                            let Ok(mut names) = serde_json::from_str::<Vec<String>>(&p.tool_names) else { continue };
+                            let mut changed = false;
+                            for n in names.iter_mut() {
+                                if n == "glob_files" { *n = "glob".into(); changed = true; }
+                            }
+                            if p.id == "preset_research" && p.is_builtin == 1
+                                && !names.iter().any(|n| n == "web_search") {
+                                names.push("web_search".into());
+                                changed = true;
+                            }
+                            if changed {
+                                let _ = db::ops::tool_preset::update_preset(
+                                    &mut conn, &p.id,
+                                    &db::models::tool_preset::ToolPresetUpdate {
+                                        tool_names: serde_json::to_string(&names).ok(),
+                                        updated_at: Some(now),
+                                        ..Default::default()
+                                    },
+                                );
+                            }
+                        }
                     }
                 }
             }
 
             // Load custom tools from DB into tool registry
-            let mut registry = tools::ToolRegistry::new();
+            let registry = tools::ToolRegistry::new();
             {
                 let mut conn = pool.get().expect("db connection");
                 if let Ok(custom_tools) = db::ops::custom_tool::list_enabled_tools(&mut conn) {
-                    for ct in &custom_tools {
-                        registry.register(Box::new(tools::custom::CustomToolExecutor::from_db(ct)));
-                    }
+                    registry.set_custom_tools(custom_tools.iter().map(|ct| {
+                        Arc::new(tools::custom::CustomToolExecutor::from_db(ct)) as Arc<dyn tools::Tool>
+                    }).collect());
                 }
             }
 
@@ -328,6 +359,7 @@ pub fn run() {
             commands::conversation::create_conversation,
             commands::conversation::get_conversation,
             commands::conversation::update_conversation_title,
+            commands::conversation::set_conversation_assistant,
             commands::conversation::toggle_pin_conversation,
             commands::conversation::delete_conversation,
             commands::conversation::compact,
@@ -427,6 +459,8 @@ pub fn run() {
             commands::tool_system::create_tool_preset,
             commands::tool_system::update_tool_preset,
             commands::tool_system::delete_tool_preset,
+            commands::tool_system::set_service_key,
+            commands::tool_system::get_service_key_exists,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

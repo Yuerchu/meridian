@@ -50,10 +50,17 @@ android {
             }
         }
         getByName("release") {
+            // No silent debug-signing fallback: a debug-signed "release" APK
+            // can't be upgraded later and must never be published. Without a
+            // keystore the APK is left unsigned so it cannot be mistaken for
+            // a releasable artifact (opt back in with ANDROID_ALLOW_DEBUG_SIGNING=true
+            // for local testing).
             signingConfig = if (hasReleaseKeystore) {
                 signingConfigs.getByName("release")
-            } else {
+            } else if (System.getenv("ANDROID_ALLOW_DEBUG_SIGNING") == "true") {
                 signingConfigs.getByName("debug")
+            } else {
+                null
             }
             isMinifyEnabled = true
             proguardFiles(

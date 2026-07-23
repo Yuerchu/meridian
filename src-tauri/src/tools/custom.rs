@@ -2,7 +2,6 @@ use async_trait::async_trait;
 use regex::Regex;
 use serde_json::Value;
 use std::time::Duration;
-use tokio::process::Command;
 
 use super::{Permission, Tool, ToolContext};
 
@@ -39,6 +38,13 @@ impl CustomToolExecutor {
     }
 }
 
+/// POSIX single-quote escaping. Model-supplied argument values must reach the
+/// shell as literal strings, never as syntax — the command template itself is
+/// author-defined and trusted, the values are not.
+fn shell_escape(value: &str) -> String {
+    format!("'{}'", value.replace('\'', r"'\''"))
+}
+
 #[async_trait]
 impl Tool for CustomToolExecutor {
     fn name(&self) -> &str {
@@ -64,7 +70,7 @@ impl Tool for CustomToolExecutor {
             let re = Regex::new(r"\{\{(\w+)\}\}").unwrap();
             let resolved = re.replace_all(template, |caps: &regex::Captures| {
                 let key = &caps[1];
-                args_obj
+                let raw = args_obj
                     .get(key)
                     .and_then(|v| v.as_str().map(|s| s.to_string()))
                     .unwrap_or_else(|| {
@@ -72,17 +78,20 @@ impl Tool for CustomToolExecutor {
                             .get(key)
                             .map(|v| v.to_string())
                             .unwrap_or_default()
-                    })
+                    });
+                shell_escape(&raw)
             });
             resolved.into_owned()
         } else {
-            serde_json::to_string(&args).unwrap_or_default()
+            shell_escape(&serde_json::to_string(&args).unwrap_or_default())
         };
 
         let wd = self
             .tool_working_directory
             .as_deref()
-            .or(context.working_directory.as_deref());
+            .or(context.working_directory.as_deref())
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
 
         let shell_cmd = if final_args.is_empty() {
             self.command.clone()
@@ -90,29 +99,26 @@ impl Tool for CustomToolExecutor {
             format!("{} {}", self.command, final_args)
         };
 
-        let mut cmd = if cfg!(target_os = "windows") {
-            let mut c = Command::new("bash");
-            c.arg("-c").arg(&shell_cmd);
-            c
+        let argv: Vec<String> = if cfg!(target_os = "windows") {
+            vec!["bash".into(), "-c".into(), shell_cmd]
         } else {
-            let mut c = Command::new("sh");
-            c.arg("-c").arg(&shell_cmd);
-            c
+            vec!["sh".into(), "-c".into(), shell_cmd]
         };
 
-        if let Some(dir) = wd {
-            cmd.current_dir(dir);
+        // Custom tools don't run inside the sandbox (policy None) but share the
+        // hardened spawn path: process-tree kill, bounded capture, cancellation.
+        let res = crate::sandbox::execute(&argv, &wd, None, self.timeout, &context.cancel)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if res.timed_out {
+            return Err(format!("Command timed out after {}s", self.timeout.as_secs()));
         }
 
-        let result = tokio::time::timeout(self.timeout, cmd.output())
-            .await
-            .map_err(|_| format!("Command timed out after {}s", self.timeout.as_secs()))?
-            .map_err(|e| format!("Failed to execute command: {e}"))?;
+        let stdout = String::from_utf8_lossy(&res.stdout);
+        let stderr = String::from_utf8_lossy(&res.stderr);
 
-        let stdout = String::from_utf8_lossy(&result.stdout);
-        let stderr = String::from_utf8_lossy(&result.stderr);
-
-        if result.status.success() {
+        if res.exit_code == 0 {
             Ok(if stdout.is_empty() {
                 "(no output)".to_string()
             } else {
@@ -121,7 +127,7 @@ impl Tool for CustomToolExecutor {
         } else {
             Err(format!(
                 "Command exited with code {}.\nstdout: {}\nstderr: {}",
-                result.status.code().unwrap_or(-1),
+                res.exit_code,
                 stdout,
                 stderr,
             ))

@@ -6,6 +6,10 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 
+[dev-dependencies]
+pretty_assertions = "1"
+tempfile = "3"
+
 [dependencies]
 sandbox-types = { path = "../sandbox-types" }
 anyhow = "1"

@@ -6,6 +6,7 @@ import {
   SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck,
   FileText, FilePen, FileX2, FileOutput, FolderOpen, Search,
   FileSearch, Terminal, FileDiff, Brain, BookOpen, List, Trash2,
+  Globe, ChevronUp, TriangleAlert,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,6 +36,7 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
   recall_memory: BookOpen,
   list_memories: List,
   delete_memory: Trash2,
+  web_search: Globe,
 }
 
 interface AskOption {
@@ -352,6 +354,16 @@ function parseSearchResult(result: string): SearchMatch[] | null {
 function SearchResult({ result }: { result: string }) {
   const matches = useMemo(() => parseSearchResult(result), [result])
 
+  const grouped = useMemo(() => {
+    const map = new Map<string, { line: number; text: string }[]>()
+    for (const m of matches ?? []) {
+      const existing = map.get(m.file)
+      if (existing) existing.push({ line: m.line, text: m.text })
+      else map.set(m.file, [{ line: m.line, text: m.text }])
+    }
+    return map
+  }, [matches])
+
   if (!matches) {
     return (
       <div className="border-t border-border bg-muted/10">
@@ -359,16 +371,6 @@ function SearchResult({ result }: { result: string }) {
       </div>
     )
   }
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, { line: number; text: string }[]>()
-    for (const m of matches) {
-      const existing = map.get(m.file)
-      if (existing) existing.push({ line: m.line, text: m.text })
-      else map.set(m.file, [{ line: m.line, text: m.text }])
-    }
-    return map
-  }, [matches])
 
   return (
     <div className="border-t border-border bg-muted/10 max-h-60 overflow-auto">
@@ -429,11 +431,12 @@ function ToolResult({ toolName, result, args }: { toolName: string; result: stri
   }
 }
 
-function PendingApproval({ callId }: { callId: string }) {
+function PendingApproval({ callId, retryReason }: { callId: string; retryReason?: string }) {
   const { t } = useTranslation()
   const [approved, setApproved] = useState(false)
   const [showFeedback, setShowFeedback] = useState(false)
   const [feedback, setFeedback] = useState('')
+  const isEscalation = retryReason !== undefined
 
   if (approved) {
     return (
@@ -446,19 +449,27 @@ function PendingApproval({ callId }: { callId: string }) {
 
   if (!showFeedback) {
     return (
-      <div className="flex gap-2 px-3 py-2 border-t border-border bg-muted/10">
-        <Button variant="default" onClick={() => { setApproved(true); api.approveToolCall(callId) }}>
-          <Check className="w-3 h-3" />
-          {t('chat.tool.allow')}
-        </Button>
-        <Button
-          variant="outline"
-          className="text-destructive hover:text-destructive"
-          onClick={() => setShowFeedback(true)}
-        >
-          <X className="w-3 h-3" />
-          {t('chat.tool.deny')}
-        </Button>
+      <div className="px-3 py-2 border-t border-border bg-muted/10 space-y-2">
+        {isEscalation && (
+          <div className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+            <TriangleAlert className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <span>{t('chat.tool.sandboxRetryPrompt')}</span>
+          </div>
+        )}
+        <div className="flex gap-2">
+          <Button variant="default" onClick={() => { setApproved(true); api.approveToolCall(callId) }}>
+            <Check className="w-3 h-3" />
+            {isEscalation ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
+          </Button>
+          <Button
+            variant="outline"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setShowFeedback(true)}
+          >
+            <X className="w-3 h-3" />
+            {t('chat.tool.deny')}
+          </Button>
+        </div>
       </div>
     )
   }
@@ -487,6 +498,142 @@ function PendingApproval({ callId }: { callId: string }) {
           {t('chat.tool.cancel')}
         </Button>
       </div>
+    </div>
+  )
+}
+
+interface WebSearchSource {
+  title: string
+  url: string
+  content: string
+  favicon?: string
+  site_name?: string
+}
+
+// null means the result is not valid tool output (i.e. a raw error string).
+function parseWebSearchResult(result: string): WebSearchSource[] | null {
+  try {
+    const data = JSON.parse(result)
+    if (data && Array.isArray(data.sources)) return data.sources
+  } catch { /* not JSON */ }
+  return null
+}
+
+function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(false)
+
+  const query = useMemo(() => {
+    try {
+      return JSON.parse(data.arguments)?.query ?? ''
+    } catch { return '' }
+  }, [data.arguments])
+
+  const sources = useMemo(
+    () => (data.result ? parseWebSearchResult(data.result) : null),
+    [data.result],
+  )
+
+  if (data.status === 'pending') {
+    return (
+      <div className="my-3 border border-border rounded-lg overflow-hidden text-xs">
+        <div className="flex items-center gap-2 px-3 py-2 bg-muted/30">
+          <Globe className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+          <span className="font-medium text-foreground shrink-0">{t('chat.tool.name.web_search')}</span>
+          {query && <span className="text-muted-foreground truncate">{query}</span>}
+        </div>
+        <PendingApproval callId={data.call_id} />
+      </div>
+    )
+  }
+
+  if (data.status !== 'completed' && data.status !== 'denied' && data.status !== 'error') {
+    return (
+      <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
+        <Globe className="w-3.5 h-3.5 animate-pulse" />
+        <span>{t('chat.tool.webSearch.searching')}</span>
+        {query && <span className="text-foreground truncate max-w-60">{query}</span>}
+      </div>
+    )
+  }
+
+  if (data.status === 'denied') {
+    return (
+      <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
+        <Globe className="w-3.5 h-3.5" />
+        <X className="w-3 h-3 text-destructive" />
+      </div>
+    )
+  }
+
+  if (data.status === 'error' || sources === null) {
+    return (
+      <div className="my-2 flex items-center gap-2 text-xs">
+        <Globe className="w-3.5 h-3.5 text-destructive shrink-0" />
+        <span className="text-destructive">{t('chat.tool.webSearch.failed')}</span>
+        {data.result && (
+          <span className="text-muted-foreground truncate max-w-80" title={data.result}>
+            {data.result.length > 200 ? `${data.result.slice(0, 200)}...` : data.result}
+          </span>
+        )}
+      </div>
+    )
+  }
+
+  if (sources.length === 0) {
+    return (
+      <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
+        <Globe className="w-3.5 h-3.5" />
+        <span>{t('chat.tool.webSearch.noResults')}</span>
+        {query && <span className="truncate max-w-60">{query}</span>}
+      </div>
+    )
+  }
+
+  return (
+    <div className="my-2 space-y-1.5">
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <span>{t('chat.tool.webSearch.sources', { count: sources.length })}</span>
+        <ChevronUp className={`w-3 h-3 transition-transform ${expanded ? '' : 'rotate-180'}`} />
+      </button>
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="overflow-hidden"
+          >
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {sources.map((src, i) => (
+                <a
+                  key={i}
+                  href={src.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-muted/50 px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  title={src.title}
+                >
+                  {src.favicon && (
+                    <img
+                      src={src.favicon}
+                      alt=""
+                      className="w-3.5 h-3.5 rounded-sm"
+                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    />
+                  )}
+                  <span className="truncate max-w-32">{src.site_name || src.title}</span>
+                </a>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
@@ -520,11 +667,7 @@ function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<st
 
 export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
   const { t } = useTranslation()
-  const isCompleted = data.status === 'completed' || data.status === 'denied'
-
-  if (data.tool_name === 'ask_user') {
-    return <AskUserBlock data={data} />
-  }
+  const isCompleted = data.status === 'completed' || data.status === 'denied' || data.status === 'error'
 
   const parsedArgs: Record<string, unknown> = useMemo(() => {
     try {
@@ -535,6 +678,14 @@ export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
     } catch { /* ignore */ }
     return {}
   }, [data.arguments])
+
+  if (data.tool_name === 'ask_user') {
+    return <AskUserBlock data={data} />
+  }
+
+  if (data.tool_name === 'web_search') {
+    return <WebSearchBlock data={data} />
+  }
 
   const Icon = TOOL_ICONS[data.tool_name] ?? Wrench
 
@@ -568,6 +719,11 @@ export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
                 <X className="w-3 h-3 text-destructive" />
               </motion.span>
             )}
+            {data.status === 'error' && (
+              <motion.span key="error" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
+                <TriangleAlert className="w-3 h-3 text-destructive" />
+              </motion.span>
+            )}
           </AnimatePresence>
         </AccordionTrigger>
         <AccordionContent className="pb-0">
@@ -580,7 +736,12 @@ export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
             ))}
           </div>
 
-          {data.status === 'pending' && <PendingApproval callId={data.call_id} />}
+          {data.status === 'pending' && (
+            <PendingApproval
+              callId={data.escalation_call_id ?? data.call_id}
+              retryReason={data.escalation_call_id ? (data.retry_reason ?? '') : undefined}
+            />
+          )}
 
           {data.status === 'running' && (
             <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/10 text-muted-foreground">

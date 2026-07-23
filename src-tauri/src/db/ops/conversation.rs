@@ -74,6 +74,21 @@ pub fn update_title(
     Ok(())
 }
 
+pub fn update_assistant(
+    conn: &mut SqliteConnection,
+    id: &str,
+    assistant_id: Option<&str>,
+    now: i64,
+) -> QueryResult<()> {
+    diesel::update(conversations::table.find(id))
+        .set((
+            conversations::assistant_id.eq(assistant_id),
+            conversations::updated_at.eq(now),
+        ))
+        .execute(conn)?;
+    Ok(())
+}
+
 pub fn toggle_pin(
     conn: &mut SqliteConnection,
     id: &str,

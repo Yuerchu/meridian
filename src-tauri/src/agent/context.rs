@@ -57,8 +57,15 @@ fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message) {
     }
 }
 
-pub(crate) fn resolve_file_uris_in_messages(messages: &mut [ChatMessage]) {
+pub(crate) fn resolve_file_uris_in_messages(
+    messages: &mut [ChatMessage],
+    files_root: Option<&std::path::Path>,
+) {
+    let Some(files_root) = files_root else { return };
     for msg in messages.iter_mut() {
+        // Only user-authored attachments may be inlined: assistant/tool content
+        // is model-influenced and must never trigger local file reads.
+        if msg.role != "user" { continue; }
         if !msg.content.starts_with('[') { continue; }
         let Ok(mut parts) = serde_json::from_str::<Vec<serde_json::Value>>(&msg.content) else { continue };
         let mut changed = false;
@@ -68,7 +75,7 @@ pub(crate) fn resolve_file_uris_in_messages(messages: &mut [ChatMessage]) {
                 .and_then(|u| u.as_str())
                 .map(String::from);
             if let Some(ref uri) = url {
-                if let Some(path) = crate::files::resolve_file_uri(uri) {
+                if let Some(path) = crate::files::resolve_attachment_uri(uri, files_root) {
                     let mime = mime_guess::from_path(&path).first_or_octet_stream().to_string();
                     if let Ok(data_uri) = crate::files::file_to_base64_data_uri(&path, &mime) {
                         if let Some(img_url) = part.pointer_mut("/image_url/url") {
@@ -298,6 +305,35 @@ mod tests {
         assert_eq!(msgs[2].content, "a");
         assert_eq!(msgs[3].role, "user");
         assert_eq!(msgs[3].content, "new");
+    }
+
+    #[test]
+    fn test_resolve_file_uris_only_user_and_contained() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("files");
+        std::fs::create_dir_all(root.join("c1")).unwrap();
+        let inside = root.join("c1").join("img.png");
+        std::fs::write(&inside, b"\x89PNG").unwrap();
+        let uri = format!("file:///{}", inside.to_string_lossy().replace('\\', "/"));
+        let content = format!(r#"[{{"type":"image_url","image_url":{{"url":"{uri}"}}}}]"#);
+
+        let mut msgs = vec![chat_msg("assistant", &content), chat_msg("user", &content)];
+        resolve_file_uris_in_messages(&mut msgs, Some(&root));
+        assert!(msgs[0].content.contains("file:///"), "assistant content must never be inlined");
+        assert!(msgs[1].content.contains("data:"), "user attachment inside the root should inline");
+
+        let outside = dir.path().join("evil.txt");
+        std::fs::write(&outside, b"x").unwrap();
+        let uri2 = format!("file:///{}", outside.to_string_lossy().replace('\\', "/"));
+        let content2 = format!(r#"[{{"type":"image_url","image_url":{{"url":"{uri2}"}}}}]"#);
+        let mut msgs2 = vec![chat_msg("user", &content2)];
+        resolve_file_uris_in_messages(&mut msgs2, Some(&root));
+        assert!(msgs2[0].content.contains("file:///"), "paths outside the root must not inline");
+
+        // No root configured → nothing is inlined at all.
+        let mut msgs3 = vec![chat_msg("user", &content)];
+        resolve_file_uris_in_messages(&mut msgs3, None);
+        assert!(msgs3[0].content.contains("file:///"));
     }
 
     #[test]

@@ -47,7 +47,7 @@ import {
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { ToolCallBlock } from './tool-call-block'
 import { renderEmojisInText } from './emoji-renderer'
-import type { ContentBlock, Message as MessageData } from '@/types'
+import type { ContentBlock, Message as MessageData, ToolCallDisplay } from '@/types'
 import type { EmojiMap } from './emoji-renderer'
 
 function useRelativeTime() {
@@ -576,9 +576,17 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
           <Bubble variant="ghost" className="w-full">
             <BubbleContent className="w-full">
               {(message._blocks && message._blocks.length > 0) ? (
-                message._blocks.map((block, i) => (
-                  <AssistantBlock key={i} block={block} isLast={i === message._blocks!.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} oneBot={isOneBot} emojiMap={emojiMap} />
-                ))
+                message._blocks
+                  .filter((block) => {
+                    if (block.type !== 'thinking') return true
+                    const blocks = message._blocks!
+                    const hasWebSearch = blocks.some(b => b.type === 'tool_call' && (b.data as ToolCallDisplay).tool_name === 'web_search')
+                    const hasText = blocks.some(b => b.type === 'text' && b.text.trim())
+                    return !(hasWebSearch && !hasText)
+                  })
+                  .map((block, i, arr) => (
+                    <AssistantBlock key={i} block={block} isLast={i === arr.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} oneBot={isOneBot} emojiMap={emojiMap} />
+                  ))
               ) : (
                 <MarkdownContent content={message.content} isStreaming={isStreaming} oneBot={isOneBot} emojiMap={emojiMap} />
               )}

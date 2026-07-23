@@ -1,10 +1,10 @@
 use std::time::Duration;
 use async_trait::async_trait;
 use super::{Permission, Tool, ToolContext, ShellType};
+use crate::sandbox::ExecResult;
 
 pub struct RunCommandTool;
 
-const MAX_OUTPUT_BYTES: usize = 256 * 1024; // 256 KB
 const COMMAND_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[async_trait]
@@ -51,37 +51,61 @@ impl Tool for RunCommandTool {
             }
         };
 
-        if let Some(ref policy) = context.sandbox_policy {
-            let output = crate::sandbox::execute_sandboxed(&shell_argv, &cwd, policy).await?;
-            return format_output(output);
+        let timeout = context.sandbox_policy.as_ref()
+            .map(|p| p.timeout)
+            .unwrap_or(COMMAND_TIMEOUT);
+
+        let res = crate::sandbox::execute(
+            &shell_argv,
+            &cwd,
+            context.sandbox_policy.as_ref(),
+            timeout,
+            &context.cancel,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
+
+        if is_sandbox_denied(&res) {
+            return Err(super::encode_sandbox_denied(&format_output(&res)));
         }
 
-        let mut cmd = tokio::process::Command::new(&shell_argv[0]);
-        cmd.args(&shell_argv[1..]);
-        cmd.current_dir(&cwd);
-
-        #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
-        }
-
-        let output = match tokio::time::timeout(COMMAND_TIMEOUT, cmd.output()).await {
-            Ok(result) => result,
-            Err(_) => return Err(format!("command timed out after {}s", COMMAND_TIMEOUT.as_secs())),
-        };
-
-        match output {
-            Ok(output) => format_output(output),
-            Err(e) => Err(format!("failed to execute command: {e}")),
-        }
+        Ok(format_output(&res))
     }
 }
 
-fn format_output(output: std::process::Output) -> Result<String, String> {
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
-    let exit_code = output.status.code().unwrap_or(-1);
+/// Heuristic ported from codex-rs/sandboxing/src/denial.rs, adjusted for
+/// Windows: a non-zero exit alone is not a denial — the output must show an
+/// access failure the restricted token would produce.
+fn is_sandbox_denied(res: &ExecResult) -> bool {
+    if !res.sandboxed || res.timed_out || res.exit_code == 0 {
+        return false;
+    }
+    let hay = format!(
+        "{}\n{}",
+        String::from_utf8_lossy(&res.stdout),
+        String::from_utf8_lossy(&res.stderr),
+    )
+    .to_lowercase();
+    const NEEDLES: &[&str] = &[
+        "access is denied",
+        "拒绝访问",
+        "permission denied",
+        "unauthorizedaccess",
+        "operation not permitted",
+        "read-only file system",
+        "(os error 5)",
+        // MSYS2/Cygwin (Git Bash) can't create its shared-memory section under
+        // a restricted token and dies with "CreateFileMapping ... Win32 error 5"
+        // before running anything; escalation is the only way forward.
+        "win32 error 5",
+        "createfilemapping",
+    ];
+    NEEDLES.iter().any(|n| hay.contains(n))
+}
+
+fn format_output(res: &ExecResult) -> String {
+    let stdout = String::from_utf8_lossy(&res.stdout);
+    let stderr = String::from_utf8_lossy(&res.stderr);
 
     let mut result = String::new();
     if !stdout.is_empty() {
@@ -94,23 +118,19 @@ fn format_output(output: std::process::Output) -> Result<String, String> {
         result.push_str("[stderr] ");
         result.push_str(&stderr);
     }
-    if exit_code != 0 {
-        result.push_str(&format!("\n[exit code: {}]", exit_code));
+    if res.exit_code != 0 && !res.timed_out {
+        result.push_str(&format!("\n[exit code: {}]", res.exit_code));
+    }
+    if res.timed_out {
+        result.push_str("\n[timed out; process tree killed]");
+    }
+    if res.truncated {
+        result.push_str("\n[output truncated at 256KB]");
     }
     if result.is_empty() {
         result = "(no output)".to_string();
     }
-
-    if result.len() > MAX_OUTPUT_BYTES {
-        let truncated = crate::util::take_bytes_at_char_boundary(&result, MAX_OUTPUT_BYTES);
-        return Ok(format!(
-            "{}...\n\n(output truncated at 256KB, total {} bytes)",
-            truncated,
-            result.len()
-        ));
-    }
-
-    Ok(result)
+    result
 }
 
 fn find_powershell() -> &'static str {
@@ -138,5 +158,51 @@ fn find_bash() -> &'static str {
         "bash"
     } else {
         "/bin/bash"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn exec_res(exit_code: i32, stderr: &str, sandboxed: bool, timed_out: bool) -> ExecResult {
+        ExecResult {
+            exit_code,
+            stdout: Vec::new(),
+            stderr: stderr.as_bytes().to_vec(),
+            timed_out,
+            truncated: false,
+            sandboxed,
+        }
+    }
+
+    #[test]
+    fn denied_on_access_keywords() {
+        assert!(is_sandbox_denied(&exec_res(1, "拒绝访问。", true, false)));
+        assert!(is_sandbox_denied(&exec_res(1, "Access is denied.", true, false)));
+        assert!(is_sandbox_denied(&exec_res(1, "mkdir: cannot create directory: Permission denied", true, false)));
+        // Git Bash dying at startup under the restricted token
+        assert!(is_sandbox_denied(&exec_res(
+            256,
+            "0 [main] bash (123) bash.exe: *** fatal error - CreateFileMapping S-1-5-21-x.1, Win32 error 5.  Terminating.",
+            true,
+            false,
+        )));
+    }
+
+    #[test]
+    fn not_denied_without_keywords_or_sandbox() {
+        assert!(!is_sandbox_denied(&exec_res(127, "bash: foo: command not found", true, false)));
+        assert!(!is_sandbox_denied(&exec_res(0, "", true, false)));
+        assert!(!is_sandbox_denied(&exec_res(1, "Access is denied.", false, false)));
+        assert!(!is_sandbox_denied(&exec_res(1, "Access is denied.", true, true)));
+        assert!(!is_sandbox_denied(&exec_res(1, "some other failure", true, false)));
+    }
+
+    #[test]
+    fn sandbox_denied_marker_roundtrip() {
+        let encoded = crate::tools::encode_sandbox_denied("blocked output");
+        assert_eq!(crate::tools::decode_sandbox_denied(&encoded), Some("blocked output"));
+        assert_eq!(crate::tools::decode_sandbox_denied("plain error"), None);
     }
 }

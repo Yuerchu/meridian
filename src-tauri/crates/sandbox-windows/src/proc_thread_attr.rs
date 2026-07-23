@@ -9,10 +9,12 @@ use windows_sys::Win32::System::Threading::UpdateProcThreadAttribute;
 
 const PROC_THREAD_ATTRIBUTE_HANDLE_LIST: usize = 0x0002_0002;
 const PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE: usize = 0x0002_0016;
+const PROC_THREAD_ATTRIBUTE_JOB_LIST: usize = 0x0002_000D;
 
 pub struct ProcThreadAttributeList {
     buffer: Vec<u8>,
     handle_list: Option<Vec<HANDLE>>,
+    job_list: Option<Vec<HANDLE>>,
 }
 
 impl ProcThreadAttributeList {
@@ -37,6 +39,7 @@ impl ProcThreadAttributeList {
         Ok(Self {
             buffer,
             handle_list: None,
+            job_list: None,
         })
     }
 
@@ -53,6 +56,34 @@ impl ProcThreadAttributeList {
                 PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
                 hpc as *mut c_void,
                 std::mem::size_of::<HANDLE>(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            return Err(io::Error::from_raw_os_error(unsafe {
+                GetLastError() as i32
+            }));
+        }
+        Ok(())
+    }
+
+    /// Attaches the new process to a Job Object atomically at creation, so
+    /// descendants spawned before an `AssignProcessToJobObject` call can't
+    /// escape the job.
+    pub fn set_job(&mut self, job: HANDLE) -> io::Result<()> {
+        self.job_list = Some(vec![job]);
+        let list = self.as_mut_ptr();
+        let Some(job_list) = self.job_list.as_mut() else {
+            return Err(io::Error::other("job list missing after initialization"));
+        };
+        let ok = unsafe {
+            UpdateProcThreadAttribute(
+                list,
+                0,
+                PROC_THREAD_ATTRIBUTE_JOB_LIST,
+                job_list.as_mut_ptr().cast(),
+                std::mem::size_of_val(job_list.as_slice()),
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
             )

@@ -60,6 +60,10 @@ pub async fn export_conversation(app: tauri::AppHandle, conversation_id: String,
             .map_err(|e| e.to_string())?;
         let messages = db::ops::message::list_messages(&mut conn, &conversation_id)
             .map_err(|e| e.to_string())?;
+        // Internal bookkeeping (compact summaries) must not leak into training data.
+        let messages: Vec<Message> = messages.into_iter()
+            .filter(|m| m.is_compact_summary == 0)
+            .collect();
         let system_prompt = conv.assistant_id.as_deref()
             .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok())
             .map(|a| a.system_prompt)
@@ -74,11 +78,8 @@ pub async fn export_conversation(app: tauri::AppHandle, conversation_id: String,
                     } else {
                         obj["content"] = serde_json::Value::Null;
                     }
-                    if let Some(ref rc) = m.reasoning_content {
-                        if !rc.is_empty() {
-                            obj["reasoning_content"] = serde_json::json!(rc);
-                        }
-                    }
+                    // Hidden reasoning is intentionally excluded: exports must
+                    // only contain the final visible answer.
                     if let Some(ref tc_json) = m.tool_calls {
                         if m.schema_version >= 2 {
                             if let Ok(tcs) = serde_json::from_str::<Vec<serde_json::Value>>(tc_json) {
@@ -93,18 +94,6 @@ pub async fn export_conversation(app: tauri::AppHandle, conversation_id: String,
                                         "function": { "name": tc.name, "arguments": tc.arguments }
                                     })).collect::<Vec<_>>()
                                 );
-                            }
-                            // Extract reasoning from v1 blocks
-                            if m.reasoning_content.is_none() {
-                                if let Ok(blocks) = serde_json::from_str::<Vec<serde_json::Value>>(tc_json) {
-                                    let thinking: String = blocks.iter()
-                                        .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("thinking"))
-                                        .filter_map(|b| b.get("text").and_then(|t| t.as_str()))
-                                        .collect::<Vec<_>>().join("\n");
-                                    if !thinking.is_empty() {
-                                        obj["reasoning_content"] = serde_json::json!(thinking);
-                                    }
-                                }
                             }
                         }
                     }

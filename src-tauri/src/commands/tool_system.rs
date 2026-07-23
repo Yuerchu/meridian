@@ -4,8 +4,24 @@ use crate::db;
 use crate::db::models::custom_tool::{CustomTool, CustomToolUpdate, NewCustomTool};
 use crate::db::models::tool_category::ToolCategory;
 use crate::db::models::tool_preset::{NewToolPreset, ToolPreset, ToolPresetUpdate};
-use crate::state::AppDb;
+use crate::secrets::{SecretName, SecretScope};
+use crate::state::{AppDb, AppSecrets, AppTools};
 use crate::util::{double_option, get_conn, now_ms};
+
+/// Rebuild the runtime registry's custom tool set from the DB so permission
+/// changes, disables and deletions apply immediately, not on next restart.
+fn reload_custom_tools(app: &tauri::AppHandle) {
+    let pool = app.state::<AppDb>();
+    let registry = app.state::<AppTools>();
+    if let Ok(mut conn) = pool.0.get() {
+        if let Ok(list) = db::ops::custom_tool::list_enabled_tools(&mut conn) {
+            registry.0.set_custom_tools(list.iter().map(|ct| {
+                std::sync::Arc::new(crate::tools::custom::CustomToolExecutor::from_db(ct))
+                    as std::sync::Arc<dyn crate::tools::Tool>
+            }).collect());
+        }
+    }
+}
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,7 +84,7 @@ pub fn create_custom_tool(
     let now = now_ms();
     let schema = parameters_schema.as_deref().unwrap_or(r#"{"type":"object","properties":{}}"#);
     let perm = permission.as_deref().unwrap_or("ask");
-    db::ops::custom_tool::create_tool(&mut conn, &NewCustomTool {
+    let created = db::ops::custom_tool::create_tool(&mut conn, &NewCustomTool {
         id: &id,
         name: &name,
         description: &description,
@@ -83,7 +99,10 @@ pub fn create_custom_tool(
         sort_order: 0,
         created_at: now,
         updated_at: now,
-    }).map_err(|e| e.to_string())
+    }).map_err(|e| e.to_string())?;
+    drop(conn);
+    reload_custom_tools(&app);
+    Ok(created)
 }
 
 #[tauri::command]
@@ -94,7 +113,7 @@ pub fn update_custom_tool(
 ) -> Result<CustomTool, String> {
     let pool = app.state::<AppDb>();
     let mut conn = get_conn(&pool.0)?;
-    db::ops::custom_tool::update_tool(&mut conn, &id, &CustomToolUpdate {
+    let updated = db::ops::custom_tool::update_tool(&mut conn, &id, &CustomToolUpdate {
         name: updates.name,
         description: updates.description,
         command: updates.command,
@@ -107,14 +126,20 @@ pub fn update_custom_tool(
         is_enabled: updates.is_enabled,
         updated_at: Some(now_ms()),
         ..Default::default()
-    }).map_err(|e| e.to_string())
+    }).map_err(|e| e.to_string())?;
+    drop(conn);
+    reload_custom_tools(&app);
+    Ok(updated)
 }
 
 #[tauri::command]
 pub fn delete_custom_tool(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let pool = app.state::<AppDb>();
     let mut conn = get_conn(&pool.0)?;
-    db::ops::custom_tool::delete_tool(&mut conn, &id).map_err(|e| e.to_string())
+    db::ops::custom_tool::delete_tool(&mut conn, &id).map_err(|e| e.to_string())?;
+    drop(conn);
+    reload_custom_tools(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -170,4 +195,34 @@ pub fn delete_tool_preset(app: tauri::AppHandle, id: String) -> Result<(), Strin
     let pool = app.state::<AppDb>();
     let mut conn = get_conn(&pool.0)?;
     db::ops::tool_preset::delete_preset(&mut conn, &id).map_err(|e| e.to_string())
+}
+
+fn service_secret_name(service: &str) -> String {
+    format!("SERVICE_{}_KEY", service.replace('-', "_").to_uppercase())
+}
+
+#[tauri::command]
+pub fn set_service_key(
+    app: tauri::AppHandle,
+    service: String,
+    key: String,
+) -> Result<(), String> {
+    let secrets = app.state::<AppSecrets>();
+    let name = service_secret_name(&service);
+    let name = SecretName::new(&name).map_err(|e| format!("invalid service name: {e}"))?;
+    secrets.0.set(&SecretScope::Global, &name, &key)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_service_key_exists(
+    app: tauri::AppHandle,
+    service: String,
+) -> Result<bool, String> {
+    let secrets = app.state::<AppSecrets>();
+    let name = service_secret_name(&service);
+    let name = SecretName::new(&name).map_err(|e| format!("invalid service name: {e}"))?;
+    let exists = secrets.0.get(&SecretScope::Global, &name)
+        .ok().flatten().is_some();
+    Ok(exists)
 }

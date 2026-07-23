@@ -81,6 +81,8 @@ mod tests {
             edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
+            tool_secrets: std::collections::HashMap::new(),
+            cancel: tokio_util::sync::CancellationToken::new(),
         }
     }
 

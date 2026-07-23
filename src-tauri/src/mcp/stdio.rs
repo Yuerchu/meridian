@@ -50,50 +50,39 @@ impl StdioTransport {
         })
     }
 
+    // MCP stdio transport (2024-11-05) frames messages as newline-delimited
+    // JSON-RPC — not LSP-style Content-Length headers.
     async fn send_raw(&mut self, body: &str) -> Result<(), String> {
-        let header = format!("Content-Length: {}\r\n\r\n", body.len());
-        self.writer.write_all(header.as_bytes()).await.map_err(|e| format!("write header: {e}"))?;
         self.writer.write_all(body.as_bytes()).await.map_err(|e| format!("write body: {e}"))?;
+        self.writer.write_all(b"\n").await.map_err(|e| format!("write newline: {e}"))?;
         self.writer.flush().await.map_err(|e| format!("flush: {e}"))?;
         Ok(())
     }
 
     async fn read_response(&mut self) -> Result<serde_json::Value, String> {
         loop {
-            let mut header_line = String::new();
-            self.reader
-                .read_line(&mut header_line)
+            let mut line = String::new();
+            let n = self.reader
+                .read_line(&mut line)
                 .await
-                .map_err(|e| format!("read header: {e}"))?;
-
-            if header_line.trim().is_empty() {
+                .map_err(|e| format!("read line: {e}"))?;
+            if n == 0 {
+                return Err("MCP server closed stdout".into());
+            }
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
                 continue;
             }
 
-            if !header_line.starts_with("Content-Length:") {
+            // Skip anything that isn't a JSON-RPC response to us: server
+            // notifications/requests and stray non-JSON output.
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else { continue };
+            if value.get("id").is_none()
+                || (value.get("result").is_none() && value.get("error").is_none()) {
                 continue;
             }
 
-            let content_length: usize = header_line
-                .trim()
-                .strip_prefix("Content-Length:")
-                .ok_or("missing Content-Length")?
-                .trim()
-                .parse()
-                .map_err(|e| format!("parse Content-Length: {e}"))?;
-
-            let mut empty_line = String::new();
-            self.reader
-                .read_line(&mut empty_line)
-                .await
-                .map_err(|e| format!("read separator: {e}"))?;
-
-            let mut buf = vec![0u8; content_length];
-            tokio::io::AsyncReadExt::read_exact(&mut self.reader, &mut buf)
-                .await
-                .map_err(|e| format!("read body: {e}"))?;
-
-            let resp: JsonRpcResponse = serde_json::from_slice(&buf)
+            let resp: JsonRpcResponse = serde_json::from_value(value)
                 .map_err(|e| format!("parse response: {e}"))?;
 
             if let Some(err) = resp.error {

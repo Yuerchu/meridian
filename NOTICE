@@ -12,9 +12,16 @@ https://github.com/openai/codex
 
 The following modules contain code ported from codex-rs:
 
-  src-tauri/src/keyring/     — from codex-rs/keyring-store/
-  src-tauri/src/secrets/     — from codex-rs/secrets/
-  src-tauri/src/client/      — from codex-rs/codex-client/
+  src-tauri/src/keyring/                — from codex-rs/keyring-store/
+  src-tauri/src/secrets/                — from codex-rs/secrets/
+  src-tauri/src/client/                 — from codex-rs/codex-client/
+  src-tauri/crates/sandbox-windows/     — from codex-rs/windows-sandbox-rs/
+                                          (job.rs from codex-rs/utils/pty/src/win/job.rs)
+  src-tauri/crates/sandbox-types/       — from codex-rs/utils/absolute-path/ and
+                                          codex-rs/protocol/ (permissions subset)
+  src-tauri/src/sandbox.rs              — bounded capture / timeout / cancellation
+                                          logic derived from codex-rs/core/src/exec.rs
+                                          and codex-rs/windows-sandbox-rs/src/lib.rs
 
 Modifications made:
   - keyring: renamed crate, no functional changes
@@ -23,3 +30,12 @@ Modifications made:
   - client: removed ChatGPT cookie handling, ChatGPT host allowlist,
     OpenTelemetry trace propagation, zstd request compression, and
     custom CA probe binary; simplified HTTP client wrapper
+  - sandbox-windows: restricted-token path only; stripped elevated backend,
+    WFP network filtering, setup system, ConPTY and otel; job.rs rewritten
+    from winapi 0.3 to windows-sys 0.52
+  - sandbox-types: absolute-path + permissions subset only
+  - sandbox.rs: capture cap reduced to 256KB, results carry explicit
+    timed_out/truncated/sandboxed flags
+
+The sandbox-types crate additionally contains code derived from
+path-absolutize (MIT), as inherited through codex-rs.

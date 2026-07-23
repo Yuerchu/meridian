@@ -12,6 +12,28 @@ pub(crate) fn get_provider_api_key(secrets: &SecretsManager, provider_id: &str) 
     secrets.get(&SecretScope::Global, &SecretName::new(&key).unwrap()).ok().flatten()
 }
 
+/// Secrets exposed to tool executors (web_search provider selection + service
+/// API keys). Shared by the desktop chat loop and the OneBot headless agent.
+pub(crate) fn build_tool_secrets(
+    secrets: &SecretsManager,
+    pool: &DbPool,
+) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    if let Ok(mut conn) = pool.get() {
+        if let Ok(Some(sp)) = db::ops::preference::get_preference(&mut conn, "search_provider") {
+            map.insert("SEARCH_PROVIDER".to_string(), sp);
+        }
+    }
+    for key in ["SERVICE_TAVILY_KEY", "SERVICE_ZHIPU_SEARCH_KEY"] {
+        if let Ok(name) = SecretName::new(key) {
+            if let Ok(Some(val)) = secrets.get(&SecretScope::Global, &name) {
+                map.insert(key.to_string(), val);
+            }
+        }
+    }
+    map
+}
+
 pub(crate) fn resolve_provider_config(
     secrets: &SecretsManager,
     pool: &DbPool,

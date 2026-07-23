@@ -79,6 +79,20 @@ pub async fn create_conversation(app: tauri::AppHandle, title: Option<String>, p
 }
 
 #[tauri::command]
+pub async fn set_conversation_assistant(
+    app: tauri::AppHandle,
+    id: String,
+    assistant_id: Option<String>,
+) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::conversation::update_assistant(&mut conn, &id, assistant_id.as_deref(), now_ms())
+            .map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub async fn update_conversation_title(app: tauri::AppHandle, id: String, title: String) -> Result<(), String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {

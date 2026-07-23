@@ -78,6 +78,10 @@ android-keyring = { version = "0.2", features = ["ndk-context"] }
 jni = "0.21"
 ndk-context = "0.1"
 
+# Process-group termination for command execution (sandbox.rs)
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "test-util"] }
 tempfile = "3"

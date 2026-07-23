@@ -39,9 +39,56 @@ pub fn resolve_file_uri(uri: &str) -> Option<PathBuf> {
     }
 }
 
+/// Largest attachment that may be inlined (base64) into a provider request.
+pub const MAX_INLINE_ATTACHMENT_BYTES: u64 = 20 * 1024 * 1024;
+
+/// Resolve a `file://` URI for inlining into a provider request. Only regular
+/// files inside the app-managed attachment root are accepted (canonical
+/// containment), capped at `MAX_INLINE_ATTACHMENT_BYTES` — message content is
+/// model-influenced, so an unrestricted URI here would let a response exfiltrate
+/// arbitrary local files on the next request.
+pub fn resolve_attachment_uri(uri: &str, files_root: &Path) -> Option<PathBuf> {
+    let path = resolve_file_uri(uri)?;
+    let canonical = std::fs::canonicalize(&path).ok()?;
+    let root = std::fs::canonicalize(files_root).ok()?;
+    if !canonical.starts_with(&root) {
+        return None;
+    }
+    let meta = std::fs::metadata(&canonical).ok()?;
+    if !meta.is_file() || meta.len() > MAX_INLINE_ATTACHMENT_BYTES {
+        return None;
+    }
+    Some(canonical)
+}
+
 pub fn file_to_base64_data_uri(path: &Path, mime_type: &str) -> Result<String, String> {
     use base64::Engine;
     let data = std::fs::read(path).map_err(|e| e.to_string())?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&data);
     Ok(format!("data:{mime_type};base64,{b64}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn to_uri(path: &Path) -> String {
+        format!("file:///{}", path.to_string_lossy().replace('\\', "/"))
+    }
+
+    #[test]
+    fn attachment_uri_requires_containment() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("files");
+        std::fs::create_dir_all(root.join("conv1")).unwrap();
+        let inside = root.join("conv1").join("a.txt");
+        std::fs::write(&inside, b"hello").unwrap();
+        let outside = dir.path().join("secret.txt");
+        std::fs::write(&outside, b"secret").unwrap();
+
+        assert!(resolve_attachment_uri(&to_uri(&inside), &root).is_some());
+        assert!(resolve_attachment_uri(&to_uri(&outside), &root).is_none());
+        assert!(resolve_attachment_uri("file:///definitely/not/here.bin", &root).is_none());
+        assert!(resolve_attachment_uri("https://example.com/a.txt", &root).is_none());
+    }
 }

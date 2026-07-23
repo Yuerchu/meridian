@@ -109,7 +109,13 @@ export function useGlobalEventListener() {
       }
 
       if (p.type === 'tool_approval_req' && p.call_id) {
-        store.handleToolApproval(convId, p.message_id!, p.call_id, p.tool_name!, p.arguments ?? '{}')
+        const escalation = p.escalation
+          ? {
+              originCallId: p.origin_call_id ?? p.call_id.replace(/:retry$/, ''),
+              retryReason: p.retry_reason,
+            }
+          : undefined
+        store.handleToolApproval(convId, p.message_id!, p.call_id, p.tool_name!, p.arguments ?? '{}', escalation)
         if (shouldNotify(convId)) {
           const toolName = p.tool_name === 'ask_user' ? 'Question' : p.tool_name!
           trySendNotification(getConversationTitle(convId), `Action required: ${toolName}`)
@@ -118,7 +124,7 @@ export function useGlobalEventListener() {
       }
 
       if (p.type === 'tool_result' && p.call_id) {
-        store.handleToolResult(convId, p.call_id, p.result ?? '')
+        store.handleToolResult(convId, p.call_id, p.result ?? '', p.outcome)
         return
       }
     })

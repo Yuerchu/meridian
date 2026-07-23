@@ -37,8 +37,12 @@ export interface ToolCallDisplay {
   call_id: string
   tool_name: string
   arguments: string
-  status: 'pending' | 'approved' | 'denied' | 'running' | 'completed'
+  status: 'pending' | 'approved' | 'denied' | 'running' | 'completed' | 'error'
   result?: string
+  // Set while a sandbox-blocked call waits for "retry without sandbox"
+  // approval; the approval channel uses this synthetic "<id>:retry" id.
+  escalation_call_id?: string
+  retry_reason?: string
 }
 
 export type ContentBlock =
@@ -290,6 +294,10 @@ export interface StreamChunk {
   tool_name?: string
   arguments?: string
   result?: string
+  outcome?: string
+  escalation?: boolean
+  origin_call_id?: string
+  retry_reason?: string
   input_tokens?: number
   output_tokens?: number
 }

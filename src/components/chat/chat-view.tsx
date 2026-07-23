@@ -48,6 +48,10 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     const project = conv?.project_id ? s.projects.find((p) => p.id === conv.project_id) : undefined
     return project?.source_type.startsWith('onebot') ?? false
   })
+  const conversationAssistantId = useConversationStore(
+    (s) => s.conversations.find((c) => c.id === conversationId)?.assistant_id ?? null,
+  )
+  const refreshConversations = useConversationStore((s) => s.refreshConversations)
 
   const messages = session?.messages ?? []
   const streaming = session?.streaming ?? false
@@ -79,14 +83,23 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     Promise.all([api.listAssistants(), api.listProviders()]).then(([a, p]) => {
       setAssistants(a)
       setProviders(p)
-      const defaultAssistant = a.find((x) => x.is_default === 1) ?? a[0]
-      if (defaultAssistant && !selectedAssistantId) {
-        setSelectedAssistantId(defaultAssistant.id)
-        if (defaultAssistant.model_id) setSelectedModelId(defaultAssistant.model_id)
-        if (defaultAssistant.provider_id) setSelectedProviderId(defaultAssistant.provider_id)
-      }
     })
   }, [])
+
+  // Selection follows the conversation's bound assistant; falls back to the
+  // global default only when the conversation has no (or a dangling) binding.
+  useEffect(() => {
+    if (assistants.length === 0) return
+    const bound = conversationAssistantId
+      ? assistants.find((x) => x.id === conversationAssistantId)
+      : undefined
+    const effective = bound ?? assistants.find((x) => x.is_default === 1) ?? assistants[0]
+    if (effective) {
+      setSelectedAssistantId(effective.id)
+      setSelectedModelId(effective.model_id ?? null)
+      setSelectedProviderId(effective.provider_id ?? null)
+    }
+  }, [conversationId, conversationAssistantId, assistants])
 
   const handleSelectAssistant = useCallback(
     (id: string) => {
@@ -94,8 +107,12 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
       const a = assistants.find((x) => x.id === id)
       if (a?.model_id) setSelectedModelId(a.model_id)
       if (a?.provider_id) setSelectedProviderId(a.provider_id)
+      // Persist the explicit switch so the binding survives conversation changes
+      api.setConversationAssistant(conversationId, id)
+        .then(() => refreshConversations())
+        .catch(() => { /* selection still applies locally for this session */ })
     },
-    [assistants],
+    [assistants, conversationId, refreshConversations],
   )
 
   const handleSelectModel = useCallback((modelId: string, providerId: string) => {

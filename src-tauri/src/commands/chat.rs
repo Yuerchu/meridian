@@ -107,6 +107,56 @@ async fn consume_stream(
     Ok(StreamResult { text, reasoning, tool_calls, usage, finish_reason })
 }
 
+/// A sandbox-blocked command asking for an approved retry without sandbox.
+struct EscalationReq<'a> {
+    origin_call_id: &'a str,
+    reason: &'a str,
+}
+
+/// Emit a tool approval request and wait for the user's decision. Returns
+/// `None` when the chat is cancelled (stop button) before a decision arrives,
+/// so approval/tool waits can't outlive the conversation.
+async fn wait_for_approval(
+    app: &tauri::AppHandle,
+    cancel: &CancellationToken,
+    tc: &provider::ToolCall,
+    message_id: &str,
+    conversation_id: &str,
+    escalation: Option<EscalationReq<'_>>,
+) -> Result<Option<ApprovalDecision>, String> {
+    let (tx, rx) = oneshot::channel();
+    {
+        let waiters = app.state::<ApprovalWaiters>();
+        let mut map = waiters.0.lock().await;
+        map.insert(tc.id.clone(), tx);
+    }
+    let mut payload = serde_json::json!({
+        "type": "tool_approval_req",
+        "call_id": tc.id,
+        "tool_name": tc.name,
+        "arguments": tc.arguments,
+        "message_id": message_id,
+        "conversation_id": conversation_id,
+    });
+    if let Some(ref esc) = escalation {
+        payload["escalation"] = serde_json::json!(true);
+        payload["origin_call_id"] = serde_json::json!(esc.origin_call_id);
+        payload["retry_reason"] = serde_json::json!(esc.reason);
+    }
+    app.emit("chat-stream", payload).map_err(|e| e.to_string())?;
+    let decision = tokio::select! {
+        _ = cancel.cancelled() => None,
+        r = rx => r.ok(),
+    };
+    if decision.is_none() {
+        // Cancelled or sender dropped: remove the stale waiter so a later
+        // response for a reused call_id can't hit it.
+        let waiters = app.state::<ApprovalWaiters>();
+        waiters.0.lock().await.remove(&tc.id);
+    }
+    Ok(decision)
+}
+
 #[tauri::command]
 pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String) -> Result<(), String> {
     let chats = app.state::<ActiveChats>();
@@ -332,7 +382,8 @@ pub async fn chat(
     };
 
     let mut chat_messages = build_messages(system_prompt.trim(), &history, &message, compact_cursor);
-    resolve_file_uris_in_messages(&mut chat_messages);
+    let files_root = app.path().app_data_dir().ok().map(|d| crate::files::files_dir(&d));
+    resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref());
     remove_orphan_tool_messages(&mut chat_messages);
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
@@ -409,13 +460,27 @@ pub async fn chat(
     } else {
         all_tool_defs
     };
-    let shell_type = {
+    let (shell_type, sandbox_pref) = {
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = pool2.get().ok()?;
-            db::ops::preference::get_preference(&mut conn, "shell").ok()?
-        }).await.ok().flatten()
+            let shell = db::ops::preference::get_preference(&mut conn, "shell").ok().flatten();
+            let sandbox = db::ops::preference::get_preference(&mut conn, "sandbox.enabled").ok().flatten();
+            Some((shell, sandbox))
+        }).await.ok().flatten().unwrap_or((None, None))
     };
+    // Missing preference means enabled: sandbox-by-default on Windows.
+    let sandbox_enabled = sandbox_pref.as_deref() != Some("false");
+    let tool_secrets = {
+        let pool2 = pool.clone();
+        let secrets2 = secrets.0.clone();
+        tokio::task::spawn_blocking(move || crate::agent::build_tool_secrets(&secrets2, &pool2))
+            .await.map_err(|e| e.to_string())?
+    };
+    #[cfg(not(target_os = "android"))]
+    let sandbox_policy = crate::sandbox::default_policy_if_enabled(sandbox_enabled, project_path.as_deref());
+    #[cfg(target_os = "android")]
+    let _ = sandbox_enabled;
     let tool_context = tools::ToolContext {
         working_directory: project_path,
         shell: shell_type.map(|s| tools::ShellType::from_str(&s)).unwrap_or_else(tools::ShellType::default_for_platform),
@@ -424,7 +489,9 @@ pub async fn chat(
         db_pool: Some(pool.clone()),
         edit_session: None,
         #[cfg(not(target_os = "android"))]
-        sandbox_policy: None,
+        sandbox_policy,
+        tool_secrets,
+        cancel: cancel.clone(),
     };
 
     let mut total_input_tokens = 0i32;
@@ -579,35 +646,30 @@ pub async fn chat(
                 .unwrap_or(true);
             let is_mcp = tc.name.starts_with("mcp__");
             let tool = if tool_allowed && !is_mcp { tool_registry.0.get(&tc.name) } else { None };
-            let result = if !tool_allowed {
-                "Tool not available for this assistant.".to_string()
-            } else if is_mcp {
-                let args: serde_json::Value = serde_json::from_str(&tc.arguments)
-                    .unwrap_or_else(|_| serde_json::json!({}));
-                let mcp = app.state::<AppMcp>();
-                let mut mgr = mcp.0.lock().await;
-                match mgr.call_tool(&tc.name, args).await {
-                    Ok(output) => output,
-                    Err(e) => format!("MCP error: {e}"),
-                }
+            let (result, outcome): (String, &'static str) = if !tool_allowed {
+                ("Tool not available for this assistant.".to_string(), "error")
             } else if tc.name == "ask_user" {
-                let (tx, rx) = oneshot::channel();
-                {
-                    let waiters = app.state::<ApprovalWaiters>();
-                    let mut map = waiters.0.lock().await;
-                    map.insert(tc.id.clone(), tx);
+                match wait_for_approval(&app, &cancel, tc, &assistant_msg_id, &conversation_id, None).await? {
+                    Some(ApprovalDecision::Response(text)) => (text, "success"),
+                    _ => ("User did not respond.".to_string(), "denied"),
                 }
-                app.emit("chat-stream", serde_json::json!({
-                    "type": "tool_approval_req",
-                    "call_id": tc.id,
-                    "tool_name": tc.name,
-                    "arguments": tc.arguments,
-                    "message_id": &assistant_msg_id,
-                    "conversation_id": &conversation_id,
-                })).map_err(|e| e.to_string())?;
-                match rx.await {
-                    Ok(ApprovalDecision::Response(text)) => text,
-                    _ => "User did not respond.".to_string(),
+            } else if is_mcp {
+                // External MCP tools require explicit user approval, same as
+                // built-in Ask tools — they must not bypass the authorizer.
+                match wait_for_approval(&app, &cancel, tc, &assistant_msg_id, &conversation_id, None).await? {
+                    Some(ApprovalDecision::Approved) => {
+                        let args: serde_json::Value = serde_json::from_str(&tc.arguments)
+                            .unwrap_or_else(|_| serde_json::json!({}));
+                        let mcp = app.state::<AppMcp>();
+                        let mut mgr = mcp.0.lock().await;
+                        match mgr.call_tool(&tc.name, args).await {
+                            Ok(output) => (output, "success"),
+                            Err(e) => (format!("MCP error: {e}"), "error"),
+                        }
+                    }
+                    Some(ApprovalDecision::Denied(Some(reason))) =>
+                        (format!("Tool call denied by user. Reason: {reason}"), "denied"),
+                    _ => ("Tool call denied by user.".to_string(), "denied"),
                 }
             } else if let Some(tool) = tool {
                 let permission = tool.default_permission();
@@ -615,23 +677,9 @@ pub async fn chat(
                     tools::Permission::Always => (true, None),
                     tools::Permission::Never => (false, None),
                     tools::Permission::Ask => {
-                        let (tx, rx) = oneshot::channel();
-                        {
-                            let waiters = app.state::<ApprovalWaiters>();
-                            let mut map = waiters.0.lock().await;
-                            map.insert(tc.id.clone(), tx);
-                        }
-                        app.emit("chat-stream", serde_json::json!({
-                            "type": "tool_approval_req",
-                            "call_id": tc.id,
-                            "tool_name": tc.name,
-                            "arguments": tc.arguments,
-                            "message_id": &assistant_msg_id,
-                            "conversation_id": &conversation_id,
-                        })).map_err(|e| e.to_string())?;
-                        match rx.await {
-                            Ok(ApprovalDecision::Approved) => (true, None),
-                            Ok(ApprovalDecision::Denied(reason)) => (false, reason),
+                        match wait_for_approval(&app, &cancel, tc, &assistant_msg_id, &conversation_id, None).await? {
+                            Some(ApprovalDecision::Approved) => (true, None),
+                            Some(ApprovalDecision::Denied(reason)) => (false, reason),
                             _ => (false, None),
                         }
                     }
@@ -639,23 +687,59 @@ pub async fn chat(
                 if approved {
                     let args: serde_json::Value = serde_json::from_str(&tc.arguments)
                         .unwrap_or_else(|_| serde_json::json!({}));
-                    match tool.execute(args, &tool_context).await {
-                        Ok(output) => output,
-                        Err(e) => format!("Error: {e}"),
+                    match tool.execute(args.clone(), &tool_context).await {
+                        Ok(output) => (output, "success"),
+                        Err(e) => match tools::decode_sandbox_denied(&e) {
+                            Some(blocked) => {
+                                // Sandbox blocked the command — offer a
+                                // user-approved retry without sandbox
+                                // (Codex-style escalation). The synthetic
+                                // ":retry" id exists only in the approval
+                                // channel; results keep the original id.
+                                let retry_tc = provider::ToolCall {
+                                    id: format!("{}:retry", tc.id),
+                                    name: tc.name.clone(),
+                                    arguments: tc.arguments.clone(),
+                                };
+                                let escalation = EscalationReq {
+                                    origin_call_id: &tc.id,
+                                    reason: blocked,
+                                };
+                                match wait_for_approval(
+                                    &app, &cancel, &retry_tc,
+                                    &assistant_msg_id, &conversation_id,
+                                    Some(escalation),
+                                ).await? {
+                                    Some(ApprovalDecision::Approved) => {
+                                        let escalated_ctx = tool_context.without_sandbox();
+                                        match tool.execute(args, &escalated_ctx).await {
+                                            Ok(o) => (o, "success"),
+                                            Err(e2) => (format!("Error: {e2}"), "error"),
+                                        }
+                                    }
+                                    _ => (
+                                        format!("{blocked}\n[blocked by sandbox; user declined to retry without sandbox]"),
+                                        "denied",
+                                    ),
+                                }
+                            }
+                            None => (format!("Error: {e}"), "error"),
+                        },
                     }
                 } else if let Some(reason) = deny_reason {
-                    format!("Tool call denied by user. Reason: {reason}")
+                    (format!("Tool call denied by user. Reason: {reason}"), "denied")
                 } else {
-                    "Tool call denied by user.".to_string()
+                    ("Tool call denied by user.".to_string(), "denied")
                 }
             } else {
-                format!("Unknown tool: {}", tc.name)
+                (format!("Unknown tool: {}", tc.name), "error")
             };
 
             app.emit("chat-stream", serde_json::json!({
                 "type": "tool_result",
                 "call_id": tc.id,
                 "result": &result,
+                "outcome": outcome,
                 "message_id": &assistant_msg_id,
                 "conversation_id": &conversation_id,
             })).map_err(|e| e.to_string())?;

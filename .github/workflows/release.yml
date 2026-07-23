@@ -120,7 +120,9 @@ jobs:
           tauriScript: pnpm tauri
 
   build-android:
-    needs: test
+    # needs `build` too: the desktop job creates the GitHub release this job
+    # uploads into; running in parallel raced against its creation.
+    needs: [test, build]
     runs-on: ubuntu-latest
     name: Build (android-aarch64)
 
@@ -154,10 +156,13 @@ jobs:
       - run: pnpm install
 
       - name: Decode keystore
-        if: env.ANDROID_KEYSTORE_BASE64 != ''
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 secret is not set; refusing to publish an unsigned/debug-signed release APK" >&2
+            exit 1
+          fi
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > $RUNNER_TEMP/keystore.jks
 
       - name: Build Android APK

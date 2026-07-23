@@ -12,8 +12,10 @@ pub mod read_file;
 #[cfg(not(target_os = "android"))]
 pub mod run_command;
 pub mod search_files;
+pub mod web_search;
 pub mod write_file;
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -27,6 +29,7 @@ pub enum Permission {
     Never,
 }
 
+#[derive(Clone)]
 pub struct ToolContext {
     pub working_directory: Option<String>,
     pub shell: ShellType,
@@ -36,6 +39,24 @@ pub struct ToolContext {
     pub edit_session: Option<Arc<tokio::sync::Mutex<crate::edit_session::EditSession>>>,
     #[cfg(not(target_os = "android"))]
     pub sandbox_policy: Option<crate::sandbox::SandboxPolicy>,
+    pub tool_secrets: HashMap<String, String>,
+    /// Cancelled when the owning chat turn is stopped; long-running tools must
+    /// observe it and terminate their work.
+    pub cancel: tokio_util::sync::CancellationToken,
+}
+
+impl ToolContext {
+    /// Clone of this context with the sandbox disabled — used for the
+    /// user-approved "retry without sandbox" escalation path.
+    pub fn without_sandbox(&self) -> Self {
+        #[allow(unused_mut)]
+        let mut ctx = self.clone();
+        #[cfg(not(target_os = "android"))]
+        {
+            ctx.sandbox_policy = None;
+        }
+        ctx
+    }
 }
 
 /// Controls which parts of the filesystem tools may touch.
@@ -249,6 +270,19 @@ impl ToolContext {
     }
 }
 
+/// Sentinel marking a tool error as "blocked by the sandbox" so the agent loop
+/// can offer a user-approved retry without sandbox. Control characters keep
+/// real tool output from colliding with the marker.
+pub const SANDBOX_DENIED_MARKER: &str = "\u{1}SANDBOX_DENIED\u{1}";
+
+pub fn encode_sandbox_denied(output: &str) -> String {
+    format!("{SANDBOX_DENIED_MARKER}{output}")
+}
+
+pub fn decode_sandbox_denied(err: &str) -> Option<&str> {
+    err.strip_prefix(SANDBOX_DENIED_MARKER)
+}
+
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
@@ -259,50 +293,59 @@ pub trait Tool: Send + Sync {
 }
 
 pub struct ToolRegistry {
-    tools: Vec<Box<dyn Tool>>,
+    builtin: Vec<Arc<dyn Tool>>,
+    custom: std::sync::RwLock<Vec<Arc<dyn Tool>>>,
 }
 
 impl ToolRegistry {
     pub fn new() -> Self {
         #[allow(unused_mut)]
-        let mut tools: Vec<Box<dyn Tool>> = vec![
-            Box::new(ask_user::AskUserTool),
-            Box::new(read_file::ReadFileTool),
-            Box::new(write_file::WriteFileTool),
-            Box::new(list_directory::ListDirectoryTool),
-            Box::new(search_files::SearchFilesTool),
-            Box::new(apply_patch::ApplyPatchTool),
-            Box::new(edit_file::EditFileTool),
-            Box::new(glob_files::GlobFilesTool),
-            Box::new(delete_file::DeleteFileTool),
-            Box::new(move_file::MoveFileTool),
-            Box::new(memory::SaveMemoryTool),
-            Box::new(memory::RecallMemoryTool),
-            Box::new(memory::ListMemoriesTool),
-            Box::new(memory::DeleteMemoryTool),
+        let mut tools: Vec<Arc<dyn Tool>> = vec![
+            Arc::new(ask_user::AskUserTool),
+            Arc::new(read_file::ReadFileTool),
+            Arc::new(write_file::WriteFileTool),
+            Arc::new(list_directory::ListDirectoryTool),
+            Arc::new(search_files::SearchFilesTool),
+            Arc::new(apply_patch::ApplyPatchTool),
+            Arc::new(edit_file::EditFileTool),
+            Arc::new(glob_files::GlobFilesTool),
+            Arc::new(delete_file::DeleteFileTool),
+            Arc::new(move_file::MoveFileTool),
+            Arc::new(memory::SaveMemoryTool),
+            Arc::new(memory::RecallMemoryTool),
+            Arc::new(memory::ListMemoriesTool),
+            Arc::new(memory::DeleteMemoryTool),
+            Arc::new(web_search::WebSearchTool::new()),
         ];
         #[cfg(not(target_os = "android"))]
-        tools.push(Box::new(run_command::RunCommandTool));
-        Self { tools }
+        tools.push(Arc::new(run_command::RunCommandTool));
+        Self { builtin: tools, custom: std::sync::RwLock::new(Vec::new()) }
     }
 
-    pub fn register(&mut self, tool: Box<dyn Tool>) {
-        self.tools.push(tool);
+    /// Replace the set of user-defined tools. Called at startup and after every
+    /// create/update/delete so permission changes and deletions take effect
+    /// without an app restart.
+    pub fn set_custom_tools(&self, tools: Vec<Arc<dyn Tool>>) {
+        *self.custom.write().unwrap() = tools;
     }
 
     pub fn definitions(&self) -> Vec<crate::provider::ToolDefinition> {
-        self.tools
-            .iter()
-            .map(|t| crate::provider::ToolDefinition {
-                name: t.name().to_string(),
-                description: t.description().to_string(),
-                parameters: t.parameters_schema(),
-            })
-            .collect()
+        let def = |t: &Arc<dyn Tool>| crate::provider::ToolDefinition {
+            name: t.name().to_string(),
+            description: t.description().to_string(),
+            parameters: t.parameters_schema(),
+        };
+        let mut out: Vec<_> = self.builtin.iter().map(def).collect();
+        out.extend(self.custom.read().unwrap().iter().map(def));
+        out
     }
 
-    pub fn get(&self, name: &str) -> Option<&dyn Tool> {
-        self.tools.iter().find(|t| t.name() == name).map(|t| t.as_ref())
+    pub fn get(&self, name: &str) -> Option<Arc<dyn Tool>> {
+        // Builtins first, so a custom tool can never shadow a builtin.
+        if let Some(t) = self.builtin.iter().find(|t| t.name() == name) {
+            return Some(t.clone());
+        }
+        self.custom.read().unwrap().iter().find(|t| t.name() == name).cloned()
     }
 }
 
@@ -320,6 +363,8 @@ mod tests {
             edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
+            tool_secrets: HashMap::new(),
+            cancel: tokio_util::sync::CancellationToken::new(),
         }
     }
 
@@ -349,6 +394,8 @@ mod tests {
             edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
+            tool_secrets: HashMap::new(),
+            cancel: tokio_util::sync::CancellationToken::new(),
         };
         assert!(ctx.resolve_and_validate("inside.txt").is_ok());
         assert!(ctx.resolve_and_validate("../outside.txt").is_err());
