@@ -59,6 +59,7 @@ chrono = "0.4"
 similar = "2"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6"
+tiktoken = "3.5"
 tauri-plugin-notification = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]

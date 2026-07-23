@@ -14,8 +14,8 @@ use crate::provider;
 use crate::provider::{ChatMessage, ChatParams};
 use crate::template;
 use crate::tools;
-use crate::state::{AppDb, AppSecrets, AppTools, AppMcp, ApprovalDecision, ApprovalWaiters, ActiveChats, EditSessions};
-use crate::agent::{build_messages, build_file_access, file_access_prompt, estimate_tokens, remove_orphan_tool_messages, resolve_file_uris_in_messages, trim_to_context_limit, extract_tool_calls_from_blocks, parse_openai_tool_calls, serialize_tool_calls_openai, provider_secret_name, get_provider_api_key, resolve_provider_config, do_compact, COMPACT_PROMPT, StreamResult, MAX_STREAM_RETRIES, STREAM_RETRY_BASE, is_context_window_error, is_retryable_stream_error};
+use crate::state::{AppDb, AppSecrets, AppTools, AppMcp, ApprovalDecision, ApprovalWaiters, ActiveChats, EditSessions, CompactBreakers};
+use crate::agent::{build_messages, build_file_access, file_access_prompt, estimate_tokens, microcompact, remove_orphan_tool_messages, resolve_file_uris_in_messages, trim_to_context_limit, extract_tool_calls_from_blocks, parse_openai_tool_calls, serialize_tool_calls_openai, provider_secret_name, get_provider_api_key, resolve_provider_config, do_compact, mid_turn_compact, CompactCircuitBreaker, COMPACT_PROMPT, StreamResult, MAX_STREAM_RETRIES, STREAM_RETRY_BASE, is_context_window_error, is_retryable_stream_error, instruction_budget, load_project_instructions, TokenBudget};
 use crate::util::{get_conn, now_ms, take_bytes_at_char_boundary};
 
 const STREAM_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
@@ -231,36 +231,88 @@ pub async fn chat(
     } else {
         None
     };
-    let system_prompt = match memory_block {
-        Some(ref mem) => format!("{}{}{}", system_prompt_resolved, file_access_prompt(&file_access), mem),
-        None => format!("{}{}", system_prompt_resolved, file_access_prompt(&file_access)),
-    };
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
+    let instruction_block = {
+        let budget = instruction_budget(context_limit);
+        if budget > 0 {
+            load_project_instructions(project_path.as_deref(), budget).await
+        } else {
+            None
+        }
+    };
+    let system_prompt = format!(
+        "{}{}{}{}",
+        system_prompt_resolved,
+        instruction_block.as_deref().unwrap_or(""),
+        file_access_prompt(&file_access),
+        memory_block.as_deref().unwrap_or(""),
+    );
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
     let auto_compact = assistant.as_ref().map(|a| a.auto_compact_enabled != 0).unwrap_or(false);
+
+    let caps = provider::capabilities::resolve(&provider_type, Some(&api_format), &model);
+
+    let effective_provider_id = provider_override.clone()
+        .or_else(|| assistant.as_ref().and_then(|a| a.provider_id.clone()));
+    let model_config = if let Some(ref pid) = effective_provider_id {
+        let pool2 = pool.clone();
+        let pid2 = pid.clone();
+        let mid = model.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2).ok()?;
+            db::ops::model_config::get_by_provider_and_model(&mut conn, &pid2, &mid).ok()?
+        }).await.ok().flatten()
+    } else {
+        None
+    };
+
+    let context_limit = assistant.as_ref()
+        .filter(|a| a.context_limit > 0)
+        .map(|a| a.context_limit as usize)
+        .or_else(|| model_config.as_ref().map(|mc| mc.context_window as usize))
+        .unwrap_or_else(|| caps.max_context_tokens.map(|t| t as usize).unwrap_or(128_000));
+    let max_output = model_config.as_ref()
+        .and_then(|mc| mc.max_output_tokens.map(|t| t as usize))
+        .or_else(|| caps.max_output_tokens.map(|t| t as usize))
+        .unwrap_or(16_384);
+    let compact_threshold_override = model_config.as_ref().map(|mc| mc.compact_threshold as usize);
+    let mut budget = TokenBudget::new(&provider_type, &model, context_limit, max_output, compact_threshold_override);
+
+    let circuit_breaker = {
+        let breakers = app.state::<CompactBreakers>();
+        let mut map = breakers.0.lock().await;
+        map.entry(conversation_id.clone())
+            .or_insert_with(|| Arc::new(CompactCircuitBreaker::new()))
+            .clone()
+    };
 
     // Auto-compact: if enabled and tokens exceed threshold, compact before sending
     let original_cursor = compact_cursor;
     let mut compact_cursor = compact_cursor;
-    if auto_compact {
+    if auto_compact && circuit_breaker.can_compact() {
         let pre_msgs = build_messages(system_prompt.trim(), &history, &message, compact_cursor);
-        let total_tokens: usize = pre_msgs.iter().map(|m| estimate_tokens(&m.content)).sum();
-        let threshold = context_limit.saturating_sub(33000);
-        if total_tokens > threshold && history.len() > keep_recent * 2 + 2 {
+        budget.update_estimate(&pre_msgs);
+        if budget.needs_compact() && history.len() > keep_recent * 2 + 2 {
             app.emit("compact-start", serde_json::json!({
                 "conversation_id": &conversation_id,
+                "mid_turn": false,
+                "trigger": "threshold",
             })).ok();
             match do_compact(&pool, &secrets.0, &conversation_id, assistant.as_ref(), keep_recent, None).await {
                 Ok(new_cursor) => {
                     compact_cursor = Some(new_cursor);
+                    circuit_breaker.record_success();
                     app.emit("compact-done", serde_json::json!({
                         "conversation_id": &conversation_id,
+                        "mid_turn": false,
                     })).ok();
                 }
                 Err(e) => {
                     tracing::warn!("Auto-compact failed: {e}");
+                    circuit_breaker.record_failure();
                     app.emit("compact-done", serde_json::json!({
                         "conversation_id": &conversation_id,
+                        "mid_turn": false,
                     })).ok();
                 }
             }
@@ -282,6 +334,7 @@ pub async fn chat(
     let mut chat_messages = build_messages(system_prompt.trim(), &history, &message, compact_cursor);
     resolve_file_uris_in_messages(&mut chat_messages);
     remove_orphan_tool_messages(&mut chat_messages);
+    microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
     let (thinking_enabled, thinking_budget, thinking_effort) = {
@@ -305,7 +358,6 @@ pub async fn chat(
         thinking_budget,
         thinking_effort,
     };
-    let caps = provider::capabilities::resolve(&provider_type, Some(&api_format), &model);
     provider::capabilities::filter_params(&mut params, &caps);
 
     // Persist user message
@@ -424,8 +476,35 @@ pub async fn chat(
                 match try_result {
                     Ok(r) => break r,
                     Err(e) if is_context_window_error(&e) => {
-                        let aggressive_keep = (keep_recent / 2).max(2);
-                        trim_to_context_limit(&mut chat_messages, context_limit / 2, aggressive_keep);
+                        tracing::warn!("Context window error, attempting reactive compact");
+                        microcompact(&mut chat_messages, &budget, keep_recent);
+                        budget.update_estimate(&chat_messages);
+                        if budget.needs_compact() && circuit_breaker.can_compact() {
+                            app.emit("compact-start", serde_json::json!({
+                                "conversation_id": &conversation_id,
+                                "mid_turn": true,
+                                "trigger": "api_error",
+                            })).ok();
+                            match mid_turn_compact(&mut chat_messages, &budget, &*provider, &params, keep_recent).await {
+                                Ok(_) => {
+                                    circuit_breaker.record_success();
+                                    budget.update_estimate(&chat_messages);
+                                }
+                                Err(_) => {
+                                    circuit_breaker.record_failure();
+                                    let aggressive_keep = (keep_recent / 2).max(2);
+                                    trim_to_context_limit(&mut chat_messages, context_limit / 2, aggressive_keep);
+                                }
+                            }
+                            app.emit("compact-done", serde_json::json!({
+                                "conversation_id": &conversation_id,
+                                "mid_turn": true,
+                                "trigger": "api_error",
+                            })).ok();
+                        } else {
+                            let aggressive_keep = (keep_recent / 2).max(2);
+                            trim_to_context_limit(&mut chat_messages, context_limit / 2, aggressive_keep);
+                        }
                         let stream = provider.stream_chat_with_tools(
                             chat_messages.clone(), tool_defs.clone(), params.clone()
                         ).await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
@@ -445,6 +524,7 @@ pub async fn chat(
         if let Some(ref u) = result.usage {
             total_input_tokens += u.prompt_tokens.unwrap_or(0);
             total_output_tokens += u.completion_tokens.unwrap_or(0);
+            budget.calibrate_from_usage(u);
         }
 
         let has_tool_calls = !result.tool_calls.is_empty()
@@ -605,6 +685,55 @@ pub async fn chat(
         }
 
         if cancel.is_cancelled() { break; }
+
+        // Mid-turn compaction check after tool calls
+        budget.update_estimate(&chat_messages);
+        if budget.needs_compact() && auto_compact && circuit_breaker.can_compact() {
+            app.emit("compact-start", serde_json::json!({
+                "conversation_id": &conversation_id,
+                "mid_turn": true,
+                "trigger": "threshold",
+            })).ok();
+
+            let reclaimed = microcompact(&mut chat_messages, &budget, keep_recent);
+            budget.update_estimate(&chat_messages);
+
+            if budget.needs_compact() {
+                match mid_turn_compact(&mut chat_messages, &budget, &*provider, &params, keep_recent).await {
+                    Ok(more) => {
+                        circuit_breaker.record_success();
+                        budget.update_estimate(&chat_messages);
+                        app.emit("compact-done", serde_json::json!({
+                            "conversation_id": &conversation_id,
+                            "mid_turn": true,
+                            "tokens_reclaimed": reclaimed + more,
+                        })).ok();
+                    }
+                    Err(e) => {
+                        tracing::warn!("Mid-turn compact failed: {e}");
+                        circuit_breaker.record_failure();
+                        trim_to_context_limit(&mut chat_messages, context_limit / 2, (keep_recent / 2).max(2));
+                        budget.update_estimate(&chat_messages);
+                        app.emit("compact-done", serde_json::json!({
+                            "conversation_id": &conversation_id,
+                            "mid_turn": true,
+                            "fallback": true,
+                        })).ok();
+                    }
+                }
+            } else if reclaimed > 0 {
+                app.emit("compact-done", serde_json::json!({
+                    "conversation_id": &conversation_id,
+                    "mid_turn": true,
+                    "tokens_reclaimed": reclaimed,
+                })).ok();
+            } else {
+                app.emit("compact-done", serde_json::json!({
+                    "conversation_id": &conversation_id,
+                    "mid_turn": true,
+                })).ok();
+            }
+        }
     }
 
     // Clean up cancel token
@@ -613,12 +742,34 @@ pub async fn chat(
         chats.0.lock().await.remove(&conversation_id);
     }
 
-    app.emit("chat-stream", serde_json::json!({
+    let cost_info = model_config.as_ref()
+        .filter(|mc| crate::agent::pricing::has_pricing(mc))
+        .map(|mc| {
+            let usage = crate::provider::TokenUsage {
+                prompt_tokens: Some(total_input_tokens),
+                completion_tokens: Some(total_output_tokens),
+                total_tokens: Some(total_input_tokens + total_output_tokens),
+                cache_hit_tokens: None,
+                cache_miss_tokens: None,
+            };
+            crate::agent::pricing::compute_cost(&usage, mc)
+        });
+
+    let mut stop_payload = serde_json::json!({
         "type": "stop", "reason": "end_turn", "done": true,
         "message_id": &assistant_msg_id,
         "conversation_id": &conversation_id,
         "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
-    })).map_err(|e| e.to_string())?;
+    });
+    if let Some(cost) = cost_info {
+        stop_payload["cost"] = serde_json::json!(cost.total_cost);
+        stop_payload["cost_breakdown"] = serde_json::json!({
+            "input": cost.input_cost,
+            "output": cost.output_cost,
+            "cache": cost.cache_cost,
+        });
+    }
+    app.emit("chat-stream", stop_payload).map_err(|e| e.to_string())?;
 
     // Auto-generate title if first message
     if conv_title.is_none() {

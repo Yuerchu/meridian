@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex};
 use tokio_util::sync::CancellationToken;
 
+use crate::agent::CompactCircuitBreaker;
 use crate::db::DbPool;
 use crate::edit_session;
 use crate::mcp;
@@ -27,3 +28,4 @@ pub enum ApprovalDecision {
 pub(crate) struct ApprovalWaiters(pub(crate) Mutex<HashMap<String, oneshot::Sender<ApprovalDecision>>>);
 pub(crate) struct ActiveChats(pub(crate) Mutex<HashMap<String, CancellationToken>>);
 pub(crate) struct EditSessions(pub(crate) Mutex<HashMap<String, Arc<tokio::sync::Mutex<edit_session::EditSession>>>>);
+pub(crate) struct CompactBreakers(pub(crate) Mutex<HashMap<String, Arc<CompactCircuitBreaker>>>);

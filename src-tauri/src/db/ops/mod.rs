@@ -11,5 +11,6 @@ pub mod project;
 pub mod custom_tool;
 pub mod provider;
 pub mod cached_model;
+pub mod model_config;
 pub mod tool_category;
 pub mod tool_preset;

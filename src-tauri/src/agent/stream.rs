@@ -15,7 +15,8 @@ pub(crate) fn is_context_window_error(err: &str) -> bool {
     let e = err.to_lowercase();
     e.contains("context_length_exceeded") || e.contains("context window")
         || e.contains("maximum context length") || e.contains("too many tokens")
-        || e.contains("exceeds the model")
+        || e.contains("exceeds the model") || e.contains("status: 413")
+        || e.contains("request_too_large") || e.contains("content_too_large")
 }
 
 pub(crate) fn is_retryable_stream_error(err: &str) -> bool {

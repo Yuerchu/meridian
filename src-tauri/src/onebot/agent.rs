@@ -13,7 +13,7 @@ use crate::provider::{self, ChatMessage, ChatParams, ChatStream, StreamEvent, To
 use crate::secrets::SecretsManager;
 use crate::tools::{self, ToolRegistry};
 use crate::util::{get_conn, now_ms};
-use crate::agent::{build_messages, is_context_window_error, is_retryable_stream_error, resolve_provider_config, trim_to_context_limit, StreamResult, MAX_STREAM_RETRIES, STREAM_RETRY_BASE};
+use crate::agent::{build_messages, is_context_window_error, is_retryable_stream_error, microcompact, mid_turn_compact, resolve_provider_config, trim_to_context_limit, StreamResult, TokenBudget, MAX_STREAM_RETRIES, STREAM_RETRY_BASE};
 
 pub type ApprovalFn = Box<dyn Fn(ToolCall) -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
 
@@ -195,9 +195,17 @@ pub async fn headless_chat(
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
+    let effective_model = model_override.as_deref()
+        .or(assistant.as_ref().and_then(|a| a.model_id.as_deref()))
+        .unwrap_or(&model);
+    let caps = provider::capabilities::resolve(&provider_type, Some(&api_format), effective_model);
+    let max_output = caps.max_output_tokens.map(|t| t as usize).unwrap_or(16_384);
+    let mut budget = TokenBudget::new(&provider_type, effective_model, context_limit, max_output, None);
+
     let mut chat_messages = build_messages(&system_prompt, &history, user_message, compact_cursor);
     crate::agent::resolve_file_uris_in_messages(&mut chat_messages);
     crate::agent::remove_orphan_tool_messages(&mut chat_messages);
+    microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
     let params = ChatParams {
@@ -366,6 +374,7 @@ pub async fn headless_chat(
         if let Some(ref u) = result.usage {
             total_input_tokens += u.prompt_tokens.unwrap_or(0);
             total_output_tokens += u.completion_tokens.unwrap_or(0);
+            budget.calibrate_from_usage(u);
         }
 
         let has_tool_calls = !result.tool_calls.is_empty()
@@ -499,7 +508,19 @@ pub async fn headless_chat(
         }
 
         if cancel.is_cancelled() { break; }
-        trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
+
+        budget.update_estimate(&chat_messages);
+        if budget.needs_compact() {
+            microcompact(&mut chat_messages, &budget, keep_recent);
+            budget.update_estimate(&chat_messages);
+            if budget.needs_compact() {
+                if let Err(e) = mid_turn_compact(&mut chat_messages, &budget, &*provider, &params, keep_recent).await {
+                    tracing::warn!("OneBot mid-turn compact failed: {e}");
+                    trim_to_context_limit(&mut chat_messages, context_limit / 2, (keep_recent / 2).max(2));
+                }
+                budget.update_estimate(&chat_messages);
+            }
+        }
     }
 
     stop_guard.message_id = None;

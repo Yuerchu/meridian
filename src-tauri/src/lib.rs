@@ -242,6 +242,7 @@ pub fn run() {
             app.manage(ApprovalWaiters(Mutex::new(HashMap::new())));
             app.manage(ActiveChats(Mutex::new(HashMap::new())));
             app.manage(EditSessions(Mutex::new(HashMap::new())));
+            app.manage(state::CompactBreakers(Mutex::new(HashMap::new())));
             app.manage(AppMcp(Arc::new(Mutex::new(mcp::McpManager::new()))));
 
             #[cfg(target_os = "android")]
@@ -330,6 +331,7 @@ pub fn run() {
             commands::conversation::toggle_pin_conversation,
             commands::conversation::delete_conversation,
             commands::conversation::compact,
+            commands::conversation::get_context_info,
             commands::message::load_messages,
             commands::message::update_message_content,
             commands::message::delete_message,
@@ -349,6 +351,10 @@ pub fn run() {
             commands::provider::get_provider_key_exists,
             commands::provider::fetch_provider_models,
             commands::provider::get_provider_capabilities,
+            commands::model_config::list_model_configs,
+            commands::model_config::get_model_config,
+            commands::model_config::save_model_config,
+            commands::model_config::delete_model_config,
             commands::project::list_projects,
             commands::project::create_project,
             commands::project::update_project,

@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Check, RefreshCw, Trash2, Cloud, Key, ArrowLeft } from 'lucide-react'
+import { Plus, Check, RefreshCw, Trash2, Cloud, Key, ArrowLeft, Settings2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
@@ -8,7 +8,101 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
-import type { Provider, ModelInfo } from '@/types'
+import type { ModelConfig, ModelConfigInput, Provider, ModelInfo, ProviderCapabilities } from '@/types'
+
+function ModelConfigEditor({
+  providerId,
+  modelId,
+  existing,
+  onSave,
+  onDelete,
+}: {
+  providerId: string
+  modelId: string
+  existing?: ModelConfig
+  onSave: (input: ModelConfigInput) => void
+  onDelete?: () => void
+}) {
+  const { t } = useTranslation()
+  const [caps, setCaps] = useState<ProviderCapabilities | null>(null)
+
+  useEffect(() => {
+    api.getProviderCapabilities(providerId, modelId).then(setCaps).catch(() => {})
+  }, [providerId, modelId])
+
+  const defaultCtx = existing?.context_window ?? caps?.max_context_tokens ?? 128000
+  const defaultThreshold = existing?.compact_threshold ?? Math.round(defaultCtx * 0.9)
+  const defaultMaxOut = existing?.max_output_tokens ?? caps?.max_output_tokens ?? null
+
+  const [contextWindow, setContextWindow] = useState(defaultCtx.toString())
+  const [compactThreshold, setCompactThreshold] = useState(defaultThreshold.toString())
+  const [maxOutput, setMaxOutput] = useState(defaultMaxOut?.toString() ?? '')
+  const [inputPrice, setInputPrice] = useState(existing?.input_price?.toString() ?? '0')
+  const [outputPrice, setOutputPrice] = useState(existing?.output_price?.toString() ?? '0')
+  const [cachePrice, setCachePrice] = useState(existing?.cache_price?.toString() ?? '')
+
+  useEffect(() => {
+    if (!existing && caps) {
+      setContextWindow((caps.max_context_tokens ?? 128000).toString())
+      setCompactThreshold(Math.round((caps.max_context_tokens ?? 128000) * 0.9).toString())
+      if (caps.max_output_tokens) setMaxOutput(caps.max_output_tokens.toString())
+    }
+  }, [caps, existing])
+
+  const handleSave = () => {
+    onSave({
+      provider_id: providerId,
+      model_id: modelId,
+      context_window: parseInt(contextWindow) || 128000,
+      compact_threshold: parseInt(compactThreshold) || 100000,
+      max_output_tokens: maxOutput ? parseInt(maxOutput) : null,
+      input_price: parseFloat(inputPrice) || 0,
+      output_price: parseFloat(outputPrice) || 0,
+      cache_price: cachePrice ? parseFloat(cachePrice) : null,
+    })
+  }
+
+  return (
+    <div className="px-3 pb-3 space-y-2 bg-muted/30">
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="text-[10px] text-muted-foreground">{t('settings.model.contextWindow')}</label>
+          <Input value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
+        </div>
+        <div>
+          <label className="text-[10px] text-muted-foreground">{t('settings.model.compactThreshold')}</label>
+          <Input value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
+        </div>
+      </div>
+      <div>
+        <label className="text-[10px] text-muted-foreground">{t('settings.model.maxOutput')}</label>
+        <Input value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label className="text-[10px] text-muted-foreground">{t('settings.model.inputPrice')}</label>
+          <Input value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
+        </div>
+        <div>
+          <label className="text-[10px] text-muted-foreground">{t('settings.model.outputPrice')}</label>
+          <Input value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
+        </div>
+        <div>
+          <label className="text-[10px] text-muted-foreground">{t('settings.model.cachePrice')}</label>
+          <Input value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
+        </div>
+      </div>
+      <div className="flex items-center gap-2 pt-1">
+        <Button size="sm" className="h-7 text-xs" onClick={handleSave}>{t('common.save')}</Button>
+        {onDelete && (
+          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={onDelete}>
+            {t('common.delete')}
+          </Button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function ProviderEditor({
   provider,
@@ -31,6 +125,8 @@ function ProviderEditor({
   const [models, setModels] = useState<ModelInfo[]>([])
   const [fetchingModels, setFetchingModels] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
+  const [modelConfigs, setModelConfigs] = useState<Map<string, ModelConfig>>(new Map())
+  const [editingModelId, setEditingModelId] = useState<string | null>(null)
 
   useEffect(() => {
     api.getProviderKeyExists(provider.id).then(setHasKey)
@@ -57,17 +153,41 @@ function ProviderEditor({
     }
   }, [provider.id, apiKey])
 
+  const loadModelConfigs = useCallback(async () => {
+    try {
+      const configs = await api.listModelConfigs(provider.id)
+      const map = new Map<string, ModelConfig>()
+      for (const c of configs) map.set(c.model_id, c)
+      setModelConfigs(map)
+    } catch { /* ignore */ }
+  }, [provider.id])
+
   const handleFetchModels = useCallback(async () => {
     setFetchingModels(true)
     setModelsError(null)
     try {
       const list = await api.fetchProviderModels(provider.id, true)
       setModels(list)
+      await loadModelConfigs()
     } catch (err) {
       setModelsError(String(err))
     }
     setFetchingModels(false)
-  }, [provider.id])
+  }, [provider.id, loadModelConfigs])
+
+  useEffect(() => { loadModelConfigs() }, [loadModelConfigs])
+
+  const handleSaveModelConfig = useCallback(async (input: ModelConfigInput) => {
+    await api.saveModelConfig(input)
+    await loadModelConfigs()
+    setEditingModelId(null)
+  }, [loadModelConfigs])
+
+  const handleDeleteModelConfig = useCallback(async (id: string) => {
+    await api.deleteModelConfig(id)
+    await loadModelConfigs()
+    setEditingModelId(null)
+  }, [loadModelConfigs])
 
   const typeOptions = [
     { value: 'openai', label: t('settings.provider.typeOpenAI') },
@@ -166,12 +286,38 @@ function ProviderEditor({
           <p className="text-[11px] text-destructive break-all">{modelsError}</p>
         )}
         {models.length > 0 && (
-          <ScrollArea className="max-h-60 border border-border rounded-lg">
-            {models.map((m) => (
-              <div key={m.id} className="px-3 py-1.5 text-xs text-foreground border-b border-border last:border-0">
-                {m.name}
-              </div>
-            ))}
+          <ScrollArea className="h-60 border border-border rounded-lg">
+            {models.map((m) => {
+              const cfg = modelConfigs.get(m.id)
+              const isEditing = editingModelId === m.id
+              return (
+                <div key={m.id} className="border-b border-border last:border-0">
+                  <div className="flex items-center justify-between px-3 py-1.5">
+                    <span className={cn("text-xs", cfg ? "text-foreground" : "text-muted-foreground")}>
+                      {m.name}
+                      {cfg && <span className="ml-1.5 text-[10px] text-green-500">●</span>}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={() => setEditingModelId(isEditing ? null : m.id)}
+                    >
+                      {isEditing ? <X className="w-3 h-3" /> : <Settings2 className="w-3 h-3" />}
+                    </Button>
+                  </div>
+                  {isEditing && (
+                    <ModelConfigEditor
+                      providerId={provider.id}
+                      modelId={m.id}
+                      existing={cfg}
+                      onSave={handleSaveModelConfig}
+                      onDelete={cfg ? () => handleDeleteModelConfig(cfg.id) : undefined}
+                    />
+                  )}
+                </div>
+              )
+            })}
           </ScrollArea>
         )}
         {models.length === 0 && !fetchingModels && !modelsError && (

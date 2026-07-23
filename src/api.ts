@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, Message, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, TemplateVariable, ToolCategory, ToolInfo, ToolPreset } from './types'
+import type { Assistant, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, Message, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, TemplateVariable, ToolCategory, ToolInfo, ToolPreset } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -25,6 +25,21 @@ export const api = {
       conversationId,
       customInstructions: customInstructions ?? null,
     }),
+
+  getContextInfo: (conversationId: string) =>
+    invoke<ContextInfo>('get_context_info', { conversationId }),
+
+  listModelConfigs: (providerId: string) =>
+    invoke<ModelConfig[]>('list_model_configs', { providerId }),
+
+  getModelConfig: (providerId: string, modelId: string) =>
+    invoke<ModelConfig | null>('get_model_config', { providerId, modelId }),
+
+  saveModelConfig: (input: ModelConfigInput) =>
+    invoke<ModelConfig>('save_model_config', { input }),
+
+  deleteModelConfig: (id: string) =>
+    invoke<void>('delete_model_config', { id }),
 
   loadMessages: (conversationId: string) =>
     invoke<Message[]>('load_messages', { conversationId }),

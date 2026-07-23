@@ -12,6 +12,7 @@ pub mod onebot;
 pub mod preference;
 pub mod project;
 pub mod prompt_template;
+pub mod model_config;
 pub mod provider;
 pub mod secret;
 pub mod tool_system;

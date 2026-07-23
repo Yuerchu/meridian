@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { useImeBottom } from '@/hooks/use-android-insets'
@@ -21,7 +21,7 @@ import { useMessageScroller } from '@/components/ui/message-scroller'
 import { InputBar, type AttachedFile } from './input-bar'
 import { useEmojiMap } from './emoji-renderer'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
+import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
 const MotionMessageScrollerItem = motion.create(MessageScrollerItem)
 
@@ -273,28 +273,36 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const compactSummary = messages.find((m) => m.is_compact_summary === 1)
 
   const selectedAssistant = assistants.find((a) => a.id === selectedAssistantId)
-  const contextInfo = useMemo(() => {
-    const contextLimit = selectedAssistant?.context_limit ?? 128000
-    const activeOnly = compactCursor != null
-      ? messages.filter((m) => m.sort_order >= compactCursor || m.is_compact_summary === 1)
-      : messages
-    const estimatedTokens = activeOnly.reduce((sum, m) => {
-      if (m.role === 'tool') return sum
-      let chars = m.content.length + 4
-      if (m._blocks) {
-        for (const block of m._blocks) {
-          if (block.type === 'tool_call') {
-            const d = block.data as ToolCallDisplay
-            chars += (d.arguments?.length ?? 0) + (d.result?.length ?? 0) + 4
-          }
-        }
-      }
-      return sum + chars
-    }, 0)
-    const autoCompactEnabled = selectedAssistant?.auto_compact_enabled === 1
-    const autoCompactThreshold = Math.max(0, contextLimit - 33000)
-    return { messageCount: activeMessages.length, estimatedTokens, contextLimit, autoCompactEnabled, autoCompactThreshold }
-  }, [messages, activeMessages.length, selectedAssistant?.context_limit, selectedAssistant?.auto_compact_enabled, compactCursor])
+  const [contextInfo, setContextInfo] = useState<{
+    messageCount: number
+    estimatedTokens: number
+    contextLimit: number
+    autoCompactEnabled: boolean
+    autoCompactThreshold: number
+  }>({
+    messageCount: 0,
+    estimatedTokens: 0,
+    contextLimit: selectedAssistant?.context_limit ?? 128000,
+    autoCompactEnabled: selectedAssistant?.auto_compact_enabled === 1,
+    autoCompactThreshold: 0,
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    const timer = setTimeout(() => {
+      api.getContextInfo(conversationId).then((info) => {
+        if (cancelled) return
+        setContextInfo({
+          messageCount: info.message_count,
+          estimatedTokens: info.estimated_tokens,
+          contextLimit: info.context_limit,
+          autoCompactEnabled: info.auto_compact_enabled,
+          autoCompactThreshold: info.compact_threshold,
+        })
+      }).catch(() => {})
+    }, 100)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [conversationId, messages.length, compactCursor])
 
   return (
     <div className="flex flex-col h-full">

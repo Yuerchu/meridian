@@ -252,12 +252,30 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    model_configs (id) {
+        id -> Text,
+        provider_id -> Text,
+        model_id -> Text,
+        display_name -> Nullable<Text>,
+        context_window -> Integer,
+        compact_threshold -> Integer,
+        max_output_tokens -> Nullable<Integer>,
+        input_price -> Double,
+        output_price -> Double,
+        cache_price -> Nullable<Double>,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
 diesel::joinable!(assistant_emoji_packs -> assistants (assistant_id));
 diesel::joinable!(assistant_emoji_packs -> emoji_packs (pack_id));
 diesel::joinable!(assistants -> providers (provider_id));
 diesel::joinable!(assistants -> tool_presets (tool_preset_id));
 diesel::joinable!(attachments -> messages (message_id));
 diesel::joinable!(cached_models -> providers (provider_id));
+diesel::joinable!(model_configs -> providers (provider_id));
 diesel::joinable!(conversations -> assistants (assistant_id));
 diesel::joinable!(conversations -> projects (project_id));
 diesel::joinable!(custom_tools -> tool_categories (category_id));
@@ -269,4 +287,4 @@ diesel::joinable!(projects -> assistants (assistant_id));
 diesel::joinable!(tool_permissions -> mcp_servers (mcp_server_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,messages,preferences,projects,prompt_templates,providers,tool_categories,tool_permissions,tool_presets,);
+    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,messages,model_configs,preferences,projects,prompt_templates,providers,tool_categories,tool_permissions,tool_presets,);

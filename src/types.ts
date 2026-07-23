@@ -243,6 +243,42 @@ export interface ProviderCapabilities {
   max_temperature?: number | null
 }
 
+export interface ModelConfig {
+  id: string
+  provider_id: string
+  model_id: string
+  display_name: string | null
+  context_window: number
+  compact_threshold: number
+  max_output_tokens: number | null
+  input_price: number
+  output_price: number
+  cache_price: number | null
+  created_at: number
+  updated_at: number
+}
+
+export interface ModelConfigInput {
+  provider_id: string
+  model_id: string
+  display_name?: string | null
+  context_window: number
+  compact_threshold: number
+  max_output_tokens?: number | null
+  input_price: number
+  output_price: number
+  cache_price?: number | null
+}
+
+export interface ContextInfo {
+  estimated_tokens: number
+  context_limit: number
+  compact_threshold: number
+  auto_compact_enabled: boolean
+  circuit_breaker_state: string
+  message_count: number
+}
+
 export interface StreamChunk {
   type?: string
   content?: string

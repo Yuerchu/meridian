@@ -1,6 +1,7 @@
 use crate::db::models::message::Message;
 use crate::provider::{self, ChatMessage};
 
+use super::tokenizer::{TokenBudget, TokenCounter, TokenizerKind};
 use super::tool_calls::{extract_tool_calls_from_blocks, parse_openai_tool_calls};
 
 pub(crate) fn build_messages(
@@ -89,8 +90,14 @@ pub(crate) fn resolve_file_uris_in_messages(messages: &mut [ChatMessage]) {
     }
 }
 
+static DEFAULT_COUNTER: std::sync::OnceLock<TokenCounter> = std::sync::OnceLock::new();
+
+fn default_counter() -> &'static TokenCounter {
+    DEFAULT_COUNTER.get_or_init(|| TokenCounter::new(TokenizerKind::Cl100kBase))
+}
+
 pub(crate) fn estimate_tokens(content: &str) -> usize {
-    content.chars().count() + 4
+    default_counter().count(content) + 4
 }
 
 pub(crate) fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_limit: usize, keep_recent: usize) {
@@ -145,6 +152,78 @@ pub(crate) fn remove_orphan_tool_messages(messages: &mut Vec<ChatMessage>) {
                 m.tool_calls = None;
             }
         }
+    }
+}
+
+static DATA_URI_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+
+pub(crate) fn data_uri_re() -> &'static regex::Regex {
+    DATA_URI_RE.get_or_init(|| {
+        regex::Regex::new(r"data:(image/[^;]+);base64,[A-Za-z0-9+/=]+").unwrap()
+    })
+}
+
+pub(crate) fn microcompact(
+    messages: &mut Vec<ChatMessage>,
+    budget: &TokenBudget,
+    keep_recent_turns: usize,
+) -> usize {
+    let before = budget.counter.count_messages(messages);
+
+    let has_system = messages.first().is_some_and(|m| m.role == "system");
+    let system_offset = if has_system { 1 } else { 0 };
+    let keep_msgs = keep_recent_turns * 2;
+    let boundary = messages.len().saturating_sub(keep_msgs);
+
+    for msg in messages[system_offset..boundary].iter_mut() {
+        if msg.role == "tool" {
+            let tokens = budget.counter.count(&msg.content);
+            if tokens > 2000 {
+                let chars: Vec<char> = msg.content.chars().collect();
+                let head_end = char_index_for_tokens(&budget.counter, &chars, 200);
+                let tail_start = chars.len().saturating_sub(char_index_for_tokens_rev(&budget.counter, &chars, 100));
+                if head_end < tail_start {
+                    let head: String = chars[..head_end].iter().collect();
+                    let tail: String = chars[tail_start..].iter().collect();
+                    msg.content = format!("{head}\n[... truncated, was {tokens} tokens ...]\n{tail}");
+                }
+            }
+        }
+
+        msg.content = data_uri_re().replace_all(&msg.content, |caps: &regex::Captures| {
+            let mime = caps.get(1).map(|m| m.as_str()).unwrap_or("image/unknown");
+            format!("[image: {mime}]")
+        }).into_owned();
+
+        if msg.role == "assistant" {
+            msg.reasoning_content = None;
+        }
+    }
+
+    let after = budget.counter.count_messages(messages);
+    before.saturating_sub(after)
+}
+
+fn char_index_for_tokens(counter: &TokenCounter, chars: &[char], target_tokens: usize) -> usize {
+    let mut idx = (target_tokens * 4).min(chars.len());
+    loop {
+        let s: String = chars[..idx].iter().collect();
+        if counter.count(&s) >= target_tokens || idx >= chars.len() {
+            break idx;
+        }
+        idx = (idx + 50).min(chars.len());
+    }
+}
+
+fn char_index_for_tokens_rev(counter: &TokenCounter, chars: &[char], target_tokens: usize) -> usize {
+    let mut count = (target_tokens * 4).min(chars.len());
+    let start = chars.len().saturating_sub(count);
+    loop {
+        let s: String = chars[start..].iter().collect();
+        if counter.count(&s) >= target_tokens || start == 0 {
+            break count;
+        }
+        count = (count + 50).min(chars.len());
     }
 }
 
