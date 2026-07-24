@@ -32,6 +32,16 @@ src-tauri/
 - **Streaming via Tauri events**: Rust backend streams AI responses via `app.emit("chat-stream", ...)`, frontend listens with `listen()`.
 - **Multi-provider**: OpenAI-compatible base, extend to Anthropic/Google/Ollama etc.
 
+## UI Conventions (v0–v1.x)
+
+Follow shadcn/ui conventions (reference: local clone at `~/Documents/Code/shadcn-ui`, `apps/v4/registry/new-york-v4/ui/` for inline-Tailwind style, `bases/base/ui/` for base-ui structure). Meridian v2 plans to migrate to HeroUI v3 — design new component APIs in HeroUI's shape (compound components, prop names like `isStreaming`/`state`) so only the implementation layer changes later.
+
+- **Colors: theme tokens only.** No raw Tailwind palette classes (`green-500`, `amber-500`, ...) in components. Status colors use the project-extension tokens `--success` / `--warning` / `--info` (light = 500 shade, dark = 400 shade, defined in `src/index.css`). Whitelisted exceptions: "default" star markers (`text-amber-500`, gold-star semantics) and `text-white` on `bg-destructive` (official shadcn convention).
+- **Font sizes: Tailwind scale only** (`text-xs/sm/base/lg`). No px arbitrary sizes (`text-[11px]`). Sole exception: `button.tsx` `text-[0.8rem]` (rem-based, official lineage).
+- **Radius hierarchy:** composer input `rounded-2xl` → chat/tool cards `rounded-xl` → settings cards & overlays (dialogs, menus) `rounded-lg`.
+- **Component style:** `data-slot` on every DOM node, `cn()` with `className` last, cva for variants, base-ui `render`/`useRender` instead of `asChild`, base-ui data attributes (`data-open`, `data-starting-style`).
+- **Dev playground:** browser-only preview of chat/tool components at `http://localhost:5173/#playground` (vite dev without Tauri; tree-shaken from release builds). Add new component states there.
+
 ## Android
 
 - **File access model**: tools resolve paths through `ToolContext::resolve_and_validate` (`src-tauri/src/tools/mod.rs`). Desktop = `FileAccess::Unrestricted` (legacy working_directory check). Android = `FileAccess::Roots` whitelist built in `build_file_access` (lib.rs) from preferences `android.manage_storage_enabled` / `android.saf_roots` + the system grant. SAF I/O goes through `src/android_bridge.rs` (JNI) → `FileBridge.kt`.
