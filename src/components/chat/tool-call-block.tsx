@@ -443,9 +443,9 @@ function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDif
 function diffLineClass(kind: DiffLineKind): string {
   switch (kind) {
     case 'add':
-      return 'bg-green-500/10 text-green-500'
+      return 'bg-success/10 text-success'
     case 'remove':
-      return 'bg-red-500/10 text-red-400'
+      return 'bg-destructive/10 text-destructive'
     case 'hunk':
       return 'text-muted-foreground/60'
     default:
@@ -477,23 +477,23 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
   return (
     <div className="rounded-lg bg-muted/40 overflow-hidden">
       {diff.path !== '' && (
-        <div className="flex items-center gap-2 px-3 py-1 bg-muted/30 text-[11px] text-muted-foreground border-b border-border/50">
+        <div className="flex items-center gap-2 px-3 py-1 bg-muted/30 text-xs text-muted-foreground border-b border-border/50">
           <FileText className="w-3 h-3 shrink-0" />
           <span className="font-mono truncate" title={diff.path}>{fileName}</span>
-          {diff.op === 'create' && <span className="text-green-500 shrink-0">{t('chat.tool.diff.newFile')}</span>}
-          {diff.op === 'delete' && <span className="text-red-400 shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
+          {diff.op === 'create' && <span className="text-success shrink-0">{t('chat.tool.diff.newFile')}</span>}
+          {diff.op === 'delete' && <span className="text-destructive shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
           {diff.replaceAll && <span className="shrink-0">{t('chat.tool.diff.replaceAll')}</span>}
           {(added > 0 || removed > 0) && (
             <span className="ml-auto shrink-0 font-mono">
-              {added > 0 && <span className="text-green-500">+{added}</span>}
+              {added > 0 && <span className="text-success">+{added}</span>}
               {added > 0 && removed > 0 && ' '}
-              {removed > 0 && <span className="text-red-400">-{removed}</span>}
+              {removed > 0 && <span className="text-destructive">-{removed}</span>}
             </span>
           )}
         </div>
       )}
       <div className="max-h-60 overflow-auto">
-        <div className="py-1 font-mono text-[11px] leading-relaxed w-max min-w-full">
+        <div className="py-1 font-mono text-xs leading-relaxed w-max min-w-full">
           {shown.map((line, i) => (
             <div key={i} className={cn('px-3 whitespace-pre', diffLineClass(line.kind))}>
               {diffLinePrefix(line.kind)}
@@ -873,18 +873,18 @@ function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<st
         : null
     case 'write_file':
       return args.path
-        ? <span className="text-foreground font-mono text-[11px] truncate">{String(args.path)}</span>
+        ? <span className="text-foreground font-mono text-xs truncate">{String(args.path)}</span>
         : null
     case 'edit_file':
       return args.file_path
-        ? <span className="text-foreground font-mono text-[11px] truncate">{String(args.file_path)}</span>
+        ? <span className="text-foreground font-mono text-xs truncate">{String(args.file_path)}</span>
         : null
     case 'apply_patch': {
       const patch = typeof args.patch === 'string' ? args.patch : ''
       const m = patch.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/m)
         ?? patch.match(/^\+\+\+ (?:b\/)?(.+)$/m)
       return m
-        ? <span className="text-foreground font-mono text-[11px] truncate">{m[1].trim()}</span>
+        ? <span className="text-foreground font-mono text-xs truncate">{m[1].trim()}</span>
         : null
     }
     default:
