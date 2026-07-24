@@ -126,7 +126,7 @@ export function GeneralSettings() {
               ))}
             </SelectContent>
           </Select>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {t('settings.general.shellHint')}
           </p>
         </div>
@@ -149,7 +149,7 @@ export function GeneralSettings() {
               ))}
             </SelectContent>
           </Select>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {t('settings.general.sandboxHint')}
           </p>
         </div>
@@ -188,7 +188,7 @@ export function GeneralSettings() {
             {searchKeySaved ? <Check className="w-4 h-4" /> : t('settings.general.save')}
           </Button>
         </div>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {t('settings.general.searchHint')}
         </p>
       </div>

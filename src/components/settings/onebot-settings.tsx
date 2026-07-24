@@ -142,7 +142,7 @@ export function OneBotSettings() {
           <label htmlFor="onebot-enabled" className="text-sm font-medium cursor-pointer">
             {t('settings.onebot.enable')}
           </label>
-          <p className="text-[11px] text-muted-foreground">
+          <p className="text-xs text-muted-foreground">
             {t('settings.onebot.enableHint')}
           </p>
         </div>
@@ -204,7 +204,7 @@ export function OneBotSettings() {
             ))}
           </SelectContent>
         </Select>
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {t('settings.onebot.assistantHint')}
         </p>
       </div>
@@ -218,7 +218,7 @@ export function OneBotSettings() {
           onChange={(e) => setAdminInput(e.target.value)}
           placeholder="12345, 67890"
         />
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {t('settings.onebot.adminUsersHint')}
         </p>
       </div>
@@ -232,13 +232,13 @@ export function OneBotSettings() {
           onChange={(e) => setConfig({ ...config, ack_emoji_id: e.target.value })}
           placeholder="76"
         />
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           {t('settings.onebot.ackEmojiHint')}
         </p>
       </div>
 
       {error && (
-        <p className="text-[11px] text-destructive break-all">{error}</p>
+        <p className="text-xs text-destructive break-all">{error}</p>
       )}
 
       <div className="flex items-center gap-3 pt-2">
@@ -259,7 +259,7 @@ export function OneBotSettings() {
       {status && (
         <div className="rounded-lg border p-3 space-y-1 text-sm">
           <div className="flex items-center gap-2">
-            <span className={`inline-block w-2 h-2 rounded-full ${running ? 'bg-green-500' : 'bg-gray-400'}`} />
+            <span className={`inline-block w-2 h-2 rounded-full ${running ? 'bg-success' : 'bg-muted-foreground'}`} />
             <span className="font-medium">
               {running ? t('settings.onebot.statusRunning') : t('settings.onebot.statusStopped')}
             </span>

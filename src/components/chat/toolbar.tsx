@@ -123,7 +123,7 @@ function ModelSelector({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-64 p-0 bg-popover border-border">
         <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border">
-          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('toolbar.models')}</span>
+          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('toolbar.models')}</span>
           <Button
             variant="ghost"
             size="icon"
@@ -138,7 +138,7 @@ function ModelSelector({
           {loading && <div className="px-3 py-2 text-xs text-muted-foreground">{t('toolbar.loadingModels')}</div>}
           {groups.map((g) => (
             <div key={g.provider.id}>
-              <div className="px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+              <div className="px-2.5 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                 {g.provider.name}
               </div>
               {g.models.map((m) => (
@@ -206,7 +206,7 @@ function ThinkingSelector({
       <PopoverTrigger className={cn(
         'flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors touch-hitbox',
         isActive
-          ? 'text-blue-400 hover:text-blue-300 hover:bg-accent'
+          ? 'text-info hover:text-info/80 hover:bg-accent'
           : 'text-muted-foreground hover:text-foreground hover:bg-accent',
       )}>
         <Lightbulb className="w-3.5 h-3.5" />
@@ -215,7 +215,7 @@ function ThinkingSelector({
         )}
       </PopoverTrigger>
       <PopoverContent align="start" className="w-56 p-1 bg-popover border-border">
-        <div className="px-2.5 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+        <div className="px-2.5 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
           {t('toolbar.thinking')}
         </div>
         {levels.map((level) => (
@@ -231,7 +231,7 @@ function ThinkingSelector({
             )}
           >
             <span>{t(level.labelKey)}</span>
-            <span className="text-[10px] text-muted-foreground/60">{t(level.descKey)}</span>
+            <span className="text-xs text-muted-foreground/60">{t(level.descKey)}</span>
           </Button>
         ))}
       </PopoverContent>
@@ -390,7 +390,7 @@ export function MobileOptionsMenu({
             {supportsThinking && (
               <button className={cn(itemCls, 'justify-between')} onClick={() => setPanel('thinking')}>
                 <span className="flex items-center gap-3">
-                  <Lightbulb className={cn('w-4 h-4', thinkingLevel !== 'default' && thinkingLevel !== 'off' ? 'text-blue-400' : 'text-muted-foreground')} />
+                  <Lightbulb className={cn('w-4 h-4', thinkingLevel !== 'default' && thinkingLevel !== 'off' ? 'text-info' : 'text-muted-foreground')} />
                   <span>{t('toolbar.thinking')}: {thinkingLabel}</span>
                 </span>
                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
@@ -461,7 +461,7 @@ export function MobileOptionsMenu({
               {loadingModels && <div className="px-4 py-3 text-xs text-muted-foreground">{t('toolbar.loadingModels')}</div>}
               {groups.map((g) => (
                 <div key={g.provider.id}>
-                  <div className="px-4 py-1.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                  <div className="px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
                     {g.provider.name}
                   </div>
                   {g.models.map((m) => (

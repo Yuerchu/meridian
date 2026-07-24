@@ -147,13 +147,13 @@ function ConversationIndicator({ conversationId, activeId }: { conversationId: s
   if (!session || conversationId === activeId) return null
 
   if (session.pendingApproval || session.pendingAskUser) {
-    return <span className="size-2 shrink-0 rounded-full bg-amber-500 animate-pulse" />
+    return <span className="size-2 shrink-0 rounded-full bg-warning animate-pulse" />
   }
   if (session.streaming) {
-    return <span className="size-2 shrink-0 rounded-full bg-blue-500 animate-pulse" />
+    return <span className="size-2 shrink-0 rounded-full bg-info animate-pulse" />
   }
   if (session.fulfilledUnseen) {
-    return <span className="size-2 shrink-0 rounded-full bg-emerald-500" />
+    return <span className="size-2 shrink-0 rounded-full bg-success" />
   }
   return null
 }
@@ -354,7 +354,7 @@ export function AppSidebar({
                 return (
                   <ContextMenu key={conv.id}>
                     <ContextMenuTrigger render={<SidebarMenuItem />}>
-                      <SpotlightCard className="rounded-md" spotlightColor="rgba(255, 255, 255, 0.06)">
+                      <SpotlightCard className="rounded-md">
                         <SidebarMenuButton
                           isActive={conv.id === activeId}
                           onClick={() => onSelect(conv.id)}

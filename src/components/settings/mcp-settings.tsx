@@ -330,7 +330,7 @@ export function McpSettings() {
           <div className="flex items-center gap-2 w-full">
             <Plug className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="truncate">{s.name}</span>
-            <span className="text-[10px] text-muted-foreground ml-auto flex-shrink-0">
+            <span className="text-xs text-muted-foreground ml-auto flex-shrink-0">
               {s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
             </span>
           </div>

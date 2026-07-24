@@ -33,7 +33,7 @@ const chatToolVariants = cva(
         "input-available": "border-border",
         "output-available": "border-border",
         "output-error": "border-destructive/40",
-        "requires-action": "border-amber-500/40",
+        "requires-action": "border-warning/40",
       },
     },
     defaultVariants: {
@@ -92,7 +92,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
       return (
         <CircleCheckIcon
           aria-hidden
-          className={cn("size-3.5 shrink-0 text-green-500", className)}
+          className={cn("size-3.5 shrink-0 text-success", className)}
         />
       )
     case "output-error":
@@ -106,7 +106,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
       return (
         <CircleAlertIcon
           aria-hidden
-          className={cn("size-3.5 shrink-0 text-amber-500", className)}
+          className={cn("size-3.5 shrink-0 text-warning", className)}
         />
       )
   }
@@ -150,7 +150,7 @@ function ChatToolArgs({ value, text, className, children, ...props }: ChatToolPa
     >
       {children ??
         (code !== undefined && (
-          <pre className="font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap text-foreground/90">
+          <pre className="font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-foreground/90">
             <JsonCode code={code} />
           </pre>
         ))}
@@ -168,7 +168,7 @@ function ChatToolResult({ value, text, className, children, ...props }: ChatTool
     >
       {children ??
         (code !== undefined && (
-          <pre className="font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap text-foreground/90">
+          <pre className="font-mono text-xs leading-relaxed break-all whitespace-pre-wrap text-foreground/90">
             <JsonCode code={code} />
           </pre>
         ))}

@@ -61,11 +61,11 @@ function CustomToolEditor({
     <div className="space-y-3 p-3 border border-border rounded-lg">
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
-          <label className="text-[11px] text-muted-foreground">{t('settings.tools.name')}</label>
+          <label className="text-xs text-muted-foreground">{t('settings.tools.name')}</label>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="my_tool" className="font-mono text-xs" />
         </div>
         <div className="space-y-1">
-          <label className="text-[11px] text-muted-foreground">{t('settings.tools.permission')}</label>
+          <label className="text-xs text-muted-foreground">{t('settings.tools.permission')}</label>
           <Select value={permission} onValueChange={(v) => { if (v) setPermission(v) }} items={permissionOptions}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -77,20 +77,20 @@ function CustomToolEditor({
         </div>
       </div>
       <div className="space-y-1">
-        <label className="text-[11px] text-muted-foreground">{t('settings.tools.description')}</label>
+        <label className="text-xs text-muted-foreground">{t('settings.tools.description')}</label>
         <Input value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
       <div className="space-y-1">
-        <label className="text-[11px] text-muted-foreground">{t('settings.tools.command')}</label>
+        <label className="text-xs text-muted-foreground">{t('settings.tools.command')}</label>
         <Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="python script.py" className="font-mono text-xs" />
       </div>
       <div className="space-y-1">
-        <label className="text-[11px] text-muted-foreground">{t('settings.tools.argsTemplate')}</label>
+        <label className="text-xs text-muted-foreground">{t('settings.tools.argsTemplate')}</label>
         <Input value={argsTemplate} onChange={(e) => setArgsTemplate(e.target.value)} placeholder="--input {{input}} --output {{output}}" className="font-mono text-xs" />
-        <p className="text-[10px] text-muted-foreground/60">{t('settings.tools.argsTemplateHint')}</p>
+        <p className="text-xs text-muted-foreground/60">{t('settings.tools.argsTemplateHint')}</p>
       </div>
       <div className="space-y-1">
-        <label className="text-[11px] text-muted-foreground">{t('settings.tools.timeout')}</label>
+        <label className="text-xs text-muted-foreground">{t('settings.tools.timeout')}</label>
         <Input type="number" value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} className="w-32" />
       </div>
       <div className="flex items-center gap-2">
@@ -98,7 +98,7 @@ function CustomToolEditor({
           {t('common.save')}
         </Button>
         {saved && (
-          <span className="flex items-center gap-1 text-[11px] text-green-400">
+          <span className="flex items-center gap-1 text-xs text-success">
             <Check className="w-3 h-3" /> {t('common.saved')}
           </span>
         )}
@@ -165,7 +165,7 @@ export function ToolMarketplace() {
       {builtinTools.some((tool) => tool.source === 'onebot') && (
         <div>
           <h3 className="text-sm font-medium mb-1">{t('settings.tools.onebotSection')}</h3>
-          <p className="text-[11px] text-muted-foreground mb-2">{t('settings.tools.onebotHint')}</p>
+          <p className="text-xs text-muted-foreground mb-2">{t('settings.tools.onebotHint')}</p>
           <div className="grid grid-cols-1 gap-1">
             {builtinTools.filter((tool) => tool.source === 'onebot').map((tool) => (
               <div key={tool.name} className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg">
@@ -175,16 +175,16 @@ export function ToolMarketplace() {
                   {t(`settings.tools.qq.${tool.name}`)}
                 </span>
                 {tool.scope === 'group' && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqGroupOnly')}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqGroupOnly')}</span>
                 )}
                 {tool.scope === 'private' && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqPrivateOnly')}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqPrivateOnly')}</span>
                 )}
                 {tool.admin_only === true && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqAdminOnly')}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqAdminOnly')}</span>
                 )}
                 {tool.needs_approval === true && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqApproval')}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqApproval')}</span>
                 )}
               </div>
             ))}
@@ -224,7 +224,7 @@ export function ToolMarketplace() {
                   <span className="font-mono flex-1">{ct.name}</span>
                   <span className="text-muted-foreground/60">{ct.command}</span>
                   {ct.is_enabled === 0 && (
-                    <span className="text-[10px] text-muted-foreground bg-accent px-1 rounded">{t('settings.tools.disabled')}</span>
+                    <span className="text-xs text-muted-foreground bg-accent px-1 rounded">{t('settings.tools.disabled')}</span>
                   )}
                 </Button>
                 {isExpanded && (
@@ -259,7 +259,7 @@ export function ToolMarketplace() {
                 <span className="font-medium flex-1">{preset.name}</span>
                 <span className="text-muted-foreground/60">{toolNames.length} tools</span>
                 {preset.is_builtin === 1 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.template.builtin')}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.template.builtin')}</span>
                 )}
               </div>
             )

@@ -65,7 +65,7 @@ export function renderEmojisInText(
           src={entry.url}
           alt={emojiName}
           title={emojiName}
-          className="emoji-sticker block my-2 max-w-[120px] max-h-[120px] w-auto h-auto rounded"
+          className="emoji-sticker rounded"
         />,
       )
     } else {

@@ -109,7 +109,7 @@ export function MemorySettings() {
           </div>
 
           {showAdd && (
-            <div className="p-3 border border-border rounded-md space-y-2 bg-muted/30">
+            <div className="p-3 border border-border rounded-lg space-y-2 bg-muted/30">
               <Input
                 type="text"
                 value={newKey}
@@ -158,7 +158,7 @@ export function MemorySettings() {
           )}
 
           {memories.map((m) => (
-            <div key={m.id} className="p-3 border border-border rounded-md space-y-1.5">
+            <div key={m.id} className="p-3 border border-border rounded-lg space-y-1.5">
               {editingId === m.id ? (
                 <div className="space-y-2">
                   <div className="text-sm font-medium text-foreground">{m.key}</div>

@@ -302,7 +302,7 @@ export function InputBar({
                   const colorClass = ratio > 0.95
                     ? 'text-destructive'
                     : ratio > 0.8
-                      ? 'text-yellow-500'
+                      ? 'text-warning'
                       : 'text-muted-foreground/60'
                   return (
                     <Tooltip>

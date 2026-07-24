@@ -45,9 +45,9 @@ function PackCard({
         )}
         <Package className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
         <span className="flex-1 truncate text-left">{detail.pack.name}</span>
-        <span className="text-[11px] text-muted-foreground">{detail.emojis.length}</span>
+        <span className="text-xs text-muted-foreground">{detail.emojis.length}</span>
         {detail.pack.is_builtin === 1 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
+          <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
             {t('settings.template.builtin')}
           </span>
         )}
@@ -80,11 +80,11 @@ function PackCard({
                       if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur()
                       if (ev.key === 'Escape') setEditingId(null)
                     }}
-                    className="w-full h-auto text-[9px] text-center bg-transparent border-0 border-b border-accent rounded-none px-0 py-0 mt-0.5 focus-visible:ring-0"
+                    className="w-full h-auto text-xs text-center bg-transparent border-0 border-b border-accent rounded-none px-0 py-0 mt-0.5 focus-visible:ring-0"
                   />
                 ) : (
                   <p
-                    className="text-[9px] text-muted-foreground text-center truncate mt-0.5 cursor-pointer hover:text-foreground"
+                    className="text-xs text-muted-foreground text-center truncate mt-0.5 cursor-pointer hover:text-foreground"
                     onClick={() => { setEditingId(e.id); setEditName(e.name) }}
                     title={t('settings.emoji.clickToRename')}
                   >

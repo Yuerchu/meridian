@@ -129,7 +129,7 @@ export function EmojiPicker({
           ) : (
             packs.map(({ pack, emojis }) => (
               <div key={pack.id} className="mb-2">
-                <p className="text-[10px] text-muted-foreground font-medium mb-1 px-1">
+                <p className="text-xs text-muted-foreground font-medium mb-1 px-1">
                   {pack.name}
                 </p>
                 <div className="grid grid-cols-6 gap-1">

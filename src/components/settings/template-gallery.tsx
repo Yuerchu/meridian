@@ -43,7 +43,7 @@ function TemplateCard({
         <Icon className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="flex-1 truncate">{template.name}</span>
         {template.is_builtin === 1 && (
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
+          <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
             {t('settings.template.builtin')}
           </span>
         )}
@@ -201,11 +201,11 @@ export function TemplateGallery({
 
       <div className="space-y-2">
         <h3 className="text-sm font-medium text-muted-foreground">{t('settings.template.variables')}</h3>
-        <p className="text-[11px] text-muted-foreground/70">{t('settings.template.variablesHint')}</p>
+        <p className="text-xs text-muted-foreground/70">{t('settings.template.variablesHint')}</p>
         <div className="grid grid-cols-1 gap-1">
           {variables.map((v) => (
             <div key={v.name} className="flex items-center gap-2 text-xs">
-              <code className="bg-accent/50 px-1.5 py-0.5 rounded font-mono text-[11px]">
+              <code className="bg-accent/50 px-1.5 py-0.5 rounded font-mono text-xs">
                 {`{{${v.name}}}`}
               </code>
               <span className="text-muted-foreground">

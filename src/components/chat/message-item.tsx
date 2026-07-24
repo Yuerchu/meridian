@@ -116,7 +116,7 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
   // Fenced blocks without a language get no className; they still contain a
   // trailing newline, while inline code never contains one.
   if (!className && !rawCode.includes('\n')) {
-    return <code className="px-1.5 py-0.5 bg-muted rounded text-[13px]" {...props}>{children}</code>
+    return <code className="px-1.5 py-0.5 bg-muted rounded text-xs" {...props}>{children}</code>
   }
 
   return (
@@ -126,7 +126,7 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
         <CopyButton text={code} />
       </div>
       <div className="w-full overflow-x-auto">
-        <pre className="p-3 text-[13px] leading-relaxed !bg-transparent !m-0 w-fit min-w-full">
+        <pre className="p-3 text-xs leading-relaxed !bg-transparent !m-0 w-fit min-w-full">
           <code className={className} {...props}>{children}</code>
         </pre>
       </div>
@@ -211,7 +211,7 @@ const MarkdownContent = React.memo(function MarkdownContent({ content, isStreami
             src={src}
             alt={alt.slice(8)}
             title={alt.slice(8)}
-            className="emoji-sticker block my-2 max-w-[120px] max-h-[120px] w-auto h-auto rounded"
+            className="emoji-sticker rounded"
             {...props}
           />
         )
@@ -670,7 +670,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
 
           <MessageFooter className="gap-1 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
             {(message.input_tokens || message.output_tokens) && (
-              <span className="text-[11px] text-muted-foreground/50 mr-1 font-normal">
+              <span className="text-xs text-muted-foreground/50 mr-1 font-normal">
                 {message.input_tokens && message.output_tokens
                   ? <><CountUp to={message.input_tokens} separator="," duration={1} /> + <CountUp to={message.output_tokens} separator="," duration={1} /> tokens</>
                   : <><CountUp to={(message.output_tokens ?? message.input_tokens)!} separator="," duration={1} /> tokens</>}
@@ -685,7 +685,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     size="icon"
                     onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}
                     className={cn(
-                      message.rating === 1 ? 'text-green-500' : 'text-muted-foreground hover:text-foreground',
+                      message.rating === 1 ? 'text-success' : 'text-muted-foreground hover:text-foreground',
                     )}
                     title={t('chat.thumbsUp')}
                   >
@@ -696,7 +696,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     size="icon"
                     onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}
                     className={cn(
-                      message.rating === -1 ? 'text-red-500' : 'text-muted-foreground hover:text-foreground',
+                      message.rating === -1 ? 'text-destructive' : 'text-muted-foreground hover:text-foreground',
                     )}
                     title={t('chat.thumbsDown')}
                   >
@@ -747,11 +747,11 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
         {onRate && !isStreaming && (
           <>
             <ContextMenuItem onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}>
-              <ThumbsUp className={message.rating === 1 ? 'text-green-500' : ''} />
+              <ThumbsUp className={message.rating === 1 ? 'text-success' : ''} />
               {t('chat.thumbsUp')}
             </ContextMenuItem>
             <ContextMenuItem onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}>
-              <ThumbsDown className={message.rating === -1 ? 'text-red-500' : ''} />
+              <ThumbsDown className={message.rating === -1 ? 'text-destructive' : ''} />
               {t('chat.thumbsDown')}
             </ContextMenuItem>
           </>

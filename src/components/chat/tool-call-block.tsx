@@ -101,7 +101,7 @@ function QuestionBlock({
         <Button
           variant="ghost"
           onClick={() => onUnskip(q.id)}
-          className="text-[11px] text-muted-foreground shrink-0 ml-2"
+          className="text-xs text-muted-foreground shrink-0 ml-2"
         >
           <Undo2 className="w-3 h-3" />
           {t('chat.tool.undo')}
@@ -117,7 +117,7 @@ function QuestionBlock({
         <Button
           variant="ghost"
           onClick={() => onSkip(q.id)}
-          className="text-[11px] text-muted-foreground shrink-0 mt-0.5"
+          className="text-xs text-muted-foreground shrink-0 mt-0.5"
         >
           <SkipForward className="w-3 h-3" />
           {t('chat.tool.skipQuestion')}
@@ -155,7 +155,7 @@ function QuestionBlock({
                 <span className="flex-1 min-w-0">
                   <span className="text-xs font-medium text-foreground">{opt.label}</span>
                   {opt.description && (
-                    <span className="block text-[11px] text-muted-foreground">{opt.description}</span>
+                    <span className="block text-xs text-muted-foreground">{opt.description}</span>
                   )}
                 </span>
               </Button>
@@ -231,7 +231,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
         <MessageCircleQuestion className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="font-medium text-foreground">{t('chat.tool.askUser')}</span>
         {data.status === 'running' && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground ml-auto" />}
-        {data.status === 'completed' && <Check className="w-3 h-3 text-green-500 ml-auto" />}
+        {data.status === 'completed' && <Check className="w-3 h-3 text-success ml-auto" />}
       </div>
 
       {data.status === 'pending' && (
@@ -263,7 +263,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
       {data.result && (
         <div className="border-t border-border bg-muted/10">
           <div className="max-h-40 overflow-y-auto ">
-            <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px]">
+            <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs">
               {data.result}
             </pre>
           </div>
@@ -518,12 +518,12 @@ function ReadFileResult({ result, path }: { result: string; path: string }) {
 
   return (
     <div className="rounded-lg bg-muted/40 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-1 bg-muted/30 text-[11px] text-muted-foreground border-b border-border/50">
+      <div className="flex items-center gap-2 px-3 py-1 bg-muted/30 text-xs text-muted-foreground border-b border-border/50">
         <FileText className="w-3 h-3" />
         <span className="font-mono truncate">{fileName}</span>
       </div>
       <div className="max-h-60 overflow-auto">
-        <pre className="text-[11px] leading-relaxed px-3 py-2">
+        <pre className="text-xs leading-relaxed px-3 py-2">
           <code className={lang ? `language-${lang} hljs` : ''}>
             {result.length > 2000 ? `${result.slice(0, 2000)}...` : result}
           </code>
@@ -570,7 +570,7 @@ function SearchResult({ result }: { result: string }) {
   if (!matches) {
     return (
       <div className="rounded-lg bg-muted/40">
-        <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px]">{result}</pre>
+        <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs">{result}</pre>
       </div>
     )
   }
@@ -579,13 +579,13 @@ function SearchResult({ result }: { result: string }) {
     <div className="rounded-lg bg-muted/40 max-h-60 overflow-auto">
       {Array.from(grouped.entries()).map(([file, items]) => (
         <div key={file} className="not-first:border-t not-first:border-border/50">
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-muted/30 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-muted/30 text-xs text-muted-foreground">
             <FileText className="w-3 h-3 shrink-0" />
             <span className="font-mono truncate">{file.split(/[/\\]/).pop()}</span>
             <span className="text-muted-foreground/50 ml-auto shrink-0">{items.length}</span>
           </div>
           {items.map((item, i) => (
-            <div key={i} className="flex gap-2 px-3 py-0.5 text-[11px] hover:bg-muted/20">
+            <div key={i} className="flex gap-2 px-3 py-0.5 text-xs hover:bg-muted/20">
               <span className="text-muted-foreground/50 font-mono w-8 text-right shrink-0">{item.line}</span>
               <span className="text-foreground font-mono truncate">{item.text}</span>
             </div>
@@ -600,7 +600,7 @@ function CommandResult({ result }: { result: string }) {
   return (
     <div className="rounded-lg bg-muted/40">
       <div className="max-h-60 overflow-auto">
-        <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px] font-mono leading-relaxed">
+        <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs font-mono leading-relaxed">
           {result.length > 2000 ? `${result.slice(0, 2000)}...` : result}
         </pre>
       </div>
@@ -625,7 +625,7 @@ function GenericResult({ result }: { result: string }) {
   return (
     <div className="rounded-lg bg-muted/40">
       <div className="max-h-40 overflow-y-auto">
-        <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px]">
+        <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs">
           {result.length > 1000 ? `${result.slice(0, 1000)}...` : result}
         </pre>
       </div>
@@ -658,7 +658,7 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
     return (
       <div className="flex items-center gap-2 px-0.5 text-muted-foreground">
         <Loader2 className="w-3 h-3 animate-spin" />
-        <span className="text-[11px]">{t('chat.tool.running')}</span>
+        <span className="text-xs">{t('chat.tool.running')}</span>
       </div>
     )
   }
@@ -667,8 +667,8 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
     return (
       <>
         {isEscalation && (
-          <div className="flex items-start gap-1.5 px-0.5 text-[11px] text-muted-foreground">
-            <TriangleAlert className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+          <div className="flex items-start gap-1.5 px-0.5 text-xs text-muted-foreground">
+            <TriangleAlert className="w-3.5 h-3.5 text-warning shrink-0" />
             <span>{t('chat.tool.sandboxRetryPrompt')}</span>
           </div>
         )}
@@ -834,7 +834,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
                   href={src.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-muted/50 px-2.5 py-1 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                   title={src.title}
                 >
                   {src.favicon && (
@@ -861,15 +861,15 @@ function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<st
     case 'read_file':
     case 'list_directory':
       return args.path
-        ? <span className="text-foreground font-mono text-[11px] truncate">{String(args.path)}</span>
+        ? <span className="text-foreground font-mono text-xs truncate">{String(args.path)}</span>
         : null
     case 'run_command':
       return args.command
-        ? <span className="text-foreground font-mono text-[11px] truncate">{String(args.command)}</span>
+        ? <span className="text-foreground font-mono text-xs truncate">{String(args.command)}</span>
         : null
     case 'search_files':
       return args.pattern
-        ? <span className="text-foreground font-mono text-[11px] truncate">{String(args.pattern)}</span>
+        ? <span className="text-foreground font-mono text-xs truncate">{String(args.pattern)}</span>
         : null
     case 'write_file':
       return args.path

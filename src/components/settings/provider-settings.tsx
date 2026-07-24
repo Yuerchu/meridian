@@ -66,29 +66,29 @@ function ModelConfigEditor({
     <div className="px-3 pb-3 space-y-2 bg-muted/30">
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[10px] text-muted-foreground">{t('settings.model.contextWindow')}</label>
+          <label className="text-xs text-muted-foreground">{t('settings.model.contextWindow')}</label>
           <Input value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
         </div>
         <div>
-          <label className="text-[10px] text-muted-foreground">{t('settings.model.compactThreshold')}</label>
+          <label className="text-xs text-muted-foreground">{t('settings.model.compactThreshold')}</label>
           <Input value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
         </div>
       </div>
       <div>
-        <label className="text-[10px] text-muted-foreground">{t('settings.model.maxOutput')}</label>
+        <label className="text-xs text-muted-foreground">{t('settings.model.maxOutput')}</label>
         <Input value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <label className="text-[10px] text-muted-foreground">{t('settings.model.inputPrice')}</label>
+          <label className="text-xs text-muted-foreground">{t('settings.model.inputPrice')}</label>
           <Input value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
         </div>
         <div>
-          <label className="text-[10px] text-muted-foreground">{t('settings.model.outputPrice')}</label>
+          <label className="text-xs text-muted-foreground">{t('settings.model.outputPrice')}</label>
           <Input value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
         </div>
         <div>
-          <label className="text-[10px] text-muted-foreground">{t('settings.model.cachePrice')}</label>
+          <label className="text-xs text-muted-foreground">{t('settings.model.cachePrice')}</label>
           <Input value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
         </div>
       </div>
@@ -202,12 +202,12 @@ function ProviderEditor({
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
-        <label className="block text-[11px] text-muted-foreground">{t('settings.provider.name')}</label>
+        <label className="block text-xs text-muted-foreground">{t('settings.provider.name')}</label>
         <Input value={name} onChange={(e) => setName(e.target.value)} />
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-[11px] text-muted-foreground">{t('settings.provider.type')}</label>
+        <label className="block text-xs text-muted-foreground">{t('settings.provider.type')}</label>
         <Select value={providerType} onValueChange={(v) => v && setProviderType(v)} items={typeOptions}>
           <SelectTrigger className="w-full">
             <SelectValue />
@@ -221,7 +221,7 @@ function ProviderEditor({
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-[11px] text-muted-foreground">{t('settings.provider.baseUrl')}</label>
+        <label className="block text-xs text-muted-foreground">{t('settings.provider.baseUrl')}</label>
         <Input
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
@@ -231,7 +231,7 @@ function ProviderEditor({
 
       {providerType !== 'anthropic' && (
         <div className="space-y-1.5">
-          <label className="block text-[11px] text-muted-foreground">{t('settings.provider.apiFormat')}</label>
+          <label className="block text-xs text-muted-foreground">{t('settings.provider.apiFormat')}</label>
           <Select value={apiFormat} onValueChange={(v) => v && setApiFormat(v)} items={formatOptions}>
             <SelectTrigger className="w-full">
               <SelectValue />
@@ -248,14 +248,14 @@ function ProviderEditor({
       <div className="flex items-center gap-2">
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
-          <span className="flex items-center gap-1 text-[11px] text-green-400">
+          <span className="flex items-center gap-1 text-xs text-success">
             <Check className="w-3 h-3" /> {t('common.saved')}
           </span>
         )}
       </div>
 
       <div className="border-t border-border pt-4 space-y-3">
-        <label className="block text-[11px] text-muted-foreground">{t('settings.provider.apiKey')}</label>
+        <label className="block text-xs text-muted-foreground">{t('settings.provider.apiKey')}</label>
         <div className="flex gap-2">
           <Input
             type="password"
@@ -270,20 +270,20 @@ function ProviderEditor({
           </Button>
         </div>
         {hasKey && (
-          <p className="text-[11px] text-green-600">{t('settings.provider.keySaved')}</p>
+          <p className="text-xs text-success">{t('settings.provider.keySaved')}</p>
         )}
       </div>
 
       <div className="border-t border-border pt-4 space-y-3">
         <div className="flex items-center justify-between">
-          <label className="text-[11px] text-muted-foreground">{t('settings.provider.models')}</label>
+          <label className="text-xs text-muted-foreground">{t('settings.provider.models')}</label>
           <Button variant="outline" onClick={handleFetchModels} disabled={fetchingModels || !hasKey}>
             <RefreshCw className={cn("w-3 h-3", fetchingModels && "animate-spin")} />
             {t('settings.provider.fetchModels')}
           </Button>
         </div>
         {modelsError && (
-          <p className="text-[11px] text-destructive break-all">{modelsError}</p>
+          <p className="text-xs text-destructive break-all">{modelsError}</p>
         )}
         {models.length > 0 && (
           <ScrollArea className="h-60 border border-border rounded-lg">
@@ -295,7 +295,7 @@ function ProviderEditor({
                   <div className="flex items-center justify-between px-3 py-1.5">
                     <span className={cn("text-xs", cfg ? "text-foreground" : "text-muted-foreground")}>
                       {m.name}
-                      {cfg && <span className="ml-1.5 text-[10px] text-green-500">●</span>}
+                      {cfg && <span className="ml-1.5 text-xs text-success">●</span>}
                     </span>
                     <Button
                       variant="ghost"
@@ -321,7 +321,7 @@ function ProviderEditor({
           </ScrollArea>
         )}
         {models.length === 0 && !fetchingModels && !modelsError && (
-          <p className="text-[11px] text-muted-foreground">{t('settings.provider.fetchModelsHint')}</p>
+          <p className="text-xs text-muted-foreground">{t('settings.provider.fetchModelsHint')}</p>
         )}
       </div>
 
