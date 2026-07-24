@@ -2,42 +2,26 @@ import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
 import {
-  Wrench, Check, X, Loader2, MessageCircleQuestion, Send,
+  Check, X, Loader2, MessageCircleQuestion, Send,
   SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck,
-  FileText, FilePen, FileX2, FileOutput, FolderOpen, Search,
-  FileSearch, Terminal, FileDiff, Brain, BookOpen, List, Trash2,
-  Globe, ChevronUp, TriangleAlert,
+  FileText, Globe, ChevronUp, TriangleAlert,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
+  ChatTool,
+  ChatToolApproval,
+  ChatToolArgs,
+  ChatToolContent,
+  ChatToolError,
+  ChatToolResult,
+  ChatToolStatusIcon,
+  ChatToolTrigger,
+  type ChatToolState,
+} from '@/components/ui/chat-tool'
+import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import type { ToolCallDisplay } from '@/types'
-
-type LucideIcon = typeof Wrench
-
-const TOOL_ICONS: Record<string, LucideIcon> = {
-  read_file: FileText,
-  write_file: FilePen,
-  edit_file: FilePen,
-  delete_file: FileX2,
-  move_file: FileOutput,
-  list_directory: FolderOpen,
-  search_files: Search,
-  glob: FileSearch,
-  run_command: Terminal,
-  apply_patch: FileDiff,
-  save_memory: Brain,
-  recall_memory: BookOpen,
-  list_memories: List,
-  delete_memory: Trash2,
-  web_search: Globe,
-}
 
 interface AskOption {
   label: string
@@ -241,7 +225,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   )
 
   return (
-    <div className="my-3 border border-border rounded-lg overflow-hidden text-xs">
+    <div className="my-3 border border-border rounded-xl bg-card/30 overflow-hidden text-xs">
       <div className="flex items-center gap-2 px-3 py-2 bg-muted/30">
         <MessageCircleQuestion className="w-3.5 h-3.5 text-muted-foreground" />
         <span className="font-medium text-foreground">{t('chat.tool.askUser')}</span>
@@ -314,8 +298,8 @@ function ReadFileResult({ result, path }: { result: string; path: string }) {
   const fileName = path.split(/[/\\]/).pop() ?? path
 
   return (
-    <div className="border-t border-border bg-muted/10">
-      <div className="flex items-center gap-2 px-3 py-1 bg-muted/20 text-[11px] text-muted-foreground border-b border-border">
+    <div className="rounded-lg bg-muted/40 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-1 bg-muted/30 text-[11px] text-muted-foreground border-b border-border/50">
         <FileText className="w-3 h-3" />
         <span className="font-mono truncate">{fileName}</span>
       </div>
@@ -366,17 +350,17 @@ function SearchResult({ result }: { result: string }) {
 
   if (!matches) {
     return (
-      <div className="border-t border-border bg-muted/10">
+      <div className="rounded-lg bg-muted/40">
         <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px]">{result}</pre>
       </div>
     )
   }
 
   return (
-    <div className="border-t border-border bg-muted/10 max-h-60 overflow-auto">
+    <div className="rounded-lg bg-muted/40 max-h-60 overflow-auto">
       {Array.from(grouped.entries()).map(([file, items]) => (
         <div key={file} className="not-first:border-t not-first:border-border/50">
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-muted/20 text-[11px] text-muted-foreground">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-muted/30 text-[11px] text-muted-foreground">
             <FileText className="w-3 h-3 shrink-0" />
             <span className="font-mono truncate">{file.split(/[/\\]/).pop()}</span>
             <span className="text-muted-foreground/50 ml-auto shrink-0">{items.length}</span>
@@ -395,7 +379,7 @@ function SearchResult({ result }: { result: string }) {
 
 function CommandResult({ result }: { result: string }) {
   return (
-    <div className="border-t border-border bg-[var(--color-muted)]/20">
+    <div className="rounded-lg bg-muted/40">
       <div className="max-h-60 overflow-auto">
         <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px] font-mono leading-relaxed">
           {result.length > 2000 ? `${result.slice(0, 2000)}...` : result}
@@ -406,8 +390,21 @@ function CommandResult({ result }: { result: string }) {
 }
 
 function GenericResult({ result }: { result: string }) {
+  // JSON results get pretty-printed and syntax-highlighted like HeroUI's preset.
+  const pretty = useMemo(() => {
+    try {
+      return JSON.stringify(JSON.parse(result), null, 2)
+    } catch {
+      return null
+    }
+  }, [result])
+
+  if (pretty !== null && pretty.length <= 2000) {
+    return <ChatToolResult text={pretty} />
+  }
+
   return (
-    <div className="border-t border-border bg-muted/10">
+    <div className="rounded-lg bg-muted/40">
       <div className="max-h-40 overflow-y-auto">
         <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-[11px]">
           {result.length > 1000 ? `${result.slice(0, 1000)}...` : result}
@@ -440,7 +437,7 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
 
   if (approved) {
     return (
-      <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/10 text-muted-foreground">
+      <div className="flex items-center gap-2 px-0.5 text-muted-foreground">
         <Loader2 className="w-3 h-3 animate-spin" />
         <span className="text-[11px]">{t('chat.tool.running')}</span>
       </div>
@@ -449,18 +446,14 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
 
   if (!showFeedback) {
     return (
-      <div className="px-3 py-2 border-t border-border bg-muted/10 space-y-2">
+      <>
         {isEscalation && (
-          <div className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
+          <div className="flex items-start gap-1.5 px-0.5 text-[11px] text-muted-foreground">
             <TriangleAlert className="w-3.5 h-3.5 text-amber-500 shrink-0" />
             <span>{t('chat.tool.sandboxRetryPrompt')}</span>
           </div>
         )}
-        <div className="flex gap-2">
-          <Button variant="default" onClick={() => { setApproved(true); api.approveToolCall(callId) }}>
-            <Check className="w-3 h-3" />
-            {isEscalation ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
-          </Button>
+        <ChatToolApproval>
           <Button
             variant="outline"
             className="text-destructive hover:text-destructive"
@@ -469,13 +462,17 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
             <X className="w-3 h-3" />
             {t('chat.tool.deny')}
           </Button>
-        </div>
-      </div>
+          <Button variant="default" onClick={() => { setApproved(true); api.approveToolCall(callId) }}>
+            <Check className="w-3 h-3" />
+            {isEscalation ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
+          </Button>
+        </ChatToolApproval>
+      </>
     )
   }
 
   return (
-    <div className="px-3 py-2 border-t border-border bg-muted/10 space-y-2">
+    <div className="space-y-2">
       <Input
         type="text"
         value={feedback}
@@ -485,7 +482,10 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
         className="text-xs"
         autoFocus
       />
-      <div className="flex gap-2">
+      <ChatToolApproval className="pt-0">
+        <Button variant="ghost" onClick={() => setShowFeedback(false)}>
+          {t('chat.tool.cancel')}
+        </Button>
         <Button
           variant="outline"
           className="text-destructive hover:text-destructive"
@@ -494,10 +494,7 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
           <X className="w-3 h-3" />
           {feedback.trim() ? t('chat.tool.denyWithReason') : t('chat.tool.deny')}
         </Button>
-        <Button variant="ghost" onClick={() => setShowFeedback(false)}>
-          {t('chat.tool.cancel')}
-        </Button>
-      </div>
+      </ChatToolApproval>
     </div>
   )
 }
@@ -536,14 +533,16 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (data.status === 'pending') {
     return (
-      <div className="my-3 border border-border rounded-lg overflow-hidden text-xs">
-        <div className="flex items-center gap-2 px-3 py-2 bg-muted/30">
-          <Globe className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+      <ChatTool state="requires-action" defaultOpen className="my-3">
+        <ChatToolTrigger>
+          <ChatToolStatusIcon />
           <span className="font-medium text-foreground shrink-0">{t('chat.tool.name.web_search')}</span>
           {query && <span className="text-muted-foreground truncate">{query}</span>}
-        </div>
-        <PendingApproval callId={data.call_id} />
-      </div>
+        </ChatToolTrigger>
+        <ChatToolContent>
+          <PendingApproval callId={data.call_id} />
+        </ChatToolContent>
+      </ChatTool>
     )
   }
 
@@ -638,13 +637,6 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   )
 }
 
-function ToolParamLabel({ name }: { name: string }) {
-  const { t } = useTranslation()
-  const key = `chat.tool.param.${name}`
-  const translated = t(key)
-  return <span className="text-muted-foreground/60">{translated !== key ? translated : name}:</span>
-}
-
 function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
   switch (toolName) {
     case 'read_file':
@@ -665,7 +657,21 @@ function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<st
   }
 }
 
-export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
+function mapChatToolState(status: ToolCallDisplay['status']): ChatToolState {
+  switch (status) {
+    case 'pending':
+      return 'requires-action'
+    case 'approved':
+    case 'running':
+      return 'input-available'
+    case 'completed':
+      return 'output-available'
+    default:
+      return 'output-error'
+  }
+}
+
+export function ToolCallBlock({ data, className }: { data: ToolCallDisplay; className?: string }) {
   const { t } = useTranslation()
   const isCompleted = data.status === 'completed' || data.status === 'denied' || data.status === 'error'
 
@@ -687,74 +693,44 @@ export function ToolCallBlock({ data }: { data: ToolCallDisplay }) {
     return <WebSearchBlock data={data} />
   }
 
-  const Icon = TOOL_ICONS[data.tool_name] ?? Wrench
-
   const toolNameKey = `chat.tool.name.${data.tool_name}`
   const displayName = t(toolNameKey)
   const toolLabel = displayName !== toolNameKey ? displayName : data.tool_name
 
+  const trimmedArgs = data.arguments.trim()
+  const showArgs = trimmedArgs !== '' && trimmedArgs !== '{}'
+
   return (
-    <Accordion
-      defaultValue={isCompleted ? [] : ["tool"]}
-      className="my-3 rounded-lg border border-border overflow-hidden text-xs"
+    <ChatTool
+      state={mapChatToolState(data.status)}
+      defaultOpen={!isCompleted}
+      className={cn('my-3', className)}
     >
-      <AccordionItem value="tool" className="border-none">
-        <AccordionTrigger className="gap-2 items-center justify-start py-2 px-3 bg-muted/30 hover:bg-muted/50 text-xs font-normal hover:no-underline **:data-[slot=accordion-trigger-icon]:size-3">
-          <Icon className="!size-3.5 text-muted-foreground shrink-0" />
-          <span className="font-medium text-foreground shrink-0">{toolLabel}</span>
-          <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} />
-          <AnimatePresence mode="wait">
-            {data.status === 'running' && (
-              <motion.span key="running" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
-                <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-              </motion.span>
-            )}
-            {data.status === 'completed' && (
-              <motion.span key="done" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
-                <Check className="w-3 h-3 text-green-500" />
-              </motion.span>
-            )}
-            {data.status === 'denied' && (
-              <motion.span key="denied" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
-                <X className="w-3 h-3 text-destructive" />
-              </motion.span>
-            )}
-            {data.status === 'error' && (
-              <motion.span key="error" className="ml-auto" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }} transition={{ duration: 0.15 }}>
-                <TriangleAlert className="w-3 h-3 text-destructive" />
-              </motion.span>
-            )}
-          </AnimatePresence>
-        </AccordionTrigger>
-        <AccordionContent className="pb-0">
-          <div className="px-3 py-2 space-y-1 text-muted-foreground">
-            {Object.entries(parsedArgs).map(([key, value]) => (
-              <div key={key}>
-                <ToolParamLabel name={key} />{' '}
-                <span className="text-foreground">{String(value).length > 200 ? `${String(value).slice(0, 200)}...` : String(value)}</span>
-              </div>
-            ))}
-          </div>
+      <ChatToolTrigger>
+        <ChatToolStatusIcon />
+        <span className="font-medium text-foreground shrink-0">{toolLabel}</span>
+        <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} />
+      </ChatToolTrigger>
+      <ChatToolContent>
+        {showArgs && <ChatToolArgs text={data.arguments} />}
 
-          {data.status === 'pending' && (
-            <PendingApproval
-              callId={data.escalation_call_id ?? data.call_id}
-              retryReason={data.escalation_call_id ? (data.retry_reason ?? '') : undefined}
-            />
-          )}
+        {data.status === 'pending' && (
+          <PendingApproval
+            callId={data.escalation_call_id ?? data.call_id}
+            retryReason={data.escalation_call_id ? (data.retry_reason ?? '') : undefined}
+          />
+        )}
 
-          {data.status === 'running' && (
-            <div className="flex items-center gap-2 px-3 py-2 border-t border-border bg-muted/10 text-muted-foreground">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              <span className="text-[11px]">{t('chat.tool.running')}</span>
-            </div>
-          )}
-
-          {data.result && (
+        {data.result && (
+          data.status === 'error' ? (
+            <ChatToolError>
+              {data.result.length > 1000 ? `${data.result.slice(0, 1000)}...` : data.result}
+            </ChatToolError>
+          ) : (
             <ToolResult toolName={data.tool_name} result={data.result} args={parsedArgs} />
-          )}
-        </AccordionContent>
-      </AccordionItem>
-    </Accordion>
+          )
+        )}
+      </ChatToolContent>
+    </ChatTool>
   )
 }

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
-import { Bot, Copy, Check, Trash2, RefreshCw, FileText, Lightbulb, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Bot, Copy, Check, Trash2, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
 import CountUp from '@/components/CountUp'
 import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
@@ -24,11 +24,15 @@ import {
   AttachmentTitle,
 } from '@/components/ui/attachment'
 import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion'
+  ChainOfThought,
+  ChainOfThoughtContent,
+  ChainOfThoughtTrigger,
+} from '@/components/ui/chain-of-thought'
+import {
+  ChatToolGroup,
+  ChatToolGroupContent,
+  ChatToolGroupTrigger,
+} from '@/components/ui/chat-tool'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -48,7 +52,7 @@ import { convertFileSrc } from '@tauri-apps/api/core'
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { ToolCallBlock } from './tool-call-block'
 import { renderEmojisInText } from './emoji-renderer'
-import type { ContentBlock, Message as MessageData, ToolCallDisplay } from '@/types'
+import type { ContentBlock, Message as MessageData } from '@/types'
 import type { EmojiMap } from './emoji-renderer'
 
 // Attachment URLs are stored as file:// URIs, but the WebView runs on an http
@@ -234,20 +238,12 @@ function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; i
   const { t } = useTranslation()
 
   return (
-    <Accordion
-      defaultValue={(isStreaming || defaultExpanded) ? ["thinking"] : []}
-      className="my-2 rounded-lg border border-border/50 overflow-hidden"
-    >
-      <AccordionItem value="thinking" className="border-none">
-        <AccordionTrigger className="gap-2 items-center justify-start py-1.5 px-3 text-xs text-muted-foreground font-normal hover:no-underline **:data-[slot=accordion-trigger-icon]:size-3">
-          <Lightbulb className="!size-3.5 text-blue-400/70" />
-          <span className={isStreaming ? 'shimmer' : undefined}>{t('chat.thinking')}</span>
-        </AccordionTrigger>
-        <AccordionContent className="px-3 text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
-          {text}
-        </AccordionContent>
-      </AccordionItem>
-    </Accordion>
+    <ChainOfThought defaultOpen={!!(isStreaming || defaultExpanded)} isStreaming={isStreaming} className="my-2">
+      <ChainOfThoughtTrigger>{t('chat.thinking')}</ChainOfThoughtTrigger>
+      <ChainOfThoughtContent className="text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
+        {text}
+      </ChainOfThoughtContent>
+    </ChainOfThought>
   )
 }
 
@@ -287,6 +283,84 @@ function AssistantBlock({ block, isLast, isStreaming, isLastMessage, oneBot, emo
     return <MemoToolCallBlock data={block.data} />
   }
   return null
+}
+
+type ToolCallBlockItem = { block: Extract<ContentBlock, { type: 'tool_call' }>; index: number }
+type BlockUnit =
+  | { kind: 'single'; block: ContentBlock; index: number }
+  | { kind: 'tool-group'; items: ToolCallBlockItem[] }
+
+// ask_user and web_search render standalone interactive blocks and never join a group.
+function isGroupableToolCall(block: ContentBlock): block is Extract<ContentBlock, { type: 'tool_call' }> {
+  return block.type === 'tool_call' && block.data.tool_name !== 'ask_user' && block.data.tool_name !== 'web_search'
+}
+
+function groupBlocks(blocks: ContentBlock[]): BlockUnit[] {
+  const units: BlockUnit[] = []
+  let run: ToolCallBlockItem[] = []
+  const flush = () => {
+    if (run.length >= 2) {
+      units.push({ kind: 'tool-group', items: run })
+    } else {
+      for (const item of run) units.push({ kind: 'single', block: item.block, index: item.index })
+    }
+    run = []
+  }
+  blocks.forEach((block, index) => {
+    if (isGroupableToolCall(block)) {
+      run.push({ block, index })
+    } else {
+      flush()
+      units.push({ kind: 'single', block, index })
+    }
+  })
+  flush()
+  return units
+}
+
+function ToolCallGroup({ items }: { items: ToolCallBlockItem[] }) {
+  const { t } = useTranslation()
+  const hasActive = items.some(({ block }) =>
+    block.data.status === 'pending' || block.data.status === 'approved' || block.data.status === 'running',
+  )
+  return (
+    <ChatToolGroup defaultOpen={hasActive} className="my-3">
+      <ChatToolGroupTrigger>{t('chat.tool.groupCount', { count: items.length })}</ChatToolGroupTrigger>
+      <ChatToolGroupContent>
+        {items.map(({ block, index }) => (
+          <MemoToolCallBlock key={index} data={block.data} className="my-0" />
+        ))}
+      </ChatToolGroupContent>
+    </ChatToolGroup>
+  )
+}
+
+function AssistantBlocks({ blocks, isStreaming, isLastMessage, oneBot, emojiMap }: { blocks: ContentBlock[]; isStreaming?: boolean; isLastMessage?: boolean; oneBot?: boolean; emojiMap?: EmojiMap }) {
+  // Web-search-only turns keep their thinking hidden (the summary text is the answer).
+  const hasWebSearch = blocks.some((b) => b.type === 'tool_call' && b.data.tool_name === 'web_search')
+  const hasText = blocks.some((b) => b.type === 'text' && b.text.trim())
+  const filtered = hasWebSearch && !hasText ? blocks.filter((b) => b.type !== 'thinking') : blocks
+  const units = groupBlocks(filtered)
+
+  return (
+    <>
+      {units.map((unit) =>
+        unit.kind === 'tool-group' ? (
+          <ToolCallGroup key={`g${unit.items[0].index}`} items={unit.items} />
+        ) : (
+          <AssistantBlock
+            key={unit.index}
+            block={unit.block}
+            isLast={unit.index === filtered.length - 1}
+            isStreaming={isStreaming}
+            isLastMessage={isLastMessage}
+            oneBot={oneBot}
+            emojiMap={emojiMap}
+          />
+        ),
+      )}
+    </>
+  )
 }
 
 interface UserContentPart {
@@ -587,17 +661,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
           <Bubble variant="ghost" className="w-full">
             <BubbleContent className="w-full">
               {(message._blocks && message._blocks.length > 0) ? (
-                message._blocks
-                  .filter((block) => {
-                    if (block.type !== 'thinking') return true
-                    const blocks = message._blocks!
-                    const hasWebSearch = blocks.some(b => b.type === 'tool_call' && (b.data as ToolCallDisplay).tool_name === 'web_search')
-                    const hasText = blocks.some(b => b.type === 'text' && b.text.trim())
-                    return !(hasWebSearch && !hasText)
-                  })
-                  .map((block, i, arr) => (
-                    <AssistantBlock key={i} block={block} isLast={i === arr.length - 1} isStreaming={isStreaming} isLastMessage={isLastMessage} oneBot={isOneBot} emojiMap={emojiMap} />
-                  ))
+                <AssistantBlocks blocks={message._blocks} isStreaming={isStreaming} isLastMessage={isLastMessage} oneBot={isOneBot} emojiMap={emojiMap} />
               ) : (
                 <MarkdownContent content={message.content} isStreaming={isStreaming} oneBot={isOneBot} emojiMap={emojiMap} />
               )}

@@ -34,6 +34,7 @@
   "chat.tool.denyReasonPlaceholder": "Tell the assistant why you denied...",
   "chat.tool.cancel": "Cancel",
   "chat.tool.running": "Running...",
+  "chat.tool.groupCount": "{{count}} tool calls",
   "chat.tool.askUser": "Question",
   "chat.tool.askUserPlaceholder": "Type your response...",
   "chat.tool.askUserSubmit": "Submit",
