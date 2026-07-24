@@ -14,6 +14,7 @@ use super::{call_api, SharedState};
 pub async fn handle_message(
     event: &OneBotEvent,
     state: &Arc<SharedState>,
+    conn_id: u64,
 ) -> Vec<OneBotAction> {
     let user_id = match event.user_id {
         Some(id) => id,
@@ -33,7 +34,7 @@ pub async fn handle_message(
             }
             if let Some(ref raw) = event.raw_message {
                 let parsed = format::ParsedMessage::from_text(raw);
-                return handle_text_message(event, state, user_id, parsed, None).await;
+                return handle_text_message(event, state, user_id, parsed, None, conn_id).await;
             }
             return vec![];
         }
@@ -53,7 +54,7 @@ pub async fn handle_message(
             let text = format::segments_to_text(message, Some(self_id));
             if !text.is_empty() {
                 let parsed = format::ParsedMessage::from_text(&text);
-                return handle_text_message(event, state, user_id, parsed, None).await;
+                return handle_text_message(event, state, user_id, parsed, None, conn_id).await;
             }
         }
         return vec![];
@@ -65,7 +66,7 @@ pub async fn handle_message(
         return vec![];
     }
 
-    handle_text_message(event, state, user_id, parsed, reply_message_id).await
+    handle_text_message(event, state, user_id, parsed, reply_message_id, conn_id).await
 }
 
 async fn handle_text_message(
@@ -74,6 +75,7 @@ async fn handle_text_message(
     user_id: i64,
     parsed: format::ParsedMessage,
     reply_to_message_id: Option<i64>,
+    conn_id: u64,
 ) -> Vec<OneBotAction> {
     let text = parsed.text.as_str();
     let is_group = event.message_type.as_deref() == Some("group");
@@ -159,7 +161,9 @@ async fn handle_text_message(
         super::send_action_nowait(state, &OneBotAction::set_input_status(user_id, 1)).await;
     }
 
-    let (project_id, conversation_id, model_override) = {
+    // Media processing needs the conversation; get_or_create is idempotent and
+    // run_agent_turn will hit the cache for the same key.
+    let (_, conversation_id, model_override) = {
         let mut sessions = state.sessions.lock().await;
         match sessions.get_or_create(&session_key, &title, state.config.assistant_id.as_deref()) {
             Ok((pid, cid)) => {
@@ -172,6 +176,12 @@ async fn handle_text_message(
             }
         }
     };
+
+    // Remember this message entered the AI context so a later recall of it is
+    // worth reporting (recalls of never-seen messages stay silent).
+    if let Some(mid) = event_message_id {
+        super::record_seen_message(state, &session_key, mid).await;
+    }
 
     let sender_prefix = if is_group {
         Some(format!("{}({})", nickname, user_id))
@@ -207,96 +217,209 @@ async fn handle_text_message(
         serde_json::Value::Array(parts).to_string()
     };
 
-    let approval_fn: ApprovalFn = {
+    run_agent_turn(state, conn_id, &session_key, &title, user_id, user_content, event_message_id).await
+}
+
+// ---------------------------------------------------------------------------
+// Agent turn runner
+// ---------------------------------------------------------------------------
+
+/// Build the Y/N chat approval closure for tool calls in `session_key`,
+/// addressed to `initiator_user_id` (the only user allowed to answer).
+fn make_approval_fn(
+    state: &Arc<SharedState>,
+    session_key: &SessionKey,
+    initiator_user_id: i64,
+) -> ApprovalFn {
+    let state = state.clone();
+    let session_str = session_key.to_string();
+    let is_group = session_key.kind == SessionKind::Group;
+    let group_id = session_key.id;
+
+    Box::new(move |tc: crate::provider::ToolCall| {
         let state = state.clone();
-        let session_str = session_key.to_string();
-        let event_user_id = user_id;
-        let event_group_id = group_id;
-        let event_is_group = is_group;
+        let session_str = session_str.clone();
 
-        Box::new(move |tc: crate::provider::ToolCall| {
-            let state = state.clone();
-            let session_str = session_str.clone();
+        Box::pin(async move {
+            let prompt = format!(
+                "🔧 工具调用请求:\n工具: {}\n参数: {}\n\n回复 Y 批准，其他内容拒绝（60秒超时）",
+                tc.name,
+                truncate_args(&tc.arguments, 500),
+            );
 
-            Box::pin(async move {
-                let prompt = format!(
-                    "🔧 工具调用请求:\n工具: {}\n参数: {}\n\n回复 Y 批准，其他内容拒绝（60秒超时）",
-                    tc.name,
-                    truncate_args(&tc.arguments, 500),
-                );
+            let approval_msg = if is_group {
+                OneBotAction::send_group_msg(
+                    group_id,
+                    vec![
+                        MessageSegment::at(initiator_user_id),
+                        MessageSegment::text(&format!(" {prompt}")),
+                    ],
+                )
+            } else {
+                OneBotAction::send_private_msg(initiator_user_id, vec![MessageSegment::text(&prompt)])
+            };
 
-                let approval_msg = if event_is_group {
-                    OneBotAction::send_group_msg(
-                        event_group_id.unwrap_or(0),
-                        vec![
-                            MessageSegment::at(event_user_id),
-                            MessageSegment::text(&format!(" {prompt}")),
-                        ],
-                    )
-                } else {
-                    OneBotAction::send_private_msg(event_user_id, vec![MessageSegment::text(&prompt)])
-                };
+            super::send_action_nowait(&state, &approval_msg).await;
 
-                super::send_action_nowait(&state, &approval_msg).await;
+            let (tx, rx) = oneshot::channel();
+            {
+                let mut approvals = state.pending_approvals.lock().await;
+                approvals.insert(session_str.clone(), (initiator_user_id, tx));
+            }
 
-                let (tx, rx) = oneshot::channel();
-                {
+            match tokio::time::timeout(std::time::Duration::from_secs(60), rx).await {
+                Ok(Ok(approved)) => approved,
+                _ => {
                     let mut approvals = state.pending_approvals.lock().await;
-                    approvals.insert(session_str.clone(), (event_user_id, tx));
+                    approvals.remove(&session_str);
+                    false
                 }
-
-                match tokio::time::timeout(std::time::Duration::from_secs(60), rx).await {
-                    Ok(Ok(approved)) => approved,
-                    _ => {
-                        let mut approvals = state.pending_approvals.lock().await;
-                        approvals.remove(&session_str);
-                        false
-                    }
-                }
-            })
+            }
         })
-    };
+    })
+}
 
-    let cancel = CancellationToken::new();
-    let qq_tools = super::qq_tools::QqToolExecutor::new(state.clone(), session_key.clone());
+/// Run one agent turn for a session, or queue the content when a turn is
+/// already active (the running loop injects it between tool rounds). At turn
+/// end, user messages that arrived too late for injection start a follow-up
+/// turn; earlier turns' replies are sent inline so ordering is preserved.
+pub(super) async fn run_agent_turn(
+    state: &Arc<SharedState>,
+    conn_id: u64,
+    session_key: &SessionKey,
+    title: &str,
+    initiator_user_id: i64,
+    user_content: String,
+    reply_to: Option<i64>,
+) -> Vec<OneBotAction> {
+    let is_admin = state.config.admin_users.contains(&initiator_user_id);
 
-    let response = agent::headless_chat(
-        &state.pool,
-        &state.secrets,
-        &state.tools,
-        &state.mcp,
-        &conversation_id,
-        Some(project_id.as_str()),
-        &user_content,
-        state.config.assistant_id.as_deref(),
-        model_override.as_deref(),
-        is_admin,
-        &approval_fn,
-        &cancel,
-        state.app_handle.as_ref(),
-        Some(&qq_tools),
-    )
-    .await;
-
-    if let Some(ref app) = state.app_handle {
-        let _ = app.emit("conversation-updated", serde_json::json!({"id": conversation_id}));
+    let started = super::try_begin_turn(state, session_key, super::InboxItem {
+        text: user_content.clone(),
+        kind: super::InboxKind::UserMessage,
+        created_at: crate::util::now_ms(),
+    }).await;
+    if !started {
+        // Queued into the running turn; its reply arrives with that turn.
+        return vec![];
     }
 
-    match response {
-        Ok(reply_text) => {
-            if reply_text.is_empty() {
-                return vec![];
+    let (project_id, conversation_id, model_override) = {
+        let mut sessions = state.sessions.lock().await;
+        match sessions.get_or_create(session_key, title, state.config.assistant_id.as_deref()) {
+            Ok((pid, cid)) => {
+                let ovr = sessions.get_model_override(session_key);
+                (pid, cid, ovr)
             }
-            let chunks = format::split_long_message(&reply_text);
-            chunks.iter().enumerate().flat_map(|(i, chunk)| {
-                let reply_id = if i == 0 { event_message_id } else { None };
-                build_reply(event, chunk, reply_id)
-            }).collect()
+            Err(e) => {
+                tracing::error!("Session error: {e}");
+                super::release_turn(state, session_key).await;
+                return build_session_reply(session_key, &format!("内部错误: {e}"), reply_to);
+            }
         }
-        Err(e) => {
-            tracing::error!("Chat error for {}: {e}", session_key);
-            build_reply(event, &format!("处理消息时出错: {e}"), event_message_id)
+    };
+
+    let approval_fn = make_approval_fn(state, session_key, initiator_user_id);
+    let cancel = CancellationToken::new();
+    let qq_tools = super::qq_tools::QqToolExecutor::new(state.clone(), session_key.clone(), is_admin);
+    let inbox = super::InboxHandle::new(state.clone(), session_key.clone());
+
+    let mut content = user_content;
+    let mut reply_anchor = reply_to;
+
+    loop {
+        let response = agent::headless_chat(
+            &state.pool,
+            &state.secrets,
+            &state.tools,
+            &state.mcp,
+            &conversation_id,
+            Some(project_id.as_str()),
+            &content,
+            state.config.assistant_id.as_deref(),
+            model_override.as_deref(),
+            is_admin,
+            &approval_fn,
+            &cancel,
+            state.app_handle.as_ref(),
+            Some(&qq_tools),
+            Some(&inbox),
+        )
+        .await;
+
+        if let Some(ref app) = state.app_handle {
+            let _ = app.emit("conversation-updated", serde_json::json!({"id": conversation_id}));
         }
+
+        let actions: Vec<OneBotAction> = match response {
+            Ok(reply_text) if reply_text.is_empty() => vec![],
+            Ok(reply_text) => {
+                let chunks = format::split_long_message(&reply_text);
+                chunks.iter().enumerate().flat_map(|(i, chunk)| {
+                    let reply_id = if i == 0 { reply_anchor } else { None };
+                    build_session_reply(session_key, chunk, reply_id)
+                }).collect()
+            }
+            Err(e) => {
+                tracing::error!("Chat error for {}: {e}", session_key);
+                build_session_reply(session_key, &format!("处理消息时出错: {e}"), reply_anchor)
+            }
+        };
+
+        match super::end_turn(state, session_key).await {
+            super::TurnEnd::Done => return actions,
+            super::TurnEnd::Continue(items) => {
+                // Send this turn's reply before starting the follow-up so the
+                // chat reads in order.
+                super::send_to_conn(state, conn_id, actions).await;
+                content = merge_inbox_texts(&items);
+                reply_anchor = None;
+            }
+        }
+    }
+}
+
+/// Combine queued inbox items into a single user message. Plain texts join
+/// with blank lines; if any item is an OpenAI-style parts array (image
+/// payloads), everything merges into one parts array instead.
+fn merge_inbox_texts(items: &[super::InboxItem]) -> String {
+    fn as_parts(text: &str) -> Option<Vec<serde_json::Value>> {
+        if !text.trim_start().starts_with('[') {
+            return None;
+        }
+        let arr: Vec<serde_json::Value> = serde_json::from_str(text).ok()?;
+        (!arr.is_empty() && arr.iter().all(|p| p.get("type").is_some())).then_some(arr)
+    }
+
+    if !items.iter().any(|i| as_parts(&i.text).is_some()) {
+        return items.iter().map(|i| i.text.as_str()).collect::<Vec<_>>().join("\n\n");
+    }
+    let mut parts: Vec<serde_json::Value> = Vec::new();
+    for item in items {
+        match as_parts(&item.text) {
+            Some(arr) => parts.extend(arr),
+            None => parts.push(serde_json::json!({ "type": "text", "text": item.text })),
+        }
+    }
+    serde_json::Value::Array(parts).to_string()
+}
+
+/// Like `build_reply` but routed from the session key instead of an event
+/// (used by poke-triggered turns and follow-up turns with no source event).
+fn build_session_reply(
+    session_key: &SessionKey,
+    text: &str,
+    reply_to_id: Option<i64>,
+) -> Vec<OneBotAction> {
+    let mut segments = Vec::new();
+    if let Some(id) = reply_to_id {
+        segments.push(MessageSegment::reply(id));
+    }
+    segments.extend(format::text_to_rich_segments(text));
+
+    match session_key.kind {
+        SessionKind::Group => vec![OneBotAction::send_group_msg(session_key.id, segments)],
+        SessionKind::Private => vec![OneBotAction::send_private_msg(session_key.id, segments)],
     }
 }
 
@@ -452,6 +575,17 @@ async fn dispatch_command(
     args: &str,
     reply_to: Option<i64>,
 ) -> Vec<OneBotAction> {
+    // Resetting or compacting the conversation while a turn is writing to it
+    // would corrupt the running loop's view of history.
+    if matches!(cmd, SlashCommand::New | SlashCommand::Compact) {
+        let busy = state.session_states.lock().await
+            .get(&session_key.to_string())
+            .is_some_and(|s| s.turn_active);
+        if busy {
+            return build_reply(event, "当前有任务正在处理,请稍后再试。", reply_to);
+        }
+    }
+
     match cmd {
         SlashCommand::Help => {
             build_reply(event, &SlashCommand::help_text(), reply_to)
@@ -626,7 +760,7 @@ async fn dispatch_status(
             let model_display = model_override
                 .map(|ovr| format!("{} (手动切换)", ovr))
                 .unwrap_or(default_model);
-            let tools_display = if is_admin { "已启用" } else { "仅聊天记录查询" };
+            let tools_display = if is_admin { "已启用" } else { "仅本会话查询(聊天记录/群信息/成员资料)" };
             let reply = format!(
                 "助手: {}\n模型: {}\n消息: {} 条\n上下文上限: {}\n工具: {}",
                 assistant_name, model_display, msg_count, context_limit, tools_display,
@@ -689,5 +823,44 @@ fn truncate_args(args: &str, max_len: usize) -> String {
         format!("{shown}...")
     } else {
         shown.to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_inbox_texts;
+    use crate::onebot::{InboxItem, InboxKind};
+
+    fn item(text: &str) -> InboxItem {
+        InboxItem { text: text.into(), kind: InboxKind::UserMessage, created_at: 0 }
+    }
+
+    #[test]
+    fn test_merge_plain_texts_joins() {
+        let items = vec![item("[张三(1)] 你好"), item("[系统提示] 1 加入了群聊")];
+        let merged = merge_inbox_texts(&items);
+        assert_eq!(merged, "[张三(1)] 你好\n\n[系统提示] 1 加入了群聊");
+    }
+
+    #[test]
+    fn test_merge_with_parts_json_produces_parts() {
+        let parts = serde_json::json!([
+            { "type": "text", "text": "看图" },
+            { "type": "image_url", "image_url": { "url": "file:///a.png" } },
+        ]).to_string();
+        let items = vec![item("[系统提示] 某人撤回了消息"), item(&parts)];
+        let merged = merge_inbox_texts(&items);
+        let arr: Vec<serde_json::Value> = serde_json::from_str(&merged).unwrap();
+        assert_eq!(arr.len(), 3);
+        assert_eq!(arr[0]["type"], "text");
+        assert_eq!(arr[0]["text"], "[系统提示] 某人撤回了消息");
+        assert_eq!(arr[2]["type"], "image_url");
+    }
+
+    #[test]
+    fn test_merge_bracket_text_not_mistaken_for_parts() {
+        // "[系统提示]…" starts with '[' but is not a JSON parts array.
+        let items = vec![item("[系统提示] 某人戳了戳你")];
+        assert_eq!(merge_inbox_texts(&items), "[系统提示] 某人戳了戳你");
     }
 }

@@ -3,11 +3,12 @@ mod command;
 mod format;
 mod handler;
 mod media;
+mod notice;
 mod protocol;
 mod qq_tools;
 mod session;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
@@ -21,7 +22,7 @@ use crate::tools::ToolRegistry;
 use crate::util::{get_conn, now_ms};
 
 use protocol::{OneBotAction, OneBotFrame, OneBotResponse};
-use session::SessionManager;
+use session::{SessionKey, SessionManager};
 
 pub struct SharedState {
     pub pool: DbPool,
@@ -37,8 +38,170 @@ pub struct SharedState {
     pub request_seq: AtomicU32,
     pub ws_sinks: Mutex<HashMap<u64, mpsc::Sender<String>>>,
     pub connected_clients: AtomicU32,
+    /// Session key → turn/inbox state. All turn-active/inbox transitions happen
+    /// under this single lock so a message can never race past an active turn.
+    pub session_states: Mutex<HashMap<String, SessionState>>,
     pub config: OneBotConfig,
     pub app_handle: Option<tauri::AppHandle>,
+}
+
+/// Cap on queued notice notes per session (user messages are not capped).
+const NOTICE_INBOX_CAP: usize = 5;
+/// Inbox items older than this are dropped instead of delivered.
+const INBOX_EXPIRY_MS: i64 = 2 * 3600 * 1000;
+/// How many OneBot message ids that entered the AI context to remember per
+/// session (used to decide whether a recall is worth reporting).
+const SEEN_IDS_CAP: usize = 200;
+
+#[derive(Default)]
+pub struct SessionState {
+    pub turn_active: bool,
+    pub inbox: Vec<InboxItem>,
+    pub seen_message_ids: VecDeque<i64>,
+    pub last_poke_reply_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InboxKind {
+    Notice,
+    UserMessage,
+}
+
+#[derive(Debug, Clone)]
+pub struct InboxItem {
+    pub text: String,
+    pub kind: InboxKind,
+    pub created_at: i64,
+}
+
+fn expire_inbox(inbox: &mut Vec<InboxItem>, now: i64) {
+    inbox.retain(|i| now - i.created_at < INBOX_EXPIRY_MS);
+}
+
+/// Outcome of finishing a turn: either the session is idle again, or user
+/// messages arrived too late for mid-turn injection and the caller must run
+/// another turn with them.
+pub enum TurnEnd {
+    Done,
+    Continue(Vec<InboxItem>),
+}
+
+impl SessionState {
+    /// Returns `true` when the turn was started; `false` when another turn is
+    /// already running and `item` was queued instead.
+    fn begin_or_queue(&mut self, item: InboxItem) -> bool {
+        if self.turn_active {
+            self.inbox.push(item);
+            false
+        } else {
+            self.turn_active = true;
+            true
+        }
+    }
+
+    /// User messages left in the inbox keep the turn active and are handed
+    /// back for an immediate follow-up; notice-only leftovers stay queued.
+    fn finish(&mut self, now: i64) -> TurnEnd {
+        expire_inbox(&mut self.inbox, now);
+        if self.inbox.iter().any(|i| i.kind == InboxKind::UserMessage) {
+            TurnEnd::Continue(std::mem::take(&mut self.inbox))
+        } else {
+            self.turn_active = false;
+            TurnEnd::Done
+        }
+    }
+
+    fn push_note(&mut self, text: String, now: i64) {
+        expire_inbox(&mut self.inbox, now);
+        let notice_count = self.inbox.iter().filter(|i| i.kind == InboxKind::Notice).count();
+        if notice_count >= NOTICE_INBOX_CAP {
+            if let Some(pos) = self.inbox.iter().position(|i| i.kind == InboxKind::Notice) {
+                self.inbox.remove(pos);
+            }
+        }
+        self.inbox.push(InboxItem { text, kind: InboxKind::Notice, created_at: now });
+    }
+
+    fn record_seen(&mut self, message_id: i64) {
+        if self.seen_message_ids.len() >= SEEN_IDS_CAP {
+            self.seen_message_ids.pop_front();
+        }
+        self.seen_message_ids.push_back(message_id);
+    }
+}
+
+/// Try to start a turn for `session`. Returns `true` when the turn was started;
+/// `false` when another turn is already running and `item` was queued into the
+/// inbox instead (it will be injected mid-turn or picked up at turn end).
+pub async fn try_begin_turn(
+    state: &Arc<SharedState>,
+    session: &SessionKey,
+    item: InboxItem,
+) -> bool {
+    let mut states = state.session_states.lock().await;
+    states.entry(session.to_string()).or_default().begin_or_queue(item)
+}
+
+/// Finish a turn. If the inbox holds user messages the session stays active and
+/// they are handed back for an immediate follow-up turn; notice-only leftovers
+/// stay queued for the next trigger.
+pub async fn end_turn(state: &Arc<SharedState>, session: &SessionKey) -> TurnEnd {
+    let mut states = state.session_states.lock().await;
+    states.entry(session.to_string()).or_default().finish(now_ms())
+}
+
+/// Force-release a turn without consuming the inbox. Error-path only: leftover
+/// items are delivered on the session's next trigger.
+pub async fn release_turn(state: &Arc<SharedState>, session: &SessionKey) {
+    let mut states = state.session_states.lock().await;
+    if let Some(s) = states.get_mut(&session.to_string()) {
+        s.turn_active = false;
+    }
+}
+
+/// Take everything queued for `session`; called by the agent loop between tool
+/// rounds so events surface inside the running turn.
+pub async fn drain_inbox_mid_turn(state: &Arc<SharedState>, session: &SessionKey) -> Vec<InboxItem> {
+    let mut states = state.session_states.lock().await;
+    let Some(s) = states.get_mut(&session.to_string()) else { return vec![] };
+    expire_inbox(&mut s.inbox, now_ms());
+    std::mem::take(&mut s.inbox)
+}
+
+/// Queue a notice note for `session`; oldest notes are dropped past the cap.
+pub async fn push_notice_note(state: &Arc<SharedState>, session: &SessionKey, text: String) {
+    let mut states = state.session_states.lock().await;
+    states.entry(session.to_string()).or_default().push_note(text, now_ms());
+}
+
+/// Record an OneBot message id that entered the AI context for `session`.
+pub async fn record_seen_message(state: &Arc<SharedState>, session: &SessionKey, message_id: i64) {
+    let mut states = state.session_states.lock().await;
+    states.entry(session.to_string()).or_default().record_seen(message_id);
+}
+
+pub async fn was_seen_message(state: &Arc<SharedState>, session: &SessionKey, message_id: i64) -> bool {
+    let states = state.session_states.lock().await;
+    states
+        .get(&session.to_string())
+        .is_some_and(|s| s.seen_message_ids.contains(&message_id))
+}
+
+/// Handle passed into the headless agent loop so it can pull queued events into
+/// the running turn between tool rounds.
+pub struct InboxHandle {
+    state: Arc<SharedState>,
+    session: SessionKey,
+}
+
+impl InboxHandle {
+    pub fn new(state: Arc<SharedState>, session: SessionKey) -> Self {
+        Self { state, session }
+    }
+
+    pub async fn drain(&self) -> Vec<InboxItem> {
+        drain_inbox_mid_turn(&self.state, &self.session).await
+    }
 }
 
 /// A friend request or group invite waiting for admin approval.
@@ -225,6 +388,7 @@ impl OneBotServer {
                 request_seq: AtomicU32::new((now_ms() / 1000 % 1_000_000) as u32),
                 ws_sinks: Mutex::new(HashMap::new()),
                 connected_clients: AtomicU32::new(0),
+                session_states: Mutex::new(HashMap::new()),
                 config,
                 pool,
                 secrets,
@@ -482,7 +646,7 @@ async fn handle_connection(
             "message" => {
                 let state = state.clone();
                 tokio::spawn(async move {
-                    let actions = handler::handle_message(&event, &state).await;
+                    let actions = handler::handle_message(&event, &state, conn_id).await;
                     send_to_conn(&state, conn_id, actions).await;
                 });
             }
@@ -490,6 +654,13 @@ async fn handle_connection(
                 let state = state.clone();
                 tokio::spawn(async move {
                     let actions = handler::handle_request(&event, &state).await;
+                    send_to_conn(&state, conn_id, actions).await;
+                });
+            }
+            "notice" => {
+                let state = state.clone();
+                tokio::spawn(async move {
+                    let actions = notice::handle_notice(&event, &state, conn_id).await;
                     send_to_conn(&state, conn_id, actions).await;
                 });
             }
@@ -543,7 +714,88 @@ pub struct AppOneBot(pub Arc<Mutex<OneBotServer>>);
 
 #[cfg(test)]
 mod tests {
-    use super::{token_matches, validate_listen_config};
+    use super::{
+        token_matches, validate_listen_config, InboxItem, InboxKind, SessionState, TurnEnd,
+        NOTICE_INBOX_CAP, SEEN_IDS_CAP,
+    };
+
+    fn item(kind: InboxKind, at: i64) -> InboxItem {
+        InboxItem { text: "x".into(), kind, created_at: at }
+    }
+
+    #[test]
+    fn test_begin_or_queue_mutual_exclusion() {
+        let mut s = SessionState::default();
+        assert!(s.begin_or_queue(item(InboxKind::UserMessage, 1000)));
+        assert!(s.turn_active);
+        assert!(s.inbox.is_empty(), "starting item is not queued");
+        // Second message while active gets queued instead of starting a turn.
+        assert!(!s.begin_or_queue(item(InboxKind::UserMessage, 1001)));
+        assert_eq!(s.inbox.len(), 1);
+    }
+
+    #[test]
+    fn test_finish_continues_on_late_user_message() {
+        let mut s = SessionState::default();
+        assert!(s.begin_or_queue(item(InboxKind::UserMessage, 1000)));
+        s.inbox.push(item(InboxKind::Notice, 1001));
+        s.inbox.push(item(InboxKind::UserMessage, 1002));
+        match s.finish(2000) {
+            TurnEnd::Continue(items) => {
+                assert_eq!(items.len(), 2, "notices ride along with the user message");
+                assert!(s.turn_active, "session stays active for the follow-up turn");
+                assert!(s.inbox.is_empty());
+            }
+            TurnEnd::Done => panic!("expected Continue"),
+        }
+    }
+
+    #[test]
+    fn test_finish_done_keeps_notice_queued() {
+        let mut s = SessionState::default();
+        assert!(s.begin_or_queue(item(InboxKind::UserMessage, 1000)));
+        s.inbox.push(item(InboxKind::Notice, 1001));
+        match s.finish(2000) {
+            TurnEnd::Done => {
+                assert!(!s.turn_active);
+                assert_eq!(s.inbox.len(), 1, "notice waits for the next trigger");
+            }
+            TurnEnd::Continue(_) => panic!("expected Done"),
+        }
+    }
+
+    #[test]
+    fn test_finish_drops_expired_items() {
+        let mut s = SessionState::default();
+        assert!(s.begin_or_queue(item(InboxKind::UserMessage, 0)));
+        s.inbox.push(item(InboxKind::UserMessage, 0));
+        match s.finish(super::INBOX_EXPIRY_MS + 1) {
+            TurnEnd::Done => assert!(s.inbox.is_empty()),
+            TurnEnd::Continue(_) => panic!("expired item must not restart a turn"),
+        }
+    }
+
+    #[test]
+    fn test_push_note_cap_drops_oldest_notice() {
+        let mut s = SessionState::default();
+        for i in 0..(NOTICE_INBOX_CAP + 2) {
+            s.push_note(format!("n{i}"), 1000 + i as i64);
+        }
+        let notices: Vec<&str> = s.inbox.iter().map(|i| i.text.as_str()).collect();
+        assert_eq!(notices.len(), NOTICE_INBOX_CAP);
+        assert_eq!(notices.first(), Some(&"n2"), "oldest notes dropped first");
+    }
+
+    #[test]
+    fn test_record_seen_ring() {
+        let mut s = SessionState::default();
+        for i in 0..(SEEN_IDS_CAP as i64 + 10) {
+            s.record_seen(i);
+        }
+        assert_eq!(s.seen_message_ids.len(), SEEN_IDS_CAP);
+        assert!(!s.seen_message_ids.contains(&5), "oldest ids evicted");
+        assert!(s.seen_message_ids.contains(&(SEEN_IDS_CAP as i64 + 9)));
+    }
 
     #[test]
     fn test_validate_listen_loopback_needs_no_token() {

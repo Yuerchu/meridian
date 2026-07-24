@@ -198,6 +198,7 @@ pub async fn headless_chat(
     cancel: &CancellationToken,
     app: Option<&tauri::AppHandle>,
     qq_tools: Option<&super::qq_tools::QqToolExecutor>,
+    session_inbox: Option<&super::InboxHandle>,
 ) -> Result<String, String> {
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
     let _sleep_guard = {
@@ -548,10 +549,16 @@ pub async fn headless_chat(
             } else if !offered.contains(&tc.name) {
                 (format!("Unknown tool: {}", tc.name), "error")
             } else if let Some(qq) = qq_tools.filter(|q| q.owns(&tc.name)) {
-                // Read-only and scope-locked to this session: no approval needed
-                match qq.execute(&tc.name, &tc.arguments).await {
-                    Ok(output) => (output, "success"),
-                    Err(e) => (format!("Error: {e}"), "error"),
+                // Query tools are scope-locked and read-only; action tools
+                // (recall/ban/kick/…) go through the chat approval flow.
+                let approved = !qq.requires_approval(&tc.name) || (approval_fn)(tc.clone()).await;
+                if approved {
+                    match qq.execute(&tc.name, &tc.arguments).await {
+                        Ok(output) => (output, "success"),
+                        Err(e) => (format!("Error: {e}"), "error"),
+                    }
+                } else {
+                    ("Tool call denied by user.".to_string(), "denied")
                 }
             } else if is_mcp {
                 // External MCP tools require approval, same as Ask tools.
@@ -654,6 +661,47 @@ pub async fn headless_chat(
         }
 
         if cancel.is_cancelled() || turn_aborted { break; }
+
+        // Steering: pull queued events (recalls, membership notes, user
+        // messages that arrived mid-turn) into the conversation now that this
+        // round's tool results are settled — the next request will see them.
+        // Injecting only appends, so history and its prompt-cache prefix stay
+        // intact.
+        if let Some(inbox) = session_inbox {
+            let items = inbox.drain().await;
+            let injected_any = !items.is_empty();
+            for item in items {
+                let inject_msg_id = uuid::Uuid::new_v4().to_string();
+                {
+                    let pool = pool.clone();
+                    let conv_id = conversation_id.to_string();
+                    let content = item.text.clone();
+                    let msg_id = inject_msg_id.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        if let Ok(mut conn) = pool.get() {
+                            let _ = crate::db::ops::message::insert_message(&mut conn, &NewMessage {
+                                id: &msg_id, conversation_id: &conv_id, role: "user",
+                                content: &content, provider_id: None, model_id: None,
+                                input_tokens: None, output_tokens: None,
+                                tool_calls: None, tool_call_id: None, sort_order: 0,
+                                created_at: now, reasoning_content: None, rating: None,
+                                schema_version: 2, is_compact_summary: 0,
+                            });
+                        }
+                    }).await;
+                }
+                // The initial resolve pass ran before this message existed;
+                // image parts inside it need their own file-URI resolution.
+                let mut injected = vec![ChatMessage::user(&item.text)];
+                crate::agent::resolve_file_uris_in_messages(&mut injected, files_root.as_deref());
+                chat_messages.extend(injected);
+            }
+            if injected_any {
+                if let Some(app) = app {
+                    let _ = app.emit("conversation-updated", serde_json::json!({"id": conversation_id}));
+                }
+            }
+        }
 
         budget.update_estimate(&chat_messages);
         if budget.needs_compact() {

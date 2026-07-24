@@ -39,6 +39,10 @@ pub struct OneBotEvent {
     pub raw_message: Option<String>,
     pub sender: Option<Sender>,
     pub meta_event_type: Option<String>,
+    // notice events
+    pub notice_type: Option<String>,
+    pub target_id: Option<i64>,
+    pub operator_id: Option<i64>,
     // request events
     pub request_type: Option<String>,
     pub comment: Option<String>,
@@ -194,6 +198,132 @@ impl OneBotAction {
         }
         Self { action: "set_group_add_request".into(), params, echo: Some(echo) }
     }
+
+    pub fn get_group_info(group_id: i64, echo: String) -> Self {
+        Self {
+            action: "get_group_info".into(),
+            params: serde_json::json!({ "group_id": group_id }),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn get_group_member_list(group_id: i64, echo: String) -> Self {
+        Self {
+            action: "get_group_member_list".into(),
+            params: serde_json::json!({ "group_id": group_id }),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn get_group_member_info(group_id: i64, user_id: i64, echo: String) -> Self {
+        Self {
+            action: "get_group_member_info".into(),
+            params: serde_json::json!({ "group_id": group_id, "user_id": user_id }),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn get_stranger_info(user_id: i64, echo: String) -> Self {
+        Self {
+            action: "get_stranger_info".into(),
+            params: serde_json::json!({ "user_id": user_id }),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn get_friend_list(echo: String) -> Self {
+        Self {
+            action: "get_friend_list".into(),
+            params: serde_json::json!({}),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn get_group_list(echo: String) -> Self {
+        Self {
+            action: "get_group_list".into(),
+            params: serde_json::json!({}),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn delete_msg(message_id: i64, echo: String) -> Self {
+        Self {
+            action: "delete_msg".into(),
+            params: serde_json::json!({ "message_id": message_id }),
+            echo: Some(echo),
+        }
+    }
+
+    /// llbot extension; pokes `user_id` in `group_id` when given, else in private.
+    pub fn send_poke(user_id: i64, group_id: Option<i64>, echo: String) -> Self {
+        let mut params = serde_json::json!({ "user_id": user_id });
+        if let Some(g) = group_id {
+            params["group_id"] = g.into();
+        }
+        Self { action: "send_poke".into(), params, echo: Some(echo) }
+    }
+
+    pub fn send_like(user_id: i64, times: i64, echo: String) -> Self {
+        Self {
+            action: "send_like".into(),
+            params: serde_json::json!({ "user_id": user_id, "times": times }),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn set_essence_msg(message_id: i64, echo: String) -> Self {
+        Self {
+            action: "set_essence_msg".into(),
+            params: serde_json::json!({ "message_id": message_id }),
+            echo: Some(echo),
+        }
+    }
+
+    /// `duration` in seconds; 0 lifts the ban.
+    pub fn set_group_ban(group_id: i64, user_id: i64, duration: i64, echo: String) -> Self {
+        Self {
+            action: "set_group_ban".into(),
+            params: serde_json::json!({
+                "group_id": group_id,
+                "user_id": user_id,
+                "duration": duration,
+            }),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn set_group_kick(group_id: i64, user_id: i64, echo: String) -> Self {
+        Self {
+            action: "set_group_kick".into(),
+            params: serde_json::json!({ "group_id": group_id, "user_id": user_id }),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn set_group_card(group_id: i64, user_id: i64, card: &str, echo: String) -> Self {
+        Self {
+            action: "set_group_card".into(),
+            params: serde_json::json!({ "group_id": group_id, "user_id": user_id, "card": card }),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn set_group_name(group_id: i64, name: &str, echo: String) -> Self {
+        Self {
+            action: "set_group_name".into(),
+            params: serde_json::json!({ "group_id": group_id, "group_name": name }),
+            echo: Some(echo),
+        }
+    }
+
+    pub fn send_group_notice(group_id: i64, content: &str, echo: String) -> Self {
+        Self {
+            action: "_send_group_notice".into(),
+            params: serde_json::json!({ "group_id": group_id, "content": content }),
+            echo: Some(echo),
+        }
+    }
 }
 
 impl MessageSegment {
@@ -216,5 +346,58 @@ impl MessageSegment {
             seg_type: "reply".into(),
             data: serde_json::json!({ "id": message_id.to_string() }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_frame, OneBotFrame};
+
+    #[test]
+    fn test_parse_notice_event_fields() {
+        let json = r#"{
+            "post_type": "notice", "notice_type": "notify", "sub_type": "poke",
+            "time": 1700000000, "self_id": 10001, "user_id": 20002,
+            "target_id": 10001, "group_id": 30003
+        }"#;
+        let Some(OneBotFrame::Event(e)) = parse_frame(json) else {
+            panic!("expected event frame");
+        };
+        assert_eq!(e.post_type, "notice");
+        assert_eq!(e.notice_type.as_deref(), Some("notify"));
+        assert_eq!(e.sub_type.as_deref(), Some("poke"));
+        assert_eq!(e.target_id, Some(10001));
+        assert_eq!(e.group_id, Some(30003));
+    }
+
+    #[test]
+    fn test_parse_recall_notice() {
+        let json = r#"{
+            "post_type": "notice", "notice_type": "group_recall",
+            "time": 1700000000, "self_id": 10001, "user_id": 20002,
+            "operator_id": 40004, "group_id": 30003, "message_id": 555
+        }"#;
+        let Some(OneBotFrame::Event(e)) = parse_frame(json) else {
+            panic!("expected event frame");
+        };
+        assert_eq!(e.notice_type.as_deref(), Some("group_recall"));
+        assert_eq!(e.operator_id, Some(40004));
+        assert_eq!(e.message_id, Some(555));
+    }
+
+    #[test]
+    fn test_history_action_includes_message_seq() {
+        let with_seq = super::OneBotAction::get_group_msg_history(1, Some(99), 20, "e".into());
+        assert_eq!(with_seq.params["message_seq"], 99);
+        let without = super::OneBotAction::get_group_msg_history(1, None, 20, "e".into());
+        assert!(without.params.get("message_seq").is_none());
+    }
+
+    #[test]
+    fn test_send_poke_group_and_private() {
+        let group = super::OneBotAction::send_poke(2, Some(3), "e".into());
+        assert_eq!(group.params["group_id"], 3);
+        let private = super::OneBotAction::send_poke(2, None, "e".into());
+        assert!(private.params.get("group_id").is_none());
     }
 }
