@@ -84,19 +84,16 @@ impl LocalSecretsBackend {
         let ciphertext = fs::read(&path)
             .with_context(|| format!("failed to read secrets file at {}", path.display()))?;
         let passphrase = self.load_or_create_passphrase()?;
-        let plaintext = match decrypt_with_passphrase(&ciphertext, &passphrase) {
-            Ok(pt) => pt,
-            Err(_) => {
-                let backup = path.with_extension("age.bak");
-                warn!(
-                    "Failed to decrypt secrets file (passphrase mismatch). \
-                     Backing up to {} and starting fresh.",
-                    backup.display()
-                );
-                let _ = fs::rename(&path, &backup);
-                return Ok(SecretsFile::new_empty());
-            }
-        };
+        // On decrypt failure, surface an error instead of silently discarding the
+        // file: the keyring entry may have been lost/rotated, and destroying the
+        // ciphertext would make the secrets unrecoverable once the keyring is fixed.
+        let plaintext = decrypt_with_passphrase(&ciphertext, &passphrase).with_context(|| {
+            format!(
+                "failed to decrypt secrets file at {}: the keyring passphrase does not match. \
+                 The encrypted file is preserved unchanged — restore the keyring entry to recover.",
+                path.display()
+            )
+        })?;
         let mut parsed: SecretsFile = serde_json::from_slice(&plaintext).with_context(|| {
             format!(
                 "failed to deserialize decrypted secrets file at {}",

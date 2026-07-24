@@ -31,6 +31,7 @@ async fn consume_stream(
 
     let mut text = String::new();
     let mut reasoning = String::new();
+    let mut signature = String::new();
     let mut tool_acc: Vec<(String, String, String)> = Vec::new();
     let mut usage = None;
     let mut finish_reason = None;
@@ -72,7 +73,15 @@ async fn consume_stream(
                             "conversation_id": conversation_id,
                         })).map_err(|e| e.to_string())?;
                     }
+                    Ok(Some(Ok(provider::StreamEvent::ReasoningSignature { signature: ref s }))) => {
+                        signature.push_str(s);
+                    }
                     Ok(Some(Ok(provider::StreamEvent::ToolCallStart { index, ref id, ref name }))) => {
+                        // Guard against a malformed/hostile endpoint sending a huge
+                        // index that would balloon the Vec allocation.
+                        if index >= 256 {
+                            return Err(format!("tool call index {index} out of range"));
+                        }
                         while tool_acc.len() <= index {
                             tool_acc.push((String::new(), String::new(), String::new()));
                         }
@@ -98,7 +107,7 @@ async fn consume_stream(
                         finish_reason = Some(reason.clone());
                     }
                     Ok(Some(Ok(provider::StreamEvent::Error { ref message }))) => {
-                        tracing::warn!("stream error: {message}");
+                        return Err(message.clone());
                     }
                     Ok(Some(Ok(provider::StreamEvent::MessageStart { .. }))) => {}
                     Ok(Some(Err(e))) => {
@@ -139,7 +148,28 @@ async fn consume_stream(
             .collect()
     };
 
-    Ok(StreamResult { text, reasoning, tool_calls, usage, finish_reason })
+    Ok(StreamResult { text, reasoning, signature, tool_calls, usage, finish_reason })
+}
+
+/// Emits a terminal `stop` event if the turn exits via an early error return, so
+/// the UI never stays stuck streaming (mirrors the OneBot headless guard). Armed
+/// per iteration; disarmed once the normal stop event has been sent.
+struct ErrorStopGuard<'a> {
+    app: &'a tauri::AppHandle,
+    conversation_id: &'a str,
+    message_id: Option<String>,
+}
+
+impl Drop for ErrorStopGuard<'_> {
+    fn drop(&mut self) {
+        if let Some(message_id) = self.message_id.take() {
+            let _ = self.app.emit("chat-stream", serde_json::json!({
+                "type": "stop", "reason": "error", "done": true,
+                "message_id": message_id,
+                "conversation_id": self.conversation_id,
+            }));
+        }
+    }
 }
 
 /// A sandbox-blocked command asking for an approved retry without sandbox.
@@ -439,7 +469,7 @@ pub async fn chat(
         model: model.clone(),
         temperature: assistant.as_ref().and_then(|a| a.temperature.map(|t| t as f64)),
         top_p: assistant.as_ref().and_then(|a| a.top_p.map(|t| t as f64)),
-        max_tokens: assistant.as_ref().and_then(|a| a.max_tokens),
+        max_tokens: assistant.as_ref().and_then(|a| a.max_tokens).or(Some(max_output as i32)),
         thinking_enabled,
         thinking_budget,
         thinking_effort,
@@ -538,6 +568,7 @@ pub async fn chat(
     let mut last_assistant_text = String::new();
     let mut loop_guard = crate::agent::ToolLoopGuard::default();
     let mut turn_aborted = false;
+    let mut stop_guard = ErrorStopGuard { app: &app, conversation_id: &conversation_id, message_id: None };
 
     // Unified streaming agent loop: each iteration creates a new assistant message
     loop {
@@ -566,6 +597,7 @@ pub async fn chat(
         app.emit("chat-stream", serde_json::json!({
             "type": "message_start", "message_id": &assistant_msg_id, "conversation_id": &conversation_id,
         })).map_err(|e| e.to_string())?;
+        stop_guard.message_id = Some(assistant_msg_id.clone());
 
         let result = {
             let mut _last_err = String::new();
@@ -576,6 +608,11 @@ pub async fn chat(
                     let delay = retry_delay.take()
                         .unwrap_or_else(|| crate::client::backoff(STREAM_RETRY_BASE, attempt as u64));
                     tokio::time::sleep(delay).await;
+                    // Retrying replays the whole stream under the same message id;
+                    // tell the UI to drop the partial content it already appended.
+                    app.emit("chat-stream", serde_json::json!({
+                        "type": "reset", "message_id": &assistant_msg_id, "conversation_id": &conversation_id,
+                    })).ok();
                 }
                 let stream_result = provider.stream_chat_with_tools(
                     chat_messages.clone(), tool_defs.clone(), params.clone()
@@ -616,6 +653,9 @@ pub async fn chat(
                             let aggressive_keep = (keep_recent / 2).max(2);
                             trim_to_context_limit(&mut chat_messages, context_limit / 2, aggressive_keep);
                         }
+                        app.emit("chat-stream", serde_json::json!({
+                            "type": "reset", "message_id": &assistant_msg_id, "conversation_id": &conversation_id,
+                        })).ok();
                         let stream = provider.stream_chat_with_tools(
                             chat_messages.clone(), tool_defs.clone(), params.clone()
                         ).await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
@@ -670,9 +710,13 @@ pub async fn chat(
 
         if !has_tool_calls { break; }
 
-        chat_messages.push(ChatMessage::assistant_with_tools(
+        let mut assistant_msg = ChatMessage::assistant_with_tools(
             &result.text, if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) }, result.tool_calls.clone()
-        ));
+        );
+        if !result.signature.is_empty() {
+            assistant_msg.signature = Some(result.signature.clone());
+        }
+        chat_messages.push(assistant_msg);
 
         for tc in &result.tool_calls {
             if cancel.is_cancelled() { break; }
@@ -911,6 +955,7 @@ pub async fn chat(
         });
     }
     app.emit("chat-stream", stop_payload).map_err(|e| e.to_string())?;
+    stop_guard.message_id = None;
 
     // Auto-generate title if first message
     if conv_title.is_none() {

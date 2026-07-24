@@ -284,8 +284,10 @@ impl OneBotServer {
 
             loop {
                 tokio::select! {
-                    _ = shutdown_rx.changed() => {
-                        if *shutdown_rx.borrow() {
+                    changed = shutdown_rx.changed() => {
+                        // Err = all senders dropped (this server was replaced);
+                        // either case means stop, so don't hot-spin on a closed channel.
+                        if changed.is_err() || *shutdown_rx.borrow() {
                             tracing::info!("OneBot WS server shutting down");
                             break;
                         }

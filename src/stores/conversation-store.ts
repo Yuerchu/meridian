@@ -145,6 +145,7 @@ export interface ConversationStore {
     escalation?: { originCallId: string; retryReason?: string },
   ) => void
   handleToolResult: (convId: string, callId: string, result: string, outcome?: string) => void
+  handleStreamReset: (convId: string, messageId: string) => void
   handleStop: (convId: string) => void
   handleCompactStart: (convId: string) => void
   handleCompactDone: (convId: string) => void
@@ -354,6 +355,18 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }))
   },
 
+  handleStreamReset: (convId, messageId) => {
+    set(produce((state: ConversationStore) => {
+      const session = state.sessions[convId]
+      if (!session) return
+      const idx = findAssistantMsg(session.messages, messageId)
+      if (idx < 0) return
+      const target = session.messages[idx]
+      target.content = ''
+      target._blocks = undefined
+    }))
+  },
+
   handleStop: (convId) => {
     const generation = get().sessions[convId]?.generation ?? 0
     set(produce((state: ConversationStore) => {
@@ -386,13 +399,22 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   },
 
   handleCompactDone: (convId) => {
+    const generation = get().sessions[convId]?.generation ?? 0
     Promise.all([api.loadMessages(convId), api.getConversation(convId)]).then(([msgs, conv]) => {
       set(produce((state: ConversationStore) => {
         const session = state.sessions[convId]
         if (!session) return
         session.compacting = false
-        session.messages = hydrateBlocks(msgs)
+        // A stream may have advanced while this snapshot was in flight; merge
+        // instead of clobbering, and skip entirely if a newer turn superseded it.
+        if (session.generation !== generation) return
+        session.messages = mergeSnapshot(session, hydrateBlocks(msgs))
         session.compactCursor = conv.compact_cursor
+      }))
+    }).catch(() => {
+      set(produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (session) session.compacting = false
       }))
     })
   },

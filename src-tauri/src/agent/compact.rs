@@ -194,7 +194,7 @@ async fn compact_with_retry(
         };
 
         let msgs = vec![
-            ChatMessage { role: "system".into(), content: system.into(), reasoning_content: None, tool_calls: None, tool_call_id: None },
+            ChatMessage { role: "system".into(), content: system.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None },
             ChatMessage::user(&trimmed),
         ];
 
@@ -257,6 +257,12 @@ pub(crate) async fn mid_turn_compact(
     let compact_params = provider::ChatParams {
         temperature: Some(0.3),
         max_tokens: Some(8192),
+        // Compaction is plain summarization — disable thinking so the inherited
+        // thinking_budget can't meet/exceed the fixed max_tokens (Anthropic 400s
+        // when budget_tokens >= max_tokens).
+        thinking_enabled: false,
+        thinking_budget: None,
+        thinking_effort: None,
         ..params.clone()
     };
 

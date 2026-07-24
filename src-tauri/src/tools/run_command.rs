@@ -145,7 +145,7 @@ fn find_powershell() -> &'static str {
     }
 }
 
-fn find_bash() -> &'static str {
+pub(crate) fn find_bash() -> &'static str {
     if cfg!(target_os = "windows") {
         let git_bash = "C:\\Program Files\\Git\\bin\\bash.exe";
         if std::path::Path::new(git_bash).exists() {

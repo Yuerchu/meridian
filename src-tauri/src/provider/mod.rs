@@ -18,20 +18,23 @@ pub struct ChatMessage {
     pub reasoning_content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub tool_call_id: Option<String>,
+    /// Anthropic extended-thinking signature for the reasoning block. Kept only
+    /// in-memory for the current turn's tool loop; never persisted to the DB.
+    pub signature: Option<String>,
 }
 
 impl ChatMessage {
     pub fn user(content: &str) -> Self {
-        Self { role: "user".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: None }
+        Self { role: "user".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None }
     }
     pub fn assistant(content: &str) -> Self {
-        Self { role: "assistant".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: None }
+        Self { role: "assistant".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None }
     }
     pub fn assistant_with_tools(content: &str, reasoning_content: Option<String>, tool_calls: Vec<ToolCall>) -> Self {
-        Self { role: "assistant".into(), content: content.into(), reasoning_content, tool_calls: Some(tool_calls), tool_call_id: None }
+        Self { role: "assistant".into(), content: content.into(), reasoning_content, tool_calls: Some(tool_calls), tool_call_id: None, signature: None }
     }
     pub fn tool_result(tool_call_id: &str, content: &str) -> Self {
-        Self { role: "tool".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: Some(tool_call_id.into()) }
+        Self { role: "tool".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: Some(tool_call_id.into()), signature: None }
     }
 }
 
@@ -66,6 +69,7 @@ pub enum StreamEvent {
     MessageStart { message_id: String },
     Text { content: String },
     Reasoning { content: String },
+    ReasoningSignature { signature: String },
     ToolCallStart { index: usize, id: String, name: String },
     ToolCallDelta { index: usize, arguments: String },
     ToolCallDone { index: usize, arguments: String },

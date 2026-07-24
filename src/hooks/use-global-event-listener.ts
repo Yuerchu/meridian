@@ -93,6 +93,11 @@ export function useGlobalEventListener() {
         return
       }
 
+      if (p.type === 'reset' && p.message_id) {
+        store.handleStreamReset(convId, p.message_id)
+        return
+      }
+
       if (p.type === 'stop' || p.done) {
         const startTime = streamStartTimes.get(convId)
         streamStartTimes.delete(convId)

@@ -106,7 +106,9 @@ impl Tool for CustomToolExecutor {
         };
 
         let argv: Vec<String> = if cfg!(target_os = "windows") {
-            vec!["bash".into(), "-c".into(), shell_cmd]
+            // Reuse run_command's Git Bash discovery instead of a bare "bash"
+            // that depends on PATH.
+            vec![super::run_command::find_bash().to_string(), "-c".into(), shell_cmd]
         } else {
             vec!["sh".into(), "-c".into(), shell_cmd]
         };

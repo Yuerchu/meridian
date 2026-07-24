@@ -44,11 +44,22 @@ import {
   AlertDialogClose,
   AlertDialogFooter,
 } from '@/components/ui/alert-dialog'
+import { convertFileSrc } from '@tauri-apps/api/core'
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { ToolCallBlock } from './tool-call-block'
 import { renderEmojisInText } from './emoji-renderer'
 import type { ContentBlock, Message as MessageData, ToolCallDisplay } from '@/types'
 import type { EmojiMap } from './emoji-renderer'
+
+// Attachment URLs are stored as file:// URIs, but the WebView runs on an http
+// origin and blocks file:// subresources. Map them through the asset protocol.
+function assetSrc(url?: string): string | undefined {
+  if (!url) return undefined
+  if (!url.startsWith('file://')) return url
+  let path = url.slice('file://'.length)
+  if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1)
+  return convertFileSrc(decodeURIComponent(path))
+}
 
 function useRelativeTime() {
   const { t } = useTranslation()
@@ -394,7 +405,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                 {contentParts!.filter((p) => p.type === 'image_url').map((p, i) => (
                   <Attachment key={`img-${i}`} orientation="vertical">
                     <AttachmentMedia variant="image">
-                      <img src={p.image_url?.url} alt="" />
+                      <img src={assetSrc(p.image_url?.url)} alt="" />
                     </AttachmentMedia>
                   </Attachment>
                 ))}

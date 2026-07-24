@@ -137,6 +137,7 @@ fn inject_tool_prompt(messages: &[ChatMessage], tool_prompt: &str) -> Vec<ChatMe
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            signature: None,
         },
     );
     result
@@ -338,10 +339,27 @@ fn value_to_gemma(v: &serde_json::Value) -> String {
 
 // --- Stream adapter: intercept tool call tokens from text ---
 
+/// Length of the longest suffix of `haystack` that is also a prefix of `needle`.
+fn longest_suffix_prefix_len(haystack: &str, needle: &str) -> usize {
+    let max = haystack.len().min(needle.len());
+    for len in (1..=max).rev() {
+        if haystack.is_char_boundary(haystack.len() - len)
+            && needle.is_char_boundary(len)
+            && haystack[haystack.len() - len..] == needle[..len]
+        {
+            return len;
+        }
+    }
+    0
+}
+
 struct GemmaParseState {
     in_tool_call: bool,
     tool_call_buffer: String,
     tool_index: usize,
+    /// Trailing bytes of the last chunk that may start a tool-call marker split
+    /// across a chunk boundary; prepended to the next chunk before scanning.
+    pending: String,
 }
 
 impl GemmaParseState {
@@ -350,16 +368,24 @@ impl GemmaParseState {
             in_tool_call: false,
             tool_call_buffer: String::new(),
             tool_index: 0,
+            pending: String::new(),
         }
     }
 
     fn process_text(&mut self, text: &str) -> Vec<StreamEvent> {
         if self.in_tool_call {
             self.tool_call_buffer.push_str(text);
-            self.try_complete_tool_call()
-        } else if let Some(pos) = text.find(TOOL_CALL_START) {
-            let before = &text[..pos];
-            let after = &text[pos + TOOL_CALL_START.len()..];
+            return self.try_complete_tool_call();
+        }
+        // Prepend any partial marker held back from the previous chunk.
+        let combined = if self.pending.is_empty() {
+            text.to_string()
+        } else {
+            format!("{}{}", std::mem::take(&mut self.pending), text)
+        };
+        if let Some(pos) = combined.find(TOOL_CALL_START) {
+            let before = &combined[..pos];
+            let after = &combined[pos + TOOL_CALL_START.len()..];
             let mut events = Vec::new();
             if !before.is_empty() {
                 events.push(StreamEvent::Text { content: before.to_string() });
@@ -369,7 +395,17 @@ impl GemmaParseState {
             events.extend(self.try_complete_tool_call());
             events
         } else {
-            vec![StreamEvent::Text { content: text.to_string() }]
+            // Hold back a trailing partial marker so it isn't emitted as text and
+            // lost when the marker spans a chunk boundary.
+            let hold = longest_suffix_prefix_len(&combined, TOOL_CALL_START);
+            let split = combined.len() - hold;
+            self.pending = combined[split..].to_string();
+            let emit = &combined[..split];
+            if emit.is_empty() {
+                vec![]
+            } else {
+                vec![StreamEvent::Text { content: emit.to_string() }]
+            }
         }
     }
 
@@ -404,15 +440,19 @@ impl GemmaParseState {
     }
 
     fn flush(&mut self) -> Vec<StreamEvent> {
+        let mut events = Vec::new();
         if self.in_tool_call && !self.tool_call_buffer.is_empty() {
             self.in_tool_call = false;
-            vec![StreamEvent::Text { content: format!(
+            events.push(StreamEvent::Text { content: format!(
                 "{TOOL_CALL_START}{}",
                 std::mem::take(&mut self.tool_call_buffer)
-            ) }]
-        } else {
-            vec![]
+            ) });
         }
+        // A held-back partial marker that never completed is just text.
+        if !self.pending.is_empty() {
+            events.push(StreamEvent::Text { content: std::mem::take(&mut self.pending) });
+        }
+        events
     }
 }
 
@@ -589,6 +629,31 @@ impl ChatProvider for GemmaToolProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_partial_marker_held_back_across_chunks() {
+        let mut state = GemmaParseState::new();
+        let split = TOOL_CALL_START.len() / 2;
+        let head = &TOOL_CALL_START[..split];
+        let tail = &TOOL_CALL_START[split..];
+
+        // Chunk 1 ends mid-marker: only clean text is emitted, partial held back.
+        let ev1 = state.process_text(&format!("abc{head}"));
+        let text1: String = ev1.iter().filter_map(|e| match e {
+            StreamEvent::Text { content } => Some(content.clone()),
+            _ => None,
+        }).collect();
+        assert_eq!(text1, "abc");
+
+        // Chunk 2 completes the marker: we enter tool-call mode, marker not leaked.
+        let ev2 = state.process_text(tail);
+        assert!(state.in_tool_call);
+        let text2: String = ev2.iter().filter_map(|e| match e {
+            StreamEvent::Text { content } => Some(content.clone()),
+            _ => None,
+        }).collect();
+        assert_eq!(text2, "");
+    }
 
     #[test]
     fn test_parse_gemma_call_no_args() {

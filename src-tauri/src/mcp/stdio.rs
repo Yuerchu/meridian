@@ -59,7 +59,7 @@ impl StdioTransport {
         Ok(())
     }
 
-    async fn read_response(&mut self) -> Result<serde_json::Value, String> {
+    async fn read_response(&mut self, expected_id: u64) -> Result<serde_json::Value, String> {
         loop {
             let mut line = String::new();
             let n = self.reader
@@ -74,11 +74,14 @@ impl StdioTransport {
                 continue;
             }
 
-            // Skip anything that isn't a JSON-RPC response to us: server
-            // notifications/requests and stray non-JSON output.
+            // Only accept the response matching *this* request id; skip
+            // notifications, server-initiated requests, stray output, and stale
+            // responses left over from a prior (e.g. timed-out) request.
             let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else { continue };
-            if value.get("id").is_none()
-                || (value.get("result").is_none() && value.get("error").is_none()) {
+            if value.get("id").and_then(|v| v.as_u64()) != Some(expected_id) {
+                continue;
+            }
+            if value.get("result").is_none() && value.get("error").is_none() {
                 continue;
             }
 
@@ -106,7 +109,7 @@ impl McpTransport for StdioTransport {
         let body = serde_json::to_string(&req).map_err(|e| e.to_string())?;
         self.send_raw(&body).await?;
 
-        tokio::time::timeout(std::time::Duration::from_secs(30), self.read_response())
+        tokio::time::timeout(std::time::Duration::from_secs(30), self.read_response(id))
             .await
             .map_err(|_| format!("MCP request '{}' timed out after 30s", method))?
     }

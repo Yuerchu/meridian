@@ -12,7 +12,7 @@ pub(crate) fn build_messages(
 ) -> Vec<ChatMessage> {
     let mut msgs = Vec::new();
     if !system_prompt.is_empty() {
-        msgs.push(ChatMessage { role: "system".into(), content: system_prompt.into(), reasoning_content: None, tool_calls: None, tool_call_id: None });
+        msgs.push(ChatMessage { role: "system".into(), content: system_prompt.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None });
     }
     if let Some(cursor) = compact_cursor {
         if let Some(summary) = history.iter().find(|m| m.is_compact_summary == 1) {
@@ -45,7 +45,7 @@ fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message) {
             if !tool_calls.is_empty() {
                 msgs.push(ChatMessage::assistant_with_tools(&m.content, reasoning, tool_calls));
             } else {
-                msgs.push(ChatMessage { role: "assistant".into(), content: m.content.clone(), reasoning_content: reasoning, tool_calls: None, tool_call_id: None });
+                msgs.push(ChatMessage { role: "assistant".into(), content: m.content.clone(), reasoning_content: reasoning, tool_calls: None, tool_call_id: None, signature: None });
             }
         }
         "tool" => {
@@ -180,7 +180,9 @@ pub(crate) fn microcompact(
     let has_system = messages.first().is_some_and(|m| m.role == "system");
     let system_offset = if has_system { 1 } else { 0 };
     let keep_msgs = keep_recent_turns * 2;
-    let boundary = messages.len().saturating_sub(keep_msgs);
+    // Clamp to system_offset: for short histories boundary can fall below it,
+    // which would invert the slice below and panic.
+    let boundary = messages.len().saturating_sub(keep_msgs).max(system_offset);
 
     for msg in messages[system_offset..boundary].iter_mut() {
         if msg.role == "tool" {
@@ -224,8 +226,10 @@ fn char_index_for_tokens(counter: &TokenCounter, chars: &[char], target_tokens: 
 
 fn char_index_for_tokens_rev(counter: &TokenCounter, chars: &[char], target_tokens: usize) -> usize {
     let mut count = (target_tokens * 4).min(chars.len());
-    let start = chars.len().saturating_sub(count);
     loop {
+        // Recompute start each round: the counted suffix must grow with count,
+        // otherwise a low-token-density tail loops forever.
+        let start = chars.len().saturating_sub(count);
         let s: String = chars[start..].iter().collect();
         if counter.count(&s) >= target_tokens || start == 0 {
             break count;
@@ -267,6 +271,7 @@ mod tests {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
+            signature: None,
         }
     }
 
@@ -388,5 +393,27 @@ mod tests {
                 assert!(has_call, "orphan tool result with call_id={id} should have been removed");
             }
         }
+    }
+
+    #[test]
+    fn test_microcompact_short_history_with_system_no_panic() {
+        let budget = TokenBudget::new("openai", "gpt-4o", 128_000, 16_384, None);
+        let mut msgs = vec![
+            chat_msg("system", "You are a helpful assistant."),
+            chat_msg("user", "hello"),
+            chat_msg("assistant", "hi there"),
+        ];
+        // boundary < system_offset here; must not panic.
+        let _ = microcompact(&mut msgs, &budget, 10);
+        assert_eq!(msgs.len(), 3);
+    }
+
+    #[test]
+    fn test_char_index_for_tokens_rev_terminates_on_low_density() {
+        let counter = TokenCounter::new(TokenizerKind::Cl100kBase);
+        // Low token-density tail: a fixed-start loop would spin forever.
+        let chars: Vec<char> = "=".repeat(4000).chars().collect();
+        let idx = char_index_for_tokens_rev(&counter, &chars, 100);
+        assert!(idx <= chars.len());
     }
 }

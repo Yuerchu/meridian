@@ -106,7 +106,7 @@ struct Hunk {
 enum PatchLine {
     Context(String),
     Add(String),
-    Remove,
+    Remove(String),
 }
 
 fn parse_unified_diff(patch: &str) -> Result<Vec<FilePatch>, String> {
@@ -165,8 +165,8 @@ fn parse_hunk(lines: &[&str], start: usize) -> Result<(Hunk, usize), String> {
         }
         if let Some(rest) = line.strip_prefix('+') {
             hunk_lines.push(PatchLine::Add(rest.to_string()));
-        } else if line.starts_with('-') {
-            hunk_lines.push(PatchLine::Remove);
+        } else if let Some(rest) = line.strip_prefix('-') {
+            hunk_lines.push(PatchLine::Remove(rest.to_string()));
         } else if let Some(rest) = line.strip_prefix(' ') {
             hunk_lines.push(PatchLine::Context(rest.to_string()));
         } else if line.starts_with('\\') {
@@ -193,6 +193,7 @@ fn parse_hunk_header(header: &str) -> Result<usize, String> {
 }
 
 fn apply_hunks(original: &str, hunks: &[Hunk]) -> Result<String, String> {
+    let line_ending = if original.contains("\r\n") { "\r\n" } else { "\n" };
     let orig_lines: Vec<&str> = if original.is_empty() {
         Vec::new()
     } else {
@@ -213,16 +214,28 @@ fn apply_hunks(original: &str, hunks: &[Hunk]) -> Result<String, String> {
 
         for line in &hunk.lines {
             match line {
-                PatchLine::Context(_s) => {
-                    if pos < orig_lines.len() {
-                        result.push(orig_lines[pos].to_string());
-                        pos += 1;
+                PatchLine::Context(s) => {
+                    let actual = orig_lines.get(pos).copied().unwrap_or("");
+                    if pos >= orig_lines.len() || actual != s.as_str() {
+                        return Err(format!(
+                            "patch context mismatch at line {}: expected {s:?} but found {actual:?}",
+                            pos + 1
+                        ));
                     }
+                    result.push(orig_lines[pos].to_string());
+                    pos += 1;
                 }
                 PatchLine::Add(s) => {
                     result.push(s.clone());
                 }
-                PatchLine::Remove => {
+                PatchLine::Remove(s) => {
+                    let actual = orig_lines.get(pos).copied().unwrap_or("");
+                    if pos >= orig_lines.len() || actual != s.as_str() {
+                        return Err(format!(
+                            "patch delete mismatch at line {}: expected to remove {s:?} but found {actual:?}",
+                            pos + 1
+                        ));
+                    }
                     pos += 1;
                 }
             }
@@ -235,9 +248,63 @@ fn apply_hunks(original: &str, hunks: &[Hunk]) -> Result<String, String> {
         pos += 1;
     }
 
-    let mut out = result.join("\n");
+    let mut out = result.join(line_ending);
     if original.ends_with('\n') || original.is_empty() {
-        out.push('\n');
+        out.push_str(line_ending);
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_apply_hunks_context_and_add() {
+        let original = "line1\nline2\nline3\n";
+        let hunks = vec![Hunk {
+            old_start: 1,
+            lines: vec![
+                PatchLine::Context("line1".into()),
+                PatchLine::Add("inserted".into()),
+                PatchLine::Context("line2".into()),
+            ],
+        }];
+        let out = apply_hunks(original, &hunks).unwrap();
+        assert_eq!(out, "line1\ninserted\nline2\nline3\n");
+    }
+
+    #[test]
+    fn test_apply_hunks_context_mismatch_rejected() {
+        let original = "alpha\nbeta\ngamma\n";
+        let hunks = vec![Hunk {
+            old_start: 1,
+            lines: vec![PatchLine::Context("WRONG".into()), PatchLine::Add("x".into())],
+        }];
+        assert!(apply_hunks(original, &hunks).is_err());
+    }
+
+    #[test]
+    fn test_apply_hunks_remove_mismatch_rejected() {
+        let original = "a\nb\nc\n";
+        let hunks = vec![Hunk {
+            old_start: 1,
+            lines: vec![PatchLine::Remove("NOT_A".into())],
+        }];
+        assert!(apply_hunks(original, &hunks).is_err());
+    }
+
+    #[test]
+    fn test_apply_hunks_preserves_crlf() {
+        let original = "one\r\ntwo\r\nthree\r\n";
+        let hunks = vec![Hunk {
+            old_start: 2,
+            lines: vec![
+                PatchLine::Context("two".into()),
+                PatchLine::Add("added".into()),
+            ],
+        }];
+        let out = apply_hunks(original, &hunks).unwrap();
+        assert_eq!(out, "one\r\ntwo\r\nadded\r\nthree\r\n");
+    }
 }

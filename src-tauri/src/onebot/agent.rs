@@ -48,6 +48,7 @@ async fn consume_stream_headless(
 
     let mut text = String::new();
     let mut reasoning = String::new();
+    let mut signature = String::new();
     let mut tool_acc: Vec<(String, String, String)> = Vec::new();
     let mut usage = None;
     let mut finish_reason = None;
@@ -95,7 +96,15 @@ async fn consume_stream_headless(
                             }));
                         }
                     }
+                    Ok(Some(Ok(StreamEvent::ReasoningSignature { signature: ref s }))) => {
+                        signature.push_str(s);
+                    }
                     Ok(Some(Ok(StreamEvent::ToolCallStart { index, ref id, ref name }))) => {
+                        // Guard against a malformed/hostile endpoint sending a huge
+                        // index that would balloon the Vec allocation.
+                        if index >= 256 {
+                            return Err(format!("tool call index {index} out of range"));
+                        }
                         while tool_acc.len() <= index {
                             tool_acc.push((String::new(), String::new(), String::new()));
                         }
@@ -120,7 +129,9 @@ async fn consume_stream_headless(
                         }
                         finish_reason = Some(reason.clone());
                     }
-                    Ok(Some(Ok(StreamEvent::Error { .. }))) => {}
+                    Ok(Some(Ok(StreamEvent::Error { ref message }))) => {
+                        return Err(message.clone());
+                    }
                     Ok(Some(Ok(StreamEvent::MessageStart { .. }))) => {}
                     Ok(Some(Err(e))) => {
                         return Err(e.to_string());
@@ -163,7 +174,7 @@ async fn consume_stream_headless(
             .collect()
     };
 
-    Ok(StreamResult { text, reasoning, tool_calls, usage, finish_reason })
+    Ok(StreamResult { text, reasoning, signature, tool_calls, usage, finish_reason })
 }
 
 /// Run a headless chat session with optional Tauri event streaming.
@@ -264,17 +275,18 @@ pub async fn headless_chat(
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
-    let params = ChatParams {
+    let mut params = ChatParams {
         model: model_override.map(String::from)
             .or_else(|| assistant.as_ref().and_then(|a| a.model_id.clone()))
             .unwrap_or(model),
         temperature: assistant.as_ref().and_then(|a| a.temperature.map(|t| t as f64)),
         top_p: assistant.as_ref().and_then(|a| a.top_p.map(|t| t as f64)),
-        max_tokens: assistant.as_ref().and_then(|a| a.max_tokens),
+        max_tokens: assistant.as_ref().and_then(|a| a.max_tokens).or(Some(max_output as i32)),
         thinking_enabled: assistant.as_ref().map(|a| a.thinking_enabled != 0).unwrap_or(false),
         thinking_budget: assistant.as_ref().and_then(|a| a.thinking_budget),
         thinking_effort: None,
     };
+    provider::capabilities::filter_params(&mut params, &caps);
 
     // Collect tool definitions: full registry for admin users only
     let mut tool_defs: Vec<provider::ToolDefinition> = if is_admin {
@@ -354,7 +366,10 @@ pub async fn headless_chat(
         working_directory: None,
         shell: shell_type.map(|s| tools::ShellType::from_str(&s))
             .unwrap_or_else(tools::ShellType::default_for_platform),
-        file_access: tools::FileAccess::default(),
+        // Headless (QQ) sessions have no project dir; with Unrestricted access
+        // validate_path is a no-op and the model could read the whole host
+        // filesystem. An empty root set denies every path at the validation layer.
+        file_access: tools::FileAccess::Roots(vec![]),
         project_id: project_id.map(|s| s.to_string()),
         db_pool: Some(pool.clone()),
         edit_session: None,
@@ -417,6 +432,13 @@ pub async fn headless_chat(
                     let delay = retry_delay.take()
                         .unwrap_or_else(|| crate::client::backoff(STREAM_RETRY_BASE, attempt as u64));
                     tokio::time::sleep(delay).await;
+                    // Retrying replays the whole stream under the same message id;
+                    // tell any attached UI to drop the partial content.
+                    if let Some(app) = app {
+                        let _ = app.emit("chat-stream", serde_json::json!({
+                            "type": "reset", "message_id": &assistant_msg_id, "conversation_id": conversation_id,
+                        }));
+                    }
                 }
                 let stream_result = provider.stream_chat_with_tools(
                     chat_messages.clone(), tool_defs.clone(), params.clone()
@@ -430,6 +452,11 @@ pub async fn headless_chat(
                     Err(e) if is_context_window_error(&e) => {
                         let aggressive_keep = (keep_recent / 2).max(2);
                         trim_to_context_limit(&mut chat_messages, context_limit / 2, aggressive_keep);
+                        if let Some(app) = app {
+                            let _ = app.emit("chat-stream", serde_json::json!({
+                                "type": "reset", "message_id": &assistant_msg_id, "conversation_id": conversation_id,
+                            }));
+                        }
                         let stream = provider.stream_chat_with_tools(
                             chat_messages.clone(), tool_defs.clone(), params.clone()
                         ).await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
@@ -484,11 +511,15 @@ pub async fn headless_chat(
 
         if !has_tool_calls { break; }
 
-        chat_messages.push(ChatMessage::assistant_with_tools(
+        let mut assistant_msg = ChatMessage::assistant_with_tools(
             &result.text,
             if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) },
             result.tool_calls.clone(),
-        ));
+        );
+        if !result.signature.is_empty() {
+            assistant_msg.signature = Some(result.signature.clone());
+        }
+        chat_messages.push(assistant_msg);
 
         for tc in &result.tool_calls {
             if cancel.is_cancelled() { break; }

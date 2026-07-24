@@ -34,6 +34,12 @@ pub async fn start_onebot(app: tauri::AppHandle) -> Result<(), String> {
     let ob = app.state::<onebot::AppOneBot>();
     let mut server_guard = ob.0.lock().await;
 
+    // Stop the previous instance before replacing it so its accept loop exits and
+    // releases the listener, instead of hot-spinning on a closed shutdown channel
+    // and keeping the old port/token alive. Brief pause lets the socket free up.
+    server_guard.stop();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
     // Recreate server with fresh config
     let new_server = onebot::OneBotServer::new(
         pool,

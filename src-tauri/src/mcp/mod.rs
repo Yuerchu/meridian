@@ -87,11 +87,20 @@ impl McpManager {
 
         self.tools.retain(|t| t.server_id != server.id);
         for tool in tools_result.tools {
+            let mut qualified_name = build_qualified_name(&server.name, &tool.name);
+            // sanitize_name folds distinct names onto the same string (e.g.
+            // "foo-bar" and "foo_bar"). If another server already owns this
+            // qualified name, disambiguate with the server id so a call can't
+            // route to the wrong server.
+            if self.tools.iter().any(|t| t.qualified_name == qualified_name && t.server_id != server.id) {
+                qualified_name = format!("{qualified_name}__{}", sanitize_name(&server.id));
+                tracing::warn!("MCP tool name collision on '{qualified_name}'; disambiguated by server id");
+            }
             self.tools.push(McpToolDef {
                 server_id: server.id.clone(),
                 server_name: server.name.clone(),
                 name: tool.name.clone(),
-                qualified_name: build_qualified_name(&server.name, &tool.name),
+                qualified_name,
                 description: tool.description.unwrap_or_default(),
                 input_schema: tool.input_schema.unwrap_or(serde_json::json!({"type": "object"})),
             });

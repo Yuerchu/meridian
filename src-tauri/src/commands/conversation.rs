@@ -113,9 +113,19 @@ pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Resul
 #[tauri::command]
 pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let pool = app.state::<AppDb>().0.clone();
+    let attachments_dir = app.path().app_data_dir().ok()
+        .map(|d| crate::files::conversation_files_dir(&d, &id));
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::delete_conversation(&mut conn, &id).map_err(|e| e.to_string())
+        db::ops::conversation::delete_conversation(&mut conn, &id).map_err(|e| e.to_string())?;
+        // Remove the conversation's on-disk attachments (best-effort); the DB row
+        // is the source of truth, so a failed cleanup must not fail the delete.
+        if let Some(dir) = attachments_dir {
+            if dir.exists() {
+                let _ = std::fs::remove_dir_all(&dir);
+            }
+        }
+        Ok::<_, String>(())
     }).await.map_err(|e| e.to_string())?
 }
 

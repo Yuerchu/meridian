@@ -7,6 +7,7 @@ use crate::provider;
 pub(crate) struct StreamResult {
     pub(crate) text: String,
     pub(crate) reasoning: String,
+    pub(crate) signature: String,
     pub(crate) tool_calls: Vec<provider::ToolCall>,
     pub(crate) usage: Option<provider::TokenUsage>,
     pub(crate) finish_reason: Option<String>,
@@ -30,6 +31,7 @@ pub(crate) fn is_retryable_stream_error(err: &str) -> bool {
     e.contains("timeout") || e.contains("network") || e.contains("connection")
         || e.contains("status: 429") || e.contains("status: 5")
         || e.contains("http 429") || e.contains("http 5")
+        || e.contains("api error 429") || e.contains("api error 5")
         || e.contains("idle timeout")
 }
 

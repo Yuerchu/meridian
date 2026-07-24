@@ -20,60 +20,105 @@ impl AnthropicProvider {
     }
 
     fn serialize_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
-        messages.iter()
-            .filter(|m| m.role != "system")
-            .map(|m| {
-                if m.role == "assistant" {
-                    if let Some(ref tcs) = m.tool_calls {
-                        let mut content: Vec<serde_json::Value> = Vec::new();
-                        if !m.content.is_empty() {
-                            content.push(serde_json::json!({"type": "text", "text": m.content}));
-                        }
-                        for tc in tcs {
-                            let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
+        let mut out: Vec<serde_json::Value> = Vec::new();
+        let mut pending_tool_results: Vec<serde_json::Value> = Vec::new();
+
+        for m in messages {
+            if m.role == "system" {
+                continue;
+            }
+
+            // Accumulate consecutive tool results into one user message: Anthropic
+            // requires every tool_result for a turn to share the user message that
+            // immediately follows the tool_use.
+            if m.role == "tool" {
+                pending_tool_results.push(serde_json::json!({
+                    "type": "tool_result",
+                    "tool_use_id": m.tool_call_id.as_deref().unwrap_or(""),
+                    "content": m.content,
+                }));
+                continue;
+            }
+            if !pending_tool_results.is_empty() {
+                out.push(serde_json::json!({
+                    "role": "user",
+                    "content": std::mem::take(&mut pending_tool_results),
+                }));
+            }
+
+            if m.role == "assistant" {
+                if let Some(ref tcs) = m.tool_calls {
+                    let mut content: Vec<serde_json::Value> = Vec::new();
+                    // With extended thinking on, the assistant turn carrying a
+                    // tool_use must begin with its signed thinking block.
+                    if let (Some(reasoning), Some(sig)) =
+                        (m.reasoning_content.as_ref(), m.signature.as_ref())
+                    {
+                        if !reasoning.is_empty() && !sig.is_empty() {
                             content.push(serde_json::json!({
-                                "type": "tool_use", "id": tc.id, "name": tc.name, "input": args
+                                "type": "thinking", "thinking": reasoning, "signature": sig,
                             }));
                         }
-                        return serde_json::json!({"role": "assistant", "content": content});
                     }
+                    if !m.content.is_empty() {
+                        content.push(serde_json::json!({"type": "text", "text": m.content}));
+                    }
+                    for tc in tcs {
+                        let args: serde_json::Value = serde_json::from_str(&tc.arguments).unwrap_or_default();
+                        content.push(serde_json::json!({
+                            "type": "tool_use", "id": tc.id, "name": tc.name, "input": args
+                        }));
+                    }
+                    out.push(serde_json::json!({"role": "assistant", "content": content}));
+                    continue;
                 }
-                if m.role == "tool" {
-                    return serde_json::json!({
-                        "role": "user",
-                        "content": [{
-                            "type": "tool_result",
-                            "tool_use_id": m.tool_call_id.as_deref().unwrap_or(""),
-                            "content": m.content,
-                        }]
-                    });
-                }
-                if m.content.starts_with('[') {
-                    if let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(&m.content) {
-                        let anthropic_parts: Vec<serde_json::Value> = parts.iter().map(|p| {
-                            match p.get("type").and_then(|t| t.as_str()) {
-                                Some("image_url") => {
-                                    if let Some(url) = p.pointer("/image_url/url").and_then(|u| u.as_str()) {
-                                        if let Some(data_uri) = url.strip_prefix("data:") {
-                                            if let Some((media_type, b64)) = data_uri.split_once(";base64,") {
-                                                return serde_json::json!({
-                                                    "type": "image",
-                                                    "source": { "type": "base64", "media_type": media_type, "data": b64 }
-                                                });
-                                            }
+            }
+
+            if m.content.starts_with('[') {
+                if let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(&m.content) {
+                    let anthropic_parts: Vec<serde_json::Value> = parts.iter().map(|p| {
+                        match p.get("type").and_then(|t| t.as_str()) {
+                            Some("image_url") => {
+                                if let Some(url) = p.pointer("/image_url/url").and_then(|u| u.as_str()) {
+                                    if let Some(data_uri) = url.strip_prefix("data:") {
+                                        if let Some((media_type, b64)) = data_uri.split_once(";base64,") {
+                                            return serde_json::json!({
+                                                "type": "image",
+                                                "source": { "type": "base64", "media_type": media_type, "data": b64 }
+                                            });
                                         }
                                     }
-                                    p.clone()
                                 }
-                                _ => p.clone()
+                                p.clone()
                             }
-                        }).collect();
-                        return serde_json::json!({"role": m.role, "content": anthropic_parts});
-                    }
+                            Some("file") => {
+                                if let Some(url) = p.pointer("/file/url").and_then(|u| u.as_str()) {
+                                    if let Some(data_uri) = url.strip_prefix("data:") {
+                                        if let Some((media_type, b64)) = data_uri.split_once(";base64,") {
+                                            return serde_json::json!({
+                                                "type": "document",
+                                                "source": { "type": "base64", "media_type": media_type, "data": b64 }
+                                            });
+                                        }
+                                    }
+                                }
+                                p.clone()
+                            }
+                            _ => p.clone()
+                        }
+                    }).collect();
+                    out.push(serde_json::json!({"role": m.role, "content": anthropic_parts}));
+                    continue;
                 }
-                serde_json::json!({"role": m.role, "content": m.content})
-            })
-            .collect()
+            }
+            out.push(serde_json::json!({"role": m.role, "content": m.content}));
+        }
+
+        if !pending_tool_results.is_empty() {
+            out.push(serde_json::json!({"role": "user", "content": pending_tool_results}));
+        }
+
+        out
     }
 
     fn build_request(
@@ -95,9 +140,9 @@ impl AnthropicProvider {
             "stream": stream,
         });
 
-        if let Some(m) = params.max_tokens {
-            body["max_tokens"] = serde_json::json!(m);
-        }
+        // Anthropic requires max_tokens. Callers normally backfill it from the
+        // resolved per-model output budget; fall back to a safe floor otherwise.
+        body["max_tokens"] = serde_json::json!(params.max_tokens.unwrap_or(4096));
 
         if params.thinking_enabled {
             if let Some(budget) = params.thinking_budget {
@@ -154,6 +199,7 @@ struct AnthropicStreamEvent {
     delta: Option<AnthropicDelta>,
     content_block: Option<AnthropicContentBlock>,
     usage: Option<AnthropicUsage>,
+    error: Option<AnthropicError>,
 }
 
 #[derive(Deserialize)]
@@ -162,8 +208,16 @@ struct AnthropicDelta {
     delta_type: Option<String>,
     text: Option<String>,
     thinking: Option<String>,
+    signature: Option<String>,
     partial_json: Option<String>,
     stop_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AnthropicError {
+    #[serde(rename = "type")]
+    error_type: Option<String>,
+    message: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -229,6 +283,15 @@ impl ChatProvider for AnthropicProvider {
                                                 }
                                             }
                                         }
+                                        Some("signature_delta") => {
+                                            if let Some(ref sig) = delta.signature {
+                                                if !sig.is_empty() {
+                                                    out.push(Ok(StreamEvent::ReasoningSignature {
+                                                        signature: sig.clone(),
+                                                    }));
+                                                }
+                                            }
+                                        }
                                         Some("input_json_delta") => {
                                             if let Some(ref pj) = delta.partial_json {
                                                 out.push(Ok(StreamEvent::ToolCallDelta {
@@ -262,6 +325,26 @@ impl ChatProvider for AnthropicProvider {
                                         }));
                                     }
                                 }
+                            }
+                            "error" => {
+                                let (etype, emsg) = parsed.error.as_ref()
+                                    .map(|e| (
+                                        e.error_type.clone().unwrap_or_default(),
+                                        e.message.clone().unwrap_or_default(),
+                                    ))
+                                    .unwrap_or_default();
+                                // Map Anthropic streaming error types to HTTP-ish
+                                // statuses so the retry classifier can act on them.
+                                let status = match etype.as_str() {
+                                    "overloaded_error" => 529,
+                                    "rate_limit_error" => 429,
+                                    "api_error" => 500,
+                                    _ => 400,
+                                };
+                                out.push(Err(ProviderError::Api {
+                                    status,
+                                    body: format!("{etype}: {emsg}"),
+                                }));
                             }
                             "message_stop" => {}
                             _ => {}
@@ -346,5 +429,51 @@ impl ChatProvider for AnthropicProvider {
 
         let reasoning = if reasoning_content.is_empty() { None } else { Some(reasoning_content) };
         Ok(AgentResponse { text, reasoning_content: reasoning, tool_calls, usage })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_serialize_thinking_block_precedes_tool_use() {
+        let mut assistant = ChatMessage::assistant_with_tools(
+            "",
+            Some("let me think".into()),
+            vec![ToolCall { id: "t1".into(), name: "read_file".into(), arguments: "{}".into() }],
+        );
+        assistant.signature = Some("sig-abc".into());
+        let out = AnthropicProvider::serialize_messages(&[assistant]);
+        assert_eq!(out.len(), 1);
+        let content = out[0]["content"].as_array().unwrap();
+        assert_eq!(content[0]["type"], "thinking");
+        assert_eq!(content[0]["signature"], "sig-abc");
+        assert_eq!(content[1]["type"], "tool_use");
+    }
+
+    #[test]
+    fn test_serialize_file_becomes_document() {
+        let content = r#"[{"type":"file","file":{"url":"data:application/pdf;base64,QUJD"}}]"#;
+        let out = AnthropicProvider::serialize_messages(&[ChatMessage::user(content)]);
+        let parts = out[0]["content"].as_array().unwrap();
+        assert_eq!(parts[0]["type"], "document");
+        assert_eq!(parts[0]["source"]["media_type"], "application/pdf");
+        assert_eq!(parts[0]["source"]["data"], "QUJD");
+    }
+
+    #[test]
+    fn test_serialize_merges_consecutive_tool_results() {
+        let msgs = vec![
+            ChatMessage::tool_result("call_1", "result one"),
+            ChatMessage::tool_result("call_2", "result two"),
+        ];
+        let out = AnthropicProvider::serialize_messages(&msgs);
+        assert_eq!(out.len(), 1, "consecutive tool results must share one user message");
+        assert_eq!(out[0]["role"], "user");
+        let blocks = out[0]["content"].as_array().unwrap();
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[0]["tool_use_id"], "call_1");
+        assert_eq!(blocks[1]["tool_use_id"], "call_2");
     }
 }
