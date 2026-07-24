@@ -145,8 +145,11 @@ export interface McpToolDef {
 export interface ToolInfo {
   name: string
   description: string
-  source: 'builtin' | 'mcp'
+  source: 'builtin' | 'mcp' | 'onebot'
   server_name?: string
+  admin_only?: boolean
+  needs_approval?: boolean
+  scope?: 'any' | 'group' | 'private'
 }
 
 export interface SafRootEntry {

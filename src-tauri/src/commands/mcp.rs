@@ -142,5 +142,10 @@ pub async fn list_all_tool_names(app: tauri::AppHandle) -> Result<Vec<serde_json
         }));
     }
 
+    // Session-scoped QQ tools (OneBot is desktop-only); listed for visibility,
+    // they are offered to the model only inside OneBot sessions.
+    #[cfg(not(target_os = "android"))]
+    result.extend(crate::onebot::qq_tool_catalog());
+
     Ok(result)
 }

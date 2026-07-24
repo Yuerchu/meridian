@@ -491,6 +491,30 @@ impl QqToolExecutor {
     }
 }
 
+/// Static catalog for the settings UI: tool names plus the flags that drive
+/// the availability badges. Display names/descriptions are localized on the
+/// frontend by tool name.
+pub fn catalog() -> Vec<serde_json::Value> {
+    SPECS
+        .iter()
+        .map(|s| {
+            let scope = match s.scope {
+                Scope::Any => "any",
+                Scope::GroupOnly => "group",
+                Scope::PrivateOnly => "private",
+            };
+            serde_json::json!({
+                "name": s.name,
+                "description": "",
+                "source": "onebot",
+                "admin_only": s.admin_only,
+                "needs_approval": s.needs_approval,
+                "scope": scope,
+            })
+        })
+        .collect()
+}
+
 fn spec_available(spec: &ToolSpec, kind: &SessionKind, is_admin: bool) -> bool {
     if spec.admin_only && !is_admin {
         return false;

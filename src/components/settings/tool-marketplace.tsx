@@ -162,6 +162,36 @@ export function ToolMarketplace() {
         </div>
       </div>
 
+      {builtinTools.some((tool) => tool.source === 'onebot') && (
+        <div>
+          <h3 className="text-sm font-medium mb-1">{t('settings.tools.onebotSection')}</h3>
+          <p className="text-[11px] text-muted-foreground mb-2">{t('settings.tools.onebotHint')}</p>
+          <div className="grid grid-cols-1 gap-1">
+            {builtinTools.filter((tool) => tool.source === 'onebot').map((tool) => (
+              <div key={tool.name} className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg">
+                <Wrench className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                <span className="font-mono flex-1">{tool.name}</span>
+                <span className="text-muted-foreground/60 truncate max-w-[160px]">
+                  {t(`settings.tools.qq.${tool.name}`)}
+                </span>
+                {tool.scope === 'group' && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqGroupOnly')}</span>
+                )}
+                {tool.scope === 'private' && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqPrivateOnly')}</span>
+                )}
+                {tool.admin_only === true && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqAdminOnly')}</span>
+                )}
+                {tool.needs_approval === true && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqApproval')}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div>
         <div className="flex items-center justify-between mb-2">
           <h3 className="text-sm font-medium">{t('settings.tools.customSection')}</h3>
