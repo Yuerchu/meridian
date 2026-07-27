@@ -505,16 +505,19 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
   const hidden = diff.lines.length - shown.length
 
   return (
-    <div className="rounded-lg bg-muted/40 overflow-hidden">
+    <div data-slot="file-diff" className="rounded-lg bg-muted/40 overflow-hidden">
       {diff.path !== '' && (
-        <div className="flex items-center gap-2 px-3 py-1 bg-muted/30 text-xs text-muted-foreground border-b border-border/50">
+        <div
+          data-slot="file-diff-header"
+          className="flex items-center gap-2 px-3 py-1 bg-muted/30 text-xs text-muted-foreground border-b border-border/50"
+        >
           <FileText className="w-3 h-3 shrink-0" />
           <span className="font-mono truncate" title={diff.path}>{fileName}</span>
           {diff.op === 'create' && <span className="text-success shrink-0">{t('chat.tool.diff.newFile')}</span>}
           {diff.op === 'delete' && <span className="text-destructive shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
           {diff.replaceAll && <span className="shrink-0">{t('chat.tool.diff.replaceAll')}</span>}
           {(added > 0 || removed > 0) && (
-            <span className="ml-auto shrink-0 font-mono">
+            <span data-slot="file-diff-stats" className="ml-auto shrink-0 font-mono">
               {added > 0 && <span className="text-success">+{added}</span>}
               {added > 0 && removed > 0 && ' '}
               {removed > 0 && <span className="text-destructive">-{removed}</span>}
@@ -522,10 +525,15 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
           )}
         </div>
       )}
-      <div className="max-h-60 overflow-auto">
+      <div data-slot="file-diff-content" className="max-h-60 overflow-auto">
         <div className="py-1 font-mono text-xs leading-relaxed w-max min-w-full">
           {shown.map((line, i) => (
-            <div key={i} className={cn('px-3 whitespace-pre', diffLineClass(line.kind))}>
+            <div
+              key={i}
+              data-slot="file-diff-line"
+              data-kind={line.kind}
+              className={cn('px-3 whitespace-pre', diffLineClass(line.kind))}
+            >
               {diffLinePrefix(line.kind)}
               {line.text || ' '}
             </div>

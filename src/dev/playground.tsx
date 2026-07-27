@@ -70,6 +70,37 @@ const WEB_SEARCH_RESULT = JSON.stringify({
   ],
 })
 
+const CODEX_PATCH = [
+  '*** Begin Patch',
+  '*** Update File: src/api/assets.py',
+  '@@',
+  ' async def create_asset(',
+  '     session: SessionDep,',
+  '-) -> AssetResponse:',
+  '+) -> AssetCreateResponse:',
+  '     user_file = await validate_user_file(session, request.file_id)',
+  '+    user_file_id = user_file.id',
+  '*** End Patch',
+].join('\n')
+
+const UNIFIED_PATCH = [
+  '--- a/src/lib.rs',
+  '+++ b/src/lib.rs',
+  '@@ -1,3 +1,3 @@',
+  ' fn keep() {}',
+  '-fn old() {}',
+  '+fn renamed() {}',
+].join('\n')
+
+const WRITE_FILE_CONTENT = [
+  'export function formatBytes(n: number): string {',
+  "  const units = ['B', 'KB', 'MB', 'GB']",
+  '  let i = 0',
+  '  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++ }',
+  '  return `${n.toFixed(1)} ${units[i]}`',
+  '}',
+].join('\n')
+
 const ASK_USER_ARGS = JSON.stringify({
   questions: [
     {
@@ -235,12 +266,27 @@ export default function Playground() {
             <ToolCallBlock data={tool({
               tool_name: 'write_file',
               status: 'running',
-              arguments: JSON.stringify({ path: 'src/App.tsx', content: 'export default function App() { /* ... */ }' }),
+              arguments: JSON.stringify({ path: 'src/lib/format.ts', content: WRITE_FILE_CONTENT }),
             })} />
             <ToolCallBlock data={tool({
               tool_name: 'edit_file',
               status: 'pending',
-              arguments: JSON.stringify({ path: 'src/main.tsx', old_string: 'foo', new_string: 'bar' }),
+              arguments: JSON.stringify({
+                file_path: 'src/main.tsx',
+                old_string: 'createRoot(root).render(\n  <App />,\n)',
+                new_string: 'createRoot(root).render(\n  <StrictMode>\n    <App />\n  </StrictMode>,\n)',
+              }),
+            })} />
+            <ToolCallBlock data={tool({
+              tool_name: 'apply_patch',
+              status: 'pending',
+              arguments: JSON.stringify({ base_path: '.', patch: CODEX_PATCH }),
+            })} />
+            <ToolCallBlock data={tool({
+              tool_name: 'apply_patch',
+              status: 'completed',
+              arguments: JSON.stringify({ patch: UNIFIED_PATCH }),
+              result: 'Applied patch: 1 updated — src/lib.rs',
             })} />
             <ToolCallBlock data={tool({
               tool_name: 'run_command',
