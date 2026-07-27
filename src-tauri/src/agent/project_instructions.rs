@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 
 use super::context::estimate_tokens;
 
-const MAX_FILE_SIZE: u64 = 256 * 1024;
+pub(crate) const MAX_FILE_SIZE: u64 = 256 * 1024;
 const MAX_RULES_FILES: usize = 50;
 
 struct CachedInstructions {
@@ -151,7 +151,7 @@ fn collect_md_files(dir: &Path, out: &mut Vec<PathBuf>, root: &Path) {
     }
 }
 
-fn compute_mtime_hash(paths: &[&PathBuf]) -> u64 {
+pub(crate) fn compute_mtime_hash(paths: &[&PathBuf]) -> u64 {
     let mut hasher = DefaultHasher::new();
     for p in paths {
         if let Ok(meta) = std::fs::metadata(p) {
@@ -164,7 +164,7 @@ fn compute_mtime_hash(paths: &[&PathBuf]) -> u64 {
     hasher.finish()
 }
 
-fn read_file_utf8(path: &Path) -> Option<String> {
+pub(crate) fn read_file_utf8(path: &Path) -> Option<String> {
     let meta = std::fs::metadata(path).ok()?;
     if meta.len() > MAX_FILE_SIZE {
         return None;
@@ -172,7 +172,7 @@ fn read_file_utf8(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
 }
 
-fn strip_frontmatter(content: &str) -> &str {
+pub(crate) fn strip_frontmatter(content: &str) -> &str {
     if !content.starts_with("---") {
         return content;
     }
@@ -185,7 +185,7 @@ fn strip_frontmatter(content: &str) -> &str {
     }
 }
 
-fn truncate_to_tokens(text: &str, max_tokens: usize) -> String {
+pub(crate) fn truncate_to_tokens(text: &str, max_tokens: usize) -> String {
     let current = estimate_tokens(text);
     if current <= max_tokens {
         return text.to_string();

@@ -59,6 +59,11 @@ pub fn run() {
             let mgr = Arc::new(SecretsManager::new(data_dir.clone()));
             app.manage(AppSecrets(mgr.clone()));
 
+            // Skills live in app-private storage, so unlike project instructions
+            // this path stays usable on Android without a SAF grant.
+            let skills_root = data_dir.join("skills");
+            std::fs::create_dir_all(&skills_root).expect("failed to create skills dir");
+
             let db_path = data_dir.join("meridian.db");
             let pool = db::init_db(db_path.to_str().expect("invalid db path"));
 
@@ -259,13 +264,27 @@ pub fn run() {
             }
 
             // Load custom tools from DB into tool registry
-            let registry = tools::ToolRegistry::new();
+            let registry = tools::ToolRegistry::new(skills_root.clone());
             {
                 let mut conn = pool.get().expect("db connection");
                 if let Ok(custom_tools) = db::ops::custom_tool::list_enabled_tools(&mut conn) {
                     registry.set_custom_tools(custom_tools.iter().map(|ct| {
                         Arc::new(tools::custom::CustomToolExecutor::from_db(ct)) as Arc<dyn tools::Tool>
                     }).collect());
+                }
+            }
+
+            // Regenerate the manual against this build's tool set, then index
+            // every skill on disk. Order matters: the manual has to exist before
+            // the scan or it will not be picked up until the next launch.
+            {
+                let tool_defs = agent::tool_defs::collect(&registry, Vec::new(), None);
+                if let Err(e) = agent::manual::write_manual(&skills_root, &tool_defs) {
+                    eprintln!("failed to write the manual skill: {e}");
+                }
+                let mut conn = pool.get().expect("db connection");
+                if let Err(e) = commands::skill::sync_index(&mut conn, &skills_root) {
+                    eprintln!("failed to index skills: {e}");
                 }
             }
 
@@ -441,6 +460,14 @@ pub fn run() {
             commands::prompt_template::update_prompt_template,
             commands::prompt_template::delete_prompt_template,
             commands::prompt_template::list_template_variables,
+            commands::skill::list_skills,
+            commands::skill::rescan_skills,
+            commands::skill::get_skill_body,
+            commands::skill::create_skill,
+            commands::skill::update_skill,
+            commands::skill::delete_skill,
+            commands::skill::list_skill_bindings,
+            commands::skill::set_skill_binding,
             commands::emoji::list_emoji_packs,
             commands::emoji::create_emoji_pack,
             commands::emoji::delete_emoji_pack,

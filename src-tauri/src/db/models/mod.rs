@@ -11,6 +11,8 @@ pub mod preference;
 pub mod prompt_template;
 pub mod project;
 pub mod provider;
+pub mod skill;
+pub mod skill_binding;
 pub mod cached_model;
 pub mod model_config;
 pub mod custom_tool;

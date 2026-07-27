@@ -239,6 +239,42 @@ pub async fn headless_chat(
         resolve_provider_config(secrets, pool, assistant.as_ref())?;
     let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
 
+    // Resolved before the system prompt: the agent baseline is generated from
+    // the tools actually enabled, and the skill catalog rides in the tool schema.
+    // Collect tool definitions: full registry for admin users only
+    let mut tool_defs: Vec<provider::ToolDefinition> = if is_admin {
+        let enabled_tools: Option<Vec<String>> = assistant.as_ref()
+            .and_then(|a| a.enabled_tools.as_ref())
+            .and_then(|json| serde_json::from_str(json).ok());
+
+        let mcp_defs = {
+            let mgr = mcp_manager.lock().await;
+            mgr.all_tool_definitions()
+        };
+        let mut defs = crate::agent::tool_defs::collect(
+            &tool_registry,
+            mcp_defs,
+            enabled_tools.as_deref(),
+        );
+        // Same skill catalog the desktop path builds, so a QQ assistant sees the
+        // skills bound to it rather than an empty menu.
+        {
+            let pool2 = pool.clone();
+            let pid = project_id.map(|s| s.to_string());
+            let aid = assistant.as_ref().map(|a| a.id.clone());
+            let available = tokio::task::spawn_blocking(move || {
+                let mut conn = pool2.get().ok()?;
+                crate::db::ops::skill_binding::resolve_available(
+                    &mut conn, pid.as_deref(), aid.as_deref(),
+                ).ok()
+            }).await.ok().flatten().unwrap_or_default();
+            crate::agent::tool_defs::apply_skill_catalog(&mut defs, &available);
+        }
+        defs
+    } else {
+        vec![]
+    };
+
     // Build messages with memory injection
     let raw_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
     let memory_block = if let Some(pid) = project_id {
@@ -252,9 +288,14 @@ pub async fn headless_chat(
     } else {
         None
     };
+    // Same baseline the desktop path gets: without it a QQ assistant has no
+    // working discipline beyond whatever the tool descriptions happen to say.
+    let base_block = crate::agent::base_prompt(&tool_defs)
+        .map(|b| format!("{b}\n\n"))
+        .unwrap_or_default();
     let system_prompt = match memory_block {
-        Some(ref mem) => format!("{}{}", raw_prompt, mem),
-        None => raw_prompt.to_string(),
+        Some(ref mem) => format!("{}{}{}", base_block, raw_prompt, mem),
+        None => format!("{}{}", base_block, raw_prompt),
     };
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
@@ -301,26 +342,6 @@ pub async fn headless_chat(
     };
     provider::capabilities::filter_params(&mut params, &caps);
 
-    // Collect tool definitions: full registry for admin users only
-    let mut tool_defs: Vec<provider::ToolDefinition> = if is_admin {
-        let enabled_tools: Option<Vec<String>> = assistant.as_ref()
-            .and_then(|a| a.enabled_tools.as_ref())
-            .and_then(|json| serde_json::from_str(json).ok());
-
-        let mut all_defs = tool_registry.definitions();
-        {
-            let mgr = mcp_manager.lock().await;
-            all_defs.extend(mgr.all_tool_definitions());
-        }
-
-        if let Some(ref enabled) = enabled_tools {
-            all_defs.into_iter().filter(|t| enabled.contains(&t.name)).collect()
-        } else {
-            all_defs
-        }
-    } else {
-        vec![]
-    };
     // Session-scoped QQ tools are available to everyone (read-only, scope-locked)
     if let Some(qq) = qq_tools {
         tool_defs.extend(qq.definitions());
@@ -384,6 +405,7 @@ pub async fn headless_chat(
         // filesystem. An empty root set denies every path at the validation layer.
         file_access: tools::FileAccess::Roots(vec![]),
         project_id: project_id.map(|s| s.to_string()),
+        assistant_id: assistant_id.map(|s| s.to_string()),
         db_pool: Some(pool.clone()),
         edit_session: None,
         #[cfg(not(target_os = "android"))]

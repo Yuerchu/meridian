@@ -363,12 +363,11 @@ pub async fn chat(
     // before the system prompt so the built-in agent baseline can match the
     // tools actually enabled for this session.
     let tool_registry = app.state::<AppTools>();
-    let mut all_tool_defs = tool_registry.0.definitions();
-    {
+    let mcp_defs = {
         let mcp = app.state::<AppMcp>();
         let mgr = mcp.0.lock().await;
-        all_tool_defs.extend(mgr.all_tool_definitions());
-    }
+        mgr.all_tool_definitions()
+    };
     // Resolve tool filtering: preset > enabled_tools > all
     let enabled_tools: Option<Vec<String>> = if let Some(ref preset_id) = assistant.as_ref().and_then(|a| a.tool_preset_id.as_ref()) {
         let pool2 = pool.clone();
@@ -383,11 +382,23 @@ pub async fn chat(
             .and_then(|a| a.enabled_tools.as_ref())
             .and_then(|json| serde_json::from_str(json).ok())
     };
-    let tool_defs: Vec<_> = if let Some(ref enabled) = enabled_tools {
-        all_tool_defs.into_iter().filter(|t| enabled.contains(&t.name)).collect()
-    } else {
-        all_tool_defs
-    };
+    let mut tool_defs = crate::agent::tool_defs::collect(
+        &tool_registry.0,
+        mcp_defs,
+        enabled_tools.as_deref(),
+    );
+    // Stage one of skill disclosure: which skills exist and what each is for.
+    {
+        let pool2 = pool.clone();
+        let pid = project_id.clone();
+        let aid = assistant.as_ref().map(|a| a.id.clone());
+        let available = tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2).ok()?;
+            db::ops::skill_binding::resolve_available(&mut conn, pid.as_deref(), aid.as_deref()).ok()
+        }).await.ok().flatten().unwrap_or_default();
+        crate::agent::tool_defs::apply_skill_catalog(&mut tool_defs, &available);
+    }
+    let tool_defs = tool_defs;
 
     let base_block = crate::agent::base_prompt(&tool_defs);
     let system_prompt = format!(
@@ -572,6 +583,7 @@ pub async fn chat(
         shell: shell_type.map(|s| tools::ShellType::from_str(&s)).unwrap_or_else(tools::ShellType::default_for_platform),
         file_access,
         project_id,
+        assistant_id: assistant.as_ref().map(|a| a.id.clone()),
         db_pool: Some(pool.clone()),
         edit_session: None,
         #[cfg(not(target_os = "android"))]

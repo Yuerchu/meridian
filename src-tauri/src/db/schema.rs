@@ -205,6 +205,42 @@ diesel::table! {
 }
 
 diesel::table! {
+    skills (dir_name) {
+        dir_name -> Text,
+        llm_name -> Text,
+        llm_description -> Text,
+        display_name -> Text,
+        display_description -> Nullable<Text>,
+        source -> Text,
+        is_enabled -> Integer,
+        is_builtin -> Integer,
+        mtime_hash -> Nullable<Text>,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    skill_bindings_global (dir_name) {
+        dir_name -> Text,
+    }
+}
+
+diesel::table! {
+    skill_bindings_project (project_id, dir_name) {
+        project_id -> Text,
+        dir_name -> Text,
+    }
+}
+
+diesel::table! {
+    skill_bindings_assistant (assistant_id, dir_name) {
+        assistant_id -> Text,
+        dir_name -> Text,
+    }
+}
+
+diesel::table! {
     providers (id) {
         id -> Text,
         name -> Text,
@@ -288,6 +324,11 @@ diesel::joinable!(messages -> conversations (conversation_id));
 diesel::joinable!(messages -> providers (provider_id));
 diesel::joinable!(projects -> assistants (assistant_id));
 diesel::joinable!(tool_permissions -> mcp_servers (mcp_server_id));
+diesel::joinable!(skill_bindings_global -> skills (dir_name));
+diesel::joinable!(skill_bindings_project -> projects (project_id));
+diesel::joinable!(skill_bindings_project -> skills (dir_name));
+diesel::joinable!(skill_bindings_assistant -> assistants (assistant_id));
+diesel::joinable!(skill_bindings_assistant -> skills (dir_name));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,messages,model_configs,preferences,projects,prompt_templates,providers,tool_categories,tool_permissions,tool_presets,);
+    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,messages,model_configs,preferences,projects,prompt_templates,providers,skill_bindings_assistant,skill_bindings_global,skill_bindings_project,skills,tool_categories,tool_permissions,tool_presets,);

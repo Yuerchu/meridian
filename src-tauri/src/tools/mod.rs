@@ -12,6 +12,7 @@ pub mod read_file;
 #[cfg(not(target_os = "android"))]
 pub mod run_command;
 pub mod search_files;
+pub mod skill;
 pub mod web_search;
 pub mod write_file;
 
@@ -35,6 +36,9 @@ pub struct ToolContext {
     pub shell: ShellType,
     pub file_access: FileAccess,
     pub project_id: Option<String>,
+    /// Needed to resolve which skills are bound for this turn; skill bindings
+    /// are anchored on the assistant as well as the project.
+    pub assistant_id: Option<String>,
     pub db_pool: Option<crate::db::DbPool>,
     pub edit_session: Option<Arc<tokio::sync::Mutex<crate::edit_session::EditSession>>>,
     #[cfg(not(target_os = "android"))]
@@ -298,10 +302,14 @@ pub struct ToolRegistry {
 }
 
 impl ToolRegistry {
-    pub fn new() -> Self {
+    /// `skills_root` is where skill directories live on disk
+    /// (`{app_data_dir}/skills`). It is app-global rather than per-request, so
+    /// the tool holds it instead of reading it out of `ToolContext`.
+    pub fn new(skills_root: std::path::PathBuf) -> Self {
         #[allow(unused_mut)]
         let mut tools: Vec<Arc<dyn Tool>> = vec![
             Arc::new(ask_user::AskUserTool),
+            Arc::new(skill::LoadSkillTool::new(skills_root)),
             Arc::new(read_file::ReadFileTool),
             Arc::new(write_file::WriteFileTool),
             Arc::new(list_directory::ListDirectoryTool),
@@ -359,6 +367,7 @@ mod tests {
             shell: ShellType::Bash,
             file_access: FileAccess::Roots(roots),
             project_id: None,
+            assistant_id: None,
             db_pool: None,
             edit_session: None,
             #[cfg(not(target_os = "android"))]
@@ -390,6 +399,7 @@ mod tests {
             shell: ShellType::Bash,
             file_access: FileAccess::Unrestricted,
             project_id: None,
+            assistant_id: None,
             db_pool: None,
             edit_session: None,
             #[cfg(not(target_os = "android"))]

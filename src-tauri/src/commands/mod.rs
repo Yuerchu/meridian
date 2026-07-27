@@ -15,4 +15,5 @@ pub mod prompt_template;
 pub mod model_config;
 pub mod provider;
 pub mod secret;
+pub mod skill;
 pub mod tool_system;

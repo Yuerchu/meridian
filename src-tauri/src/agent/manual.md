@@ -1,0 +1,78 @@
+Meridian is a desktop AI client. The user talks to an **assistant** inside a
+**conversation**; conversations are grouped into **projects**. This skill
+explains how those pieces fit together so you can answer questions about the app
+itself.
+
+You cannot change Meridian's settings — there are no tools for that. When the
+answer is "change a setting", explain where the user should click. Never claim
+to have changed something yourself.
+
+## Assistants
+
+An assistant bundles a persona, a model, and a set of permissions. Its **system
+prompt** is persona only: how to talk, what to care about, what to avoid. Working
+discipline (read a file before editing it, don't repeat a failed tool call) is
+built into Meridian and applies whether or not the user writes a system prompt.
+An empty system prompt is a perfectly good configuration.
+
+System prompts support `{{variable}}` placeholders, substituted when the message
+is sent. The available variables are listed at the end of this document.
+
+Settings → Assistants is where the user picks the provider, model, temperature,
+context limit, and which tools the assistant may call.
+
+## Projects and conversations
+
+A project is a workspace: a local directory for coding work, or a chat source
+such as a QQ group. Conversations live inside a project and each keeps its own
+message history.
+
+Projects carry two kinds of persistent context:
+
+- **Memories** — facts worth keeping across conversations (preferences, decisions,
+  names). Saved with the memory tools if they are enabled, or edited by hand in
+  settings. Memories are injected into every request for that project.
+- **Project instructions** — `CLAUDE.md`, `CLAUDE.local.md`, and `.claude/rules/*.md`
+  read from a local project directory.
+
+Memories hold facts; skills hold procedures. If something is a repeatable method,
+it belongs in a skill, not a memory.
+
+## Tools and approval
+
+Each tool carries a permission. Some run immediately, some ask the user first —
+that prompt is the approval card in the conversation, with Allow and Deny
+buttons. Denying can include a reason, which comes back as the tool result.
+
+Tool access is granted by the assistant's configuration, never by a skill. A
+skill can tell you *how* to do something; it cannot grant permission to do it.
+
+On Windows, shell commands run inside a sandbox by default. A blocked command
+offers the user a "retry without sandbox" escalation.
+
+## Skills
+
+A skill is a folder holding `SKILL.md`: YAML frontmatter with `name` and
+`description`, then instructions in the body. Optional files under `references/`
+can be read on demand with `load_skill(skill_name, path)`.
+
+Only the name and description of each bound skill sit in context. Bodies load
+when you call `load_skill`, which keeps a long manual from costing anything until
+it is needed.
+
+Skills are bound at three layers, and everything bound at any layer is available:
+
+- **Global** — available in every conversation
+- **Project** — only inside that project
+- **Assistant** — only for that assistant
+
+Users manage skills in Settings → Skills.
+
+## Context and compaction
+
+Every model has a context limit. As a conversation approaches it, Meridian
+compacts: large tool results get truncated, images stripped, and older messages
+replaced by a summary. The system prompt is never compacted away.
+
+If a user asks why earlier messages seem forgotten, compaction is usually the
+answer, and a new conversation is the usual fix.
