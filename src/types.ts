@@ -242,6 +242,26 @@ export interface ToolPreset {
   updated_at: number
 }
 
+/** Index row for a skill directory on disk. The SKILL.md body is not part of
+ *  the row; fetch it separately with `getSkillBody`. Two name pairs on purpose:
+ *  `display_*` is what the user reads, `llm_*` is what reaches the model. */
+export interface Skill {
+  dir_name: string
+  llm_name: string
+  llm_description: string
+  display_name: string
+  display_description: string | null
+  source: 'official' | 'user' | 'assistant' | 'imported'
+  is_enabled: number
+  is_builtin: number
+  mtime_hash: string | null
+  created_at: number
+  updated_at: number
+}
+
+/** Binding scope for a skill. Only `global` accepts a null anchor id. */
+export type SkillLayer = 'global' | 'project' | 'assistant'
+
 export interface ProviderCapabilities {
   supports_tools: boolean
   supports_streaming_tools: boolean

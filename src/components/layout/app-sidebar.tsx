@@ -4,7 +4,7 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 import {
   MessageSquare, MessageCircle, Plus, Settings, Trash2, FolderOpen, FolderPlus,
   Users, Archive, Download, ArrowLeft, Pin, PinOff, Pencil,
-  Cloud, Bot, BookTemplate, Smile, Wrench, Plug, Brain, Radio, Settings2, Info,
+  Cloud, Bot, Smile, Wrench, Sparkles, Plug, Brain, Radio, Settings2, Info,
 } from 'lucide-react'
 import SpotlightCard from '@/components/SpotlightCard'
 import { useConversationStore } from '@/stores/conversation-store'
@@ -132,9 +132,9 @@ function ProjectIcon({ sourceType }: { sourceType: string }) {
 const settingsTabs: Array<{ id: SettingsTab; labelKey: string; icon: React.ElementType }> = [
   { id: 'provider', labelKey: 'settings.provider', icon: Cloud },
   { id: 'assistants', labelKey: 'settings.assistants', icon: Bot },
-  { id: 'templates', labelKey: 'settings.templates', icon: BookTemplate },
   { id: 'emoji', labelKey: 'settings.emoji', icon: Smile },
   { id: 'tools', labelKey: 'settings.toolsTab', icon: Wrench },
+  { id: 'skills', labelKey: 'settings.skillsTab', icon: Sparkles },
   { id: 'mcp', labelKey: 'settings.mcp', icon: Plug },
   { id: 'memories', labelKey: 'settings.memories', icon: Brain },
   { id: 'onebot', labelKey: 'settings.onebot', icon: Radio },

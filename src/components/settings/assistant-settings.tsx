@@ -9,7 +9,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { api } from '@/api'
-import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
+import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
 
 function AssistantEditor({
   assistant,
@@ -40,6 +40,9 @@ function AssistantEditor({
   const [showTemplates, setShowTemplates] = useState(false)
   const [allPacks, setAllPacks] = useState<EmojiPack[]>([])
   const [assignedPackIds, setAssignedPackIds] = useState<Set<string>>(new Set())
+  const [allSkills, setAllSkills] = useState<Skill[]>([])
+  const [boundSkillDirs, setBoundSkillDirs] = useState<Set<string>>(new Set())
+  const [skillError, setSkillError] = useState<string | null>(null)
   const [toolPresets, setToolPresets] = useState<ToolPreset[]>([])
   const [selectedPresetId, setSelectedPresetId] = useState(assistant.tool_preset_id ?? '')
   const [toolMode, setToolMode] = useState<'all' | 'preset' | 'custom'>(
@@ -68,6 +71,10 @@ function AssistantEditor({
     api.listToolPresets().then(setToolPresets)
     api.listAssistantEmojiPacks(assistant.id).then((packs) =>
       setAssignedPackIds(new Set(packs.map((p) => p.id))),
+    )
+    api.listSkills().then(setAllSkills)
+    api.listSkillBindings('assistant', assistant.id).then((dirs) =>
+      setBoundSkillDirs(new Set(dirs)),
     )
   }, [assistant.id])
 
@@ -358,6 +365,36 @@ function AssistantEditor({
               </label>
             ))}
           </div>
+        </div>
+      )}
+
+      {allSkills.length > 0 && (
+        <div className="space-y-1.5">
+          <label className="block text-xs text-muted-foreground">{t('settings.skills.assistantSection')}</label>
+          <p className="text-xs text-muted-foreground/60">{t('settings.skills.assistantHint')}</p>
+          <ScrollArea className="max-h-40 border border-border rounded-lg"><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
+            {allSkills.map((skill) => (
+              <label key={skill.dir_name} className="flex items-center gap-1.5 text-xs cursor-pointer py-0.5">
+                <Checkbox
+                  checked={boundSkillDirs.has(skill.dir_name)}
+                  disabled={skill.is_enabled === 0}
+                  onCheckedChange={async (checked) => {
+                    setSkillError(null)
+                    try {
+                      // The cap on bindings per anchor lives in the backend, so
+                      // take the returned set rather than guessing locally.
+                      const next = await api.setSkillBinding('assistant', assistant.id, skill.dir_name, !!checked)
+                      setBoundSkillDirs(new Set(next))
+                    } catch (e) {
+                      setSkillError(String(e))
+                    }
+                  }}
+                />
+                <span className="truncate">{skill.display_name}</span>
+              </label>
+            ))}
+          </div></ScrollArea>
+          {skillError && <p className="text-xs text-destructive">{skillError}</p>}
         </div>
       )}
 

@@ -322,17 +322,7 @@ pub async fn chat(
         let aid = a.id.clone();
         let emoji_names: Option<String> = tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool2).ok()?;
-            let pack_ids = db::ops::emoji_pack::list_assigned_pack_ids(&mut conn, &aid).ok()?;
-            if pack_ids.is_empty() { return None; }
-            let emojis = db::ops::emoji::list_emojis_for_packs(&mut conn, &pack_ids).ok()?;
-            if emojis.is_empty() { return None; }
-            let list: Vec<String> = emojis.iter().take(100).map(|e| {
-                format!("[emoji:{}]", e.name)
-            }).collect();
-            Some(format!(
-                "You can use stickers in your responses. Copy the EXACT syntax below (do NOT rename or translate):\n{}",
-                list.join("\n")
-            ))
+            db::ops::emoji::format_emoji_list_block(&mut conn, &aid)
         }).await.ok().flatten();
         if let Some(names) = emoji_names {
             tmpl_ctx.set("emoji_list", &names);

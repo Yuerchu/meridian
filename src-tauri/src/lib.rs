@@ -28,7 +28,6 @@ use std::sync::Arc;
 use db::models::assistant::{AssistantUpdate, NewAssistant};
 use db::models::tool_category::NewToolCategory;
 use db::models::tool_preset::NewToolPreset;
-use db::models::prompt_template::NewPromptTemplate;
 use db::models::provider::NewProvider;
 use secrets::{SecretName, SecretScope, SecretsManager};
 use tauri::Manager;
@@ -169,34 +168,10 @@ pub fn run() {
                 }
             }
 
-            // Seed built-in prompt templates on first run
-            {
-                let mut conn = pool.get().expect("db connection");
-                if db::ops::prompt_template::count_templates(&mut conn).unwrap_or(0) == 0 {
-                    let now = now_ms();
-                    let templates = [
-                        ("casual_friend", "Casual Friend", "随意朋友", "character", "You are {{assistant_name}}, a casual and friendly chat partner. Talk naturally, use slang, emoji, and informal language. Be playful and genuine. The current time is {{current_time}} on {{current_date}} ({{day_of_week}}).\n\n{{chat_style_hint}}\n\nExample of segmented response:\nwhat\n---\nno way lol\n---\n[emoji:shocked]"),
-                        ("professional", "Professional Assistant", "专业助手", "character", "You are {{assistant_name}}, a professional and knowledgeable assistant. Respond in a structured, clear, and formal manner. Provide thorough and accurate answers. Current date: {{current_date}}."),
-                        ("code_expert", "Code Expert", "代码专家", "coding", "You are {{assistant_name}}, an expert software engineer. Write clean, efficient, and well-documented code. Explain technical concepts clearly. Use code blocks with language tags. Current date: {{current_date}}."),
-                        ("creative_writer", "Creative Writer", "创意写手", "character", "You are {{assistant_name}}, a creative and expressive writer. Use vivid language, metaphors, and storytelling techniques. Be imaginative and emotionally engaging."),
-                        ("study_buddy", "Study Buddy", "学习伙伴", "character", "You are {{assistant_name}}, a patient and encouraging study partner for {{user_name}}. Break down complex topics into simple explanations. Use analogies and examples. Ask follow-up questions to check understanding. Current date: {{current_date}}."),
-                    ];
-                    for (i, (id_suffix, name, desc, category, text)) in templates.iter().enumerate() {
-                        let id = format!("builtin_{id_suffix}");
-                        let _ = db::ops::prompt_template::create_template(&mut conn, &NewPromptTemplate {
-                            id: &id,
-                            name,
-                            description: Some(desc),
-                            category,
-                            template_text: text,
-                            is_builtin: 1,
-                            sort_order: i as i32,
-                            created_at: now,
-                            updated_at: now,
-                        });
-                    }
-                }
-            }
+            // `prompt_templates` is user-owned storage for reusable persona
+            // prompts; nothing is seeded into it. The built-in agent baseline
+            // lives in `agent::base_prompt` instead, so it can be revised on
+            // upgrade rather than frozen into a first-run seed.
 
             // Seed built-in tool categories and presets
             {

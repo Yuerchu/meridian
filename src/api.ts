@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, Message, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, TemplateVariable, ToolCategory, ToolInfo, ToolPreset } from './types'
+import type { Assistant, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, Message, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, ToolCategory, ToolInfo, ToolPreset } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -456,6 +456,41 @@ export const api = {
 
   deleteToolPreset: (id: string) =>
     invoke<void>('delete_tool_preset', { id }),
+
+  // Skills
+  listSkills: () =>
+    invoke<Skill[]>('list_skills'),
+
+  rescanSkills: () =>
+    invoke<Skill[]>('rescan_skills'),
+
+  getSkillBody: (dirName: string) =>
+    invoke<string>('get_skill_body', { dirName }),
+
+  createSkill: (dirName: string, llmDescription: string, body: string, displayName?: string) =>
+    invoke<Skill>('create_skill', {
+      dirName,
+      llmDescription,
+      body,
+      displayName: displayName ?? null,
+    }),
+
+  updateSkill: (dirName: string, updates: {
+    displayName?: string
+    llmDescription?: string
+    body?: string
+    isEnabled?: boolean
+  }) =>
+    invoke<Skill>('update_skill', { dirName, updates }),
+
+  deleteSkill: (dirName: string) =>
+    invoke<void>('delete_skill', { dirName }),
+
+  listSkillBindings: (layer: SkillLayer, anchorId?: string) =>
+    invoke<string[]>('list_skill_bindings', { layer, anchorId: anchorId ?? null }),
+
+  setSkillBinding: (layer: SkillLayer, anchorId: string | null, dirName: string, bound: boolean) =>
+    invoke<string[]>('set_skill_binding', { layer, anchorId: anchorId ?? null, dirName, bound }),
 
   // Service Keys (for tool services like Tavily, Zhipu search)
   setServiceKey: (service: string, key: string) =>
