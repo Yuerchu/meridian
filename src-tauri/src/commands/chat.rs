@@ -355,8 +355,40 @@ pub async fn chat(
             None
         }
     };
+    // Get tool definitions (builtin + MCP) + per-assistant filtering. Resolved
+    // before the system prompt so the built-in agent baseline can match the
+    // tools actually enabled for this session.
+    let tool_registry = app.state::<AppTools>();
+    let mut all_tool_defs = tool_registry.0.definitions();
+    {
+        let mcp = app.state::<AppMcp>();
+        let mgr = mcp.0.lock().await;
+        all_tool_defs.extend(mgr.all_tool_definitions());
+    }
+    // Resolve tool filtering: preset > enabled_tools > all
+    let enabled_tools: Option<Vec<String>> = if let Some(ref preset_id) = assistant.as_ref().and_then(|a| a.tool_preset_id.as_ref()) {
+        let pool2 = pool.clone();
+        let pid = preset_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2).ok()?;
+            let preset = db::ops::tool_preset::get_preset(&mut conn, &pid).ok()?;
+            serde_json::from_str(&preset.tool_names).ok()
+        }).await.ok().flatten()
+    } else {
+        assistant.as_ref()
+            .and_then(|a| a.enabled_tools.as_ref())
+            .and_then(|json| serde_json::from_str(json).ok())
+    };
+    let tool_defs: Vec<_> = if let Some(ref enabled) = enabled_tools {
+        all_tool_defs.into_iter().filter(|t| enabled.contains(&t.name)).collect()
+    } else {
+        all_tool_defs
+    };
+
+    let base_block = crate::agent::base_prompt(&tool_defs);
     let system_prompt = format!(
-        "{}{}{}{}",
+        "{}{}{}{}{}",
+        base_block.map(|b| format!("{b}\n\n")).unwrap_or_default(),
         system_prompt_resolved,
         instruction_block.as_deref().unwrap_or(""),
         file_access_prompt(&file_access),
@@ -498,33 +530,7 @@ pub async fn chat(
         }).await.map_err(|e| e.to_string())??;
     }
 
-    // Get tool definitions (builtin + MCP) + per-assistant filtering + shell preference
-    let tool_registry = app.state::<AppTools>();
-    let mut all_tool_defs = tool_registry.0.definitions();
-    {
-        let mcp = app.state::<AppMcp>();
-        let mgr = mcp.0.lock().await;
-        all_tool_defs.extend(mgr.all_tool_definitions());
-    }
-    // Resolve tool filtering: preset > enabled_tools > all
-    let enabled_tools: Option<Vec<String>> = if let Some(ref preset_id) = assistant.as_ref().and_then(|a| a.tool_preset_id.as_ref()) {
-        let pool2 = pool.clone();
-        let pid = preset_id.to_string();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool2).ok()?;
-            let preset = db::ops::tool_preset::get_preset(&mut conn, &pid).ok()?;
-            serde_json::from_str(&preset.tool_names).ok()
-        }).await.ok().flatten()
-    } else {
-        assistant.as_ref()
-            .and_then(|a| a.enabled_tools.as_ref())
-            .and_then(|json| serde_json::from_str(json).ok())
-    };
-    let tool_defs: Vec<_> = if let Some(ref enabled) = enabled_tools {
-        all_tool_defs.into_iter().filter(|t| enabled.contains(&t.name)).collect()
-    } else {
-        all_tool_defs
-    };
+    // Shell preference
     let (shell_type, sandbox_pref, sleep_pref) = {
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
