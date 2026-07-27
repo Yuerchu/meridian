@@ -283,15 +283,21 @@ export function InputBar({
               )}
               <div className="flex items-center gap-2 shrink-0">
                 {!isAndroid && onAttachFiles && capabilities?.supports_images !== false && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-muted-foreground hover:text-foreground"
-                    title={t('chat.attach')}
-                    onClick={handlePickFile}
-                  >
-                    <Paperclip className="w-4 h-4" />
-                  </Button>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={handlePickFile}
+                        >
+                          <Paperclip className="w-4 h-4" />
+                        </Button>
+                      }
+                    />
+                    <TooltipContent side="top">{t('chat.attach')}</TooltipContent>
+                  </Tooltip>
                 )}
                 <EmojiPicker
                   assistantId={currentAssistantId}
@@ -326,13 +332,13 @@ export function InputBar({
                               <span>{Math.max(0, Math.round((1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100))}% {t('chat.compact.untilAutoCompact')}</span>
                             )}
                             {onCompact && !streaming && (
-                              <button
-                                type="button"
-                                className="mt-0.5 text-left text-background/70 hover:text-background underline underline-offset-2"
+                              <Button
+                                variant="link"
+                                className="mt-0.5 h-auto justify-start p-0 text-xs font-normal text-background/70 underline underline-offset-2 hover:text-background"
                                 onClick={onCompact}
                               >
                                 {t('chat.compact.manual')}
-                              </button>
+                              </Button>
                             )}
                           </>
                         )}

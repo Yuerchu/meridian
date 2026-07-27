@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
@@ -428,9 +429,16 @@ export function ProviderSettings() {
           <div className="space-y-2">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-medium">{t('settings.provider.title')}</h2>
-              <Button variant="ghost" size="icon" onClick={handleCreate} title={t('settings.provider.addProvider')}>
-                <Plus className="w-4 h-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button variant="ghost" size="icon" onClick={handleCreate}>
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  }
+                />
+                <TooltipContent side="top">{t('settings.provider.addProvider')}</TooltipContent>
+              </Tooltip>
             </div>
             {providerList}
           </div>
@@ -444,9 +452,16 @@ export function ProviderSettings() {
       <div className="w-44 flex-shrink-0 space-y-2">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-medium">{t('settings.provider.title')}</h2>
-          <Button variant="ghost" size="icon" onClick={handleCreate} title={t('settings.provider.addProvider')}>
-            <Plus className="w-4 h-4" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button variant="ghost" size="icon" onClick={handleCreate}>
+                  <Plus className="w-4 h-4" />
+                </Button>
+              }
+            />
+            <TooltipContent side="top">{t('settings.provider.addProvider')}</TooltipContent>
+          </Tooltip>
         </div>
         {providerList}
       </div>

@@ -8,6 +8,8 @@ import CountUp from '@/components/CountUp'
 import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import {
   Message,
   MessageAvatar,
@@ -76,6 +78,28 @@ function useRelativeTime() {
   }
 }
 
+// Icon action button with the tooltip pattern required by the UI conventions
+// (no native title attribute on buttons).
+function ActionButton({ label, onClick, className, children }: {
+  label: string
+  onClick?: () => void
+  className?: string
+  children: React.ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button variant="ghost" size="icon" onClick={onClick} className={className}>
+            {children}
+          </Button>
+        }
+      />
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 function CopyButton({ text }: { text: string }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
@@ -86,15 +110,13 @@ function CopyButton({ text }: { text: string }) {
   }, [text])
 
   return (
-    <Button
-      variant="ghost"
-      size="icon"
+    <ActionButton
+      label={t('chat.copy')}
       onClick={handleCopy}
       className="text-muted-foreground hover:text-foreground"
-      title={t('chat.copy')}
     >
       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-    </Button>
+    </ActionButton>
   )
 }
 
@@ -498,7 +520,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
             {editing ? (
               <Bubble align="end" variant="outline">
                 <BubbleContent>
-                  <textarea
+                  <Textarea
                     ref={editRef}
                     value={editText}
                     onChange={(e) => {
@@ -507,28 +529,24 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                       e.target.style.height = e.target.scrollHeight + 'px'
                     }}
                     onKeyDown={handleEditKeyDown}
-                    className="w-full min-w-[200px] bg-transparent text-sm leading-relaxed resize-none outline-none"
+                    className="w-full min-w-[200px] min-h-0 rounded-none border-0 p-0 field-sizing-fixed bg-transparent dark:bg-transparent text-sm leading-relaxed resize-none outline-none focus-visible:ring-0"
                     rows={1}
                   />
                   <div className="flex justify-end gap-1 mt-1.5">
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    <ActionButton
+                      label="Esc"
                       onClick={handleCancelEdit}
                       className="text-muted-foreground"
-                      title="Esc"
                     >
                       <X className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    </ActionButton>
+                    <ActionButton
+                      label="Enter"
                       onClick={handleSaveEdit}
                       className="text-primary"
-                      title="Enter"
                     >
                       <Check className="w-3.5 h-3.5" />
-                    </Button>
+                    </ActionButton>
                   </div>
                 </BubbleContent>
               </Bubble>
@@ -548,27 +566,23 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                 </Bubble>
                 <MessageFooter className="gap-1 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
                   {onEdit && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    <ActionButton
+                      label={t('chat.edit')}
                       onClick={handleStartEdit}
                       className="text-muted-foreground hover:text-foreground"
-                      title={t('chat.edit')}
                     >
                       <Pencil className="w-3.5 h-3.5" />
-                    </Button>
+                    </ActionButton>
                   )}
                   <CopyButton text={message.content} />
                   {onDelete && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
+                    <ActionButton
+                      label={t('chat.delete')}
                       onClick={() => setShowDeleteConfirm(true)}
                       className="text-muted-foreground hover:text-destructive"
-                      title={t('chat.delete')}
                     >
                       <Trash2 className="w-3.5 h-3.5" />
-                    </Button>
+                    </ActionButton>
                   )}
                 </MessageFooter>
               </>
@@ -680,51 +694,43 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
               <CopyButton text={message.content} />
               {onRate && !isStreaming && (
                 <>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  <ActionButton
+                    label={t('chat.thumbsUp')}
                     onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}
                     className={cn(
                       message.rating === 1 ? 'text-success' : 'text-muted-foreground hover:text-foreground',
                     )}
-                    title={t('chat.thumbsUp')}
                   >
                     <ThumbsUp className="w-3.5 h-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
+                  </ActionButton>
+                  <ActionButton
+                    label={t('chat.thumbsDown')}
                     onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}
                     className={cn(
                       message.rating === -1 ? 'text-destructive' : 'text-muted-foreground hover:text-foreground',
                     )}
-                    title={t('chat.thumbsDown')}
                   >
                     <ThumbsDown className="w-3.5 h-3.5" />
-                  </Button>
+                  </ActionButton>
                 </>
               )}
               {onRegenerate && !isStreaming && (
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <ActionButton
+                  label={t('chat.regenerate')}
                   onClick={() => onRegenerate(message.id)}
                   className="text-muted-foreground hover:text-foreground"
-                  title={t('chat.regenerate')}
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                </Button>
+                </ActionButton>
               )}
               {onDelete && (
-                <Button
-                  variant="ghost"
-                  size="icon"
+                <ActionButton
+                  label={t('chat.delete')}
                   onClick={() => setShowDeleteConfirm(true)}
                   className="text-muted-foreground hover:text-destructive"
-                  title={t('chat.delete')}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                </Button>
+                </ActionButton>
               )}
             </div>
           </MessageFooter>

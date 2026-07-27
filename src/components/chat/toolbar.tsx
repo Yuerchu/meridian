@@ -59,7 +59,13 @@ function AssistantSelector({
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
             )}
           >
-            {a.is_default === 1 && <Star className="w-3 h-3 text-amber-500 flex-shrink-0" fill="currentColor" />}
+            {a.is_default === 1 && (
+              <Star
+                // eslint-disable-next-line no-restricted-syntax -- CLAUDE.md whitelist: gold-star semantics
+                className="w-3 h-3 text-amber-500 flex-shrink-0"
+                fill="currentColor"
+              />
+            )}
             <span className="flex-1 truncate">{a.name}</span>
             {a.id === currentId && <Check className="w-3 h-3 text-muted-foreground" />}
           </Button>
@@ -341,7 +347,9 @@ export function MobileOptionsMenu({
     })
   }, [panel, modelsLoaded, providers])
 
-  const itemCls = 'flex items-center gap-3 w-full px-4 py-2.5 text-sm text-foreground active:bg-accent transition-colors'
+  // Also neutralizes ui Button defaults (h-8/rounded-lg/justify-center/font-medium)
+  // so the sheet items keep their original full-width list layout.
+  const itemCls = 'flex h-auto items-center justify-start gap-3 w-full rounded-none px-4 py-2.5 text-sm font-normal text-foreground active:bg-accent transition-colors'
 
   return (
     <Sheet open={open} onOpenChange={(o) => {
@@ -356,29 +364,29 @@ export function MobileOptionsMenu({
           <div className="flex flex-col">
             {supportsImages && (
               <>
-                <button className={itemCls} onClick={() => handleAction(onTakePhoto)}>
+                <Button variant="ghost" className={itemCls} onClick={() => handleAction(onTakePhoto)}>
                   <Camera className="w-4 h-4 text-muted-foreground" />
                   {t('chat.takePhoto')}
-                </button>
-                <button className={itemCls} onClick={() => handleAction(onPickGallery)}>
+                </Button>
+                <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickGallery)}>
                   <ImageIcon className="w-4 h-4 text-muted-foreground" />
                   {t('chat.pickFromGallery')}
-                </button>
+                </Button>
               </>
             )}
-            <button className={itemCls} onClick={() => handleAction(onPickFile)}>
+            <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickFile)}>
               <Paperclip className="w-4 h-4 text-muted-foreground" />
               {t('chat.attachFile')}
-            </button>
+            </Button>
             <div className="h-px bg-border mx-4 my-1" />
-            <button className={cn(itemCls, 'justify-between')} onClick={() => setPanel('assistant')}>
+            <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('assistant')}>
               <span className="flex items-center gap-3">
                 <Bot className="w-4 h-4 text-muted-foreground" />
                 <span>{currentAssistant?.name ?? t('toolbar.noAssistant')}</span>
               </span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </button>
-            <button className={cn(itemCls, 'justify-between')} onClick={() => setPanel('model')}>
+            </Button>
+            <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('model')}>
               <span className="flex items-center gap-3">
                 {currentModelId
                   ? <ModelIcon model={currentModelId} size={16} />
@@ -386,15 +394,15 @@ export function MobileOptionsMenu({
                 <span className="truncate max-w-[200px]">{currentModelId ?? t('toolbar.selectModel')}</span>
               </span>
               <ChevronRight className="w-4 h-4 text-muted-foreground" />
-            </button>
+            </Button>
             {supportsThinking && (
-              <button className={cn(itemCls, 'justify-between')} onClick={() => setPanel('thinking')}>
+              <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('thinking')}>
                 <span className="flex items-center gap-3">
                   <Lightbulb className={cn('w-4 h-4', thinkingLevel !== 'default' && thinkingLevel !== 'off' ? 'text-info' : 'text-muted-foreground')} />
                   <span>{t('toolbar.thinking')}: {thinkingLabel}</span>
                 </span>
                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              </button>
+              </Button>
             )}
           </div>
         )}
@@ -402,22 +410,29 @@ export function MobileOptionsMenu({
         {panel === 'assistant' && (
           <div className="flex flex-col">
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-              <button className="p-1 rounded-md hover:bg-accent" onClick={() => setPanel('main')}>
+              <Button variant="ghost" size="icon" className="size-auto p-1 rounded-md hover:bg-accent" onClick={() => setPanel('main')}>
                 <ChevronLeft className="w-4 h-4" />
-              </button>
+              </Button>
               <span className="text-sm font-medium">{t('toolbar.noAssistant').replace(/^No /, 'Select ')}</span>
             </div>
             <ScrollArea className="max-h-[50vh]">
               {assistants.map((a) => (
-                <button
+                <Button
                   key={a.id}
+                  variant="ghost"
                   className={cn(itemCls, a.id === currentAssistantId && 'bg-accent')}
                   onClick={() => { onSelectAssistant(a.id); close() }}
                 >
-                  {a.is_default === 1 && <Star className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" fill="currentColor" />}
+                  {a.is_default === 1 && (
+                    <Star
+                      // eslint-disable-next-line no-restricted-syntax -- CLAUDE.md whitelist: gold-star semantics
+                      className="w-3.5 h-3.5 text-amber-500 flex-shrink-0"
+                      fill="currentColor"
+                    />
+                  )}
                   <span className="flex-1 truncate">{a.name}</span>
                   {a.id === currentAssistantId && <Check className="w-4 h-4 text-muted-foreground" />}
-                </button>
+                </Button>
               ))}
             </ScrollArea>
           </div>
@@ -426,9 +441,9 @@ export function MobileOptionsMenu({
         {panel === 'model' && (
           <div className="flex flex-col">
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-              <button className="p-1 rounded-md hover:bg-accent" onClick={() => setPanel('main')}>
+              <Button variant="ghost" size="icon" className="size-auto p-1 rounded-md hover:bg-accent" onClick={() => setPanel('main')}>
                 <ChevronLeft className="w-4 h-4" />
-              </button>
+              </Button>
               <span className="text-sm font-medium flex-1">{t('toolbar.models')}</span>
               <Button
                 variant="ghost"
@@ -465,8 +480,9 @@ export function MobileOptionsMenu({
                     {g.provider.name}
                   </div>
                   {g.models.map((m) => (
-                    <button
+                    <Button
                       key={`${g.provider.id}-${m.id}`}
+                      variant="ghost"
                       className={cn(
                         itemCls,
                         m.id === currentModelId && g.provider.id === currentProviderId && 'bg-accent',
@@ -478,7 +494,7 @@ export function MobileOptionsMenu({
                       {m.id === currentModelId && g.provider.id === currentProviderId && (
                         <Check className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       )}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               ))}
@@ -492,20 +508,21 @@ export function MobileOptionsMenu({
         {panel === 'thinking' && (
           <div className="flex flex-col">
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-              <button className="p-1 rounded-md hover:bg-accent" onClick={() => setPanel('main')}>
+              <Button variant="ghost" size="icon" className="size-auto p-1 rounded-md hover:bg-accent" onClick={() => setPanel('main')}>
                 <ChevronLeft className="w-4 h-4" />
-              </button>
+              </Button>
               <span className="text-sm font-medium">{t('toolbar.thinking')}</span>
             </div>
             {levels.map((level) => (
-              <button
+              <Button
                 key={level.id}
+                variant="ghost"
                 className={cn(itemCls, 'justify-between', level.id === thinkingLevel && 'bg-accent')}
                 onClick={() => { onSelectThinkingLevel(level.id); close() }}
               >
                 <span>{t(level.labelKey)}</span>
                 <span className="text-xs text-muted-foreground">{t(level.descKey)}</span>
-              </button>
+              </Button>
             ))}
           </div>
         )}

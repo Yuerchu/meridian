@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@/components/ui/checkbox'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { api } from '@/api'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
 
@@ -152,15 +153,20 @@ function AssistantEditor({
         {templateVars.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {templateVars.map((v) => (
-              <Button
-                key={v.name}
-                variant="outline"
-                className="text-xs px-1.5 py-0.5 bg-accent/50 text-muted-foreground hover:bg-accent font-mono"
-                onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
-                title={v.description_en}
-              >
-                {`{{${v.name}}}`}
-              </Button>
+              <Tooltip key={v.name}>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      className="text-xs px-1.5 py-0.5 bg-accent/50 text-muted-foreground hover:bg-accent font-mono"
+                      onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
+                    >
+                      {`{{${v.name}}}`}
+                    </Button>
+                  }
+                />
+                <TooltipContent side="top">{v.description_en}</TooltipContent>
+              </Tooltip>
             ))}
           </div>
         )}
@@ -451,6 +457,7 @@ export function AssistantSettings() {
                   <ChevronRight className="w-4 h-4 text-muted-foreground" />
                 )}
                 <span className="flex-1 truncate">{a.name}</span>
+                {/* eslint-disable-next-line no-restricted-syntax -- gold-star semantics: default-assistant marker is intentionally amber (CLAUDE.md whitelist) */}
                 {isDefault && <Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" />}
                 {providerName && (
                   <span className="text-xs text-muted-foreground">{providerName}</span>

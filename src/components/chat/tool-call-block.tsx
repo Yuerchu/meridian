@@ -848,14 +848,14 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   return (
     <div className="my-2 space-y-1.5">
-      <button
-        type="button"
+      <Button
+        variant="ghost"
         onClick={() => setExpanded(!expanded)}
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        className="h-auto justify-start rounded-none p-0 gap-1.5 text-xs font-normal text-muted-foreground hover:text-foreground hover:bg-transparent dark:hover:bg-transparent transition-colors"
       >
         <span>{t('chat.tool.webSearch.sources', { count: sources.length })}</span>
         <ChevronUp className={`w-3 h-3 transition-transform ${expanded ? '' : 'rotate-180'}`} />
-      </button>
+      </Button>
       <AnimatePresence>
         {expanded && (
           <motion.div

@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
@@ -171,24 +172,30 @@ function McpServerEditor({
       <div>
         <label className="text-sm font-medium">{t('settings.mcp.transport')}</label>
         <div className="flex gap-2 mt-1">
-          <button
+          <Button
+            variant="ghost"
             onClick={() => setTransportType('stdio')}
             className={cn(
               'px-3 py-1.5 rounded-md text-sm transition-colors',
-              !isHttp ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+              !isHttp
+                ? 'bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
             )}
           >
             {t('settings.mcp.transportStdio')}
-          </button>
-          <button
+          </Button>
+          <Button
+            variant="ghost"
             onClick={() => setTransportType('streamablehttp')}
             className={cn(
               'px-3 py-1.5 rounded-md text-sm transition-colors',
-              isHttp ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+              isHttp
+                ? 'bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
             )}
           >
             {t('settings.mcp.transportHttp')}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -341,9 +348,16 @@ export function McpSettings() {
 
   const headerActions = (
     <div className="flex items-center gap-1">
-      <Button variant="outline" onClick={() => setShowImport(true)} title={t('settings.mcp.importJson')}>
-        <ClipboardPaste className="w-4 h-4" />
-      </Button>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <Button variant="outline" onClick={() => setShowImport(true)}>
+              <ClipboardPaste className="w-4 h-4" />
+            </Button>
+          }
+        />
+        <TooltipContent side="top">{t('settings.mcp.importJson')}</TooltipContent>
+      </Tooltip>
       <Button variant="outline" onClick={handleAdd}>
         <Plus className="w-4 h-4" />
       </Button>

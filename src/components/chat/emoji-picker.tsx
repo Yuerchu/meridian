@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { api } from '@/api'
 import type { Emoji, EmojiPack } from '@/types'
 
@@ -79,17 +80,16 @@ export function EmojiPicker({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon"
-            title={t('chat.emoji')}
-          />
-        }
-      >
-        <Smile className="w-4 h-4" />
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <PopoverTrigger render={<Button variant="ghost" size="icon" />}>
+              <Smile className="w-4 h-4" />
+            </PopoverTrigger>
+          }
+        />
+        <TooltipContent side="top">{t('chat.emoji')}</TooltipContent>
+      </Tooltip>
       <PopoverContent side="top" align="end" className="w-72 p-0 gap-0">
         <div className="p-2 border-b border-border">
           <div className="relative">
@@ -107,10 +107,12 @@ export function EmojiPicker({
           {search.trim() ? (
             <div className="grid grid-cols-6 gap-1">
               {searchResults.map((e) => (
-                <button
+                <Button
                   key={e.id}
-                  className="p-1 rounded hover:bg-accent/50 transition-colors"
+                  variant="ghost"
+                  className="h-auto p-1 rounded hover:bg-accent/50 transition-colors"
                   onClick={() => handleSelect(e)}
+                  // eslint-disable-next-line no-restricted-syntax -- grid cells: per-cell Tooltip is too heavy
                   title={e.name}
                 >
                   <img
@@ -118,7 +120,7 @@ export function EmojiPicker({
                     alt={e.name}
                     className="w-7 h-7 object-contain"
                   />
-                </button>
+                </Button>
               ))}
               {searchResults.length === 0 && (
                 <p className="col-span-6 text-xs text-muted-foreground text-center py-3">
@@ -134,10 +136,12 @@ export function EmojiPicker({
                 </p>
                 <div className="grid grid-cols-6 gap-1">
                   {emojis.map((e) => (
-                    <button
+                    <Button
                       key={e.id}
-                      className="p-1 rounded hover:bg-accent/50 transition-colors"
+                      variant="ghost"
+                      className="h-auto p-1 rounded hover:bg-accent/50 transition-colors"
                       onClick={() => handleSelect(e)}
+                      // eslint-disable-next-line no-restricted-syntax -- grid cells: per-cell Tooltip is too heavy
                       title={e.name}
                     >
                       <img
@@ -145,7 +149,7 @@ export function EmojiPicker({
                         alt={e.name}
                         className="w-7 h-7 object-contain"
                       />
-                    </button>
+                    </Button>
                   ))}
                 </div>
               </div>

@@ -3,6 +3,7 @@
 import { Moon, Sun } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -121,15 +122,21 @@ export default function Playground() {
       <div className="mx-auto max-w-2xl space-y-10 px-6 py-10">
         <header className="flex items-center justify-between">
           <h1 className="text-lg font-semibold">组件预览</h1>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => document.documentElement.classList.toggle('dark')}
-            title="切换主题"
-          >
-            <Sun className="hidden size-4 dark:block" />
-            <Moon className="size-4 dark:hidden" />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={() => document.documentElement.classList.toggle('dark')}
+                >
+                  <Sun className="hidden size-4 dark:block" />
+                  <Moon className="size-4 dark:hidden" />
+                </Button>
+              }
+            />
+            <TooltipContent side="top">切换主题</TooltipContent>
+          </Tooltip>
         </header>
 
         <Section title="ChainOfThought / 基础 + Steps">
