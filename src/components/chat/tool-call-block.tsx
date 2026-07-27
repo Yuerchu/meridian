@@ -381,12 +381,42 @@ function stripDiffPrefix(p: string): string {
   return trimmed.startsWith('a/') || trimmed.startsWith('b/') ? trimmed.slice(2) : trimmed
 }
 
+// Line-scanning fallback for diffs jsdiff rejects, e.g. hunk headers whose
+// line counts are wrong — models miscount them routinely.
+function parseUnifiedPatchLoose(patch: string): FileDiff[] {
+  const files: FileDiff[] = []
+  const lines = patch.split('\n')
+  let cur: FileDiff | null = null
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    if (line.startsWith('--- ') && lines[i + 1]?.startsWith('+++ ')) {
+      const oldPath = stripDiffPrefix(line.slice(4))
+      const newPath = stripDiffPrefix(lines[i + 1].slice(4))
+      cur = {
+        path: newPath === '/dev/null' ? oldPath : newPath,
+        op: oldPath === '/dev/null' ? 'create' : newPath === '/dev/null' ? 'delete' : 'modify',
+        lines: [],
+      }
+      files.push(cur)
+      i++
+      continue
+    }
+    if (!cur) continue
+    if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('\\')) continue
+    if (line.startsWith('@@')) cur.lines.push({ kind: 'hunk', text: line })
+    else if (line.startsWith('+')) cur.lines.push({ kind: 'add', text: line.slice(1) })
+    else if (line.startsWith('-')) cur.lines.push({ kind: 'remove', text: line.slice(1) })
+    else cur.lines.push({ kind: 'context', text: line.startsWith(' ') ? line.slice(1) : line })
+  }
+  return files
+}
+
 function parseUnifiedPatch(patch: string): FileDiff[] {
   let parsed: ReturnType<typeof parsePatch>
   try {
     parsed = parsePatch(patch)
   } catch {
-    return []
+    return parseUnifiedPatchLoose(patch)
   }
   const files: FileDiff[] = []
   for (const f of parsed) {
@@ -409,7 +439,7 @@ function parseUnifiedPatch(patch: string): FileDiff[] {
       lines,
     })
   }
-  return files
+  return files.length > 0 ? files : parseUnifiedPatchLoose(patch)
 }
 
 function applyPatchDiff(args: Record<string, unknown>): FileDiff[] | null {
