@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bot, ChevronDown, ChevronLeft, ChevronRight, Cpu, Check, Star, Lightbulb, RefreshCw, Plus, Camera, ImageIcon, Paperclip } from 'lucide-react'
+import { Bot, ChevronDown, ChevronLeft, ChevronRight, Cpu, Check, Star, Lightbulb, RefreshCw, Plus, Camera, ImageIcon, Paperclip, Zap } from 'lucide-react'
 import { ModelIcon } from '@lobehub/icons'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
@@ -8,7 +8,8 @@ import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
-import type { Assistant, Provider, ProviderCapabilities, ModelInfo, ThinkingLevel } from '@/types'
+import { allowedEfforts } from '@/lib/thinking'
+import type { Assistant, Provider, ProviderCapabilities, ModelInfo, ThinkingEffort, ThinkingLevel } from '@/types'
 
 interface ToolbarProps {
   assistants: Assistant[]
@@ -20,6 +21,8 @@ interface ToolbarProps {
   onSelectModel: (modelId: string, providerId: string) => void
   thinkingLevel: ThinkingLevel
   onSelectThinkingLevel: (level: ThinkingLevel) => void
+  fastMode: boolean
+  onToggleFast: (next: boolean) => void
   capabilities?: ProviderCapabilities | null
 }
 
@@ -43,7 +46,9 @@ function AssistantSelector({
         <span className="max-w-[120px] truncate">{current?.name ?? t('toolbar.noAssistant')}</span>
         <ChevronDown className="w-3 h-3" />
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-52 p-1 bg-popover border-border">
+      {/* gap-0: PopoverContent defaults to gap-2.5 for card-style content, which
+          would space out menu rows. Select menus stack flush. */}
+      <PopoverContent align="start" className="w-52 gap-0 p-1 bg-popover border-border">
         {assistants.map((a) => (
           <Button
             key={a.id}
@@ -53,7 +58,7 @@ function AssistantSelector({
               setOpen(false)
             }}
             className={cn(
-              'w-full flex items-center gap-2 px-2.5 py-1.5 h-auto text-xs justify-start',
+              'w-full flex items-center gap-1.5 rounded-md px-1.5 py-1 h-auto text-sm justify-start',
               a.id === currentId
                 ? 'bg-accent text-accent-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
@@ -62,12 +67,12 @@ function AssistantSelector({
             {a.is_default === 1 && (
               <Star
                 // eslint-disable-next-line no-restricted-syntax -- CLAUDE.md whitelist: gold-star semantics
-                className="w-3 h-3 text-amber-500 flex-shrink-0"
+                className="size-4 text-amber-500 flex-shrink-0"
                 fill="currentColor"
               />
             )}
             <span className="flex-1 truncate">{a.name}</span>
-            {a.id === currentId && <Check className="w-3 h-3 text-muted-foreground" />}
+            {a.id === currentId && <Check className="size-4 text-muted-foreground" />}
           </Button>
         ))}
       </PopoverContent>
@@ -127,9 +132,9 @@ function ModelSelector({
         <span className="max-w-[160px] truncate">{currentModelId ?? t('toolbar.selectModel')}</span>
         <ChevronDown className="w-3 h-3" />
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-64 p-0 bg-popover border-border">
-        <div className="flex items-center justify-between px-2.5 py-1.5 border-b border-border">
-          <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('toolbar.models')}</span>
+      <PopoverContent align="start" className="w-64 gap-0 p-0 bg-popover border-border">
+        <div className="flex items-center justify-between px-1.5 py-1 border-b border-border">
+          <span className="text-xs text-muted-foreground">{t('toolbar.models')}</span>
           <Button
             variant="ghost"
             size="icon"
@@ -141,10 +146,10 @@ function ModelSelector({
           </Button>
         </div>
         <ScrollArea className="h-72 p-1">
-          {loading && <div className="px-3 py-2 text-xs text-muted-foreground">{t('toolbar.loadingModels')}</div>}
+          {loading && <div className="px-1.5 py-1 text-sm text-muted-foreground">{t('toolbar.loadingModels')}</div>}
           {groups.map((g) => (
             <div key={g.provider.id}>
-              <div className="px-2.5 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+              <div className="px-1.5 py-1 text-xs text-muted-foreground">
                 {g.provider.name}
               </div>
               {g.models.map((m) => (
@@ -156,23 +161,23 @@ function ModelSelector({
                     setOpen(false)
                   }}
                   className={cn(
-                    'w-full flex items-center gap-2 px-2.5 py-1.5 h-auto text-xs justify-start',
+                    'w-full flex items-center gap-1.5 rounded-md px-1.5 py-1 h-auto text-sm justify-start',
                     m.id === currentModelId && g.provider.id === currentProviderId
                       ? 'bg-accent text-accent-foreground'
                       : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
                   )}
                 >
-                  <ModelIcon model={m.id} size={14} className="flex-shrink-0" />
+                  <ModelIcon model={m.id} size={16} className="flex-shrink-0" />
                   <span className="flex-1 truncate">{m.name}</span>
                   {m.id === currentModelId && g.provider.id === currentProviderId && (
-                    <Check className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                    <Check className="size-4 text-muted-foreground flex-shrink-0" />
                   )}
                 </Button>
               ))}
             </div>
           ))}
           {!loading && groups.length === 0 && (
-            <div className="px-3 py-2 text-xs text-muted-foreground">
+            <div className="px-1.5 py-1 text-sm text-muted-foreground">
               {t('toolbar.noModels')}
             </div>
           )}
@@ -185,27 +190,39 @@ function ModelSelector({
 const THINKING_LEVELS: Array<{ id: ThinkingLevel; labelKey: string; descKey: string }> = [
   { id: 'default', labelKey: 'toolbar.thinking.default', descKey: 'toolbar.thinking.defaultDesc' },
   { id: 'off', labelKey: 'toolbar.thinking.off', descKey: 'toolbar.thinking.offDesc' },
+  { id: 'minimal', labelKey: 'toolbar.thinking.minimal', descKey: 'toolbar.thinking.minimalDesc' },
   { id: 'low', labelKey: 'toolbar.thinking.low', descKey: 'toolbar.thinking.lowDesc' },
   { id: 'medium', labelKey: 'toolbar.thinking.medium', descKey: 'toolbar.thinking.mediumDesc' },
   { id: 'high', labelKey: 'toolbar.thinking.high', descKey: 'toolbar.thinking.highDesc' },
+  { id: 'xhigh', labelKey: 'toolbar.thinking.xhigh', descKey: 'toolbar.thinking.xhighDesc' },
   { id: 'max', labelKey: 'toolbar.thinking.max', descKey: 'toolbar.thinking.maxDesc' },
 ]
 
-function ThinkingSelector({
+/**
+ * The tiers to offer for a model: always `default`/`off`, plus whatever effort
+ * tiers the model advertises. Unknown capabilities fall back to the full ladder
+ * (see `allowedEfforts`).
+ */
+function levelsFor(capabilities: ProviderCapabilities | null | undefined) {
+  const allowed = allowedEfforts(capabilities ?? null)
+  return THINKING_LEVELS.filter(
+    (l) => l.id === 'default' || l.id === 'off' || allowed.includes(l.id as ThinkingEffort),
+  )
+}
+
+export function ThinkingSelector({
   current,
   onSelect,
-  supportsReasoningEffort,
+  capabilities,
 }: {
   current: ThinkingLevel
   onSelect: (level: ThinkingLevel) => void
-  supportsReasoningEffort: boolean
+  capabilities?: ProviderCapabilities | null
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const isActive = current !== 'default' && current !== 'off'
-  const levels = supportsReasoningEffort
-    ? THINKING_LEVELS
-    : THINKING_LEVELS.filter((l) => l.id === 'default' || l.id === 'off')
+  const levels = levelsFor(capabilities)
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -220,8 +237,8 @@ function ThinkingSelector({
           <span className="max-w-[60px] truncate">{t(`toolbar.thinking.${current}`)}</span>
         )}
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-56 p-1 bg-popover border-border">
-        <div className="px-2.5 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+      <PopoverContent align="start" className="w-56 gap-0 p-1 bg-popover border-border">
+        <div className="px-1.5 py-1 text-xs text-muted-foreground">
           {t('toolbar.thinking')}
         </div>
         {levels.map((level) => (
@@ -230,7 +247,7 @@ function ThinkingSelector({
             variant="ghost"
             onClick={() => { onSelect(level.id); setOpen(false) }}
             className={cn(
-              'w-full flex items-center justify-between px-2.5 py-1.5 h-auto text-xs',
+              'w-full flex items-center justify-between gap-1.5 rounded-md px-1.5 py-1 h-auto text-sm',
               level.id === current
                 ? 'bg-accent text-accent-foreground'
                 : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
@@ -242,6 +259,44 @@ function ThinkingSelector({
         ))}
       </PopoverContent>
     </Popover>
+  )
+}
+
+/**
+ * Low-latency tier toggle. Only rendered for models that advertise it, so an
+ * explicit `true` is required rather than the optimistic `!== false` used for
+ * the thinking selector -- offering a tier the model lacks would be a wasted
+ * control, whereas offering an extra effort tier is harmless.
+ */
+export function FastToggle({
+  active,
+  onToggle,
+}: {
+  active: boolean
+  onToggle: (next: boolean) => void
+}) {
+  const { t } = useTranslation()
+
+  return (
+    <Button
+      data-slot="fast-toggle"
+      variant="ghost"
+      aria-pressed={active}
+      onClick={() => onToggle(!active)}
+      className={cn(
+        // border-0 and an explicit icon size cancel out <Button>'s defaults
+        // (border-transparent, plus a svg:size-4 rule that only skips classes
+        // containing "size-") so this lines up with the bare PopoverTriggers
+        // sitting next to it.
+        'flex items-center gap-1 px-2 py-1 h-auto border-0 rounded-md text-xs transition-colors touch-hitbox',
+        active
+          ? 'text-warning hover:text-warning/80 hover:bg-accent'
+          : 'text-muted-foreground hover:text-foreground hover:bg-accent',
+      )}
+    >
+      <Zap className="size-3.5" />
+      {active && <span>{t('toolbar.fast')}</span>}
+    </Button>
   )
 }
 
@@ -266,8 +321,14 @@ export function Toolbar(props: ToolbarProps) {
           <ThinkingSelector
             current={props.thinkingLevel}
             onSelect={props.onSelectThinkingLevel}
-            supportsReasoningEffort={props.capabilities?.supports_reasoning_effort !== false}
+            capabilities={props.capabilities}
           />
+        </>
+      )}
+      {props.capabilities?.supports_fast === true && (
+        <>
+          <span className="text-border text-xs">·</span>
+          <FastToggle active={props.fastMode} onToggle={props.onToggleFast} />
         </>
       )}
     </div>
@@ -295,6 +356,8 @@ export function MobileOptionsMenu({
   onSelectModel,
   thinkingLevel,
   onSelectThinkingLevel,
+  fastMode,
+  onToggleFast,
   capabilities,
   onTakePhoto,
   onPickGallery,
@@ -310,10 +373,8 @@ export function MobileOptionsMenu({
 
   const currentAssistant = assistants.find((a) => a.id === currentAssistantId)
   const supportsThinking = capabilities?.supports_thinking !== false
-  const supportsReasoningEffort = capabilities?.supports_reasoning_effort !== false
-  const levels = supportsReasoningEffort
-    ? THINKING_LEVELS
-    : THINKING_LEVELS.filter((l) => l.id === 'default' || l.id === 'off')
+  const supportsFast = capabilities?.supports_fast === true
+  const levels = levelsFor(capabilities)
   const thinkingLabel = thinkingLevel === 'default'
     ? t('toolbar.thinking.default')
     : t(`toolbar.thinking.${thinkingLevel}`)
@@ -404,6 +465,23 @@ export function MobileOptionsMenu({
                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
               </Button>
             )}
+            {supportsFast && (
+              <Button
+                data-slot="mobile-fast-row"
+                variant="ghost"
+                aria-pressed={fastMode}
+                className={cn(itemCls, 'justify-between')}
+                onClick={() => onToggleFast(!fastMode)}
+              >
+                <span className="flex items-center gap-3">
+                  <Zap className={cn('w-4 h-4', fastMode ? 'text-warning' : 'text-muted-foreground')} />
+                  <span>{t('toolbar.fast')}</span>
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {fastMode ? t('toolbar.fast.on') : t('toolbar.fast.off')}
+                </span>
+              </Button>
+            )}
           </div>
         )}
 
@@ -476,7 +554,7 @@ export function MobileOptionsMenu({
               {loadingModels && <div className="px-4 py-3 text-xs text-muted-foreground">{t('toolbar.loadingModels')}</div>}
               {groups.map((g) => (
                 <div key={g.provider.id}>
-                  <div className="px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                  <div className="px-4 py-1 text-xs text-muted-foreground">
                     {g.provider.name}
                   </div>
                   {g.models.map((m) => (

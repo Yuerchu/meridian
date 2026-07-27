@@ -14,6 +14,9 @@ export const api = {
   setConversationAssistant: (id: string, assistantId: string | null) =>
     invoke<void>('set_conversation_assistant', { id, assistantId }),
 
+  setConversationReasoningPrefs: (id: string, thinkingLevel: string | null, fastMode: boolean) =>
+    invoke<void>('set_conversation_reasoning_prefs', { id, thinkingLevel, fastMode }),
+
   togglePinConversation: (id: string) =>
     invoke<Conversation>('toggle_pin_conversation', { id }),
 
@@ -68,7 +71,7 @@ export const api = {
   stopChat: (conversationId: string) =>
     invoke<void>('stop_chat', { conversationId }),
 
-  chat: (conversationId: string, message: string, modelOverride?: string, providerOverride?: string, thinkingLevel?: string, assistantId?: string) =>
+  chat: (conversationId: string, message: string, modelOverride?: string, providerOverride?: string, thinkingLevel?: string, assistantId?: string, fast?: boolean) =>
     invoke<void>('chat', {
       conversationId,
       message,
@@ -76,6 +79,7 @@ export const api = {
       providerOverride: providerOverride ?? null,
       thinkingLevel: thinkingLevel ?? null,
       assistantId: assistantId ?? null,
+      fast: fast ?? null,
     }),
 
   setSecret: (key: string, value: string) =>

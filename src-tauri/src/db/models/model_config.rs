@@ -18,6 +18,9 @@ pub struct ModelConfig {
     pub cache_price: Option<f64>,
     pub created_at: i64,
     pub updated_at: i64,
+    /// User-authored JSON patch over the built-in catalog. Malformed content is
+    /// ignored at resolve time rather than treated as fatal.
+    pub capability_overrides: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
@@ -35,6 +38,7 @@ pub struct NewModelConfig<'a> {
     pub cache_price: Option<f64>,
     pub created_at: i64,
     pub updated_at: i64,
+    pub capability_overrides: Option<&'a str>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -48,4 +52,5 @@ pub struct ModelConfigInput {
     pub input_price: f64,
     pub output_price: f64,
     pub cache_price: Option<f64>,
+    pub capability_overrides: Option<String>,
 }

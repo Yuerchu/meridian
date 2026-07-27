@@ -46,6 +46,10 @@ impl OpenAICompatProvider {
         if let Some(ref effort) = params.thinking_effort {
             body["reasoning_effort"] = serde_json::json!(effort);
         }
+        if params.fast {
+            // The config-facing name is "fast"; the wire value is the priority tier.
+            body["service_tier"] = serde_json::json!("priority");
+        }
         if let Some(tools) = tools {
             if !tools.is_empty() {
                 body["tools"] = serde_json::json!(tools.iter().map(|t| {

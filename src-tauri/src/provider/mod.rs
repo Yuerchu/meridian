@@ -38,7 +38,7 @@ impl ChatMessage {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ChatParams {
     pub model: String,
     pub temperature: Option<f64>,
@@ -47,20 +47,15 @@ pub struct ChatParams {
     pub thinking_enabled: bool,
     pub thinking_budget: Option<i32>,
     pub thinking_effort: Option<String>,
-}
-
-impl Default for ChatParams {
-    fn default() -> Self {
-        Self {
-            model: String::new(),
-            temperature: None,
-            top_p: None,
-            max_tokens: None,
-            thinking_enabled: false,
-            thinking_budget: None,
-            thinking_effort: None,
-        }
-    }
+    /// Low-latency tier. Providers translate this to their own wire format:
+    /// OpenAI sends `service_tier: "priority"`, Anthropic sends `speed: "fast"`
+    /// plus the fast-mode beta header.
+    pub fast: bool,
+    /// OpenAI Responses `text.verbosity`. Ignored by every other provider.
+    pub verbosity: Option<String>,
+    /// Copied in by `capabilities::filter_params` so providers can pick the
+    /// right request shape without needing the whole capability struct.
+    pub thinking_style: ThinkingStyle,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +98,28 @@ pub struct TokenUsage {
     pub cache_miss_tokens: Option<i32>,
 }
 
+/// How a model expects its reasoning to be switched on. Each provider maps this
+/// to a different request shape, and getting it wrong is a hard 400 on the
+/// newer Anthropic models rather than a silently ignored field.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThinkingStyle {
+    /// No reasoning support at all.
+    #[default]
+    None,
+    /// Effort is the only knob; there is no on/off switch (OpenAI o-series, gpt-5.x).
+    EffortOnly,
+    /// `thinking: {type: "enabled", budget_tokens: N}` (Claude Sonnet 4.5 / Haiku 4.5 and earlier).
+    Budget,
+    /// `thinking: {type: "adaptive"}` plus `output_config.effort` (Claude Opus 4.6-4.8, Sonnet 4.6/5).
+    /// `budget_tokens` is rejected with a 400 on Opus 4.7+ and Sonnet 5.
+    Adaptive,
+    /// Thinking is always on and the `thinking` field must be omitted entirely (Claude Fable 5).
+    AlwaysOn,
+    /// Only the off-switch is sent, as `thinking: {type: "disabled"}` (DeepSeek).
+    ToggleOff,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ProviderCapabilities {
     pub supports_tools: bool,
@@ -114,8 +131,18 @@ pub struct ProviderCapabilities {
     pub supports_pdf: bool,
     pub supports_temperature: bool,
     pub supports_top_p: bool,
+    /// Mirrors `!supported_efforts.is_empty()`. Kept as its own field so older
+    /// frontend builds keep working against the new backend.
     pub supports_reasoning_effort: bool,
     pub max_temperature: Option<f32>,
+    pub thinking_style: ThinkingStyle,
+    /// Effort tiers this model actually accepts, in ascending order. Anything
+    /// outside this list is coerced before it reaches the wire.
+    pub supported_efforts: Vec<String>,
+    pub default_effort: Option<String>,
+    pub supports_fast: bool,
+    pub supports_verbosity: bool,
+    pub default_verbosity: Option<String>,
 }
 
 pub struct AgentResponse {

@@ -31,6 +31,9 @@ export interface Conversation {
   updated_at: number
   project_id: string | null
   compact_cursor: number | null
+  /** Per-conversation reasoning tier; null means inherit the assistant default. */
+  thinking_level: string | null
+  fast_mode: number
 }
 
 export interface ToolCallDisplay {
@@ -100,7 +103,10 @@ export interface Assistant {
   auto_compact_enabled: number
 }
 
-export type ThinkingLevel = 'default' | 'off' | 'low' | 'medium' | 'high' | 'max'
+/** Effort tiers a model can advertise, ascending. Mirrors EFFORT_LADDER in the Rust catalog. */
+export type ThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+
+export type ThinkingLevel = 'default' | 'off' | ThinkingEffort
 
 export interface Provider {
   id: string
@@ -248,6 +254,12 @@ export interface ProviderCapabilities {
   supports_top_p?: boolean
   supports_reasoning_effort?: boolean
   max_temperature?: number | null
+  /** Effort tiers this model accepts, ascending. Empty means no effort control. */
+  supported_efforts?: ThinkingEffort[]
+  default_effort?: ThinkingEffort | null
+  supports_fast?: boolean
+  supports_verbosity?: boolean
+  default_verbosity?: string | null
 }
 
 export interface ModelConfig {
@@ -263,6 +275,8 @@ export interface ModelConfig {
   cache_price: number | null
   created_at: number
   updated_at: number
+  /** JSON patch over the built-in catalog; malformed content is ignored. */
+  capability_overrides: string | null
 }
 
 export interface ModelConfigInput {
@@ -275,6 +289,7 @@ export interface ModelConfigInput {
   input_price: number
   output_price: number
   cache_price?: number | null
+  capability_overrides?: string | null
 }
 
 export interface ContextInfo {

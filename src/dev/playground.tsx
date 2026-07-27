@@ -1,5 +1,6 @@
 // Dev-only component playground. Reachable at #playground from a plain browser
 // (vite dev without the Tauri backend); never included in production builds.
+import { useState } from 'react'
 import { Moon, Sun } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -25,7 +26,8 @@ import {
   ChatToolTrigger,
 } from '@/components/ui/chat-tool'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
-import type { ToolCallDisplay } from '@/types'
+import { FastToggle, ThinkingSelector } from '@/components/chat/toolbar'
+import type { ProviderCapabilities, ThinkingEffort, ThinkingLevel, ToolCallDisplay } from '@/types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -43,6 +45,52 @@ function tool(over: Partial<ToolCallDisplay> & Pick<ToolCallDisplay, 'tool_name'
     ...over,
   }
 }
+
+function caps(over: Partial<ProviderCapabilities> = {}): ProviderCapabilities {
+  return {
+    supports_tools: true,
+    supports_streaming_tools: true,
+    supports_thinking: true,
+    supports_images: true,
+    max_context_tokens: 272_000,
+    max_output_tokens: 128_000,
+    supported_efforts: ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
+    default_effort: 'medium',
+    supports_fast: false,
+    ...over,
+  }
+}
+
+/**
+ * Drives a ThinkingSelector with local state so the whitelist coercion is
+ * observable: pick a tier, then compare against a narrower capability shape.
+ */
+function ThinkingCase({ label, capabilities }: { label: string; capabilities: ProviderCapabilities | null }) {
+  const [level, setLevel] = useState<ThinkingLevel>('default')
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex items-center rounded-lg border border-border px-2 py-1">
+        <ThinkingSelector current={level} onSelect={setLevel} capabilities={capabilities} />
+      </div>
+      <span className="text-xs text-muted-foreground/60">{level}</span>
+    </div>
+  )
+}
+
+function FastCase({ label, initial }: { label: string; initial: boolean }) {
+  const [on, setOn] = useState(initial)
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex items-center rounded-lg border border-border px-2 py-1">
+        <FastToggle active={on} onToggle={setOn} />
+      </div>
+    </div>
+  )
+}
+
+const GPT_5_2_EFFORTS: ThinkingEffort[] = ['low', 'medium', 'high', 'xhigh']
 
 const READ_RESULT = [
   "import { defineConfig } from 'vite'",
@@ -335,6 +383,22 @@ export default function Playground() {
               arguments: JSON.stringify({ query: 'HeroUI Pro chain of thought' }),
               result: WEB_SEARCH_RESULT,
             })} />
+          </div>
+        </Section>
+
+        <Section title="ThinkingSelector / 档位白名单">
+          <div className="flex flex-wrap gap-4">
+            <ThinkingCase label="gpt-5.6-sol（全量）" capabilities={caps()} />
+            <ThinkingCase label="gpt-5.2（无 minimal/max）" capabilities={caps({ supported_efforts: GPT_5_2_EFFORTS })} />
+            <ThinkingCase label="claude-haiku-4-5（无 effort）" capabilities={caps({ supported_efforts: [] })} />
+            <ThinkingCase label="能力未加载（乐观全量）" capabilities={null} />
+          </div>
+        </Section>
+
+        <Section title="FastToggle / 疾速开关">
+          <div className="flex flex-wrap gap-4">
+            <FastCase label="关闭" initial={false} />
+            <FastCase label="开启" initial />
           </div>
         </Section>
       </div>

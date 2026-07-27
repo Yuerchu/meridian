@@ -68,6 +68,8 @@ diesel::table! {
         updated_at -> BigInt,
         project_id -> Nullable<Text>,
         compact_cursor -> Nullable<Integer>,
+        thinking_level -> Nullable<Text>,
+        fast_mode -> Integer,
     }
 }
 
@@ -266,6 +268,7 @@ diesel::table! {
         cache_price -> Nullable<Double>,
         created_at -> BigInt,
         updated_at -> BigInt,
+        capability_overrides -> Nullable<Text>,
     }
 }
 

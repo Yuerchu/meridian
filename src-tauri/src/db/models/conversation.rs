@@ -16,6 +16,10 @@ pub struct Conversation {
     pub updated_at: i64,
     pub project_id: Option<String>,
     pub compact_cursor: Option<i32>,
+    /// Per-conversation reasoning tier. `None` means "fall back to the
+    /// assistant's stored default".
+    pub thinking_level: Option<String>,
+    pub fast_mode: i32,
 }
 
 #[derive(Debug, Insertable)]

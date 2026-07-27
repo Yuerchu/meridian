@@ -362,6 +362,7 @@ pub fn run() {
             commands::conversation::get_conversation,
             commands::conversation::update_conversation_title,
             commands::conversation::set_conversation_assistant,
+            commands::conversation::set_conversation_reasoning_prefs,
             commands::conversation::toggle_pin_conversation,
             commands::conversation::delete_conversation,
             commands::conversation::compact,

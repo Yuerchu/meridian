@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Check, RefreshCw, Trash2, Cloud, Key, ArrowLeft, Settings2, X } from 'lucide-react'
+import { Plus, Check, ChevronDown, ChevronRight, RefreshCw, Trash2, Cloud, Key, ArrowLeft, Settings2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
@@ -9,7 +9,70 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
-import type { ModelConfig, ModelConfigInput, Provider, ModelInfo, ProviderCapabilities } from '@/types'
+import { EFFORT_LADDER } from '@/lib/thinking'
+import type { ModelConfig, ModelConfigInput, Provider, ModelInfo, ProviderCapabilities, ThinkingEffort } from '@/types'
+
+/**
+ * Capability overrides are tri-state on purpose. A plain checkbox cannot express
+ * "inherit", so the first save would pin every capability to its current value
+ * and the model would stop receiving catalog updates forever.
+ */
+type Tri = 'auto' | 'on' | 'off'
+
+function triFrom(value: unknown): Tri {
+  // Anything that isn't a real boolean (missing key, or a hand-edited override
+  // holding junk) reads as "inherit".
+  return typeof value === 'boolean' ? (value ? 'on' : 'off') : 'auto'
+}
+
+function triTo(tri: Tri): boolean | undefined {
+  return tri === 'auto' ? undefined : tri === 'on'
+}
+
+/** Malformed overrides degrade to catalog behaviour on both ends, never throw. */
+function parseOverrides(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {}
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+function CapabilityTriRow({
+  label,
+  value,
+  onChange,
+}: {
+  label: string
+  value: Tri
+  onChange: (next: Tri) => void
+}) {
+  const { t } = useTranslation()
+  const options: Array<{ value: Tri; label: string }> = [
+    { value: 'auto', label: t('settings.model.capAuto') },
+    { value: 'on', label: t('settings.model.capOn') },
+    { value: 'off', label: t('settings.model.capOff') },
+  ]
+  return (
+    <div data-slot="capability-tri-row" className="flex items-center justify-between gap-2">
+      <label className="text-xs text-muted-foreground">{label}</label>
+      <Select value={value} onValueChange={(v) => v && onChange(v as Tri)}>
+        <SelectTrigger className="h-7 w-32 text-xs">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {options.map((o) => (
+            <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
 
 function ModelConfigEditor({
   providerId,
@@ -42,6 +105,14 @@ function ModelConfigEditor({
   const [outputPrice, setOutputPrice] = useState(existing?.output_price?.toString() ?? '0')
   const [cachePrice, setCachePrice] = useState(existing?.cache_price?.toString() ?? '')
 
+  const [showCaps, setShowCaps] = useState(false)
+  const [efforts, setEfforts] = useState<ThinkingEffort[]>([])
+  // Tracks whether the whitelist was touched. Untouched means the key is left
+  // out of the patch entirely, so the model keeps following catalog updates.
+  const [effortsDirty, setEffortsDirty] = useState(false)
+  const [capThinking, setCapThinking] = useState<Tri>('auto')
+  const [capFast, setCapFast] = useState<Tri>('auto')
+
   useEffect(() => {
     if (!existing && caps) {
       setContextWindow((caps.max_context_tokens ?? 128000).toString())
@@ -49,6 +120,38 @@ function ModelConfigEditor({
       if (caps.max_output_tokens) setMaxOutput(caps.max_output_tokens.toString())
     }
   }, [caps, existing])
+
+  // Seed the override editor from the *resolved* capabilities so the user edits
+  // a diff of reality rather than a blank slate.
+  useEffect(() => {
+    if (!caps) return
+    const saved = parseOverrides(existing?.capability_overrides)
+    setEfforts(EFFORT_LADDER.filter((e) => (caps.supported_efforts ?? EFFORT_LADDER).includes(e)))
+    setEffortsDirty(saved.supported_efforts !== undefined)
+    setCapThinking(triFrom(saved.supports_thinking))
+    setCapFast(triFrom(saved.supports_fast))
+  }, [caps, existing])
+
+  const buildOverrides = (): string | null => {
+    // Merge into whatever is stored so keys this editor doesn't know about
+    // survive a round-trip.
+    const next: Record<string, unknown> = { ...parseOverrides(existing?.capability_overrides) }
+    const put = (key: string, value: unknown) => {
+      if (value === undefined) delete next[key]
+      else next[key] = value
+    }
+    put('supported_efforts', effortsDirty ? efforts : undefined)
+    put('supports_thinking', triTo(capThinking))
+    put('supports_fast', triTo(capFast))
+    return Object.keys(next).length > 0 ? JSON.stringify(next) : null
+  }
+
+  const resetOverrides = () => {
+    setEffortsDirty(false)
+    setCapThinking('auto')
+    setCapFast('auto')
+    if (caps) setEfforts(EFFORT_LADDER.filter((e) => (caps.supported_efforts ?? EFFORT_LADDER).includes(e)))
+  }
 
   const handleSave = () => {
     onSave({
@@ -60,6 +163,7 @@ function ModelConfigEditor({
       input_price: parseFloat(inputPrice) || 0,
       output_price: parseFloat(outputPrice) || 0,
       cache_price: cachePrice ? parseFloat(cachePrice) : null,
+      capability_overrides: buildOverrides(),
     })
   }
 
@@ -92,6 +196,58 @@ function ModelConfigEditor({
           <label className="text-xs text-muted-foreground">{t('settings.model.cachePrice')}</label>
           <Input value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
         </div>
+      </div>
+      <div data-slot="capability-overrides" className="pt-1">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-0 text-xs text-muted-foreground hover:text-foreground"
+          onClick={() => setShowCaps((v) => !v)}
+        >
+          {showCaps ? <ChevronDown className="w-3 h-3 mr-1" /> : <ChevronRight className="w-3 h-3 mr-1" />}
+          {t('settings.model.capabilities')}
+        </Button>
+        {showCaps && (
+          <div className="space-y-2 pt-2">
+            <div data-slot="effort-whitelist" className="space-y-1.5">
+              <label className="text-xs text-muted-foreground">{t('settings.model.supportedEfforts')}</label>
+              <div className="flex flex-wrap gap-1">
+                {EFFORT_LADDER.map((tier) => {
+                  const on = efforts.includes(tier)
+                  return (
+                    <Button
+                      key={tier}
+                      data-slot="effort-chip"
+                      variant={on ? 'default' : 'outline'}
+                      size="sm"
+                      aria-pressed={on}
+                      className="h-6 px-2 text-xs font-normal"
+                      onClick={() => {
+                        // Rebuild from the ladder so the stored array stays in
+                        // ascending order -- the median coercion ranks on position.
+                        setEfforts(EFFORT_LADDER.filter((x) => (x === tier ? !on : efforts.includes(x))))
+                        setEffortsDirty(true)
+                      }}
+                    >
+                      {t(`toolbar.thinking.${tier}`)}
+                    </Button>
+                  )
+                })}
+              </div>
+            </div>
+            <CapabilityTriRow label={t('settings.model.capThinking')} value={capThinking} onChange={setCapThinking} />
+            <CapabilityTriRow label={t('settings.model.capFast')} value={capFast} onChange={setCapFast} />
+            <p className="text-xs text-muted-foreground/60">{t('settings.model.capabilitiesHint')}</p>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-0 text-xs text-muted-foreground hover:text-foreground"
+              onClick={resetOverrides}
+            >
+              {t('settings.model.capReset')}
+            </Button>
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-2 pt-1">
         <Button size="sm" className="h-7 text-xs" onClick={handleSave}>{t('common.save')}</Button>
@@ -193,6 +349,9 @@ function ProviderEditor({
   const typeOptions = [
     { value: 'openai', label: t('settings.provider.typeOpenAI') },
     { value: 'anthropic', label: t('settings.provider.typeAnthropic') },
+    // Previously unreachable from the UI, which silently sent every DeepSeek
+    // provider down the generic path with reasoning support switched off.
+    { value: 'deepseek', label: t('settings.provider.typeDeepSeek') },
   ]
   const formatOptions = [
     { value: 'responses', label: t('settings.provider.apiFormatResponses') },

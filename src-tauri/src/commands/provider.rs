@@ -194,13 +194,20 @@ pub async fn get_provider_capabilities(
     model_id: String,
 ) -> Result<crate::provider::ProviderCapabilities, String> {
     let pool = app.state::<AppDb>().0.clone();
-    let (provider_type, api_format) = {
+    let (provider_type, api_format, overrides) = {
         let pid = provider_id.clone();
+        let mid = model_id.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
             let p = db::ops::provider::get_provider(&mut conn, &pid).map_err(|e| e.to_string())?;
-            Ok::<_, String>((p.provider_type, p.api_format))
+            let overrides = db::ops::model_config::get_by_provider_and_model(&mut conn, &pid, &mid)
+                .ok()
+                .flatten()
+                .and_then(|mc| mc.capability_overrides);
+            Ok::<_, String>((p.provider_type, p.api_format, overrides))
         }).await.map_err(|e| e.to_string())??
     };
-    Ok(crate::provider::registry::get_capabilities(&provider_type, Some(&api_format), &model_id))
+    let mut caps = crate::provider::registry::get_capabilities(&provider_type, Some(&api_format), &model_id);
+    crate::provider::capabilities::apply_overrides(&mut caps, overrides.as_deref());
+    Ok(caps)
 }

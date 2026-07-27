@@ -55,6 +55,7 @@ pub async fn save_model_config(
             cache_price: input.cache_price,
             created_at: now,
             updated_at: now,
+            capability_overrides: input.capability_overrides.as_deref(),
         };
         db::ops::model_config::upsert(&mut conn, &new).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?

@@ -77,6 +77,7 @@ describe('api', () => {
         providerOverride: null,
         thinkingLevel: null,
         assistantId: null,
+        fast: null,
       })
     })
 
@@ -90,6 +91,7 @@ describe('api', () => {
         providerOverride: 'openai',
         thinkingLevel: null,
         assistantId: null,
+        fast: null,
       })
     })
   })

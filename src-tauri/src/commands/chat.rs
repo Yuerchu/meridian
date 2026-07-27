@@ -240,6 +240,7 @@ pub async fn chat(
     provider_override: Option<String>,
     thinking_level: Option<String>,
     assistant_id: Option<String>,
+    fast: Option<bool>,
 ) -> Result<(), String> {
     let secrets = app.state::<AppSecrets>();
     let pool = app.state::<AppDb>().0.clone();
@@ -251,7 +252,7 @@ pub async fn chat(
     }
 
     // Load conversation + assistant + history + project path
-    let (assistant, history, conv_title, project_path, project_id, compact_cursor) = {
+    let (assistant, history, conv_title, project_path, project_id, compact_cursor, conv_prefs) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         let aid_override = assistant_id.clone();
@@ -270,7 +271,10 @@ pub async fn chat(
                 .and_then(|pid| db::ops::project::get_project(&mut conn, pid).ok());
             let project_path = project.as_ref().and_then(|p| p.path.clone());
             let project_id = project.as_ref().map(|p| p.id.clone());
-            Ok::<_, String>((assistant, history, conv.title, project_path, project_id, compact_cursor))
+            // Conversation-level reasoning prefs act as the fallback when the
+            // request doesn't carry an explicit override.
+            let conv_prefs = (conv.thinking_level.clone(), conv.fast_mode != 0);
+            Ok::<_, String>((assistant, history, conv.title, project_path, project_id, compact_cursor, conv_prefs))
         }).await.map_err(|e| e.to_string())??
     };
 
@@ -397,8 +401,6 @@ pub async fn chat(
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
     let auto_compact = assistant.as_ref().map(|a| a.auto_compact_enabled != 0).unwrap_or(false);
 
-    let caps = provider::capabilities::resolve(&provider_type, Some(&api_format), &model);
-
     let effective_provider_id = provider_override.clone()
         .or_else(|| assistant.as_ref().and_then(|a| a.provider_id.clone()));
     let model_config = if let Some(ref pid) = effective_provider_id {
@@ -412,6 +414,14 @@ pub async fn chat(
     } else {
         None
     };
+
+    // Resolved after model_config so a user-authored capability override can be
+    // layered on top of the built-in catalog.
+    let mut caps = provider::capabilities::resolve(&provider_type, Some(&api_format), &model);
+    provider::capabilities::apply_overrides(
+        &mut caps,
+        model_config.as_ref().and_then(|mc| mc.capability_overrides.as_deref()),
+    );
 
     let context_limit = assistant.as_ref()
         .filter(|a| a.context_limit > 0)
@@ -485,17 +495,14 @@ pub async fn chat(
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
-    let (thinking_enabled, thinking_budget, thinking_effort) = {
-        let a_enabled = assistant.as_ref().map(|a| a.thinking_enabled != 0).unwrap_or(false);
-        let a_budget = assistant.as_ref().and_then(|a| a.thinking_budget);
-        match thinking_level.as_deref() {
-            Some("off") => (false, None, None),
-            Some(level @ ("low" | "medium" | "high" | "max")) => (
-                true, a_budget, Some(level.to_string()),
-            ),
-            _ => (a_enabled, a_budget, None),
-        }
-    };
+    // Precedence: per-request override > conversation preference > assistant default.
+    let (conv_thinking_level, conv_fast_mode) = conv_prefs;
+    let effective_level = thinking_level.as_deref().or(conv_thinking_level.as_deref());
+    let (thinking_enabled, thinking_budget, thinking_effort) = provider::capabilities::resolve_thinking(
+        assistant.as_ref().map(|a| a.thinking_enabled != 0).unwrap_or(false),
+        assistant.as_ref().and_then(|a| a.thinking_budget),
+        effective_level,
+    );
 
     let mut params = ChatParams {
         model: model.clone(),
@@ -505,6 +512,10 @@ pub async fn chat(
         thinking_enabled,
         thinking_budget,
         thinking_effort,
+        fast: fast.unwrap_or(conv_fast_mode),
+        // thinking_style and verbosity are derived from the model catalog by
+        // filter_params below, not supplied by the caller.
+        ..Default::default()
     };
     provider::capabilities::filter_params(&mut params, &caps);
 

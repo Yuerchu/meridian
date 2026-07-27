@@ -66,6 +66,8 @@ interface InputBarProps {
   onSelectModel: (modelId: string, providerId: string) => void
   thinkingLevel: ThinkingLevel
   onSelectThinkingLevel: (level: ThinkingLevel) => void
+  fastMode: boolean
+  onToggleFast: (next: boolean) => void
   capabilities?: ProviderCapabilities | null
   contextInfo?: ContextInfo
   compacting?: boolean
@@ -88,6 +90,8 @@ export function InputBar({
   onSelectModel,
   thinkingLevel,
   onSelectThinkingLevel,
+  fastMode,
+  onToggleFast,
   capabilities,
   contextInfo,
   compacting,
@@ -261,6 +265,8 @@ export function InputBar({
                   onSelectModel={onSelectModel}
                   thinkingLevel={thinkingLevel}
                   onSelectThinkingLevel={onSelectThinkingLevel}
+                  fastMode={fastMode}
+                  onToggleFast={onToggleFast}
                   capabilities={capabilities}
                   onTakePhoto={handleTakePhoto}
                   onPickGallery={handlePickGallery}
@@ -278,6 +284,8 @@ export function InputBar({
                   onSelectModel={onSelectModel}
                   thinkingLevel={thinkingLevel}
                   onSelectThinkingLevel={onSelectThinkingLevel}
+                  fastMode={fastMode}
+                  onToggleFast={onToggleFast}
                   capabilities={capabilities}
                 />
               )}

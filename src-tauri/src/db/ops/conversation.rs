@@ -134,10 +134,58 @@ pub fn update_compact_cursor(
     Ok(())
 }
 
+/// Persist the per-conversation reasoning preferences. `thinking_level` of
+/// `None` means "inherit the assistant default".
+pub fn update_reasoning_prefs(
+    conn: &mut SqliteConnection,
+    id: &str,
+    thinking_level: Option<&str>,
+    fast_mode: bool,
+    now: i64,
+) -> QueryResult<()> {
+    diesel::update(conversations::table.find(id))
+        .set((
+            conversations::thinking_level.eq(thinking_level),
+            conversations::fast_mode.eq(i32::from(fast_mode)),
+            conversations::updated_at.eq(now),
+        ))
+        .execute(conn)?;
+    Ok(())
+}
+
 pub fn delete_conversation(
     conn: &mut SqliteConnection,
     id: &str,
 ) -> QueryResult<()> {
     diesel::delete(conversations::table.find(id)).execute(conn)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_db;
+
+    /// Migrations are plain SQL and Diesel does not check them at compile time,
+    /// so this is the only place a broken ALTER TABLE surfaces before runtime.
+    #[test]
+    fn migrations_apply_and_reasoning_prefs_round_trip() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+
+        let conv = create_conversation(&mut conn, "c1", Some("t"), None, None, 1).unwrap();
+        assert_eq!(conv.thinking_level, None, "defaults to inheriting the assistant");
+        assert_eq!(conv.fast_mode, 0);
+
+        update_reasoning_prefs(&mut conn, "c1", Some("xhigh"), true, 2).unwrap();
+        let conv = get_conversation(&mut conn, "c1").unwrap();
+        assert_eq!(conv.thinking_level.as_deref(), Some("xhigh"));
+        assert_eq!(conv.fast_mode, 1);
+
+        // Clearing back to the assistant default must be expressible.
+        update_reasoning_prefs(&mut conn, "c1", None, false, 3).unwrap();
+        let conv = get_conversation(&mut conn, "c1").unwrap();
+        assert_eq!(conv.thinking_level, None);
+        assert_eq!(conv.fast_mode, 0);
+    }
 }

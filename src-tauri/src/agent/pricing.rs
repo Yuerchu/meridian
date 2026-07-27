@@ -49,6 +49,7 @@ mod tests {
             cache_price: cache,
             created_at: 0,
             updated_at: 0,
+            capability_overrides: None,
         }
     }
 

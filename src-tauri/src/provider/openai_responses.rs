@@ -53,6 +53,13 @@ impl OpenAIResponsesProvider {
         if let Some(ref effort) = params.thinking_effort {
             body["reasoning"] = serde_json::json!({"effort": effort});
         }
+        if let Some(ref verbosity) = params.verbosity {
+            body["text"] = serde_json::json!({"verbosity": verbosity});
+        }
+        if params.fast {
+            // The config-facing name is "fast"; the wire value is the priority tier.
+            body["service_tier"] = serde_json::json!("priority");
+        }
         if let Some(tools) = tools {
             if !tools.is_empty() {
                 body["tools"] = serde_json::json!(tools.iter().map(|t| {
@@ -495,5 +502,44 @@ impl ChatProvider for OpenAIResponsesProvider {
         });
 
         Ok(AgentResponse { text, reasoning_content, tool_calls, usage })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn body_for(model: &str, mutate: impl FnOnce(&mut ChatParams)) -> serde_json::Value {
+        let caps = crate::provider::capabilities::resolve("openai", Some("responses"), model);
+        let mut params = ChatParams { model: model.into(), ..Default::default() };
+        mutate(&mut params);
+        crate::provider::capabilities::filter_params(&mut params, &caps);
+        let provider = OpenAIResponsesProvider::new("https://example.test", "k");
+        let req = provider.build_request(&[ChatMessage::user("hi")], None, &params, false);
+        match req.body {
+            Some(RequestBody::Json(v)) => v,
+            _ => panic!("expected a JSON body"),
+        }
+    }
+
+    #[test]
+    fn reasoning_effort_is_nested_and_verbosity_defaults_from_catalog() {
+        let body = body_for("gpt-5.6-sol", |p| p.thinking_effort = Some("max".into()));
+        assert_eq!(body["reasoning"]["effort"], "max");
+        assert_eq!(body["text"]["verbosity"], "low", "catalog default applies when unset");
+    }
+
+    #[test]
+    fn fast_maps_to_priority_service_tier() {
+        let body = body_for("gpt-5.6-sol", |p| p.fast = true);
+        assert_eq!(body["service_tier"], "priority");
+    }
+
+    #[test]
+    fn unsupported_effort_is_coerced_before_the_wire() {
+        // gpt-5.2 tops out at xhigh; "max" must not reach the API.
+        let body = body_for("gpt-5.2", |p| p.thinking_effort = Some("max".into()));
+        assert_eq!(body["reasoning"]["effort"], "medium");
+        assert!(body.get("service_tier").is_none(), "gpt-5.2 has no fast tier");
     }
 }

@@ -276,6 +276,15 @@ pub async fn headless_chat(
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
+    // No per-request tier here: OneBot turns run off the assistant's stored
+    // defaults. Shares resolve_thinking with the chat command so the two paths
+    // agree on what "enabled" means.
+    let (thinking_enabled, thinking_budget, thinking_effort) = provider::capabilities::resolve_thinking(
+        assistant.as_ref().map(|a| a.thinking_enabled != 0).unwrap_or(false),
+        assistant.as_ref().and_then(|a| a.thinking_budget),
+        None,
+    );
+
     let mut params = ChatParams {
         model: model_override.map(String::from)
             .or_else(|| assistant.as_ref().and_then(|a| a.model_id.clone()))
@@ -283,9 +292,12 @@ pub async fn headless_chat(
         temperature: assistant.as_ref().and_then(|a| a.temperature.map(|t| t as f64)),
         top_p: assistant.as_ref().and_then(|a| a.top_p.map(|t| t as f64)),
         max_tokens: assistant.as_ref().and_then(|a| a.max_tokens).or(Some(max_output as i32)),
-        thinking_enabled: assistant.as_ref().map(|a| a.thinking_enabled != 0).unwrap_or(false),
-        thinking_budget: assistant.as_ref().and_then(|a| a.thinking_budget),
-        thinking_effort: None,
+        thinking_enabled,
+        thinking_budget,
+        thinking_effort,
+        // thinking_style and verbosity are derived from the model catalog by
+        // filter_params below, not supplied by the caller.
+        ..Default::default()
     };
     provider::capabilities::filter_params(&mut params, &caps);
 

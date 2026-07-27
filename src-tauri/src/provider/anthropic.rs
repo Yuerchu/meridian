@@ -4,7 +4,7 @@ use futures::stream::StreamExt;
 use serde::Deserialize;
 
 use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
-use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ToolCall, ToolDefinition, TokenUsage};
+use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ThinkingStyle, ToolCall, ToolDefinition, TokenUsage};
 
 pub struct AnthropicProvider {
     base_url: String,
@@ -144,13 +144,31 @@ impl AnthropicProvider {
         // resolved per-model output budget; fall back to a safe floor otherwise.
         body["max_tokens"] = serde_json::json!(params.max_tokens.unwrap_or(4096));
 
-        if params.thinking_enabled {
-            if let Some(budget) = params.thinking_budget {
+        // The `thinking` shape is model-generation-specific and getting it wrong
+        // is a 400, not a silently ignored field:
+        //   - Opus 4.6-4.8 / Sonnet 4.6 / Sonnet 5 take `{type: "adaptive"}` and
+        //     reject `budget_tokens` outright.
+        //   - Fable 5 has thinking permanently on and rejects any explicit
+        //     `{type: "disabled"}`, so the field is omitted entirely.
+        //   - Sonnet 4.5 / Haiku 4.5 and earlier still require the budget form.
+        match params.thinking_style {
+            ThinkingStyle::Adaptive => {
                 body["thinking"] = serde_json::json!({
-                    "type": "enabled",
-                    "budget_tokens": budget
+                    "type": if params.thinking_enabled { "adaptive" } else { "disabled" },
                 });
             }
+            ThinkingStyle::AlwaysOn => {}
+            ThinkingStyle::Budget => {
+                if params.thinking_enabled {
+                    if let Some(budget) = params.thinking_budget {
+                        body["thinking"] = serde_json::json!({
+                            "type": "enabled",
+                            "budget_tokens": budget,
+                        });
+                    }
+                }
+            }
+            _ => {}
         }
 
         if !system.is_empty() {
@@ -159,6 +177,10 @@ impl AnthropicProvider {
         if let Some(ref effort) = params.thinking_effort {
             body["output_config"] = serde_json::json!({"effort": effort});
         }
+        // Sampling parameters are rejected on Opus 4.7+ / Sonnet 5 / Fable 5;
+        // `filter_params` has already cleared them there via the catalog. The
+        // remaining guard is the older rule that temperature and extended
+        // thinking cannot be combined.
         if !params.thinking_enabled {
             if let Some(t) = params.temperature {
                 body["temperature"] = serde_json::json!(t);
@@ -166,6 +188,9 @@ impl AnthropicProvider {
         }
         if let Some(p) = params.top_p {
             body["top_p"] = serde_json::json!(p);
+        }
+        if params.fast {
+            body["speed"] = serde_json::json!("fast");
         }
 
         if let Some(tools) = tools {
@@ -186,6 +211,11 @@ impl AnthropicProvider {
         );
         req.headers.insert("x-api-key", self.api_key.parse().unwrap());
         req.headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
+        if params.fast {
+            // Fast mode is a research preview and needs the beta opt-in
+            // alongside the `speed` body field.
+            req.headers.insert("anthropic-beta", "fast-mode-2026-02-01".parse().unwrap());
+        }
         req.body = Some(RequestBody::Json(body));
         req
     }
@@ -475,5 +505,87 @@ mod tests {
         assert_eq!(blocks.len(), 2);
         assert_eq!(blocks[0]["tool_use_id"], "call_1");
         assert_eq!(blocks[1]["tool_use_id"], "call_2");
+    }
+
+    /// Build a request the way the chat command does: resolve the model's
+    /// capabilities, run filter_params, then serialize.
+    fn body_for(model: &str, mutate: impl FnOnce(&mut ChatParams)) -> serde_json::Value {
+        let caps = crate::provider::capabilities::resolve("anthropic", None, model);
+        let mut params = ChatParams { model: model.into(), ..Default::default() };
+        mutate(&mut params);
+        crate::provider::capabilities::filter_params(&mut params, &caps);
+        let provider = AnthropicProvider::new("https://example.test", "k");
+        let req = provider.build_request(&[ChatMessage::user("hi")], None, &params, false);
+        match req.body {
+            Some(RequestBody::Json(v)) => v,
+            _ => panic!("expected a JSON body"),
+        }
+    }
+
+    #[test]
+    fn adaptive_model_sends_adaptive_thinking_not_budget() {
+        let body = body_for("claude-opus-4-8", |p| {
+            p.thinking_enabled = true;
+            p.thinking_budget = Some(10_000);
+            p.thinking_effort = Some("xhigh".into());
+            p.temperature = Some(0.7);
+        });
+        assert_eq!(body["thinking"]["type"], "adaptive");
+        assert!(body["thinking"].get("budget_tokens").is_none(), "budget_tokens is a 400 on Opus 4.7+");
+        assert_eq!(body["output_config"]["effort"], "xhigh");
+        assert!(body.get("temperature").is_none(), "sampling params are a 400 on Opus 4.7+");
+        assert!(body.get("top_p").is_none());
+    }
+
+    #[test]
+    fn adaptive_model_can_disable_thinking() {
+        let body = body_for("claude-opus-4-8", |p| p.thinking_enabled = false);
+        assert_eq!(body["thinking"]["type"], "disabled");
+    }
+
+    #[test]
+    fn always_on_model_omits_thinking_field() {
+        // Fable 5 rejects an explicit thinking config outright.
+        let body = body_for("claude-fable-5", |p| {
+            p.thinking_enabled = true;
+            p.thinking_effort = Some("high".into());
+        });
+        assert!(body.get("thinking").is_none());
+        assert_eq!(body["output_config"]["effort"], "high");
+    }
+
+    #[test]
+    fn budget_model_keeps_legacy_shape() {
+        let body = body_for("claude-sonnet-4-20250514", |p| {
+            p.thinking_enabled = true;
+            p.thinking_budget = Some(8_000);
+        });
+        assert_eq!(body["thinking"]["type"], "enabled");
+        assert_eq!(body["thinking"]["budget_tokens"], 8_000);
+        assert!(body.get("output_config").is_none(), "pre-4.5 models have no effort parameter");
+    }
+
+    #[test]
+    fn fast_mode_sets_speed_and_beta_header() {
+        let caps = crate::provider::capabilities::resolve("anthropic", None, "claude-opus-4-8");
+        let mut params = ChatParams { model: "claude-opus-4-8".into(), fast: true, ..Default::default() };
+        crate::provider::capabilities::filter_params(&mut params, &caps);
+        let provider = AnthropicProvider::new("https://example.test", "k");
+        let req = provider.build_request(&[ChatMessage::user("hi")], None, &params, false);
+        assert_eq!(req.headers.get("anthropic-beta").unwrap(), "fast-mode-2026-02-01");
+        match req.body {
+            Some(RequestBody::Json(v)) => assert_eq!(v["speed"], "fast"),
+            _ => panic!("expected a JSON body"),
+        }
+    }
+
+    #[test]
+    fn fast_mode_is_dropped_on_models_without_it() {
+        let caps = crate::provider::capabilities::resolve("anthropic", None, "claude-sonnet-4-6");
+        let mut params = ChatParams { model: "claude-sonnet-4-6".into(), fast: true, ..Default::default() };
+        crate::provider::capabilities::filter_params(&mut params, &caps);
+        let provider = AnthropicProvider::new("https://example.test", "k");
+        let req = provider.build_request(&[ChatMessage::user("hi")], None, &params, false);
+        assert!(req.headers.get("anthropic-beta").is_none());
     }
 }

@@ -1,12 +1,26 @@
-use super::{ChatParams, ProviderCapabilities};
+use super::{ChatParams, ProviderCapabilities, ThinkingStyle};
+use serde::Deserialize;
+use std::sync::LazyLock;
 
-struct ModelRule {
-    prefix: &'static str,
-    patch: CapabilityPatch,
+/// Every effort tier we know how to talk about, ascending. The frontend mirrors
+/// this list; per-model subsets live in the catalog.
+pub const EFFORT_LADDER: &[&str] = &["none", "minimal", "low", "medium", "high", "xhigh", "max"];
+
+// ---------------------------------------------------------------------------
+// Catalog
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Deserialize)]
+struct Catalog {
+    models: Vec<CatalogEntry>,
 }
 
-#[derive(Default)]
-struct CapabilityPatch {
+/// A patch over the provider default. Every capability is `Option` so an entry
+/// only states what differs; omitted fields inherit.
+#[derive(Debug, Deserialize)]
+struct CatalogEntry {
+    provider: String,
+    prefix: String,
     supports_tools: Option<bool>,
     supports_streaming_tools: Option<bool>,
     supports_thinking: Option<bool>,
@@ -14,47 +28,49 @@ struct CapabilityPatch {
     supports_pdf: Option<bool>,
     supports_temperature: Option<bool>,
     supports_top_p: Option<bool>,
-    supports_reasoning_effort: Option<bool>,
-    max_context_tokens: Option<Option<u32>>,
-    max_output_tokens: Option<Option<u32>>,
-    max_temperature: Option<Option<f32>>,
+    max_context_tokens: Option<u32>,
+    max_output_tokens: Option<u32>,
+    max_temperature: Option<f32>,
+    thinking_style: Option<ThinkingStyle>,
+    supported_efforts: Option<Vec<String>>,
+    default_effort: Option<String>,
+    supports_fast: Option<bool>,
+    supports_verbosity: Option<bool>,
+    default_verbosity: Option<String>,
 }
 
-const P: CapabilityPatch = CapabilityPatch {
-    supports_tools: None,
-    supports_streaming_tools: None,
-    supports_thinking: None,
-    supports_images: None,
-    supports_pdf: None,
-    supports_temperature: None,
-    supports_top_p: None,
-    supports_reasoning_effort: None,
-    max_context_tokens: None,
-    max_output_tokens: None,
-    max_temperature: None,
-};
+static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
+    // Parsed once at first use. A malformed catalog is a build-time authoring
+    // error, not something to degrade around at runtime.
+    serde_json::from_str(include_str!("model_catalog.json")).expect("model_catalog.json is malformed")
+});
 
-fn apply(base: &mut ProviderCapabilities, patch: &CapabilityPatch) {
-    if let Some(v) = patch.supports_tools { base.supports_tools = v; }
-    if let Some(v) = patch.supports_streaming_tools { base.supports_streaming_tools = v; }
-    if let Some(v) = patch.supports_thinking { base.supports_thinking = v; }
-    if let Some(v) = patch.supports_images { base.supports_images = v; }
-    if let Some(v) = patch.supports_pdf { base.supports_pdf = v; }
-    if let Some(v) = patch.supports_temperature { base.supports_temperature = v; }
-    if let Some(v) = patch.supports_top_p { base.supports_top_p = v; }
-    if let Some(v) = patch.supports_reasoning_effort { base.supports_reasoning_effort = v; }
-    if let Some(v) = patch.max_context_tokens { base.max_context_tokens = v; }
-    if let Some(v) = patch.max_output_tokens { base.max_output_tokens = v; }
-    if let Some(v) = patch.max_temperature { base.max_temperature = v; }
+fn apply(base: &mut ProviderCapabilities, entry: &CatalogEntry) {
+    if let Some(v) = entry.supports_tools { base.supports_tools = v; }
+    if let Some(v) = entry.supports_streaming_tools { base.supports_streaming_tools = v; }
+    if let Some(v) = entry.supports_thinking { base.supports_thinking = v; }
+    if let Some(v) = entry.supports_images { base.supports_images = v; }
+    if let Some(v) = entry.supports_pdf { base.supports_pdf = v; }
+    if let Some(v) = entry.supports_temperature { base.supports_temperature = v; }
+    if let Some(v) = entry.supports_top_p { base.supports_top_p = v; }
+    if let Some(v) = entry.max_context_tokens { base.max_context_tokens = Some(v); }
+    if let Some(v) = entry.max_output_tokens { base.max_output_tokens = Some(v); }
+    if let Some(v) = entry.max_temperature { base.max_temperature = Some(v); }
+    if let Some(v) = entry.thinking_style { base.thinking_style = v; }
+    if let Some(ref v) = entry.supported_efforts { base.supported_efforts = v.clone(); }
+    if let Some(ref v) = entry.default_effort { base.default_effort = Some(v.clone()); }
+    if let Some(v) = entry.supports_fast { base.supports_fast = v; }
+    if let Some(v) = entry.supports_verbosity { base.supports_verbosity = v; }
+    if let Some(ref v) = entry.default_verbosity { base.default_verbosity = Some(v.clone()); }
 }
 
-fn find_longest_prefix_match<'a>(rules: &'a [ModelRule], model: &str) -> Option<&'a CapabilityPatch> {
+fn find_longest_prefix_match<'a>(provider: &str, model: &str) -> Option<&'a CatalogEntry> {
     let lower = model.to_ascii_lowercase();
-    rules
+    CATALOG
+        .models
         .iter()
-        .filter(|r| lower.starts_with(r.prefix))
-        .max_by_key(|r| r.prefix.len())
-        .map(|r| &r.patch)
+        .filter(|e| e.provider == provider && lower.starts_with(&e.prefix))
+        .max_by_key(|e| e.prefix.len())
 }
 
 // ---------------------------------------------------------------------------
@@ -70,10 +86,11 @@ fn anthropic_default() -> ProviderCapabilities {
         supports_pdf: true,
         supports_temperature: true,
         supports_top_p: true,
-        supports_reasoning_effort: false,
         max_context_tokens: Some(200_000),
         max_output_tokens: Some(64_000),
         max_temperature: Some(1.0),
+        thinking_style: ThinkingStyle::Budget,
+        ..Default::default()
     }
 }
 
@@ -83,13 +100,14 @@ fn openai_responses_default() -> ProviderCapabilities {
         supports_streaming_tools: true,
         supports_thinking: true,
         supports_images: true,
-        supports_pdf: false,
         supports_temperature: true,
         supports_top_p: true,
-        supports_reasoning_effort: true,
         max_context_tokens: Some(200_000),
         max_output_tokens: Some(100_000),
         max_temperature: Some(2.0),
+        thinking_style: ThinkingStyle::EffortOnly,
+        supported_efforts: vec!["low".into(), "medium".into(), "high".into()],
+        ..Default::default()
     }
 }
 
@@ -98,14 +116,12 @@ fn deepseek_default() -> ProviderCapabilities {
         supports_tools: true,
         supports_streaming_tools: true,
         supports_thinking: true,
-        supports_images: false,
-        supports_pdf: false,
-        supports_temperature: false,
-        supports_top_p: false,
-        supports_reasoning_effort: true,
         max_context_tokens: Some(128_000),
         max_output_tokens: Some(16_000),
         max_temperature: Some(2.0),
+        thinking_style: ThinkingStyle::ToggleOff,
+        supported_efforts: vec!["low".into(), "medium".into(), "high".into()],
+        ..Default::default()
     }
 }
 
@@ -113,173 +129,132 @@ fn generic_default() -> ProviderCapabilities {
     ProviderCapabilities {
         supports_tools: true,
         supports_streaming_tools: true,
-        supports_thinking: false,
-        supports_images: false,
-        supports_pdf: false,
         supports_temperature: true,
         supports_top_p: true,
-        supports_reasoning_effort: false,
-        max_context_tokens: None,
-        max_output_tokens: None,
         max_temperature: Some(2.0),
+        ..Default::default()
     }
 }
 
-// ---------------------------------------------------------------------------
-// Model-specific rules (sorted by prefix length descending is NOT required;
-// find_longest_prefix_match picks the longest match regardless of order)
-// ---------------------------------------------------------------------------
-
-static ANTHROPIC_RULES: &[ModelRule] = &[
-    // Claude 4 family
-    ModelRule { prefix: "claude-opus-4", patch: CapabilityPatch {
-        supports_thinking: Some(true), supports_images: Some(true), supports_pdf: Some(true),
-        max_context_tokens: Some(Some(200_000)), max_output_tokens: Some(Some(64_000)),
-        ..P
-    }},
-    ModelRule { prefix: "claude-sonnet-4", patch: CapabilityPatch {
-        supports_thinking: Some(true), supports_images: Some(true), supports_pdf: Some(true),
-        max_context_tokens: Some(Some(200_000)), max_output_tokens: Some(Some(64_000)),
-        ..P
-    }},
-    // Claude 3.7
-    ModelRule { prefix: "claude-3-7-sonnet", patch: CapabilityPatch {
-        supports_thinking: Some(true), supports_images: Some(true), supports_pdf: Some(true),
-        max_context_tokens: Some(Some(200_000)), max_output_tokens: Some(Some(64_000)),
-        ..P
-    }},
-    // Claude 3.5
-    ModelRule { prefix: "claude-3-5-sonnet", patch: CapabilityPatch {
-        supports_thinking: Some(false), supports_images: Some(true), supports_pdf: Some(true),
-        max_context_tokens: Some(Some(200_000)), max_output_tokens: Some(Some(8_192)),
-        ..P
-    }},
-    ModelRule { prefix: "claude-3-5-haiku", patch: CapabilityPatch {
-        supports_thinking: Some(false), supports_images: Some(true), supports_pdf: Some(false),
-        max_context_tokens: Some(Some(200_000)), max_output_tokens: Some(Some(8_192)),
-        ..P
-    }},
-    // Claude 3
-    ModelRule { prefix: "claude-3-opus", patch: CapabilityPatch {
-        supports_thinking: Some(false), supports_images: Some(true), supports_pdf: Some(false),
-        max_context_tokens: Some(Some(200_000)), max_output_tokens: Some(Some(4_096)),
-        ..P
-    }},
-    ModelRule { prefix: "claude-3-sonnet", patch: CapabilityPatch {
-        supports_thinking: Some(false), supports_images: Some(true), supports_pdf: Some(false),
-        max_context_tokens: Some(Some(200_000)), max_output_tokens: Some(Some(4_096)),
-        ..P
-    }},
-    ModelRule { prefix: "claude-3-haiku", patch: CapabilityPatch {
-        supports_thinking: Some(false), supports_images: Some(true), supports_pdf: Some(false),
-        max_context_tokens: Some(Some(200_000)), max_output_tokens: Some(Some(4_096)),
-        ..P
-    }},
-];
-
-static OPENAI_RULES: &[ModelRule] = &[
-    // o-series reasoning models
-    ModelRule { prefix: "o3", patch: CapabilityPatch {
-        supports_thinking: Some(true), supports_reasoning_effort: Some(true),
-        supports_temperature: Some(false), supports_top_p: Some(false),
-        supports_images: Some(true),
-        max_context_tokens: Some(Some(200_000)), max_output_tokens: Some(Some(100_000)),
-        ..P
-    }},
-    ModelRule { prefix: "o4-mini", patch: CapabilityPatch {
-        supports_thinking: Some(true), supports_reasoning_effort: Some(true),
-        supports_temperature: Some(false), supports_top_p: Some(false),
-        supports_images: Some(true),
-        max_context_tokens: Some(Some(200_000)), max_output_tokens: Some(Some(100_000)),
-        ..P
-    }},
-    ModelRule { prefix: "o1", patch: CapabilityPatch {
-        supports_thinking: Some(true), supports_reasoning_effort: Some(true),
-        supports_temperature: Some(false), supports_top_p: Some(false),
-        supports_images: Some(true),
-        max_context_tokens: Some(Some(200_000)), max_output_tokens: Some(Some(100_000)),
-        ..P
-    }},
-    // GPT-4.1 family
-    ModelRule { prefix: "gpt-4.1", patch: CapabilityPatch {
-        supports_images: Some(true),
-        max_context_tokens: Some(Some(1_047_576)), max_output_tokens: Some(Some(32_768)),
-        ..P
-    }},
-    // GPT-4o family
-    ModelRule { prefix: "gpt-4o", patch: CapabilityPatch {
-        supports_images: Some(true),
-        max_context_tokens: Some(Some(128_000)), max_output_tokens: Some(Some(16_384)),
-        ..P
-    }},
-    // GPT-4 turbo
-    ModelRule { prefix: "gpt-4-turbo", patch: CapabilityPatch {
-        supports_images: Some(true),
-        max_context_tokens: Some(Some(128_000)), max_output_tokens: Some(Some(4_096)),
-        ..P
-    }},
-    // GPT-4 (base, no vision)
-    ModelRule { prefix: "gpt-4", patch: CapabilityPatch {
-        supports_images: Some(false),
-        max_context_tokens: Some(Some(8_192)), max_output_tokens: Some(Some(4_096)),
-        ..P
-    }},
-    // GPT-3.5
-    ModelRule { prefix: "gpt-3.5", patch: CapabilityPatch {
-        supports_images: Some(false),
-        max_context_tokens: Some(Some(16_385)), max_output_tokens: Some(Some(4_096)),
-        ..P
-    }},
-];
-
-static DEEPSEEK_RULES: &[ModelRule] = &[
-    // V4 family (thinking enabled by default, reasoning_effort supported)
-    ModelRule { prefix: "deepseek-v4-pro", patch: CapabilityPatch {
-        supports_thinking: Some(true), supports_reasoning_effort: Some(true),
-        supports_temperature: Some(false), supports_top_p: Some(false),
-        max_context_tokens: Some(Some(128_000)), max_output_tokens: Some(Some(16_000)),
-        ..P
-    }},
-    ModelRule { prefix: "deepseek-v4-flash", patch: CapabilityPatch {
-        supports_thinking: Some(true), supports_reasoning_effort: Some(true),
-        supports_temperature: Some(false), supports_top_p: Some(false),
-        max_context_tokens: Some(Some(128_000)), max_output_tokens: Some(Some(16_000)),
-        ..P
-    }},
-    // Legacy (deprecated 2026-07-24)
-    ModelRule { prefix: "deepseek-reasoner", patch: CapabilityPatch {
-        supports_thinking: Some(true),
-        supports_temperature: Some(false), supports_top_p: Some(false),
-        max_context_tokens: Some(Some(64_000)), max_output_tokens: Some(Some(16_000)),
-        ..P
-    }},
-    ModelRule { prefix: "deepseek-chat", patch: CapabilityPatch {
-        supports_thinking: Some(false),
-        max_context_tokens: Some(Some(64_000)), max_output_tokens: Some(Some(16_000)),
-        ..P
-    }},
-];
+/// The gemma_tool format simulates function calling through prompt injection on
+/// a plain chat/completions endpoint, so it has no reasoning surface at all and
+/// must not inherit OpenAI model rules -- a gemma_tool provider serving a model
+/// named `gpt-4o` is not GPT-4o.
+fn gemma_default() -> ProviderCapabilities {
+    ProviderCapabilities {
+        supports_tools: true,
+        supports_streaming_tools: true,
+        supports_temperature: true,
+        supports_top_p: true,
+        max_temperature: Some(2.0),
+        ..Default::default()
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 pub fn resolve(provider_type: &str, api_format: Option<&str>, model: &str) -> ProviderCapabilities {
-    let (mut caps, rules): (ProviderCapabilities, &[ModelRule]) = match provider_type {
-        "anthropic" => (anthropic_default(), ANTHROPIC_RULES),
-        "deepseek" => (deepseek_default(), DEEPSEEK_RULES),
+    // `catalog_provider` scopes the prefix search. gemma_tool deliberately maps
+    // to a namespace with no entries so it only ever gets its default.
+    let (mut caps, catalog_provider) = match provider_type {
+        "anthropic" => (anthropic_default(), "anthropic"),
+        "deepseek" => (deepseek_default(), "deepseek"),
         _ => match api_format {
-            Some("responses") => (openai_responses_default(), OPENAI_RULES),
-            _ => (generic_default(), OPENAI_RULES),
+            Some("responses") => (openai_responses_default(), "openai"),
+            Some("gemma_tool") => (gemma_default(), "gemma"),
+            _ => (generic_default(), "openai"),
         },
     };
-    if let Some(patch) = find_longest_prefix_match(rules, model) {
-        apply(&mut caps, patch);
+    if let Some(entry) = find_longest_prefix_match(catalog_provider, model) {
+        apply(&mut caps, entry);
     }
+    caps.supports_reasoning_effort = !caps.supported_efforts.is_empty();
     caps
 }
 
+/// Merge a user-authored JSON patch from `model_configs.capability_overrides`.
+/// Malformed or unknown content is ignored rather than fatal: a bad override
+/// should degrade to catalog behaviour, not brick the model.
+pub fn apply_overrides(caps: &mut ProviderCapabilities, overrides: Option<&str>) {
+    let Some(raw) = overrides else { return };
+    let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(raw) else {
+        return;
+    };
+    let as_bool = |v: &serde_json::Value| v.as_bool();
+    for (key, value) in &map {
+        match key.as_str() {
+            "supports_tools" => if let Some(v) = as_bool(value) { caps.supports_tools = v },
+            "supports_streaming_tools" => if let Some(v) = as_bool(value) { caps.supports_streaming_tools = v },
+            "supports_thinking" => if let Some(v) = as_bool(value) { caps.supports_thinking = v },
+            "supports_images" => if let Some(v) = as_bool(value) { caps.supports_images = v },
+            "supports_pdf" => if let Some(v) = as_bool(value) { caps.supports_pdf = v },
+            "supports_temperature" => if let Some(v) = as_bool(value) { caps.supports_temperature = v },
+            "supports_top_p" => if let Some(v) = as_bool(value) { caps.supports_top_p = v },
+            "supports_fast" => if let Some(v) = as_bool(value) { caps.supports_fast = v },
+            "supports_verbosity" => if let Some(v) = as_bool(value) { caps.supports_verbosity = v },
+            "thinking_style" => {
+                if let Ok(style) = serde_json::from_value::<ThinkingStyle>(value.clone()) {
+                    caps.thinking_style = style;
+                }
+            }
+            "supported_efforts" => {
+                if let Some(arr) = value.as_array() {
+                    // Rebuild through the ladder so the stored order can't break
+                    // the median coercion, and unknown tiers are dropped.
+                    caps.supported_efforts = EFFORT_LADDER
+                        .iter()
+                        .filter(|tier| arr.iter().any(|v| v.as_str() == Some(**tier)))
+                        .map(|tier| (*tier).to_string())
+                        .collect();
+                }
+            }
+            "default_effort" => caps.default_effort = value.as_str().map(str::to_string),
+            "default_verbosity" => caps.default_verbosity = value.as_str().map(str::to_string),
+            "max_context_tokens" => caps.max_context_tokens = value.as_u64().map(|v| v as u32),
+            "max_output_tokens" => caps.max_output_tokens = value.as_u64().map(|v| v as u32),
+            "max_temperature" => caps.max_temperature = value.as_f64().map(|v| v as f32),
+            _ => {}
+        }
+    }
+    caps.supports_reasoning_effort = !caps.supported_efforts.is_empty();
+}
+
+/// Resolve the effective thinking triple from an assistant's stored defaults
+/// plus an optional per-request tier. Shared by the chat command and the OneBot
+/// agent so the two entry points cannot drift apart.
+///
+/// An unrecognised tier falls back to the assistant default rather than being
+/// forwarded verbatim -- passing a tier no provider accepts is a 400.
+pub fn resolve_thinking(
+    assistant_enabled: bool,
+    assistant_budget: Option<i32>,
+    requested_level: Option<&str>,
+) -> (bool, Option<i32>, Option<String>) {
+    match requested_level {
+        Some("off") => (false, None, None),
+        Some(level) if EFFORT_LADDER.contains(&level) => (true, assistant_budget, Some(level.to_string())),
+        _ => (assistant_enabled, assistant_budget, None),
+    }
+}
+
+/// Coerce an effort tier onto what this model actually accepts. An unsupported
+/// tier lands on the median of the whitelist rather than being dropped, so
+/// switching models degrades the request instead of silently disabling
+/// reasoning (mirrors Codex `session/turn_context.rs`).
+pub fn nearest_supported_effort(current: &str, supported: &[String]) -> Option<String> {
+    if supported.is_empty() {
+        return None;
+    }
+    if supported.iter().any(|e| e == current) {
+        return Some(current.to_string());
+    }
+    supported.get(supported.len().saturating_sub(1) / 2).cloned()
+}
+
 pub fn filter_params(params: &mut ChatParams, caps: &ProviderCapabilities) {
+    params.thinking_style = caps.thinking_style;
     if !caps.supports_temperature {
         params.temperature = None;
     }
@@ -291,8 +266,27 @@ pub fn filter_params(params: &mut ChatParams, caps: &ProviderCapabilities) {
         params.thinking_budget = None;
         params.thinking_effort = None;
     }
-    if !caps.supports_reasoning_effort {
-        params.thinking_effort = None;
+    params.thinking_effort = params
+        .thinking_effort
+        .as_deref()
+        .and_then(|effort| nearest_supported_effort(effort, &caps.supported_efforts));
+    // budget_tokens is rejected outright by adaptive/always-on models, and is
+    // meaningless where effort is the only knob.
+    if matches!(
+        caps.thinking_style,
+        ThinkingStyle::Adaptive | ThinkingStyle::AlwaysOn | ThinkingStyle::EffortOnly
+    ) {
+        params.thinking_budget = None;
+    }
+    if !caps.supports_fast {
+        params.fast = false;
+    }
+    if caps.supports_verbosity {
+        if params.verbosity.is_none() {
+            params.verbosity = caps.default_verbosity.clone();
+        }
+    } else {
+        params.verbosity = None;
     }
     if let (Some(max_temp), Some(temp)) = (caps.max_temperature, params.temperature) {
         if temp > max_temp as f64 {
@@ -304,6 +298,11 @@ pub fn filter_params(params: &mut ChatParams, caps: &ProviderCapabilities) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn catalog_parses() {
+        assert!(!CATALOG.models.is_empty());
+    }
 
     #[test]
     fn anthropic_claude_3_haiku_no_thinking() {
@@ -435,5 +434,184 @@ mod tests {
         assert!(!caps_3_sonnet.supports_thinking);
         assert!(!caps_3_sonnet.supports_pdf);
         assert_eq!(caps_3_sonnet.max_output_tokens, Some(4_096));
+    }
+
+    // --- new coverage ---
+
+    #[test]
+    fn gpt_5_6_sol_full_effort_ladder() {
+        let caps = resolve("openai", Some("responses"), "gpt-5.6-sol");
+        assert!(caps.supports_thinking);
+        assert_eq!(caps.thinking_style, ThinkingStyle::EffortOnly);
+        assert_eq!(caps.supported_efforts, vec!["low", "medium", "high", "xhigh", "max"]);
+        assert_eq!(caps.default_effort, Some("low".into()));
+        assert!(caps.supports_fast);
+        assert!(caps.supports_verbosity);
+    }
+
+    #[test]
+    fn bare_gpt_5_6_alias_resolves_like_sol() {
+        let caps = resolve("openai", Some("responses"), "gpt-5.6");
+        assert_eq!(caps.supported_efforts, vec!["low", "medium", "high", "xhigh", "max"]);
+        assert_eq!(caps.default_effort, Some("low".into()));
+    }
+
+    #[test]
+    fn gpt_5_2_has_no_max_tier_and_no_fast() {
+        let caps = resolve("openai", Some("responses"), "gpt-5.2");
+        assert_eq!(caps.supported_efforts, vec!["low", "medium", "high", "xhigh"]);
+        assert!(!caps.supports_fast);
+    }
+
+    #[test]
+    fn claude_opus_4_8_is_adaptive_and_rejects_sampling() {
+        let caps = resolve("anthropic", None, "claude-opus-4-8");
+        assert_eq!(caps.thinking_style, ThinkingStyle::Adaptive);
+        assert!(!caps.supports_temperature);
+        assert!(!caps.supports_top_p);
+        assert!(caps.supports_fast);
+        assert_eq!(caps.supported_efforts, vec!["low", "medium", "high", "xhigh", "max"]);
+    }
+
+    #[test]
+    fn claude_opus_4_6_has_no_xhigh() {
+        let caps = resolve("anthropic", None, "claude-opus-4-6");
+        assert_eq!(caps.supported_efforts, vec!["low", "medium", "high", "max"]);
+        assert!(caps.supports_temperature);
+        assert!(!caps.supports_fast);
+    }
+
+    #[test]
+    fn claude_fable_5_is_always_on() {
+        let caps = resolve("anthropic", None, "claude-fable-5");
+        assert_eq!(caps.thinking_style, ThinkingStyle::AlwaysOn);
+        assert!(!caps.supports_temperature);
+    }
+
+    #[test]
+    fn claude_haiku_4_5_has_no_effort() {
+        let caps = resolve("anthropic", None, "claude-haiku-4-5");
+        assert!(caps.supports_thinking);
+        assert!(caps.supported_efforts.is_empty());
+        assert!(!caps.supports_reasoning_effort);
+    }
+
+    #[test]
+    fn adaptive_model_drops_thinking_budget() {
+        let caps = resolve("anthropic", None, "claude-opus-4-8");
+        let mut params = ChatParams {
+            model: "claude-opus-4-8".into(),
+            temperature: Some(0.7),
+            thinking_enabled: true,
+            thinking_budget: Some(10_000),
+            thinking_effort: Some("xhigh".into()),
+            ..Default::default()
+        };
+        filter_params(&mut params, &caps);
+        assert!(params.temperature.is_none(), "sampling params are a 400 on Opus 4.7+");
+        assert!(params.thinking_budget.is_none(), "budget_tokens is a 400 on adaptive models");
+        assert_eq!(params.thinking_effort, Some("xhigh".into()));
+    }
+
+    #[test]
+    fn budget_model_keeps_budget_tokens() {
+        let caps = resolve("anthropic", None, "claude-sonnet-4-20250514");
+        let mut params = ChatParams {
+            model: "claude-sonnet-4-20250514".into(),
+            thinking_enabled: true,
+            thinking_budget: Some(10_000),
+            ..Default::default()
+        };
+        filter_params(&mut params, &caps);
+        assert_eq!(params.thinking_budget, Some(10_000));
+    }
+
+    #[test]
+    fn unsupported_effort_falls_back_to_median() {
+        // gpt-5.2 tops out at xhigh; "max" must land on the median rather than
+        // being dropped or passed through to a 400.
+        let caps = resolve("openai", Some("responses"), "gpt-5.2");
+        let mut params = ChatParams {
+            model: "gpt-5.2".into(),
+            thinking_enabled: true,
+            thinking_effort: Some("max".into()),
+            ..Default::default()
+        };
+        filter_params(&mut params, &caps);
+        assert_eq!(params.thinking_effort, Some("medium".into()));
+    }
+
+    #[test]
+    fn nearest_supported_effort_cases() {
+        let full: Vec<String> = ["low", "medium", "high", "xhigh", "max"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(nearest_supported_effort("xhigh", &full), Some("xhigh".into()));
+        assert_eq!(nearest_supported_effort("minimal", &full), Some("high".into()));
+        assert_eq!(nearest_supported_effort("high", &[]), None);
+
+        let three: Vec<String> = ["low", "medium", "high"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(nearest_supported_effort("max", &three), Some("medium".into()));
+    }
+
+    #[test]
+    fn fast_is_stripped_when_unsupported() {
+        let caps = resolve("openai", Some("responses"), "gpt-5.2");
+        let mut params = ChatParams { model: "gpt-5.2".into(), fast: true, ..Default::default() };
+        filter_params(&mut params, &caps);
+        assert!(!params.fast);
+    }
+
+    #[test]
+    fn verbosity_defaults_from_catalog_and_is_stripped_when_unsupported() {
+        let caps = resolve("openai", Some("responses"), "gpt-5.6-sol");
+        let mut params = ChatParams { model: "gpt-5.6-sol".into(), ..Default::default() };
+        filter_params(&mut params, &caps);
+        assert_eq!(params.verbosity, Some("low".into()));
+
+        let caps = resolve("anthropic", None, "claude-opus-4-8");
+        let mut params = ChatParams {
+            model: "claude-opus-4-8".into(),
+            verbosity: Some("high".into()),
+            ..Default::default()
+        };
+        filter_params(&mut params, &caps);
+        assert!(params.verbosity.is_none(), "Anthropic has no verbosity parameter");
+    }
+
+    #[test]
+    fn gemma_tool_does_not_inherit_openai_rules() {
+        // A gemma_tool provider serving a model called "gpt-4o" is not GPT-4o.
+        let caps = resolve("openai", Some("gemma_tool"), "gpt-4o");
+        assert!(!caps.supports_images);
+        assert!(!caps.supports_thinking);
+        assert!(caps.supported_efforts.is_empty());
+    }
+
+    #[test]
+    fn responses_format_gets_reasoning_defaults() {
+        let caps = resolve("openai", Some("responses"), "some-unknown-reasoning-model");
+        assert!(caps.supports_thinking);
+        assert!(caps.supports_reasoning_effort);
+        assert_eq!(caps.thinking_style, ThinkingStyle::EffortOnly);
+    }
+
+    #[test]
+    fn overrides_patch_catalog() {
+        let mut caps = resolve("anthropic", None, "claude-haiku-4-5");
+        assert!(caps.supported_efforts.is_empty());
+        apply_overrides(&mut caps, Some(r#"{"supported_efforts":["high","low"],"supports_fast":true}"#));
+        // Rebuilt through the ladder, so ascending order regardless of input order.
+        assert_eq!(caps.supported_efforts, vec!["low", "high"]);
+        assert!(caps.supports_reasoning_effort);
+        assert!(caps.supports_fast);
+    }
+
+    #[test]
+    fn malformed_overrides_are_ignored() {
+        let mut caps = resolve("anthropic", None, "claude-opus-4-8");
+        let before = caps.supported_efforts.clone();
+        apply_overrides(&mut caps, Some("not json at all"));
+        apply_overrides(&mut caps, Some("[1,2,3]"));
+        apply_overrides(&mut caps, None);
+        assert_eq!(caps.supported_efforts, before);
     }
 }

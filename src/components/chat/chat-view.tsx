@@ -21,6 +21,7 @@ import { useMessageScroller } from '@/components/ui/message-scroller'
 import { InputBar, type AttachedFile } from './input-bar'
 import { useEmojiMap } from './emoji-renderer'
 import { useConversationStore } from '@/stores/conversation-store'
+import { coerceThinkingLevel } from '@/lib/thinking'
 import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
 const MotionMessageScrollerItem = motion.create(MessageScrollerItem)
@@ -51,6 +52,14 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const conversationAssistantId = useConversationStore(
     (s) => s.conversations.find((c) => c.id === conversationId)?.assistant_id ?? null,
   )
+  // Kept as two primitive selectors: returning an object here would allocate a
+  // fresh reference on every store update and re-render on each one.
+  const conversationThinkingLevel = useConversationStore(
+    (s) => s.conversations.find((c) => c.id === conversationId)?.thinking_level ?? null,
+  )
+  const conversationFastMode = useConversationStore(
+    (s) => (s.conversations.find((c) => c.id === conversationId)?.fast_mode ?? 0) !== 0,
+  )
   const refreshConversations = useConversationStore((s) => s.refreshConversations)
 
   const messages = session?.messages ?? []
@@ -66,6 +75,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('default')
+  const [fastMode, setFastMode] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [capabilities, setCapabilities] = useState<ProviderCapabilities | null>(null)
   const [showCompactedMessages, setShowCompactedMessages] = useState(false)
@@ -121,12 +131,52 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   }, [])
 
   useEffect(() => {
-    if (selectedProviderId && selectedModelId) {
-      api.getProviderCapabilities(selectedProviderId, selectedModelId)
-        .then(setCapabilities)
-        .catch(() => setCapabilities(null))
+    if (!selectedProviderId || !selectedModelId) {
+      // Clearing matters: keeping the previous model's capabilities would leave
+      // the toolbar offering tiers the current selection may not support.
+      setCapabilities(null)
+      return
     }
+    api.getProviderCapabilities(selectedProviderId, selectedModelId)
+      .then(setCapabilities)
+      .catch(() => setCapabilities(null))
   }, [selectedProviderId, selectedModelId])
+
+  // Seed from the conversation's stored preferences on switch only. Keyed on
+  // conversationId alone so a background refreshConversations() can't clobber
+  // an edit the user just made.
+  useEffect(() => {
+    setThinkingLevel((conversationThinkingLevel as ThinkingLevel | null) ?? 'default')
+    setFastMode(conversationFastMode)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed-on-switch; see comment
+  }, [conversationId])
+
+  // Model switch: drop to a tier the new model actually accepts. In-memory
+  // only -- the stored preference keeps the user's original intent so switching
+  // back to a more capable model restores it.
+  useEffect(() => {
+    if (!capabilities) return
+    setThinkingLevel((cur) => coerceThinkingLevel(cur, capabilities))
+    if (capabilities.supports_fast !== true) setFastMode(false)
+  }, [capabilities])
+
+  const handleSelectThinkingLevel = useCallback((level: ThinkingLevel) => {
+    setThinkingLevel(level)
+    api.setConversationReasoningPrefs(conversationId, level === 'default' ? null : level, fastMode)
+      .then(() => refreshConversations())
+      .catch(() => { /* selection still applies locally for this session */ })
+  }, [conversationId, fastMode, refreshConversations])
+
+  const handleToggleFast = useCallback((next: boolean) => {
+    setFastMode(next)
+    api.setConversationReasoningPrefs(
+      conversationId,
+      thinkingLevel === 'default' ? null : thinkingLevel,
+      next,
+    )
+      .then(() => refreshConversations())
+      .catch(() => { /* toggle still applies locally for this session */ })
+  }, [conversationId, thinkingLevel, refreshConversations])
 
   const handleStop = useCallback(() => {
     api.stopChat(conversationId)
@@ -223,14 +273,14 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     }
 
     api
-      .chat(conversationId, messageContent, selectedModelId ?? undefined, selectedProviderId ?? undefined, thinkingLevel !== 'default' ? thinkingLevel : undefined, selectedAssistantId ?? undefined)
+      .chat(conversationId, messageContent, selectedModelId ?? undefined, selectedProviderId ?? undefined, thinkingLevel !== 'default' ? thinkingLevel : undefined, selectedAssistantId ?? undefined, fastMode || undefined)
       .catch((err) => {
         storeSetError(conversationId, String(err))
         storeSetStreaming(conversationId, false)
         submittingRef.current = false
         storeLoadMessages(conversationId)
       })
-  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, selectedAssistantId, storeSetStreaming, storeSetError, storeLoadMessages])
+  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, fastMode, selectedAssistantId, storeSetStreaming, storeSetError, storeLoadMessages])
 
   // Reset submittingRef when streaming ends
   useEffect(() => {
@@ -472,7 +522,9 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         onSelectAssistant={handleSelectAssistant}
         onSelectModel={handleSelectModel}
         thinkingLevel={thinkingLevel}
-        onSelectThinkingLevel={setThinkingLevel}
+        onSelectThinkingLevel={handleSelectThinkingLevel}
+        fastMode={fastMode}
+        onToggleFast={handleToggleFast}
         capabilities={capabilities}
         contextInfo={contextInfo}
         compacting={compacting}
