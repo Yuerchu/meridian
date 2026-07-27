@@ -4,7 +4,7 @@ use tauri::Emitter;
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-use super::agent::{self, ApprovalFn};
+use super::agent::{self, ApprovalFn, TextNotifyFn};
 use super::command::{self, SlashCommand};
 use super::format;
 use super::protocol::{MessageSegment, OneBotAction, OneBotEvent};
@@ -236,16 +236,27 @@ fn make_approval_fn(
     let is_group = session_key.kind == SessionKind::Group;
     let group_id = session_key.id;
 
-    Box::new(move |tc: crate::provider::ToolCall| {
+    Box::new(move |tc: crate::provider::ToolCall, sandbox_reason: Option<String>| {
         let state = state.clone();
         let session_str = session_str.clone();
 
         Box::pin(async move {
-            let prompt = format!(
-                "🔧 工具调用请求:\n工具: {}\n参数: {}\n\n回复 Y 批准，其他内容拒绝（60秒超时）",
-                tc.name,
-                truncate_args(&tc.arguments, 500),
-            );
+            // A sandbox reason means this is the second ask for the same call
+            // (escalation to run without sandbox); say so, or it reads as a
+            // duplicate of the prompt just answered.
+            let prompt = match sandbox_reason {
+                Some(reason) => format!(
+                    "⚠️ 命令被沙箱拦截:\n工具: {}\n参数: {}\n拦截输出: {}\n\n回复 Y 在沙箱外重试，其他内容拒绝（60秒超时）",
+                    tc.name,
+                    truncate_args(&tc.arguments, 500),
+                    truncate_args(&reason, 300),
+                ),
+                None => format!(
+                    "🔧 工具调用请求:\n工具: {}\n参数: {}\n\n回复 Y 批准，其他内容拒绝（60秒超时）",
+                    tc.name,
+                    truncate_args(&tc.arguments, 500),
+                ),
+            };
 
             let approval_msg = if is_group {
                 OneBotAction::send_group_msg(
@@ -273,6 +284,27 @@ fn make_approval_fn(
                     let mut approvals = state.pending_approvals.lock().await;
                     approvals.remove(&session_str);
                     false
+                }
+            }
+        })
+    })
+}
+
+/// Build the callback that pushes mid-turn assistant text (the commentary a
+/// model emits alongside tool calls) to the chat as it happens; the final
+/// text still goes out through the normal turn-end reply.
+fn make_interim_text_fn(state: &Arc<SharedState>, session_key: &SessionKey) -> TextNotifyFn {
+    let state = state.clone();
+    let session_key = session_key.clone();
+
+    Box::new(move |text: String| {
+        let state = state.clone();
+        let session_key = session_key.clone();
+
+        Box::pin(async move {
+            for chunk in format::split_long_message(&text) {
+                for action in build_session_reply(&session_key, &chunk, None) {
+                    super::send_action_nowait(&state, &action).await;
                 }
             }
         })
@@ -320,6 +352,7 @@ pub(super) async fn run_agent_turn(
     };
 
     let approval_fn = make_approval_fn(state, session_key, initiator_user_id);
+    let interim_text_fn = make_interim_text_fn(state, session_key);
     let cancel = CancellationToken::new();
     let qq_tools = super::qq_tools::QqToolExecutor::new(state.clone(), session_key.clone(), is_admin);
     let inbox = super::InboxHandle::new(state.clone(), session_key.clone());
@@ -340,6 +373,7 @@ pub(super) async fn run_agent_turn(
             model_override.as_deref(),
             is_admin,
             &approval_fn,
+            Some(&interim_text_fn),
             &cancel,
             state.app_handle.as_ref(),
             Some(&qq_tools),

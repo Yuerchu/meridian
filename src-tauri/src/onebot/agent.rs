@@ -15,7 +15,15 @@ use crate::tools::{self, ToolRegistry};
 use crate::util::{get_conn, now_ms};
 use crate::agent::{build_messages, is_context_window_error, is_retryable_stream_error, microcompact, mid_turn_compact, resolve_provider_config, trim_to_context_limit, StreamResult, TokenBudget, MAX_STREAM_RETRIES, STREAM_RETRY_BASE};
 
-pub type ApprovalFn = Box<dyn Fn(ToolCall) -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
+/// `(tool_call, sandbox_block_reason)` → approved. The reason is `Some` only
+/// for the retry-without-sandbox escalation ask, so the prompt can say why a
+/// second approval for the same call is being requested.
+pub type ApprovalFn = Box<dyn Fn(ToolCall, Option<String>) -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
+
+/// Called with each tool-calling iteration's assistant text before the tools
+/// execute, so headless frontends can deliver mid-turn commentary in order
+/// (the final iteration's text is the return value instead).
+pub type TextNotifyFn = Box<dyn Fn(String) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
 const STREAM_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
@@ -195,6 +203,7 @@ pub async fn headless_chat(
     model_override: Option<&str>,
     is_admin: bool,
     approval_fn: &ApprovalFn,
+    interim_text_fn: Option<&TextNotifyFn>,
     cancel: &CancellationToken,
     app: Option<&tauri::AppHandle>,
     qq_tools: Option<&super::qq_tools::QqToolExecutor>,
@@ -559,6 +568,14 @@ pub async fn headless_chat(
 
         if !has_tool_calls { break; }
 
+        // Mid-turn commentary would otherwise never leave the DB: only the
+        // final iteration's text is returned to the caller.
+        if !result.text.is_empty() {
+            if let Some(notify) = interim_text_fn {
+                (notify)(result.text.clone()).await;
+            }
+        }
+
         let mut assistant_msg = ChatMessage::assistant_with_tools(
             &result.text,
             if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) },
@@ -598,7 +615,7 @@ pub async fn headless_chat(
             } else if let Some(qq) = qq_tools.filter(|q| q.owns(&tc.name)) {
                 // Query tools are scope-locked and read-only; action tools
                 // (recall/ban/kick/…) go through the chat approval flow.
-                let approved = !qq.requires_approval(&tc.name) || (approval_fn)(tc.clone()).await;
+                let approved = !qq.requires_approval(&tc.name) || (approval_fn)(tc.clone(), None).await;
                 if approved {
                     match qq.execute(&tc.name, &tc.arguments).await {
                         Ok(output) => (output, "success"),
@@ -609,7 +626,7 @@ pub async fn headless_chat(
                 }
             } else if is_mcp {
                 // External MCP tools require approval, same as Ask tools.
-                if (approval_fn)(tc.clone()).await {
+                if (approval_fn)(tc.clone(), None).await {
                     let args: serde_json::Value = serde_json::from_str(&tc.arguments)
                         .unwrap_or_else(|_| serde_json::json!({}));
                     let mut mgr = mcp_manager.lock().await;
@@ -621,7 +638,7 @@ pub async fn headless_chat(
                     ("Tool call denied by user.".to_string(), "denied")
                 }
             } else if tc.name == "ask_user" {
-                let approved = (approval_fn)(tc.clone()).await;
+                let approved = (approval_fn)(tc.clone(), None).await;
                 if approved {
                     ("User approved.".to_string(), "success")
                 } else {
@@ -632,7 +649,7 @@ pub async fn headless_chat(
                 let approved = match permission {
                     tools::Permission::Always => true,
                     tools::Permission::Never => false,
-                    tools::Permission::Ask => (approval_fn)(tc.clone()).await,
+                    tools::Permission::Ask => (approval_fn)(tc.clone(), None).await,
                 };
                 if approved {
                     let args: serde_json::Value = serde_json::from_str(&tc.arguments)
@@ -648,7 +665,7 @@ pub async fn headless_chat(
                                     name: tc.name.clone(),
                                     arguments: tc.arguments.clone(),
                                 };
-                                if (approval_fn)(retry_tc).await {
+                                if (approval_fn)(retry_tc, Some(blocked.to_string())).await {
                                     match tool.execute(args, &tool_context.without_sandbox()).await {
                                         Ok(o) => (o, "success"),
                                         Err(e2) => (format!("Error: {e2}"), "error"),
