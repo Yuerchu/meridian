@@ -45,7 +45,25 @@ pub struct SharedState {
     pub session_states: Mutex<HashMap<String, SessionState>>,
     pub config: OneBotConfig,
     pub app_handle: Option<tauri::AppHandle>,
+    /// (session, user) → the memory ids their last listing showed, in the order
+    /// it showed them. Numbers only mean something against the listing they came
+    /// from; see `MemoryListing`.
+    pub memory_listings: Mutex<HashMap<(String, i64), MemoryListing>>,
 }
+
+/// A numbered listing shown to one person, so `/memory forget 2` can resolve
+/// "2" to the row they actually saw.
+///
+/// Expires rather than falling back to the current order: between listing and
+/// deleting, a memory can be added or removed, and silently renumbering would
+/// delete something the person never chose.
+pub struct MemoryListing {
+    pub ids: Vec<String>,
+    pub created_at: i64,
+}
+
+/// How long a numbered listing stays valid.
+pub const MEMORY_LISTING_TTL_MS: i64 = 300 * 1000;
 
 /// Cap on queued notice notes per session (user messages are not capped).
 const NOTICE_INBOX_CAP: usize = 5;
@@ -457,6 +475,7 @@ impl OneBotServer {
                 ws_sinks: Mutex::new(HashMap::new()),
                 connected_clients: AtomicU32::new(0),
                 session_states: Mutex::new(HashMap::new()),
+                memory_listings: Mutex::new(HashMap::new()),
                 config,
                 pool,
                 secrets,
