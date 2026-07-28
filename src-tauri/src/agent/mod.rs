@@ -17,7 +17,7 @@ mod truncate;
 
 pub(crate) use base_prompt::base_prompt;
 pub(crate) use compact::{do_compact, mid_turn_compact, CompactCircuitBreaker, CompactError, COMPACT_PROMPT};
-pub(crate) use context::{build_messages, estimate_tokens, microcompact, remove_orphan_tool_messages, resolve_file_uris_in_messages, trim_to_context_limit};
+pub(crate) use context::{build_messages, build_messages_with_senders, estimate_tokens, microcompact, remove_orphan_tool_messages, resolve_file_uris_in_messages, trim_to_context_limit, SenderNames};
 pub(crate) use file_access::{build_file_access, file_access_prompt};
 pub(crate) use inline_tag::{InlineHiddenTagParser, InlineTagSpec};
 pub(crate) use loop_guard::{loop_abort_message, loop_warning_message, LoopVerdict, ToolLoopGuard};

@@ -107,11 +107,21 @@ impl AnthropicProvider {
                             _ => p.clone()
                         }
                     }).collect();
+                    // Anthropic has no `name`, so a known speaker becomes a
+                    // leading text block rather than being lost.
+                    let mut anthropic_parts = anthropic_parts;
+                    if let Some(sender) = m.origin.sender() {
+                        anthropic_parts.insert(0, serde_json::json!({
+                            "type": "text",
+                            "text": format!("<sender>{}</sender>: ", sender.display()),
+                        }));
+                    }
                     out.push(serde_json::json!({"role": m.role, "content": anthropic_parts}));
                     continue;
                 }
             }
-            out.push(serde_json::json!({"role": m.role, "content": m.content}));
+            let rendered = super::render_message(m, super::SenderRendering::Prefix);
+            out.push(serde_json::json!({"role": m.role, "content": rendered.content}));
         }
 
         if !pending_tool_results.is_empty() {
@@ -128,11 +138,18 @@ impl AnthropicProvider {
         params: &ChatParams,
         stream: bool,
     ) -> Request {
-        let system = messages.iter()
+        let mut system = messages.iter()
             .filter(|m| m.role == "system")
             .map(|m| m.content.as_str())
             .collect::<Vec<_>>()
             .join("\n\n");
+        // Explain the degraded sender marker only when one is actually present.
+        if super::needs_sender_note(messages, super::SenderRendering::Prefix) {
+            if !system.is_empty() {
+                system.push_str("\n\n");
+            }
+            system.push_str(super::SENDER_PREFIX_NOTE);
+        }
 
         let mut body = serde_json::json!({
             "model": params.model,

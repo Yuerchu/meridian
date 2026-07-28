@@ -138,6 +138,7 @@ fn inject_tool_prompt(messages: &[ChatMessage], tool_prompt: &str) -> Vec<ChatMe
             tool_calls: None,
             tool_call_id: None,
             signature: None,
+            origin: super::MessageOrigin::Assistant,
         },
     );
     result
@@ -193,7 +194,19 @@ fn serialize_gemma_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> 
                 );
                 serde_json::json!({ "role": "tool", "content": content })
             }
-            _ => serde_json::json!({ "role": m.role, "content": content_value(&m.content) }),
+            // User and system rows: chat-completions shape, so identity rides
+            // the native `name` field rather than the body.
+            _ => {
+                let rendered = super::render_message(m, super::SenderRendering::NameField);
+                let mut msg = serde_json::json!({
+                    "role": m.role,
+                    "content": content_value(&rendered.content),
+                });
+                if let Some(ref name) = rendered.name {
+                    msg["name"] = serde_json::json!(name);
+                }
+                msg
+            }
         })
         .collect()
 }

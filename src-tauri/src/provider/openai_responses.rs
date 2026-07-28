@@ -103,10 +103,13 @@ fn serialize_responses_input(messages: &[ChatMessage]) -> (Option<String>, Vec<s
                 }
             }
             "user" => {
+                // Responses input items have no `name` field (unlike
+                // chat-completions), so the speaker goes in as a prefix.
+                let rendered = super::render_message(m, super::SenderRendering::Prefix);
                 input.push(serde_json::json!({
                     "type": "message",
                     "role": "user",
-                    "content": [{"type": "input_text", "text": m.content}],
+                    "content": [{"type": "input_text", "text": rendered.content}],
                 }));
             }
             "assistant" => {
@@ -139,6 +142,14 @@ fn serialize_responses_input(messages: &[ChatMessage]) -> (Option<String>, Vec<s
             }
             _ => {}
         }
+    }
+
+    if super::needs_sender_note(messages, super::SenderRendering::Prefix) {
+        let note = super::SENDER_PREFIX_NOTE;
+        instructions = Some(match instructions {
+            Some(existing) => format!("{existing}\n\n{note}"),
+            None => note.to_string(),
+        });
     }
 
     (instructions, input)

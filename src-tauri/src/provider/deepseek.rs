@@ -21,7 +21,11 @@ impl DeepSeekProvider {
 
     fn serialize_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
         messages.iter().map(|m| {
-            let mut msg = serde_json::json!({ "role": m.role, "content": m.content });
+            let rendered = super::render_message(m, super::SenderRendering::NameField);
+            let mut msg = serde_json::json!({ "role": m.role, "content": rendered.content });
+            if let Some(ref name) = rendered.name {
+                msg["name"] = serde_json::json!(name);
+            }
             // DeepSeek requires reasoning_content only for assistant messages with
             // tool_calls; for plain assistant replies it is ignored by the API and
             // stripping it keeps the prefix shorter → better cache hit rate.

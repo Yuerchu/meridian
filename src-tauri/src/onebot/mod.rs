@@ -68,11 +68,76 @@ pub enum InboxKind {
     UserMessage,
 }
 
+/// Who sent a message, carried from the platform event through the queue, the
+/// database and into the provider payload. Distinct from `is_admin` alone: that
+/// gates tools, this attributes memories.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SenderContext {
+    pub user_id: i64,
+    pub nickname: Option<String>,
+    /// QQ group role (`owner` / `admin` / `member`), when the event carried one.
+    pub role: Option<String>,
+    pub is_admin: bool,
+    pub is_group: bool,
+}
+
+impl SenderContext {
+    pub fn scope_id(&self) -> String {
+        crate::db::models::memory::onebot_user_scope_id(self.user_id)
+    }
+
+    /// Where anything learned from this person right now was learned. An admin
+    /// speaking is still speaking on a surface — operator authorship is a
+    /// property of explicit commands, not of who happens to be talking.
+    pub fn origin(&self) -> crate::db::models::memory::Origin {
+        if self.is_group {
+            crate::db::models::memory::Origin::Group
+        } else {
+            crate::db::models::memory::Origin::Private
+        }
+    }
+}
+
+impl From<&SenderContext> for crate::provider::SenderRef {
+    fn from(s: &SenderContext) -> Self {
+        crate::provider::SenderRef {
+            user_id: s.user_id,
+            nickname: s.nickname.clone(),
+            role: s.role.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct InboxItem {
     pub text: String,
     pub kind: InboxKind,
     pub created_at: i64,
+    /// `None` for notices, which nobody said. Queued user messages keep their
+    /// own sender: merging them into one blob first would make the speakers
+    /// unrecoverable.
+    pub sender: Option<SenderContext>,
+}
+
+/// One inbound message for a turn. A turn can start with several (queued
+/// messages from different people), and each keeps its own attribution rather
+/// than being flattened into one string.
+#[derive(Debug, Clone)]
+pub struct IncomingMessage {
+    pub text: String,
+    pub sender: Option<SenderContext>,
+}
+
+impl IncomingMessage {
+    pub fn new(text: impl Into<String>, sender: Option<SenderContext>) -> Self {
+        Self { text: text.into(), sender }
+    }
+}
+
+impl From<&InboxItem> for IncomingMessage {
+    fn from(i: &InboxItem) -> Self {
+        Self { text: i.text.clone(), sender: i.sender.clone() }
+    }
 }
 
 fn expire_inbox(inbox: &mut Vec<InboxItem>, now: i64) {
@@ -120,7 +185,8 @@ impl SessionState {
                 self.inbox.remove(pos);
             }
         }
-        self.inbox.push(InboxItem { text, kind: InboxKind::Notice, created_at: now });
+        // Notices are ours, not anyone's utterance.
+        self.inbox.push(InboxItem { text, kind: InboxKind::Notice, created_at: now, sender: None });
     }
 
     fn record_seen(&mut self, message_id: i64) {
@@ -721,7 +787,7 @@ mod tests {
     };
 
     fn item(kind: InboxKind, at: i64) -> InboxItem {
-        InboxItem { text: "x".into(), kind, created_at: at }
+        InboxItem { text: "x".into(), kind, created_at: at, sender: None }
     }
 
     #[test]

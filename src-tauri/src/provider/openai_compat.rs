@@ -89,7 +89,12 @@ fn content_value(content: &str) -> serde_json::Value {
 
 pub fn serialize_openai_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
     messages.iter().map(|m| {
-        let mut msg = serde_json::json!({ "role": m.role, "content": content_value(&m.content) });
+        // chat-completions has a native `name`, so identity never touches the body.
+        let rendered = super::render_message(m, super::SenderRendering::NameField);
+        let mut msg = serde_json::json!({ "role": m.role, "content": content_value(&rendered.content) });
+        if let Some(ref name) = rendered.name {
+            msg["name"] = serde_json::json!(name);
+        }
         if let Some(ref tool_calls) = m.tool_calls {
             msg["tool_calls"] = serde_json::json!(tool_calls.iter().map(|tc| {
                 serde_json::json!({

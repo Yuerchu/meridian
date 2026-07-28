@@ -196,7 +196,7 @@ async fn compact_with_retry(
         };
 
         let msgs = vec![
-            ChatMessage { role: "system".into(), content: system.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None },
+            ChatMessage { role: "system".into(), content: system.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None, origin: crate::provider::MessageOrigin::Assistant },
             ChatMessage::user(&trimmed),
         ];
 

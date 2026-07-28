@@ -77,7 +77,17 @@ async fn handle_poke(
     };
     let content = format!("[系统提示] {display} 戳了戳你");
 
-    handler::run_agent_turn(state, conn_id, &session_key, &title, user_id, content, None).await
+    // A poke is an interaction by a real person, so it carries their identity
+    // and refreshes their memory clock like any other message.
+    let sender = super::SenderContext {
+        user_id,
+        nickname: nickname.clone(),
+        role: None,
+        is_admin: state.config.admin_users.contains(&user_id),
+        is_group: session_key.kind == SessionKind::Group,
+    };
+
+    handler::run_agent_turn(state, conn_id, &session_key, &title, sender, content, None).await
 }
 
 async fn handle_recall(event: &OneBotEvent, state: &Arc<SharedState>) {

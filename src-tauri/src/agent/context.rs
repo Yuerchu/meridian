@@ -1,38 +1,79 @@
+use std::collections::HashMap;
+
 use crate::db::models::message::Message;
-use crate::provider::{self, ChatMessage};
+use crate::provider::{self, ChatMessage, SenderRef};
 
 use super::tokenizer::{TokenBudget, TokenCounter, TokenizerKind};
 use super::tool_calls::{extract_tool_calls_from_blocks, parse_openai_tool_calls};
 
+/// Last known nickname per platform user id. Nicknames are not stored on the
+/// message row (they change), so multi-speaker surfaces pass a lookup built
+/// from the subject table.
+pub(crate) type SenderNames = HashMap<i64, String>;
+
+/// Single-speaker surfaces (desktop chat) and tests.
 pub(crate) fn build_messages(
     system_prompt: &str,
     history: &[Message],
     user_message: &str,
     compact_cursor: Option<i32>,
 ) -> Vec<ChatMessage> {
+    build_messages_with_senders(
+        system_prompt,
+        history,
+        vec![ChatMessage::user(user_message)],
+        compact_cursor,
+        &SenderNames::new(),
+    )
+}
+
+/// `trailing` carries this turn's new messages, each already attributed by the
+/// caller. History rows are attributed from their stored `sender_id`; rows
+/// written before that column existed stay `LegacyUser` — someone said them, but
+/// who is not recoverable, and reading it back out of the text prefix would let
+/// a user forge it.
+pub(crate) fn build_messages_with_senders(
+    system_prompt: &str,
+    history: &[Message],
+    trailing: Vec<ChatMessage>,
+    compact_cursor: Option<i32>,
+    sender_names: &SenderNames,
+) -> Vec<ChatMessage> {
     let mut msgs = Vec::new();
     if !system_prompt.is_empty() {
-        msgs.push(ChatMessage { role: "system".into(), content: system_prompt.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None });
+        msgs.push(ChatMessage { role: "system".into(), content: system_prompt.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None, origin: provider::MessageOrigin::Assistant });
     }
     if let Some(cursor) = compact_cursor {
         if let Some(summary) = history.iter().find(|m| m.is_compact_summary == 1) {
-            msgs.push(ChatMessage::user(&summary.content));
+            // A compaction summary is our own text, not anyone's utterance.
+            msgs.push(ChatMessage::system_context(&summary.content));
         }
         for m in history.iter().filter(|m| m.sort_order >= cursor && m.is_compact_summary == 0) {
-            push_history_message(&mut msgs, m);
+            push_history_message(&mut msgs, m, sender_names);
         }
     } else {
         for m in history.iter().filter(|m| m.is_compact_summary == 0) {
-            push_history_message(&mut msgs, m);
+            push_history_message(&mut msgs, m, sender_names);
         }
     }
-    msgs.push(ChatMessage::user(user_message));
+    msgs.extend(trailing);
     msgs
 }
 
-fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message) {
+fn sender_ref(user_id: i64, names: &SenderNames) -> SenderRef {
+    SenderRef {
+        user_id,
+        nickname: names.get(&user_id).cloned(),
+        role: None,
+    }
+}
+
+fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message, names: &SenderNames) {
     match m.role.as_str() {
-        "user" => msgs.push(ChatMessage::user(&m.content)),
+        "user" => match m.sender_id {
+            Some(uid) => msgs.push(ChatMessage::user_from(&m.content, sender_ref(uid, names))),
+            None => msgs.push(ChatMessage::user(&m.content)),
+        },
         "assistant" => {
             let tool_calls = if m.schema_version >= 2 {
                 parse_openai_tool_calls(m.tool_calls.as_deref())
@@ -45,7 +86,7 @@ fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message) {
             if !tool_calls.is_empty() {
                 msgs.push(ChatMessage::assistant_with_tools(&m.content, reasoning, tool_calls));
             } else {
-                msgs.push(ChatMessage { role: "assistant".into(), content: m.content.clone(), reasoning_content: reasoning, tool_calls: None, tool_call_id: None, signature: None });
+                msgs.push(ChatMessage { role: "assistant".into(), content: m.content.clone(), reasoning_content: reasoning, tool_calls: None, tool_call_id: None, signature: None, origin: provider::MessageOrigin::Assistant });
             }
         }
         "tool" => {
@@ -273,6 +314,7 @@ mod tests {
             tool_calls: None,
             tool_call_id: None,
             signature: None,
+            origin: provider::MessageOrigin::LegacyUser,
         }
     }
 

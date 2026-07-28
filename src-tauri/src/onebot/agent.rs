@@ -13,7 +13,7 @@ use crate::provider::{self, ChatMessage, ChatParams, ChatStream, StreamEvent, To
 use crate::secrets::SecretsManager;
 use crate::tools::{self, ToolRegistry};
 use crate::util::{get_conn, now_ms};
-use crate::agent::{build_messages, is_context_window_error, is_retryable_stream_error, microcompact, mid_turn_compact, resolve_provider_config, trim_to_context_limit, StreamResult, TokenBudget, MAX_STREAM_RETRIES, STREAM_RETRY_BASE};
+use crate::agent::{build_messages_with_senders, is_context_window_error, is_retryable_stream_error, microcompact, mid_turn_compact, resolve_provider_config, trim_to_context_limit, StreamResult, TokenBudget, MAX_STREAM_RETRIES, STREAM_RETRY_BASE};
 
 /// `(tool_call, sandbox_block_reason)` → approved. The reason is `Some` only
 /// for the retry-without-sandbox escalation ask, so the prompt can say why a
@@ -198,7 +198,9 @@ pub async fn headless_chat(
     mcp_manager: &Arc<Mutex<McpManager>>,
     conversation_id: &str,
     project_id: Option<&str>,
-    user_message: &str,
+    // This turn's inbound messages, each keeping its own speaker. Several
+    // arrive at once when messages queued up while a previous turn was running.
+    incoming: &[super::IncomingMessage],
     assistant_id: Option<&str>,
     model_override: Option<&str>,
     is_admin: bool,
@@ -328,7 +330,44 @@ pub async fn headless_chat(
     let max_output = caps.max_output_tokens.map(|t| t as usize).unwrap_or(16_384);
     let mut budget = TokenBudget::new(&provider_type, effective_model, context_limit, max_output, None);
 
-    let mut chat_messages = build_messages(&system_prompt, &history, user_message, compact_cursor);
+    // Nicknames are not on the message row (they change), so history is
+    // re-attributed from the subject table.
+    let sender_names = {
+        let pool2 = pool.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool2)?;
+            let subjects = crate::db::ops::memory::list_subjects(&mut conn)
+                .map_err(|e| e.to_string())?;
+            Ok::<_, String>(
+                subjects
+                    .into_iter()
+                    .filter_map(|s| {
+                        let uid = s.user_id()?;
+                        Some((uid, s.display_name?))
+                    })
+                    .collect::<crate::agent::SenderNames>(),
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .unwrap_or_default()
+    };
+
+    let trailing: Vec<provider::ChatMessage> = incoming
+        .iter()
+        .map(|m| match m.sender.as_ref() {
+            Some(s) => provider::ChatMessage::user_from(&m.text, s.into()),
+            None => provider::ChatMessage::user(&m.text),
+        })
+        .collect();
+
+    let mut chat_messages = build_messages_with_senders(
+        &system_prompt,
+        &history,
+        trailing,
+        compact_cursor,
+        &sender_names,
+    );
     let files_root = app.and_then(|a| {
         use tauri::Manager;
         a.path().app_data_dir().ok()
@@ -381,24 +420,34 @@ pub async fn headless_chat(
     let offered: std::collections::HashSet<String> =
         tool_defs.iter().map(|t| t.name.clone()).collect();
 
-    // Persist user message
+    // Persist this turn's inbound messages, one row each so every speaker keeps
+    // their own attribution.
     let now = now_ms();
     let user_msg_id = uuid::Uuid::new_v4().to_string();
     let mut assistant_msg_id = String::new();
     {
         let pool = pool.clone();
         let conv_id = conversation_id.to_string();
-        let msg = user_message.to_string();
-        let msg_id = user_msg_id.clone();
+        let first_id = user_msg_id.clone();
+        let rows: Vec<(String, String, Option<i64>)> = incoming
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                let id = if i == 0 { first_id.clone() } else { uuid::Uuid::new_v4().to_string() };
+                (id, m.text.clone(), m.sender.as_ref().map(|s| s.user_id))
+            })
+            .collect();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            crate::db::ops::message::insert_message(&mut conn, &NewMessage {
-                id: &msg_id, conversation_id: &conv_id, role: "user", content: &msg,
-                provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
-                tool_calls: None, tool_call_id: None, sort_order: 0, created_at: now,
-                reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
-                sender_id: None,
-            }).map_err(|e| e.to_string())?;
+            for (msg_id, msg, sender_id) in &rows {
+                crate::db::ops::message::insert_message(&mut conn, &NewMessage {
+                    id: msg_id, conversation_id: &conv_id, role: "user", content: msg,
+                    provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
+                    tool_calls: None, tool_call_id: None, sort_order: 0, created_at: now,
+                    reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
+                    sender_id: *sender_id,
+                }).map_err(|e| e.to_string())?;
+            }
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
     }
@@ -742,6 +791,7 @@ pub async fn headless_chat(
                     let conv_id = conversation_id.to_string();
                     let content = item.text.clone();
                     let msg_id = inject_msg_id.clone();
+                    let sender_id = item.sender.as_ref().map(|s| s.user_id);
                     let _ = tokio::task::spawn_blocking(move || {
                         if let Ok(mut conn) = pool.get() {
                             let _ = crate::db::ops::message::insert_message(&mut conn, &NewMessage {
@@ -750,14 +800,18 @@ pub async fn headless_chat(
                                 input_tokens: None, output_tokens: None,
                                 tool_calls: None, tool_call_id: None, sort_order: 0,
                                 created_at: now, reasoning_content: None, rating: None,
-                                schema_version: 2, is_compact_summary: 0, sender_id: None,
+                                schema_version: 2, is_compact_summary: 0, sender_id,
                             });
                         }
                     }).await;
                 }
                 // The initial resolve pass ran before this message existed;
                 // image parts inside it need their own file-URI resolution.
-                let mut injected = vec![ChatMessage::user(&item.text)];
+                // Notices carry no sender; queued user messages keep theirs.
+                let mut injected = vec![match item.sender.as_ref() {
+                    Some(s) => ChatMessage::user_from(&item.text, s.into()),
+                    None => ChatMessage::system_context(&item.text),
+                }];
                 crate::agent::resolve_file_uris_in_messages(&mut injected, files_root.as_deref());
                 chat_messages.extend(injected);
             }

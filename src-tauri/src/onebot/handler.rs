@@ -183,10 +183,14 @@ async fn handle_text_message(
         super::record_seen_message(state, &session_key, mid).await;
     }
 
-    let sender_prefix = if is_group {
-        Some(format!("{}({})", nickname, user_id))
-    } else {
-        None
+    // Identity travels structurally from here on, not as a body prefix a user
+    // could type themselves.
+    let sender = super::SenderContext {
+        user_id,
+        nickname: (nickname != "Unknown").then(|| nickname.to_string()),
+        role: event.sender.as_ref().and_then(|s| s.role.clone()),
+        is_admin,
+        is_group,
     };
 
     let quoted = if let Some(reply_id) = reply_to_message_id {
@@ -201,7 +205,7 @@ async fn handle_text_message(
 
     let enriched_text = format::format_enriched_message(
         &media.text,
-        sender_prefix.as_deref(),
+        None,
         quoted.as_ref().map(|(s, c)| (s.as_str(), c.as_str())),
     );
 
@@ -217,7 +221,7 @@ async fn handle_text_message(
         serde_json::Value::Array(parts).to_string()
     };
 
-    run_agent_turn(state, conn_id, &session_key, &title, user_id, user_content, event_message_id).await
+    run_agent_turn(state, conn_id, &session_key, &title, sender, user_content, event_message_id).await
 }
 
 // ---------------------------------------------------------------------------
@@ -320,20 +324,40 @@ pub(super) async fn run_agent_turn(
     conn_id: u64,
     session_key: &SessionKey,
     title: &str,
-    initiator_user_id: i64,
+    sender: super::SenderContext,
     user_content: String,
     reply_to: Option<i64>,
 ) -> Vec<OneBotAction> {
-    let is_admin = state.config.admin_users.contains(&initiator_user_id);
+    let is_admin = sender.is_admin;
+    let initiator_user_id = sender.user_id;
 
     let started = super::try_begin_turn(state, session_key, super::InboxItem {
         text: user_content.clone(),
         kind: super::InboxKind::UserMessage,
         created_at: crate::util::now_ms(),
+        sender: Some(sender.clone()),
     }).await;
     if !started {
         // Queued into the running turn; its reply arrives with that turn.
         return vec![];
+    }
+
+    // Refresh this person's interaction clock. Its own short transaction: the
+    // extraction pass that may write memories about them happens later, well
+    // after this one has to be durable.
+    {
+        let pool = state.pool.clone();
+        let scope_id = sender.scope_id();
+        let display = sender.nickname.clone();
+        let protected = sender.is_admin;
+        let _ = tokio::task::spawn_blocking(move || {
+            if let Ok(mut conn) = pool.get() {
+                let _ = crate::db::ops::memory::touch_subject(
+                    &mut conn, &scope_id, display.as_deref(), protected, crate::util::now_ms(),
+                );
+            }
+        })
+        .await;
     }
 
     let (project_id, conversation_id, model_override) = {
@@ -357,7 +381,7 @@ pub(super) async fn run_agent_turn(
     let qq_tools = super::qq_tools::QqToolExecutor::new(state.clone(), session_key.clone(), is_admin);
     let inbox = super::InboxHandle::new(state.clone(), session_key.clone());
 
-    let mut content = user_content;
+    let mut incoming = vec![super::IncomingMessage::new(user_content, Some(sender.clone()))];
     let mut reply_anchor = reply_to;
 
     loop {
@@ -368,7 +392,7 @@ pub(super) async fn run_agent_turn(
             &state.mcp,
             &conversation_id,
             Some(project_id.as_str()),
-            &content,
+            &incoming,
             state.config.assistant_id.as_deref(),
             model_override.as_deref(),
             is_admin,
@@ -406,36 +430,14 @@ pub(super) async fn run_agent_turn(
                 // Send this turn's reply before starting the follow-up so the
                 // chat reads in order.
                 super::send_to_conn(state, conn_id, actions).await;
-                content = merge_inbox_texts(&items);
+                // Carried over one message per speaker. Flattening them into a
+                // single string here would destroy the attribution the whole
+                // identity pipeline exists to preserve.
+                incoming = items.iter().map(super::IncomingMessage::from).collect();
                 reply_anchor = None;
             }
         }
     }
-}
-
-/// Combine queued inbox items into a single user message. Plain texts join
-/// with blank lines; if any item is an OpenAI-style parts array (image
-/// payloads), everything merges into one parts array instead.
-fn merge_inbox_texts(items: &[super::InboxItem]) -> String {
-    fn as_parts(text: &str) -> Option<Vec<serde_json::Value>> {
-        if !text.trim_start().starts_with('[') {
-            return None;
-        }
-        let arr: Vec<serde_json::Value> = serde_json::from_str(text).ok()?;
-        (!arr.is_empty() && arr.iter().all(|p| p.get("type").is_some())).then_some(arr)
-    }
-
-    if !items.iter().any(|i| as_parts(&i.text).is_some()) {
-        return items.iter().map(|i| i.text.as_str()).collect::<Vec<_>>().join("\n\n");
-    }
-    let mut parts: Vec<serde_json::Value> = Vec::new();
-    for item in items {
-        match as_parts(&item.text) {
-            Some(arr) => parts.extend(arr),
-            None => parts.push(serde_json::json!({ "type": "text", "text": item.text })),
-        }
-    }
-    serde_json::Value::Array(parts).to_string()
 }
 
 /// Like `build_reply` but routed from the session key instead of an event
@@ -862,39 +864,39 @@ fn truncate_args(args: &str, max_len: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::merge_inbox_texts;
-    use crate::onebot::{InboxItem, InboxKind};
+    use crate::onebot::{IncomingMessage, InboxItem, InboxKind, SenderContext};
 
-    fn item(text: &str) -> InboxItem {
-        InboxItem { text: text.into(), kind: InboxKind::UserMessage, created_at: 0 }
+    fn sender(user_id: i64, nick: &str) -> SenderContext {
+        SenderContext {
+            user_id,
+            nickname: Some(nick.into()),
+            role: None,
+            is_admin: false,
+            is_group: true,
+        }
     }
 
-    #[test]
-    fn test_merge_plain_texts_joins() {
-        let items = vec![item("[张三(1)] 你好"), item("[系统提示] 1 加入了群聊")];
-        let merged = merge_inbox_texts(&items);
-        assert_eq!(merged, "[张三(1)] 你好\n\n[系统提示] 1 加入了群聊");
+    fn item(text: &str, sender: Option<SenderContext>) -> InboxItem {
+        InboxItem { text: text.into(), kind: InboxKind::UserMessage, created_at: 0, sender }
     }
 
+    /// Queued messages used to be concatenated into one string before the
+    /// follow-up turn, which made it impossible to tell afterwards who said
+    /// what. Each must survive as its own message with its own speaker.
     #[test]
-    fn test_merge_with_parts_json_produces_parts() {
-        let parts = serde_json::json!([
-            { "type": "text", "text": "看图" },
-            { "type": "image_url", "image_url": { "url": "file:///a.png" } },
-        ]).to_string();
-        let items = vec![item("[系统提示] 某人撤回了消息"), item(&parts)];
-        let merged = merge_inbox_texts(&items);
-        let arr: Vec<serde_json::Value> = serde_json::from_str(&merged).unwrap();
-        assert_eq!(arr.len(), 3);
-        assert_eq!(arr[0]["type"], "text");
-        assert_eq!(arr[0]["text"], "[系统提示] 某人撤回了消息");
-        assert_eq!(arr[2]["type"], "image_url");
-    }
+    fn queued_messages_keep_their_own_speakers() {
+        let items = vec![
+            item("你好", Some(sender(1, "张三"))),
+            item("我也要", Some(sender(2, "李四"))),
+            item("[系统提示] 2 加入了群聊", None),
+        ];
 
-    #[test]
-    fn test_merge_bracket_text_not_mistaken_for_parts() {
-        // "[系统提示]…" starts with '[' but is not a JSON parts array.
-        let items = vec![item("[系统提示] 某人戳了戳你")];
-        assert_eq!(merge_inbox_texts(&items), "[系统提示] 某人戳了戳你");
+        let carried: Vec<IncomingMessage> = items.iter().map(IncomingMessage::from).collect();
+
+        assert_eq!(carried.len(), 3);
+        assert_eq!(carried[0].sender.as_ref().map(|s| s.user_id), Some(1));
+        assert_eq!(carried[1].sender.as_ref().map(|s| s.user_id), Some(2));
+        assert_eq!(carried[2].sender, None, "a notice is nobody's utterance");
+        assert_eq!(carried[1].text, "我也要");
     }
 }
