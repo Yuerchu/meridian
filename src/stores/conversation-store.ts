@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { produce } from 'immer'
 import { api } from '@/api'
 import { parseTodoArgs, toDrafts, type TodoArgs } from '@/components/chat/todo-list'
-import type { Conversation, Message, Project, ContentBlock, OpenAIToolCall, ToolCallDisplay } from '@/types'
+import type { Conversation, Message, Project, ContentBlock, OpenAIToolCall, TodoListView, ToolCallDisplay } from '@/types'
 
 /**
  * Read a checklist out of an `update_todos` call. A list whose steps are all
@@ -394,7 +394,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   // The streamed tool events are gone after a reload or a conversation switch,
   // so the bar comes back from the database instead.
   loadActiveTodos: async (convId) => {
-    let view = null
+    // Declared without an initialiser: the catch returns, so the only way to
+    // reach the use below is through the successful assignment.
+    let view: TodoListView | null
     try {
       view = await api.getActiveTodoList(convId)
     } catch {
