@@ -434,12 +434,17 @@ pub fn forget_subject(
 }
 
 /// Evict least-recently-seen people until the remembered-subject ceiling holds,
-/// then trim each survivor. Returns `(people forgotten, rows trimmed)`.
+/// then trim the one subject `touched` by the write that triggered this.
+/// Returns `(people forgotten, rows trimmed)`.
 ///
 /// Owner-only rows are never touched, and correspondingly do not make someone
 /// count as "remembered": otherwise a person left with nothing but the
 /// operator's notes would hold a slot that evicting them could not free.
-pub fn enforce_subject_lru(conn: &mut SqliteConnection, now: i64) -> QueryResult<(usize, usize)> {
+pub fn enforce_subject_lru(
+    conn: &mut SqliteConnection,
+    touched: Option<&str>,
+    now: i64,
+) -> QueryResult<(usize, usize)> {
     #[derive(QueryableByName)]
     struct ScopeIdRow {
         #[diesel(sql_type = Text)]
@@ -468,32 +473,39 @@ pub fn enforce_subject_lru(conn: &mut SqliteConnection, now: i64) -> QueryResult
         }
     }
 
-    // Per-person trim, oldest first. Owner-only rows are exempt here too.
-    let survivors: Vec<ScopeIdRow> = diesel::sql_query(
-        "SELECT DISTINCT scope_id FROM memories \
-         WHERE scope_type = 'onebot_user' AND deleted_at IS NULL AND visibility = 'normal'",
-    )
-    .load(conn)?;
-
+    // Per-person trim, oldest first, for the one person whose count just
+    // changed. Sweeping every subject here issued one query per remembered
+    // person on every single write — at the 200-person ceiling that is 199
+    // queries that provably return nothing, since a write touches one subject.
     let mut trimmed = 0usize;
-    for row in &survivors {
+    if let Some(scope_id) = touched {
         let overflow: Vec<ScopeIdRow> = diesel::sql_query(
             "SELECT id AS scope_id FROM memories \
              WHERE scope_type = 'onebot_user' AND scope_id = ? AND deleted_at IS NULL \
                AND visibility = 'normal' \
              ORDER BY updated_at DESC LIMIT -1 OFFSET ?",
         )
-        .bind::<Text, _>(&row.scope_id)
+        .bind::<Text, _>(scope_id)
         .bind::<BigInt, _>(MAX_MEMORIES_PER_SUBJECT as i64)
         .load(conn)?;
         let ids: Vec<String> = overflow.into_iter().map(|r| r.scope_id).collect();
         trimmed += soft_delete_memories(conn, &ids, DeletedBy::Lru, now)?;
     }
 
-    // Passers-by with no memories at all. Opted-out rows are kept: dropping one
-    // would lose the opt-out itself and the person would be remembered again the
-    // moment they spoke.
-    diesel::sql_query(
+    Ok((forgotten, trimmed))
+}
+
+/// Housekeeping that does not belong on the write path: dropping tracked rows
+/// for people with no memories, and emptying expired trash.
+///
+/// Neither depends on what was just written, and the trash sweep has no usable
+/// index (both indexes are partial on `deleted_at IS NULL`), so running it per
+/// write meant a full scan of `memories` every time. Startup plus an occasional
+/// pass is enough — the ceilings are there to bound growth, not to be exact.
+pub fn sweep_untracked_subjects(conn: &mut SqliteConnection, now: i64) -> QueryResult<usize> {
+    // Opted-out rows are kept: dropping one would lose the opt-out itself and
+    // the person would be remembered again the moment they spoke.
+    let dropped = diesel::sql_query(
         "DELETE FROM memory_subjects WHERE scope_id IN ( \
            SELECT s.scope_id FROM memory_subjects s \
            WHERE s.is_protected = 0 AND s.is_pinned = 0 AND s.opted_out = 0 \
@@ -507,8 +519,7 @@ pub fn enforce_subject_lru(conn: &mut SqliteConnection, now: i64) -> QueryResult
     .execute(conn)?;
 
     purge_expired_trash(conn, now)?;
-
-    Ok((forgotten, trimmed))
+    Ok(dropped)
 }
 
 // ---------------------------------------------------------------------------
@@ -744,10 +755,42 @@ mod tests {
         let quitter = onebot_user_scope_id(0); // oldest last_seen, first to go
         set_subject_flags(conn, &quitter, None, Some(true)).unwrap();
 
-        enforce_subject_lru(conn, 999_999).unwrap();
+        sweep_untracked_subjects(conn, 999_999).unwrap();
 
         let row = get_subject(conn, &quitter).unwrap();
         assert!(row.is_some_and(|s| s.is_opted_out()), "opt-out row must survive the sweep");
+    }
+
+    /// A write must only trim the person it wrote about. Sweeping every subject
+    /// issued one query per remembered person on each write, all but one of
+    /// which provably returned nothing.
+    #[test]
+    fn trimming_touches_only_the_written_subject() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+
+        // Two people, each already at their cap.
+        for uid in [1i64, 2] {
+            for i in 0..MAX_MEMORIES_PER_SUBJECT {
+                mem(conn, &format!("u{uid}m{i}"), uid, Origin::Group, Visibility::Normal);
+            }
+        }
+        // One more for person 1 only, pushing them over.
+        mem(conn, "u1extra", 1, Origin::Group, Visibility::Normal);
+
+        let scope1 = onebot_user_scope_id(1);
+        let (_, trimmed) = enforce_subject_lru(conn, Some(&scope1), 500).unwrap();
+        assert_eq!(trimmed, 1);
+
+        assert_eq!(
+            list_by_scope(conn, MemoryScope::OnebotUser, &scope1).unwrap().len(),
+            MAX_MEMORIES_PER_SUBJECT
+        );
+        // Person 2 was untouched by that write and must be left alone.
+        assert_eq!(
+            list_by_scope(conn, MemoryScope::OnebotUser, &onebot_user_scope_id(2)).unwrap().len(),
+            MAX_MEMORIES_PER_SUBJECT
+        );
     }
 
     #[test]
@@ -912,5 +955,49 @@ mod origin_visibility_tests {
         assert!(Origin::group_visible().contains(&Origin::Admin));
         assert!(!Origin::group_visible().contains(&Origin::Desktop));
         assert!(!Origin::group_visible().contains(&Origin::Private));
+    }
+}
+
+#[cfg(test)]
+mod legacy_length_tests {
+    use super::*;
+    use crate::db::test_db;
+
+    /// Rows written under the old 10k ceiling stay readable and stay editable,
+    /// as long as the edit brings them within the current limit. Only saving a
+    /// still-oversized version is refused — which is the limit doing its job,
+    /// not a row becoming stuck.
+    #[test]
+    fn oversized_legacy_rows_can_be_shortened() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        crate::db::ops::project::create_project(
+            conn,
+            &crate::db::models::project::NewProject {
+                id: "p1", name: "P", path: None, source_type: "local", source_id: None,
+                assistant_id: None, description: None, created_at: 1, updated_at: 1,
+            },
+        )
+        .unwrap();
+
+        // Written directly, as migration 18 carries such rows through verbatim.
+        let long = "x".repeat(3_000);
+        diesel::insert_into(memories::table)
+            .values(&NewMemory {
+                id: "old", scope_type: "project", scope_id: "p1", key: "k",
+                content: &long, memory_type: "general", subject_scope_id: None,
+                origin: "desktop", visibility: "normal", source_session_id: None,
+                created_at: 1, updated_at: 1,
+            })
+            .execute(conn)
+            .unwrap();
+
+        // Still readable and still injected.
+        assert_eq!(list_by_scope(conn, MemoryScope::Project, "p1").unwrap().len(), 1);
+
+        // An edit that is still too long is refused...
+        assert!(validate_memory(conn, MemoryScope::Project, "p1", "k", &"y".repeat(600)).is_err());
+        // ...but shortening to within the limit works.
+        assert!(validate_memory(conn, MemoryScope::Project, "p1", "k", "short now").is_ok());
     }
 }

@@ -26,6 +26,23 @@ use crate::util::now_ms;
 /// How long an operator has to act on a bot-wide proposal.
 pub const PROPOSAL_TTL_MS: i64 = 24 * 3600 * 1000;
 
+/// Below this many characters across a turn, the extraction pass is skipped.
+///
+/// The pass costs a full model call, and its own prompt says an empty result is
+/// the common case. "ok", "谢谢", "在吗" cannot carry a durable fact, so paying
+/// for a round trip to be told so is pure waste.
+const MIN_CHARS_WORTH_EXTRACTING: usize = 24;
+
+/// Cap on the "already remembered" section of the extraction prompt. It exists
+/// to prevent duplicates, not to reproduce the whole store: unbounded, it grew
+/// to every project memory plus every memory of everyone in the turn.
+const MAX_EXISTING_LINES: usize = 40;
+
+/// Whether a turn is worth spending a model call on.
+pub fn worth_extracting(texts: &[&str]) -> bool {
+    texts.iter().map(|t| t.trim().chars().count()).sum::<usize>() >= MIN_CHARS_WORTH_EXTRACTING
+}
+
 /// What the model may ask for. Deliberately an intent, not a scope: the mapping
 /// from intent to storage location is a server decision.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -223,7 +240,10 @@ pub fn commit(
     )
     .map_err(|e| e.to_string())?;
 
-    crate::db::ops::memory::enforce_subject_lru(conn, now).map_err(|e| e.to_string())?;
+    // Only the subject just written can have gone over its own cap.
+    let touched = matches!(scope, MemoryScope::OnebotUser).then_some(scope_id.as_str());
+    crate::db::ops::memory::enforce_subject_lru(conn, touched, now)
+        .map_err(|e| e.to_string())?;
     Ok(Accepted::Stored)
 }
 
@@ -379,13 +399,13 @@ pub fn existing_for_extraction(
     };
     let scope_ids: Vec<String> = subjects.iter().map(|u| onebot_user_scope_id(*u)).collect();
 
-    let mut out = String::new();
+    let mut lines: Vec<String> = Vec::new();
     if let Some(pid) = facts.project_id.as_ref() {
         if let Ok(rows) =
-            crate::db::ops::memory::list_by_scopes(conn, MemoryScope::Project, &[pid.clone()], &ctx)
+            crate::db::ops::memory::list_by_scopes(conn, MemoryScope::Project, std::slice::from_ref(pid), &ctx)
         {
             for m in rows {
-                out.push_str(&format!("- [chat] {}: {}\n", m.key, m.content));
+                lines.push(format!("- [chat] {}: {}", m.key, m.content));
             }
         }
     }
@@ -399,11 +419,13 @@ pub fn existing_for_extraction(
                     .as_deref()
                     .and_then(crate::db::models::memory::parse_onebot_user_scope_id)
                     .unwrap_or_default();
-                out.push_str(&format!("- [about {uid}] {}: {}\n", m.key, m.content));
+                lines.push(format!("- [about {uid}] {}: {}", m.key, m.content));
             }
         }
     }
-    out
+    // Bounded: this section only has to be big enough to spot a duplicate.
+    lines.truncate(MAX_EXISTING_LINES);
+    lines.join("\n")
 }
 
 /// Whether a person has opted out of being remembered.
@@ -784,5 +806,30 @@ mod dispatch_tests {
         assert!(reject_proposal(conn, p.id, 7, 100).unwrap());
         // Rejected proposals stay on record and cannot be acted on again.
         assert!(!reject_proposal(conn, p.id, 7, 101).unwrap());
+    }
+}
+
+#[cfg(test)]
+mod gating_tests {
+    use super::*;
+
+    /// The pass costs a model call and its own prompt says an empty result is
+    /// the common case, so short acknowledgements must not trigger one.
+    #[test]
+    fn trivial_turns_do_not_trigger_a_model_call() {
+        assert!(!worth_extracting(&["ok"]));
+        assert!(!worth_extracting(&["谢谢"]));
+        assert!(!worth_extracting(&["在吗"]));
+        assert!(!worth_extracting(&["   "]));
+        assert!(!worth_extracting(&[]));
+    }
+
+    #[test]
+    fn substantive_turns_still_do() {
+        assert!(worth_extracting(&[
+            "我平时用 Rust 写后端，回答尽量简短一点，不要列表"
+        ]));
+        // Several short messages can add up to something worth reading.
+        assert!(worth_extracting(&["我叫张三", "在深圳工作", "平时写 Rust 和 TypeScript"]));
     }
 }

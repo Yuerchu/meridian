@@ -592,6 +592,13 @@ async fn run_extraction_pass(
         return vec![];
     }
 
+    // A greeting or an "ok" cannot carry a durable fact, and the pass costs a
+    // full model call to be told so.
+    let texts: Vec<&str> = incoming.iter().map(|m| m.text.as_str()).collect();
+    if !extract::worth_extracting(&texts) {
+        return vec![];
+    }
+
     let facts = extract::TurnFacts {
         messages: messages.clone(),
         is_group,

@@ -55,9 +55,14 @@ pub fn init_db(db_path: &str) -> DbPool {
 
     // Memories no longer hang off projects by foreign key, and migrations run
     // with foreign keys off anyway, so a table rebuild can leave orphans behind.
+    let now = crate::util::now_ms();
     let _ = ops::memory::purge_orphan_project_memories(&mut conn);
-    let _ = ops::memory::purge_expired_trash(&mut conn, crate::util::now_ms());
-    let _ = ops::memory::expire_proposals(&mut conn, crate::util::now_ms());
+    let _ = ops::memory::expire_proposals(&mut conn, now);
+    // Bounded-growth housekeeping. Kept off the write path: neither sweep
+    // depends on what was just written, and the trash purge has no usable index
+    // (both are partial on `deleted_at IS NULL`), so doing it per write meant a
+    // full table scan each time.
+    let _ = ops::memory::sweep_untracked_subjects(&mut conn, now);
 
     pool
 }
