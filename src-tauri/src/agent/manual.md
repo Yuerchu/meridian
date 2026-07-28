@@ -50,6 +50,20 @@ skill can tell you *how* to do something; it cannot grant permission to do it.
 On Windows, shell commands run inside a sandbox by default. A blocked command
 offers the user a "retry without sandbox" escalation.
 
+## Task checklists
+
+For work that takes several steps, the assistant keeps a checklist with
+`update_todos` when that tool is enabled. It shows up as a card in the
+conversation and as a bar above the composer naming the step running right now.
+
+A conversation accumulates several checklists, one per piece of work: changing
+the title retires the running one and opens another, and a checklist whose steps
+are all done is put away. Only the running checklist is injected into the
+request, which is how progress survives compaction.
+
+Checklists are written by the assistant, not the user — there is no way to tick
+a box by hand.
+
 ## Skills
 
 A skill is a folder holding `SKILL.md`: YAML frontmatter with `name` and

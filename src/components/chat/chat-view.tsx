@@ -19,6 +19,7 @@ import { ErrorBoundary } from '@/components/error-boundary'
 import { MessageItem } from './message-item'
 import { useMessageScroller } from '@/components/ui/message-scroller'
 import { InputBar, type AttachedFile } from './input-bar'
+import { TodoBar } from './todo-bar'
 import { useEmojiMap } from './emoji-renderer'
 import { useConversationStore } from '@/stores/conversation-store'
 import { coerceThinkingLevel } from '@/lib/thinking'
@@ -41,6 +42,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const session = useConversationStore((s) => s.sessions[conversationId])
   const storeEnsureSession = useConversationStore((s) => s.ensureSession)
   const storeLoadMessages = useConversationStore((s) => s.loadMessages)
+  const storeLoadActiveTodos = useConversationStore((s) => s.loadActiveTodos)
   const storeSetStreaming = useConversationStore((s) => s.setStreaming)
   const storeSetError = useConversationStore((s) => s.setError)
   const storeSetCompacting = useConversationStore((s) => s.setCompacting)
@@ -87,6 +89,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   useEffect(() => {
     storeEnsureSession(conversationId)
     storeLoadMessages(conversationId)
+    storeLoadActiveTodos(conversationId)
   }, [conversationId])
 
   useEffect(() => {
@@ -506,6 +509,8 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
           <MessageScrollerButton aria-label={t('chat.scrollToBottom')} />
         </MessageScroller>
       </MessageScrollerProvider>
+
+      <TodoBar conversationId={conversationId} />
 
       <InputBar
         value={input}

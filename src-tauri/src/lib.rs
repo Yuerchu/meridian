@@ -193,7 +193,7 @@ pub fn run() {
                 {
                     let now = now_ms();
                     let presets = [
-                        ("preset_coding", "Coding Agent", "All tools for coding tasks", r#"["ask_user","read_file","write_file","edit_file","apply_patch","run_command","list_directory","search_files","glob"]"#, 0),
+                        ("preset_coding", "Coding Agent", "All tools for coding tasks", r#"["ask_user","update_todos","read_file","write_file","edit_file","apply_patch","run_command","list_directory","search_files","glob"]"#, 0),
                         ("preset_research", "Research", "Minimal tools for research and reading", r#"["ask_user","read_file","list_directory","search_files","glob","web_search"]"#, 1),
                         ("preset_writing", "Writing", "Tools for writing and editing files", r#"["ask_user","read_file","write_file","edit_file"]"#, 2),
                     ];
@@ -209,8 +209,8 @@ pub fn run() {
                         }
                     }
                     // Repair presets from earlier seeds: "glob_files" never existed
-                    // (real tool name is "glob"), and the built-in Research preset
-                    // gained web_search.
+                    // (real tool name is "glob"), the built-in Research preset
+                    // gained web_search, and Coding gained update_todos.
                     if let Ok(existing) = db::ops::tool_preset::list_presets(&mut conn) {
                         for p in existing {
                             let Ok(mut names) = serde_json::from_str::<Vec<String>>(&p.tool_names) else { continue };
@@ -221,6 +221,11 @@ pub fn run() {
                             if p.id == "preset_research" && p.is_builtin == 1
                                 && !names.iter().any(|n| n == "web_search") {
                                 names.push("web_search".into());
+                                changed = true;
+                            }
+                            if p.id == "preset_coding" && p.is_builtin == 1
+                                && !names.iter().any(|n| n == "update_todos") {
+                                names.push("update_todos".into());
                                 changed = true;
                             }
                             if changed {
@@ -393,6 +398,7 @@ pub fn run() {
             commands::memory::save_memory,
             commands::memory::update_memory,
             commands::memory::delete_memory,
+            commands::todo::get_active_todo_list,
             commands::preference::get_preference,
             commands::preference::set_preference,
             commands::mcp::list_mcp_servers,

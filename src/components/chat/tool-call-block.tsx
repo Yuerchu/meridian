@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import {
   Check, X, Loader2, MessageCircleQuestion, Send,
   SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck,
-  FileText, Globe, ChevronUp, TriangleAlert,
+  FileText, Globe, ChevronUp, TriangleAlert, ListTodo,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/chat-tool'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
+import { parseTodoArgs, todoProgress, TodoItemList, type TodoDraft } from './todo-list'
 import type { ToolCallDisplay } from '@/types'
 
 interface AskOption {
@@ -894,6 +895,30 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   )
 }
 
+function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: string; todos: TodoDraft[] }) {
+  const { t } = useTranslation()
+  const { done, total } = todoProgress(todos)
+
+  return (
+    <ChatTool state={mapChatToolState(data.status)} defaultOpen={done < total} className="my-3">
+      <ChatToolTrigger
+        endContent={
+          <span className="shrink-0 text-muted-foreground tabular-nums">
+            {t('chat.todo.progress', { done, total })}
+          </span>
+        }
+      >
+        <ListTodo aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="truncate font-medium text-foreground">{title}</span>
+      </ChatToolTrigger>
+      <ChatToolContent>
+        <TodoItemList todos={todos} />
+        {data.status === 'error' && data.result && <ChatToolError>{data.result}</ChatToolError>}
+      </ChatToolContent>
+    </ChatTool>
+  )
+}
+
 function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
   switch (toolName) {
     case 'read_file':
@@ -969,6 +994,15 @@ export function ToolCallBlock({ data, className }: { data: ToolCallDisplay; clas
 
   if (data.tool_name === 'web_search') {
     return <WebSearchBlock data={data} />
+  }
+
+  // Mid-stream the arguments are partial JSON and this parse fails, so the
+  // call renders as a plain tool card until the checklist is complete.
+  if (data.tool_name === 'update_todos') {
+    const todoArgs = parseTodoArgs(parsedArgs)
+    if (todoArgs) {
+      return <TodoListBlock data={data} title={todoArgs.title} todos={todoArgs.todos} />
+    }
   }
 
   const toolNameKey = `chat.tool.name.${data.tool_name}`

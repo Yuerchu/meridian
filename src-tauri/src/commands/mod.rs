@@ -16,4 +16,5 @@ pub mod model_config;
 pub mod provider;
 pub mod secret;
 pub mod skill;
+pub mod todo;
 pub mod tool_system;

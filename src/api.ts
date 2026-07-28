@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, Message, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, ToolCategory, ToolInfo, ToolPreset } from './types'
+import type { Assistant, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, Message, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -222,6 +222,10 @@ export const api = {
 
   deleteMemory: (id: string) =>
     invoke<void>('delete_memory', { id }),
+
+  // Todos
+  getActiveTodoList: (conversationId: string) =>
+    invoke<TodoListView | null>('get_active_todo_list', { conversationId }),
 
   // Preferences
   getPreference: (key: string) =>

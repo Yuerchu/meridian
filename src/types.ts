@@ -20,6 +20,33 @@ export interface Memory {
   updated_at: number
 }
 
+export type TodoItemStatus = 'pending' | 'in_progress' | 'completed'
+
+export interface TodoItem {
+  id: string
+  list_id: string
+  content: string
+  /** Present-continuous phrasing, shown while this step is the one running. */
+  active_form: string
+  status: TodoItemStatus
+  sort_order: number
+  created_at: number
+}
+
+export interface TodoList {
+  id: string
+  conversation_id: string
+  title: string
+  status: 'in_progress' | 'completed'
+  created_at: number
+  updated_at: number
+}
+
+export interface TodoListView {
+  list: TodoList
+  items: TodoItem[]
+}
+
 export interface Conversation {
   id: string
   title: string | null

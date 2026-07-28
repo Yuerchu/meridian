@@ -340,6 +340,17 @@ pub async fn chat(
     } else {
         None
     };
+    // The running checklist has to survive compaction, so it is re-derived from
+    // the database each turn rather than read back out of the transcript.
+    let todo_block = {
+        let pool2 = pool.clone();
+        let conv_id = conversation_id.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool2.get().ok()?;
+            let view = db::ops::todo::get_active_view(&mut conn, &conv_id).ok()??;
+            db::ops::todo::format_todo_block(&view)
+        }).await.ok().flatten()
+    };
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
     let instruction_block = {
         let budget = instruction_budget(context_limit);
@@ -391,13 +402,16 @@ pub async fn chat(
     let tool_defs = tool_defs;
 
     let base_block = crate::agent::base_prompt(&tool_defs);
+    // The checklist block goes last: it changes every turn, so anything after
+    // it would be evicted from the provider's prompt cache on each update.
     let system_prompt = format!(
-        "{}{}{}{}{}",
+        "{}{}{}{}{}{}",
         base_block.map(|b| format!("{b}\n\n")).unwrap_or_default(),
         system_prompt_resolved,
         instruction_block.as_deref().unwrap_or(""),
         file_access_prompt(&file_access),
         memory_block.as_deref().unwrap_or(""),
+        todo_block.as_deref().unwrap_or(""),
     );
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
     let auto_compact = assistant.as_ref().map(|a| a.auto_compact_enabled != 0).unwrap_or(false);
@@ -573,6 +587,7 @@ pub async fn chat(
         shell: shell_type.map(|s| tools::ShellType::from_str(&s)).unwrap_or_else(tools::ShellType::default_for_platform),
         file_access,
         project_id,
+        conversation_id: Some(conversation_id.clone()),
         assistant_id: assistant.as_ref().map(|a| a.id.clone()),
         db_pool: Some(pool.clone()),
         edit_session: None,

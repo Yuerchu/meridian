@@ -26,6 +26,7 @@ import {
   ChatToolTrigger,
 } from '@/components/ui/chat-tool'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
+import { TodoBarView } from '@/components/chat/todo-bar'
 import { FastToggle, ThinkingSelector } from '@/components/chat/toolbar'
 import type { ProviderCapabilities, ThinkingEffort, ThinkingLevel, ToolCallDisplay } from '@/types'
 
@@ -161,6 +162,44 @@ const ASK_USER_ARGS = JSON.stringify({
       ],
       multi_select: false,
     },
+  ],
+})
+
+const todoStep = (content: string, activeForm: string, status: string) => ({
+  content,
+  active_form: activeForm,
+  status,
+})
+
+const TODO_RUNNING = JSON.stringify({
+  title: '重构鉴权模块',
+  todos: [
+    todoStep('抽离 token 校验', '正在抽离 token 校验', 'completed'),
+    todoStep('替换调用方', '正在替换调用方', 'in_progress'),
+    todoStep('补单元测试', '正在补单元测试', 'pending'),
+    todoStep('跑一遍 CI', '正在跑 CI', 'pending'),
+  ],
+})
+
+const TODO_DONE = JSON.stringify({
+  title: '修复 CI 失败',
+  todos: [
+    todoStep('定位失败用例', '正在定位失败用例', 'completed'),
+    todoStep('修掉断言', '正在修断言', 'completed'),
+  ],
+})
+
+const TODO_SINGLE = JSON.stringify({
+  title: '升级依赖',
+  todos: [todoStep('跑 pnpm update', '正在跑 pnpm update', 'in_progress')],
+})
+
+// The model is allowed to leave nothing in progress; the bar has to say so.
+const TODO_NO_CURRENT = JSON.stringify({
+  title: '梳理待办',
+  todos: [
+    todoStep('收集需求', '正在收集需求', 'completed'),
+    todoStep('排优先级', '正在排优先级', 'pending'),
   ],
 })
 
@@ -383,6 +422,54 @@ export default function Playground() {
               arguments: JSON.stringify({ query: 'HeroUI Pro chain of thought' }),
               result: WEB_SEARCH_RESULT,
             })} />
+          </div>
+        </Section>
+
+        <Section title="ToolCallBlock / todo 清单">
+          <div>
+            <ToolCallBlock data={tool({
+              tool_name: 'update_todos',
+              status: 'completed',
+              arguments: TODO_RUNNING,
+              result: 'Checklist "重构鉴权模块" updated (1/4 done). Now: 替换调用方',
+            })} />
+            <ToolCallBlock data={tool({
+              tool_name: 'update_todos',
+              status: 'completed',
+              arguments: TODO_DONE,
+              result: 'Checklist "修复 CI 失败" finished (2/2). The next update starts a new one.',
+            })} />
+            <ToolCallBlock data={tool({
+              tool_name: 'update_todos',
+              status: 'completed',
+              arguments: TODO_SINGLE,
+            })} />
+            {/* Mid-stream the arguments are still partial JSON, so it falls back to a plain card. */}
+            <ToolCallBlock data={tool({
+              tool_name: 'update_todos',
+              status: 'running',
+              arguments: '{"title":"重构鉴权模块","todos":[{"content":"抽离 token',
+            })} />
+            <ToolCallBlock data={tool({
+              tool_name: 'update_todos',
+              status: 'error',
+              arguments: JSON.stringify({
+                title: '重构鉴权模块',
+                todos: [
+                  todoStep('抽离 token 校验', '正在抽离 token 校验', 'in_progress'),
+                  todoStep('替换调用方', '正在替换调用方', 'in_progress'),
+                ],
+              }),
+              result: 'Only one step may be in_progress at a time, but 2 are: 抽离 token 校验, 替换调用方. Mark the others pending or completed.',
+            })} />
+          </div>
+        </Section>
+
+        <Section title="TodoBar / 常驻进度条">
+          <div className="space-y-2 -mx-4">
+            <TodoBarView todos={JSON.parse(TODO_RUNNING)} />
+            <TodoBarView todos={JSON.parse(TODO_SINGLE)} />
+            <TodoBarView todos={JSON.parse(TODO_NO_CURRENT)} />
           </div>
         </Section>
 

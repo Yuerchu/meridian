@@ -1,7 +1,26 @@
 import { create } from 'zustand'
 import { produce } from 'immer'
 import { api } from '@/api'
+import { parseTodoArgs, toDrafts, type TodoArgs } from '@/components/chat/todo-list'
 import type { Conversation, Message, Project, ContentBlock, OpenAIToolCall, ToolCallDisplay } from '@/types'
+
+/**
+ * Read a checklist out of an `update_todos` call. A list whose steps are all
+ * done has already been archived on the backend, so it stops being the active
+ * one here too.
+ */
+function readTodoArgs(args: string): TodoArgs | null {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(args)
+  } catch {
+    return null
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return null
+  const todoArgs = parseTodoArgs(parsed as Record<string, unknown>)
+  if (!todoArgs) return null
+  return todoArgs.todos.every((t) => t.status === 'completed') ? null : todoArgs
+}
 
 export function hydrateBlocks(msgs: Message[]): Message[] {
   return msgs.map((m) => {
@@ -56,6 +75,8 @@ export interface ConversationSession {
   pendingAskUser: string | null
   compactCursor: number | null
   generation: number
+  /** The checklist the model is working through, or null when there is none. */
+  activeTodos: TodoArgs | null
 }
 
 function defaultSession(): ConversationSession {
@@ -69,6 +90,7 @@ function defaultSession(): ConversationSession {
     pendingAskUser: null,
     compactCursor: null,
     generation: 0,
+    activeTodos: null,
   }
 }
 
@@ -153,6 +175,8 @@ export interface ConversationStore {
   setStreaming: (convId: string, value: boolean) => void
   setCompacting: (convId: string, value: boolean) => void
   setError: (convId: string, error: string | null) => void
+  setActiveTodos: (convId: string, todos: TodoArgs | null) => void
+  loadActiveTodos: (convId: string) => Promise<void>
   markSeen: (convId: string) => void
 }
 
@@ -349,10 +373,37 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             (block.data as ToolCallDisplay).status = status;
             (block.data as ToolCallDisplay).result = result;
             (block.data as ToolCallDisplay).escalation_call_id = undefined
+            // The checklist bar tracks the arguments of the last successful
+            // call; a rejected one left the stored list untouched.
+            if (block.data.tool_name === 'update_todos' && status === 'completed') {
+              session.activeTodos = readTodoArgs(block.data.arguments)
+            }
           }
         }
       }
     }))
+  },
+
+  setActiveTodos: (convId, todos) => {
+    set(produce((state: ConversationStore) => {
+      const session = state.sessions[convId]
+      if (session) session.activeTodos = todos
+    }))
+  },
+
+  // The streamed tool events are gone after a reload or a conversation switch,
+  // so the bar comes back from the database instead.
+  loadActiveTodos: async (convId) => {
+    let view = null
+    try {
+      view = await api.getActiveTodoList(convId)
+    } catch {
+      return
+    }
+    get().setActiveTodos(
+      convId,
+      view ? { title: view.list.title, todos: toDrafts(view.items) } : null,
+    )
   },
 
   handleStreamReset: (convId, messageId) => {

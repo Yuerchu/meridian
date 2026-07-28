@@ -13,6 +13,7 @@ pub mod read_file;
 pub mod run_command;
 pub mod search_files;
 pub mod skill;
+pub mod todo;
 pub mod web_search;
 pub mod write_file;
 
@@ -36,6 +37,9 @@ pub struct ToolContext {
     pub shell: ShellType,
     pub file_access: FileAccess,
     pub project_id: Option<String>,
+    /// The turn's conversation. Anchors state that belongs to this thread of
+    /// work rather than to the project, such as the todo checklist.
+    pub conversation_id: Option<String>,
     /// Needed to resolve which skills are bound for this turn; skill bindings
     /// are anchored on the assistant as well as the project.
     pub assistant_id: Option<String>,
@@ -323,6 +327,7 @@ impl ToolRegistry {
             Arc::new(memory::RecallMemoryTool),
             Arc::new(memory::ListMemoriesTool),
             Arc::new(memory::DeleteMemoryTool),
+            Arc::new(todo::UpdateTodosTool),
             Arc::new(web_search::WebSearchTool::new()),
         ];
         #[cfg(not(target_os = "android"))]
@@ -367,6 +372,7 @@ mod tests {
             shell: ShellType::Bash,
             file_access: FileAccess::Roots(roots),
             project_id: None,
+            conversation_id: None,
             assistant_id: None,
             db_pool: None,
             edit_session: None,
@@ -399,6 +405,7 @@ mod tests {
             shell: ShellType::Bash,
             file_access: FileAccess::Unrestricted,
             project_id: None,
+            conversation_id: None,
             assistant_id: None,
             db_pool: None,
             edit_session: None,

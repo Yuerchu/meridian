@@ -8,11 +8,24 @@ use crate::provider::ToolDefinition;
 /// it cannot call.
 pub(crate) fn base_prompt(tool_defs: &[ToolDefinition]) -> Option<String> {
     let has = |name: &str| tool_defs.iter().any(|t| t.name == name);
+    let has_editing = has("write_file") || has("edit_file") || has("apply_patch");
+    let has_todos = has("update_todos");
 
-    if !has("write_file") && !has("edit_file") && !has("apply_patch") {
+    if !has_editing && !has_todos {
         return None;
     }
 
+    let mut sections: Vec<String> = Vec::new();
+    if has_editing {
+        sections.push(file_editing_section(&has));
+    }
+    if has_todos {
+        sections.push(checklist_section());
+    }
+    Some(sections.join("\n\n"))
+}
+
+fn file_editing_section(has: &dyn Fn(&str) -> bool) -> String {
     let mut lines = vec![
         "# Agent guidelines".to_string(),
         String::new(),
@@ -56,7 +69,30 @@ pub(crate) fn base_prompt(tool_defs: &[ToolDefinition]) -> Option<String> {
         "- Make the smallest change that fulfills the request; do not refactor unrelated code."
             .to_string(),
     );
-    Some(lines.join("\n"))
+    lines.join("\n")
+}
+
+/// Discipline for `update_todos`. The checklist is only worth anything if it
+/// tracks reality as the work happens; a list written once and never touched
+/// again is worse than none, because the interface keeps showing it.
+fn checklist_section() -> String {
+    [
+        "# Task checklist",
+        "",
+        "You have `update_todos` for tracking multi-step work. Follow this discipline:",
+        "",
+        "- Open a checklist when a request needs several distinct steps. Skip it for anything \
+         you can finish in one or two — tracking trivial work is noise.",
+        "- Mark a step `in_progress` before you start it, not after. Exactly one step at a time.",
+        "- Mark a step `completed` as soon as it is actually done. Do not save up several \
+         completions and send them in one call.",
+        "- A step that ran into an error stays `in_progress`; add a step for whatever has to be \
+         resolved first rather than marking it done.",
+        "- Send the entire list on every call — steps you leave out are deleted.",
+        "- Do not recite the checklist back to the user; they can already see it. Say what \
+         changed and carry on.",
+    ]
+    .join("\n")
 }
 
 #[cfg(test)]
@@ -86,6 +122,24 @@ mod tests {
         assert!(!p.contains("apply_patch"));
         assert!(!p.contains("write_file"));
         assert!(!p.contains("Read a file before modifying"));
+    }
+
+    #[test]
+    fn checklist_discipline_stands_on_its_own() {
+        // An assistant with the checklist but no editing tools still needs the rules.
+        let p = base_prompt(&[def("update_todos")]).unwrap();
+        assert!(p.contains("# Task checklist"));
+        assert!(!p.contains("# Agent guidelines"));
+
+        let both = base_prompt(&[def("edit_file"), def("update_todos")]).unwrap();
+        assert!(both.contains("# Agent guidelines"));
+        assert!(both.contains("# Task checklist"));
+    }
+
+    #[test]
+    fn editing_tools_alone_leave_out_the_checklist() {
+        let p = base_prompt(&[def("edit_file")]).unwrap();
+        assert!(!p.contains("# Task checklist"));
     }
 
     #[test]

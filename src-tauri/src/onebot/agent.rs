@@ -288,15 +288,27 @@ pub async fn headless_chat(
     } else {
         None
     };
+    let todo_block = {
+        let pool2 = pool.clone();
+        let conv_id = conversation_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool2.get().ok()?;
+            let view = crate::db::ops::todo::get_active_view(&mut conn, &conv_id).ok()??;
+            crate::db::ops::todo::format_todo_block(&view)
+        }).await.ok().flatten()
+    };
     // Same baseline the desktop path gets: without it a QQ assistant has no
     // working discipline beyond whatever the tool descriptions happen to say.
     let base_block = crate::agent::base_prompt(&tool_defs)
         .map(|b| format!("{b}\n\n"))
         .unwrap_or_default();
-    let system_prompt = match memory_block {
-        Some(ref mem) => format!("{}{}{}", base_block, raw_prompt, mem),
-        None => format!("{}{}", base_block, raw_prompt),
-    };
+    let system_prompt = format!(
+        "{}{}{}{}",
+        base_block,
+        raw_prompt,
+        memory_block.as_deref().unwrap_or(""),
+        todo_block.as_deref().unwrap_or(""),
+    );
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
@@ -405,6 +417,7 @@ pub async fn headless_chat(
         // filesystem. An empty root set denies every path at the validation layer.
         file_access: tools::FileAccess::Roots(vec![]),
         project_id: project_id.map(|s| s.to_string()),
+        conversation_id: Some(conversation_id.to_string()),
         assistant_id: assistant_id.map(|s| s.to_string()),
         db_pool: Some(pool.clone()),
         edit_session: None,

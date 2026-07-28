@@ -1138,6 +1138,7 @@ mod tests {
             shell: ShellType::Bash,
             file_access: FileAccess::Unrestricted,
             project_id: None,
+            conversation_id: None,
             assistant_id: None,
             db_pool: None,
             edit_session: None,

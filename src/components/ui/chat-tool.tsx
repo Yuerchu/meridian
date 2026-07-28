@@ -58,7 +58,17 @@ function ChatTool({ state, className, ...props }: ChatToolProps) {
   )
 }
 
-function ChatToolTrigger({ className, children, ...props }: Collapsible.Trigger.Props) {
+interface ChatToolTriggerProps extends Collapsible.Trigger.Props {
+  /**
+   * Pinned to the right edge, just left of the chevron — a progress count, a
+   * duration, a badge. Use this rather than an `ml-auto` child: the label row
+   * already absorbs the free space, and a second auto margin would split it
+   * between the two instead of pushing everything over.
+   */
+  endContent?: React.ReactNode
+}
+
+function ChatToolTrigger({ className, children, endContent, ...props }: ChatToolTriggerProps) {
   return (
     <Collapsible.Trigger
       data-slot="chat-tool-trigger"
@@ -68,10 +78,16 @@ function ChatToolTrigger({ className, children, ...props }: Collapsible.Trigger.
       )}
       {...props}
     >
-      {children}
+      <div
+        data-slot="chat-tool-trigger-label"
+        className="flex min-w-0 flex-1 items-center gap-2"
+      >
+        {children}
+      </div>
+      {endContent}
       <ChevronDownIcon
         aria-hidden
-        className="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-panel-open/chat-tool-trigger:rotate-180"
+        className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-panel-open/chat-tool-trigger:rotate-180"
       />
     </Collapsible.Trigger>
   )

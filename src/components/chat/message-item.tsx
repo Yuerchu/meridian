@@ -312,9 +312,13 @@ type BlockUnit =
   | { kind: 'single'; block: ContentBlock; index: number }
   | { kind: 'tool-group'; items: ToolCallBlockItem[] }
 
-// ask_user and web_search render standalone interactive blocks and never join a group.
+// These render standalone blocks and never join a group: ask_user and
+// web_search are interactive, and a checklist folded into "3 tool calls" would
+// hide the very thing it exists to show.
+const UNGROUPABLE_TOOLS = new Set(['ask_user', 'web_search', 'update_todos'])
+
 function isGroupableToolCall(block: ContentBlock): block is Extract<ContentBlock, { type: 'tool_call' }> {
-  return block.type === 'tool_call' && block.data.tool_name !== 'ask_user' && block.data.tool_name !== 'web_search'
+  return block.type === 'tool_call' && !UNGROUPABLE_TOOLS.has(block.data.tool_name)
 }
 
 function groupBlocks(blocks: ContentBlock[]): BlockUnit[] {

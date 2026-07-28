@@ -308,6 +308,29 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    todo_lists (id) {
+        id -> Text,
+        conversation_id -> Text,
+        title -> Text,
+        status -> Text,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    todo_items (id) {
+        id -> Text,
+        list_id -> Text,
+        content -> Text,
+        active_form -> Text,
+        status -> Text,
+        sort_order -> Integer,
+        created_at -> BigInt,
+    }
+}
+
 diesel::joinable!(assistant_emoji_packs -> assistants (assistant_id));
 diesel::joinable!(assistant_emoji_packs -> emoji_packs (pack_id));
 diesel::joinable!(assistants -> providers (provider_id));
@@ -329,6 +352,8 @@ diesel::joinable!(skill_bindings_project -> projects (project_id));
 diesel::joinable!(skill_bindings_project -> skills (dir_name));
 diesel::joinable!(skill_bindings_assistant -> assistants (assistant_id));
 diesel::joinable!(skill_bindings_assistant -> skills (dir_name));
+diesel::joinable!(todo_lists -> conversations (conversation_id));
+diesel::joinable!(todo_items -> todo_lists (list_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,messages,model_configs,preferences,projects,prompt_templates,providers,skill_bindings_assistant,skill_bindings_global,skill_bindings_project,skills,tool_categories,tool_permissions,tool_presets,);
+    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,messages,model_configs,preferences,projects,prompt_templates,providers,skill_bindings_assistant,skill_bindings_global,skill_bindings_project,skills,todo_items,todo_lists,tool_categories,tool_permissions,tool_presets,);
