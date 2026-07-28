@@ -22,6 +22,10 @@ pub struct Message {
     pub rating: Option<i32>,
     pub schema_version: i32,
     pub is_compact_summary: i32,
+    /// Platform id of whoever sent this, when there is a trustworthy one.
+    /// `None` for desktop chats, assistant/tool rows, and anything written
+    /// before the identity pipeline existed.
+    pub sender_id: Option<i64>,
 }
 
 #[derive(Debug, Insertable)]
@@ -43,4 +47,5 @@ pub struct NewMessage<'a> {
     pub rating: Option<i32>,
     pub schema_version: i32,
     pub is_compact_summary: i32,
+    pub sender_id: Option<i64>,
 }

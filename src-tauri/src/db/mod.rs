@@ -53,7 +53,182 @@ pub fn init_db(db_path: &str) -> DbPool {
         .execute(&mut conn)
         .ok();
 
+    // Memories no longer hang off projects by foreign key, and migrations run
+    // with foreign keys off anyway, so a table rebuild can leave orphans behind.
+    let _ = ops::memory::purge_orphan_project_memories(&mut conn);
+    let _ = ops::memory::purge_expired_trash(&mut conn, crate::util::now_ms());
+    let _ = ops::memory::expire_proposals(&mut conn, crate::util::now_ms());
+
     pool
+}
+
+#[cfg(test)]
+mod migration_tests {
+    use super::*;
+    use diesel::connection::SimpleConnection;
+    use diesel::migration::{Migration, MigrationSource};
+    use diesel::prelude::*;
+    use diesel::sql_types::{BigInt, Nullable, Text};
+
+    #[derive(QueryableByName)]
+    struct MemoryRow {
+        #[diesel(sql_type = Text)]
+        scope_type: String,
+        #[diesel(sql_type = Text)]
+        scope_id: String,
+        #[diesel(sql_type = Nullable<Text>)]
+        subject_scope_id: Option<String>,
+        #[diesel(sql_type = Text)]
+        origin: String,
+    }
+
+    #[derive(QueryableByName)]
+    struct CountRow {
+        #[diesel(sql_type = BigInt)]
+        n: i64,
+    }
+
+    /// Bring a database up to migration 18 only, so migration 19 can be tested
+    /// against realistic pre-existing rows rather than against an empty schema.
+    /// Running the whole migration set (as `test_db` does) would never exercise
+    /// the data-mapping half of the migration.
+    fn conn_at_18() -> SqliteConnection {
+        let mut conn = SqliteConnection::establish(":memory:").unwrap();
+        let all = MigrationSource::<diesel::sqlite::Sqlite>::migrations(&MIGRATIONS).unwrap();
+        for m in all {
+            if m.name().version().as_owned() >= "00000000000019".into() {
+                break;
+            }
+            m.run(&mut conn).unwrap();
+        }
+        conn
+    }
+
+    fn seed_pre19(conn: &mut SqliteConnection) {
+        conn.batch_execute(
+            "INSERT INTO projects (id, name, path, source_type, source_id, created_at, updated_at)
+             VALUES ('p-desk', 'Desktop', '/tmp', 'local', NULL, 1, 1),
+                    ('p-priv', 'QQ Alice', NULL, 'onebot_private', '10001', 1, 1),
+                    ('p-grp',  'QQ Group', NULL, 'onebot_group',   '20002', 1, 1);
+
+             INSERT INTO memories (id, project_id, key, content, memory_type, created_at, updated_at)
+             VALUES ('m-desk', 'p-desk', 'style', 'terse', 'preference', 1, 1),
+                    ('m-priv', 'p-priv', 'tz',    'UTC+8', 'fact',       1, 1),
+                    ('m-grp',  'p-grp',  'slang', 'in-joke','general',   1, 1);",
+        )
+        .unwrap();
+    }
+
+    fn run_19(conn: &mut SqliteConnection) {
+        let all = MigrationSource::<diesel::sqlite::Sqlite>::migrations(&MIGRATIONS).unwrap();
+        for m in all {
+            if m.name().version().as_owned() == "00000000000019".into() {
+                m.run(conn).unwrap();
+                return;
+            }
+        }
+        panic!("migration 19 not found");
+    }
+
+    fn fetch(conn: &mut SqliteConnection, id: &str) -> MemoryRow {
+        diesel::sql_query(
+            "SELECT scope_type, scope_id, subject_scope_id, origin FROM memories WHERE id = ?",
+        )
+        .bind::<Text, _>(id)
+        .get_result(conn)
+        .unwrap()
+    }
+
+    /// The whole point of the data mapping: a private-chat memory becomes a
+    /// memory about that person, so /memory me and opt-out can reach it.
+    #[test]
+    fn private_chat_memories_become_per_person() {
+        let mut conn = conn_at_18();
+        seed_pre19(&mut conn);
+        run_19(&mut conn);
+
+        let row = fetch(&mut conn, "m-priv");
+        assert_eq!(row.scope_type, "onebot_user");
+        assert_eq!(row.scope_id, "onebot:10001");
+        assert_eq!(row.subject_scope_id.as_deref(), Some("onebot:10001"));
+        assert_eq!(row.origin, "private");
+    }
+
+    /// Old group rows carry no trustworthy sender, so they must not pass as
+    /// `group` — that would let them act as evidence from the identity pipeline.
+    #[test]
+    fn group_memories_are_marked_legacy() {
+        let mut conn = conn_at_18();
+        seed_pre19(&mut conn);
+        run_19(&mut conn);
+
+        let row = fetch(&mut conn, "m-grp");
+        assert_eq!(row.scope_type, "project");
+        assert_eq!(row.scope_id, "p-grp");
+        assert_eq!(row.subject_scope_id, None);
+        assert_eq!(row.origin, "legacy");
+    }
+
+    #[test]
+    fn desktop_memories_stay_on_their_project() {
+        let mut conn = conn_at_18();
+        seed_pre19(&mut conn);
+        run_19(&mut conn);
+
+        let row = fetch(&mut conn, "m-desk");
+        assert_eq!(row.scope_type, "project");
+        assert_eq!(row.scope_id, "p-desk");
+        assert_eq!(row.origin, "desktop");
+    }
+
+    /// A soft-deleted key must be creatable again; a plain unique index would
+    /// force upsert to resurrect tombstones and break the trash.
+    #[test]
+    fn unique_index_only_constrains_live_rows() {
+        let mut conn = conn_at_18();
+        seed_pre19(&mut conn);
+        run_19(&mut conn);
+
+        conn.batch_execute(
+            "UPDATE memories SET deleted_at = 99, deleted_by = 'self' WHERE id = 'm-desk';
+             INSERT INTO memories (id, scope_type, scope_id, key, content, memory_type,
+                                   origin, visibility, created_at, updated_at)
+             VALUES ('m-desk2', 'project', 'p-desk', 'style', 'verbose', 'preference',
+                     'desktop', 'normal', 2, 2);",
+        )
+        .expect("re-creating a soft-deleted key must be allowed");
+
+        let live: CountRow = diesel::sql_query(
+            "SELECT COUNT(*) AS n FROM memories \
+             WHERE scope_id='p-desk' AND key='style' AND deleted_at IS NULL",
+        )
+        .get_result(&mut conn)
+        .unwrap();
+        assert_eq!(live.n, 1);
+    }
+
+    /// Proposal ids must never be reused: a stale "同意 N" would otherwise
+    /// approve a completely different proposal.
+    #[test]
+    fn proposal_ids_are_not_reused() {
+        let mut conn = conn_at_18();
+        run_19(&mut conn);
+
+        conn.batch_execute(
+            "INSERT INTO memory_proposals (key, content, memory_type, status, created_at, expires_at)
+             VALUES ('a', 'x', 'general', 'pending', 1, 2);
+             DELETE FROM memory_proposals;
+             INSERT INTO memory_proposals (key, content, memory_type, status, created_at, expires_at)
+             VALUES ('b', 'y', 'general', 'pending', 1, 2);",
+        )
+        .unwrap();
+
+        let row: CountRow =
+            diesel::sql_query("SELECT id AS n FROM memory_proposals WHERE key = 'b'")
+                .get_result(&mut conn)
+                .unwrap();
+        assert_eq!(row.n, 2, "AUTOINCREMENT must not hand out id 1 again");
+    }
 }
 
 #[cfg(test)]

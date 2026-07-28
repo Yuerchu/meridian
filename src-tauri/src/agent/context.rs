@@ -261,6 +261,7 @@ mod tests {
             rating: None,
             schema_version: 2,
             is_compact_summary: 0,
+            sender_id: None,
         }
     }
 

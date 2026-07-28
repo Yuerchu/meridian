@@ -159,6 +159,8 @@ pub(crate) async fn do_compact(
                 sort_order: -1, created_at: now,
                 reasoning_content: None, rating: None,
                 schema_version: 2, is_compact_summary: 1,
+                // A summary is written by the compaction pass, not by any speaker.
+                sender_id: None,
             }).map_err(|e| e.to_string())?;
             db::ops::conversation::update_compact_cursor(&mut conn, &conv_id, Some(cursor_sort_order), now)
                 .map_err(|e| e.to_string())?;
@@ -482,6 +484,7 @@ mod tests {
             rating: None,
             schema_version: 2,
             is_compact_summary: 0,
+            sender_id: None,
         };
         let result = prepare_compact_input(&[&msg]);
         assert!(result.contains("truncated"));

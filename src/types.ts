@@ -10,12 +10,21 @@ export interface Project {
   updated_at: number
 }
 
+/** Scope/origin/visibility values come from the `memory_enums` command rather
+ *  than literal unions here, so the front end cannot drift from the Rust enums. */
 export interface Memory {
   id: string
-  project_id: string
+  scope_type: string
+  scope_id: string
   key: string
   content: string
   memory_type: string
+  subject_scope_id: string | null
+  origin: string
+  visibility: string
+  source_session_id: string | null
+  deleted_at: number | null
+  deleted_by: string | null
   created_at: number
   updated_at: number
 }
@@ -45,6 +54,23 @@ export interface TodoList {
 export interface TodoListView {
   list: TodoList
   items: TodoItem[]
+}
+
+export interface MemorySubject {
+  scope_id: string
+  display_name: string | null
+  last_seen_at: number
+  created_at: number
+  is_protected: number
+  is_pinned: number
+  opted_out: number
+}
+
+export interface MemoryEnums {
+  scopes: string[]
+  origins: string[]
+  visibilities: string[]
+  memory_types: string[]
 }
 
 export interface Conversation {

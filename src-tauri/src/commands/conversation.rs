@@ -441,10 +441,15 @@ mod tests {
         make_project(&mut conn, "p1");
         db::ops::memory::upsert_memory(&mut conn, &NewMemory {
             id: "m1",
-            project_id: "p1",
+            scope_type: "project",
+            scope_id: "p1",
             key: "stack",
             content: "Rust + Tauri",
             memory_type: "general",
+            subject_scope_id: None,
+            origin: "desktop",
+            visibility: "normal",
+            source_session_id: None,
             created_at: 1000,
             updated_at: 1000,
         }).unwrap();
@@ -510,10 +515,15 @@ mod tests {
         make_project(&mut conn, "p1");
         db::ops::memory::upsert_memory(&mut conn, &NewMemory {
             id: "m1",
-            project_id: "p1",
+            scope_type: "project",
+            scope_id: "p1",
             key: "stack",
             content: "Rust backend, React frontend, SQLite storage",
             memory_type: "general",
+            subject_scope_id: None,
+            origin: "desktop",
+            visibility: "normal",
+            source_session_id: None,
             created_at: 1000,
             updated_at: 1000,
         }).unwrap();

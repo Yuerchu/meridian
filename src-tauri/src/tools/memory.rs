@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::{Permission, Tool, ToolContext};
-use crate::db::models::memory::NewMemory;
+use crate::db::models::memory::{MemoryScope, NewMemory, Origin, Visibility};
 
 fn get_pool_and_project(context: &ToolContext) -> Result<(crate::db::DbPool, String), String> {
     let pool = context.db_pool.as_ref()
@@ -60,29 +60,31 @@ impl Tool for SaveMemoryTool {
             .unwrap_or("general")
             .to_string();
 
-        if content.len() > 10000 {
-            return Err("Memory content exceeds maximum length of 10000 characters".to_string());
-        }
-
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
 
-            let count = crate::db::ops::memory::count_memories(&mut conn, &project_id)
-                .map_err(|e| e.to_string())?;
-            let existing = crate::db::ops::memory::get_memory_by_key(&mut conn, &project_id, &key)
-                .map_err(|e| e.to_string())?;
-            if existing.is_none() && count >= 100 {
-                return Err("Maximum of 100 memories per project reached. Delete some before adding new ones.".to_string());
-            }
+            // Length and quota live in ops so this path and the IPC path cannot
+            // disagree, and so neither can bypass the other.
+            crate::db::ops::memory::validate_memory(
+                &mut conn, MemoryScope::Project, &project_id, &key, &content,
+            )?;
+            let existing = crate::db::ops::memory::get_memory_by_key(
+                &mut conn, MemoryScope::Project, &project_id, &key,
+            ).map_err(|e| e.to_string())?;
 
             let id = uuid::Uuid::new_v4().to_string();
             let now = crate::util::now_ms();
             crate::db::ops::memory::upsert_memory(&mut conn, &NewMemory {
                 id: &id,
-                project_id: &project_id,
+                scope_type: MemoryScope::Project.as_str(),
+                scope_id: &project_id,
                 key: &key,
                 content: &content,
                 memory_type: &memory_type,
+                subject_scope_id: None,
+                origin: Origin::Desktop.as_str(),
+                visibility: Visibility::Normal.as_str(),
+                source_session_id: None,
                 created_at: now,
                 updated_at: now,
             }).map_err(|e| e.to_string())?;
@@ -129,8 +131,9 @@ impl Tool for RecallMemoryTool {
 
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            match crate::db::ops::memory::get_memory_by_key(&mut conn, &project_id, &key)
-                .map_err(|e| e.to_string())? {
+            match crate::db::ops::memory::get_memory_by_key(
+                &mut conn, MemoryScope::Project, &project_id, &key,
+            ).map_err(|e| e.to_string())? {
                 Some(m) => Ok(format!("[{}] {}: {}", m.memory_type, m.key, m.content)),
                 None => Ok(format!("No memory found for key '{key}'.")),
             }
@@ -162,8 +165,9 @@ impl Tool for ListMemoriesTool {
 
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            let memories = crate::db::ops::memory::list_memories(&mut conn, &project_id)
-                .map_err(|e| e.to_string())?;
+            let memories = crate::db::ops::memory::list_by_scope(
+                &mut conn, MemoryScope::Project, &project_id,
+            ).map_err(|e| e.to_string())?;
 
             if memories.is_empty() {
                 return Ok("No memories stored.".to_string());
@@ -213,13 +217,20 @@ impl Tool for DeleteMemoryTool {
 
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            let existing = crate::db::ops::memory::get_memory_by_key(&mut conn, &project_id, &key)
-                .map_err(|e| e.to_string())?;
-            if existing.is_none() {
+            let existing = crate::db::ops::memory::get_memory_by_key(
+                &mut conn, MemoryScope::Project, &project_id, &key,
+            ).map_err(|e| e.to_string())?;
+            let Some(existing) = existing else {
                 return Ok(format!("No memory found for key '{key}'."));
-            }
-            crate::db::ops::memory::delete_memory_by_key(&mut conn, &project_id, &key)
-                .map_err(|e| e.to_string())?;
+            };
+            // Soft delete, like every other delete path, so the row stays
+            // recoverable from the trash.
+            crate::db::ops::memory::soft_delete_memories(
+                &mut conn,
+                &[existing.id],
+                crate::db::models::memory::DeletedBy::Admin,
+                crate::util::now_ms(),
+            ).map_err(|e| e.to_string())?;
             Ok(format!("Deleted memory '{key}'."))
         }).await.map_err(|e| e.to_string())?
     }

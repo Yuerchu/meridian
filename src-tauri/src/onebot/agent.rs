@@ -397,6 +397,7 @@ pub async fn headless_chat(
                 provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
                 tool_calls: None, tool_call_id: None, sort_order: 0, created_at: now,
                 reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
+                sender_id: None,
             }).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
@@ -466,7 +467,7 @@ pub async fn headless_chat(
                     provider_id: None, model_id: Some(&model_clone), input_tokens: None,
                     output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
                     created_at: now, reasoning_content: None, rating: None, schema_version: 2,
-                    is_compact_summary: 0,
+                    is_compact_summary: 0, sender_id: None,
                 }).map_err(|e| e.to_string())?;
                 Ok::<_, String>(())
             }).await.map_err(|e| e.to_string())??;
@@ -713,7 +714,7 @@ pub async fn headless_chat(
                             tool_calls: None, tool_call_id: Some(&call_id),
                             sort_order: 0, created_at: now,
                             reasoning_content: None, rating: None, schema_version: 2,
-                            is_compact_summary: 0,
+                            is_compact_summary: 0, sender_id: None,
                         });
                     }
                 }).await;
@@ -749,7 +750,7 @@ pub async fn headless_chat(
                                 input_tokens: None, output_tokens: None,
                                 tool_calls: None, tool_call_id: None, sort_order: 0,
                                 created_at: now, reasoning_content: None, rating: None,
-                                schema_version: 2, is_compact_summary: 0,
+                                schema_version: 2, is_compact_summary: 0, sender_id: None,
                             });
                         }
                     }).await;

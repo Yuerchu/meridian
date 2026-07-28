@@ -1,14 +1,107 @@
 use diesel::prelude::*;
+use diesel::sql_types::{BigInt, Text};
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::memory::{Memory, MemoryUpdate, NewMemory};
-use crate::db::schema::memories;
+use crate::db::models::memory::{
+    DeletedBy, Memory, MemoryProposal, MemorySubject, MemoryUpdate, NewMemory, NewMemoryProposal,
+    NewMemorySubject, Origin, ProposalStatus, Visibility, GLOBAL_SCOPE_ID,
+    MAX_MEMORIES_PER_PROJECT, MAX_MEMORIES_PER_SUBJECT, MAX_MEMORY_CONTENT_LEN,
+    MAX_ONEBOT_GLOBAL_MEMORIES, MAX_PINNED_SUBJECTS, MAX_REMEMBERED_SUBJECTS, MAX_TRACKED_SUBJECTS,
+};
+use crate::db::models::memory::MemoryScope;
+use crate::db::schema::{memories, memory_proposals, memory_subjects};
 
-pub fn list_memories(conn: &mut SqliteConnection, project_id: &str) -> QueryResult<Vec<Memory>> {
-    memories::table
-        .filter(memories::project_id.eq(project_id))
+/// Trash retention. Soft-deleted rows outlive the delete so `/memory undo` and
+/// the desktop trash have something to restore.
+pub const TRASH_RETENTION_MS: i64 = 30 * 24 * 3600 * 1000;
+
+/// Which memories a given caller may see, in a given place. Injection and
+/// `/memory me` both go through this so the two can never disagree about what
+/// the bot knows versus what it admits to knowing.
+#[derive(Debug, Clone)]
+pub struct VisibilityCtx {
+    /// `None` means no origin filter (private chats see everything about the
+    /// person they are talking to). Groups pass `Origin::group_visible()`.
+    pub origins: Option<Vec<Origin>>,
+    /// Injection passes `true`; anything shown back to the subject passes
+    /// `false`, so the operator's private notes never reach them.
+    pub include_owner_only: bool,
+}
+
+impl VisibilityCtx {
+    /// What the model may see about someone in a group.
+    pub fn group_injection() -> Self {
+        Self { origins: Some(Origin::group_visible().to_vec()), include_owner_only: true }
+    }
+
+    /// What the model may see about the person it is privately talking to.
+    pub fn private_injection() -> Self {
+        Self { origins: None, include_owner_only: true }
+    }
+
+    /// What a person may see about themselves, in whichever place they asked.
+    pub fn self_view(is_group: bool) -> Self {
+        Self {
+            origins: is_group.then(|| Origin::group_visible().to_vec()),
+            include_owner_only: false,
+        }
+    }
+}
+
+fn active() -> memories::BoxedQuery<'static, diesel::sqlite::Sqlite> {
+    memories::table.filter(memories::deleted_at.is_null()).into_boxed()
+}
+
+// ---------------------------------------------------------------------------
+// Reads
+// ---------------------------------------------------------------------------
+
+pub fn list_by_scope(
+    conn: &mut SqliteConnection,
+    scope: MemoryScope,
+    scope_id: &str,
+) -> QueryResult<Vec<Memory>> {
+    active()
+        .filter(memories::scope_type.eq(scope.as_str()))
+        .filter(memories::scope_id.eq(scope_id.to_string()))
         .order(memories::key.asc())
         .load::<Memory>(conn)
+}
+
+/// One round trip for every participant in a turn rather than N.
+pub fn list_by_scopes(
+    conn: &mut SqliteConnection,
+    scope: MemoryScope,
+    scope_ids: &[String],
+    ctx: &VisibilityCtx,
+) -> QueryResult<Vec<Memory>> {
+    if scope_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut q = active()
+        .filter(memories::scope_type.eq(scope.as_str()))
+        .filter(memories::scope_id.eq_any(scope_ids.to_vec()));
+    if let Some(ref origins) = ctx.origins {
+        let allowed: Vec<&str> = origins.iter().map(|o| o.as_str()).collect();
+        q = q.filter(memories::origin.eq_any(allowed));
+    }
+    if !ctx.include_owner_only {
+        q = q.filter(memories::visibility.ne(Visibility::OwnerOnly.as_str()));
+    }
+    // scope_id first, then key: the block sits in a cached prompt prefix, so the
+    // order must not depend on anything that changes between turns (last_seen_at
+    // in particular).
+    q.order((memories::scope_id.asc(), memories::key.asc()))
+        .load::<Memory>(conn)
+}
+
+/// The single source of truth for "what may be shown about this person here".
+pub fn visible_user_memories(
+    conn: &mut SqliteConnection,
+    subject_scope_id: &str,
+    ctx: &VisibilityCtx,
+) -> QueryResult<Vec<Memory>> {
+    list_by_scopes(conn, MemoryScope::OnebotUser, &[subject_scope_id.to_string()], ctx)
 }
 
 pub fn get_memory(conn: &mut SqliteConnection, id: &str) -> QueryResult<Memory> {
@@ -17,36 +110,113 @@ pub fn get_memory(conn: &mut SqliteConnection, id: &str) -> QueryResult<Memory> 
 
 pub fn get_memory_by_key(
     conn: &mut SqliteConnection,
-    project_id: &str,
+    scope: MemoryScope,
+    scope_id: &str,
     key: &str,
 ) -> QueryResult<Option<Memory>> {
-    memories::table
-        .filter(memories::project_id.eq(project_id))
-        .filter(memories::key.eq(key))
+    active()
+        .filter(memories::scope_type.eq(scope.as_str()))
+        .filter(memories::scope_id.eq(scope_id.to_string()))
+        .filter(memories::key.eq(key.to_string()))
         .first::<Memory>(conn)
         .optional()
 }
 
+pub fn count_by_scope(
+    conn: &mut SqliteConnection,
+    scope: MemoryScope,
+    scope_id: &str,
+) -> QueryResult<i64> {
+    active()
+        .filter(memories::scope_type.eq(scope.as_str()))
+        .filter(memories::scope_id.eq(scope_id.to_string()))
+        .count()
+        .get_result(conn)
+}
+
+/// Memories naming a person, wherever they live. Opt-out uses this to reach
+/// group-scoped rows that talk about someone.
+pub fn list_by_subject(
+    conn: &mut SqliteConnection,
+    subject_scope_id: &str,
+) -> QueryResult<Vec<Memory>> {
+    active()
+        .filter(memories::subject_scope_id.eq(subject_scope_id.to_string()))
+        .order(memories::updated_at.desc())
+        .load::<Memory>(conn)
+}
+
+pub fn list_trash(conn: &mut SqliteConnection, limit: i64) -> QueryResult<Vec<Memory>> {
+    memories::table
+        .filter(memories::deleted_at.is_not_null())
+        .order(memories::deleted_at.desc())
+        .limit(limit)
+        .load::<Memory>(conn)
+}
+
+// ---------------------------------------------------------------------------
+// Writes
+// ---------------------------------------------------------------------------
+
+fn scope_quota(scope: MemoryScope) -> usize {
+    match scope {
+        MemoryScope::Project => MAX_MEMORIES_PER_PROJECT,
+        MemoryScope::OnebotGlobal => MAX_ONEBOT_GLOBAL_MEMORIES,
+        MemoryScope::OnebotUser => MAX_MEMORIES_PER_SUBJECT,
+    }
+}
+
+/// Content length and per-scope quota live here rather than in the tool layer so
+/// the IPC path cannot bypass them.
+pub fn validate_memory(
+    conn: &mut SqliteConnection,
+    scope: MemoryScope,
+    scope_id: &str,
+    key: &str,
+    content: &str,
+) -> Result<(), String> {
+    if content.chars().count() > MAX_MEMORY_CONTENT_LEN {
+        return Err(format!(
+            "Memory content exceeds the {MAX_MEMORY_CONTENT_LEN} character limit"
+        ));
+    }
+    if key.trim().is_empty() {
+        return Err("Memory key must not be empty".to_string());
+    }
+    let existing = get_memory_by_key(conn, scope, scope_id, key).map_err(|e| e.to_string())?;
+    if existing.is_none() {
+        let count = count_by_scope(conn, scope, scope_id).map_err(|e| e.to_string())? as usize;
+        if count >= scope_quota(scope) {
+            return Err(format!(
+                "This scope already holds its maximum of {} memories; delete some first",
+                scope_quota(scope)
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Upsert against the live row only. A soft-deleted row with the same key stays
+/// in the trash and a fresh row is created, so restoring never collides and the
+/// delete history survives.
 pub fn upsert_memory(conn: &mut SqliteConnection, new: &NewMemory) -> QueryResult<Memory> {
-    let existing = memories::table
-        .filter(memories::project_id.eq(new.project_id))
-        .filter(memories::key.eq(new.key))
-        .first::<Memory>(conn)
-        .optional()?;
+    let scope = MemoryScope::parse(new.scope_type).unwrap_or(MemoryScope::Project);
+    let existing = get_memory_by_key(conn, scope, new.scope_id, new.key)?;
 
     if let Some(existing) = existing {
         diesel::update(memories::table.find(&existing.id))
             .set((
                 memories::content.eq(new.content),
                 memories::memory_type.eq(new.memory_type),
+                memories::subject_scope_id.eq(new.subject_scope_id),
+                memories::origin.eq(new.origin),
+                memories::visibility.eq(new.visibility),
                 memories::updated_at.eq(new.updated_at),
             ))
             .execute(conn)?;
         memories::table.find(&existing.id).first::<Memory>(conn)
     } else {
-        diesel::insert_into(memories::table)
-            .values(new)
-            .execute(conn)?;
+        diesel::insert_into(memories::table).values(new).execute(conn)?;
         memories::table.find(new.id).first::<Memory>(conn)
     }
 }
@@ -56,46 +226,630 @@ pub fn update_memory(
     id: &str,
     changeset: &MemoryUpdate,
 ) -> QueryResult<Memory> {
-    diesel::update(memories::table.find(id))
-        .set(changeset)
-        .execute(conn)?;
+    diesel::update(memories::table.find(id)).set(changeset).execute(conn)?;
     memories::table.find(id).first::<Memory>(conn)
 }
 
-pub fn delete_memory(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
-    diesel::delete(memories::table.find(id)).execute(conn)?;
-    Ok(())
+pub fn soft_delete_memories(
+    conn: &mut SqliteConnection,
+    ids: &[String],
+    by: DeletedBy,
+    now: i64,
+) -> QueryResult<usize> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    diesel::update(
+        memories::table
+            .filter(memories::id.eq_any(ids.to_vec()))
+            .filter(memories::deleted_at.is_null()),
+    )
+    .set((memories::deleted_at.eq(Some(now)), memories::deleted_by.eq(Some(by.as_str()))))
+    .execute(conn)
 }
 
-pub fn delete_memory_by_key(
-    conn: &mut SqliteConnection,
-    project_id: &str,
-    key: &str,
-) -> QueryResult<()> {
+pub fn restore_memories(conn: &mut SqliteConnection, ids: &[String]) -> QueryResult<usize> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    diesel::update(memories::table.filter(memories::id.eq_any(ids.to_vec())))
+        .set((
+            memories::deleted_at.eq(None::<i64>),
+            memories::deleted_by.eq(None::<String>),
+        ))
+        .execute(conn)
+}
+
+pub fn purge_memories(conn: &mut SqliteConnection, ids: &[String]) -> QueryResult<usize> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    diesel::delete(memories::table.filter(memories::id.eq_any(ids.to_vec()))).execute(conn)
+}
+
+/// Drop trash past the retention window. Runs at startup and alongside LRU
+/// enforcement rather than on a timer, whose failure mode is silent.
+pub fn purge_expired_trash(conn: &mut SqliteConnection, now: i64) -> QueryResult<usize> {
     diesel::delete(
         memories::table
-            .filter(memories::project_id.eq(project_id))
-            .filter(memories::key.eq(key)),
+            .filter(memories::deleted_at.is_not_null())
+            .filter(memories::deleted_at.lt(now - TRASH_RETENTION_MS)),
     )
-    .execute(conn)?;
+    .execute(conn)
+}
+
+/// Hard delete, not soft: with the project gone a tombstone's scope_id points
+/// nowhere, so it could be neither restored nor shown in the trash.
+pub fn delete_project_memories(conn: &mut SqliteConnection, project_id: &str) -> QueryResult<usize> {
+    diesel::delete(
+        memories::table
+            .filter(memories::scope_type.eq(MemoryScope::Project.as_str()))
+            .filter(memories::scope_id.eq(project_id.to_string())),
+    )
+    .execute(conn)
+}
+
+/// Safety net for the case a future migration rebuilds `projects`: foreign keys
+/// are off during migrations, so even a real FK would not have cascaded.
+pub fn purge_orphan_project_memories(conn: &mut SqliteConnection) -> QueryResult<usize> {
+    diesel::sql_query(
+        "DELETE FROM memories WHERE scope_type = 'project' \
+         AND scope_id NOT IN (SELECT id FROM projects)",
+    )
+    .execute(conn)
+}
+
+// ---------------------------------------------------------------------------
+// Subjects (LRU clock)
+// ---------------------------------------------------------------------------
+
+/// Refresh someone's interaction clock, creating the row on first sight.
+/// `is_protected` mirrors the admin list so eviction never has to read config;
+/// it self-heals on the person's next message after the list changes.
+pub fn touch_subject(
+    conn: &mut SqliteConnection,
+    scope_id: &str,
+    display_name: Option<&str>,
+    is_protected: bool,
+    now: i64,
+) -> QueryResult<()> {
+    let existing = memory_subjects::table
+        .find(scope_id)
+        .first::<MemorySubject>(conn)
+        .optional()?;
+
+    match existing {
+        Some(_) => {
+            diesel::update(memory_subjects::table.find(scope_id))
+                .set((
+                    memory_subjects::last_seen_at.eq(now),
+                    memory_subjects::is_protected.eq(i32::from(is_protected)),
+                ))
+                .execute(conn)?;
+            // Keep the last known nickname, but never overwrite a known one with
+            // nothing: OneBot omits the card for members without one.
+            if let Some(name) = display_name.filter(|n| !n.trim().is_empty()) {
+                diesel::update(memory_subjects::table.find(scope_id))
+                    .set(memory_subjects::display_name.eq(name))
+                    .execute(conn)?;
+            }
+        }
+        None => {
+            diesel::insert_into(memory_subjects::table)
+                .values(&NewMemorySubject {
+                    scope_id,
+                    display_name: display_name.filter(|n| !n.trim().is_empty()),
+                    last_seen_at: now,
+                    created_at: now,
+                    is_protected: i32::from(is_protected),
+                    is_pinned: 0,
+                    opted_out: 0,
+                })
+                .execute(conn)?;
+        }
+    }
     Ok(())
 }
 
-pub fn count_memories(conn: &mut SqliteConnection, project_id: &str) -> QueryResult<i64> {
-    memories::table
-        .filter(memories::project_id.eq(project_id))
-        .count()
-        .get_result(conn)
+pub fn get_subject(
+    conn: &mut SqliteConnection,
+    scope_id: &str,
+) -> QueryResult<Option<MemorySubject>> {
+    memory_subjects::table.find(scope_id).first::<MemorySubject>(conn).optional()
 }
 
-pub fn format_memory_block(memories: &[Memory]) -> Option<String> {
+pub fn list_subjects(conn: &mut SqliteConnection) -> QueryResult<Vec<MemorySubject>> {
+    memory_subjects::table
+        .order(memory_subjects::last_seen_at.desc())
+        .load::<MemorySubject>(conn)
+}
+
+pub fn set_subject_flags(
+    conn: &mut SqliteConnection,
+    scope_id: &str,
+    is_pinned: Option<bool>,
+    opted_out: Option<bool>,
+) -> QueryResult<()> {
+    if let Some(pinned) = is_pinned {
+        if pinned {
+            let count: i64 = memory_subjects::table
+                .filter(memory_subjects::is_pinned.eq(1))
+                .count()
+                .get_result(conn)?;
+            if count as usize >= MAX_PINNED_SUBJECTS {
+                // Pinning is an eviction exemption, so an unbounded pin list
+                // would be a way around the remembered-subject ceiling.
+                return Err(diesel::result::Error::RollbackTransaction);
+            }
+        }
+        diesel::update(memory_subjects::table.find(scope_id))
+            .set(memory_subjects::is_pinned.eq(i32::from(pinned)))
+            .execute(conn)?;
+    }
+    if let Some(out) = opted_out {
+        diesel::update(memory_subjects::table.find(scope_id))
+            .set(memory_subjects::opted_out.eq(i32::from(out)))
+            .execute(conn)?;
+    }
+    Ok(())
+}
+
+/// Everything about one person goes away: their own memories plus any group
+/// memory that names them. Shared by opt-out and the operator's "forget this
+/// person" action. Owner-only rows survive unless `include_owner_only`.
+pub fn forget_subject(
+    conn: &mut SqliteConnection,
+    subject_scope_id: &str,
+    include_owner_only: bool,
+    by: DeletedBy,
+    now: i64,
+) -> QueryResult<usize> {
+    let mut q = memories::table
+        .filter(memories::deleted_at.is_null())
+        .filter(
+            memories::scope_id
+                .eq(subject_scope_id.to_string())
+                .and(memories::scope_type.eq(MemoryScope::OnebotUser.as_str()))
+                .or(memories::subject_scope_id.eq(subject_scope_id.to_string())),
+        )
+        .into_boxed();
+    if !include_owner_only {
+        q = q.filter(memories::visibility.ne(Visibility::OwnerOnly.as_str()));
+    }
+    let ids: Vec<String> = q.select(memories::id).load(conn)?;
+    soft_delete_memories(conn, &ids, by, now)
+}
+
+/// Evict least-recently-seen people until the remembered-subject ceiling holds,
+/// then trim each survivor. Returns `(people forgotten, rows trimmed)`.
+///
+/// Owner-only rows are never touched, and correspondingly do not make someone
+/// count as "remembered": otherwise a person left with nothing but the
+/// operator's notes would hold a slot that evicting them could not free.
+pub fn enforce_subject_lru(conn: &mut SqliteConnection, now: i64) -> QueryResult<(usize, usize)> {
+    #[derive(QueryableByName)]
+    struct ScopeIdRow {
+        #[diesel(sql_type = Text)]
+        scope_id: String,
+    }
+
+    // `ORDER BY last_seen_at DESC ... OFFSET n` selects exactly "everyone beyond
+    // the most recent n". Exempt people are excluded from the candidate set, so
+    // they neither get evicted nor consume a slot.
+    let doomed: Vec<ScopeIdRow> = diesel::sql_query(
+        "SELECT s.scope_id FROM memory_subjects s \
+         WHERE s.is_protected = 0 AND s.is_pinned = 0 \
+           AND EXISTS (SELECT 1 FROM memories m \
+                       WHERE m.scope_type = 'onebot_user' AND m.scope_id = s.scope_id \
+                         AND m.deleted_at IS NULL AND m.visibility = 'normal') \
+         ORDER BY s.last_seen_at DESC LIMIT -1 OFFSET ?",
+    )
+    .bind::<BigInt, _>(MAX_REMEMBERED_SUBJECTS as i64)
+    .load(conn)?;
+
+    let mut forgotten = 0usize;
+    for row in &doomed {
+        let n = forget_subject(conn, &row.scope_id, false, DeletedBy::Lru, now)?;
+        if n > 0 {
+            forgotten += 1;
+        }
+    }
+
+    // Per-person trim, oldest first. Owner-only rows are exempt here too.
+    let survivors: Vec<ScopeIdRow> = diesel::sql_query(
+        "SELECT DISTINCT scope_id FROM memories \
+         WHERE scope_type = 'onebot_user' AND deleted_at IS NULL AND visibility = 'normal'",
+    )
+    .load(conn)?;
+
+    let mut trimmed = 0usize;
+    for row in &survivors {
+        let overflow: Vec<ScopeIdRow> = diesel::sql_query(
+            "SELECT id AS scope_id FROM memories \
+             WHERE scope_type = 'onebot_user' AND scope_id = ? AND deleted_at IS NULL \
+               AND visibility = 'normal' \
+             ORDER BY updated_at DESC LIMIT -1 OFFSET ?",
+        )
+        .bind::<Text, _>(&row.scope_id)
+        .bind::<BigInt, _>(MAX_MEMORIES_PER_SUBJECT as i64)
+        .load(conn)?;
+        let ids: Vec<String> = overflow.into_iter().map(|r| r.scope_id).collect();
+        trimmed += soft_delete_memories(conn, &ids, DeletedBy::Lru, now)?;
+    }
+
+    // Passers-by with no memories at all. Opted-out rows are kept: dropping one
+    // would lose the opt-out itself and the person would be remembered again the
+    // moment they spoke.
+    diesel::sql_query(
+        "DELETE FROM memory_subjects WHERE scope_id IN ( \
+           SELECT s.scope_id FROM memory_subjects s \
+           WHERE s.is_protected = 0 AND s.is_pinned = 0 AND s.opted_out = 0 \
+             AND NOT EXISTS (SELECT 1 FROM memories m \
+                             WHERE m.deleted_at IS NULL \
+                               AND (m.subject_scope_id = s.scope_id \
+                                    OR (m.scope_type = 'onebot_user' AND m.scope_id = s.scope_id))) \
+           ORDER BY s.last_seen_at DESC LIMIT -1 OFFSET ?)",
+    )
+    .bind::<BigInt, _>(MAX_TRACKED_SUBJECTS as i64)
+    .execute(conn)?;
+
+    purge_expired_trash(conn, now)?;
+
+    Ok((forgotten, trimmed))
+}
+
+// ---------------------------------------------------------------------------
+// Bot-wide proposals
+// ---------------------------------------------------------------------------
+
+pub fn create_proposal(
+    conn: &mut SqliteConnection,
+    new: &NewMemoryProposal,
+) -> QueryResult<MemoryProposal> {
+    diesel::insert_into(memory_proposals::table).values(new).execute(conn)?;
+    memory_proposals::table
+        .order(memory_proposals::id.desc())
+        .first::<MemoryProposal>(conn)
+}
+
+pub fn list_proposals(
+    conn: &mut SqliteConnection,
+    only_pending: bool,
+) -> QueryResult<Vec<MemoryProposal>> {
+    let mut q = memory_proposals::table.into_boxed();
+    if only_pending {
+        q = q.filter(memory_proposals::status.eq(ProposalStatus::Pending.as_str()));
+    }
+    q.order(memory_proposals::id.desc()).load::<MemoryProposal>(conn)
+}
+
+pub fn get_proposal(conn: &mut SqliteConnection, id: i32) -> QueryResult<Option<MemoryProposal>> {
+    memory_proposals::table.find(id).first::<MemoryProposal>(conn).optional()
+}
+
+/// Resolve exactly once. A zero row count means it was already handled or has
+/// expired — the caller must report that rather than acting twice.
+pub fn resolve_proposal(
+    conn: &mut SqliteConnection,
+    id: i32,
+    status: ProposalStatus,
+    resolved_by: Option<i64>,
+    now: i64,
+) -> QueryResult<usize> {
+    diesel::update(
+        memory_proposals::table
+            .find(id)
+            .filter(memory_proposals::status.eq(ProposalStatus::Pending.as_str()))
+            .filter(memory_proposals::expires_at.gt(now)),
+    )
+    .set((
+        memory_proposals::status.eq(status.as_str()),
+        memory_proposals::resolved_at.eq(Some(now)),
+        memory_proposals::resolved_by.eq(resolved_by),
+    ))
+    .execute(conn)
+}
+
+pub fn expire_proposals(conn: &mut SqliteConnection, now: i64) -> QueryResult<usize> {
+    diesel::update(
+        memory_proposals::table
+            .filter(memory_proposals::status.eq(ProposalStatus::Pending.as_str()))
+            .filter(memory_proposals::expires_at.le(now)),
+    )
+    .set(memory_proposals::status.eq(ProposalStatus::Expired.as_str()))
+    .execute(conn)
+}
+
+/// Drop resolved proposals past the retention window. Row ids are never reused
+/// regardless, since the table is AUTOINCREMENT.
+pub fn purge_old_proposals(conn: &mut SqliteConnection, now: i64) -> QueryResult<usize> {
+    diesel::delete(
+        memory_proposals::table
+            .filter(memory_proposals::status.ne(ProposalStatus::Pending.as_str()))
+            .filter(memory_proposals::created_at.lt(now - TRASH_RETENTION_MS)),
+    )
+    .execute(conn)
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+
+/// Escape a value bound for an XML attribute. QQ nicknames routinely contain
+/// quotes and angle brackets, which would otherwise break the block structure.
+pub fn escape_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// Render one section. The leading blank line belongs to the block because every
+/// call site concatenates bare strings.
+pub fn format_memory_section(
+    memories: &[Memory],
+    tag: &str,
+    attrs: Option<&str>,
+) -> Option<String> {
     if memories.is_empty() {
         return None;
     }
-    let mut block = String::from("\n\n<project_memories>\n");
+    let open = match attrs {
+        Some(a) => format!("<{tag} {a}>"),
+        None => format!("<{tag}>"),
+    };
+    let mut block = format!("\n\n{open}\n");
     for m in memories {
         block.push_str(&format!("- [{}] {}: {}\n", m.memory_type, m.key, m.content));
     }
-    block.push_str("</project_memories>");
+    block.push_str(&format!("</{tag}>"));
     Some(block)
+}
+
+/// Legacy single-section renderer kept byte-for-byte identical to what desktop
+/// chats have been receiving. The layered renderer lives in agent::memory_context.
+pub fn format_memory_block(memories: &[Memory]) -> Option<String> {
+    format_memory_section(memories, "project_memories", None)
+}
+
+/// Convenience for the desktop path, which is still project-only.
+pub fn list_memories(conn: &mut SqliteConnection, project_id: &str) -> QueryResult<Vec<Memory>> {
+    list_by_scope(conn, MemoryScope::Project, project_id)
+}
+
+pub fn global_scope_id() -> &'static str {
+    GLOBAL_SCOPE_ID
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::models::memory::onebot_user_scope_id;
+    use crate::db::test_db;
+
+    fn mem(conn: &mut SqliteConnection, id: &str, subject: i64, origin: Origin, vis: Visibility) {
+        let scope_id = onebot_user_scope_id(subject);
+        upsert_memory(
+            conn,
+            &NewMemory {
+                id,
+                scope_type: MemoryScope::OnebotUser.as_str(),
+                scope_id: &scope_id,
+                key: id,
+                content: "x",
+                memory_type: "general",
+                subject_scope_id: Some(&scope_id),
+                origin: origin.as_str(),
+                visibility: vis.as_str(),
+                source_session_id: None,
+                created_at: 1,
+                updated_at: 1,
+            },
+        )
+        .unwrap();
+    }
+
+    /// The privacy boundary: what someone told the bot in private must not
+    /// resurface in a group.
+    #[test]
+    fn group_view_excludes_private_memories() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        mem(conn, "p", 1, Origin::Private, Visibility::Normal);
+        mem(conn, "g", 1, Origin::Group, Visibility::Normal);
+
+        let scope = onebot_user_scope_id(1);
+        let in_group =
+            visible_user_memories(conn, &scope, &VisibilityCtx::group_injection()).unwrap();
+        assert_eq!(in_group.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["g"]);
+
+        let in_private =
+            visible_user_memories(conn, &scope, &VisibilityCtx::private_injection()).unwrap();
+        assert_eq!(in_private.len(), 2);
+    }
+
+    /// A person may see what shapes the bot's behaviour toward them, but never
+    /// the operator's private notes about them.
+    #[test]
+    fn self_view_hides_owner_only_rows() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        mem(conn, "note", 1, Origin::Admin, Visibility::OwnerOnly);
+        mem(conn, "pref", 1, Origin::Group, Visibility::Normal);
+
+        let scope = onebot_user_scope_id(1);
+        let seen = visible_user_memories(conn, &scope, &VisibilityCtx::self_view(true)).unwrap();
+        assert_eq!(seen.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["pref"]);
+
+        // ...while the model still gets to act on it.
+        let injected =
+            visible_user_memories(conn, &scope, &VisibilityCtx::group_injection()).unwrap();
+        assert_eq!(injected.len(), 2);
+    }
+
+    #[test]
+    fn soft_deleted_rows_disappear_then_come_back() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        mem(conn, "a", 1, Origin::Group, Visibility::Normal);
+        let scope = onebot_user_scope_id(1);
+
+        soft_delete_memories(conn, &["a".into()], DeletedBy::SelfRemoved, 10).unwrap();
+        assert!(list_by_scope(conn, MemoryScope::OnebotUser, &scope).unwrap().is_empty());
+        assert_eq!(list_trash(conn, 10).unwrap().len(), 1);
+
+        restore_memories(conn, &["a".into()]).unwrap();
+        assert_eq!(list_by_scope(conn, MemoryScope::OnebotUser, &scope).unwrap().len(), 1);
+    }
+
+    /// Eviction forgets the person, but the operator's notes about them are not
+    /// theirs to lose.
+    #[test]
+    fn eviction_spares_owner_only_rows() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        mem(conn, "normal", 7, Origin::Group, Visibility::Normal);
+        mem(conn, "note", 7, Origin::Admin, Visibility::OwnerOnly);
+
+        let scope = onebot_user_scope_id(7);
+        forget_subject(conn, &scope, false, DeletedBy::Lru, 20).unwrap();
+
+        let left = list_by_scope(conn, MemoryScope::OnebotUser, &scope).unwrap();
+        assert_eq!(left.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["note"]);
+    }
+
+    /// Opt-out must survive the passer-by sweep, or the person would silently
+    /// start being remembered again the next time they spoke.
+    #[test]
+    fn tracked_sweep_keeps_opted_out_rows() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        for i in 0..(MAX_TRACKED_SUBJECTS as i64 + 5) {
+            touch_subject(conn, &onebot_user_scope_id(i), None, false, i).unwrap();
+        }
+        let quitter = onebot_user_scope_id(0); // oldest last_seen, first to go
+        set_subject_flags(conn, &quitter, None, Some(true)).unwrap();
+
+        enforce_subject_lru(conn, 999_999).unwrap();
+
+        let row = get_subject(conn, &quitter).unwrap();
+        assert!(row.is_some_and(|s| s.is_opted_out()), "opt-out row must survive the sweep");
+    }
+
+    #[test]
+    fn quota_and_length_are_enforced_for_every_writer() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        let scope = onebot_user_scope_id(3);
+
+        let too_long = "x".repeat(MAX_MEMORY_CONTENT_LEN + 1);
+        assert!(validate_memory(conn, MemoryScope::OnebotUser, &scope, "k", &too_long).is_err());
+
+        for i in 0..MAX_MEMORIES_PER_SUBJECT {
+            mem(conn, &format!("m{i}"), 3, Origin::Group, Visibility::Normal);
+        }
+        assert!(validate_memory(conn, MemoryScope::OnebotUser, &scope, "extra", "x").is_err());
+        // Overwriting an existing key stays allowed at the cap.
+        assert!(validate_memory(conn, MemoryScope::OnebotUser, &scope, "m0", "x").is_ok());
+    }
+
+    /// The block sits in a cached prompt prefix, so its order must not depend on
+    /// anything that changes between turns.
+    #[test]
+    fn multi_subject_order_is_stable() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        mem(conn, "b", 2, Origin::Group, Visibility::Normal);
+        mem(conn, "a", 1, Origin::Group, Visibility::Normal);
+
+        let ids = vec![onebot_user_scope_id(2), onebot_user_scope_id(1)];
+        let rows =
+            list_by_scopes(conn, MemoryScope::OnebotUser, &ids, &VisibilityCtx::group_injection())
+                .unwrap();
+        // onebot:1 sorts before onebot:2 regardless of the order asked for.
+        assert_eq!(rows.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+    }
+
+    /// A resolved proposal must never be actionable twice.
+    #[test]
+    fn proposal_resolves_exactly_once() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        let p = create_proposal(
+            conn,
+            &NewMemoryProposal {
+                key: "tone",
+                content: "be brief",
+                memory_type: "instruction",
+                origin_session: None,
+                proposer_id: Some(1),
+                status: ProposalStatus::Pending.as_str(),
+                created_at: 1,
+                expires_at: 1_000,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(resolve_proposal(conn, p.id, ProposalStatus::Approved, Some(1), 10).unwrap(), 1);
+        assert_eq!(resolve_proposal(conn, p.id, ProposalStatus::Approved, Some(1), 11).unwrap(), 0);
+    }
+
+    #[test]
+    fn expired_proposal_cannot_be_approved() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        let p = create_proposal(
+            conn,
+            &NewMemoryProposal {
+                key: "tone",
+                content: "be brief",
+                memory_type: "instruction",
+                origin_session: None,
+                proposer_id: None,
+                status: ProposalStatus::Pending.as_str(),
+                created_at: 1,
+                expires_at: 100,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(resolve_proposal(conn, p.id, ProposalStatus::Approved, None, 200).unwrap(), 0);
+    }
+
+    /// Desktop chats must keep receiving exactly the block they always have.
+    #[test]
+    fn project_block_is_byte_identical_to_the_legacy_format() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        crate::db::ops::project::create_project(
+            conn,
+            &crate::db::models::project::NewProject {
+                id: "p1", name: "P", path: None, source_type: "local", source_id: None,
+                assistant_id: None, description: None, created_at: 1, updated_at: 1,
+            },
+        )
+        .unwrap();
+        upsert_memory(
+            conn,
+            &NewMemory {
+                id: "m1", scope_type: "project", scope_id: "p1", key: "stack",
+                content: "Rust + Tauri", memory_type: "general", subject_scope_id: None,
+                origin: "desktop", visibility: "normal", source_session_id: None,
+                created_at: 1, updated_at: 1,
+            },
+        )
+        .unwrap();
+
+        let rows = list_by_scope(conn, MemoryScope::Project, "p1").unwrap();
+        assert_eq!(
+            format_memory_block(&rows).unwrap(),
+            "\n\n<project_memories>\n- [general] stack: Rust + Tauri\n</project_memories>"
+        );
+    }
+
+    #[test]
+    fn attributes_are_escaped() {
+        assert_eq!(escape_attr(r#"a"<b>&"#), "a&quot;&lt;b&gt;&amp;");
+    }
 }

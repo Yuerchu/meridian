@@ -138,12 +138,47 @@ diesel::table! {
 diesel::table! {
     memories (id) {
         id -> Text,
-        project_id -> Text,
+        scope_type -> Text,
+        scope_id -> Text,
         key -> Text,
         content -> Text,
         memory_type -> Text,
+        subject_scope_id -> Nullable<Text>,
+        origin -> Text,
+        visibility -> Text,
+        source_session_id -> Nullable<Text>,
+        deleted_at -> Nullable<BigInt>,
+        deleted_by -> Nullable<Text>,
         created_at -> BigInt,
         updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    memory_proposals (id) {
+        id -> Integer,
+        key -> Text,
+        content -> Text,
+        memory_type -> Text,
+        origin_session -> Nullable<Text>,
+        proposer_id -> Nullable<BigInt>,
+        status -> Text,
+        created_at -> BigInt,
+        expires_at -> BigInt,
+        resolved_at -> Nullable<BigInt>,
+        resolved_by -> Nullable<BigInt>,
+    }
+}
+
+diesel::table! {
+    memory_subjects (scope_id) {
+        scope_id -> Text,
+        display_name -> Nullable<Text>,
+        last_seen_at -> BigInt,
+        created_at -> BigInt,
+        is_protected -> Integer,
+        is_pinned -> Integer,
+        opted_out -> Integer,
     }
 }
 
@@ -165,6 +200,7 @@ diesel::table! {
         rating -> Nullable<Integer>,
         schema_version -> Integer,
         is_compact_summary -> Integer,
+        sender_id -> Nullable<BigInt>,
     }
 }
 
@@ -342,7 +378,6 @@ diesel::joinable!(conversations -> assistants (assistant_id));
 diesel::joinable!(conversations -> projects (project_id));
 diesel::joinable!(custom_tools -> tool_categories (category_id));
 diesel::joinable!(emojis -> emoji_packs (pack_id));
-diesel::joinable!(memories -> projects (project_id));
 diesel::joinable!(messages -> conversations (conversation_id));
 diesel::joinable!(messages -> providers (provider_id));
 diesel::joinable!(projects -> assistants (assistant_id));
@@ -356,4 +391,4 @@ diesel::joinable!(todo_lists -> conversations (conversation_id));
 diesel::joinable!(todo_items -> todo_lists (list_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,messages,model_configs,preferences,projects,prompt_templates,providers,skill_bindings_assistant,skill_bindings_global,skill_bindings_project,skills,todo_items,todo_lists,tool_categories,tool_permissions,tool_presets,);
+    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,memory_proposals,memory_subjects,messages,model_configs,preferences,projects,prompt_templates,providers,skill_bindings_assistant,skill_bindings_global,skill_bindings_project,skills,todo_items,todo_lists,tool_categories,tool_permissions,tool_presets,);

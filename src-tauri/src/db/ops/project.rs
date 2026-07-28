@@ -45,7 +45,13 @@ pub fn update_project(
     projects::table.find(id).first::<Project>(conn)
 }
 
+/// Memories are not reachable by foreign key any more (scope_id is polymorphic),
+/// so the cascade happens here — in ops rather than in the command layer, so
+/// every caller is covered.
 pub fn delete_project(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
-    diesel::delete(projects::table.find(id)).execute(conn)?;
-    Ok(())
+    conn.transaction(|conn| {
+        crate::db::ops::memory::delete_project_memories(conn, id)?;
+        diesel::delete(projects::table.find(id)).execute(conn)?;
+        Ok(())
+    })
 }
