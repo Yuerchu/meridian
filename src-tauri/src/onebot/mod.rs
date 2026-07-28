@@ -1,5 +1,6 @@
 mod agent;
 mod command;
+mod extract;
 mod format;
 mod handler;
 mod media;

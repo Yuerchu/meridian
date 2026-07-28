@@ -190,6 +190,70 @@ async fn consume_stream_headless(
 /// - `is_admin`: controls whether tools are available at all
 /// - `approval_fn`: called for Ask-permission tools (admin only); returns true to approve
 /// - `app`: when `Some`, emits `chat-stream` events for real-time UI updates
+/// One model call with no tools, no history and no persistence — used by the
+/// post-turn extraction pass.
+///
+/// Kept separate from `headless_chat` on purpose: this must not be able to call
+/// tools, write messages, or otherwise act on the conversation. It only reads
+/// what happened and answers a question about it.
+pub(super) async fn oneshot_completion(
+    state: &Arc<super::SharedState>,
+    conversation_id: &str,
+    system_prompt: &str,
+    user_prompt: &str,
+) -> Result<String, String> {
+    let assistant = {
+        let pool = state.pool.clone();
+        let conv_id = conversation_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
+                .map_err(|e| e.to_string())?;
+            Ok::<_, String>(conv.assistant_id.and_then(|id| {
+                crate::db::ops::assistant::get_assistant(&mut conn, &id).ok()
+            }))
+        })
+        .await
+        .map_err(|e| e.to_string())??
+    };
+
+    let (provider_type, base_url, api_key, model, api_format) =
+        resolve_provider_config(&state.secrets, &state.pool, assistant.as_ref())?;
+    let provider =
+        provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
+
+    let effective_model = assistant
+        .as_ref()
+        .and_then(|a| a.model_id.as_deref())
+        .unwrap_or(&model);
+
+    let messages = vec![
+        ChatMessage {
+            role: "system".into(),
+            content: system_prompt.into(),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            signature: None,
+            origin: provider::MessageOrigin::Assistant,
+        },
+        // The transcript is data being analysed, not an instruction being
+        // followed, and it carries no speaker of its own.
+        ChatMessage::system_context(user_prompt),
+    ];
+
+    let params = ChatParams {
+        model: effective_model.to_string(),
+        temperature: Some(0.0),
+        ..Default::default()
+    };
+
+    provider
+        .chat(messages, params)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[allow(clippy::too_many_arguments)]
 pub async fn headless_chat(
     pool: &DbPool,

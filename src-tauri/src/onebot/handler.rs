@@ -90,29 +90,19 @@ async fn handle_text_message(
 
     let is_admin = state.config.admin_users.contains(&user_id);
 
-    // Admin decision on a pending friend/group request ("同意 N" / "拒绝 N [理由]").
-    // Checked before the Y/N tool approval so a decision is never read as a tool
-    // denial; only intercepts when the id actually refers to a pending request.
-    if is_admin && !is_group {
+    // Admin decision on anything numbered ("同意 N" / "拒绝 N [理由]"): friend and
+    // group requests, and bot-wide memory proposals. Checked before the Y/N tool
+    // approval so a decision is never read as a tool denial.
+    //
+    // Allowed in groups too: reaching this point already required an @mention,
+    // which is intent enough, and it lets the operator confirm without leaving
+    // the conversation the proposal came from.
+    if is_admin {
         if let Some(decision) = command::parse_request_decision(text) {
-            // Remove under the lock so two concurrent decisions on the same id
-            // can't both fire the API; the loser sees None and reports missing.
-            let (removed, had_any) = {
-                let mut map = state.pending_requests.lock().await;
-                let had_any = !map.is_empty();
-                (map.remove(&decision.id), had_any)
-            };
-            match removed {
-                Some(req) => return handle_request_decision(event, state, decision, req).await,
-                None if had_any => {
-                    return build_reply(
-                        event,
-                        &format!("没有找到编号 {} 的待处理请求", decision.id),
-                        None,
-                    );
-                }
-                None => {} // no pending requests at all — treat as normal chat
+            if let Some(actions) = dispatch_decision(event, state, decision, user_id).await {
+                return actions;
             }
+            // No queue knew the id — fall through and treat it as ordinary chat.
         }
     }
 
@@ -424,6 +414,17 @@ pub(super) async fn run_agent_turn(
             }
         };
 
+        // Learn from what just happened — detached, because it is a second model
+        // call and nobody should wait on it to see their reply. Any operator
+        // notice it produces is sent on its own.
+        spawn_extraction(
+            state.clone(),
+            session_key.clone(),
+            conversation_id.clone(),
+            project_id.clone(),
+            incoming.clone(),
+        );
+
         match super::end_turn(state, session_key).await {
             super::TurnEnd::Done => return actions,
             super::TurnEnd::Continue(items) => {
@@ -542,6 +543,213 @@ pub async fn handle_request(
     state.config.admin_users.iter()
         .map(|admin| OneBotAction::send_private_msg(*admin, format::text_to_rich_segments(&text)))
         .collect()
+}
+
+/// Run the extraction pass for a finished turn, detached from the reply path.
+///
+/// Failures are logged and swallowed: not learning from a conversation is a
+/// missed opportunity, not something to interrupt a chat over.
+fn spawn_extraction(
+    state: Arc<SharedState>,
+    session_key: SessionKey,
+    conversation_id: String,
+    project_id: String,
+    incoming: Vec<super::IncomingMessage>,
+) {
+    tokio::spawn(async move {
+        let actions =
+            run_extraction_pass(&state, &session_key, &conversation_id, &project_id, &incoming)
+                .await;
+        for action in actions {
+            super::send_action_nowait(&state, &action).await;
+        }
+    });
+}
+
+async fn run_extraction_pass(
+    state: &Arc<SharedState>,
+    session_key: &SessionKey,
+    conversation_id: &str,
+    project_id: &str,
+    incoming: &[super::IncomingMessage],
+) -> Vec<OneBotAction> {
+    use super::extract;
+
+    let is_group = session_key.kind == SessionKind::Group;
+    // Only messages from this turn count as evidence, and only with the sender
+    // we recorded — not one the model might infer from the text.
+    let mut messages = std::collections::HashMap::new();
+    let mut subjects = Vec::new();
+    for (i, m) in incoming.iter().enumerate() {
+        if let Some(s) = m.sender.as_ref() {
+            messages.insert(format!("msg{i}"), s.user_id);
+            if !subjects.contains(&s.user_id) {
+                subjects.push(s.user_id);
+            }
+        }
+    }
+    if messages.is_empty() {
+        return vec![];
+    }
+
+    let facts = extract::TurnFacts {
+        messages: messages.clone(),
+        is_group,
+        project_id: Some(project_id.to_string()),
+        session_label: session_key.to_string(),
+    };
+
+    let transcript = incoming
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let who = m
+                .sender
+                .as_ref()
+                .map(|s| format!("{} (id {})", s.nickname.as_deref().unwrap_or("?"), s.user_id))
+                .unwrap_or_else(|| "system".into());
+            format!("[msg{i}] {who}: {}", m.text)
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let existing = {
+        let pool = state.pool.clone();
+        let facts_ref = extract::TurnFacts {
+            messages: messages.clone(),
+            is_group,
+            project_id: Some(project_id.to_string()),
+            session_label: session_key.to_string(),
+        };
+        let subs = subjects.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().ok()?;
+            Some(extract::existing_for_extraction(&mut conn, &facts_ref, &subs))
+        })
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or_default()
+    };
+
+    let user_prompt = format!(
+        "Conversation:\n{transcript}\n\nAlready remembered:\n{}\n\nWhat, if anything, is worth remembering?",
+        if existing.is_empty() { "(nothing yet)" } else { &existing },
+    );
+
+    let raw = match super::agent::oneshot_completion(
+        state,
+        conversation_id,
+        extract::EXTRACTION_PROMPT,
+        &user_prompt,
+    )
+    .await
+    {
+        Ok(text) => text,
+        Err(e) => {
+            tracing::debug!("memory extraction skipped: {e}");
+            return vec![];
+        }
+    };
+
+    let proposals = match extract::run_extraction(&state.pool, &raw, facts).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::debug!("memory extraction produced nothing usable: {e}");
+            return vec![];
+        }
+    };
+
+    if proposals.is_empty() || state.config.admin_users.is_empty() {
+        return vec![];
+    }
+
+    // Bot-wide memory changes how the bot behaves everywhere, so it waits for a
+    // person. The notice goes to the operator privately, wherever it came from.
+    let pool = state.pool.clone();
+    let ids = proposals.clone();
+    let summaries = tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().ok()?;
+        Some(
+            ids.iter()
+                .filter_map(|id| crate::db::ops::memory::get_proposal(&mut conn, *id).ok().flatten())
+                .map(|p| format!("#{} {}: {}", p.id, p.key, p.content))
+                .collect::<Vec<_>>(),
+        )
+    })
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default();
+
+    if summaries.is_empty() {
+        return vec![];
+    }
+
+    let text = format!(
+        "助手想记住以下全局记忆(将在所有会话生效):\n{}\n\n回复「同意 N」或「拒绝 N」处理,24 小时内有效。",
+        summaries.join("\n"),
+    );
+    state
+        .config
+        .admin_users
+        .iter()
+        .map(|admin| OneBotAction::send_private_msg(*admin, format::text_to_rich_segments(&text)))
+        .collect()
+}
+
+/// Route a numbered decision to whichever queue owns that id.
+///
+/// One dispatcher rather than two independent lookups: the previous code
+/// returned "no such request" as soon as the friend-request map was non-empty,
+/// so a memory proposal could never be reached while any friend request was
+/// outstanding.
+///
+/// `None` means no queue recognised the id, and the message is ordinary chat.
+async fn dispatch_decision(
+    event: &OneBotEvent,
+    state: &Arc<SharedState>,
+    decision: command::RequestDecision,
+    decider: i64,
+) -> Option<Vec<OneBotAction>> {
+    // Remove under the lock so two concurrent decisions on the same id cannot
+    // both fire the API.
+    let removed = {
+        let mut map = state.pending_requests.lock().await;
+        map.remove(&decision.id)
+    };
+    if let Some(req) = removed {
+        return Some(handle_request_decision(event, state, decision, req).await);
+    }
+
+    let pool = state.pool.clone();
+    let id = decision.id as i32;
+    let approve = decision.approve;
+    let outcome = tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().ok()?;
+        // Only claim the id if this queue actually holds it, so an unrelated
+        // number still falls through to normal chat.
+        let proposal = super::extract::is_known_proposal(&mut conn, id)?;
+        let now = crate::util::now_ms();
+        if approve {
+            match super::extract::approve_proposal(&mut conn, id, decider, now) {
+                Ok(Some(key)) => Some(format!("已记住全局记忆「{key}」。")),
+                Ok(None) => Some(format!("提议 #{id} 已处理或已过期。")),
+                Err(e) => Some(format!("写入失败: {e}")),
+            }
+        } else {
+            match super::extract::reject_proposal(&mut conn, id, decider, now) {
+                Ok(true) => Some(format!("已拒绝提议 #{id}(「{}」)。", proposal)),
+                Ok(false) => Some(format!("提议 #{id} 已处理或已过期。")),
+                Err(e) => Some(format!("操作失败: {e}")),
+            }
+        }
+    })
+    .await
+    .ok()
+    .flatten()?;
+
+    Some(build_reply(event, &outcome, None))
 }
 
 async fn handle_request_decision(
