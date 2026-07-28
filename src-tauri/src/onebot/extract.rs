@@ -11,6 +11,8 @@
 
 use std::collections::HashMap;
 
+use diesel::connection::Connection;
+
 use serde::Deserialize;
 
 use crate::db::models::memory::{
@@ -94,10 +96,14 @@ pub enum Accepted {
 /// have been sent *by that person*. Requiring only that the subject spoke
 /// somewhere in the turn is not enough — in a group, anyone can wait for their
 /// target to say something and then narrate whatever they like about them.
+/// `subject_opted_out` is resolved by the caller, which holds the connection.
+/// A plain bool rather than a predicate: there is exactly one subject to ask
+/// about, and a closure here only disguised that opt-out was being consulted on
+/// one branch instead of all of them.
 pub fn validate(
     candidate: &MemoryCandidate,
     facts: &TurnFacts,
-    opted_out: &dyn Fn(i64) -> bool,
+    subject_opted_out: bool,
 ) -> Result<(), Rejected> {
     if candidate.key.trim().is_empty() || candidate.content.trim().is_empty() {
         return Err(Rejected::Invalid("empty key or content".into()));
@@ -116,6 +122,20 @@ pub fn validate(
         }
     }
 
+    // Subject rules are checked before the intent, not inside one arm of it.
+    // Naming a person is what makes a memory about them, and `commit` stamps
+    // `subject_scope_id` from this field for chat-scoped rows too — so a check
+    // that lived only under `AboutUser` could be walked straight past by
+    // labelling the same claim `chat`.
+    if let Some(subject) = candidate.subject_user_id {
+        if subject_opted_out {
+            return Err(Rejected::OptedOut);
+        }
+        if senders.iter().any(|uid| *uid != subject) {
+            return Err(Rejected::NotSelfReported);
+        }
+    }
+
     match candidate.intent {
         MemoryIntent::Chat => {
             if !facts.is_group {
@@ -124,13 +144,7 @@ pub fn validate(
             Ok(())
         }
         MemoryIntent::AboutUser => {
-            let subject = candidate.subject_user_id.ok_or(Rejected::MissingSubject)?;
-            if opted_out(subject) {
-                return Err(Rejected::OptedOut);
-            }
-            if senders.iter().any(|uid| *uid != subject) {
-                return Err(Rejected::NotSelfReported);
-            }
+            candidate.subject_user_id.ok_or(Rejected::MissingSubject)?;
             Ok(())
         }
         MemoryIntent::BotSelf => Ok(()),
@@ -223,41 +237,68 @@ pub fn approve_proposal(
     let Some(p) = crate::db::ops::memory::get_proposal(conn, id).map_err(|e| e.to_string())? else {
         return Ok(None);
     };
-    // Resolve first: a zero row count means somebody already handled it, or it
-    // expired, and either way it must not be stored twice.
-    let changed = crate::db::ops::memory::resolve_proposal(
-        conn, id, ProposalStatus::Approved, Some(approver), now,
-    )
-    .map_err(|e| e.to_string())?;
-    if changed == 0 {
-        return Ok(None);
+
+    /// diesel requires a transaction's error to convert from its own, so a
+    /// rejected write travels in this wrapper rather than as a bare string.
+    enum ApprovalError {
+        Db(diesel::result::Error),
+        Rejected(String),
     }
 
-    crate::db::ops::memory::validate_memory(
-        conn, MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID, &p.key, &p.content,
-    )?;
-    let mem_id = uuid::Uuid::new_v4().to_string();
-    crate::db::ops::memory::upsert_memory(
-        conn,
-        &NewMemory {
-            id: &mem_id,
-            scope_type: MemoryScope::OnebotGlobal.as_str(),
-            scope_id: GLOBAL_SCOPE_ID,
-            key: &p.key,
-            content: &p.content,
-            memory_type: &p.memory_type,
-            subject_scope_id: None,
-            // Taught by the operator, and visible to the model: this is the one
-            // kind of memory whose whole purpose is to be acted on everywhere.
-            origin: Origin::Admin.as_str(),
-            visibility: Visibility::Normal.as_str(),
-            source_session_id: p.origin_session.as_deref(),
-            created_at: now,
-            updated_at: now,
-        },
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(Some(p.key))
+    impl From<diesel::result::Error> for ApprovalError {
+        fn from(e: diesel::result::Error) -> Self {
+            Self::Db(e)
+        }
+    }
+
+    // Marking it approved and storing it are one unit. Resolving first and
+    // writing after meant a failed write (quota reached, content too long) left
+    // the proposal consumed with nothing stored: `resolve_proposal` only matches
+    // `pending`, so a retry reported "already handled" and the content was gone
+    // while the audit trail claimed an approval that never took effect.
+    let result = conn.transaction::<_, ApprovalError, _>(|conn| {
+        let changed = crate::db::ops::memory::resolve_proposal(
+            conn, id, ProposalStatus::Approved, Some(approver), now,
+        )?;
+        if changed == 0 {
+            return Ok(None);
+        }
+
+        crate::db::ops::memory::validate_memory(
+            conn, MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID, &p.key, &p.content,
+        )
+        .map_err(ApprovalError::Rejected)?;
+        let mem_id = uuid::Uuid::new_v4().to_string();
+        crate::db::ops::memory::upsert_memory(
+            conn,
+            &NewMemory {
+                id: &mem_id,
+                scope_type: MemoryScope::OnebotGlobal.as_str(),
+                scope_id: GLOBAL_SCOPE_ID,
+                key: &p.key,
+                content: &p.content,
+                memory_type: &p.memory_type,
+                subject_scope_id: None,
+                // Taught by the operator, and visible to the model: this is the
+                // one kind of memory whose whole purpose is to be acted on
+                // everywhere.
+                origin: Origin::Admin.as_str(),
+                visibility: Visibility::Normal.as_str(),
+                source_session_id: p.origin_session.as_deref(),
+                created_at: now,
+                updated_at: now,
+            },
+        )?;
+        Ok(Some(p.key.clone()))
+    });
+
+    // A rejected write rolled the approval back, so the proposal is still
+    // pending and the operator can retry once they have made room.
+    match result {
+        Ok(v) => Ok(v),
+        Err(ApprovalError::Rejected(msg)) => Err(msg),
+        Err(ApprovalError::Db(e)) => Err(e.to_string()),
+    }
 }
 
 /// The proposal's key if this id belongs to a still-actionable proposal.
@@ -406,7 +447,7 @@ pub async fn run_extraction(
             let opted_out_subject = candidate
                 .subject_user_id
                 .is_some_and(|uid| is_opted_out(&mut conn, uid));
-            let check = validate(candidate, &facts, &|_| opted_out_subject);
+            let check = validate(candidate, &facts, opted_out_subject);
             if let Err(reason) = check {
                 tracing::debug!(?reason, key = %candidate.key, "memory candidate rejected");
                 continue;
@@ -480,7 +521,7 @@ mod tests {
         }
     }
 
-    const NOBODY_OPTED_OUT: &dyn Fn(i64) -> bool = &|_| false;
+    const NOBODY_OPTED_OUT: bool = false;
 
     /// The attack this exists to stop: Bob narrates something about Alice, and
     /// Alice happens to have spoken in the same turn.
@@ -496,6 +537,32 @@ mod tests {
     #[test]
     fn self_reported_memory_is_accepted() {
         let c = candidate(MemoryIntent::AboutUser, Some(1), "m-alice");
+        assert!(validate(&c, &facts(true), NOBODY_OPTED_OUT).is_ok());
+    }
+
+    /// Relabelling the same claim as `chat` must not get it past the
+    /// attribution check — `commit` stamps subject_scope_id for chat rows too,
+    /// so the check has to sit outside the intent, not inside one arm.
+    #[test]
+    fn chat_intent_cannot_launder_a_claim_about_someone_else() {
+        let c = candidate(MemoryIntent::Chat, Some(1), "m-bob");
+        assert_eq!(
+            validate(&c, &facts(true), NOBODY_OPTED_OUT),
+            Err(Rejected::NotSelfReported)
+        );
+    }
+
+    /// Opt-out is a property of the person, not of one intent.
+    #[test]
+    fn chat_intent_respects_opt_out() {
+        let c = candidate(MemoryIntent::Chat, Some(1), "m-alice");
+        assert_eq!(validate(&c, &facts(true), true), Err(Rejected::OptedOut));
+    }
+
+    /// A room fact that names nobody still works — that is what `chat` is for.
+    #[test]
+    fn chat_intent_without_a_subject_is_fine() {
+        let c = candidate(MemoryIntent::Chat, None, "m-bob");
         assert!(validate(&c, &facts(true), NOBODY_OPTED_OUT).is_ok());
     }
 
@@ -531,7 +598,7 @@ mod tests {
     #[test]
     fn opted_out_people_are_not_remembered() {
         let c = candidate(MemoryIntent::AboutUser, Some(1), "m-alice");
-        assert_eq!(validate(&c, &facts(true), &|_| true), Err(Rejected::OptedOut));
+        assert_eq!(validate(&c, &facts(true), true), Err(Rejected::OptedOut));
     }
 
     /// Bot-wide memory is parked, never stored on the model's say-so.
@@ -576,6 +643,55 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    /// A failed write must roll the approval back. Consuming the proposal and
+    /// storing nothing loses the content for good: the retry sees `approved`,
+    /// reports "already handled", and the audit trail claims an approval that
+    /// never took effect.
+    #[test]
+    fn a_rejected_write_leaves_the_proposal_retryable() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+
+        // Fill the bot-wide scope to its ceiling so the next write is refused.
+        for i in 0..crate::db::models::memory::MAX_ONEBOT_GLOBAL_MEMORIES {
+            crate::db::ops::memory::upsert_memory(
+                conn,
+                &NewMemory {
+                    id: &format!("g{i}"),
+                    scope_type: MemoryScope::OnebotGlobal.as_str(),
+                    scope_id: GLOBAL_SCOPE_ID,
+                    key: &format!("k{i}"),
+                    content: "x",
+                    memory_type: "general",
+                    subject_scope_id: None,
+                    origin: Origin::Admin.as_str(),
+                    visibility: Visibility::Normal.as_str(),
+                    source_session_id: None,
+                    created_at: 1,
+                    updated_at: 1,
+                },
+            )
+            .unwrap();
+        }
+
+        let c = candidate(MemoryIntent::BotSelf, None, "m-alice");
+        let Accepted::Proposed(id) = commit(conn, &c, &facts(true), 1000).unwrap() else {
+            panic!("expected a proposal");
+        };
+
+        assert!(approve_proposal(conn, id, 99, 2000).is_err(), "quota must refuse the write");
+
+        // Still pending, so the operator can free a slot and try again.
+        let p = crate::db::ops::memory::get_proposal(conn, id).unwrap().unwrap();
+        assert_eq!(p.status, ProposalStatus::Pending.as_str());
+
+        crate::db::ops::memory::soft_delete_memories(
+            conn, &["g0".to_string()], crate::db::models::memory::DeletedBy::Admin, 2500,
+        )
+        .unwrap();
+        assert_eq!(approve_proposal(conn, id, 99, 3000).unwrap().as_deref(), Some("k"));
     }
 
     #[test]

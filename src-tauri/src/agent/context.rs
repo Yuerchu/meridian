@@ -45,8 +45,11 @@ pub(crate) fn build_messages_with_senders(
     }
     if let Some(cursor) = compact_cursor {
         if let Some(summary) = history.iter().find(|m| m.is_compact_summary == 1) {
-            // A compaction summary is our own text, not anyone's utterance.
-            msgs.push(ChatMessage::system_context(&summary.content));
+            // Deliberately not SystemContext: a summary stands in for the
+            // history it replaced and must stay compactable and stay put.
+            // SystemContext is reserved for background we regenerate each turn,
+            // which `take_injected_context` lifts out and re-appends at the tail.
+            msgs.push(ChatMessage::user(&summary.content));
         }
         for m in history.iter().filter(|m| m.sort_order >= cursor && m.is_compact_summary == 0) {
             push_history_message(&mut msgs, m, sender_names);
@@ -148,12 +151,36 @@ pub(crate) fn estimate_tokens(content: &str) -> usize {
     default_counter().count(content) + 4
 }
 
+/// Lift out the background we injected ourselves (the memory block).
+///
+/// It is not conversation, so it must not be summarised or dropped along with
+/// old turns: doing so loses everyone's memories mid-turn while the model keeps
+/// acting as if it still has them, and — worse — feeds `<owner_notes>` through a
+/// summariser that strips the never-quote wrapper protecting them. Callers put
+/// it back at the tail, where it stays inside every subsequent keep-recent
+/// window.
+pub(crate) fn take_injected_context(messages: &mut Vec<ChatMessage>) -> Vec<ChatMessage> {
+    let mut taken = Vec::new();
+    messages.retain(|m| {
+        if m.origin.is_system_context() {
+            taken.push(m.clone());
+            false
+        } else {
+            true
+        }
+    });
+    taken
+}
+
 pub(crate) fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_limit: usize, keep_recent: usize) {
     let total_tokens: usize = messages.iter().map(|m| estimate_tokens(&m.content)).sum();
     let safe_limit = context_limit * 4 / 5;
     if total_tokens <= safe_limit {
         return;
     }
+    // Held aside so a long tool loop cannot push the memory block out of the
+    // window; it is re-appended before the kept tail.
+    let injected = take_injected_context(messages);
     let has_system = messages.first().is_some_and(|m| m.role == "system");
     let system_offset = if has_system { 1 } else { 0 };
     let keep = (keep_recent * 2).min(messages.len().saturating_sub(system_offset));
@@ -162,6 +189,7 @@ pub(crate) fn trim_to_context_limit(messages: &mut Vec<ChatMessage>, context_lim
     if has_system {
         trimmed.push(messages[0].clone());
     }
+    trimmed.extend(injected);
     trimmed.extend_from_slice(&messages[start..]);
     remove_orphan_tool_messages(&mut trimmed);
     *messages = trimmed;
@@ -458,5 +486,88 @@ mod tests {
         let chars: Vec<char> = "=".repeat(4000).chars().collect();
         let idx = char_index_for_tokens_rev(&counter, &chars, 100);
         assert!(idx <= chars.len());
+    }
+}
+
+#[cfg(test)]
+mod injected_context_tests {
+    use super::*;
+    use crate::provider::MessageOrigin;
+
+    fn long_history(n: usize) -> Vec<ChatMessage> {
+        (0..n).map(|i| ChatMessage::user(&"word ".repeat(200).repeat(i % 2 + 1))).collect()
+    }
+
+    /// The memory block must survive a trim that drops old turns. Before this
+    /// guard it sat in the middle of history and was dropped with everything
+    /// else, so the model silently lost every memory mid-turn.
+    #[test]
+    fn trimming_keeps_the_injected_memory_block() {
+        let mut msgs = vec![ChatMessage {
+            role: "system".into(),
+            content: "sys".into(),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            signature: None,
+            origin: MessageOrigin::Assistant,
+        }];
+        msgs.push(ChatMessage::system_context("<bot_memories>\n- x\n</bot_memories>"));
+        msgs.extend(long_history(40));
+
+        trim_to_context_limit(&mut msgs, 1_000, 2);
+
+        assert!(
+            msgs.iter().any(|m| m.origin.is_system_context()),
+            "the memory block must not be trimmed away with old turns"
+        );
+        // And it stays ahead of the recent tail rather than at the very end.
+        let idx = msgs.iter().position(|m| m.origin.is_system_context()).unwrap();
+        assert!(idx < msgs.len() - 1);
+    }
+
+    #[test]
+    fn take_injected_context_removes_only_injected_rows() {
+        let mut msgs = vec![
+            ChatMessage::user("hi"),
+            ChatMessage::system_context("memories"),
+            ChatMessage::assistant("hello"),
+        ];
+        let taken = take_injected_context(&mut msgs);
+        assert_eq!(taken.len(), 1);
+        assert_eq!(taken[0].content, "memories");
+        assert_eq!(msgs.len(), 2);
+        assert!(!msgs.iter().any(|m| m.origin.is_system_context()));
+    }
+
+    /// A compaction summary replaces history, so it must remain compactable —
+    /// tagging it as injected background would make it immortal and it would
+    /// accumulate one copy per compaction.
+    #[test]
+    fn compaction_summaries_are_not_treated_as_injected() {
+        let history = [crate::db::models::message::Message {
+            id: "s".into(),
+            conversation_id: "c".into(),
+            role: "user".into(),
+            content: "summary text".into(),
+            provider_id: None,
+            model_id: None,
+            input_tokens: None,
+            output_tokens: None,
+            tool_calls: None,
+            tool_call_id: None,
+            sort_order: -1,
+            created_at: 1,
+            reasoning_content: None,
+            rating: None,
+            schema_version: 2,
+            is_compact_summary: 1,
+            sender_id: None,
+        }];
+        let msgs = build_messages("", &history, "now", Some(0));
+        assert!(
+            !msgs.iter().any(|m| m.origin.is_system_context()),
+            "a summary is history's stand-in, not regenerated background"
+        );
     }
 }

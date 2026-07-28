@@ -97,6 +97,15 @@ pub async fn save_memory_scoped(
             MemoryScope::OnebotUser => Some(scope_id.as_str()),
             _ => subject_scope_id.as_deref(),
         };
+        // `Desktop` is not in `Origin::group_visible()`, so a row written here
+        // with that origin would be filtered out of every group turn — the
+        // operator would see it saved and active while it never reached a
+        // conversation. Anything aimed at the OneBot layers is the operator
+        // teaching the bot, which is what `Admin` means.
+        let origin = match scope {
+            MemoryScope::Project => Origin::Desktop,
+            MemoryScope::OnebotGlobal | MemoryScope::OnebotUser => Origin::Admin,
+        };
         db::ops::memory::upsert_memory(
             &mut conn,
             &db::models::memory::NewMemory {
@@ -107,7 +116,7 @@ pub async fn save_memory_scoped(
                 content: &content,
                 memory_type: mt,
                 subject_scope_id: subject,
-                origin: Origin::Desktop.as_str(),
+                origin: origin.as_str(),
                 visibility: visibility.as_str(),
                 source_session_id: None,
                 created_at: now,
@@ -168,6 +177,22 @@ pub async fn delete_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::memory::soft_delete_memories(&mut conn, &ids, DeletedBy::Admin, now_ms())
             .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// Every live memory in one call. The browser needs all three scopes, and
+/// per-project fan-out both cost one IPC round trip per project and could never
+/// return the bot-wide or per-person layers at all.
+#[tauri::command]
+pub async fn list_all_memories(
+    app: tauri::AppHandle,
+) -> Result<Vec<db::models::memory::Memory>, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::memory::list_all(&mut conn).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?

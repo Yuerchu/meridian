@@ -146,6 +146,19 @@ pub fn list_by_subject(
         .load::<Memory>(conn)
 }
 
+/// Every live memory, across all scopes. Backs the desktop browser, which needs
+/// the bot-wide and per-person layers as well as project rows — fanning out one
+/// query per project could only ever return the latter.
+pub fn list_all(conn: &mut SqliteConnection) -> QueryResult<Vec<Memory>> {
+    active()
+        .order((
+            memories::scope_type.asc(),
+            memories::scope_id.asc(),
+            memories::key.asc(),
+        ))
+        .load::<Memory>(conn)
+}
+
 pub fn list_trash(conn: &mut SqliteConnection, limit: i64) -> QueryResult<Vec<Memory>> {
     memories::table
         .filter(memories::deleted_at.is_not_null())
@@ -851,5 +864,53 @@ mod tests {
     #[test]
     fn attributes_are_escaped() {
         assert_eq!(escape_attr(r#"a"<b>&"#), "a&quot;&lt;b&gt;&amp;");
+    }
+}
+
+#[cfg(test)]
+mod origin_visibility_tests {
+    use super::*;
+    use crate::db::models::memory::onebot_user_scope_id;
+    use crate::db::test_db;
+
+    /// Whatever origin the desktop writes for a per-person memory has to be one
+    /// that group injection accepts. `Desktop` is not, so a row written with it
+    /// was stored, shown as active in the UI, and silently never injected.
+    #[test]
+    fn operator_written_person_memories_reach_groups() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        let scope = onebot_user_scope_id(1);
+        upsert_memory(
+            conn,
+            &NewMemory {
+                id: "m1",
+                scope_type: MemoryScope::OnebotUser.as_str(),
+                scope_id: &scope,
+                key: "note",
+                content: "prefers short answers",
+                memory_type: "preference",
+                subject_scope_id: Some(&scope),
+                origin: Origin::Admin.as_str(),
+                visibility: Visibility::Normal.as_str(),
+                source_session_id: None,
+                created_at: 1,
+                updated_at: 1,
+            },
+        )
+        .unwrap();
+
+        let seen =
+            visible_user_memories(conn, &scope, &VisibilityCtx::group_injection()).unwrap();
+        assert_eq!(seen.len(), 1, "operator-written memory must survive group filtering");
+    }
+
+    /// Guards the invariant the fix relies on: every origin the desktop can
+    /// assign to a OneBot-scoped row must be group-visible.
+    #[test]
+    fn admin_origin_is_group_visible() {
+        assert!(Origin::group_visible().contains(&Origin::Admin));
+        assert!(!Origin::group_visible().contains(&Origin::Desktop));
+        assert!(!Origin::group_visible().contains(&Origin::Private));
     }
 }

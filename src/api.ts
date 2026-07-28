@@ -254,6 +254,9 @@ export const api = {
 
   deleteMemories: (ids: string[]) => invoke<number>('delete_memories', { ids }),
 
+  /** Every live memory in one call — the browser needs all scopes, not just one project's. */
+  listAllMemories: () => invoke<Memory[]>('list_all_memories'),
+
   listMemorySubjects: () => invoke<MemorySubject[]>('list_memory_subjects'),
 
   forgetMemorySubject: (subjectScopeId: string) =>

@@ -31,21 +31,17 @@ export function useMemoryBrowser() {
   const refresh = useCallback(async () => {
     setLoading(true)
     try {
-      const [projectList, subjectList] = await Promise.all([
+      // One query covering every scope. Fanning out per project cost an IPC
+      // round trip each and, worse, could only ever return project rows — the
+      // bot-wide and per-person branches below would have stayed empty forever.
+      const [projectList, subjectList, allMemories] = await Promise.all([
         api.listProjects(),
         api.listMemorySubjects(),
+        api.listAllMemories(),
       ])
       setProjects(projectList)
       setSubjects(subjectList)
-
-      // No server-side query command yet: the row counts here are small enough
-      // that filtering locally keeps the backend surface smaller.
-      const perProject = await Promise.all(
-        projectList.map((p) => api.listMemories(p.id).catch(() => [])),
-      )
-      const projectMemories = perProject.flat()
-
-      setMemories(projectMemories)
+      setMemories(allMemories)
     } finally {
       setLoading(false)
     }

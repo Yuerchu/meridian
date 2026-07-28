@@ -128,12 +128,27 @@ pub(crate) fn memory_budget(context_limit: usize) -> usize {
     }
 }
 
-/// Split of the budget across layers. Every layer is capped, including the bot
-/// layer — an entry cap alone does not bound tokens.
-fn layer_budgets(total: usize) -> (usize, usize, usize) {
+struct LayerBudgets {
+    global: usize,
+    project: usize,
+    subjects: usize,
+    owner_notes: usize,
+}
+
+/// Split of the budget across sections. Every section is capped, the bot layer
+/// and the operator's notes included — an entry cap alone does not bound tokens,
+/// and owner-only rows are exempt from per-subject trimming, so nothing else
+/// would hold them down.
+fn layer_budgets(total: usize) -> LayerBudgets {
     let global = total / 4;
-    let project = total * 35 / 100;
-    (global, project, total.saturating_sub(global + project))
+    let project = total * 3 / 10;
+    let owner_notes = total * 3 / 20;
+    LayerBudgets {
+        global,
+        project,
+        owner_notes,
+        subjects: total.saturating_sub(global + project + owner_notes),
+    }
 }
 
 /// Drop whole entries from the tail until the section fits. Truncating an entry
@@ -141,10 +156,14 @@ fn layer_budgets(total: usize) -> (usize, usize, usize) {
 /// confident wrong one.
 fn fit_to_budget(memories: Vec<Memory>, budget: usize) -> Vec<Memory> {
     let mut used = 0usize;
-    let mut kept = Vec::new();
+    let mut kept: Vec<Memory> = Vec::new();
     for m in memories {
         let cost = estimate_tokens(&m.content) + estimate_tokens(&m.key) + 8;
-        if used + cost > budget {
+        // Always admit the first entry. A section whose smallest row exceeds its
+        // slice of the budget would otherwise vanish entirely — and a layer
+        // silently disappearing is worse than overshooting by one row, which is
+        // bounded anyway by MAX_MEMORY_CONTENT_LEN.
+        if used + cost > budget && !kept.is_empty() {
             break;
         }
         used += cost;
@@ -158,7 +177,7 @@ pub(crate) fn load_memory_block_sync(
     conn: &mut SqliteConnection,
     req: &MemoryRequest,
 ) -> Option<String> {
-    let (global_budget, project_budget, subject_budget) = layer_budgets(req.budget_tokens);
+    let budgets = layer_budgets(req.budget_tokens);
 
     let global = if req.include_onebot_global {
         list_by_scopes(
@@ -168,7 +187,7 @@ pub(crate) fn load_memory_block_sync(
             &VisibilityCtx::private_injection(),
         )
         .ok()
-        .map(|rows| fit_to_budget(rows, global_budget))
+        .map(|rows| fit_to_budget(rows, budgets.global))
         .unwrap_or_default()
     } else {
         Vec::new()
@@ -182,7 +201,7 @@ pub(crate) fn load_memory_block_sync(
             &VisibilityCtx::private_injection(),
         )
         .ok()
-        .map(|rows| fit_to_budget(rows, project_budget))
+        .map(|rows| fit_to_budget(rows, budgets.project))
         .unwrap_or_default(),
         None => Vec::new(),
     };
@@ -207,22 +226,42 @@ pub(crate) fn load_memory_block_sync(
             .unwrap_or_default()
     };
 
-    // Owner notes get their own section: the "never quote" rule cannot attach to
-    // individual entries if they sit mixed in with ordinary ones.
-    let (owner_notes, subject_rows): (Vec<Memory>, Vec<Memory>) = subject_rows
+    // Owner notes get their own section: the "never quote" rule attaches to the
+    // tag, so a note left inline in any other section is one the model is free
+    // to read out. Partitioned across *every* layer, not just the subject one —
+    // the project and bot layers can hold owner-only rows too, and the desktop
+    // UI exposes the flag for all of them.
+    let (mut owner_notes, subject_rows): (Vec<Memory>, Vec<Memory>) = subject_rows
         .into_iter()
         .partition(|m| m.visibility() == Visibility::OwnerOnly);
+
+    let (global_notes, global): (Vec<Memory>, Vec<Memory>) = global
+        .into_iter()
+        .partition(|m| m.visibility() == Visibility::OwnerOnly);
+    let (project_notes, project): (Vec<Memory>, Vec<Memory>) = project
+        .into_iter()
+        .partition(|m| m.visibility() == Visibility::OwnerOnly);
+    owner_notes.extend(global_notes);
+    owner_notes.extend(project_notes);
+    // Stable order regardless of which layer contributed.
+    owner_notes.sort_by(|a, b| a.scope_id.cmp(&b.scope_id).then(a.key.cmp(&b.key)));
+    let owner_notes = fit_to_budget(owner_notes, budgets.owner_notes);
 
     if global.is_empty() && project.is_empty() && subject_rows.is_empty() && owner_notes.is_empty() {
         return None;
     }
 
-    // A single-layer turn (the desktop) keeps the exact block it has always
-    // received, tag and all. The policy preamble and the sectioning only earn
-    // their tokens where several layers and several people are in play; emitting
-    // them on the desktop would change every existing assistant's context for
-    // no benefit.
-    let single_layer = !req.include_onebot_global && req.subjects.is_empty();
+    // A single-layer turn (the desktop, with nothing but ordinary project rows)
+    // keeps the exact block it has always received, tag and all. The policy
+    // preamble and the sectioning only earn their tokens where several layers,
+    // several people, or operator notes are in play; emitting them otherwise
+    // would change every existing assistant's context for no benefit.
+    //
+    // Owner notes force the full path even on the desktop: dropping them here
+    // would silently discard rows the operator explicitly marked, and inlining
+    // them would put them outside the tag their protection is attached to.
+    let single_layer =
+        !req.include_onebot_global && req.subjects.is_empty() && owner_notes.is_empty();
     if single_layer {
         return format_memory_section(&project, "project_memories", None);
     }
@@ -241,7 +280,7 @@ pub(crate) fn load_memory_block_sync(
     if !subject_rows.is_empty() {
         // Per person, in scope_id order. Sorting by recency instead would change
         // the block every turn for no benefit.
-        let per_subject = subject_budget / scope_ids.len().max(1);
+        let per_subject = budgets.subjects / scope_ids.len().max(1);
         let mut people = String::new();
         for scope_id in &scope_ids {
             let rows: Vec<Memory> = subject_rows
@@ -511,6 +550,75 @@ mod tests {
         let pool = test_db();
         let conn = &mut pool.get().unwrap();
         assert!(load_memory_block_sync(conn, &MemoryRequest::desktop(None, 8_000)).is_none());
+    }
+
+    /// An owner-only row in ANY layer must land in <owner_notes>. Left inline in
+    /// <chat_memories> or <bot_memories> it is a note the model is free to read
+    /// out, while its subject still cannot see or delete it.
+    #[test]
+    fn owner_only_rows_are_sectioned_from_every_layer() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        project(conn, "p1");
+        add(conn, "pub", MemoryScope::Project, "p1", "slang", "in-joke",
+            Origin::Group, Visibility::Normal);
+        add(conn, "note", MemoryScope::Project, "p1", "client", "do not mention pricing",
+            Origin::Desktop, Visibility::OwnerOnly);
+        add(conn, "gnote", MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID, "quirk",
+            "operator only", Origin::Admin, Visibility::OwnerOnly);
+
+        let block = load_memory_block_sync(
+            conn,
+            &MemoryRequest::onebot_group(Some("p1".into()), vec![], 8_000),
+        )
+        .unwrap();
+
+        let notes_at = block.find("\n\n<owner_notes>\n").expect("owner notes section");
+        assert!(block.contains("in-joke"));
+        // Neither note may appear before the section that protects them.
+        assert!(!block[..notes_at].contains("do not mention pricing"));
+        assert!(!block[..notes_at].contains("operator only"));
+        assert!(block[notes_at..].contains("do not mention pricing"));
+        assert!(block[notes_at..].contains("operator only"));
+    }
+
+    /// Desktop keeps the legacy block only while there is nothing to protect.
+    #[test]
+    fn desktop_owner_notes_force_the_sectioned_path() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        project(conn, "p1");
+        add(conn, "note", MemoryScope::Project, "p1", "private", "hidden thing",
+            Origin::Desktop, Visibility::OwnerOnly);
+
+        let block =
+            load_memory_block_sync(conn, &MemoryRequest::desktop(Some("p1".into()), 8_000))
+                .unwrap();
+
+        assert!(block.contains("<owner_notes>"), "must not be silently dropped");
+        assert!(!block.contains("<project_memories>"));
+    }
+
+    /// Owner-only rows are exempt from per-subject trimming, so the renderer is
+    /// the only thing bounding them.
+    #[test]
+    fn owner_notes_are_bounded_by_the_budget() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        project(conn, "p1");
+        for i in 0..40 {
+            add(conn, &format!("n{i}"), MemoryScope::Project, "p1",
+                &format!("k{i:02}"), &"word ".repeat(60),
+                Origin::Desktop, Visibility::OwnerOnly);
+        }
+
+        let block = load_memory_block_sync(
+            conn,
+            &MemoryRequest::onebot_group(Some("p1".into()), vec![], 512),
+        )
+        .unwrap();
+
+        assert!(estimate_tokens(&block) < 1_200);
     }
 }
 

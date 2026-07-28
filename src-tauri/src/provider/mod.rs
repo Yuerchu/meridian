@@ -143,7 +143,7 @@ const INJECTED_CLOSE: &str = "</injected_context>";
 /// guarantee is that attribution is decided server-side and never read back out
 /// of message text — escaping alone cannot stop a model from understanding a
 /// forged claim written in prose.
-fn neutralise_markers(content: &str) -> String {
+pub fn neutralise_markers(content: &str) -> String {
     content
         .replace("<sender>", "&lt;sender&gt;")
         .replace("</sender>", "&lt;/sender&gt;")

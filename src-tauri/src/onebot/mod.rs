@@ -51,6 +51,22 @@ pub struct SharedState {
     pub memory_listings: Mutex<HashMap<(String, i64), MemoryListing>>,
 }
 
+/// Which listing a set of numbers belongs to. Deleting resolves against the
+/// matching kind only: the numbers a person saw for their own memories mean
+/// something different from the ones they saw for the room's, and one slot
+/// shared between them lets `/memory group` followed by `/memory forget 1`
+/// delete a row the command never claimed to touch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemoryListingKind {
+    /// The caller's own memories (`/memory me`).
+    Own,
+    /// This room's memories (`/memory group`).
+    Group,
+    /// An operator view (`/memory user`, `/memory global`) — never a delete
+    /// target for the numbered self-service commands.
+    Operator,
+}
+
 /// A numbered listing shown to one person, so `/memory forget 2` can resolve
 /// "2" to the row they actually saw.
 ///
@@ -58,6 +74,7 @@ pub struct SharedState {
 /// deleting, a memory can be added or removed, and silently renumbering would
 /// delete something the person never chose.
 pub struct MemoryListing {
+    pub kind: MemoryListingKind,
     pub ids: Vec<String>,
     pub created_at: i64,
 }

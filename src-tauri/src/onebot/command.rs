@@ -193,12 +193,15 @@ pub fn parse_memory_sub(args: &str) -> Option<MemorySub> {
     match head {
         "me" => Some(MemorySub::Me),
         "forget" => {
-            if rest.eq_ignore_ascii_case("all") {
-                Some(MemorySub::ForgetAll { confirmed: false })
-            } else if rest.trim_start_matches("all").trim().eq_ignore_ascii_case("yes") {
-                Some(MemorySub::ForgetAll { confirmed: true })
-            } else {
-                parse_indices(rest).map(MemorySub::Forget)
+            // Matched as exact token sequences. `trim_start_matches("all")`
+            // succeeds on input that never contained "all", which made a bare
+            // `forget yes` — a plausible typo, or an answer to some earlier
+            // prompt — parse as a confirmed wipe of everything.
+            let tokens: Vec<&str> = rest.split_whitespace().collect();
+            match tokens.as_slice() {
+                ["all"] => Some(MemorySub::ForgetAll { confirmed: false }),
+                ["all", "yes"] => Some(MemorySub::ForgetAll { confirmed: true }),
+                _ => parse_indices(rest).map(MemorySub::Forget),
             }
         }
         "undo" => Some(MemorySub::Undo),
@@ -258,8 +261,32 @@ pub fn parse_memory_sub(args: &str) -> Option<MemorySub> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RequestDecision {
     pub approve: bool,
-    pub id: u32,
+    pub target: DecisionTarget,
     pub reason: Option<String>,
+}
+
+/// Which queue a numbered decision refers to.
+///
+/// The two queues number themselves independently — friend requests from an
+/// in-memory counter, memory proposals from a database AUTOINCREMENT — so a bare
+/// number is ambiguous and resolving it by "whichever queue we check first"
+/// means an operator approving a memory can silently accept a stranger's friend
+/// request instead. Memory proposals therefore carry an `M` prefix everywhere
+/// they are displayed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DecisionTarget {
+    Request(u32),
+    MemoryProposal(i32),
+}
+
+impl DecisionTarget {
+    /// How the id is shown to the operator, and how they must type it back.
+    pub fn label(&self) -> String {
+        match self {
+            DecisionTarget::Request(id) => id.to_string(),
+            DecisionTarget::MemoryProposal(id) => format!("M{id}"),
+        }
+    }
 }
 
 pub fn parse_request_decision(input: &str) -> Option<RequestDecision> {
@@ -273,21 +300,31 @@ pub fn parse_request_decision(input: &str) -> Option<RequestDecision> {
     };
 
     let rest = rest.trim_start();
+    // An `M`/`m` prefix selects the memory-proposal queue.
+    let (is_memory, rest) = match rest.strip_prefix(['M', 'm']) {
+        Some(r) => (true, r),
+        None => (false, rest),
+    };
+
     let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
     if digits.is_empty() {
         return None;
     }
-    let id: u32 = digits.parse().ok()?;
     // The id must be followed by whitespace or end-of-input; otherwise this is
     // ordinary chat like "同意3楼" / "拒绝3个方案", not a request decision.
     let after = &rest[digits.len()..];
     if !after.is_empty() && !after.starts_with(char::is_whitespace) {
         return None;
     }
+    let target = if is_memory {
+        DecisionTarget::MemoryProposal(digits.parse().ok()?)
+    } else {
+        DecisionTarget::Request(digits.parse().ok()?)
+    };
     let reason = after.trim();
     let reason = (!reason.is_empty()).then(|| reason.to_string());
 
-    Some(RequestDecision { approve, id, reason })
+    Some(RequestDecision { approve, target, reason })
 }
 
 pub fn parse_command(input: &str) -> Option<(SlashCommand, &str)> {
@@ -308,11 +345,11 @@ mod tests {
     fn test_parse_request_decision_approve() {
         assert_eq!(
             parse_request_decision("同意 3"),
-            Some(RequestDecision { approve: true, id: 3, reason: None })
+            Some(RequestDecision { approve: true, target: DecisionTarget::Request(3), reason: None })
         );
         assert_eq!(
             parse_request_decision("同意3"),
-            Some(RequestDecision { approve: true, id: 3, reason: None })
+            Some(RequestDecision { approve: true, target: DecisionTarget::Request(3), reason: None })
         );
     }
 
@@ -320,7 +357,7 @@ mod tests {
     fn test_parse_request_decision_reject_with_reason() {
         assert_eq!(
             parse_request_decision("拒绝3 广告"),
-            Some(RequestDecision { approve: false, id: 3, reason: Some("广告".into()) })
+            Some(RequestDecision { approve: false, target: DecisionTarget::Request(3), reason: Some("广告".into()) })
         );
     }
 
@@ -339,12 +376,12 @@ mod tests {
         // A space before the reason keeps it a valid decision.
         assert_eq!(
             parse_request_decision("同意 3 广告"),
-            Some(RequestDecision { approve: true, id: 3, reason: Some("广告".into()) })
+            Some(RequestDecision { approve: true, target: DecisionTarget::Request(3), reason: Some("广告".into()) })
         );
         // Bare id with no trailing text is still valid.
         assert_eq!(
             parse_request_decision("同意3"),
-            Some(RequestDecision { approve: true, id: 3, reason: None })
+            Some(RequestDecision { approve: true, target: DecisionTarget::Request(3), reason: None })
         );
     }
 }
@@ -406,6 +443,20 @@ mod permission_tests {
         );
     }
 
+    /// Only the exact `all yes` sequence confirms. A prefix-stripping check let
+    /// `forget yes` and `forget allyes` through as confirmed, wiping everything
+    /// with no prompt.
+    #[test]
+    fn confirmation_requires_the_exact_phrase() {
+        for input in ["forget yes", "forget allyes", "forget all yes please", "forget yes all"] {
+            assert_ne!(
+                parse_memory_sub(input),
+                Some(MemorySub::ForgetAll { confirmed: true }),
+                "{input} must not count as confirmation"
+            );
+        }
+    }
+
     /// A mistyped index must be reported, not rounded into some other row.
     #[test]
     fn malformed_indices_are_refused() {
@@ -423,6 +474,37 @@ mod permission_tests {
         assert!(MemorySub::Pending.is_operator_only());
         assert!(!MemorySub::Me.is_operator_only());
         assert!(!MemorySub::Group.is_operator_only());
+    }
+
+    /// The two queues number themselves independently, so a bare number must
+    /// never reach the memory queue and an M-prefixed one must never reach the
+    /// request queue. Without the prefix, approving a memory could accept a
+    /// stranger's friend request that happened to share the id.
+    #[test]
+    fn decision_targets_are_unambiguous() {
+        assert_eq!(
+            parse_request_decision("同意 1").map(|d| d.target),
+            Some(DecisionTarget::Request(1))
+        );
+        assert_eq!(
+            parse_request_decision("同意 M1").map(|d| d.target),
+            Some(DecisionTarget::MemoryProposal(1))
+        );
+        assert_eq!(
+            parse_request_decision("拒绝 m7 太私密").map(|d| d.target),
+            Some(DecisionTarget::MemoryProposal(7))
+        );
+        // Ordinary chat still must not be read as a decision.
+        assert_eq!(parse_request_decision("同意M3楼"), None);
+        assert_eq!(parse_request_decision("同意 M"), None);
+    }
+
+    #[test]
+    fn decision_labels_round_trip() {
+        for input in ["同意 42", "同意 M42"] {
+            let d = parse_request_decision(input).unwrap();
+            assert!(input.ends_with(&d.target.label()));
+        }
     }
 
     #[test]

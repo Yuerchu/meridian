@@ -401,6 +401,7 @@ pub fn run() {
             commands::memory::delete_memory,
             commands::todo::get_active_todo_list,
             commands::memory::delete_memories,
+            commands::memory::list_all_memories,
             commands::memory::list_memory_subjects,
             commands::memory::forget_memory_subject,
             commands::memory::set_memory_subject_flags,

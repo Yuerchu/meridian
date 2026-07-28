@@ -224,12 +224,19 @@ pub(crate) async fn mid_turn_compact(
 ) -> Result<usize, CompactError> {
     let before = budget.counter.count_messages(messages);
 
+    // Injected background (the memory block) is held aside for the whole pass.
+    // Summarising it would both lose the memories and paraphrase <owner_notes>
+    // out of the wrapper that forbids quoting them.
+    let injected = super::context::take_injected_context(messages);
+
     let has_system = messages.first().is_some_and(|m| m.role == "system");
     let system_offset = if has_system { 1 } else { 0 };
     let keep_msgs = (keep_recent * 2).min(messages.len().saturating_sub(system_offset));
     let boundary = messages.len() - keep_msgs;
 
     if boundary <= system_offset + 1 {
+        // Bail out without swallowing what was lifted aside.
+        messages.extend(injected);
         return Err(CompactError::NotEnoughMessages);
     }
 
@@ -284,6 +291,8 @@ pub(crate) async fn mid_turn_compact(
         new_messages.push(messages[0].clone());
     }
     new_messages.push(ChatMessage::user(&summary_with_context));
+    // Back in verbatim, ahead of the kept tail so later trims keep it too.
+    new_messages.extend(injected);
     new_messages.extend_from_slice(&messages[boundary..]);
     remove_orphan_tool_messages(&mut new_messages);
 

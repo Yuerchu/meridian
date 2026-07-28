@@ -673,7 +673,7 @@ async fn run_extraction_pass(
         Some(
             ids.iter()
                 .filter_map(|id| crate::db::ops::memory::get_proposal(&mut conn, *id).ok().flatten())
-                .map(|p| format!("#{} {}: {}", p.id, p.key, p.content))
+.map(|p| format!("M{} {}: {}", p.id, p.key, p.content))
                 .collect::<Vec<_>>(),
         )
     })
@@ -687,7 +687,7 @@ async fn run_extraction_pass(
     }
 
     let text = format!(
-        "助手想记住以下全局记忆(将在所有会话生效):\n{}\n\n回复「同意 N」或「拒绝 N」处理,24 小时内有效。",
+        "助手想记住以下全局记忆(将在所有会话生效):\n{}\n\n回复「同意 MN」或「拒绝 MN」处理(如 同意 M3),24 小时内有效。",
         summaries.join("\n"),
     );
     state
@@ -712,35 +712,49 @@ async fn dispatch_decision(
     decision: command::RequestDecision,
     decider: i64,
 ) -> Option<Vec<OneBotAction>> {
-    // Remove under the lock so two concurrent decisions on the same id cannot
-    // both fire the API.
-    let removed = {
-        let mut map = state.pending_requests.lock().await;
-        map.remove(&decision.id)
+    // The prefix picks the queue, so the two id spaces can never be confused
+    // for one another.
+    let id = match decision.target {
+        command::DecisionTarget::Request(id) => {
+            // Remove under the lock so two concurrent decisions on the same id
+            // cannot both fire the API.
+            let removed = {
+                let mut map = state.pending_requests.lock().await;
+                map.remove(&id)
+            };
+            return match removed {
+                Some(req) => Some(handle_request_decision(event, state, decision, req).await),
+                // Report the miss rather than letting it fall through to the
+                // model, which would answer conversationally and read as
+                // confirmation while the request stays pending.
+                None => Some(build_reply(
+                    event,
+                    &format!("没有找到编号 {id} 的待处理请求。"),
+                    None,
+                )),
+            };
+        }
+        command::DecisionTarget::MemoryProposal(id) => id,
     };
-    if let Some(req) = removed {
-        return Some(handle_request_decision(event, state, decision, req).await);
-    }
 
     let pool = state.pool.clone();
-    let id = decision.id as i32;
     let approve = decision.approve;
     let outcome = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().ok()?;
-        // Only claim the id if this queue actually holds it, so an unrelated
-        // number still falls through to normal chat.
-        let proposal = super::extract::is_known_proposal(&mut conn, id)?;
+        let Some(proposal) = super::extract::is_known_proposal(&mut conn, id) else {
+            return Some(format!("没有找到编号 M{id} 的提议。"));
+        };
         let now = crate::util::now_ms();
         if approve {
             match super::extract::approve_proposal(&mut conn, id, decider, now) {
                 Ok(Some(key)) => Some(format!("已记住全局记忆「{key}」。")),
-                Ok(None) => Some(format!("提议 #{id} 已处理或已过期。")),
-                Err(e) => Some(format!("写入失败: {e}")),
+                Ok(None) => Some(format!("提议 M{id} 已处理或已过期。")),
+                Err(e) => Some(format!("写入失败: {e}\n可稍后重试「同意 M{id}」。")),
             }
         } else {
             match super::extract::reject_proposal(&mut conn, id, decider, now) {
-                Ok(true) => Some(format!("已拒绝提议 #{id}(「{}」)。", proposal)),
-                Ok(false) => Some(format!("提议 #{id} 已处理或已过期。")),
+                Ok(true) => Some(format!("已拒绝提议 M{id}(「{}」)。", proposal)),
+                Ok(false) => Some(format!("提议 M{id} 已处理或已过期。")),
                 Err(e) => Some(format!("操作失败: {e}")),
             }
         }
@@ -780,12 +794,12 @@ async fn handle_request_decision(
 
     let verb = if decision.approve { "同意" } else { "拒绝" };
     let what = match req.kind {
-        RequestKind::Friend => format!("好友申请 #{}(QQ {})", decision.id, req.user_id),
+        RequestKind::Friend => format!("好友申请 #{}(QQ {})", decision.target.label(), req.user_id),
         RequestKind::GroupAdd => format!(
             "入群申请 #{}(QQ {} → 群 {})",
-            decision.id, req.user_id, req.group_id.unwrap_or(0),
+            decision.target.label(), req.user_id, req.group_id.unwrap_or(0),
         ),
-        RequestKind::GroupInvite => format!("群邀请 #{}(群 {})", decision.id, req.group_id.unwrap_or(0)),
+        RequestKind::GroupInvite => format!("群邀请 #{}(群 {})", decision.target.label(), req.group_id.unwrap_or(0)),
     };
 
     match call_api(state, action).await {
@@ -794,10 +808,12 @@ async fn handle_request_decision(
         Err(e) => {
             // Put it back so the admin can retry; created_at is preserved, so the
             // 24h expiry sweep still applies.
-            state.pending_requests.lock().await.insert(decision.id, req);
+            if let command::DecisionTarget::Request(id) = decision.target {
+                state.pending_requests.lock().await.insert(id, req);
+            }
             build_reply(
                 event,
-                &format!("操作失败: {e}\n可稍后重试「{verb} {}」", decision.id),
+                &format!("操作失败: {e}\n可稍后重试「{verb} {}」", decision.target.label()),
                 None,
             )
         }
@@ -810,10 +826,12 @@ async fn handle_request_decision(
 
 /// Render a numbered list and remember the mapping, so a later `forget N`
 /// resolves to the row the person actually saw.
+#[allow(clippy::too_many_arguments)]
 async fn present_listing(
     state: &Arc<SharedState>,
     session_key: &SessionKey,
     user_id: i64,
+    kind: super::MemoryListingKind,
     rows: &[crate::db::models::memory::Memory],
     header: &str,
     footer: &str,
@@ -846,6 +864,7 @@ async fn present_listing(
     listings.insert(
         (session_key.to_string(), user_id),
         super::MemoryListing {
+            kind,
             ids: rows.iter().take(shown).map(|m| m.id.clone()).collect(),
             created_at: now,
         },
@@ -860,6 +879,7 @@ async fn resolve_listing(
     state: &Arc<SharedState>,
     session_key: &SessionKey,
     user_id: i64,
+    expected: super::MemoryListingKind,
     indices: &[usize],
 ) -> Result<Vec<String>, String> {
     let now = crate::util::now_ms();
@@ -868,6 +888,12 @@ async fn resolve_listing(
         .get(&(session_key.to_string(), user_id))
         .filter(|l| now - l.created_at < super::MEMORY_LISTING_TTL_MS)
         .ok_or("列表已过期,请重新执行一次查看指令。")?;
+    // The numbers must come from the matching command. Resolving /memory me's
+    // numbers against a /memory group listing (or the reverse) deletes rows the
+    // caller never saw under those numbers.
+    if listing.kind != expected {
+        return Err("编号与上次查看的列表不符,请先重新执行对应的查看指令。".to_string());
+    }
 
     let mut ids = Vec::new();
     for n in indices {
@@ -972,7 +998,7 @@ async fn dispatch_memory(
                 format!("关于你的记忆({} 条):", rows.len())
             };
             let text = present_listing(
-                state, session_key, user_id, &rows, &header,
+                state, session_key, user_id, super::MemoryListingKind::Own, &rows, &header,
                 "\n/memory forget N 删除 · /memory optout 完全退出",
             )
             .await;
@@ -980,7 +1006,9 @@ async fn dispatch_memory(
         }
 
         command::MemorySub::Forget(indices) => {
-            match resolve_listing(state, session_key, user_id, &indices).await {
+            match resolve_listing(
+                state, session_key, user_id, super::MemoryListingKind::Own, &indices,
+            ).await {
                 Err(e) => build_reply(event, &e, reply_to),
                 Ok(ids) => {
                     let n = tokio::task::spawn_blocking(move || {
@@ -1114,7 +1142,7 @@ async fn dispatch_memory(
             };
 
             if let command::MemorySub::GroupForget(indices) = sub {
-                return match resolve_listing(state, session_key, user_id, &indices).await {
+                return match resolve_listing(state, session_key, user_id, super::MemoryListingKind::Group, &indices).await {
                     Err(e) => build_reply(event, &e, reply_to),
                     Ok(ids) => {
                         let n = tokio::task::spawn_blocking(move || {
@@ -1152,7 +1180,7 @@ async fn dispatch_memory(
                 format!("本群记忆({} 条):", rows.len())
             };
             let text = present_listing(
-                state, session_key, user_id, &rows, &header,
+                state, session_key, user_id, super::MemoryListingKind::Group, &rows, &header,
                 "\n/memory group forget N 删除",
             )
             .await;
@@ -1174,7 +1202,7 @@ async fn dispatch_memory(
             } else {
                 format!("关于 {target} 的全部记忆({} 条):", rows.len())
             };
-            let text = present_listing(state, session_key, user_id, &rows, &header, "").await;
+            let text = present_listing(state, session_key, user_id, super::MemoryListingKind::Operator, &rows, &header, "").await;
             build_reply(event, &text, reply_to)
         }
 
@@ -1238,7 +1266,7 @@ async fn dispatch_memory(
             } else {
                 format!("全局记忆({} 条):", rows.len())
             };
-            let text = present_listing(state, session_key, user_id, &rows, &header, "").await;
+            let text = present_listing(state, session_key, user_id, super::MemoryListingKind::Operator, &rows, &header, "").await;
             build_reply(event, &text, reply_to)
         }
 
@@ -1296,7 +1324,7 @@ async fn dispatch_memory(
                 for p in &rows {
                     s.push_str(&format!("#{} {}: {}\n", p.id, p.key, p.content));
                 }
-                s.push_str("回复「同意 N」或「拒绝 N」处理。");
+                s.push_str("回复「同意 MN」或「拒绝 MN」处理(如 同意 M3)。");
                 s
             };
             build_reply(event, &text, reply_to)

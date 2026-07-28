@@ -185,11 +185,6 @@ async fn consume_stream_headless(
     Ok(StreamResult { text, reasoning, signature, tool_calls, usage, finish_reason })
 }
 
-/// Run a headless chat session with optional Tauri event streaming.
-///
-/// - `is_admin`: controls whether tools are available at all
-/// - `approval_fn`: called for Ask-permission tools (admin only); returns true to approve
-/// - `app`: when `Some`, emits `chat-stream` events for real-time UI updates
 /// One model call with no tools, no history and no persistence — used by the
 /// post-turn extraction pass.
 ///
@@ -254,6 +249,11 @@ pub(super) async fn oneshot_completion(
         .map_err(|e| e.to_string())
 }
 
+/// Run a headless chat session with optional Tauri event streaming.
+///
+/// - `is_admin`: controls whether tools are available at all
+/// - `approval_fn`: called for Ask-permission tools (admin only); returns true to approve
+/// - `app`: when `Some`, emits `chat-stream` events for real-time UI updates
 #[allow(clippy::too_many_arguments)]
 pub async fn headless_chat(
     pool: &DbPool,
