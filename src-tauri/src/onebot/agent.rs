@@ -286,19 +286,9 @@ pub async fn headless_chat(
         vec![]
     };
 
-    // Build messages with memory injection
     let raw_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
-    let memory_block = if let Some(pid) = project_id {
-        let pool2 = pool.clone();
-        let pid2 = pid.to_string();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool2.get().ok()?;
-            let memories = crate::db::ops::memory::list_memories(&mut conn, &pid2).ok()?;
-            crate::db::ops::memory::format_memory_block(&memories)
-        }).await.ok().flatten()
-    } else {
-        None
-    };
+    // Re-derived each turn rather than read back out of the transcript, so it
+    // survives compaction.
     let todo_block = {
         let pool2 = pool.clone();
         let conv_id = conversation_id.to_string();
@@ -313,14 +303,42 @@ pub async fn headless_chat(
     let base_block = crate::agent::base_prompt(&tool_defs)
         .map(|b| format!("{b}\n\n"))
         .unwrap_or_default();
+    // Memory is absent here on purpose — it ships as a user-role message. The
+    // checklist stays last so nothing after it busts the prompt cache.
     let system_prompt = format!(
-        "{}{}{}{}",
+        "{}{}{}",
         base_block,
         raw_prompt,
-        memory_block.as_deref().unwrap_or(""),
         todo_block.as_deref().unwrap_or(""),
     );
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
+
+    // Who this turn may recall. A private chat is about the one person on the
+    // other end; a group is about whoever actually spoke, filtered so nothing
+    // learned one-to-one can surface in front of everyone.
+    let is_group = incoming.iter().any(|m| m.sender.as_ref().is_some_and(|s| s.is_group));
+    let subjects: Vec<crate::agent::MemorySubjectRef> = incoming
+        .iter()
+        .filter_map(|m| m.sender.as_ref())
+        .map(|s| crate::agent::MemorySubjectRef::from_user(s.user_id, s.nickname.clone()))
+        .collect();
+    let budget_tokens = crate::agent::memory_budget(context_limit);
+    let memory_request = if is_group {
+        crate::agent::MemoryRequest::onebot_group(
+            project_id.map(|s| s.to_string()),
+            subjects,
+            budget_tokens,
+        )
+    } else {
+        match subjects.into_iter().next() {
+            Some(subject) => crate::agent::MemoryRequest::onebot_private(subject, budget_tokens),
+            None => crate::agent::MemoryRequest::desktop(
+                project_id.map(|s| s.to_string()),
+                budget_tokens,
+            ),
+        }
+    };
+    let memory_block = crate::agent::load_memory_block(pool, memory_request).await;
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
     let effective_model = model_override.as_deref()
@@ -353,13 +371,16 @@ pub async fn headless_chat(
         .unwrap_or_default()
     };
 
-    let trailing: Vec<provider::ChatMessage> = incoming
-        .iter()
-        .map(|m| match m.sender.as_ref() {
-            Some(s) => provider::ChatMessage::user_from(&m.text, s.into()),
-            None => provider::ChatMessage::user(&m.text),
-        })
-        .collect();
+    // Memory first, then what was just said: the block is background for
+    // reading the message, not a reply to it.
+    let mut trailing: Vec<provider::ChatMessage> = Vec::new();
+    if let Some(block) = memory_block.as_deref().filter(|b| !b.trim().is_empty()) {
+        trailing.push(provider::ChatMessage::system_context(block.trim_start()));
+    }
+    trailing.extend(incoming.iter().map(|m| match m.sender.as_ref() {
+        Some(s) => provider::ChatMessage::user_from(&m.text, s.into()),
+        None => provider::ChatMessage::user(&m.text),
+    }));
 
     let mut chat_messages = build_messages_with_senders(
         &system_prompt,

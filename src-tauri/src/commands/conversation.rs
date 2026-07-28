@@ -166,16 +166,19 @@ pub struct ContextInfo {
 
 /// Concatenate the system prompt from its parts, in the order
 /// `commands::chat::chat` assembles them: agent baseline, resolved assistant
-/// persona, project instructions, file-access notice, memory block.
+/// persona, project instructions, file-access notice.
+///
+/// The memory block is not part of this any more — it is sent as a user-role
+/// message — but it still has to be counted, so it is added to the total
+/// separately by the caller.
 fn compose_system_prompt(
     base_block: Option<&str>,
     persona: &str,
     instructions: &str,
     file_access: &str,
-    memory: &str,
 ) -> String {
     let base = base_block.map(|b| format!("{b}\n\n")).unwrap_or_default();
-    format!("{base}{persona}{instructions}{file_access}{memory}")
+    format!("{base}{persona}{instructions}{file_access}")
 }
 
 /// The persona (template variables resolved) and the project memory block — the
@@ -198,10 +201,16 @@ fn load_persona_and_memory(
         }
     }
     let persona = template::resolve(raw_prompt, &ctx);
-    let memory = project_id
-        .and_then(|pid| db::ops::memory::list_memories(conn, pid).ok())
-        .and_then(|m| db::ops::memory::format_memory_block(&m))
-        .unwrap_or_default();
+    let memory = crate::agent::load_memory_block_sync(
+        conn,
+        &crate::agent::MemoryRequest::desktop(
+            project_id.map(|s| s.to_string()),
+            // Counting uses the largest bracket: an under-reported figure is
+            // worse than a slightly generous one.
+            crate::agent::memory_budget(usize::MAX),
+        ),
+    )
+    .unwrap_or_default();
     (persona, memory)
 }
 
@@ -214,6 +223,8 @@ fn load_persona_and_memory(
 /// count them either): the JSON tool schemas sent alongside the messages, and
 /// anything the loop injects mid-turn — skill bodies pulled in by `load_skill`,
 /// and tool results that are not persisted yet.
+/// Returns `(system_prompt, memory_block)`. They are counted together but sent
+/// separately: the memory block travels as a user-role message.
 async fn assemble_system_prompt(
     app: &tauri::AppHandle,
     pool: &DbPool,
@@ -221,7 +232,7 @@ async fn assemble_system_prompt(
     project_path: Option<&str>,
     project_id: Option<&str>,
     context_limit: usize,
-) -> String {
+) -> (String, String) {
     // Tools are resolved first because the agent baseline only emits lines for
     // tools that are actually enabled — same ordering as the chat path.
     let enabled_tools: Option<Vec<String>> =
@@ -277,12 +288,14 @@ async fn assemble_system_prompt(
     };
     let file_access = build_file_access(pool).await;
 
-    compose_system_prompt(
-        base_prompt(&tool_defs).as_deref(),
-        &persona,
-        instruction_block.as_deref().unwrap_or(""),
-        &file_access_prompt(&file_access),
-        &memory_block,
+    (
+        compose_system_prompt(
+            base_prompt(&tool_defs).as_deref(),
+            &persona,
+            instruction_block.as_deref().unwrap_or(""),
+            &file_access_prompt(&file_access),
+        ),
+        memory_block,
     )
 }
 
@@ -324,7 +337,7 @@ pub async fn get_context_info(
     let max_output = caps.max_output_tokens.map(|t| t as usize).unwrap_or(16_384);
     let budget = TokenBudget::new(&provider_type, &model, context_limit, max_output, None);
 
-    let system_prompt = assemble_system_prompt(
+    let (system_prompt, memory_block) = assemble_system_prompt(
         &app,
         &pool,
         assistant.as_ref(),
@@ -333,7 +346,15 @@ pub async fn get_context_info(
         context_limit,
     ).await;
 
-    let msgs = build_messages(system_prompt.trim(), &history, "", compact_cursor);
+    // Mirrors the chat path exactly, memory block included, so the figure the
+    // UI shows covers what a turn actually sends.
+    let msgs = crate::agent::build_messages_with_senders(
+        system_prompt.trim(),
+        &history,
+        crate::agent::trailing_with_memory(Some(&memory_block), ""),
+        compact_cursor,
+        &Default::default(),
+    );
     let active_messages: Vec<_> = if let Some(cursor) = compact_cursor {
         history.iter().filter(|m| m.sort_order >= cursor || m.is_compact_summary == 1).collect()
     } else {
@@ -425,11 +446,11 @@ mod tests {
             "PERSONA",
             "\n\nINSTRUCTIONS",
             "\n\nFILEACCESS",
-            "\n\nMEMORY",
         );
-        assert_eq!(out, "BASE\n\nPERSONA\n\nINSTRUCTIONS\n\nFILEACCESS\n\nMEMORY");
+        // Memory is absent by design: it ships as a user-role message now.
+        assert_eq!(out, "BASE\n\nPERSONA\n\nINSTRUCTIONS\n\nFILEACCESS");
         // No baseline (no file-editing tools enabled) must not leave padding.
-        assert_eq!(compose_system_prompt(None, "PERSONA", "", "", ""), "PERSONA");
+        assert_eq!(compose_system_prompt(None, "PERSONA", "", ""), "PERSONA");
     }
 
     #[test]
@@ -534,12 +555,18 @@ mod tests {
             &persona,
             "",
             "",
-            &memory,
         );
 
         let budget = TokenBudget::new("openai", "gpt-4o", 128_000, 16_384, None);
-        let with_prompt =
-            budget.counter.count_messages(&build_messages(system_prompt.trim(), &[], "", None));
+        // Counted the way the chat path sends it: prompt plus the memory block
+        // that now rides along as a user-role message.
+        let with_prompt = budget.counter.count_messages(&crate::agent::build_messages_with_senders(
+            system_prompt.trim(),
+            &[],
+            crate::agent::trailing_with_memory(Some(&memory), ""),
+            None,
+            &Default::default(),
+        ));
         let history_only = budget.counter.count_messages(&build_messages("", &[], "", None));
 
         // The regression this guards: get_context_info used to pass an empty

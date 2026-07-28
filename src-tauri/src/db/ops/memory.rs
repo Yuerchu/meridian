@@ -18,7 +18,7 @@ pub const TRASH_RETENTION_MS: i64 = 30 * 24 * 3600 * 1000;
 /// Which memories a given caller may see, in a given place. Injection and
 /// `/memory me` both go through this so the two can never disagree about what
 /// the bot knows versus what it admits to knowing.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct VisibilityCtx {
     /// `None` means no origin filter (private chats see everything about the
     /// person they are talking to). Groups pass `Origin::group_visible()`.

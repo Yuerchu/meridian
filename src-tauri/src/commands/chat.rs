@@ -15,7 +15,7 @@ use crate::provider::{ChatMessage, ChatParams};
 use crate::template;
 use crate::tools;
 use crate::state::{AppDb, AppSecrets, AppTools, AppMcp, ApprovalDecision, ApprovalWaiters, ActiveChats, EditSessions, CompactBreakers};
-use crate::agent::{build_messages, build_file_access, file_access_prompt, estimate_tokens, microcompact, remove_orphan_tool_messages, resolve_file_uris_in_messages, trim_to_context_limit, extract_tool_calls_from_blocks, parse_openai_tool_calls, serialize_tool_calls_openai, provider_secret_name, get_provider_api_key, resolve_provider_config, do_compact, mid_turn_compact, CompactCircuitBreaker, COMPACT_PROMPT, StreamResult, MAX_STREAM_RETRIES, STREAM_RETRY_BASE, is_context_window_error, is_retryable_stream_error, instruction_budget, load_project_instructions, TokenBudget};
+use crate::agent::{build_messages_with_senders, trailing_with_memory, build_file_access, file_access_prompt, estimate_tokens, microcompact, remove_orphan_tool_messages, resolve_file_uris_in_messages, trim_to_context_limit, extract_tool_calls_from_blocks, parse_openai_tool_calls, serialize_tool_calls_openai, provider_secret_name, get_provider_api_key, resolve_provider_config, do_compact, mid_turn_compact, CompactCircuitBreaker, COMPACT_PROMPT, StreamResult, MAX_STREAM_RETRIES, STREAM_RETRY_BASE, is_context_window_error, is_retryable_stream_error, instruction_budget, load_project_instructions, TokenBudget};
 use crate::util::{get_conn, now_ms, take_bytes_at_char_boundary};
 
 const STREAM_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
@@ -329,17 +329,6 @@ pub async fn chat(
         }
     }
     let system_prompt_resolved = template::resolve(raw_prompt, &tmpl_ctx);
-    let memory_block = if let Some(ref pid) = project_id {
-        let pool2 = pool.clone();
-        let pid2 = pid.clone();
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool2.get().ok()?;
-            let memories = db::ops::memory::list_memories(&mut conn, &pid2).ok()?;
-            db::ops::memory::format_memory_block(&memories)
-        }).await.ok().flatten()
-    } else {
-        None
-    };
     // The running checklist has to survive compaction, so it is re-derived from
     // the database each turn rather than read back out of the transcript.
     let todo_block = {
@@ -352,6 +341,14 @@ pub async fn chat(
         }).await.ok().flatten()
     };
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
+    let memory_block = crate::agent::load_memory_block(
+        &pool,
+        crate::agent::MemoryRequest::desktop(
+            project_id.clone(),
+            crate::agent::memory_budget(context_limit),
+        ),
+    )
+    .await;
     let instruction_block = {
         let budget = instruction_budget(context_limit);
         if budget > 0 {
@@ -402,15 +399,18 @@ pub async fn chat(
     let tool_defs = tool_defs;
 
     let base_block = crate::agent::base_prompt(&tool_defs);
+    // The memory block is deliberately absent here: it goes in as a user-role
+    // message instead. Part of it is learned from what other people said, and
+    // the system prompt is where our own authoritative rules live.
+    //
     // The checklist block goes last: it changes every turn, so anything after
     // it would be evicted from the provider's prompt cache on each update.
     let system_prompt = format!(
-        "{}{}{}{}{}{}",
+        "{}{}{}{}{}",
         base_block.map(|b| format!("{b}\n\n")).unwrap_or_default(),
         system_prompt_resolved,
         instruction_block.as_deref().unwrap_or(""),
         file_access_prompt(&file_access),
-        memory_block.as_deref().unwrap_or(""),
         todo_block.as_deref().unwrap_or(""),
     );
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
@@ -462,7 +462,13 @@ pub async fn chat(
     let original_cursor = compact_cursor;
     let mut compact_cursor = compact_cursor;
     if auto_compact && circuit_breaker.can_compact() {
-        let pre_msgs = build_messages(system_prompt.trim(), &history, &message, compact_cursor);
+        let pre_msgs = build_messages_with_senders(
+            system_prompt.trim(),
+            &history,
+            trailing_with_memory(memory_block.as_deref(), &message),
+            compact_cursor,
+            &Default::default(),
+        );
         budget.update_estimate(&pre_msgs);
         if budget.needs_compact() && history.len() > keep_recent * 2 + 2 {
             app.emit("compact-start", serde_json::json!({
@@ -503,7 +509,13 @@ pub async fn chat(
         history
     };
 
-    let mut chat_messages = build_messages(system_prompt.trim(), &history, &message, compact_cursor);
+    let mut chat_messages = build_messages_with_senders(
+        system_prompt.trim(),
+        &history,
+        trailing_with_memory(memory_block.as_deref(), &message),
+        compact_cursor,
+        &Default::default(),
+    );
     let files_root = app.path().app_data_dir().ok().map(|d| crate::files::files_dir(&d));
     resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref());
     remove_orphan_tool_messages(&mut chat_messages);
