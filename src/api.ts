@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, Message, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset } from './types'
+import type { Assistant, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -217,8 +217,13 @@ export const api = {
   saveMemory: (projectId: string, key: string, content: string, memoryType?: string) =>
     invoke<Memory>('save_memory', { projectId, key, content, memoryType: memoryType ?? null }),
 
-  updateMemory: (id: string, content?: string, memoryType?: string) =>
-    invoke<Memory>('update_memory', { id, content: content ?? null, memoryType: memoryType ?? null }),
+  updateMemory: (id: string, content?: string, memoryType?: string, ownerOnly?: boolean) =>
+    invoke<Memory>('update_memory', {
+      id,
+      content: content ?? null,
+      memoryType: memoryType ?? null,
+      ownerOnly: ownerOnly ?? null,
+    }),
 
   deleteMemory: (id: string) =>
     invoke<void>('delete_memory', { id }),
@@ -226,6 +231,49 @@ export const api = {
   // Todos
   getActiveTodoList: (conversationId: string) =>
     invoke<TodoListView | null>('get_active_todo_list', { conversationId }),
+
+  /** Layered write. `origin` is always `desktop`; the backend assigns it. */
+  saveMemoryScoped: (args: {
+    scope: string
+    projectId?: string | null
+    subjectScopeId?: string | null
+    key: string
+    content: string
+    memoryType?: string | null
+    ownerOnly?: boolean
+  }) =>
+    invoke<Memory>('save_memory_scoped', {
+      scope: args.scope,
+      projectId: args.projectId ?? null,
+      subjectScopeId: args.subjectScopeId ?? null,
+      key: args.key,
+      content: args.content,
+      memoryType: args.memoryType ?? null,
+      ownerOnly: args.ownerOnly ?? null,
+    }),
+
+  deleteMemories: (ids: string[]) => invoke<number>('delete_memories', { ids }),
+
+  listMemorySubjects: () => invoke<MemorySubject[]>('list_memory_subjects'),
+
+  forgetMemorySubject: (subjectScopeId: string) =>
+    invoke<number>('forget_memory_subject', { subjectScopeId }),
+
+  setMemorySubjectFlags: (subjectScopeId: string, isPinned?: boolean, optedOut?: boolean) =>
+    invoke<void>('set_memory_subject_flags', {
+      subjectScopeId,
+      isPinned: isPinned ?? null,
+      optedOut: optedOut ?? null,
+    }),
+
+  listMemoryTrash: (limit?: number) =>
+    invoke<Memory[]>('list_memory_trash', { limit: limit ?? null }),
+
+  restoreMemories: (ids: string[]) => invoke<number>('restore_memories', { ids }),
+
+  purgeMemories: (ids: string[]) => invoke<number>('purge_memories', { ids }),
+
+  memoryEnums: () => invoke<MemoryEnums>('memory_enums'),
 
   // Preferences
   getPreference: (key: string) =>
