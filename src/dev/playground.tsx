@@ -25,9 +25,23 @@ import {
   ChatToolStatusIcon,
   ChatToolTrigger,
 } from '@/components/ui/chat-tool'
+import {
+  Turn,
+  TurnActions,
+  TurnBranchPager,
+  TurnContent,
+  TurnFooter,
+  TurnPinned,
+  TurnResult,
+  TurnStatusIcon,
+  TurnTrigger,
+  type TurnStatus,
+} from '@/components/ui/turn'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
+import { TurnSteps } from '@/components/chat/turn-steps'
 import { TodoBarView } from '@/components/chat/todo-bar'
 import { FastToggle, ModeSelector, ThinkingSelector } from '@/components/chat/toolbar'
+import { formatDuration, type TurnStep } from '@/lib/turns'
 import type { ChatMode, ProviderCapabilities, ThinkingEffort, ThinkingLevel, ToolCallDisplay } from '@/types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -60,6 +74,106 @@ function caps(over: Partial<ProviderCapabilities> = {}): ProviderCapabilities {
     supports_fast: false,
     ...over,
   }
+}
+
+function step(over: Partial<TurnStep> & Pick<TurnStep, 'kind'>): TurnStep {
+  const base = { messageId: 'pg', blockIndex: 0 }
+  if (over.kind === 'tool') {
+    return { data: tool({ tool_name: 'read_file', status: 'completed' }), ...base, ...over } as TurnStep
+  }
+  return { text: '', ...base, ...over } as TurnStep
+}
+
+const DEMO_STEPS: TurnStep[] = [
+  step({ kind: 'thinking', text: '先确认改动范围，再决定从哪个文件读起。' }),
+  step({ kind: 'text', text: '我先看一下现有实现。' }),
+  step({ kind: 'tool', data: tool({ tool_name: 'read_file', status: 'completed', arguments: '{"path":"src/lib/turns.ts"}', result: 'export function buildTurns(...)' }) }),
+  step({ kind: 'text', text: '分组逻辑没问题，接着跑一遍测试。' }),
+  step({ kind: 'tool', data: tool({ tool_name: 'run_command', status: 'completed', arguments: '{"command":"pnpm test"}', result: '89 passed' }) }),
+]
+
+const MANY_STEPS: TurnStep[] = Array.from({ length: 40 }, (_, i) =>
+  step({ kind: 'tool', data: tool({ tool_name: 'read_file', status: 'completed', call_id: `pg-many-${i}`, arguments: `{"path":"src/file-${i}.ts"}` }) }),
+)
+
+/**
+ * A turn collapse with local open state, so the header, the panel transition
+ * and the footer can be exercised together.
+ */
+function TurnCase({
+  label,
+  status,
+  steps = DEMO_STEPS,
+  durationMs = 586_000,
+  result = '改完了：分组层落在 `src/lib/turns.ts`，测试 89 项全过。',
+  pinned,
+  branch,
+  defaultOpen = false,
+}: {
+  label: string
+  status: TurnStatus
+  steps?: TurnStep[]
+  durationMs?: number | null
+  result?: string | null
+  pinned?: TurnStep[]
+  branch?: { index: number; total: number }
+  defaultOpen?: boolean
+}) {
+  const [open, setOpen] = useState(defaultOpen)
+  const [index, setIndex] = useState(branch?.index ?? 1)
+  const headline = status === 'streaming'
+    ? '处理中…'
+    : status === 'interrupted'
+      ? '已中断'
+      : status === 'awaiting-input'
+        ? '等待你的响应'
+        : durationMs != null
+          ? `已处理 ${formatDuration(durationMs)}`
+          : `${steps.length} 个步骤`
+
+  return (
+    <div className="group/turn w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
+      <div className="text-xs text-muted-foreground/60">{label}</div>
+      <Turn status={status} open={open} onOpenChange={setOpen}>
+        <TurnTrigger>
+          <span className="inline-flex items-center gap-1.5">
+            <TurnStatusIcon />
+            {headline}
+          </span>
+        </TurnTrigger>
+        <TurnContent>
+          <TurnSteps steps={steps} />
+        </TurnContent>
+        {pinned && pinned.length > 0 && (
+          <TurnPinned>
+            <TurnSteps steps={pinned} />
+          </TurnPinned>
+        )}
+        {result && (
+          <TurnResult>
+            <p className="text-sm">{result}</p>
+          </TurnResult>
+        )}
+        <TurnFooter>
+          {branch && (
+            <TurnBranchPager
+              index={index}
+              total={branch.total}
+              onPrevious={() => setIndex((v) => Math.max(1, v - 1))}
+              onNext={() => setIndex((v) => Math.min(branch.total, v + 1))}
+              previousLabel="上一个版本"
+              nextLabel="下一个版本"
+            />
+          )}
+          <span className="text-muted-foreground/50">1,204 + 318 tokens</span>
+          <TurnActions>
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">复制</Button>
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">重新生成</Button>
+          </TurnActions>
+        </TurnFooter>
+      </Turn>
+    </div>
+  )
 }
 
 /**
@@ -542,6 +656,25 @@ export default function Playground() {
           <div className="flex flex-wrap items-center gap-4">
             <ModeCase label="执行模式" initial="work" />
             <ModeCase label="谋定模式" initial="plan" />
+          </div>
+        </Section>
+
+        <Section title="Turn / 折叠中间过程">
+          <div className="space-y-3">
+            <TurnCase label="complete · 有时长" status="complete" />
+            <TurnCase label="complete · 展开态" status="complete" defaultOpen />
+            <TurnCase label="streaming · 处理中" status="streaming" defaultOpen />
+            <TurnCase
+              label="awaiting-input · 待审批块留在折叠区外"
+              status="awaiting-input"
+              pinned={[step({ kind: 'tool', data: tool({ tool_name: 'run_command', status: 'pending', arguments: '{"command":"rm -rf dist"}' }) })]}
+              result={null}
+            />
+            <TurnCase label="interrupted · 无结论" status="interrupted" result={null} />
+            <TurnCase label="empty · 一条文本都没有" status="empty" steps={[]} result={null} durationMs={null} />
+            <TurnCase label="无时长 · 退化显示步骤数" status="complete" durationMs={null} />
+            <TurnCase label="40 个步骤" status="complete" steps={MANY_STEPS} />
+            <TurnCase label="分支 2/3" status="complete" branch={{ index: 2, total: 3 }} />
           </div>
         </Section>
 

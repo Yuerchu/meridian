@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { useImeBottom } from '@/hooks/use-android-insets'
@@ -15,17 +15,21 @@ import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
 import { Spinner } from '@/components/ui/spinner'
 import { motion } from 'motion/react'
-import { ErrorBoundary } from '@/components/error-boundary'
-import { MessageItem } from './message-item'
+import { TurnItem } from './turn-item'
+import { useTurns } from '@/hooks/use-turns'
 import { useMessageScroller } from '@/components/ui/message-scroller'
 import { InputBar, type AttachedFile } from './input-bar'
 import { TodoBar } from './todo-bar'
 import { useEmojiMap } from './emoji-renderer'
 import { useConversationStore } from '@/stores/conversation-store'
 import { coerceThinkingLevel } from '@/lib/thinking'
-import type { Assistant, ChatMode, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
+import type { Assistant, ChatMode, Message, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
 const MotionMessageScrollerItem = motion.create(MessageScrollerItem)
+
+// Stable identity for the empty case: `?? []` would hand useTurns a new array on
+// every render of a conversation whose session has not been created yet.
+const NO_MESSAGES: Message[] = []
 
 function ImeScrollSync() {
   const ime = useImeBottom()
@@ -67,7 +71,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   )
   const refreshConversations = useConversationStore((s) => s.refreshConversations)
 
-  const messages = session?.messages ?? []
+  const messages = session?.messages ?? NO_MESSAGES
   const streaming = session?.streaming ?? false
   const compacting = session?.compacting ?? false
   const error = session?.error ?? null
@@ -362,13 +366,24 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     })
   }, [conversationId, sendMessage, storeLoadMessages])
 
-  const visibleMessages = messages.filter((m) => (m.role === 'user' || m.role === 'assistant') && m.is_compact_summary !== 1)
-  const compactedMessages = compactCursor != null
-    ? visibleMessages.filter((m) => m.sort_order < compactCursor)
+  // Memoised because useTurns keys its work on this array's identity; a fresh
+  // filter() on every render would rebuild every turn on every stream chunk.
+  const visibleMessages = useMemo(
+    () => messages.filter((m) => (m.role === 'user' || m.role === 'assistant') && m.is_compact_summary !== 1),
+    [messages],
+  )
+  const allTurns = useTurns(visibleMessages, streaming)
+  // Split by turn rather than by message: a cursor landing mid-turn used to put
+  // the question in the compacted region and its answer in the active one.
+  const compactedTurns = compactCursor != null
+    ? allTurns.filter((t) => t.firstSortOrder < compactCursor)
     : []
-  const activeMessages = compactCursor != null
-    ? visibleMessages.filter((m) => m.sort_order >= compactCursor)
-    : visibleMessages
+  const activeTurns = compactCursor != null
+    ? allTurns.filter((t) => t.firstSortOrder >= compactCursor)
+    : allTurns
+  const compactedCount = compactCursor != null
+    ? visibleMessages.filter((m) => m.sort_order < compactCursor).length
+    : 0
   const compactSummary = messages.find((m) => m.is_compact_summary === 1)
 
   const selectedAssistant = assistants.find((a) => a.id === selectedAssistantId)
@@ -418,7 +433,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
           </MessageScrollerItem>
         )}
 
-        {compactedMessages.length > 0 && (
+        {compactedTurns.length > 0 && (
           <MessageScrollerItem messageId="__compact-region" className="space-y-6">
             {showCompactedMessages ? (
               <>
@@ -427,21 +442,18 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
                   onClick={() => setShowCompactedMessages(false)}
                   className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground py-2"
                 >
-                  {t('chat.compact.hideCompacted', { count: compactedMessages.length })}
+                  {t('chat.compact.hideCompacted', { count: compactedCount })}
                 </Button>
-                {compactedMessages.map((m) => (
-                  <div key={m.id} className="opacity-40">
-                    <ErrorBoundary fallback={<div className="text-xs text-destructive">{t('chat.renderError')}</div>}>
-                      <MessageItem
-                        message={m}
-                        isStreaming={false}
-                        isLastMessage={false}
-                        onDelete={handleDelete}
-                        isOneBot={isOneBot}
-                        emojiMap={emojiMap}
-                        assistantAvatar={selectedAssistant?.avatar}
-                      />
-                    </ErrorBoundary>
+                {compactedTurns.map((turn) => (
+                  <div key={turn.id} className="opacity-40">
+                    <TurnItem
+                      turn={turn}
+                      conversationId={conversationId}
+                      onDelete={handleDelete}
+                      isOneBot={isOneBot}
+                      emojiMap={emojiMap}
+                      assistantAvatar={selectedAssistant?.avatar}
+                    />
                   </div>
                 ))}
               </>
@@ -451,7 +463,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
                 onClick={() => setShowCompactedMessages(true)}
                 className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground py-2"
               >
-                {t('chat.compact.showCompacted', { count: compactedMessages.length })}
+                {t('chat.compact.showCompacted', { count: compactedCount })}
               </Button>
             )}
             <Marker variant="separator" className="py-3 px-2">
@@ -461,7 +473,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
                   onClick={() => setShowCompactSummary((v) => !v)}
                   className="text-xs text-muted-foreground/60 hover:text-muted-foreground whitespace-nowrap h-auto px-2 py-0"
                 >
-                  {t('chat.compact.boundary', { count: compactedMessages.length })}
+                  {t('chat.compact.boundary', { count: compactedCount })}
                 </Button>
               </MarkerContent>
             </Marker>
@@ -473,48 +485,42 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
           </MessageScrollerItem>
         )}
 
-        {activeMessages.map((m, i) => {
-          const prev = i > 0 ? activeMessages[i - 1] : null
-          const next = i < activeMessages.length - 1 ? activeMessages[i + 1] : null
-          const isSameGroup = (a: typeof m | null, b: typeof m | null) =>
-            a != null && b != null && a.role === 'assistant' && b.role === 'assistant' && a.model_id === b.model_id
-          const isFirstInGroup = !isSameGroup(prev, m)
-          const isLastInGroup = !isSameGroup(m, next)
-          const messageEl = (
-            <ErrorBoundary fallback={<div className="text-xs text-destructive py-2">{t('chat.renderError')}</div>}>
-              <MessageItem
-                message={m}
-                isStreaming={streaming && i === activeMessages.length - 1 && m.role === 'assistant'}
-                isLastMessage={i === activeMessages.length - 1}
-                onDelete={handleDelete}
-                onRegenerate={m.role === 'assistant' ? handleRegenerate : undefined}
-                onEdit={m.role === 'user' && !streaming ? handleEdit : undefined}
-                onRate={m.role === 'assistant' ? handleRate : undefined}
-                isOneBot={isOneBot}
-                emojiMap={emojiMap}
-                assistantAvatar={selectedAssistant?.avatar}
-                isFirstInGroup={isFirstInGroup}
-                isLastInGroup={isLastInGroup}
-              />
-            </ErrorBoundary>
+        {activeTurns.map((turn, i) => {
+          const isLastTurn = i === activeTurns.length - 1
+          const turnEl = (
+            <TurnItem
+              turn={turn}
+              conversationId={conversationId}
+              isLastTurn={isLastTurn}
+              streaming={streaming}
+              onDelete={handleDelete}
+              onRegenerate={handleRegenerate}
+              onEdit={handleEdit}
+              onRate={handleRate}
+              isOneBot={isOneBot}
+              emojiMap={emojiMap}
+              assistantAvatar={selectedAssistant?.avatar}
+            />
           )
-          if (i >= activeMessages.length - 6) {
+          // Turns hold many messages each, so the reveal animation covers fewer
+          // items than the old per-message window did.
+          if (i >= activeTurns.length - 2) {
             return (
               <MotionMessageScrollerItem
-                key={m.id}
-                messageId={m.id}
-                scrollAnchor={m.role === 'user'}
+                key={turn.id}
+                messageId={turn.id}
+                scrollAnchor={turn.userMessage != null}
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
               >
-                {messageEl}
+                {turnEl}
               </MotionMessageScrollerItem>
             )
           }
           return (
-            <MessageScrollerItem key={m.id} messageId={m.id} scrollAnchor={m.role === 'user'}>
-              {messageEl}
+            <MessageScrollerItem key={turn.id} messageId={turn.id} scrollAnchor={turn.userMessage != null}>
+              {turnEl}
             </MessageScrollerItem>
           )
         })}

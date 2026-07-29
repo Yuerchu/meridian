@@ -275,12 +275,26 @@ interface MessageItemProps {
   assistantAvatar?: string | null
   isFirstInGroup?: boolean
   isLastInGroup?: boolean
+  /** Off for the intermediate rows of a turn, whose actions all live on the
+   *  turn's conclusion instead — rating a "let me check that" step would only
+   *  muddy the feedback, and every regenerate button in a turn does the same
+   *  thing anyway. */
+  showFooter?: boolean
+  /** Totals for the whole turn. The row owning the footer is the only one left
+   *  showing a count, so without this it would report just its own usage. */
+  tokenTotals?: { input: number | null; output: number | null }
+  /** Renders these instead of the message's own blocks. A collapsed turn shows
+   *  its conclusion through this row, and the steps that led there are already
+   *  drawn inside the collapsed region. */
+  blocksOverride?: ContentBlock[]
 }
 
-export const MessageItem = React.memo(function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, onEdit, onRate, isOneBot, emojiMap, assistantAvatar, isFirstInGroup = true, isLastInGroup = true }: MessageItemProps) {
+export const MessageItem = React.memo(function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, onEdit, onRate, isOneBot, emojiMap, assistantAvatar, isFirstInGroup = true, isLastInGroup = true, showFooter = true, tokenTotals, blocksOverride }: MessageItemProps) {
   const { t } = useTranslation()
   const relativeTime = useRelativeTime()
   const isUser = message.role === 'user'
+  const footerTokens = tokenTotals ?? { input: message.input_tokens, output: message.output_tokens }
+  const renderBlocks = blocksOverride ?? message._blocks
 
   // User messages with attachments are stored as a JSON array of parts. Only
   // treat the content as multimodal when every element actually looks like a
@@ -544,20 +558,21 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
 
           <Bubble variant="ghost" className="w-full">
             <BubbleContent className="w-full">
-              {(message._blocks && message._blocks.length > 0) ? (
-                <AssistantBlocks blocks={message._blocks} isStreaming={isStreaming} isLastMessage={isLastMessage} oneBot={isOneBot} emojiMap={emojiMap} />
-              ) : (
+              {(renderBlocks && renderBlocks.length > 0) ? (
+                <AssistantBlocks blocks={renderBlocks} isStreaming={isStreaming} isLastMessage={isLastMessage} oneBot={isOneBot} emojiMap={emojiMap} />
+              ) : blocksOverride ? null : (
                 <MarkdownContent content={message.content} isStreaming={isStreaming} oneBot={isOneBot} emojiMap={emojiMap} />
               )}
             </BubbleContent>
           </Bubble>
 
+          {showFooter && (
           <MessageFooter className="gap-1 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
-            {(message.input_tokens || message.output_tokens) && (
+            {(footerTokens.input || footerTokens.output) && (
               <span className="text-xs text-muted-foreground/50 mr-1 font-normal">
-                {message.input_tokens && message.output_tokens
-                  ? <><CountUp to={message.input_tokens} separator="," duration={1} /> + <CountUp to={message.output_tokens} separator="," duration={1} /> tokens</>
-                  : <><CountUp to={(message.output_tokens ?? message.input_tokens)!} separator="," duration={1} /> tokens</>}
+                {footerTokens.input && footerTokens.output
+                  ? <><CountUp to={footerTokens.input} separator="," duration={1} /> + <CountUp to={footerTokens.output} separator="," duration={1} /> tokens</>
+                  : <><CountUp to={(footerTokens.output ?? footerTokens.input)!} separator="," duration={1} /> tokens</>}
               </span>
             )}
             <div className="flex gap-1">
@@ -604,6 +619,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
               )}
             </div>
           </MessageFooter>
+          )}
         </MessageContent>
       </ContextMenuTrigger>
       <ContextMenuContent>

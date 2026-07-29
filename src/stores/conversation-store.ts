@@ -65,6 +65,47 @@ export function hydrateBlocks(msgs: Message[]): Message[] {
   })
 }
 
+/**
+ * Reuse the previous object for every row the snapshot did not actually change.
+ *
+ * A snapshot from the backend deserialises into all-new objects, so assigning it
+ * wholesale invalidates `React.memo` for the entire list even when only the last
+ * row moved. Reusing the old reference also keeps its `_blocks`, which were built
+ * incrementally from the stream.
+ *
+ * Rows whose stored columns did change still get the snapshot's object, and with
+ * it a rebuilt `_blocks` — the streaming assistant row is the usual case, since
+ * `handleReasoning` writes only to `_blocks` while the DB row carries
+ * `reasoning_content`. That one row reorders on reload; the history above it does
+ * not, which is what matters for list identity.
+ */
+export function reconcileMessages(prev: Message[], next: Message[]): Message[] {
+  if (prev.length === 0) return next
+  const byId = new Map(prev.map((m) => [m.id, m]))
+  let identical = prev.length === next.length
+  const out = next.map((m, i) => {
+    const old = byId.get(m.id)
+    if (old && sameStoredFields(old, m)) {
+      if (prev[i] !== old) identical = false
+      return old
+    }
+    identical = false
+    return m
+  })
+  return identical ? prev : out
+}
+
+/** Compares every persisted column, ignoring the front-end-only `_blocks`. Keys
+ *  are read off the snapshot so columns the TS type does not declare yet still
+ *  count. */
+function sameStoredFields(a: Message, b: Message): boolean {
+  for (const key of Object.keys(b) as (keyof Message)[]) {
+    if (key === '_blocks') continue
+    if (a[key] !== b[key]) return false
+  }
+  return true
+}
+
 export interface ConversationSession {
   messages: Message[]
   streaming: boolean
@@ -77,6 +118,11 @@ export interface ConversationSession {
   generation: number
   /** The checklist the model is working through, or null when there is none. */
   activeTodos: TodoArgs | null
+  /** Turns the user opened or closed by hand, keyed by turn id. Absent means
+   *  "follow the automatic policy"; once a turn appears here it keeps whatever
+   *  the user chose. Lives on the session so the choice survives switching
+   *  conversations and back. */
+  expandedTurns: Record<string, boolean>
 }
 
 function defaultSession(): ConversationSession {
@@ -91,6 +137,7 @@ function defaultSession(): ConversationSession {
     compactCursor: null,
     generation: 0,
     activeTodos: null,
+    expandedTurns: {},
   }
 }
 
@@ -178,6 +225,7 @@ export interface ConversationStore {
   setActiveTodos: (convId: string, todos: TodoArgs | null) => void
   loadActiveTodos: (convId: string) => Promise<void>
   markSeen: (convId: string) => void
+  setTurnExpanded: (convId: string, turnId: string, expanded: boolean) => void
 }
 
 export const useConversationStore = create<ConversationStore>((set, get) => ({
@@ -230,12 +278,15 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       api.loadMessages(convId),
       api.getConversation(convId),
     ])
+    // Reconciled outside produce: comparing against immer drafts would pit proxy
+    // references against plain ones.
+    const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(msgs))
     set(produce((state: ConversationStore) => {
       if (!state.sessions[convId]) {
         state.sessions[convId] = defaultSession()
       }
       const session = state.sessions[convId]
-      session.messages = mergeSnapshot(session, hydrateBlocks(msgs))
+      session.messages = mergeSnapshot(session, snapshot)
       session.compactCursor = conv.compact_cursor
     }))
   },
@@ -433,13 +484,14 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       }
     }))
     api.loadMessages(convId).then((msgs) => {
+      const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(msgs))
       set(produce((state: ConversationStore) => {
         const session = state.sessions[convId]
         if (!session) return
         // A new stream started while this snapshot was in flight; its own stop
         // handler will reload, so applying the stale snapshot would clobber it.
         if (session.generation !== generation) return
-        session.messages = mergeSnapshot(session, hydrateBlocks(msgs))
+        session.messages = mergeSnapshot(session, snapshot)
       }))
     })
   },
@@ -454,6 +506,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   handleCompactDone: (convId) => {
     const generation = get().sessions[convId]?.generation ?? 0
     Promise.all([api.loadMessages(convId), api.getConversation(convId)]).then(([msgs, conv]) => {
+      const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(msgs))
       set(produce((state: ConversationStore) => {
         const session = state.sessions[convId]
         if (!session) return
@@ -461,7 +514,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // A stream may have advanced while this snapshot was in flight; merge
         // instead of clobbering, and skip entirely if a newer turn superseded it.
         if (session.generation !== generation) return
-        session.messages = mergeSnapshot(session, hydrateBlocks(msgs))
+        session.messages = mergeSnapshot(session, snapshot)
         session.compactCursor = conv.compact_cursor
       }))
     }).catch(() => {
@@ -502,6 +555,13 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       if (state.sessions[convId]) {
         state.sessions[convId].fulfilledUnseen = false
       }
+    }))
+  },
+
+  setTurnExpanded: (convId, turnId, expanded) => {
+    set(produce((state: ConversationStore) => {
+      const session = state.sessions[convId]
+      if (session) session.expandedTurns[turnId] = expanded
     }))
   },
 }))
