@@ -87,7 +87,12 @@ export interface Conversation {
   /** Per-conversation reasoning tier; null means inherit the assistant default. */
   thinking_level: string | null
   fast_mode: number
+  /** Collaboration mode; null is the default (work) mode. */
+  mode: string | null
 }
+
+/** Ids must match `agent::modes` on the Rust side. */
+export type ChatMode = 'work' | 'plan'
 
 export interface ToolCallDisplay {
   call_id: string

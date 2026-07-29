@@ -20,6 +20,9 @@ pub struct Conversation {
     /// assistant's stored default".
     pub thinking_level: Option<String>,
     pub fast_mode: i32,
+    /// Which collaboration mode the conversation is in. `None` is the default
+    /// (work) mode; see `agent::modes`.
+    pub mode: Option<String>,
 }
 
 #[derive(Debug, Insertable)]

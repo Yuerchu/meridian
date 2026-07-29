@@ -70,6 +70,19 @@ diesel::table! {
         compact_cursor -> Nullable<Integer>,
         thinking_level -> Nullable<Text>,
         fast_mode -> Integer,
+        mode -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    mode_artifacts (id) {
+        id -> Text,
+        conversation_id -> Text,
+        kind -> Text,
+        content -> Text,
+        status -> Text,
+        created_at -> BigInt,
+        updated_at -> BigInt,
     }
 }
 
@@ -387,8 +400,9 @@ diesel::joinable!(skill_bindings_project -> projects (project_id));
 diesel::joinable!(skill_bindings_project -> skills (dir_name));
 diesel::joinable!(skill_bindings_assistant -> assistants (assistant_id));
 diesel::joinable!(skill_bindings_assistant -> skills (dir_name));
+diesel::joinable!(mode_artifacts -> conversations (conversation_id));
 diesel::joinable!(todo_lists -> conversations (conversation_id));
 diesel::joinable!(todo_items -> todo_lists (list_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,memory_proposals,memory_subjects,messages,model_configs,preferences,projects,prompt_templates,providers,skill_bindings_assistant,skill_bindings_global,skill_bindings_project,skills,todo_items,todo_lists,tool_categories,tool_permissions,tool_presets,);
+    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,memory_proposals,memory_subjects,messages,mode_artifacts,model_configs,preferences,projects,prompt_templates,providers,skill_bindings_assistant,skill_bindings_global,skill_bindings_project,skills,todo_items,todo_lists,tool_categories,tool_permissions,tool_presets,);

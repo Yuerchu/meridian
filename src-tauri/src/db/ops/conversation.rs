@@ -153,6 +153,24 @@ pub fn update_reasoning_prefs(
     Ok(())
 }
 
+/// Persist the collaboration mode. `None` means the default (work) mode.
+///
+/// Deliberately its own setter rather than another parameter on
+/// `update_reasoning_prefs`: that one already writes two fields at once, which
+/// forces every caller to pass the current value of the other. A third field
+/// would make all three callers depend on each other.
+pub fn update_mode(
+    conn: &mut SqliteConnection,
+    id: &str,
+    mode: Option<&str>,
+    now: i64,
+) -> QueryResult<()> {
+    diesel::update(conversations::table.find(id))
+        .set((conversations::mode.eq(mode), conversations::updated_at.eq(now)))
+        .execute(conn)?;
+    Ok(())
+}
+
 pub fn delete_conversation(
     conn: &mut SqliteConnection,
     id: &str,

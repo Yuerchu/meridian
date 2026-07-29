@@ -32,7 +32,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { Toolbar, MobileOptionsMenu } from './toolbar'
 import { EmojiPicker } from './emoji-picker'
-import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
+import type { Assistant, ChatMode, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
 interface ContextInfo {
   messageCount: number
@@ -68,6 +68,8 @@ interface InputBarProps {
   onSelectThinkingLevel: (level: ThinkingLevel) => void
   fastMode: boolean
   onToggleFast: (next: boolean) => void
+  mode: ChatMode
+  onSelectMode: (mode: ChatMode) => void
   capabilities?: ProviderCapabilities | null
   contextInfo?: ContextInfo
   compacting?: boolean
@@ -92,6 +94,8 @@ export function InputBar({
   onSelectThinkingLevel,
   fastMode,
   onToggleFast,
+  mode,
+  onSelectMode,
   capabilities,
   contextInfo,
   compacting,
@@ -267,6 +271,8 @@ export function InputBar({
                   onSelectThinkingLevel={onSelectThinkingLevel}
                   fastMode={fastMode}
                   onToggleFast={onToggleFast}
+                  mode={mode}
+                  onSelectMode={onSelectMode}
                   capabilities={capabilities}
                   onTakePhoto={handleTakePhoto}
                   onPickGallery={handlePickGallery}
@@ -286,6 +292,8 @@ export function InputBar({
                   onSelectThinkingLevel={onSelectThinkingLevel}
                   fastMode={fastMode}
                   onToggleFast={onToggleFast}
+                  mode={mode}
+                  onSelectMode={onSelectMode}
                   capabilities={capabilities}
                 />
               )}

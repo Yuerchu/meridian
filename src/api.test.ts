@@ -78,7 +78,14 @@ describe('api', () => {
         thinkingLevel: null,
         assistantId: null,
         fast: null,
+        mode: null,
       })
+    })
+
+    it('chat passes the collaboration mode', async () => {
+      mockInvoke.mockResolvedValueOnce(undefined)
+      await api.chat('conv-1', 'Hi', undefined, undefined, undefined, undefined, undefined, 'plan')
+      expect(mockInvoke).toHaveBeenCalledWith('chat', expect.objectContaining({ mode: 'plan' }))
     })
 
     it('chat passes model and provider overrides', async () => {
@@ -92,6 +99,7 @@ describe('api', () => {
         thinkingLevel: null,
         assistantId: null,
         fast: null,
+        mode: null,
       })
     })
   })

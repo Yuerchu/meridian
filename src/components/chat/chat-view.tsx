@@ -23,7 +23,7 @@ import { TodoBar } from './todo-bar'
 import { useEmojiMap } from './emoji-renderer'
 import { useConversationStore } from '@/stores/conversation-store'
 import { coerceThinkingLevel } from '@/lib/thinking'
-import type { Assistant, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
+import type { Assistant, ChatMode, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
 const MotionMessageScrollerItem = motion.create(MessageScrollerItem)
 
@@ -62,6 +62,9 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const conversationFastMode = useConversationStore(
     (s) => (s.conversations.find((c) => c.id === conversationId)?.fast_mode ?? 0) !== 0,
   )
+  const conversationMode = useConversationStore(
+    (s) => (s.conversations.find((c) => c.id === conversationId)?.mode ?? 'work') as ChatMode,
+  )
   const refreshConversations = useConversationStore((s) => s.refreshConversations)
 
   const messages = session?.messages ?? []
@@ -78,6 +81,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('default')
   const [fastMode, setFastMode] = useState(false)
+  const [mode, setMode] = useState<ChatMode>('work')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [capabilities, setCapabilities] = useState<ProviderCapabilities | null>(null)
   const [showCompactedMessages, setShowCompactedMessages] = useState(false)
@@ -151,6 +155,9 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   useEffect(() => {
     setThinkingLevel((conversationThinkingLevel as ThinkingLevel | null) ?? 'default')
     setFastMode(conversationFastMode)
+    // `mode` is deliberately absent: unlike the two above it tracks the stored
+    // value continuously (see below), because the backend changes it on its own
+    // when a plan is approved.
     // eslint-disable-next-line react-hooks/exhaustive-deps -- seed-on-switch; see comment
   }, [conversationId])
 
@@ -180,6 +187,28 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
       .then(() => refreshConversations())
       .catch(() => { /* toggle still applies locally for this session */ })
   }, [conversationId, thinkingLevel, refreshConversations])
+
+  const handleSelectMode = useCallback((next: ChatMode) => {
+    const previous = mode
+    setMode(next)
+    api.setConversationMode(conversationId, next === 'work' ? null : next)
+      .then(() => refreshConversations())
+      .catch((err) => {
+        // Rolled back rather than kept locally, unlike the other two toggles.
+        // The mode decides whether the model can edit files at all, so a
+        // toolbar showing a mode that did not take effect is worse than an
+        // error: the user would think they were in a read-only conversation.
+        setMode(previous)
+        storeSetError(conversationId, String(err))
+      })
+  }, [conversationId, mode, refreshConversations, storeSetError])
+
+  // Tracks the stored value continuously: approving a plan switches the mode on
+  // the backend, which emits `conversation-updated`, and the toolbar has to
+  // follow rather than keep claiming the conversation is still planning.
+  useEffect(() => {
+    setMode(conversationMode)
+  }, [conversationMode])
 
   const handleStop = useCallback(() => {
     api.stopChat(conversationId)
@@ -276,14 +305,14 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     }
 
     api
-      .chat(conversationId, messageContent, selectedModelId ?? undefined, selectedProviderId ?? undefined, thinkingLevel !== 'default' ? thinkingLevel : undefined, selectedAssistantId ?? undefined, fastMode || undefined)
+      .chat(conversationId, messageContent, selectedModelId ?? undefined, selectedProviderId ?? undefined, thinkingLevel !== 'default' ? thinkingLevel : undefined, selectedAssistantId ?? undefined, fastMode || undefined, mode)
       .catch((err) => {
         storeSetError(conversationId, String(err))
         storeSetStreaming(conversationId, false)
         submittingRef.current = false
         storeLoadMessages(conversationId)
       })
-  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, fastMode, selectedAssistantId, storeSetStreaming, storeSetError, storeLoadMessages])
+  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, fastMode, mode, selectedAssistantId, storeSetStreaming, storeSetError, storeLoadMessages])
 
   // Reset submittingRef when streaming ends
   useEffect(() => {
@@ -530,6 +559,8 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         onSelectThinkingLevel={handleSelectThinkingLevel}
         fastMode={fastMode}
         onToggleFast={handleToggleFast}
+        mode={mode}
+        onSelectMode={handleSelectMode}
         capabilities={capabilities}
         contextInfo={contextInfo}
         compacting={compacting}

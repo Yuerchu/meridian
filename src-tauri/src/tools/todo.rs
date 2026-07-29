@@ -195,8 +195,20 @@ impl Tool for UpdateTodosTool {
                 .count();
 
             if done == total {
+                // Finishing the checklist is what retires the plan it was
+                // implementing. Without this the approved plan keeps being
+                // injected into every later turn, long after the conversation
+                // has moved on — and there is no other signal that the work
+                // described by a plan is over.
+                let retired = crate::db::ops::plan::complete_active(&mut conn, &conversation_id, now)
+                    .map_err(|e| e.to_string())?;
+                let plan_note = if retired > 0 {
+                    " The approved plan is complete and no longer in force."
+                } else {
+                    ""
+                };
                 return Ok(format!(
-                    "Checklist \"{title}\" finished ({done}/{total}). The next update starts a new one."
+                    "Checklist \"{title}\" finished ({done}/{total}). The next update starts a new one.{plan_note}"
                 ));
             }
             match view
@@ -344,6 +356,44 @@ mod tests {
             .await
             .unwrap_err();
         assert!(empty.contains("at least one step"), "{empty}");
+    }
+
+    /// The only signal that a plan's work is over. Without it the approved plan
+    /// stays in the system prompt for the rest of the conversation.
+    #[tokio::test]
+    async fn finishing_the_checklist_retires_the_approved_plan() {
+        let pool = crate::db::test_db();
+        seed_conversation(&pool, "c1");
+        let ctx = ctx(pool.clone(), "c1");
+        {
+            let mut conn = pool.get().unwrap();
+            let plan = crate::db::ops::plan::record_plan(&mut conn, "c1", "the plan", 1).unwrap();
+            crate::db::ops::plan::approve(&mut conn, &plan.id, 2).unwrap();
+        }
+
+        UpdateTodosTool
+            .execute(
+                json!({ "title": "Ship it", "todos": [step("a", "in_progress")] }),
+                &ctx,
+            )
+            .await
+            .unwrap();
+        {
+            let mut conn = pool.get().unwrap();
+            assert!(
+                crate::db::ops::plan::get_active(&mut conn, "c1").unwrap().is_some(),
+                "still in force while work is outstanding"
+            );
+        }
+
+        let out = UpdateTodosTool
+            .execute(json!({ "title": "Ship it", "todos": [step("a", "completed")] }), &ctx)
+            .await
+            .unwrap();
+
+        let mut conn = pool.get().unwrap();
+        assert!(crate::db::ops::plan::get_active(&mut conn, "c1").unwrap().is_none());
+        assert!(out.contains("no longer in force"), "{out}");
     }
 
     #[tokio::test]

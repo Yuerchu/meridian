@@ -258,7 +258,7 @@ pub(super) async fn oneshot_completion(
 pub async fn headless_chat(
     pool: &DbPool,
     secrets: &SecretsManager,
-    tool_registry: &ToolRegistry,
+    tool_registry: &Arc<ToolRegistry>,
     mcp_manager: &Arc<Mutex<McpManager>>,
     conversation_id: &str,
     project_id: Option<&str>,
@@ -314,67 +314,43 @@ pub async fn headless_chat(
         resolve_provider_config(secrets, pool, assistant.as_ref())?;
     let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
 
-    // Resolved before the system prompt: the agent baseline is generated from
-    // the tools actually enabled, and the skill catalog rides in the tool schema.
-    // Collect tool definitions: full registry for admin users only
-    let mut tool_defs: Vec<provider::ToolDefinition> = if is_admin {
-        let enabled_tools: Option<Vec<String>> = assistant.as_ref()
-            .and_then(|a| a.enabled_tools.as_ref())
-            .and_then(|json| serde_json::from_str(json).ok());
-
-        let mcp_defs = {
-            let mgr = mcp_manager.lock().await;
-            mgr.all_tool_definitions()
-        };
-        let mut defs = crate::agent::tool_defs::collect(
-            &tool_registry,
-            mcp_defs,
-            enabled_tools.as_deref(),
-        );
-        // Same skill catalog the desktop path builds, so a QQ assistant sees the
-        // skills bound to it rather than an empty menu.
-        {
-            let pool2 = pool.clone();
-            let pid = project_id.map(|s| s.to_string());
-            let aid = assistant.as_ref().map(|a| a.id.clone());
-            let available = tokio::task::spawn_blocking(move || {
-                let mut conn = pool2.get().ok()?;
-                crate::db::ops::skill_binding::resolve_available(
-                    &mut conn, pid.as_deref(), aid.as_deref(),
-                ).ok()
-            }).await.ok().flatten().unwrap_or_default();
-            crate::agent::tool_defs::apply_skill_catalog(&mut defs, &available);
-        }
-        defs
+    // The same resolver the desktop loop uses. Sharing it is what keeps a QQ
+    // assistant's tool set honest: this path used to read `enabled_tools` only,
+    // so an assistant configured with a tool preset quietly got a different set
+    // here than in the app.
+    //
+    // Collaboration modes stay off: a headless turn has no way to switch them,
+    // and a QQ session already cannot touch the filesystem (its file access is
+    // an empty root set), so plan mode would guard nothing.
+    let mcp_defs = if is_admin {
+        let mgr = mcp_manager.lock().await;
+        mgr.all_tool_definitions()
     } else {
-        vec![]
+        Vec::new()
     };
-
-    let raw_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
-    // Re-derived each turn rather than read back out of the transcript, so it
-    // survives compaction.
-    let todo_block = {
+    let turn = {
         let pool2 = pool.clone();
-        let conv_id = conversation_id.to_string();
+        let registry = tool_registry.clone();
+        let input = crate::agent::turn_config::TurnConfigInput {
+            assistant: assistant.clone(),
+            conversation_id: conversation_id.to_string(),
+            project_id: project_id.map(|s| s.to_string()),
+            mode: crate::agent::modes::resolve(None),
+            mcp_defs,
+            // Non-admin sessions get no registry or MCP tools at all; the
+            // scope-locked QQ tools are appended further down.
+            include_tools: is_admin,
+            persona: assistant.as_ref().map(|a| a.system_prompt.clone()).unwrap_or_default(),
+            // Memory is absent on purpose — it ships as a user-role message.
+            context_blocks: Vec::new(),
+        };
         tokio::task::spawn_blocking(move || {
-            let mut conn = pool2.get().ok()?;
-            let view = crate::db::ops::todo::get_active_view(&mut conn, &conv_id).ok()??;
-            crate::db::ops::todo::format_todo_block(&view)
-        }).await.ok().flatten()
+            let mut conn = pool2.get().map_err(|e| e.to_string())?;
+            Ok::<_, String>(crate::agent::turn_config::resolve(&mut conn, &registry, input))
+        }).await.map_err(|e| e.to_string())??
     };
-    // Same baseline the desktop path gets: without it a QQ assistant has no
-    // working discipline beyond whatever the tool descriptions happen to say.
-    let base_block = crate::agent::base_prompt(&tool_defs)
-        .map(|b| format!("{b}\n\n"))
-        .unwrap_or_default();
-    // Memory is absent here on purpose — it ships as a user-role message. The
-    // checklist stays last so nothing after it busts the prompt cache.
-    let system_prompt = format!(
-        "{}{}{}",
-        base_block,
-        raw_prompt,
-        todo_block.as_deref().unwrap_or(""),
-    );
+    let mut tool_defs = turn.tool_defs;
+    let system_prompt = turn.system_prompt;
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
 
     // Who this turn may recall. A private chat is about the one person on the

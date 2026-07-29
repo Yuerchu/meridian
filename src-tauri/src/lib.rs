@@ -258,7 +258,12 @@ pub fn run() {
             // every skill on disk. Order matters: the manual has to exist before
             // the scan or it will not be picked up until the next launch.
             {
-                let tool_defs = agent::tool_defs::collect(&registry, Vec::new(), None);
+                // Run the mode filter even though the manual is mode-agnostic:
+                // a mode's exit tool lives in the registry but is only offered
+                // inside that mode, so listing it here would point the model at
+                // a tool that gets refused in every ordinary conversation.
+                let mut tool_defs = agent::tool_defs::collect(&registry, Vec::new(), None);
+                agent::tool_defs::apply_mode(&mut tool_defs, agent::modes::resolve(None), &registry);
                 if let Err(e) = agent::manual::write_manual(&skills_root, &tool_defs) {
                     eprintln!("failed to write the manual skill: {e}");
                 }
@@ -400,6 +405,7 @@ pub fn run() {
             commands::memory::update_memory,
             commands::memory::delete_memory,
             commands::todo::get_active_todo_list,
+            commands::conversation::set_conversation_mode,
             commands::memory::delete_memories,
             commands::memory::list_all_memories,
             commands::memory::list_memory_subjects,

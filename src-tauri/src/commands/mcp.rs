@@ -131,9 +131,14 @@ pub async fn list_all_tool_names(app: tauri::AppHandle) -> Result<Vec<serde_json
     let mcp = app.state::<AppMcp>();
     let mgr = mcp.0.lock().await;
 
-    let mut result: Vec<serde_json::Value> = tool_registry.0.definitions().iter().map(|t| {
-        serde_json::json!({"name": t.name, "description": t.description, "source": "builtin"})
-    }).collect();
+    // Mode transitions are left out on purpose: which of them is offered follows
+    // from the conversation's mode, not from the assistant, so ticking one here
+    // would promise something the tool assembly immediately overrides.
+    let mut result: Vec<serde_json::Value> = tool_registry.0.definitions().iter()
+        .filter(|t| !crate::agent::modes::transition_tools().any(|n| n == t.name))
+        .map(|t| {
+            serde_json::json!({"name": t.name, "description": t.description, "source": "builtin"})
+        }).collect();
 
     for t in &mgr.tools {
         result.push(serde_json::json!({

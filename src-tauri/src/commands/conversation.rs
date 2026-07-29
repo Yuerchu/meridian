@@ -117,6 +117,23 @@ pub async fn set_conversation_reasoning_prefs(
     }).await.map_err(|e| e.to_string())?
 }
 
+/// Switch the conversation's collaboration mode. `None` is the default (work)
+/// mode. An unrecognised id is stored as-is and degrades to work when read, so
+/// a mode removed in a later build cannot strand a conversation.
+#[tauri::command]
+pub async fn set_conversation_mode(
+    app: tauri::AppHandle,
+    id: String,
+    mode: Option<String>,
+) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::conversation::update_mode(&mut conn, &id, mode.as_deref(), now_ms())
+            .map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn update_conversation_title(app: tauri::AppHandle, id: String, title: String) -> Result<(), String> {
     let pool = app.state::<AppDb>().0.clone();
@@ -164,13 +181,14 @@ pub struct ContextInfo {
     pub message_count: usize,
 }
 
-/// Concatenate the system prompt from its parts, in the order
-/// `commands::chat::chat` assembles them: agent baseline, resolved assistant
-/// persona, project instructions, file-access notice.
+/// Test scaffolding only. Production assembly lives in
+/// `agent::turn_config::resolve`, which every loop now shares; keeping a second
+/// implementation reachable from production is exactly how the three callers
+/// drifted apart in the first place.
 ///
-/// The memory block is not part of this any more — it is sent as a user-role
-/// message — but it still has to be counted, so it is added to the total
-/// separately by the caller.
+/// The memory block is not part of this — it is sent as a user-role message —
+/// but it still has to be counted, so callers add it to the total separately.
+#[cfg(test)]
 fn compose_system_prompt(
     base_block: Option<&str>,
     persona: &str,
@@ -228,56 +246,19 @@ fn load_persona_and_memory(
 async fn assemble_system_prompt(
     app: &tauri::AppHandle,
     pool: &DbPool,
+    conversation_id: &str,
+    mode: Option<&str>,
     assistant: Option<&Assistant>,
     project_path: Option<&str>,
     project_id: Option<&str>,
     context_limit: usize,
 ) -> (String, String) {
-    // Tools are resolved first because the agent baseline only emits lines for
-    // tools that are actually enabled — same ordering as the chat path.
-    let enabled_tools: Option<Vec<String>> =
-        if let Some(preset_id) = assistant.and_then(|a| a.tool_preset_id.as_ref()) {
-            let pool2 = pool.clone();
-            let pid = preset_id.clone();
-            tokio::task::spawn_blocking(move || {
-                let mut conn = pool2.get().ok()?;
-                let preset = db::ops::tool_preset::get_preset(&mut conn, &pid).ok()?;
-                serde_json::from_str(&preset.tool_names).ok()
-            }).await.ok().flatten()
-        } else {
-            assistant
-                .and_then(|a| a.enabled_tools.as_ref())
-                .and_then(|json| serde_json::from_str(json).ok())
-        };
     let mcp_defs = {
         let mcp = app.state::<AppMcp>();
         let mgr = mcp.0.lock().await;
         mgr.all_tool_definitions()
     };
     let registry = app.state::<AppTools>().0.clone();
-    let mut tool_defs =
-        crate::agent::tool_defs::collect(&registry, mcp_defs, enabled_tools.as_deref());
-    {
-        let pool2 = pool.clone();
-        let pid = project_id.map(str::to_string);
-        let aid = assistant.map(|a| a.id.clone());
-        let available = tokio::task::spawn_blocking(move || {
-            let mut conn = pool2.get().ok()?;
-            db::ops::skill_binding::resolve_available(&mut conn, pid.as_deref(), aid.as_deref()).ok()
-        }).await.ok().flatten().unwrap_or_default();
-        crate::agent::tool_defs::apply_skill_catalog(&mut tool_defs, &available);
-    }
-
-    let (persona, memory_block) = {
-        let pool2 = pool.clone();
-        let assistant = assistant.cloned();
-        let pid = project_id.map(str::to_string);
-        tokio::task::spawn_blocking(move || {
-            let mut conn = pool2.get().ok()?;
-            Some(load_persona_and_memory(&mut conn, assistant.as_ref(), pid.as_deref()))
-        }).await.ok().flatten().unwrap_or_default()
-    };
-
     let instruction_block = {
         let budget = instruction_budget(context_limit);
         if budget > 0 {
@@ -288,15 +269,38 @@ async fn assemble_system_prompt(
     };
     let file_access = build_file_access(pool).await;
 
-    (
-        compose_system_prompt(
-            base_prompt(&tool_defs).as_deref(),
-            &persona,
-            instruction_block.as_deref().unwrap_or(""),
-            &file_access_prompt(&file_access),
-        ),
-        memory_block,
-    )
+    // The very same resolver the chat loop runs. Counting anything else here is
+    // how the estimate ended up short of what actually gets sent — the checklist
+    // block used to be missing from this side entirely.
+    let pool2 = pool.clone();
+    let assistant = assistant.cloned();
+    let conv_id = conversation_id.to_string();
+    let pid = project_id.map(str::to_string);
+    let mode = crate::agent::modes::resolve(mode);
+    let context_blocks =
+        vec![instruction_block.unwrap_or_default(), file_access_prompt(&file_access)];
+    tokio::task::spawn_blocking(move || {
+        let Ok(mut conn) = pool2.get() else { return (String::new(), String::new()) };
+        let (persona, memory_block) =
+            load_persona_and_memory(&mut conn, assistant.as_ref(), pid.as_deref());
+        let turn = crate::agent::turn_config::resolve(
+            &mut conn,
+            &registry,
+            crate::agent::turn_config::TurnConfigInput {
+                assistant,
+                conversation_id: conv_id,
+                project_id: pid,
+                mode,
+                mcp_defs,
+                include_tools: true,
+                persona,
+                context_blocks,
+            },
+        );
+        (turn.system_prompt, memory_block)
+    })
+    .await
+    .unwrap_or_default()
 }
 
 #[tauri::command]
@@ -307,7 +311,7 @@ pub async fn get_context_info(
     let pool = app.state::<AppDb>().0.clone();
     let secrets = app.state::<AppSecrets>();
 
-    let (assistant, history, compact_cursor, project_path, project_id) = {
+    let (assistant, history, compact_cursor, project_path, project_id, conv_mode) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         tokio::task::spawn_blocking(move || {
@@ -322,7 +326,7 @@ pub async fn get_context_info(
                 .and_then(|pid| db::ops::project::get_project(&mut conn, pid).ok());
             let project_path = project.as_ref().and_then(|p| p.path.clone());
             let project_id = project.as_ref().map(|p| p.id.clone());
-            Ok::<_, String>((assistant, history, conv.compact_cursor, project_path, project_id))
+            Ok::<_, String>((assistant, history, conv.compact_cursor, project_path, project_id, conv.mode.clone()))
         }).await.map_err(|e| e.to_string())??
     };
 
@@ -340,6 +344,8 @@ pub async fn get_context_info(
     let (system_prompt, memory_block) = assemble_system_prompt(
         &app,
         &pool,
+        &conversation_id,
+        conv_mode.as_deref(),
         assistant.as_ref(),
         project_path.as_deref(),
         project_id.as_deref(),

@@ -50,6 +50,23 @@ skill can tell you *how* to do something; it cannot grant permission to do it.
 On Windows, shell commands run inside a sandbox by default. A blocked command
 offers the user a "retry without sandbox" escalation.
 
+## Modes
+
+A conversation is in one mode at a time, chosen from the toolbar. Work mode is
+the default and changes nothing. Plan mode takes away every tool that could
+modify anything, so the assistant can only read, ask and think — running
+commands stays possible for checking facts, such as reading logs or running
+tests, but not for making changes.
+
+Planning ends by submitting the plan for approval. Approving it switches the
+conversation back to work mode and the assistant starts implementing in the
+same reply; sending it back with feedback keeps the conversation in plan mode
+for another round. The approved plan is injected into every later request, so
+it survives compaction.
+
+A mode can only narrow what the assistant was already allowed to do — it never
+grants a tool the assistant's own configuration withheld.
+
 ## Task checklists
 
 For work that takes several steps, the assistant keeps a checklist with

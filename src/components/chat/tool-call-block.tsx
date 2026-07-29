@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import {
   Check, X, Loader2, MessageCircleQuestion, Send,
   SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck,
-  FileText, Globe, ChevronUp, TriangleAlert, ListTodo,
+  FileText, Globe, ChevronUp, TriangleAlert, ListTodo, ClipboardList, Compass,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -23,6 +23,7 @@ import {
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { parseTodoArgs, todoProgress, TodoItemList, type TodoDraft } from './todo-list'
+import { MarkdownContent } from './markdown-content'
 import type { ToolCallDisplay } from '@/types'
 
 interface AskOption {
@@ -895,6 +896,173 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   )
 }
 
+/**
+ * A finished plan awaiting the user's verdict. Approving it ends plan mode and
+ * the same reply carries straight on into implementing, so the buttons say what
+ * happens next rather than a bare allow/deny.
+ */
+/**
+ * The model asking to stop building and plan instead. Deliberately plainer than
+ * the plan card: there is no artifact to read yet, just a reason and a decision.
+ */
+function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: string }) {
+  const { t } = useTranslation()
+  const [sent, setSent] = useState(false)
+  const declined = data.status === 'denied'
+
+  const decide = useCallback((send: () => Promise<void>) => {
+    setSent(true)
+    send().catch(() => setSent(false))
+  }, [])
+
+  return (
+    <div
+      data-slot="enter-plan"
+      data-status={data.status}
+      className={cn(
+        'my-3 overflow-hidden rounded-xl border bg-card/30 text-xs',
+        declined ? 'border-border' : 'border-info/40',
+      )}
+    >
+      <div data-slot="enter-plan-header" className="flex items-center gap-2 bg-muted/30 px-3 py-2">
+        <Compass aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <span data-slot="enter-plan-title" className="font-medium text-foreground">
+          {t('chat.plan.enterTitle')}
+        </span>
+        {data.status === 'completed' && <Check className="ml-auto size-3 text-success" />}
+        {declined && <X className="ml-auto size-3 text-muted-foreground" />}
+      </div>
+
+      <div data-slot="enter-plan-reason" className="px-3 py-2 text-foreground">
+        {reason}
+      </div>
+
+      {data.status === 'pending' && !sent && (
+        <div data-slot="enter-plan-actions" className="border-t border-border px-3 py-2">
+          <ChatToolApproval>
+            <Button variant="outline" onClick={() => decide(() => api.denyToolCall(data.call_id))}>
+              <X className="w-3 h-3" />
+              {t('chat.plan.keepBuilding')}
+            </Button>
+            <Button variant="default" onClick={() => decide(() => api.approveToolCall(data.call_id))}>
+              <Compass className="w-3 h-3" />
+              {t('chat.plan.startPlanning')}
+            </Button>
+          </ChatToolApproval>
+        </div>
+      )}
+
+      {data.status === 'pending' && sent && (
+        <div
+          data-slot="enter-plan-waiting"
+          className="flex items-center gap-2 border-t border-border px-3 py-2 text-muted-foreground"
+        >
+          <Loader2 className="w-3 h-3 animate-spin" />
+          <span>{t('chat.tool.running')}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) {
+  const { t } = useTranslation()
+  // One state instead of two booleans: `sent` and `feedback` are mutually
+  // exclusive, and a pair of flags allows a fourth combination that means
+  // nothing.
+  const [ui, setUi] = useState<'idle' | 'feedback' | 'sent'>('idle')
+  const [feedback, setFeedback] = useState('')
+  const wasRejected = data.status === 'denied'
+
+  // The waiter on the Rust side is gone once the turn is cancelled, so these
+  // calls really can reject. Falling back to the buttons beats spinning forever
+  // on a decision nobody is waiting for.
+  const decide = useCallback((send: () => Promise<void>) => {
+    setUi('sent')
+    send().catch(() => setUi('idle'))
+  }, [])
+
+  const sendBack = useCallback(
+    () => decide(() => api.denyToolCall(data.call_id, feedback.trim() || undefined)),
+    [decide, data.call_id, feedback],
+  )
+
+  return (
+    <div
+      data-slot="exit-plan"
+      data-status={data.status}
+      className={cn(
+        'my-3 overflow-hidden rounded-xl border bg-card/30 text-xs',
+        wasRejected ? 'border-border' : 'border-info/40',
+      )}
+    >
+      <div data-slot="exit-plan-header" className="flex items-center gap-2 bg-muted/30 px-3 py-2">
+        <ClipboardList aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <span data-slot="exit-plan-title" className="font-medium text-foreground">
+          {t('chat.plan.title')}
+        </span>
+        {data.status === 'completed' && <Check className="ml-auto size-3 text-success" />}
+        {wasRejected && <X className="ml-auto size-3 text-muted-foreground" />}
+      </div>
+
+      <div data-slot="exit-plan-body" className="max-h-96 overflow-y-auto px-3 py-2">
+        <MarkdownContent content={plan} />
+      </div>
+
+      {data.status === 'pending' && ui !== 'sent' && (
+        <div data-slot="exit-plan-actions" className="border-t border-border px-3 py-2">
+          {ui === 'feedback' ? (
+            <div data-slot="exit-plan-feedback" className="space-y-2">
+              <Input
+                type="text"
+                value={feedback}
+                onChange={(e) => setFeedback(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') sendBack() }}
+                placeholder={t('chat.plan.feedbackPlaceholder')}
+                className="text-xs"
+                autoFocus
+              />
+              <ChatToolApproval className="pt-0">
+                <Button variant="ghost" onClick={() => setUi('idle')}>
+                  {t('chat.tool.cancel')}
+                </Button>
+                <Button variant="outline" onClick={sendBack}>
+                  <Undo2 className="w-3 h-3" />
+                  {t('chat.plan.sendBack')}
+                </Button>
+              </ChatToolApproval>
+            </div>
+          ) : (
+            <ChatToolApproval>
+              <Button variant="outline" onClick={() => setUi('feedback')}>
+                <Undo2 className="w-3 h-3" />
+                {t('chat.plan.revise')}
+              </Button>
+              <Button
+                variant="default"
+                onClick={() => decide(() => api.approveToolCall(data.call_id))}
+              >
+                <Check className="w-3 h-3" />
+                {t('chat.plan.approve')}
+              </Button>
+            </ChatToolApproval>
+          )}
+        </div>
+      )}
+
+      {data.status === 'pending' && ui === 'sent' && (
+        <div
+          data-slot="exit-plan-waiting"
+          className="flex items-center gap-2 border-t border-border px-3 py-2 text-muted-foreground"
+        >
+          <Loader2 className="w-3 h-3 animate-spin" />
+          <span>{t('chat.tool.running')}</span>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: string; todos: TodoDraft[] }) {
   const { t } = useTranslation()
   const { done, total } = todoProgress(todos)
@@ -994,6 +1162,20 @@ export function ToolCallBlock({ data, className }: { data: ToolCallDisplay; clas
 
   if (data.tool_name === 'web_search') {
     return <WebSearchBlock data={data} />
+  }
+
+  if (data.tool_name === 'enter_plan') {
+    const reason = typeof parsedArgs.reason === 'string' ? parsedArgs.reason.trim() : ''
+    if (reason) {
+      return <EnterPlanBlock data={data} reason={reason} />
+    }
+  }
+
+  if (data.tool_name === 'exit_plan') {
+    const plan = typeof parsedArgs.plan === 'string' ? parsedArgs.plan.trim() : ''
+    if (plan) {
+      return <ExitPlanBlock data={data} plan={plan} />
+    }
   }
 
   // Mid-stream the arguments are partial JSON and this parse fails, so the

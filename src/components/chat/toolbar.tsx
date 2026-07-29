@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bot, ChevronDown, ChevronLeft, ChevronRight, Cpu, Check, Star, Lightbulb, RefreshCw, Plus, Camera, ImageIcon, Paperclip, Zap } from 'lucide-react'
+import { Bot, ChevronDown, ChevronLeft, ChevronRight, Cpu, Check, Star, Lightbulb, RefreshCw, Plus, Camera, ImageIcon, Paperclip, Zap, Hammer, Compass } from 'lucide-react'
 import { ModelIcon } from '@lobehub/icons'
 import { Button } from '@/components/ui/button'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
@@ -9,7 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
-import type { Assistant, Provider, ProviderCapabilities, ModelInfo, ThinkingEffort, ThinkingLevel } from '@/types'
+import type { Assistant, ChatMode, Provider, ProviderCapabilities, ModelInfo, ThinkingEffort, ThinkingLevel } from '@/types'
 
 interface ToolbarProps {
   assistants: Assistant[]
@@ -23,7 +23,80 @@ interface ToolbarProps {
   onSelectThinkingLevel: (level: ThinkingLevel) => void
   fastMode: boolean
   onToggleFast: (next: boolean) => void
+  mode: ChatMode
+  onSelectMode: (mode: ChatMode) => void
   capabilities?: ProviderCapabilities | null
+}
+
+const CHAT_MODES: Array<{ id: ChatMode; icon: typeof Hammer; labelKey: string; descKey: string }> = [
+  { id: 'work', icon: Hammer, labelKey: 'toolbar.mode.work', descKey: 'toolbar.mode.workDesc' },
+  { id: 'plan', icon: Compass, labelKey: 'toolbar.mode.plan', descKey: 'toolbar.mode.planDesc' },
+]
+
+/**
+ * A selector rather than a toggle: modes are an open set on the Rust side, and
+ * a boolean would have to be unpicked the moment a third one appears.
+ *
+ * Not gated on provider capabilities, unlike the fast tier — a mode narrows what
+ * the assistant may do, which every model can honour.
+ */
+export function ModeSelector({
+  current,
+  onSelect,
+}: {
+  current: ChatMode
+  onSelect: (mode: ChatMode) => void
+}) {
+  const { t } = useTranslation()
+  const [open, setOpen] = useState(false)
+  const active = CHAT_MODES.find((m) => m.id === current) ?? CHAT_MODES[0]
+  const ActiveIcon = active.icon
+  const isDefault = current === 'work'
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger className={cn(
+        'flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors touch-hitbox',
+        isDefault
+          ? 'text-muted-foreground hover:text-foreground hover:bg-accent'
+          : 'text-info hover:text-info/80 hover:bg-accent',
+      )}>
+        <ActiveIcon className="w-3.5 h-3.5" />
+        {!isDefault && (
+          <span data-slot="mode-selector-label" className="max-w-[60px] truncate">
+            {t(active.labelKey)}
+          </span>
+        )}
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-56 gap-0 p-1 bg-popover border-border">
+        <div data-slot="mode-selector-heading" className="px-1.5 py-1 text-xs text-muted-foreground">
+          {t('toolbar.mode')}
+        </div>
+        {CHAT_MODES.map((m) => {
+          const Icon = m.icon
+          return (
+            <Button
+              key={m.id}
+              variant="ghost"
+              onClick={() => { onSelect(m.id); setOpen(false) }}
+              className={cn(
+                'w-full flex items-center gap-2 rounded-md px-1.5 py-1 h-auto text-sm justify-start',
+                m.id === current
+                  ? 'bg-accent text-accent-foreground'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+              )}
+            >
+              <Icon className="size-4 shrink-0" />
+              <span data-slot="mode-option-label" className="flex-1 text-left">{t(m.labelKey)}</span>
+              <span data-slot="mode-option-desc" className="text-xs text-muted-foreground/60">
+                {t(m.descKey)}
+              </span>
+            </Button>
+          )
+        })}
+      </PopoverContent>
+    </Popover>
+  )
 }
 
 function AssistantSelector({
@@ -303,6 +376,8 @@ export function FastToggle({
 export function Toolbar(props: ToolbarProps) {
   return (
     <div className="flex items-center gap-0.5 min-w-0 overflow-x-auto scrollbar-none">
+      <ModeSelector current={props.mode} onSelect={props.onSelectMode} />
+      <span className="text-border text-xs">·</span>
       <AssistantSelector
         assistants={props.assistants}
         currentId={props.currentAssistantId}
@@ -344,7 +419,7 @@ export interface MobileOptionsMenuProps extends ToolbarProps {
   supportsImages: boolean
 }
 
-type MobilePanel = 'main' | 'assistant' | 'model' | 'thinking'
+type MobilePanel = 'main' | 'assistant' | 'model' | 'thinking' | 'mode'
 
 export function MobileOptionsMenu({
   assistants,
@@ -358,6 +433,8 @@ export function MobileOptionsMenu({
   onSelectThinkingLevel,
   fastMode,
   onToggleFast,
+  mode,
+  onSelectMode,
   capabilities,
   onTakePhoto,
   onPickGallery,
@@ -440,6 +517,21 @@ export function MobileOptionsMenu({
               {t('chat.attachFile')}
             </Button>
             <div className="h-px bg-border mx-4 my-1" />
+            <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('mode')}>
+              <span className="flex items-center gap-3">
+                {(() => {
+                  const active = CHAT_MODES.find((m) => m.id === mode) ?? CHAT_MODES[0]
+                  const Icon = active.icon
+                  return (
+                    <>
+                      <Icon className={cn('w-4 h-4', mode === 'work' ? 'text-muted-foreground' : 'text-info')} />
+                      <span>{t('toolbar.mode')}: {t(active.labelKey)}</span>
+                    </>
+                  )
+                })()}
+              </span>
+              <ChevronRight className="w-4 h-4 text-muted-foreground" />
+            </Button>
             <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('assistant')}>
               <span className="flex items-center gap-3">
                 <Bot className="w-4 h-4 text-muted-foreground" />
@@ -580,6 +672,34 @@ export function MobileOptionsMenu({
                 <div className="px-4 py-3 text-xs text-muted-foreground">{t('toolbar.noModels')}</div>
               )}
             </ScrollArea>
+          </div>
+        )}
+
+        {panel === 'mode' && (
+          <div className="flex flex-col">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+              <Button variant="ghost" size="icon" className="size-auto p-1 rounded-md hover:bg-accent" onClick={() => setPanel('main')}>
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <span className="text-sm font-medium">{t('toolbar.mode')}</span>
+            </div>
+            {CHAT_MODES.map((m) => {
+              const Icon = m.icon
+              return (
+                <Button
+                  key={m.id}
+                  variant="ghost"
+                  className={cn(itemCls, 'justify-between', m.id === mode && 'bg-accent')}
+                  onClick={() => { onSelectMode(m.id); close() }}
+                >
+                  <span className="flex items-center gap-3">
+                    <Icon className="w-4 h-4 text-muted-foreground" />
+                    <span>{t(m.labelKey)}</span>
+                  </span>
+                  <span className="text-xs text-muted-foreground">{t(m.descKey)}</span>
+                </Button>
+              )
+            })}
           </div>
         )}
 

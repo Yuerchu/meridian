@@ -8,6 +8,7 @@ pub mod glob_files;
 pub mod list_directory;
 pub mod memory;
 pub mod move_file;
+pub mod plan;
 pub mod read_file;
 #[cfg(not(target_os = "android"))]
 pub mod run_command;
@@ -328,6 +329,8 @@ impl ToolRegistry {
             Arc::new(memory::ListMemoriesTool),
             Arc::new(memory::DeleteMemoryTool),
             Arc::new(todo::UpdateTodosTool),
+            Arc::new(plan::EnterPlanTool),
+            Arc::new(plan::ExitPlanTool),
             Arc::new(web_search::WebSearchTool::new()),
         ];
         #[cfg(not(target_os = "android"))]

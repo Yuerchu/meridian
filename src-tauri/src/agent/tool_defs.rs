@@ -9,9 +9,58 @@ use crate::db::models::skill::Skill;
 use crate::provider::ToolDefinition;
 use crate::tools::ToolRegistry;
 
+use super::modes::ModeSpec;
 use super::skills::{is_valid_slug, MAX_AVAILABLE_SKILLS};
 
 pub const LOAD_SKILL_TOOL: &str = "load_skill";
+
+/// Narrow the tool set to what the current mode allows.
+///
+/// Runs after the assistant's own filtering and can only ever take tools away —
+/// a mode that could add them would be a way around the user's configuration.
+/// The exception is the mode's exit tool, which is pulled straight from the
+/// registry: no assistant enables it in advance because it means nothing
+/// outside the mode.
+///
+/// Doing this here, while the payload is being assembled, is the whole point.
+/// A tool the model cannot see needs no instructions telling it not to call
+/// that tool.
+pub(crate) fn apply_mode(defs: &mut Vec<ToolDefinition>, mode: &ModeSpec, registry: &ToolRegistry) {
+    // Transition tools belong to the mode that declares them, and which ones
+    // apply depends entirely on where the conversation currently is. Stripping
+    // all of them first means the answer comes from `offered_transitions` alone
+    // -- no ordinary conversation is shown `exit_plan`, and no planning
+    // conversation is shown a second way in.
+    // Computed from the working tools only, so a transition tool left over in
+    // the input cannot make another one look necessary.
+    let working: Vec<String> = defs
+        .iter()
+        .map(|d| d.name.clone())
+        .filter(|n| !super::modes::transition_tools().any(|t| t == n))
+        .collect();
+    let offered = mode.offered_transitions(&working);
+    defs.retain(|d| {
+        let name = d.name.as_str();
+        !super::modes::transition_tools().any(|t| t == name) || offered.contains(&name)
+    });
+
+    if let Some(allowed) = mode.tools {
+        defs.retain(|d| allowed.contains(&d.name.as_str()) || offered.contains(&d.name.as_str()));
+    }
+
+    for name in offered {
+        if defs.iter().any(|d| d.name == name) {
+            continue;
+        }
+        if let Some(tool) = registry.get(name) {
+            defs.push(ToolDefinition {
+                name: tool.name().to_string(),
+                description: tool.description().to_string(),
+                parameters: tool.parameters_schema(),
+            });
+        }
+    }
+}
 
 /// Builtin + custom + MCP definitions, filtered to what the assistant enables.
 /// `enabled` of `None` means every tool is allowed.
@@ -99,6 +148,109 @@ mod tests {
             created_at: 0,
             updated_at: 0,
         }
+    }
+
+    fn registry() -> ToolRegistry {
+        ToolRegistry::new(std::path::PathBuf::from("/nonexistent"))
+    }
+
+    fn named(names: &[&str]) -> Vec<ToolDefinition> {
+        names
+            .iter()
+            .map(|n| ToolDefinition {
+                name: (*n).into(),
+                description: "d".into(),
+                parameters: serde_json::json!({}),
+            })
+            .collect()
+    }
+
+    fn names_of(defs: &[ToolDefinition]) -> Vec<String> {
+        defs.iter().map(|d| d.name.clone()).collect()
+    }
+
+    #[test]
+    fn work_mode_narrows_nothing_and_offers_the_way_into_plan() {
+        let mut defs = named(&["read_file", "write_file", "run_command"]);
+        apply_mode(&mut defs, super::super::modes::resolve(None), &registry());
+        assert_eq!(
+            names_of(&defs),
+            ["read_file", "write_file", "run_command", "enter_plan"],
+        );
+    }
+
+    #[test]
+    fn plan_mode_keeps_readers_and_drops_writers() {
+        let mut defs = named(&["read_file", "write_file", "apply_patch", "run_command", "save_memory"]);
+        apply_mode(&mut defs, super::super::modes::resolve(Some("plan")), &registry());
+
+        let names = names_of(&defs);
+        assert!(names.contains(&"read_file".to_string()));
+        assert!(names.contains(&"run_command".to_string()));
+        assert!(!names.contains(&"write_file".to_string()));
+        assert!(!names.contains(&"apply_patch".to_string()));
+        assert!(!names.contains(&"save_memory".to_string()));
+    }
+
+    #[test]
+    fn plan_mode_injects_its_exit_tool() {
+        let mut defs = named(&["read_file"]);
+        apply_mode(&mut defs, super::super::modes::resolve(Some("plan")), &registry());
+        let exit = defs.iter().find(|d| d.name == "exit_plan").expect("exit tool injected");
+        // Pulled from the registry, so the schema the model sees is the real one.
+        assert!(!exit.description.is_empty());
+        assert!(exit.parameters.get("properties").is_some());
+    }
+
+    #[test]
+    fn the_exit_tool_is_absent_outside_its_mode() {
+        // It lives in the registry, so an assistant with no tool filter would
+        // otherwise be offered it in every ordinary conversation.
+        let mut defs = named(&["read_file", "exit_plan"]);
+        apply_mode(&mut defs, super::super::modes::resolve(None), &registry());
+        // No `enter_plan` either: read_file alone is already read-only, so
+        // planning would take nothing away.
+        assert_eq!(names_of(&defs), ["read_file"]);
+    }
+
+    #[test]
+    fn the_way_into_plan_appears_only_when_it_would_restrict_something() {
+        let mut read_only = named(&["read_file", "web_search"]);
+        apply_mode(&mut read_only, super::super::modes::resolve(None), &registry());
+        assert_eq!(names_of(&read_only), ["read_file", "web_search"]);
+
+        let mut can_edit = named(&["read_file", "write_file"]);
+        apply_mode(&mut can_edit, super::super::modes::resolve(None), &registry());
+        assert!(names_of(&can_edit).contains(&"enter_plan".to_string()));
+    }
+
+    #[test]
+    fn you_cannot_re_enter_the_mode_you_are_already_in() {
+        let mut defs = named(&["read_file", "enter_plan"]);
+        apply_mode(&mut defs, super::super::modes::resolve(Some("plan")), &registry());
+        let names = names_of(&defs);
+        assert!(!names.contains(&"enter_plan".to_string()), "already there");
+        assert!(names.contains(&"exit_plan".to_string()), "but can leave");
+    }
+
+    #[test]
+    fn a_mode_can_only_narrow_never_widen() {
+        // The assistant allows two tools; plan mode's whitelist is much wider,
+        // but must not hand back anything the assistant had already excluded.
+        let mut defs = named(&["read_file", "glob"]);
+        apply_mode(&mut defs, super::super::modes::resolve(Some("plan")), &registry());
+
+        let names = names_of(&defs);
+        assert!(!names.contains(&"list_directory".to_string()), "not enabled by the assistant");
+        assert!(!names.contains(&"web_search".to_string()), "not enabled by the assistant");
+        assert_eq!(names.len(), 3, "read_file, glob and the injected exit tool");
+    }
+
+    #[test]
+    fn injection_does_not_duplicate_an_existing_definition() {
+        let mut defs = named(&["read_file", "exit_plan"]);
+        apply_mode(&mut defs, super::super::modes::resolve(Some("plan")), &registry());
+        assert_eq!(defs.iter().filter(|d| d.name == "exit_plan").count(), 1);
     }
 
     fn defs_with_load_skill() -> Vec<ToolDefinition> {

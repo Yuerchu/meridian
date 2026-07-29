@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset } from './types'
+import type { Assistant, ChatMode, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -16,6 +16,11 @@ export const api = {
 
   setConversationReasoningPrefs: (id: string, thinkingLevel: string | null, fastMode: boolean) =>
     invoke<void>('set_conversation_reasoning_prefs', { id, thinkingLevel, fastMode }),
+
+  // Its own setter rather than another field on the one above: that one writes
+  // two columns at once, so every caller has to pass the other's current value.
+  setConversationMode: (id: string, mode: ChatMode | null) =>
+    invoke<void>('set_conversation_mode', { id, mode }),
 
   togglePinConversation: (id: string) =>
     invoke<Conversation>('toggle_pin_conversation', { id }),
@@ -71,7 +76,10 @@ export const api = {
   stopChat: (conversationId: string) =>
     invoke<void>('stop_chat', { conversationId }),
 
-  chat: (conversationId: string, message: string, modelOverride?: string, providerOverride?: string, thinkingLevel?: string, assistantId?: string, fast?: boolean) =>
+  // `mode` is passed per-request as well as being stored on the conversation:
+  // the setter is async, and a message sent right after flipping the switch
+  // would otherwise race it and run under the previous mode.
+  chat: (conversationId: string, message: string, modelOverride?: string, providerOverride?: string, thinkingLevel?: string, assistantId?: string, fast?: boolean, mode?: ChatMode) =>
     invoke<void>('chat', {
       conversationId,
       message,
@@ -80,6 +88,7 @@ export const api = {
       thinkingLevel: thinkingLevel ?? null,
       assistantId: assistantId ?? null,
       fast: fast ?? null,
+      mode: mode ?? null,
     }),
 
   setSecret: (key: string, value: string) =>

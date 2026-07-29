@@ -27,8 +27,8 @@ import {
 } from '@/components/ui/chat-tool'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { TodoBarView } from '@/components/chat/todo-bar'
-import { FastToggle, ThinkingSelector } from '@/components/chat/toolbar'
-import type { ProviderCapabilities, ThinkingEffort, ThinkingLevel, ToolCallDisplay } from '@/types'
+import { FastToggle, ModeSelector, ThinkingSelector } from '@/components/chat/toolbar'
+import type { ChatMode, ProviderCapabilities, ThinkingEffort, ThinkingLevel, ToolCallDisplay } from '@/types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -66,6 +66,19 @@ function caps(over: Partial<ProviderCapabilities> = {}): ProviderCapabilities {
  * Drives a ThinkingSelector with local state so the whitelist coercion is
  * observable: pick a tier, then compare against a narrower capability shape.
  */
+function ModeCase({ label, initial }: { label: string; initial: ChatMode }) {
+  const [mode, setMode] = useState<ChatMode>(initial)
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex items-center rounded-lg border border-border px-2 py-1">
+        <ModeSelector current={mode} onSelect={setMode} />
+      </div>
+      <span className="text-xs text-muted-foreground/60">{mode}</span>
+    </div>
+  )
+}
+
 function ThinkingCase({ label, capabilities }: { label: string; capabilities: ProviderCapabilities | null }) {
   const [level, setLevel] = useState<ThinkingLevel>('default')
   return (
@@ -202,6 +215,31 @@ const TODO_NO_CURRENT = JSON.stringify({
     todoStep('排优先级', '正在排优先级', 'pending'),
   ],
 })
+
+const PLAN_MD = [
+  '## 摘要',
+  '',
+  '把鉴权逻辑从 `handler.rs` 抽到独立模块，补上被绕过的过期校验。',
+  '',
+  '## 改动',
+  '',
+  '- `src/auth/token.rs`（新建）— 校验与刷新，复用现有的 `Claims`',
+  '- `src/handler.rs` — 删掉内联校验，改调 `token::verify`',
+  '',
+  '```rust',
+  'pub fn verify(raw: &str) -> Result<Claims, AuthError> {',
+  '    let claims = decode(raw)?;',
+  '    if claims.exp < now() { return Err(AuthError::Expired) }',
+  '    Ok(claims)',
+  '}',
+  '```',
+  '',
+  '## 验证',
+  '',
+  '`cargo test auth::` — 新增过期 token 被拒的用例。',
+].join('\n')
+
+const PLAN_ARGS = JSON.stringify({ plan: PLAN_MD })
 
 export default function Playground() {
   return (
@@ -462,6 +500,48 @@ export default function Playground() {
               }),
               result: 'Only one step may be in_progress at a time, but 2 are: 抽离 token 校验, 替换调用方. Mark the others pending or completed.',
             })} />
+          </div>
+        </Section>
+
+        <Section title="ToolCallBlock / 计划模式">
+          <div>
+            <ToolCallBlock data={tool({
+              tool_name: 'enter_plan',
+              status: 'pending',
+              arguments: JSON.stringify({
+                reason: '鉴权改动牵涉三个模块，先确认走 middleware 还是 handler 内联更省事。',
+              }),
+            })} />
+            <ToolCallBlock data={tool({
+              tool_name: 'enter_plan',
+              status: 'denied',
+              arguments: JSON.stringify({ reason: '这个改动可能有多种做法。' }),
+              result: 'The user would rather not plan first…',
+            })} />
+            <ToolCallBlock data={tool({
+              tool_name: 'exit_plan',
+              status: 'pending',
+              arguments: PLAN_ARGS,
+            })} />
+            <ToolCallBlock data={tool({
+              tool_name: 'exit_plan',
+              status: 'completed',
+              arguments: PLAN_ARGS,
+              result: 'The user approved the plan. You are out of plan mode…',
+            })} />
+            <ToolCallBlock data={tool({
+              tool_name: 'exit_plan',
+              status: 'denied',
+              arguments: PLAN_ARGS,
+              result: 'The user sent the plan back: 先别动 handler.rs，只加测试。',
+            })} />
+          </div>
+        </Section>
+
+        <Section title="ModeSelector / 模式切换">
+          <div className="flex flex-wrap items-center gap-4">
+            <ModeCase label="执行模式" initial="work" />
+            <ModeCase label="谋定模式" initial="plan" />
           </div>
         </Section>
 
