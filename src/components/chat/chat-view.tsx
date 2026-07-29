@@ -223,14 +223,6 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     })
   }, [conversationId, storeLoadMessages])
 
-  const handleEdit = useCallback((id: string, content: string) => {
-    api.updateMessageContent(id, content).then(() => {
-      storeLoadMessages(conversationId)
-    }).catch((err) => {
-      storeSetError(conversationId, String(err))
-    })
-  }, [conversationId, storeLoadMessages, storeSetError])
-
   const handleRate = useCallback((id: string, rating: number | null) => {
     api.rateMessage(id, rating).then(() => {
       storeLoadMessages(conversationId)
@@ -247,15 +239,21 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     }
   }, [conversationId, storeSetError, storeSetCompacting])
 
-  const sendMessage = useCallback(async (text: string, addUserBubble: boolean, files?: AttachedFile[]) => {
-    if (!text || streaming || submittingRef.current) return
+  const sendMessage = useCallback(async (
+    text: string | null,
+    addUserBubble: boolean,
+    files?: AttachedFile[],
+    replaces?: string,
+  ) => {
+    // A null message means "regenerate", which needs no text of its own.
+    if ((text === null ? !replaces : !text) || streaming || submittingRef.current) return
     submittingRef.current = true
     storeSetStreaming(conversationId, true)
     storeSetError(conversationId, null)
     const now = Date.now()
 
     let messageContent = text
-    if (files && files.length > 0) {
+    if (text !== null && files && files.length > 0) {
       try {
         const parts: unknown[] = [{ type: 'text', text }]
         for (const f of files) {
@@ -271,7 +269,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
       }
     }
 
-    if (addUserBubble) {
+    if (addUserBubble && messageContent !== null) {
       useConversationStore.setState((state) => {
         const session = state.sessions[conversationId]
         if (!session) return state
@@ -308,7 +306,15 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     }
 
     api
-      .chat(conversationId, messageContent, selectedModelId ?? undefined, selectedProviderId ?? undefined, thinkingLevel !== 'default' ? thinkingLevel : undefined, selectedAssistantId ?? undefined, fastMode || undefined, mode)
+      .chat(conversationId, messageContent, {
+        replaces,
+        modelOverride: selectedModelId ?? undefined,
+        providerOverride: selectedProviderId ?? undefined,
+        thinkingLevel: thinkingLevel !== 'default' ? thinkingLevel : undefined,
+        assistantId: selectedAssistantId ?? undefined,
+        fast: fastMode || undefined,
+        mode,
+      })
       .catch((err) => {
         storeSetError(conversationId, String(err))
         storeSetStreaming(conversationId, false)
@@ -350,20 +356,19 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     sendMessage(text, true, files.length > 0 ? files : undefined)
   }, [input, sendMessage, attachedFiles, handleCompact])
 
+  // Adds an answer beside the existing one instead of destroying it. This used
+  // to delete the question and everything after it, then re-send — the old
+  // answer was simply gone.
   const handleRegenerate = useCallback((messageId: string) => {
-    const msgs = useConversationStore.getState().sessions[conversationId]?.messages ?? []
-    const msgIndex = msgs.findIndex((m) => m.id === messageId)
-    if (msgIndex < 0) return
-    const userMsg = msgs.slice(0, msgIndex).reverse().find((m) => m.role === 'user')
-    if (!userMsg) return
-    // The chat command always persists the incoming user message, so delete the
-    // original user message too and let sendMessage re-create it.
-    api.deleteMessagesFrom(conversationId, userMsg.sort_order).then(() => {
-      storeLoadMessages(conversationId).then(() => {
-        sendMessage(userMsg.content, true)
-      })
-    })
-  }, [conversationId, sendMessage, storeLoadMessages])
+    sendMessage(null, false, undefined, messageId)
+  }, [sendMessage])
+
+  // Editing forks rather than overwrites: the question is re-asked as a sibling
+  // of the original and answered fresh, leaving the old wording and its answer
+  // reachable through the pager.
+  const handleEdit = useCallback((id: string, content: string) => {
+    sendMessage(content, false, undefined, id)
+  }, [sendMessage])
 
   // Memoised because useTurns keys its work on this array's identity; a fresh
   // filter() on every render would rebuild every turn on every stream chunk.

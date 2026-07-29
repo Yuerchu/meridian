@@ -70,8 +70,6 @@ export const api = {
   deleteMessage: (conversationId: string, id: string) =>
     invoke<MessageTree>('delete_message', { conversationId, id }),
 
-  deleteMessagesFrom: (conversationId: string, fromSortOrder: number) =>
-    invoke<void>('delete_messages_from', { conversationId, fromSortOrder }),
 
   rateMessage: (id: string, rating: number | null) =>
     invoke<void>('rate_message', { id, rating }),
@@ -88,16 +86,36 @@ export const api = {
   // `mode` is passed per-request as well as being stored on the conversation:
   // the setter is async, and a message sent right after flipping the switch
   // would otherwise race it and run under the previous mode.
-  chat: (conversationId: string, message: string, modelOverride?: string, providerOverride?: string, thinkingLevel?: string, assistantId?: string, fast?: boolean, mode?: ChatMode) =>
+  //
+  // `message` and `replaces` pick which of three things this is:
+  //   message only  — continue from the conversation's head
+  //   replaces only — regenerate: another answer alongside that one
+  //   both          — edit: another version of that question, answered afresh
+  // `replaces` names the message being offered an alternative; it is left in
+  // place, reachable as a sibling of whatever the turn writes.
+  chat: (
+    conversationId: string,
+    message: string | null,
+    opts: {
+      replaces?: string
+      modelOverride?: string
+      providerOverride?: string
+      thinkingLevel?: string
+      assistantId?: string
+      fast?: boolean
+      mode?: ChatMode
+    } = {},
+  ) =>
     invoke<void>('chat', {
       conversationId,
       message,
-      modelOverride: modelOverride ?? null,
-      providerOverride: providerOverride ?? null,
-      thinkingLevel: thinkingLevel ?? null,
-      assistantId: assistantId ?? null,
-      fast: fast ?? null,
-      mode: mode ?? null,
+      replaces: opts.replaces ?? null,
+      modelOverride: opts.modelOverride ?? null,
+      providerOverride: opts.providerOverride ?? null,
+      thinkingLevel: opts.thinkingLevel ?? null,
+      assistantId: opts.assistantId ?? null,
+      fast: opts.fast ?? null,
+      mode: opts.mode ?? null,
     }),
 
   setSecret: (key: string, value: string) =>

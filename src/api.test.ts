@@ -76,6 +76,7 @@ describe('api', () => {
       expect(mockInvoke).toHaveBeenCalledWith('chat', {
         conversationId: 'conv-1',
         message: 'Hello',
+        replaces: null,
         modelOverride: null,
         providerOverride: null,
         thinkingLevel: null,
@@ -87,16 +88,17 @@ describe('api', () => {
 
     it('chat passes the collaboration mode', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
-      await api.chat('conv-1', 'Hi', undefined, undefined, undefined, undefined, undefined, 'plan')
+      await api.chat('conv-1', 'Hi', { mode: 'plan' })
       expect(mockInvoke).toHaveBeenCalledWith('chat', expect.objectContaining({ mode: 'plan' }))
     })
 
     it('chat passes model and provider overrides', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
-      await api.chat('conv-1', 'Hi', 'gpt-4', 'openai')
+      await api.chat('conv-1', 'Hi', { modelOverride: 'gpt-4', providerOverride: 'openai' })
       expect(mockInvoke).toHaveBeenCalledWith('chat', {
         conversationId: 'conv-1',
         message: 'Hi',
+        replaces: null,
         modelOverride: 'gpt-4',
         providerOverride: 'openai',
         thinkingLevel: null,
@@ -104,6 +106,26 @@ describe('api', () => {
         fast: null,
         mode: null,
       })
+    })
+
+    /// Regeneration carries no message of its own; the question it re-answers is
+    /// already on record.
+    it('chat regenerates by naming the answer being replaced', async () => {
+      mockInvoke.mockResolvedValueOnce(undefined)
+      await api.chat('conv-1', null, { replaces: 'msg-9' })
+      expect(mockInvoke).toHaveBeenCalledWith('chat', expect.objectContaining({
+        message: null,
+        replaces: 'msg-9',
+      }))
+    })
+
+    it('chat edits by sending new text alongside the message it replaces', async () => {
+      mockInvoke.mockResolvedValueOnce(undefined)
+      await api.chat('conv-1', 'reworded', { replaces: 'msg-3' })
+      expect(mockInvoke).toHaveBeenCalledWith('chat', expect.objectContaining({
+        message: 'reworded',
+        replaces: 'msg-3',
+      }))
     })
   })
 

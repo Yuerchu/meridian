@@ -232,10 +232,28 @@ pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String) -> Result
 }
 
 #[tauri::command]
+/// Run a turn.
+///
+/// `message` and `replaces` together pick which of three things this is:
+///
+/// | message | replaces | |
+/// |---|---|---|
+/// | set   | unset | continue the conversation from its head |
+/// | unset | set   | regenerate: another answer alongside that one |
+/// | set   | set   | edit: another version of that question, answered afresh |
+///
+/// `replaces` names the message being offered an alternative, not the parent of
+/// the new one — the parent is looked up from it. That way editing the opening
+/// message works like editing any other: it has no parent, and the new version
+/// becomes a second root rather than being appended to the end.
+///
+/// The named message is never modified or removed; it stays reachable as a
+/// sibling of what this turn writes.
 pub async fn chat(
     app: tauri::AppHandle,
     conversation_id: String,
-    message: String,
+    message: Option<String>,
+    replaces: Option<String>,
     model_override: Option<String>,
     provider_override: Option<String>,
     thinking_level: Option<String>,
@@ -253,15 +271,15 @@ pub async fn chat(
     }
 
     // Load conversation + assistant + active path + project path
-    let (assistant, ctx, conv_title, project_path, project_id, conv_prefs) = {
+    let (assistant, ctx, conv_title, project_path, project_id, conv_prefs, branch_parent) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         let aid_override = assistant_id.clone();
+        let replaces = replaces.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
             let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;
-            let compact_cursor = conv.compact_cursor;
             let effective_aid = aid_override.as_deref()
                 .or(conv.assistant_id.as_deref());
             let assistant = effective_aid
@@ -275,10 +293,37 @@ pub async fn chat(
             // Conversation-level reasoning prefs act as the fallback when the
             // request doesn't carry an explicit override.
             let conv_prefs = (conv.thinking_level.clone(), conv.fast_mode != 0, conv.mode.clone());
+            // Where the new messages hang. Looked up from the message being
+            // replaced rather than passed in, so replacing a root works without
+            // a special case: its parent is None, and the new version becomes a
+            // second root.
+            let replaced = replaces.as_deref().and_then(|id| history.iter().find(|m| m.id == id));
+            if replaces.is_some() && replaced.is_none() {
+                return Err("the message being replaced is not in this conversation".into());
+            }
+            let branch_parent = replaced.and_then(|m| m.parent_id.clone());
+
             // Resolved once and threaded through the turn. Re-reading the head
             // per row would let a concurrent turn's writes splice into this one.
-            let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
-            Ok::<_, String>((assistant, ctx, conv.title, project_path, project_id, conv_prefs))
+            //
+            // Branching reads up to the fork point rather than the conversation
+            // head, so the model sees the history as it stood when the message
+            // being replaced was written — not whatever came after it.
+            //
+            // Replacing a root means there is no history at all; the usual
+            // "no head, use the newest row" fallback would wrongly hand back the
+            // whole conversation, so that case is built empty.
+            let ctx = match (replaced.is_some(), branch_parent.as_deref()) {
+                (true, None) => db::ops::message::ActiveContext {
+                    path: Vec::new(),
+                    summary: None,
+                    anchor_index: None,
+                    head_id: None,
+                },
+                (true, parent) => db::ops::message::active_context(&history, parent),
+                (false, _) => db::ops::message::active_context(&history, conv.head_message_id.as_deref()),
+            };
+            Ok::<_, String>((assistant, ctx, conv.title, project_path, project_id, conv_prefs, branch_parent))
         }).await.map_err(|e| e.to_string())??
     };
 
@@ -447,7 +492,7 @@ pub async fn chat(
         let pre_msgs = build_messages_with_senders(
             system_prompt.trim(),
             &ctx,
-            trailing_with_memory(memory_block.as_deref(), &message),
+            trailing_with_memory(memory_block.as_deref(), message.as_deref().unwrap_or("")),
             &Default::default(),
         );
         budget.update_estimate(&pre_msgs);
@@ -500,7 +545,7 @@ pub async fn chat(
     let mut chat_messages = build_messages_with_senders(
         system_prompt.trim(),
         &ctx,
-        trailing_with_memory(memory_block.as_deref(), &message),
+        trailing_with_memory(memory_block.as_deref(), message.as_deref().unwrap_or("")),
         &Default::default(),
     );
     let files_root = app.path().app_data_dir().ok().map(|d| crate::files::files_dir(&d));
@@ -522,12 +567,21 @@ pub async fn chat(
     // Walks down the branch as the turn writes: every row hangs off the one
     // before it, so the whole turn is a single chain and any node with more than
     // one child is a real fork.
-    let mut parent_cursor: Option<String> = ctx.head_id.clone();
+    //
+    // Branching starts at the replaced message's parent, so what this turn
+    // writes becomes its sibling rather than a continuation past it.
+    let mut parent_cursor: Option<String> = if replaces.is_some() {
+        branch_parent
+    } else {
+        ctx.head_id.clone()
+    };
 
-    {
+    // Absent only when regenerating, which re-answers a question that is already
+    // on record.
+    if let Some(ref text) = message {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
-        let msg = message.clone();
+        let msg = text.clone();
         let msg_id = user_msg_id.clone();
         let parent = parent_cursor.clone();
         tokio::task::spawn_blocking(move || {
@@ -543,8 +597,8 @@ pub async fn chat(
             }, parent.as_deref()).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
+        parent_cursor = Some(user_msg_id.clone());
     }
-    parent_cursor = Some(user_msg_id.clone());
 
     // Shell preference
     let (shell_type, sandbox_pref, sleep_pref) = {
@@ -1240,9 +1294,14 @@ pub async fn chat(
 
     // Auto-generate title if first message
     if conv_title.is_none() {
+        // Regenerating carries no new message, so the question comes back off the
+        // path this turn answered.
+        let titled_question = message.clone().or_else(|| {
+            ctx.path.iter().rev().find(|m| m.role == "user").map(|m| m.content.clone())
+        }).unwrap_or_default();
         let title_messages = vec![ChatMessage::user(&format!(
             "Generate a short title (max 6 words, no quotes, no punctuation) for this conversation:\nUser: {}\nAssistant: {}",
-            &message,
+            titled_question,
             take_bytes_at_char_boundary(&last_assistant_text, 300)
         ))];
         let title_params = ChatParams {

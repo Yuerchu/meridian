@@ -376,7 +376,6 @@ pub fn run() {
             commands::message::switch_branch,
             commands::message::update_message_content,
             commands::message::delete_message,
-            commands::message::delete_messages_from,
             commands::message::rate_message,
             commands::message::export_conversation,
             commands::message::upload_file,

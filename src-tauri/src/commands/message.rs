@@ -98,16 +98,6 @@ pub async fn delete_message(
 }
 
 #[tauri::command]
-pub async fn delete_messages_from(app: tauri::AppHandle, conversation_id: String, from_sort_order: i32) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::message::delete_messages_from(&mut conn, &conversation_id, from_sort_order)
-            .map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
-}
-
-#[tauri::command]
 pub async fn rate_message(app: tauri::AppHandle, id: String, rating: Option<i32>) -> Result<(), String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {

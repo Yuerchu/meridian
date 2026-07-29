@@ -463,20 +463,6 @@ pub fn deepest_descendant(history: &[Message], from: &str) -> String {
     }
 }
 
-pub fn delete_messages_from(
-    conn: &mut SqliteConnection,
-    conversation_id: &str,
-    from_sort_order: i32,
-) -> QueryResult<()> {
-    diesel::delete(
-        messages::table
-            .filter(messages::conversation_id.eq(conversation_id))
-            .filter(messages::sort_order.ge(from_sort_order)),
-    )
-    .execute(conn)?;
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
