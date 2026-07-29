@@ -338,6 +338,8 @@ mod tests {
             schema_version: 2,
             is_compact_summary: 0,
             sender_id: None,
+            parent_id: None,
+            compact_anchor_id: None,
         }
     }
 
@@ -596,6 +598,8 @@ mod injected_context_tests {
             schema_version: 2,
             is_compact_summary: 1,
             sender_id: None,
+            parent_id: None,
+            compact_anchor_id: None,
         }];
         let msgs = build_messages("", &history, "now", Some(0));
         assert!(

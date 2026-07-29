@@ -295,7 +295,7 @@ pub async fn headless_chat(
     };
 
     // Load assistant + history + compact_cursor
-    let (assistant, history, compact_cursor) = {
+    let (assistant, history, compact_cursor, head_id) = {
         let pool = pool.clone();
         let conv_id = conversation_id.to_string();
         let aid = assistant_id.map(String::from);
@@ -309,7 +309,10 @@ pub async fn headless_chat(
                 .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
             let history = crate::db::ops::message::list_messages(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;
-            Ok::<_, String>((assistant, history, compact_cursor))
+            // Read once and carried as a local cursor for the turn; see the
+            // desktop loop for why it is not re-read per row.
+            let head_id = crate::db::ops::message::resolve_head(conv.head_message_id.as_deref(), &history);
+            Ok::<_, String>((assistant, history, compact_cursor, head_id))
         })
         .await
         .map_err(|e| e.to_string())??
@@ -480,10 +483,16 @@ pub async fn headless_chat(
         tool_defs.iter().map(|t| t.name.clone()).collect();
 
     // Persist this turn's inbound messages, one row each so every speaker keeps
-    // their own attribution.
+    // their own attribution. They share one timestamp because they were drained
+    // as a single batch; every row written later in the turn stamps its own
+    // now_ms() so relative times differ and the turn's elapsed time is derivable.
     let now = now_ms();
     let user_msg_id = uuid::Uuid::new_v4().to_string();
     let mut assistant_msg_id = String::new();
+    // Walks down the branch as the turn writes. A group turn can open with
+    // several user rows, and steering can add more mid-flight, so this has to be
+    // a cursor rather than one precomputed parent.
+    let mut parent_cursor: Option<String> = head_id;
     {
         let pool = pool.clone();
         let conv_id = conversation_id.to_string();
@@ -496,16 +505,21 @@ pub async fn headless_chat(
                 (id, m.text.clone(), m.sender.as_ref().map(|s| s.user_id))
             })
             .collect();
+        let mut parent = parent_cursor.clone();
+        parent_cursor = rows.last().map(|(id, _, _)| id.clone()).or(parent_cursor);
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
             for (msg_id, msg, sender_id) in &rows {
-                crate::db::ops::message::insert_message(&mut conn, &NewMessage {
+                crate::db::ops::message::append_message(&mut conn, &NewMessage {
                     id: msg_id, conversation_id: &conv_id, role: "user", content: msg,
                     provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
                     tool_calls: None, tool_call_id: None, sort_order: 0, created_at: now,
                     reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
                     sender_id: *sender_id,
-                }).map_err(|e| e.to_string())?;
+                    parent_id: None, compact_anchor_id: None,
+                }, parent.as_deref()).map_err(|e| e.to_string())?;
+                // Queued messages chain to each other, not all to the same parent.
+                parent = Some(msg_id.clone());
             }
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
@@ -568,18 +582,21 @@ pub async fn headless_chat(
             let conv_id = conversation_id.to_string();
             let msg_id = assistant_msg_id.clone();
             let model_clone = params.model.clone();
+            let parent = parent_cursor.clone();
             tokio::task::spawn_blocking(move || {
                 let mut conn = get_conn(&pool)?;
-                crate::db::ops::message::insert_message(&mut conn, &NewMessage {
+                crate::db::ops::message::append_message(&mut conn, &NewMessage {
                     id: &msg_id, conversation_id: &conv_id, role: "assistant", content: "",
                     provider_id: None, model_id: Some(&model_clone), input_tokens: None,
                     output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
-                    created_at: now, reasoning_content: None, rating: None, schema_version: 2,
+                    created_at: now_ms(), reasoning_content: None, rating: None, schema_version: 2,
                     is_compact_summary: 0, sender_id: None,
-                }).map_err(|e| e.to_string())?;
+                    parent_id: None, compact_anchor_id: None,
+                }, parent.as_deref()).map_err(|e| e.to_string())?;
                 Ok::<_, String>(())
             }).await.map_err(|e| e.to_string())??;
         }
+        parent_cursor = Some(assistant_msg_id.clone());
 
         if let Some(app) = app {
             let _ = app.emit("chat-stream", serde_json::json!({
@@ -813,19 +830,28 @@ pub async fn headless_chat(
                 let tool_msg_id = uuid::Uuid::new_v4().to_string();
                 let call_id = tc.id.clone();
                 let result_clone = tool_result.clone();
-                let _ = tokio::task::spawn_blocking(move || {
-                    if let Ok(mut conn) = pool.get() {
-                        let _ = crate::db::ops::message::insert_message(&mut conn, &NewMessage {
-                            id: &tool_msg_id, conversation_id: &conv_id, role: "tool",
-                            content: &result_clone, provider_id: None, model_id: None,
-                            input_tokens: None, output_tokens: None,
-                            tool_calls: None, tool_call_id: Some(&call_id),
-                            sort_order: 0, created_at: now,
-                            reasoning_content: None, rating: None, schema_version: 2,
-                            is_compact_summary: 0, sender_id: None,
-                        });
-                    }
+                let parent = parent_cursor.clone();
+                let written = tokio::task::spawn_blocking(move || {
+                    let mut conn = pool.get().map_err(|e| e.to_string())?;
+                    crate::db::ops::message::append_message(&mut conn, &NewMessage {
+                        id: &tool_msg_id, conversation_id: &conv_id, role: "tool",
+                        content: &result_clone, provider_id: None, model_id: None,
+                        input_tokens: None, output_tokens: None,
+                        tool_calls: None, tool_call_id: Some(&call_id),
+                        sort_order: 0, created_at: now_ms(),
+                        reasoning_content: None, rating: None, schema_version: 2,
+                        is_compact_summary: 0, sender_id: None,
+                        parent_id: None, compact_anchor_id: None,
+                    }, parent.as_deref()).map(|_| tool_msg_id).map_err(|e| e.to_string())
                 }).await;
+
+                // Same trade as the desktop loop: the tool already ran, so keep
+                // going and leave the cursor on the last row that landed.
+                match written {
+                    Ok(Ok(id)) => parent_cursor = Some(id),
+                    Ok(Err(e)) => tracing::error!("failed to persist tool result: {e}"),
+                    Err(e) => tracing::error!("tool result write panicked: {e}"),
+                }
             }
 
             chat_messages.push(ChatMessage::tool_result(&tc.id, &tool_result));
@@ -851,18 +877,25 @@ pub async fn headless_chat(
                     let content = item.text.clone();
                     let msg_id = inject_msg_id.clone();
                     let sender_id = item.sender.as_ref().map(|s| s.user_id);
-                    let _ = tokio::task::spawn_blocking(move || {
-                        if let Ok(mut conn) = pool.get() {
-                            let _ = crate::db::ops::message::insert_message(&mut conn, &NewMessage {
+                    let parent = parent_cursor.clone();
+                    let written = tokio::task::spawn_blocking(move || {
+                        let mut conn = pool.get().map_err(|e| e.to_string())?;
+                        crate::db::ops::message::append_message(&mut conn, &NewMessage {
                                 id: &msg_id, conversation_id: &conv_id, role: "user",
                                 content: &content, provider_id: None, model_id: None,
                                 input_tokens: None, output_tokens: None,
                                 tool_calls: None, tool_call_id: None, sort_order: 0,
-                                created_at: now, reasoning_content: None, rating: None,
+                                created_at: now_ms(), reasoning_content: None, rating: None,
                                 schema_version: 2, is_compact_summary: 0, sender_id,
-                            });
-                        }
+                                parent_id: None, compact_anchor_id: None,
+                            }, parent.as_deref()).map(|_| msg_id).map_err(|e| e.to_string())
                     }).await;
+
+                    match written {
+                        Ok(Ok(id)) => parent_cursor = Some(id),
+                        Ok(Err(e)) => tracing::error!("failed to persist steered message: {e}"),
+                        Err(e) => tracing::error!("steered message write panicked: {e}"),
+                    }
                 }
                 // The initial resolve pass ran before this message existed;
                 // image parts inside it need their own file-URI resolution.

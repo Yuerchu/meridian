@@ -253,7 +253,7 @@ pub async fn chat(
     }
 
     // Load conversation + assistant + history + project path
-    let (assistant, history, conv_title, project_path, project_id, compact_cursor, conv_prefs) = {
+    let (assistant, history, conv_title, project_path, project_id, compact_cursor, conv_prefs, head_id) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         let aid_override = assistant_id.clone();
@@ -275,7 +275,10 @@ pub async fn chat(
             // Conversation-level reasoning prefs act as the fallback when the
             // request doesn't carry an explicit override.
             let conv_prefs = (conv.thinking_level.clone(), conv.fast_mode != 0, conv.mode.clone());
-            Ok::<_, String>((assistant, history, conv.title, project_path, project_id, compact_cursor, conv_prefs))
+            // Read once and thread it through the turn as a local cursor. Re-reading
+            // per row would let a concurrent turn's writes splice into this one.
+            let head_id = db::ops::message::resolve_head(conv.head_message_id.as_deref(), &history);
+            Ok::<_, String>((assistant, history, conv.title, project_path, project_id, compact_cursor, conv_prefs, head_id))
         }).await.map_err(|e| e.to_string())??
     };
 
@@ -510,26 +513,38 @@ pub async fn chat(
     // Persist user message
     let user_msg_id = uuid::Uuid::new_v4().to_string();
     let mut assistant_msg_id = String::new();
+    // Only the user row uses this: it marks where the turn began. Every later row
+    // stamps its own now_ms(), so relative times differ per message and the turn's
+    // elapsed time is derivable. Reusing one timestamp across the turn made every
+    // message read as sent at the same instant.
     let now = now_ms();
+
+    // Walks down the branch as the turn writes: every row hangs off the one
+    // before it, so the whole turn is a single chain and any node with more than
+    // one child is a real fork.
+    let mut parent_cursor: Option<String> = head_id;
 
     {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         let msg = message.clone();
         let msg_id = user_msg_id.clone();
+        let parent = parent_cursor.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            db::ops::message::insert_message(&mut conn, &NewMessage {
+            db::ops::message::append_message(&mut conn, &NewMessage {
                 id: &msg_id, conversation_id: &conv_id, role: "user", content: &msg,
                 provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
                 tool_calls: None, tool_call_id: None, sort_order: 0, created_at: now,
                 reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
                 // Desktop chats have a single implicit speaker.
                 sender_id: None,
-            }).map_err(|e| e.to_string())?;
+                parent_id: None, compact_anchor_id: None,
+            }, parent.as_deref()).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
     }
+    parent_cursor = Some(user_msg_id.clone());
 
     // Shell preference
     let (shell_type, sandbox_pref, sleep_pref) = {
@@ -592,18 +607,21 @@ pub async fn chat(
             let conv_id = conversation_id.clone();
             let msg_id = assistant_msg_id.clone();
             let model_clone = model.clone();
+            let parent = parent_cursor.clone();
             tokio::task::spawn_blocking(move || {
                 let mut conn = get_conn(&pool)?;
-                db::ops::message::insert_message(&mut conn, &NewMessage {
+                db::ops::message::append_message(&mut conn, &NewMessage {
                     id: &msg_id, conversation_id: &conv_id, role: "assistant", content: "",
                     provider_id: None, model_id: Some(&model_clone), input_tokens: None,
                     output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
-                    created_at: now, reasoning_content: None, rating: None, schema_version: 2,
+                    created_at: now_ms(), reasoning_content: None, rating: None, schema_version: 2,
                     is_compact_summary: 0, sender_id: None,
-                }).map_err(|e| e.to_string())?;
+                    parent_id: None, compact_anchor_id: None,
+                }, parent.as_deref()).map_err(|e| e.to_string())?;
                 Ok::<_, String>(())
             }).await.map_err(|e| e.to_string())??;
         }
+        parent_cursor = Some(assistant_msg_id.clone());
 
         app.emit("chat-stream", serde_json::json!({
             "type": "message_start", "message_id": &assistant_msg_id, "conversation_id": &conversation_id,
@@ -1098,19 +1116,31 @@ pub async fn chat(
                 let tool_msg_id = uuid::Uuid::new_v4().to_string();
                 let call_id = tc.id.clone();
                 let tool_result = result.clone();
-                let _ = tokio::task::spawn_blocking(move || {
-                    if let Ok(mut conn) = pool.get() {
-                        let _ = db::ops::message::insert_message(&mut conn, &NewMessage {
-                            id: &tool_msg_id, conversation_id: &conv_id, role: "tool",
-                            content: &tool_result, provider_id: None, model_id: None,
-                            input_tokens: None, output_tokens: None,
-                            tool_calls: None, tool_call_id: Some(&call_id),
-                            sort_order: 0, created_at: now,
-                            reasoning_content: None, rating: None, schema_version: 2,
-                            is_compact_summary: 0, sender_id: None,
-                        });
-                    }
+                let parent = parent_cursor.clone();
+                let written = tokio::task::spawn_blocking(move || {
+                    let mut conn = pool.get().map_err(|e| e.to_string())?;
+                    db::ops::message::append_message(&mut conn, &NewMessage {
+                        id: &tool_msg_id, conversation_id: &conv_id, role: "tool",
+                        content: &tool_result, provider_id: None, model_id: None,
+                        input_tokens: None, output_tokens: None,
+                        tool_calls: None, tool_call_id: Some(&call_id),
+                        sort_order: 0, created_at: now_ms(),
+                        reasoning_content: None, rating: None, schema_version: 2,
+                        is_compact_summary: 0, sender_id: None,
+                        parent_id: None, compact_anchor_id: None,
+                    }, parent.as_deref()).map(|_| tool_msg_id).map_err(|e| e.to_string())
                 }).await;
+
+                // The tool already ran, so aborting the turn now would be worse
+                // than losing the transcript row. Leave the cursor where it is
+                // instead: the next row hangs off the last message that did get
+                // written, keeping the chain intact. The unanswered tool_call is
+                // stripped from the payload by remove_orphan_tool_messages.
+                match written {
+                    Ok(Ok(id)) => parent_cursor = Some(id),
+                    Ok(Err(e)) => tracing::error!("failed to persist tool result: {e}"),
+                    Err(e) => tracing::error!("tool result write panicked: {e}"),
+                }
             }
 
             chat_messages.push(ChatMessage::tool_result(&tc.id, &result));

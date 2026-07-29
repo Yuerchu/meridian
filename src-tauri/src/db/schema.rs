@@ -71,6 +71,7 @@ diesel::table! {
         thinking_level -> Nullable<Text>,
         fast_mode -> Integer,
         mode -> Nullable<Text>,
+        head_message_id -> Nullable<Text>,
     }
 }
 
@@ -214,6 +215,8 @@ diesel::table! {
         schema_version -> Integer,
         is_compact_summary -> Integer,
         sender_id -> Nullable<BigInt>,
+        parent_id -> Nullable<Text>,
+        compact_anchor_id -> Nullable<Text>,
     }
 }
 

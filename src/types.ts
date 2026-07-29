@@ -89,6 +89,8 @@ export interface Conversation {
   fast_mode: number
   /** Collaboration mode; null is the default (work) mode. */
   mode: string | null
+  /** Leaf the active path ends at. Null falls back to the newest message. */
+  head_message_id?: string | null
 }
 
 /** Ids must match `agent::modes` on the Rust side. */
@@ -134,6 +136,12 @@ export interface Message {
   rating: number | null
   schema_version: number
   is_compact_summary: number
+  /** The message this one answers or follows. Siblings under one parent are
+   *  alternative versions of the same step. Null marks a root. */
+  parent_id?: string | null
+  /** Only on compaction summaries: the first message the summary stands in
+   *  front of. */
+  compact_anchor_id?: string | null
   _blocks?: ContentBlock[]
 }
 

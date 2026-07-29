@@ -98,15 +98,30 @@ mod migration_tests {
     /// Running the whole migration set (as `test_db` does) would never exercise
     /// the data-mapping half of the migration.
     fn conn_at_18() -> SqliteConnection {
+        conn_before("00000000000019")
+    }
+
+    fn conn_before(version: &str) -> SqliteConnection {
         let mut conn = SqliteConnection::establish(":memory:").unwrap();
         let all = MigrationSource::<diesel::sqlite::Sqlite>::migrations(&MIGRATIONS).unwrap();
         for m in all {
-            if m.name().version().as_owned() >= "00000000000019".into() {
+            if m.name().version().as_owned() >= version.into() {
                 break;
             }
             m.run(&mut conn).unwrap();
         }
         conn
+    }
+
+    fn run_migration(conn: &mut SqliteConnection, version: &str) {
+        let all = MigrationSource::<diesel::sqlite::Sqlite>::migrations(&MIGRATIONS).unwrap();
+        for m in all {
+            if m.name().version().as_owned() == version.into() {
+                m.run(conn).unwrap();
+                return;
+            }
+        }
+        panic!("migration {version} not found");
     }
 
     fn seed_pre19(conn: &mut SqliteConnection) {
@@ -233,6 +248,114 @@ mod migration_tests {
                 .get_result(&mut conn)
                 .unwrap();
         assert_eq!(row.n, 2, "AUTOINCREMENT must not hand out id 1 again");
+    }
+
+    #[derive(QueryableByName)]
+    struct IdRow {
+        #[diesel(sql_type = Nullable<Text>)]
+        id: Option<String>,
+    }
+
+    fn conn_at_20() -> SqliteConnection {
+        conn_before("00000000000021")
+    }
+
+    /// Two conversations, one of them compacted, so the backfill has to keep the
+    /// chains apart and place the summary anchor.
+    fn seed_pre21(conn: &mut SqliteConnection) {
+        conn.batch_execute(
+            "INSERT INTO conversations (id, title, is_pinned, is_archived, message_count,
+                                        created_at, updated_at, compact_cursor, fast_mode)
+             VALUES ('c-a', 'A', 0, 0, 4, 1, 1, 3, 0),
+                    ('c-b', 'B', 0, 0, 2, 1, 1, NULL, 0);
+
+             INSERT INTO messages (id, conversation_id, role, content, sort_order, created_at,
+                                   schema_version, is_compact_summary)
+             VALUES ('a1', 'c-a', 'user',      'q1', 1, 10, 2, 0),
+                    ('a2', 'c-a', 'assistant', 'r1', 2, 11, 2, 0),
+                    ('a3', 'c-a', 'user',      'q2', 3, 12, 2, 0),
+                    ('a4', 'c-a', 'assistant', 'r2', 4, 13, 2, 0),
+                    ('asum', 'c-a', 'user', 'summary', -1, 14, 2, 1),
+                    ('b1', 'c-b', 'user',      'q1', 1, 10, 2, 0),
+                    ('b2', 'c-b', 'assistant', 'r1', 2, 11, 2, 0);",
+        )
+        .unwrap();
+    }
+
+    fn parent_of(conn: &mut SqliteConnection, id: &str) -> Option<String> {
+        diesel::sql_query("SELECT parent_id AS id FROM messages WHERE id = ?")
+            .bind::<Text, _>(id)
+            .get_result::<IdRow>(conn)
+            .unwrap()
+            .id
+    }
+
+    #[test]
+    fn backfill_chains_existing_messages_in_order() {
+        let mut conn = conn_at_20();
+        seed_pre21(&mut conn);
+        run_migration(&mut conn, "00000000000021");
+
+        assert_eq!(parent_of(&mut conn, "a1"), None, "the first message is a root");
+        assert_eq!(parent_of(&mut conn, "a2").as_deref(), Some("a1"));
+        assert_eq!(parent_of(&mut conn, "a3").as_deref(), Some("a2"));
+        assert_eq!(parent_of(&mut conn, "a4").as_deref(), Some("a3"));
+    }
+
+    /// The correlated subquery has to filter on conversation_id; without it every
+    /// conversation would splice onto the globally previous message.
+    #[test]
+    fn backfill_keeps_conversations_apart() {
+        let mut conn = conn_at_20();
+        seed_pre21(&mut conn);
+        run_migration(&mut conn, "00000000000021");
+
+        assert_eq!(parent_of(&mut conn, "b1"), None);
+        assert_eq!(parent_of(&mut conn, "b2").as_deref(), Some("b1"));
+    }
+
+    /// A summary sits beside the tree, not in it. Chaining it would make the
+    /// first real message look like it had a sibling.
+    #[test]
+    fn backfill_leaves_summaries_off_the_chain() {
+        let mut conn = conn_at_20();
+        seed_pre21(&mut conn);
+        run_migration(&mut conn, "00000000000021");
+
+        assert_eq!(parent_of(&mut conn, "asum"), None);
+        let children: CountRow =
+            diesel::sql_query("SELECT COUNT(*) AS n FROM messages WHERE parent_id = 'asum'")
+                .get_result(&mut conn)
+                .unwrap();
+        assert_eq!(children.n, 0);
+    }
+
+    /// The old cursor names a sort_order; the anchor is the first message at or
+    /// past it.
+    #[test]
+    fn backfill_translates_the_compact_cursor_to_an_anchor() {
+        let mut conn = conn_at_20();
+        seed_pre21(&mut conn);
+        run_migration(&mut conn, "00000000000021");
+
+        let anchor = diesel::sql_query("SELECT compact_anchor_id AS id FROM messages WHERE id = 'asum'")
+            .get_result::<IdRow>(&mut conn)
+            .unwrap()
+            .id;
+        assert_eq!(anchor.as_deref(), Some("a3"), "cursor 3 maps to the row at sort_order 3");
+    }
+
+    #[test]
+    fn backfill_points_head_at_the_last_message() {
+        let mut conn = conn_at_20();
+        seed_pre21(&mut conn);
+        run_migration(&mut conn, "00000000000021");
+
+        let head = diesel::sql_query("SELECT head_message_id AS id FROM conversations WHERE id = 'c-a'")
+            .get_result::<IdRow>(&mut conn)
+            .unwrap()
+            .id;
+        assert_eq!(head.as_deref(), Some("a4"));
     }
 }
 

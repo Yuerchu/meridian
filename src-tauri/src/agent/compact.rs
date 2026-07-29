@@ -169,6 +169,10 @@ pub(crate) async fn do_compact(
                 schema_version: 2, is_compact_summary: 1,
                 // A summary is written by the compaction pass, not by any speaker.
                 sender_id: None,
+                // A summary is not a node in the tree; it sits beside it and
+                // points at the message it stands in front of. The anchor gets
+                // filled in once compaction reads the active path.
+                parent_id: None, compact_anchor_id: None,
             }).map_err(|e| e.to_string())?;
             db::ops::conversation::update_compact_cursor(&mut conn, &conv_id, Some(cursor_sort_order), now)
                 .map_err(|e| e.to_string())?;
@@ -494,6 +498,8 @@ mod tests {
             schema_version: 2,
             is_compact_summary: 0,
             sender_id: None,
+            parent_id: None,
+            compact_anchor_id: None,
         };
         let result = prepare_compact_input(&[&msg]);
         assert!(result.contains("truncated"));

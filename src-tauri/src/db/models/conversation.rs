@@ -23,6 +23,10 @@ pub struct Conversation {
     /// Which collaboration mode the conversation is in. `None` is the default
     /// (work) mode; see `agent::modes`.
     pub mode: Option<String>,
+    /// Leaf the active path ends at. `None` falls back to the highest
+    /// `sort_order` row, which is necessarily a leaf, so a missed write costs an
+    /// alternative branch rather than the whole transcript.
+    pub head_message_id: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
