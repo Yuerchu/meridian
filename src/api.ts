@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ChatMode, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset } from './types'
+import type { Assistant, ChatMode, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, MessageTree, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -55,13 +55,20 @@ export const api = {
   loadMessages: (conversationId: string) =>
     invoke<Message[]>('load_messages', { conversationId }),
 
+  /** The active path plus its branch points, as one snapshot. */
+  loadMessageTree: (conversationId: string) =>
+    invoke<MessageTree>('load_message_tree', { conversationId }),
+
+  /** Makes that message's branch active, landing on its most recent tip. */
+  switchBranch: (conversationId: string, messageId: string) =>
+    invoke<MessageTree>('switch_branch', { conversationId, messageId }),
+
   updateMessageContent: (id: string, content: string) =>
     invoke<void>('update_message_content', { id, content }),
 
-  /** Deletes the message and everything descended from it, returning the head
-   *  the conversation landed on. */
+  /** Deletes the message and everything descended from it. */
   deleteMessage: (conversationId: string, id: string) =>
-    invoke<string | null>('delete_message', { conversationId, id }),
+    invoke<MessageTree>('delete_message', { conversationId, id }),
 
   deleteMessagesFrom: (conversationId: string, fromSortOrder: number) =>
     invoke<void>('delete_messages_from', { conversationId, fromSortOrder }),

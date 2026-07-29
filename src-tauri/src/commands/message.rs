@@ -5,24 +5,65 @@ use crate::db::models::message::Message;
 use crate::state::AppDb;
 use crate::agent::extract_tool_calls_from_blocks;
 
-/// The active path, plus the summary that applies to it.
+/// The active path, the summary that applies to it, and where it can be paged.
 ///
-/// The summary is appended rather than placed in order: the front end picks it
-/// out by `is_compact_summary` and renders it as a boundary marker, not as a
-/// message in the transcript.
+/// Returned as one snapshot so the caller never renders a half-applied state:
+/// fetching the messages and the branch points separately would leave a frame
+/// where the pagers describe a path that is no longer on screen.
+#[derive(serde::Serialize)]
+pub struct MessageTree {
+    /// The summary, when one applies, is appended rather than placed in order —
+    /// the front end picks it out by `is_compact_summary` and draws it as a
+    /// boundary marker, not as part of the transcript.
+    pub messages: Vec<Message>,
+    pub head_message_id: Option<String>,
+    pub branches: Vec<db::ops::message::BranchPoint>,
+}
+
+fn read_tree(conn: &mut db::PooledConn, conversation_id: &str) -> Result<MessageTree, String> {
+    let conv = db::ops::conversation::get_conversation(conn, conversation_id)
+        .map_err(|e| e.to_string())?;
+    let history = db::ops::message::list_messages(conn, conversation_id)
+        .map_err(|e| e.to_string())?;
+    let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
+    let branches = db::ops::message::branch_points(&history, &ctx.path);
+    let head_message_id = ctx.head_id.clone();
+    let mut messages = ctx.path;
+    messages.extend(ctx.summary);
+    Ok(MessageTree { messages, head_message_id, branches })
+}
+
 #[tauri::command]
 pub async fn load_messages(app: tauri::AppHandle, conversation_id: String) -> Result<Vec<Message>, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let conv = db::ops::conversation::get_conversation(&mut conn, &conversation_id)
+        read_tree(&mut conn, &conversation_id).map(|t| t.messages)
+    }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn load_message_tree(app: tauri::AppHandle, conversation_id: String) -> Result<MessageTree, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        read_tree(&mut conn, &conversation_id)
+    }).await.map_err(|e| e.to_string())?
+}
+
+/// Make `message_id`'s branch the active one, landing on its most recent tip.
+#[tauri::command]
+pub async fn switch_branch(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    message_id: String,
+) -> Result<MessageTree, String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::message::switch_branch(&mut conn, &conversation_id, &message_id)
             .map_err(|e| e.to_string())?;
-        let history = db::ops::message::list_messages(&mut conn, &conversation_id)
-            .map_err(|e| e.to_string())?;
-        let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
-        let mut out = ctx.path;
-        out.extend(ctx.summary);
-        Ok(out)
+        read_tree(&mut conn, &conversation_id)
     }).await.map_err(|e| e.to_string())?
 }
 
@@ -46,11 +87,13 @@ pub async fn delete_message(
     app: tauri::AppHandle,
     conversation_id: String,
     id: String,
-) -> Result<Option<String>, String> {
+) -> Result<MessageTree, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::message::delete_subtree(&mut conn, &conversation_id, &id).map_err(|e| e.to_string())
+        db::ops::message::delete_subtree(&mut conn, &conversation_id, &id)
+            .map_err(|e| e.to_string())?;
+        read_tree(&mut conn, &conversation_id)
     }).await.map_err(|e| e.to_string())?
 }
 

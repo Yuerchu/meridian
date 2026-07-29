@@ -372,6 +372,8 @@ pub fn run() {
             commands::conversation::compact,
             commands::conversation::get_context_info,
             commands::message::load_messages,
+            commands::message::load_message_tree,
+            commands::message::switch_branch,
             commands::message::update_message_content,
             commands::message::delete_message,
             commands::message::delete_messages_from,

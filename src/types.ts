@@ -93,6 +93,25 @@ export interface Conversation {
   head_message_id?: string | null
 }
 
+/** A step on the active path that was answered more than once. */
+export interface BranchPoint {
+  /** The version currently on the path. */
+  message_id: string
+  /** 0-based position among `sibling_ids`. */
+  index: number
+  total: number
+  /** Every version, oldest first, so paging is stable across reloads. */
+  sibling_ids: string[]
+}
+
+/** One snapshot of a conversation: the active path plus where it can be paged.
+ *  Returned whole so the two can never disagree on screen. */
+export interface MessageTree {
+  messages: Message[]
+  head_message_id: string | null
+  branches: BranchPoint[]
+}
+
 /** Ids must match `agent::modes` on the Rust side. */
 export type ChatMode = 'work' | 'plan'
 

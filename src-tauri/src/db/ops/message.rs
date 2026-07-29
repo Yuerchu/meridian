@@ -118,29 +118,16 @@ pub fn active_context(
     stored_head: Option<&str>,
 ) -> ActiveContext {
     let head_id = resolve_head(stored_head, history);
-    let mut path = match head_id.as_deref() {
+    // No sort_order fallback for an unlinked history. The backfill runs inside
+    // the migration transaction and a failure there aborts startup, so a
+    // conversation cannot quietly end up without parent links — while several
+    // parentless rows *are* expected once editing the opening message starts
+    // producing sibling roots, and flattening those would splice two versions of
+    // the conversation into one.
+    let path = match head_id.as_deref() {
         Some(head) => path_to_head(history, head),
         None => Vec::new(),
     };
-
-    // Safety net for a conversation the backfill never reached: with no
-    // parent_id anywhere, the path would be just the head and the rest of the
-    // transcript would vanish from the UI. sort_order still describes it, so use
-    // that instead.
-    //
-    // Deliberately narrow. A partially linked tree is left alone: the missing
-    // link could equally be a message someone deleted from the middle, and
-    // splicing across that gap would invent a conversation that never happened.
-    // Temporary — remove once no unlinked conversation can still be out there.
-    let conversation: Vec<&Message> = history.iter().filter(|m| m.is_compact_summary == 0).collect();
-    let unlinked = conversation.len() > 1 && conversation.iter().all(|m| m.parent_id.is_none());
-    if unlinked {
-        tracing::warn!(
-            "conversation has {} messages and no parent links; falling back to sort_order",
-            conversation.len(),
-        );
-        path = conversation.into_iter().cloned().collect();
-    }
 
     // A summary applies only if its anchor is on this path — that is what stops
     // one branch from being handed another branch's summary. With several, the
@@ -389,6 +376,72 @@ pub fn delete_subtree(
             .execute(conn)?;
 
         Ok(new_head)
+    })
+}
+
+/// A point on the active path where the conversation was answered more than once.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct BranchPoint {
+    /// The version of this step currently on the path.
+    pub message_id: String,
+    /// 0-based position of `message_id` among its siblings.
+    pub index: usize,
+    pub total: usize,
+    /// All versions, oldest first, so paging is stable across reloads.
+    pub sibling_ids: Vec<String>,
+}
+
+/// Where the active path passes through a step that has alternatives.
+///
+/// Only points with more than one version are reported, so a conversation that
+/// has never been regenerated yields an empty list and the front end renders no
+/// pagers at all.
+pub fn branch_points(history: &[Message], path: &[Message]) -> Vec<BranchPoint> {
+    let mut out = Vec::new();
+    for m in path {
+        // Roots are grouped together: editing the opening message produces a
+        // second one, which is a version of the same step.
+        let mut siblings: Vec<&Message> = history
+            .iter()
+            .filter(|s| s.is_compact_summary == 0)
+            .filter(|s| s.parent_id == m.parent_id)
+            .collect();
+        if siblings.len() < 2 {
+            continue;
+        }
+        siblings.sort_by_key(|s| s.sort_order);
+        let ids: Vec<String> = siblings.iter().map(|s| s.id.clone()).collect();
+        let Some(index) = ids.iter().position(|id| id == &m.id) else { continue };
+        out.push(BranchPoint {
+            message_id: m.id.clone(),
+            index,
+            total: ids.len(),
+            sibling_ids: ids,
+        });
+    }
+    out
+}
+
+/// Move the head onto `message_id`'s branch, at the point that branch was last
+/// written.
+pub fn switch_branch(
+    conn: &mut SqliteConnection,
+    conversation_id: &str,
+    message_id: &str,
+) -> QueryResult<Option<String>> {
+    conn.transaction(|conn| {
+        let history = messages::table
+            .filter(messages::conversation_id.eq(conversation_id))
+            .order(messages::sort_order.asc())
+            .load::<Message>(conn)?;
+        if !history.iter().any(|m| m.id == message_id && m.is_compact_summary == 0) {
+            return Err(diesel::result::Error::NotFound);
+        }
+        let head = deepest_descendant(&history, message_id);
+        diesel::update(conversations::table.find(conversation_id))
+            .set(conversations::head_message_id.eq(Some(&head)))
+            .execute(conn)?;
+        Ok(Some(head))
     })
 }
 
@@ -668,24 +721,12 @@ mod tests {
         assert_eq!(ctx.anchor_index, Some(2));
     }
 
-    /// A conversation the backfill never reached has no links at all. Serving
-    /// only the head would make the rest of the transcript disappear.
+    /// Parentless rows are never bridged by sort_order. A gap is what deleting a
+    /// message leaves behind, and spanning it would invent a conversation that
+    /// never happened — and once editing the opening message is possible, two
+    /// roots are two versions of it, not one sequence.
     #[test]
-    fn a_wholly_unlinked_history_falls_back_to_sort_order() {
-        let pool = test_db();
-        let mut conn = pool.get().unwrap();
-        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
-        tree(&mut conn, &[("m1", None), ("m2", None), ("m3", None)]);
-        let history = list_messages(&mut conn, "c1").unwrap();
-
-        assert_eq!(ids(&active_context(&history, Some("m3"))), ["m1", "m2", "m3"]);
-    }
-
-    /// A gap in the middle is not the same thing: it is what deleting a message
-    /// leaves behind, and bridging it would invent a conversation that never
-    /// happened.
-    #[test]
-    fn a_partially_linked_history_is_not_bridged() {
+    fn parentless_rows_are_not_stitched_together() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
@@ -715,6 +756,89 @@ mod tests {
         let history = list_messages(&mut conn, "c1").unwrap();
         let by_sort_order: Vec<&str> = history.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids(&active_context(&history, None)), by_sort_order);
+    }
+
+    #[test]
+    fn a_conversation_that_never_branched_has_no_branch_points() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        tree(&mut conn, &[("q", None), ("a", Some("q"))]);
+        let history = list_messages(&mut conn, "c1").unwrap();
+        let ctx = active_context(&history, None);
+
+        assert!(branch_points(&history, &ctx.path).is_empty());
+    }
+
+    #[test]
+    fn a_branch_point_reports_the_active_version_and_its_siblings() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        tree(&mut conn, &[
+            ("q", None),
+            ("a1", Some("q")),
+            ("a2", Some("q")),
+            ("a3", Some("q")),
+        ]);
+        let history = list_messages(&mut conn, "c1").unwrap();
+        let ctx = active_context(&history, Some("a2"));
+
+        let points = branch_points(&history, &ctx.path);
+        assert_eq!(points.len(), 1, "only the answer forked, not the question");
+        assert_eq!(points[0].message_id, "a2");
+        assert_eq!(points[0].index, 1);
+        assert_eq!(points[0].total, 3);
+        assert_eq!(points[0].sibling_ids, ["a1", "a2", "a3"]);
+    }
+
+    /// Editing the opening message leaves two roots, which are versions of the
+    /// same step and must page against each other.
+    #[test]
+    fn sibling_roots_are_a_branch_point() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        tree(&mut conn, &[("q1", None), ("q2", None)]);
+        let history = list_messages(&mut conn, "c1").unwrap();
+        let ctx = active_context(&history, Some("q2"));
+
+        let points = branch_points(&history, &ctx.path);
+        assert_eq!(points.len(), 1);
+        assert_eq!(points[0].index, 1);
+        assert_eq!(points[0].sibling_ids, ["q1", "q2"]);
+    }
+
+    #[test]
+    fn switching_lands_on_the_branch_tip() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        tree(&mut conn, &[
+            ("q", None),
+            ("a1", Some("q")),
+            ("a1x", Some("a1")),
+            ("a2", Some("q")),
+        ]);
+
+        let head = switch_branch(&mut conn, "c1", "a1").unwrap();
+        assert_eq!(head.as_deref(), Some("a1x"), "lands where that branch was last written");
+
+        let history = list_messages(&mut conn, "c1").unwrap();
+        let ctx = active_context(&history, head.as_deref());
+        assert_eq!(ids(&ctx), ["q", "a1", "a1x"]);
+    }
+
+    #[test]
+    fn switching_to_an_unknown_message_is_rejected() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        tree(&mut conn, &[("q", None)]);
+
+        assert!(switch_branch(&mut conn, "c1", "ghost").is_err());
+        // The head must not have moved on a rejected switch.
+        assert_eq!(get_conversation(&mut conn, "c1").unwrap().head_message_id, None);
     }
 
     #[test]

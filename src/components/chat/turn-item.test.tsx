@@ -174,6 +174,86 @@ describe('TurnItem', () => {
     expect(countActions(container)).toBe(whileStreaming + 1)
   })
 
+  describe('branch pager', () => {
+    it('stays hidden for a turn that was only answered once', () => {
+      const u = msg('user', { content: 'q' })
+      const a = msg('assistant', { _blocks: [text('a')], content: 'a' })
+      const turn = buildTurns([u, a])[0]
+
+      const { container } = render(<TurnItem turn={turn} conversationId={CONV} />)
+      expect(container.querySelector('[data-slot="turn-branch-pager"]')).not.toBeInTheDocument()
+    })
+
+    it('shows which version of the answer is on screen', () => {
+      const u = msg('user', { content: 'q' })
+      const a = msg('assistant', { _blocks: [text('a')], content: 'a' })
+      const turn = buildTurns([u, a])[0]
+      useConversationStore.setState((s) => ({
+        sessions: {
+          ...s.sessions,
+          [CONV]: {
+            ...s.sessions[CONV],
+            branches: {
+              [a.id]: { message_id: a.id, index: 1, total: 3, sibling_ids: ['x', a.id, 'y'] },
+            },
+          },
+        },
+      }))
+
+      render(<TurnItem turn={turn} conversationId={CONV} />)
+      expect(screen.getByText('2/3')).toBeInTheDocument()
+    })
+
+    it('switches to the neighbouring version', async () => {
+      const u = msg('user', { content: 'q' })
+      const a = msg('assistant', { _blocks: [text('a')], content: 'a' })
+      const turn = buildTurns([u, a])[0]
+      const switchBranch = vi.fn()
+      useConversationStore.setState((s) => ({
+        switchBranch,
+        sessions: {
+          ...s.sessions,
+          [CONV]: {
+            ...s.sessions[CONV],
+            branches: {
+              [a.id]: { message_id: a.id, index: 1, total: 3, sibling_ids: ['x', a.id, 'y'] },
+            },
+          },
+        },
+      }))
+
+      render(<TurnItem turn={turn} conversationId={CONV} />)
+      await userEvent.click(screen.getByLabelText('Previous version'))
+      expect(switchBranch).toHaveBeenCalledWith(CONV, 'x')
+
+      await userEvent.click(screen.getByLabelText('Next version'))
+      expect(switchBranch).toHaveBeenCalledWith(CONV, 'y')
+    })
+
+    /// Switching mid-stream would leave the running turn writing into a path
+    /// that is no longer on screen.
+    it('goes inert while a stream is in flight', () => {
+      const u = msg('user', { content: 'q' })
+      const a = msg('assistant', { _blocks: [text('a')], content: 'a' })
+      const turn = buildTurns([u, a])[0]
+      useConversationStore.setState((s) => ({
+        sessions: {
+          ...s.sessions,
+          [CONV]: {
+            ...s.sessions[CONV],
+            branches: {
+              [a.id]: { message_id: a.id, index: 1, total: 3, sibling_ids: ['x', a.id, 'y'] },
+            },
+          },
+        },
+      }))
+
+      render(<TurnItem turn={turn} conversationId={CONV} streaming isLastTurn />)
+      expect(screen.getByLabelText('Previous version')).toBeDisabled()
+      expect(screen.getByLabelText('Next version')).toBeDisabled()
+    })
+  })
+
   describe('collapsing', () => {
     it('leaves a tool-free turn uncollapsed', () => {
       const u = msg('user', { content: 'q' })

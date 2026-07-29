@@ -6,6 +6,7 @@ import { MessageItem } from './message-item'
 import { TurnSteps } from './turn-steps'
 import {
   Turn as TurnCollapse,
+  TurnBranchPager,
   TurnContent,
   TurnPinned,
   TurnStatusIcon,
@@ -86,6 +87,39 @@ export const TurnItem = React.memo(function TurnItem({
   const collapsible = hasCollapsibleProcess(turn)
   const isTurnStreaming = turn.status === 'streaming'
 
+  // Two independent pagers. Regenerating forks below the question, so that
+  // pager belongs to the answer; editing the question forks beside it, so that
+  // one belongs to the bubble. Both can be present at once.
+  const answerBranch = useConversationStore(
+    (s) => (assistants[0] ? s.sessions[conversationId]?.branches[assistants[0].id] : undefined),
+  )
+  const questionBranch = useConversationStore(
+    (s) => (turn.userMessage ? s.sessions[conversationId]?.branches[turn.userMessage.id] : undefined),
+  )
+  const switching = useConversationStore((s) => s.sessions[conversationId]?.switchingBranch ?? false)
+  const switchBranch = useConversationStore((s) => s.switchBranch)
+
+  const pagerFor = (branch: typeof answerBranch) => {
+    if (!branch) return null
+    const go = (delta: number) => {
+      const target = branch.sibling_ids[branch.index + delta]
+      if (target) switchBranch(conversationId, target)
+    }
+    return (
+      <TurnBranchPager
+        index={branch.index + 1}
+        total={branch.total}
+        onPrevious={() => go(-1)}
+        onNext={() => go(1)}
+        // Switching mid-stream would leave the running turn writing into a path
+        // that is no longer on screen.
+        isDisabled={switching || streaming}
+        previousLabel={t('chat.turn.branchPrev')}
+        nextLabel={t('chat.turn.branchNext')}
+      />
+    )
+  }
+
   // Subscribed here rather than passed down: reading it in the parent would make
   // expanding one turn re-render the whole list.
   const userChoice = useConversationStore(
@@ -164,12 +198,27 @@ export const TurnItem = React.memo(function TurnItem({
     </ErrorBoundary>
   )
 
+  // Outside MessageItem's footer on purpose: that fades in on hover, and a
+  // pager carries information rather than an action, so it has to stay legible
+  // at rest.
+  const questionPager = questionBranch && (
+    <div data-slot="turn-question-pager" className="flex justify-end">
+      {pagerFor(questionBranch)}
+    </div>
+  )
+  const answerPager = answerBranch && (
+    <div data-slot="turn-answer-pager" className="flex pl-10">
+      {pagerFor(answerBranch)}
+    </div>
+  )
+
   // Plain question-and-answer keeps the original layout. Wrapping a two-line
   // reply in "Worked for 3s ›" buries it behind a click for nothing.
   if (!collapsible) {
     return (
       <div data-slot="turn" data-status={turn.status} className={cn('space-y-6', className)}>
         {question}
+        {questionPager}
         {assistants.map((m, i) => {
           const isLast = i === assistants.length - 1
           const ownsActions = m.id === actionMessageId
@@ -193,6 +242,7 @@ export const TurnItem = React.memo(function TurnItem({
             </ErrorBoundary>
           )
         })}
+        {answerPager}
       </div>
     )
   }
@@ -207,6 +257,7 @@ export const TurnItem = React.memo(function TurnItem({
       className={cn('space-y-6', className)}
     >
       {question}
+      {questionPager}
       <div className="flex w-full min-w-0 gap-2 text-sm">
         <div className="min-w-8 shrink-0" />
         <div className="flex w-full min-w-0 flex-col">
@@ -248,6 +299,7 @@ export const TurnItem = React.memo(function TurnItem({
           />
         </ErrorBoundary>
       )}
+      {answerPager}
     </div>
   )
 })

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { produce } from 'immer'
 import { api } from '@/api'
 import { parseTodoArgs, toDrafts, type TodoArgs } from '@/components/chat/todo-list'
-import type { Conversation, Message, Project, ContentBlock, OpenAIToolCall, TodoListView, ToolCallDisplay } from '@/types'
+import type { BranchPoint, Conversation, Message, Project, ContentBlock, OpenAIToolCall, TodoListView, ToolCallDisplay } from '@/types'
 
 /**
  * Read a checklist out of an `update_todos` call. A list whose steps are all
@@ -123,6 +123,12 @@ export interface ConversationSession {
    *  the user chose. Lives on the session so the choice survives switching
    *  conversations and back. */
   expandedTurns: Record<string, boolean>
+  /** Steps on the path with more than one version, keyed by the version
+   *  currently shown. Empty until something has been regenerated. */
+  branches: Record<string, BranchPoint>
+  /** True while a switch is in flight, so the pager cannot be clicked again
+   *  before the new path lands. */
+  switchingBranch: boolean
 }
 
 function defaultSession(): ConversationSession {
@@ -138,7 +144,13 @@ function defaultSession(): ConversationSession {
     generation: 0,
     activeTodos: null,
     expandedTurns: {},
+    branches: {},
+    switchingBranch: false,
   }
+}
+
+function indexBranches(points: BranchPoint[]): Record<string, BranchPoint> {
+  return Object.fromEntries(points.map((p) => [p.message_id, p]))
 }
 
 // A DB snapshot can be stale while a stream is in flight: the streaming assistant
@@ -200,6 +212,7 @@ export interface ConversationStore {
 
   ensureSession: (convId: string) => void
   loadMessages: (convId: string) => Promise<void>
+  switchBranch: (convId: string, messageId: string) => Promise<void>
 
   handleMessageStart: (convId: string, messageId: string) => void
   handleText: (convId: string, messageId: string, content: string) => void
@@ -274,13 +287,13 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   },
 
   loadMessages: async (convId) => {
-    const [msgs, conv] = await Promise.all([
-      api.loadMessages(convId),
+    const [tree, conv] = await Promise.all([
+      api.loadMessageTree(convId),
       api.getConversation(convId),
     ])
     // Reconciled outside produce: comparing against immer drafts would pit proxy
     // references against plain ones.
-    const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(msgs))
+    const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(tree.messages))
     set(produce((state: ConversationStore) => {
       if (!state.sessions[convId]) {
         state.sessions[convId] = defaultSession()
@@ -288,7 +301,36 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       const session = state.sessions[convId]
       session.messages = mergeSnapshot(session, snapshot)
       session.compactCursor = conv.compact_cursor
+      session.branches = indexBranches(tree.branches)
     }))
+  },
+
+  /** Show a different version of a step. The reply is the whole new path, so
+   *  there is never a frame where the pagers describe messages that are no
+   *  longer on screen. */
+  switchBranch: async (convId, messageId) => {
+    set(produce((state: ConversationStore) => {
+      const session = state.sessions[convId]
+      if (session) session.switchingBranch = true
+    }))
+    try {
+      const tree = await api.switchBranch(convId, messageId)
+      const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(tree.messages))
+      set(produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        // Replaced outright, not merged: what is local belongs to the branch
+        // being left, and splicing it in would carry messages across.
+        session.messages = snapshot
+        session.branches = indexBranches(tree.branches)
+        session.expandedTurns = {}
+      }))
+    } finally {
+      set(produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (session) session.switchingBranch = false
+      }))
+    }
   },
 
   handleMessageStart: (convId, messageId) => {
