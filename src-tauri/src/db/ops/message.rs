@@ -283,14 +283,6 @@ pub fn update_rating(
     Ok(())
 }
 
-pub fn delete_message(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> QueryResult<()> {
-    diesel::delete(messages::table.find(id)).execute(conn)?;
-    Ok(())
-}
-
 pub fn delete_compact_summaries(
     conn: &mut SqliteConnection,
     conversation_id: &str,
@@ -328,14 +320,94 @@ pub fn delete_summaries_anchored_in(
     Ok(())
 }
 
-pub fn count_messages(
+/// Delete a message and everything descended from it.
+///
+/// The unit of deletion, because a message only makes sense with its answer:
+/// removing a question but keeping the reply leaves the model reading an answer
+/// to nothing, and removing an assistant row on its own strands the tool results
+/// it called for. Sibling branches under the same parent go too — they are
+/// alternative versions of the same deleted step.
+///
+/// Collected with a recursive CTE and deleted in one pass rather than leaning on
+/// ON DELETE CASCADE, which recurses once per level and would exhaust
+/// SQLITE_MAX_TRIGGER_DEPTH on a long conversation. The head is repaired
+/// afterwards: it may have pointed into the subtree, and ON DELETE SET NULL
+/// would have already blanked it by then.
+pub fn delete_subtree(
     conn: &mut SqliteConnection,
     conversation_id: &str,
-) -> QueryResult<i64> {
-    messages::table
-        .filter(messages::conversation_id.eq(conversation_id))
-        .count()
-        .get_result(conn)
+    message_id: &str,
+) -> QueryResult<Option<String>> {
+    #[derive(QueryableByName)]
+    struct IdRow {
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        id: String,
+    }
+
+    conn.transaction(|conn| {
+        let parent: Option<String> = messages::table
+            .find(message_id)
+            .select(messages::parent_id)
+            .first::<Option<String>>(conn)
+            .optional()?
+            .flatten();
+
+        let doomed: Vec<String> = diesel::sql_query(
+            "WITH RECURSIVE subtree(id) AS (
+               SELECT id FROM messages WHERE id = ? AND conversation_id = ?
+               UNION ALL
+               SELECT m.id FROM messages m JOIN subtree s ON m.parent_id = s.id
+             )
+             SELECT id FROM subtree",
+        )
+        .bind::<diesel::sql_types::Text, _>(message_id)
+        .bind::<diesel::sql_types::Text, _>(conversation_id)
+        .load::<IdRow>(conn)?
+        .into_iter()
+        .map(|r| r.id)
+        .collect();
+
+        // Chunked to stay under SQLITE_MAX_VARIABLE_NUMBER, which a long
+        // conversation would otherwise blow past.
+        for chunk in doomed.chunks(500) {
+            diesel::delete(messages::table.filter(messages::id.eq_any(chunk))).execute(conn)?;
+        }
+
+        // Order matters: the deletes above may have nulled the head via
+        // ON DELETE SET NULL, so it is rewritten last.
+        let history = messages::table
+            .filter(messages::conversation_id.eq(conversation_id))
+            .order(messages::sort_order.asc())
+            .load::<Message>(conn)?;
+        let new_head = parent
+            .filter(|p| history.iter().any(|m| &m.id == p))
+            .map(|p| deepest_descendant(&history, &p))
+            .or_else(|| resolve_head(None, &history));
+
+        diesel::update(conversations::table.find(conversation_id))
+            .set(conversations::head_message_id.eq(new_head.as_ref()))
+            .execute(conn)?;
+
+        Ok(new_head)
+    })
+}
+
+/// Follow the newest child at each step. Used when the head has to move onto a
+/// branch: "where that branch was last written" is the position a reader expects
+/// to land on.
+pub fn deepest_descendant(history: &[Message], from: &str) -> String {
+    let mut current = from.to_string();
+    loop {
+        let next = history
+            .iter()
+            .filter(|m| m.is_compact_summary == 0)
+            .filter(|m| m.parent_id.as_deref() == Some(current.as_str()))
+            .max_by_key(|m| m.sort_order);
+        match next {
+            Some(child) => current = child.id.clone(),
+            None => return current,
+        }
+    }
 }
 
 pub fn delete_messages_from(
@@ -643,6 +715,111 @@ mod tests {
         let history = list_messages(&mut conn, "c1").unwrap();
         let by_sort_order: Vec<&str> = history.iter().map(|m| m.id.as_str()).collect();
         assert_eq!(ids(&active_context(&history, None)), by_sort_order);
+    }
+
+    #[test]
+    fn deleting_a_subtree_takes_the_descendants_and_spares_the_siblings() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        tree(&mut conn, &[
+            ("q", None),
+            ("a1", Some("q")),
+            ("a1x", Some("a1")),
+            ("a2", Some("q")),
+        ]);
+
+        delete_subtree(&mut conn, "c1", "a1").unwrap();
+
+        let left: Vec<String> = list_messages(&mut conn, "c1").unwrap().into_iter().map(|m| m.id).collect();
+        assert_eq!(left, ["q", "a2"]);
+    }
+
+    #[test]
+    fn deleting_the_active_branch_moves_the_head_to_the_parent() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        tree(&mut conn, &[("q", None), ("a", Some("q"))]);
+        diesel::update(conversations::table.find("c1"))
+            .set(conversations::head_message_id.eq(Some("a")))
+            .execute(&mut conn)
+            .unwrap();
+
+        let head = delete_subtree(&mut conn, "c1", "a").unwrap();
+        assert_eq!(head.as_deref(), Some("q"));
+        assert_eq!(get_conversation(&mut conn, "c1").unwrap().head_message_id.as_deref(), Some("q"));
+    }
+
+    /// With the deleted branch gone the head lands on the surviving one, at the
+    /// point it was last written.
+    #[test]
+    fn the_head_follows_a_surviving_sibling_to_its_tip() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        tree(&mut conn, &[
+            ("q", None),
+            ("a1", Some("q")),
+            ("a2", Some("q")),
+            ("a2x", Some("a2")),
+        ]);
+
+        delete_subtree(&mut conn, "c1", "a1").unwrap();
+
+        let history = list_messages(&mut conn, "c1").unwrap();
+        assert_eq!(deepest_descendant(&history, "q"), "a2x");
+    }
+
+    #[test]
+    fn deleting_the_root_empties_the_conversation() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        tree(&mut conn, &[("q", None), ("a", Some("q"))]);
+
+        let head = delete_subtree(&mut conn, "c1", "q").unwrap();
+        assert_eq!(head, None);
+        assert!(list_messages(&mut conn, "c1").unwrap().is_empty());
+        assert_eq!(get_conversation(&mut conn, "c1").unwrap().head_message_id, None);
+    }
+
+    #[test]
+    fn deleting_a_subtree_leaves_other_conversations_alone() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        create_conversation(&mut conn, "c2", None, None, None, 1).unwrap();
+        tree(&mut conn, &[("q", None)]);
+        let mut other = row("q2", "c2", "user");
+        other.parent_id = None;
+        insert_message(&mut conn, &other).unwrap();
+
+        delete_subtree(&mut conn, "c1", "q").unwrap();
+        assert_eq!(list_messages(&mut conn, "c2").unwrap().len(), 1);
+    }
+
+    /// The guard on parent_id carrying no foreign key. ON DELETE CASCADE recurses
+    /// once per level, and the chain runs one node per message, so a conversation
+    /// this long would hit SQLITE_MAX_TRIGGER_DEPTH. If someone adds the FK back,
+    /// this fails.
+    #[test]
+    fn deleting_a_deep_chain_does_not_hit_the_recursion_limit() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+
+        let mut parent: Option<String> = None;
+        for i in 0..2000 {
+            let id = format!("m{i}");
+            let mut n = row(&id, "c1", "user");
+            n.parent_id = parent.as_deref();
+            insert_message(&mut conn, &n).unwrap();
+            parent = Some(id);
+        }
+
+        delete_subtree(&mut conn, "c1", "m0").expect("a 2000-deep subtree must delete");
+        assert!(list_messages(&mut conn, "c1").unwrap().is_empty());
     }
 
     /// Flattening a real fork would splice two branches into one transcript.

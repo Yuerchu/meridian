@@ -218,7 +218,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   }, [conversationId])
 
   const handleDelete = useCallback((id: string) => {
-    api.deleteMessage(id).then(() => {
+    api.deleteMessage(conversationId, id).then(() => {
       storeLoadMessages(conversationId)
     })
   }, [conversationId, storeLoadMessages])

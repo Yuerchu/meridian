@@ -125,6 +125,24 @@ describe('TurnItem', () => {
     expect(container.querySelectorAll('[data-slot="message-footer"]')).toHaveLength(2)
   })
 
+  it('aims deletion at the turn, not the row that was clicked', async () => {
+    const u = msg('user', { content: 'q' })
+    const a1 = msg('assistant', { _blocks: [text('step')], content: 'step' })
+    const a2 = msg('assistant', { _blocks: [text('answer')], content: 'answer' })
+    const turn = buildTurns([u, a1, a2])[0]
+    const onDelete = vi.fn()
+
+    const { container } = render(<TurnItem turn={turn} conversationId={CONV} onDelete={onDelete} />)
+
+    // The conclusion's footer carries the action, but it must still name the
+    // question: the backend removes the whole subtree beneath whatever it is given.
+    const buttons = Array.from(container.querySelectorAll('[data-slot="action-button"]'))
+    await userEvent.click(buttons[buttons.length - 1])
+    await userEvent.click(screen.getByRole('button', { name: 'Confirm' }))
+
+    expect(onDelete).toHaveBeenCalledWith(u.id)
+  })
+
   it('reports usage summed over the whole turn', () => {
     const u = msg('user', { content: 'q' })
     const a1 = msg('assistant', { _blocks: [text('step')], content: 'step', input_tokens: 100, output_tokens: 20 })

@@ -35,12 +35,22 @@ pub async fn update_message_content(app: tauri::AppHandle, id: String, content: 
     }).await.map_err(|e| e.to_string())?
 }
 
+/// Delete a message together with everything that followed from it.
+///
+/// Replaces the single-row delete, which could not be made safe: dropping an
+/// assistant row left its tool results behind, and dropping a question left the
+/// model reading an answer to nothing. Returns the head the conversation landed
+/// on so the caller can reload without a second round trip.
 #[tauri::command]
-pub async fn delete_message(app: tauri::AppHandle, id: String) -> Result<(), String> {
+pub async fn delete_message(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    id: String,
+) -> Result<Option<String>, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::message::delete_message(&mut conn, &id).map_err(|e| e.to_string())
+        db::ops::message::delete_subtree(&mut conn, &conversation_id, &id).map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }
 

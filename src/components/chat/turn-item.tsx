@@ -69,6 +69,20 @@ export const TurnItem = React.memo(function TurnItem({
   // hanging them off a tool call.
   const actionMessageId = turn.result?.messageId ?? assistants[assistants.length - 1]?.id
 
+  // Deleting anywhere in a turn removes the turn. The backend takes the whole
+  // subtree, so aiming at the question rather than the clicked row is what makes
+  // the button mean "drop this exchange" rather than "drop the tail of it".
+  // A headless turn has no question, so its first answer is the root.
+  // Takes an id and ignores it, so MessageItem keeps calling
+  // `onDelete(message.id)` wherever it already does. Memoised because a fresh
+  // closure per render would defeat MessageItem's React.memo, and left undefined
+  // when deletion is unavailable so the button does not render at all.
+  const deleteRootId = turn.userMessage?.id ?? assistants[0]?.id
+  const deleteTurn = useCallback(() => {
+    if (onDelete && deleteRootId) onDelete(deleteRootId)
+  }, [onDelete, deleteRootId])
+  const onDeleteTurn = onDelete && deleteRootId ? deleteTurn : undefined
+
   const collapsible = hasCollapsibleProcess(turn)
   const isTurnStreaming = turn.status === 'streaming'
 
@@ -141,7 +155,7 @@ export const TurnItem = React.memo(function TurnItem({
         message={turn.userMessage}
         isStreaming={false}
         isLastMessage={false}
-        onDelete={onDelete}
+        onDelete={onDeleteTurn}
         onEdit={!streaming ? onEdit : undefined}
         isOneBot={isOneBot}
         emojiMap={emojiMap}
@@ -167,7 +181,7 @@ export const TurnItem = React.memo(function TurnItem({
                 isLastMessage={isLastTurn && isLast}
                 showFooter={ownsActions}
                 tokenTotals={ownsActions ? turn.tokens : undefined}
-                onDelete={ownsActions ? onDelete : undefined}
+                onDelete={ownsActions ? onDeleteTurn : undefined}
                 onRegenerate={ownsActions ? onRegenerate : undefined}
                 onRate={ownsActions ? onRate : undefined}
                 isOneBot={isOneBot}
@@ -224,7 +238,7 @@ export const TurnItem = React.memo(function TurnItem({
             isLastMessage={isLastTurn}
             showFooter
             tokenTotals={turn.tokens}
-            onDelete={onDelete}
+            onDelete={onDeleteTurn}
             onRegenerate={onRegenerate}
             onRate={onRate}
             isOneBot={isOneBot}

@@ -61,10 +61,13 @@ describe('api', () => {
       expect(mockInvoke).toHaveBeenCalledWith('load_messages', { conversationId: 'conv-1' })
     })
 
-    it('deleteMessage sends id', async () => {
-      mockInvoke.mockResolvedValueOnce(undefined)
-      await api.deleteMessage('msg-1')
-      expect(mockInvoke).toHaveBeenCalledWith('delete_message', { id: 'msg-1' })
+    it('deleteMessage names the conversation the subtree belongs to', async () => {
+      mockInvoke.mockResolvedValueOnce(null)
+      await api.deleteMessage('conv-1', 'msg-1')
+      expect(mockInvoke).toHaveBeenCalledWith('delete_message', {
+        conversationId: 'conv-1',
+        id: 'msg-1',
+      })
     })
 
     it('chat sends defaults for optional params', async () => {

@@ -58,8 +58,10 @@ export const api = {
   updateMessageContent: (id: string, content: string) =>
     invoke<void>('update_message_content', { id, content }),
 
-  deleteMessage: (id: string) =>
-    invoke<void>('delete_message', { id }),
+  /** Deletes the message and everything descended from it, returning the head
+   *  the conversation landed on. */
+  deleteMessage: (conversationId: string, id: string) =>
+    invoke<string | null>('delete_message', { conversationId, id }),
 
   deleteMessagesFrom: (conversationId: string, fromSortOrder: number) =>
     invoke<void>('delete_messages_from', { conversationId, fromSortOrder }),
