@@ -269,6 +269,27 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
       }
     }
 
+    // Drop the version being replaced before the new one starts arriving. It is
+    // still on screen at this point, and everything after it on the path is its
+    // descendant, so without this the old answer sits above the new one as it
+    // streams in. The rows survive in the database; the reload on stop brings
+    // back whatever the active path turns out to be, and the catch below
+    // restores them if the request never lands.
+    if (replaces) {
+      useConversationStore.setState((state) => {
+        const session = state.sessions[conversationId]
+        if (!session) return state
+        const idx = session.messages.findIndex((m) => m.id === replaces)
+        if (idx < 0) return state
+        return {
+          sessions: {
+            ...state.sessions,
+            [conversationId]: { ...session, messages: session.messages.slice(0, idx) },
+          },
+        }
+      })
+    }
+
     if (addUserBubble && messageContent !== null) {
       useConversationStore.setState((state) => {
         const session = state.sessions[conversationId]
@@ -367,7 +388,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   // of the original and answered fresh, leaving the old wording and its answer
   // reachable through the pager.
   const handleEdit = useCallback((id: string, content: string) => {
-    sendMessage(content, false, undefined, id)
+    sendMessage(content, true, undefined, id)
   }, [sendMessage])
 
   // Memoised because useTurns keys its work on this array's identity; a fresh

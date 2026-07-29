@@ -1,8 +1,16 @@
-import { describe, expect, it, vi } from 'vitest'
-import { reconcileMessages } from '@/stores/conversation-store'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { reconcileMessages, useConversationStore } from '@/stores/conversation-store'
+import { api } from '@/api'
 import type { Message } from '@/types'
 
 vi.mock('@tauri-apps/api/core')
+vi.mock('@/api', () => ({
+  api: {
+    loadMessageTree: vi.fn(),
+    getConversation: vi.fn(),
+    switchBranch: vi.fn(),
+  },
+}))
 
 function msg(id: string, over: Partial<Message> = {}): Message {
   return {
@@ -92,5 +100,59 @@ describe('reconcileMessages', () => {
     expect(out).not.toBe(prev)
     expect(out[0]).toBe(prev[1])
     expect(out[1]).toBe(prev[0])
+  })
+})
+
+describe('branch state', () => {
+  const CONV = 'conv-1'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useConversationStore.setState({ sessions: {} })
+    useConversationStore.getState().ensureSession(CONV)
+  })
+
+  /// Without this the pager only shows up the next time the conversation is
+  /// opened, since the turn that created the branch point ends with this reload.
+  it('picks up a new branch point when a turn ends', async () => {
+    vi.mocked(api.loadMessageTree).mockResolvedValue({
+      messages: [msg('q'), msg('a2')],
+      head_message_id: 'a2',
+      branches: [{ message_id: 'a2', index: 1, total: 2, sibling_ids: ['a1', 'a2'] }],
+    })
+
+    useConversationStore.getState().handleStop(CONV)
+    await vi.waitFor(() => {
+      expect(useConversationStore.getState().sessions[CONV]?.branches.a2).toBeDefined()
+    })
+    expect(useConversationStore.getState().sessions[CONV]?.branches.a2.total).toBe(2)
+  })
+
+  it('replaces the message list outright when switching branches', async () => {
+    useConversationStore.setState((s) => ({
+      sessions: {
+        ...s.sessions,
+        [CONV]: { ...s.sessions[CONV], messages: [msg('q'), msg('a1', { content: 'first' })] },
+      },
+    }))
+    vi.mocked(api.switchBranch).mockResolvedValue({
+      messages: [msg('q'), msg('a2', { content: 'second' })],
+      head_message_id: 'a2',
+      branches: [{ message_id: 'a2', index: 1, total: 2, sibling_ids: ['a1', 'a2'] }],
+    })
+
+    await useConversationStore.getState().switchBranch(CONV, 'a2')
+
+    const ids = useConversationStore.getState().sessions[CONV]!.messages.map((m) => m.id)
+    // a1 belongs to the branch being left; carrying it over would show two
+    // answers to the same question.
+    expect(ids).toEqual(['q', 'a2'])
+  })
+
+  it('clears the switching flag even when the request fails', async () => {
+    vi.mocked(api.switchBranch).mockRejectedValue(new Error('nope'))
+
+    await expect(useConversationStore.getState().switchBranch(CONV, 'a2')).rejects.toThrow()
+    expect(useConversationStore.getState().sessions[CONV]?.switchingBranch).toBe(false)
   })
 })

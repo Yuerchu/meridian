@@ -525,8 +525,11 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         session.fulfilledUnseen = true
       }
     }))
-    api.loadMessages(convId).then((msgs) => {
-      const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(msgs))
+    // The whole tree, not just the messages: a turn that regenerated an answer
+    // has just created a branch point, and the pager for it has to appear now
+    // rather than the next time the conversation is opened.
+    api.loadMessageTree(convId).then((tree) => {
+      const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(tree.messages))
       set(produce((state: ConversationStore) => {
         const session = state.sessions[convId]
         if (!session) return
@@ -534,6 +537,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // handler will reload, so applying the stale snapshot would clobber it.
         if (session.generation !== generation) return
         session.messages = mergeSnapshot(session, snapshot)
+        session.branches = indexBranches(tree.branches)
       }))
     })
   },
@@ -547,8 +551,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
   handleCompactDone: (convId) => {
     const generation = get().sessions[convId]?.generation ?? 0
-    Promise.all([api.loadMessages(convId), api.getConversation(convId)]).then(([msgs, conv]) => {
-      const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(msgs))
+    Promise.all([api.loadMessageTree(convId), api.getConversation(convId)]).then(([tree, conv]) => {
+      const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(tree.messages))
       set(produce((state: ConversationStore) => {
         const session = state.sessions[convId]
         if (!session) return
@@ -557,6 +561,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // instead of clobbering, and skip entirely if a newer turn superseded it.
         if (session.generation !== generation) return
         session.messages = mergeSnapshot(session, snapshot)
+        session.branches = indexBranches(tree.branches)
         session.compactCursor = conv.compact_cursor
       }))
     }).catch(() => {

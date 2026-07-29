@@ -210,14 +210,16 @@ export const TurnItem = React.memo(function TurnItem({
 
   // Outside MessageItem's footer on purpose: that fades in on hover, and a
   // pager carries information rather than an action, so it has to stay legible
-  // at rest.
+  // at rest. Negative margins pull it back against the message it belongs to,
+  // out of the turn's own six-unit rhythm — it reads as part of that message,
+  // not as another block in the exchange.
   const questionPager = questionBranch && (
-    <div data-slot="turn-question-pager" className="flex justify-end">
+    <div data-slot="turn-question-pager" className="-mt-5 flex justify-end">
       {pagerFor(questionBranch)}
     </div>
   )
   const answerPager = answerBranch && (
-    <div data-slot="turn-answer-pager" className="flex pl-10">
+    <div data-slot="turn-answer-pager" className="-mt-5 flex pl-10">
       {pagerFor(answerBranch)}
     </div>
   )
