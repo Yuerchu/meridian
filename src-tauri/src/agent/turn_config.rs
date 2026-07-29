@@ -100,6 +100,14 @@ pub(crate) fn resolve(
     // does not change for the whole of an implementation, while the checklist
     // changes several times per turn. Plan first keeps it inside the cached
     // prefix instead of behind every checkbox tick.
+    //
+    // Both are per-conversation and deliberately do not follow branch switches:
+    // paging back to an earlier answer still shows the plan and checklist as
+    // they stand now. They describe the work in progress rather than the
+    // transcript, and the rest of that work — files edited, commands run,
+    // memories written — cannot be rewound by switching branches either. Making
+    // these two alone branch-aware would imply the whole world rewinds, which
+    // is a harder model to explain than "branches switch the transcript only".
     if let Some(plan) = crate::db::ops::plan::get_active(conn, &conversation_id).ok().flatten() {
         if let Some(block) = crate::db::ops::plan::format_plan_block(&plan) {
             prompt.push_str(&block);

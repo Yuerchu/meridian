@@ -16,6 +16,12 @@ pub struct Message {
     pub output_tokens: Option<i32>,
     pub tool_calls: Option<String>,
     pub tool_call_id: Option<String>,
+    /// Insertion order within the conversation, assigned by a trigger. Since
+    /// messages became a tree this no longer means "position in the transcript"
+    /// — sibling branches interleave their ranges. It still orders siblings for
+    /// the version pager, and still identifies the newest row, which is what
+    /// `resolve_head` falls back to. To read a conversation in order, walk the
+    /// path with `active_context`.
     pub sort_order: i32,
     pub created_at: i64,
     pub reasoning_content: Option<String>,
