@@ -20,7 +20,7 @@ mod truncate;
 
 pub(crate) use base_prompt::base_prompt;
 pub(crate) use compact::{do_compact, mid_turn_compact, CompactCircuitBreaker, CompactError, COMPACT_PROMPT};
-pub(crate) use context::{build_messages, build_messages_with_senders, estimate_tokens, microcompact, remove_orphan_tool_messages, resolve_file_uris_in_messages, trim_to_context_limit, SenderNames};
+pub(crate) use context::{build_messages, build_messages_with_senders, estimate_tokens, microcompact, resolve_file_uris_in_messages, trim_to_context_limit, SenderNames};
 pub(crate) use memory_context::{load_memory_block, load_memory_block_sync, memory_budget, trailing_with_memory, MemoryRequest, MemorySubjectRef};
 pub(crate) use file_access::{build_file_access, file_access_prompt};
 pub(crate) use inline_tag::{InlineHiddenTagParser, InlineTagSpec};

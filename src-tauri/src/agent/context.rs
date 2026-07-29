@@ -60,6 +60,13 @@ pub(crate) fn build_messages_with_senders(
         }
     }
     msgs.extend(trailing);
+    // Unconditional, so every caller gets a payload the provider will accept.
+    // History can hold a tool row whose assistant row was deleted (or never
+    // written), and a `tool` message with no matching `tool_calls` is rejected
+    // outright. The two turn drivers used to each call this themselves while the
+    // three token-estimation callers did not, so the estimate counted rows that
+    // never went out.
+    remove_orphan_tool_messages(&mut msgs);
     msgs
 }
 
@@ -381,6 +388,32 @@ mod tests {
         assert_eq!(msgs[2].content, "a");
         assert_eq!(msgs[3].role, "user");
         assert_eq!(msgs[3].content, "new");
+    }
+
+    #[test]
+    fn test_build_messages_strips_tool_calls_with_no_result() {
+        // A tool row can go missing: its insert is fire-and-forget, and deleting
+        // an assistant message leaves its tool rows unreferenced. Either way a
+        // `tool_calls` nothing answers is rejected by the provider, so the pairing
+        // has to be repaired here rather than at each call site.
+        let mut assistant = msg("2", "assistant", "calling a tool");
+        assistant.tool_calls = Some(
+            r#"[{"id":"call_1","type":"function","function":{"name":"read_file","arguments":"{}"}}]"#
+                .into(),
+        );
+        let history = vec![msg("1", "user", "q"), assistant];
+        let msgs = build_messages("sys", &history, "next", None);
+        let a = msgs.iter().find(|m| m.role == "assistant").unwrap();
+        assert!(a.tool_calls.is_none(), "unanswered tool_calls should be stripped");
+    }
+
+    #[test]
+    fn test_build_messages_drops_orphan_tool_row() {
+        let mut tool = msg("2", "tool", "result");
+        tool.tool_call_id = Some("call_1".into());
+        let history = vec![msg("1", "user", "q"), tool];
+        let msgs = build_messages("sys", &history, "next", None);
+        assert!(msgs.iter().all(|m| m.role != "tool"), "orphan tool row should be dropped");
     }
 
     #[test]

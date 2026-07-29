@@ -456,7 +456,6 @@ pub async fn headless_chat(
         a.path().app_data_dir().ok()
     }).map(|d| crate::files::files_dir(&d));
     crate::agent::resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref());
-    crate::agent::remove_orphan_tool_messages(&mut chat_messages);
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
