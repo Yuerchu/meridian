@@ -157,6 +157,28 @@ body {
     @apply h-full overflow-hidden;
     overscroll-behavior: none;
   }
+  /* 全局把原生滚动条对齐 ui/scroll-area.tsx 里 ScrollBar 的视觉。写在 base layer 里，
+     base-ui 注入的 .base-ui-disable-scrollbar（ScrollArea Viewport）与 scrollbar-* utilities 都能覆盖它。 */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-button {
+    display: none;
+  }
+  ::-webkit-scrollbar-thumb {
+    border: 1px solid transparent;
+    border-radius: 9999px;
+    background-color: var(--border);
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--ring);
+  }
 }
 
 img.emoji-sticker {
@@ -187,10 +209,16 @@ img.emoji-sticker {
 
 @utility scrollbar-thumb-transparent {
   scrollbar-color: transparent transparent;
+  &::-webkit-scrollbar-thumb {
+    background-color: transparent;
+  }
 }
 
 @utility scrollbar-track-transparent {
   scrollbar-color: transparent transparent;
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
 }
 
 @utility scrollbar-none {

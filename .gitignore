@@ -12,3 +12,5 @@ icon.png
 .DS_Store
 tsconfig.tsbuildinfo
 .claude/
+.codex/
+.mcp.json
