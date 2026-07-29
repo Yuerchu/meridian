@@ -294,8 +294,8 @@ pub async fn headless_chat(
             .map(|a| a.state::<crate::sleep_inhibitor::AppSleepInhibitor>().begin_turn())
     };
 
-    // Load assistant + history + compact_cursor
-    let (assistant, history, compact_cursor, head_id) = {
+    // Load assistant + the conversation's active path
+    let (assistant, ctx) = {
         let pool = pool.clone();
         let conv_id = conversation_id.to_string();
         let aid = assistant_id.map(String::from);
@@ -303,16 +303,15 @@ pub async fn headless_chat(
             let mut conn = get_conn(&pool)?;
             let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;
-            let compact_cursor = conv.compact_cursor;
             let effective_aid = aid.as_deref().or(conv.assistant_id.as_deref());
             let assistant = effective_aid
                 .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
             let history = crate::db::ops::message::list_messages(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;
-            // Read once and carried as a local cursor for the turn; see the
-            // desktop loop for why it is not re-read per row.
-            let head_id = crate::db::ops::message::resolve_head(conv.head_message_id.as_deref(), &history);
-            Ok::<_, String>((assistant, history, compact_cursor, head_id))
+            // Resolved once and carried for the turn; see the desktop loop for
+            // why the head is not re-read per row.
+            let ctx = crate::db::ops::message::active_context(&history, conv.head_message_id.as_deref());
+            Ok::<_, String>((assistant, ctx))
         })
         .await
         .map_err(|e| e.to_string())??
@@ -449,9 +448,8 @@ pub async fn headless_chat(
 
     let mut chat_messages = build_messages_with_senders(
         &system_prompt,
-        &history,
+        &ctx,
         trailing,
-        compact_cursor,
         &sender_names,
     );
     let files_root = app.and_then(|a| {
@@ -492,7 +490,7 @@ pub async fn headless_chat(
     // Walks down the branch as the turn writes. A group turn can open with
     // several user rows, and steering can add more mid-flight, so this has to be
     // a cursor rather than one precomputed parent.
-    let mut parent_cursor: Option<String> = head_id;
+    let mut parent_cursor: Option<String> = ctx.head_id.clone();
     {
         let pool = pool.clone();
         let conv_id = conversation_id.to_string();

@@ -5,12 +5,24 @@ use crate::db::models::message::Message;
 use crate::state::AppDb;
 use crate::agent::extract_tool_calls_from_blocks;
 
+/// The active path, plus the summary that applies to it.
+///
+/// The summary is appended rather than placed in order: the front end picks it
+/// out by `is_compact_summary` and renders it as a boundary marker, not as a
+/// message in the transcript.
 #[tauri::command]
 pub async fn load_messages(app: tauri::AppHandle, conversation_id: String) -> Result<Vec<Message>, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::message::list_messages(&mut conn, &conversation_id).map_err(|e| e.to_string())
+        let conv = db::ops::conversation::get_conversation(&mut conn, &conversation_id)
+            .map_err(|e| e.to_string())?;
+        let history = db::ops::message::list_messages(&mut conn, &conversation_id)
+            .map_err(|e| e.to_string())?;
+        let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
+        let mut out = ctx.path;
+        out.extend(ctx.summary);
+        Ok(out)
     }).await.map_err(|e| e.to_string())?
 }
 
@@ -58,12 +70,18 @@ pub async fn export_conversation(app: tauri::AppHandle, conversation_id: String,
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let conv = db::ops::conversation::get_conversation(&mut conn, &conversation_id)
             .map_err(|e| e.to_string())?;
-        let messages = db::ops::message::list_messages(&mut conn, &conversation_id)
+        let history = db::ops::message::list_messages(&mut conn, &conversation_id)
             .map_err(|e| e.to_string())?;
-        // Internal bookkeeping (compact summaries) must not leak into training data.
-        let messages: Vec<Message> = messages.into_iter()
-            .filter(|m| m.is_compact_summary == 0)
-            .collect();
+        // The active path only. Exporting every branch would interleave rival
+        // answers to the same question into one transcript, and the DPO pairing
+        // below walks backwards for a prompt — across a fork it would pick up a
+        // question that belongs to a different branch.
+        //
+        // Unlike the chat path this keeps everything from the root, compacted or
+        // not: a summary is a token-budget device, and the rows it stands in for
+        // are exactly the training data being exported.
+        let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
+        let messages: Vec<Message> = ctx.path;
         let system_prompt = conv.assistant_id.as_deref()
             .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok())
             .map(|a| a.system_prompt)

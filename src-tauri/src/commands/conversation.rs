@@ -311,7 +311,7 @@ pub async fn get_context_info(
     let pool = app.state::<AppDb>().0.clone();
     let secrets = app.state::<AppSecrets>();
 
-    let (assistant, history, compact_cursor, project_path, project_id, conv_mode) = {
+    let (assistant, ctx, project_path, project_id, conv_mode) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         tokio::task::spawn_blocking(move || {
@@ -326,7 +326,8 @@ pub async fn get_context_info(
                 .and_then(|pid| db::ops::project::get_project(&mut conn, pid).ok());
             let project_path = project.as_ref().and_then(|p| p.path.clone());
             let project_id = project.as_ref().map(|p| p.id.clone());
-            Ok::<_, String>((assistant, history, conv.compact_cursor, project_path, project_id, conv.mode.clone()))
+            let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
+            Ok::<_, String>((assistant, ctx, project_path, project_id, conv.mode.clone()))
         }).await.map_err(|e| e.to_string())??
     };
 
@@ -364,16 +365,13 @@ pub async fn get_context_info(
     // UI shows covers what a turn actually sends.
     let msgs = crate::agent::build_messages_with_senders(
         system_prompt.trim(),
-        &history,
+        &ctx,
         crate::agent::trailing_with_memory(Some(&memory_block), ""),
-        compact_cursor,
         &Default::default(),
     );
-    let active_messages: Vec<_> = if let Some(cursor) = compact_cursor {
-        history.iter().filter(|m| m.sort_order >= cursor || m.is_compact_summary == 1).collect()
-    } else {
-        history.iter().collect()
-    };
+    // What the next turn would carry: the tail past the summary, plus the
+    // summary itself when one applies.
+    let message_count = ctx.live().len() + usize::from(ctx.summary.is_some());
     let estimated_tokens = budget.counter.count_messages(&msgs);
 
     let cb_state = {
@@ -390,7 +388,7 @@ pub async fn get_context_info(
         compact_threshold: budget.compact_threshold,
         auto_compact_enabled,
         circuit_breaker_state: cb_state,
-        message_count: active_messages.len(),
+        message_count,
     })
 }
 
@@ -574,14 +572,19 @@ mod tests {
         let budget = TokenBudget::new("openai", "gpt-4o", 128_000, 16_384, None);
         // Counted the way the chat path sends it: prompt plus the memory block
         // that now rides along as a user-role message.
+        let empty = crate::db::ops::message::ActiveContext {
+            path: Vec::new(),
+            summary: None,
+            anchor_index: None,
+            head_id: None,
+        };
         let with_prompt = budget.counter.count_messages(&crate::agent::build_messages_with_senders(
             system_prompt.trim(),
-            &[],
+            &empty,
             crate::agent::trailing_with_memory(Some(&memory), ""),
-            None,
             &Default::default(),
         ));
-        let history_only = budget.counter.count_messages(&build_messages("", &[], "", None));
+        let history_only = budget.counter.count_messages(&build_messages("", &empty, ""));
 
         // The regression this guards: get_context_info used to pass an empty
         // system prompt, so the UI reported a number that excluded it entirely.

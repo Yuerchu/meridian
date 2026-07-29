@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::db::models::message::Message;
+use crate::db::ops::message::ActiveContext;
 use crate::provider::{self, ChatMessage, SenderRef};
 
 use super::tokenizer::{TokenBudget, TokenCounter, TokenizerKind};
@@ -14,15 +15,13 @@ pub(crate) type SenderNames = HashMap<i64, String>;
 /// Single-speaker surfaces (desktop chat) and tests.
 pub(crate) fn build_messages(
     system_prompt: &str,
-    history: &[Message],
+    context: &ActiveContext,
     user_message: &str,
-    compact_cursor: Option<i32>,
 ) -> Vec<ChatMessage> {
     build_messages_with_senders(
         system_prompt,
-        history,
+        context,
         vec![ChatMessage::user(user_message)],
-        compact_cursor,
         &SenderNames::new(),
     )
 }
@@ -32,32 +31,29 @@ pub(crate) fn build_messages(
 /// written before that column existed stay `LegacyUser` — someone said them, but
 /// who is not recoverable, and reading it back out of the text prefix would let
 /// a user forge it.
+///
+/// Takes the whole `ActiveContext` rather than a message list plus a cursor:
+/// the two have to describe the same path, and passing them separately meant
+/// every caller had to remember to pair them.
 pub(crate) fn build_messages_with_senders(
     system_prompt: &str,
-    history: &[Message],
+    context: &ActiveContext,
     trailing: Vec<ChatMessage>,
-    compact_cursor: Option<i32>,
     sender_names: &SenderNames,
 ) -> Vec<ChatMessage> {
     let mut msgs = Vec::new();
     if !system_prompt.is_empty() {
         msgs.push(ChatMessage { role: "system".into(), content: system_prompt.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None, origin: provider::MessageOrigin::Assistant });
     }
-    if let Some(cursor) = compact_cursor {
-        if let Some(summary) = history.iter().find(|m| m.is_compact_summary == 1) {
-            // Deliberately not SystemContext: a summary stands in for the
-            // history it replaced and must stay compactable and stay put.
-            // SystemContext is reserved for background we regenerate each turn,
-            // which `take_injected_context` lifts out and re-appends at the tail.
-            msgs.push(ChatMessage::user(&summary.content));
-        }
-        for m in history.iter().filter(|m| m.sort_order >= cursor && m.is_compact_summary == 0) {
-            push_history_message(&mut msgs, m, sender_names);
-        }
-    } else {
-        for m in history.iter().filter(|m| m.is_compact_summary == 0) {
-            push_history_message(&mut msgs, m, sender_names);
-        }
+    if let Some(summary) = context.summary.as_ref() {
+        // Deliberately not SystemContext: a summary stands in for the
+        // history it replaced and must stay compactable and stay put.
+        // SystemContext is reserved for background we regenerate each turn,
+        // which `take_injected_context` lifts out and re-appends at the tail.
+        msgs.push(ChatMessage::user(&summary.content));
+    }
+    for m in context.live() {
+        push_history_message(&mut msgs, m, sender_names);
     }
     msgs.extend(trailing);
     // Unconditional, so every caller gets a payload the provider will accept.
@@ -355,10 +351,20 @@ mod tests {
         }
     }
 
+    /// A linear conversation with nothing compacted — what these tests are about.
+    fn ctx(history: &[Message]) -> ActiveContext {
+        ActiveContext {
+            path: history.iter().filter(|m| m.is_compact_summary == 0).cloned().collect(),
+            summary: None,
+            anchor_index: None,
+            head_id: history.last().map(|m| m.id.clone()),
+        }
+    }
+
     #[test]
     fn test_build_messages_with_system() {
         let history = vec![msg("1", "user", "hi")];
-        let msgs = build_messages("You are a helper", &history, "new question", None);
+        let msgs = build_messages("You are a helper", &ctx(&history), "new question");
         assert_eq!(msgs[0].role, "system");
         assert_eq!(msgs[0].content, "You are a helper");
         assert_eq!(msgs[1].role, "user");
@@ -369,7 +375,7 @@ mod tests {
 
     #[test]
     fn test_build_messages_empty_system() {
-        let msgs = build_messages("", &[], "hello", None);
+        let msgs = build_messages("", &ctx(&[]), "hello");
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].role, "user");
     }
@@ -381,7 +387,7 @@ mod tests {
             msg("2", "tool", "result"),
             msg("3", "assistant", "a"),
         ];
-        let msgs = build_messages("sys", &history, "new", None);
+        let msgs = build_messages("sys", &ctx(&history), "new");
         assert_eq!(msgs.len(), 4);
         assert_eq!(msgs[0].role, "system");
         assert_eq!(msgs[1].role, "user");
@@ -404,7 +410,7 @@ mod tests {
                 .into(),
         );
         let history = vec![msg("1", "user", "q"), assistant];
-        let msgs = build_messages("sys", &history, "next", None);
+        let msgs = build_messages("sys", &ctx(&history), "next");
         let a = msgs.iter().find(|m| m.role == "assistant").unwrap();
         assert!(a.tool_calls.is_none(), "unanswered tool_calls should be stripped");
     }
@@ -414,7 +420,7 @@ mod tests {
         let mut tool = msg("2", "tool", "result");
         tool.tool_call_id = Some("call_1".into());
         let history = vec![msg("1", "user", "q"), tool];
-        let msgs = build_messages("sys", &history, "next", None);
+        let msgs = build_messages("sys", &ctx(&history), "next");
         assert!(msgs.iter().all(|m| m.role != "tool"), "orphan tool row should be dropped");
     }
 
@@ -601,7 +607,13 @@ mod injected_context_tests {
             parent_id: None,
             compact_anchor_id: None,
         }];
-        let msgs = build_messages("", &history, "now", Some(0));
+        let context = crate::db::ops::message::ActiveContext {
+            path: Vec::new(),
+            summary: Some(history[0].clone()),
+            anchor_index: None,
+            head_id: None,
+        };
+        let msgs = build_messages("", &context, "now");
         assert!(
             !msgs.iter().any(|m| m.origin.is_system_context()),
             "a summary is history's stand-in, not regenerated background"

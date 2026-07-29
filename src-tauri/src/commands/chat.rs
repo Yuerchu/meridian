@@ -252,8 +252,8 @@ pub async fn chat(
         chats.0.lock().await.insert(conversation_id.clone(), cancel.clone());
     }
 
-    // Load conversation + assistant + history + project path
-    let (assistant, history, conv_title, project_path, project_id, compact_cursor, conv_prefs, head_id) = {
+    // Load conversation + assistant + active path + project path
+    let (assistant, ctx, conv_title, project_path, project_id, conv_prefs) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         let aid_override = assistant_id.clone();
@@ -275,10 +275,10 @@ pub async fn chat(
             // Conversation-level reasoning prefs act as the fallback when the
             // request doesn't carry an explicit override.
             let conv_prefs = (conv.thinking_level.clone(), conv.fast_mode != 0, conv.mode.clone());
-            // Read once and thread it through the turn as a local cursor. Re-reading
+            // Resolved once and threaded through the turn. Re-reading the head
             // per row would let a concurrent turn's writes splice into this one.
-            let head_id = db::ops::message::resolve_head(conv.head_message_id.as_deref(), &history);
-            Ok::<_, String>((assistant, history, conv.title, project_path, project_id, compact_cursor, conv_prefs, head_id))
+            let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
+            Ok::<_, String>((assistant, ctx, conv.title, project_path, project_id, conv_prefs))
         }).await.map_err(|e| e.to_string())??
     };
 
@@ -442,26 +442,24 @@ pub async fn chat(
     };
 
     // Auto-compact: if enabled and tokens exceed threshold, compact before sending
-    let original_cursor = compact_cursor;
-    let mut compact_cursor = compact_cursor;
+    let mut compacted = false;
     if auto_compact && circuit_breaker.can_compact() {
         let pre_msgs = build_messages_with_senders(
             system_prompt.trim(),
-            &history,
+            &ctx,
             trailing_with_memory(memory_block.as_deref(), &message),
-            compact_cursor,
             &Default::default(),
         );
         budget.update_estimate(&pre_msgs);
-        if budget.needs_compact() && history.len() > keep_recent * 2 + 2 {
+        if budget.needs_compact() && ctx.path.len() > keep_recent * 2 + 2 {
             app.emit("compact-start", serde_json::json!({
                 "conversation_id": &conversation_id,
                 "mid_turn": false,
                 "trigger": "threshold",
             })).ok();
             match do_compact(&pool, &secrets.0, &conversation_id, assistant.as_ref(), keep_recent, None).await {
-                Ok(new_cursor) => {
-                    compact_cursor = Some(new_cursor);
+                Ok(_anchor) => {
+                    compacted = true;
                     circuit_breaker.record_success();
                     app.emit("compact-done", serde_json::json!({
                         "conversation_id": &conversation_id,
@@ -484,23 +482,25 @@ pub async fn chat(
         }
     }
 
-    // Reload history if auto-compact changed the cursor
-    let history = if compact_cursor != original_cursor {
+    // Compaction wrote a summary row, so the context has to be read again for it
+    // to take effect.
+    let ctx = if compacted {
         let pool2 = pool.clone();
         let conv_id = conversation_id.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool2).ok()?;
-            db::ops::message::list_messages(&mut conn, &conv_id).ok()
-        }).await.ok().flatten().unwrap_or(history)
+            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).ok()?;
+            let history = db::ops::message::list_messages(&mut conn, &conv_id).ok()?;
+            Some(db::ops::message::active_context(&history, conv.head_message_id.as_deref()))
+        }).await.ok().flatten().unwrap_or(ctx)
     } else {
-        history
+        ctx
     };
 
     let mut chat_messages = build_messages_with_senders(
         system_prompt.trim(),
-        &history,
+        &ctx,
         trailing_with_memory(memory_block.as_deref(), &message),
-        compact_cursor,
         &Default::default(),
     );
     let files_root = app.path().app_data_dir().ok().map(|d| crate::files::files_dir(&d));
@@ -522,7 +522,7 @@ pub async fn chat(
     // Walks down the branch as the turn writes: every row hangs off the one
     // before it, so the whole turn is a single chain and any node with more than
     // one child is a real fork.
-    let mut parent_cursor: Option<String> = head_id;
+    let mut parent_cursor: Option<String> = ctx.head_id.clone();
 
     {
         let pool = pool.clone();

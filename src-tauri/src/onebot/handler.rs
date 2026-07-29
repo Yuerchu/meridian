@@ -1545,7 +1545,15 @@ async fn dispatch_status(
         let model = assistant.as_ref().and_then(|a| a.model_id.clone())
             .unwrap_or_else(|| "未配置".into());
         let context_limit = assistant.as_ref().map(|a| a.context_limit).unwrap_or(128000);
-        let msg_count = crate::db::ops::message::count_messages(&mut conn, &conv_id)
+        // The active path, not every row: counting branches the user has
+        // switched away from would not describe the conversation /status is
+        // reporting on.
+        let msg_count = crate::db::ops::message::list_messages(&mut conn, &conv_id)
+            .map(|history| {
+                crate::db::ops::message::active_context(&history, conv.head_message_id.as_deref())
+                    .path
+                    .len() as i64
+            })
             .unwrap_or(0);
         Ok::<_, String>((assistant_name, model, context_limit, msg_count))
     }).await;

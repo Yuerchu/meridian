@@ -75,7 +75,6 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const streaming = session?.streaming ?? false
   const compacting = session?.compacting ?? false
   const error = session?.error ?? null
-  const compactCursor = session?.compactCursor ?? null
 
   const [input, setInput] = useState('')
   const [assistants, setAssistants] = useState<Assistant[]>([])
@@ -373,18 +372,26 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     [messages],
   )
   const allTurns = useTurns(visibleMessages, streaming)
-  // Split by turn rather than by message: a cursor landing mid-turn used to put
-  // the question in the compacted region and its answer in the active one.
-  const compactedTurns = compactCursor != null
-    ? allTurns.filter((t) => t.firstSortOrder < compactCursor)
-    : []
-  const activeTurns = compactCursor != null
-    ? allTurns.filter((t) => t.firstSortOrder >= compactCursor)
-    : allTurns
-  const compactedCount = compactCursor != null
-    ? visibleMessages.filter((m) => m.sort_order < compactCursor).length
-    : 0
   const compactSummary = messages.find((m) => m.is_compact_summary === 1)
+  // The boundary comes from the summary's anchor rather than a stored cursor:
+  // once a conversation can branch, one sort_order threshold cannot describe
+  // where the summary takes over on every path.
+  const compactBoundary = useMemo(() => {
+    const anchorId = compactSummary?.compact_anchor_id
+    if (!anchorId) return null
+    return messages.find((m) => m.id === anchorId)?.sort_order ?? null
+  }, [compactSummary?.compact_anchor_id, messages])
+  // Split by turn rather than by message: a boundary landing mid-turn used to
+  // put the question in the compacted region and its answer in the active one.
+  const compactedTurns = compactBoundary != null
+    ? allTurns.filter((t) => t.firstSortOrder < compactBoundary)
+    : []
+  const activeTurns = compactBoundary != null
+    ? allTurns.filter((t) => t.firstSortOrder >= compactBoundary)
+    : allTurns
+  const compactedCount = compactBoundary != null
+    ? visibleMessages.filter((m) => m.sort_order < compactBoundary).length
+    : 0
 
   const selectedAssistant = assistants.find((a) => a.id === selectedAssistantId)
   const [contextInfo, setContextInfo] = useState<{
@@ -416,7 +423,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
       }).catch(() => {})
     }, 100)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [conversationId, messages.length, compactCursor])
+  }, [conversationId, messages.length, compactBoundary])
 
   return (
     <div className="flex flex-col h-full">

@@ -90,19 +90,24 @@ pub(crate) async fn do_compact(
     assistant: Option<&Assistant>,
     keep_recent: usize,
     custom_instructions: Option<&str>,
-) -> Result<i32, String> {
-    let history = {
+) -> Result<String, String> {
+    // Only the active path is summarised. Folding in a branch the user has
+    // switched away from would put events in the summary that never happened on
+    // the conversation being continued.
+    let ctx = {
         let pool = pool.clone();
         let conv_id = conversation_id.to_string();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            db::ops::message::list_messages(&mut conn, &conv_id).map_err(|e| e.to_string())
+            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id)
+                .map_err(|e| e.to_string())?;
+            let history = db::ops::message::list_messages(&mut conn, &conv_id)
+                .map_err(|e| e.to_string())?;
+            Ok::<_, String>(db::ops::message::active_context(&history, conv.head_message_id.as_deref()))
         }).await.map_err(|e| e.to_string())??
     };
 
-    let active_messages: Vec<&db::models::message::Message> = history.iter()
-        .filter(|m| m.is_compact_summary == 0)
-        .collect();
+    let active_messages: Vec<&db::models::message::Message> = ctx.path.iter().collect();
 
     let min_messages = keep_recent * 2 + 2;
     if active_messages.len() < min_messages {
@@ -110,7 +115,7 @@ pub(crate) async fn do_compact(
     }
 
     let boundary_idx = active_messages.len() - keep_recent * 2;
-    let cursor_sort_order = active_messages[boundary_idx].sort_order;
+    let anchor_id = active_messages[boundary_idx].id.clone();
 
     let to_compact = &active_messages[..boundary_idx];
     let conversation_text = prepare_compact_input(to_compact);
@@ -152,9 +157,13 @@ pub(crate) async fn do_compact(
     {
         let pool = pool.clone();
         let conv_id = conversation_id.to_string();
+        let anchor = anchor_id.clone();
+        let path_ids: Vec<String> = ctx.path.iter().map(|m| m.id.clone()).collect();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            db::ops::message::delete_compact_summaries(&mut conn, &conv_id)
+            // Scoped to this path: another branch's summary is still valid for
+            // that branch.
+            db::ops::message::delete_summaries_anchored_in(&mut conn, &conv_id, &path_ids)
                 .map_err(|e| e.to_string())?;
             let msg_id = uuid::Uuid::new_v4().to_string();
             let now = now_ms();
@@ -170,17 +179,14 @@ pub(crate) async fn do_compact(
                 // A summary is written by the compaction pass, not by any speaker.
                 sender_id: None,
                 // A summary is not a node in the tree; it sits beside it and
-                // points at the message it stands in front of. The anchor gets
-                // filled in once compaction reads the active path.
-                parent_id: None, compact_anchor_id: None,
+                // names the message it stands in front of.
+                parent_id: None, compact_anchor_id: Some(&anchor),
             }).map_err(|e| e.to_string())?;
-            db::ops::conversation::update_compact_cursor(&mut conn, &conv_id, Some(cursor_sort_order), now)
-                .map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
     }
 
-    Ok(cursor_sort_order)
+    Ok(anchor_id)
 }
 
 async fn compact_with_retry(
