@@ -11,7 +11,7 @@ use crate::provider;
 use crate::state::{AppDb, AppMcp, AppSecrets, AppTools, CompactBreakers};
 use crate::template;
 use crate::util::now_ms;
-use crate::agent::{do_compact, resolve_provider_config, base_prompt, build_file_access, build_messages, estimate_tokens, file_access_prompt, instruction_budget, load_project_instructions, CompactCircuitBreaker, TokenBudget};
+use crate::agent::{do_compact, resolve_provider_config, resolve_turn_params, base_prompt, build_file_access, build_messages, estimate_tokens, file_access_prompt, instruction_budget, load_project_instructions, CompactCircuitBreaker, TokenBudget, TurnParamsInput};
 
 #[tauri::command]
 pub async fn compact(
@@ -330,16 +330,24 @@ pub async fn get_context_info(
         }).await.map_err(|e| e.to_string())??
     };
 
-    let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128_000);
     let auto_compact_enabled = assistant.as_ref().map(|a| a.auto_compact_enabled != 0).unwrap_or(false);
 
     let (provider_type, _, _, model, api_format) =
-        resolve_provider_config(&secrets.0, &pool, assistant.as_ref())
-            .unwrap_or_else(|_| ("openai".into(), String::new(), String::new(), "gpt-4.1-mini".into(), "chat".into()));
+        resolve_provider_config(&secrets.0, &pool, assistant.as_ref())?;
 
-    let caps = provider::capabilities::resolve(&provider_type, Some(&api_format), &model);
-    let max_output = caps.max_output_tokens.map(|t| t as usize).unwrap_or(16_384);
-    let budget = TokenBudget::new(&provider_type, &model, context_limit, max_output, None);
+    // Resolved exactly as the chat path does, so the threshold the UI reports is
+    // the one the compaction check actually compares against.
+    let turn = resolve_turn_params(&pool, TurnParamsInput {
+        assistant: assistant.as_ref(),
+        provider_id: assistant.as_ref().and_then(|a| a.provider_id.as_deref()),
+        provider_type: &provider_type,
+        api_format: &api_format,
+        model: &model,
+        thinking_level: None,
+        fast: false,
+    })?;
+    let context_limit = turn.context_limit;
+    let budget = TokenBudget::new(&provider_type, &model, context_limit, turn.max_output, turn.compact_threshold);
 
     let (system_prompt, memory_block) = assemble_system_prompt(
         &app,

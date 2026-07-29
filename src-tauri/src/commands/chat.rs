@@ -398,37 +398,37 @@ pub async fn chat(
 
     let effective_provider_id = provider_override.clone()
         .or_else(|| assistant.as_ref().and_then(|a| a.provider_id.clone()));
-    let model_config = if let Some(ref pid) = effective_provider_id {
+
+    // Precedence: per-request override > conversation preference > assistant default.
+    let (conv_thinking_level, conv_fast_mode, _) = conv_prefs;
+    let effective_level = thinking_level.as_deref().or(conv_thinking_level.as_deref());
+    // Resolved before the compaction check so the summariser and the turn it
+    // summarises send parameters filtered against the same model.
+    let turn_params = {
         let pool2 = pool.clone();
-        let pid2 = pid.clone();
+        let assistant2 = assistant.clone();
+        let pid = effective_provider_id.clone();
+        let pt = provider_type.clone();
+        let af = api_format.clone();
         let mid = model.clone();
+        let level = effective_level.map(|s| s.to_string());
+        let fast = fast.unwrap_or(conv_fast_mode);
         tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool2).ok()?;
-            db::ops::model_config::get_by_provider_and_model(&mut conn, &pid2, &mid).ok()?
-        }).await.ok().flatten()
-    } else {
-        None
+            crate::agent::resolve_turn_params(&pool2, crate::agent::TurnParamsInput {
+                assistant: assistant2.as_ref(),
+                provider_id: pid.as_deref(),
+                provider_type: &pt,
+                api_format: &af,
+                model: &mid,
+                thinking_level: level.as_deref(),
+                fast,
+            })
+        }).await.map_err(|e| e.to_string())??
     };
-
-    // Resolved after model_config so a user-authored capability override can be
-    // layered on top of the built-in catalog.
-    let mut caps = provider::capabilities::resolve(&provider_type, Some(&api_format), &model);
-    provider::capabilities::apply_overrides(
-        &mut caps,
-        model_config.as_ref().and_then(|mc| mc.capability_overrides.as_deref()),
-    );
-
-    let context_limit = assistant.as_ref()
-        .filter(|a| a.context_limit > 0)
-        .map(|a| a.context_limit as usize)
-        .or_else(|| model_config.as_ref().map(|mc| mc.context_window as usize))
-        .unwrap_or_else(|| caps.max_context_tokens.map(|t| t as usize).unwrap_or(128_000));
-    let max_output = model_config.as_ref()
-        .and_then(|mc| mc.max_output_tokens.map(|t| t as usize))
-        .or_else(|| caps.max_output_tokens.map(|t| t as usize))
-        .unwrap_or(16_384);
-    let compact_threshold_override = model_config.as_ref().map(|mc| mc.compact_threshold as usize);
-    let mut budget = TokenBudget::new(&provider_type, &model, context_limit, max_output, compact_threshold_override);
+    let context_limit = turn_params.context_limit;
+    let max_output = turn_params.max_output;
+    let model_config = turn_params.model_config;
+    let mut budget = TokenBudget::new(&provider_type, &model, context_limit, max_output, turn_params.compact_threshold);
 
     let circuit_breaker = {
         let breakers = app.state::<CompactBreakers>();
@@ -468,9 +468,13 @@ pub async fn chat(
                 Err(e) => {
                     tracing::warn!("Auto-compact failed: {e}");
                     circuit_breaker.record_failure();
+                    // Surfaced rather than swallowed: a silent failure looks
+                    // exactly like compaction never having been attempted, while
+                    // the context indicator sits pinned at its limit.
                     app.emit("compact-done", serde_json::json!({
                         "conversation_id": &conversation_id,
                         "mid_turn": false,
+                        "error": e,
                     })).ok();
                 }
             }
@@ -502,29 +506,7 @@ pub async fn chat(
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
-    // Precedence: per-request override > conversation preference > assistant default.
-    let (conv_thinking_level, conv_fast_mode, _) = conv_prefs;
-    let effective_level = thinking_level.as_deref().or(conv_thinking_level.as_deref());
-    let (thinking_enabled, thinking_budget, thinking_effort) = provider::capabilities::resolve_thinking(
-        assistant.as_ref().map(|a| a.thinking_enabled != 0).unwrap_or(false),
-        assistant.as_ref().and_then(|a| a.thinking_budget),
-        effective_level,
-    );
-
-    let mut params = ChatParams {
-        model: model.clone(),
-        temperature: assistant.as_ref().and_then(|a| a.temperature.map(|t| t as f64)),
-        top_p: assistant.as_ref().and_then(|a| a.top_p.map(|t| t as f64)),
-        max_tokens: assistant.as_ref().and_then(|a| a.max_tokens).or(Some(max_output as i32)),
-        thinking_enabled,
-        thinking_budget,
-        thinking_effort,
-        fast: fast.unwrap_or(conv_fast_mode),
-        // thinking_style and verbosity are derived from the model catalog by
-        // filter_params below, not supplied by the caller.
-        ..Default::default()
-    };
-    provider::capabilities::filter_params(&mut params, &caps);
+    let mut params = turn_params.params;
 
     // Persist user message
     let user_msg_id = uuid::Uuid::new_v4().to_string();
@@ -1171,6 +1153,7 @@ pub async fn chat(
                             "conversation_id": &conversation_id,
                             "mid_turn": true,
                             "fallback": true,
+                            "error": e.to_string(),
                         })).ok();
                     }
                 }

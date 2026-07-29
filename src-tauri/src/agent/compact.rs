@@ -7,7 +7,7 @@ use crate::provider::{self, ChatMessage, ChatProvider};
 use crate::secrets::SecretsManager;
 use crate::util::{get_conn, now_ms};
 use super::context::{remove_orphan_tool_messages, data_uri_re};
-use super::provider_config::resolve_provider_config;
+use super::provider_config::{resolve_provider_config, resolve_turn_params, without_thinking, TurnParamsInput};
 use super::stream::is_context_window_error;
 use super::tokenizer::TokenBudget;
 
@@ -124,12 +124,20 @@ pub(crate) async fn do_compact(
         resolve_provider_config(secrets, pool, assistant)?;
     let prov = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
 
-    let params = provider::ChatParams {
-        model,
-        temperature: Some(0.3),
-        max_tokens: Some(8192),
-        ..provider::ChatParams::default()
-    };
+    // Same resolution as a normal turn: a summarisation request that invents its
+    // own temperature or output ceiling is rejected by models the chat path
+    // already knows how to talk to.
+    let turn = resolve_turn_params(pool, TurnParamsInput {
+        assistant,
+        provider_id: assistant.and_then(|a| a.provider_id.as_deref()),
+        provider_type: &provider_type,
+        api_format: &api_format,
+        model: &model,
+        thinking_level: None,
+        // Summarising is background work; it does not take the priority tier.
+        fast: false,
+    })?;
+    let params = without_thinking(turn.params);
 
     let summary = compact_with_retry(&*prov, &compact_system, &conversation_text, &params).await?;
 
@@ -263,17 +271,9 @@ pub(crate) async fn mid_turn_compact(
         conversation_text.push_str(&format!("### {role_label}\n{content}\n\n"));
     }
 
-    let compact_params = provider::ChatParams {
-        temperature: Some(0.3),
-        max_tokens: Some(8192),
-        // Compaction is plain summarization — disable thinking so the inherited
-        // thinking_budget can't meet/exceed the fixed max_tokens (Anthropic 400s
-        // when budget_tokens >= max_tokens).
-        thinking_enabled: false,
-        thinking_budget: None,
-        thinking_effort: None,
-        ..params.clone()
-    };
+    // Inherits the turn's own parameters — they already passed the capability
+    // filter for this model.
+    let compact_params = without_thinking(params.clone());
 
     let summary = compact_with_retry(provider, COMPACT_PROMPT, &conversation_text, &compact_params)
         .await

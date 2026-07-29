@@ -237,14 +237,20 @@ pub(super) async fn oneshot_completion(
         ChatMessage::system_context(user_prompt),
     ];
 
-    let params = ChatParams {
-        model: effective_model.to_string(),
-        temperature: Some(0.0),
-        ..Default::default()
-    };
+    // Resolved like any other turn: an extraction request that invents its own
+    // temperature is rejected by models the chat path already talks to.
+    let turn = crate::agent::resolve_turn_params(&state.pool, crate::agent::TurnParamsInput {
+        assistant: assistant.as_ref(),
+        provider_id: assistant.as_ref().and_then(|a| a.provider_id.as_deref()),
+        provider_type: &provider_type,
+        api_format: &api_format,
+        model: effective_model,
+        thinking_level: None,
+        fast: false,
+    })?;
 
     provider
-        .chat(messages, params)
+        .chat(messages, crate::agent::without_thinking(turn.params))
         .await
         .map_err(|e| e.to_string())
 }
@@ -351,7 +357,22 @@ pub async fn headless_chat(
     };
     let mut tool_defs = turn.tool_defs;
     let system_prompt = turn.system_prompt;
-    let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
+    let effective_model = model_override
+        .or(assistant.as_ref().and_then(|a| a.model_id.as_deref()))
+        .unwrap_or(&model);
+    // Same resolution as the desktop chat command, so a per-model config the
+    // user wrote applies here too. No per-request tier: OneBot turns run off
+    // the assistant's stored defaults.
+    let turn_params = crate::agent::resolve_turn_params(pool, crate::agent::TurnParamsInput {
+        assistant: assistant.as_ref(),
+        provider_id: assistant.as_ref().and_then(|a| a.provider_id.as_deref()),
+        provider_type: &provider_type,
+        api_format: &api_format,
+        model: effective_model,
+        thinking_level: None,
+        fast: false,
+    })?;
+    let context_limit = turn_params.context_limit;
 
     // Who this turn may recall. A private chat is about the one person on the
     // other end; a group is about whoever actually spoke, filtered so nothing
@@ -381,12 +402,13 @@ pub async fn headless_chat(
     let memory_block = crate::agent::load_memory_block(pool, memory_request).await;
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
-    let effective_model = model_override.as_deref()
-        .or(assistant.as_ref().and_then(|a| a.model_id.as_deref()))
-        .unwrap_or(&model);
-    let caps = provider::capabilities::resolve(&provider_type, Some(&api_format), effective_model);
-    let max_output = caps.max_output_tokens.map(|t| t as usize).unwrap_or(16_384);
-    let mut budget = TokenBudget::new(&provider_type, effective_model, context_limit, max_output, None);
+    let mut budget = TokenBudget::new(
+        &provider_type,
+        effective_model,
+        context_limit,
+        turn_params.max_output,
+        turn_params.compact_threshold,
+    );
 
     // Nicknames are not on the message row (they change), so history is
     // re-attributed from the subject table.
@@ -438,30 +460,7 @@ pub async fn headless_chat(
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
-    // No per-request tier here: OneBot turns run off the assistant's stored
-    // defaults. Shares resolve_thinking with the chat command so the two paths
-    // agree on what "enabled" means.
-    let (thinking_enabled, thinking_budget, thinking_effort) = provider::capabilities::resolve_thinking(
-        assistant.as_ref().map(|a| a.thinking_enabled != 0).unwrap_or(false),
-        assistant.as_ref().and_then(|a| a.thinking_budget),
-        None,
-    );
-
-    let mut params = ChatParams {
-        model: model_override.map(String::from)
-            .or_else(|| assistant.as_ref().and_then(|a| a.model_id.clone()))
-            .unwrap_or(model),
-        temperature: assistant.as_ref().and_then(|a| a.temperature.map(|t| t as f64)),
-        top_p: assistant.as_ref().and_then(|a| a.top_p.map(|t| t as f64)),
-        max_tokens: assistant.as_ref().and_then(|a| a.max_tokens).or(Some(max_output as i32)),
-        thinking_enabled,
-        thinking_budget,
-        thinking_effort,
-        // thinking_style and verbosity are derived from the model catalog by
-        // filter_params below, not supplied by the caller.
-        ..Default::default()
-    };
-    provider::capabilities::filter_params(&mut params, &caps);
+    let mut params = turn_params.params;
 
     // Session-scoped QQ tools are available to everyone (read-only, scope-locked)
     if let Some(qq) = qq_tools {
