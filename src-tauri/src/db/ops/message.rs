@@ -173,6 +173,7 @@ fn copy_of<'a>(n: &NewMessage<'a>) -> NewMessage<'a> {
         is_compact_summary: n.is_compact_summary,
         sender_id: n.sender_id,
         parent_id: n.parent_id,
+        source: n.source,
         compact_anchor_id: n.compact_anchor_id,
     }
 }
@@ -490,6 +491,7 @@ mod tests {
             sender_id: None,
             parent_id: None,
             compact_anchor_id: None,
+            source: None,
         }
     }
 

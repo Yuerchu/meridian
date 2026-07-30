@@ -180,7 +180,7 @@ pub(crate) async fn do_compact(
                 sender_id: None,
                 // A summary is not a node in the tree; it sits beside it and
                 // names the message it stands in front of.
-                parent_id: None, compact_anchor_id: Some(&anchor),
+                parent_id: None, compact_anchor_id: Some(&anchor), source: None,
             }).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
@@ -506,6 +506,7 @@ mod tests {
             sender_id: None,
             parent_id: None,
             compact_anchor_id: None,
+            source: None,
         };
         let result = prepare_compact_input(&[&msg]);
         assert!(result.contains("truncated"));

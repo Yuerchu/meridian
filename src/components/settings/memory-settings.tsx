@@ -45,16 +45,21 @@ export function MemorySettings() {
     ...(browser.enums?.origins ?? []).map((v) => ({ value: v, label: v })),
   ]
 
-  // Only a project can be written to from here; the per-person and bot-wide
-  // layers are populated by conversations and by operator approval.
+  // Writable from here: a project, or the client-wide layer when that branch is
+  // selected. The per-person and bot-wide layers are populated by conversations
+  // and by operator approval instead.
+  const targetScope = browser.filter.kind === 'clientGlobal' ? 'client_global' : 'project'
   const targetProjectId =
     browser.filter.kind === 'project' ? browser.filter.projectId : browser.projects[0]?.id
+  // The client-wide layer needs no project, so it stays available to someone who
+  // has not created one.
+  const canAdd = targetScope === 'client_global' || !!targetProjectId
 
   const handleAdd = async () => {
-    if (!targetProjectId || !newKey.trim() || !newContent.trim()) return
+    if (!canAdd || !newKey.trim() || !newContent.trim()) return
     await api.saveMemoryScoped({
-      scope: 'project',
-      projectId: targetProjectId,
+      scope: targetScope,
+      projectId: targetScope === 'project' ? targetProjectId : null,
       key: newKey.trim(),
       content: newContent.trim(),
       memoryType: newType,
@@ -77,7 +82,7 @@ export function MemorySettings() {
             <Trash />
             {t('settings.memory.trash.title')}
           </Button>
-          <Button variant="secondary" onClick={() => setShowAdd(true)} disabled={!targetProjectId}>
+          <Button variant="secondary" onClick={() => setShowAdd(true)} disabled={!canAdd}>
             <Plus />
             {t('settings.memory.new')}
           </Button>

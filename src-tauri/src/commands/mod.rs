@@ -18,3 +18,5 @@ pub mod secret;
 pub mod skill;
 pub mod todo;
 pub mod tool_system;
+#[cfg(not(target_os = "android"))]
+pub mod voice;

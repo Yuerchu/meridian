@@ -514,7 +514,7 @@ pub async fn headless_chat(
                     tool_calls: None, tool_call_id: None, sort_order: 0, created_at: now,
                     reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
                     sender_id: *sender_id,
-                    parent_id: None, compact_anchor_id: None,
+                    parent_id: None, compact_anchor_id: None, source: None,
                 }, parent.as_deref()).map_err(|e| e.to_string())?;
                 // Queued messages chain to each other, not all to the same parent.
                 parent = Some(msg_id.clone());
@@ -589,7 +589,7 @@ pub async fn headless_chat(
                     output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
                     created_at: now_ms(), reasoning_content: None, rating: None, schema_version: 2,
                     is_compact_summary: 0, sender_id: None,
-                    parent_id: None, compact_anchor_id: None,
+                    parent_id: None, compact_anchor_id: None, source: None,
                 }, parent.as_deref()).map_err(|e| e.to_string())?;
                 Ok::<_, String>(())
             }).await.map_err(|e| e.to_string())??;
@@ -839,7 +839,7 @@ pub async fn headless_chat(
                         sort_order: 0, created_at: now_ms(),
                         reasoning_content: None, rating: None, schema_version: 2,
                         is_compact_summary: 0, sender_id: None,
-                        parent_id: None, compact_anchor_id: None,
+                        parent_id: None, compact_anchor_id: None, source: None,
                     }, parent.as_deref()).map(|_| tool_msg_id).map_err(|e| e.to_string())
                 }).await;
 
@@ -885,7 +885,7 @@ pub async fn headless_chat(
                                 tool_calls: None, tool_call_id: None, sort_order: 0,
                                 created_at: now_ms(), reasoning_content: None, rating: None,
                                 schema_version: 2, is_compact_summary: 0, sender_id,
-                                parent_id: None, compact_anchor_id: None,
+                                parent_id: None, compact_anchor_id: None, source: None,
                             }, parent.as_deref()).map(|_| msg_id).map_err(|e| e.to_string())
                     }).await;
 

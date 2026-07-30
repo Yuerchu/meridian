@@ -252,6 +252,7 @@ async fn assemble_system_prompt(
     project_path: Option<&str>,
     project_id: Option<&str>,
     context_limit: usize,
+    active_path: &[db::models::message::Message],
 ) -> (String, String) {
     let mcp_defs = {
         let mcp = app.state::<AppMcp>();
@@ -277,8 +278,12 @@ async fn assemble_system_prompt(
     let conv_id = conversation_id.to_string();
     let pid = project_id.map(str::to_string);
     let mode = crate::agent::modes::resolve(mode);
-    let context_blocks =
-        vec![instruction_block.unwrap_or_default(), file_access_prompt(&file_access)];
+    let context_blocks = vec![
+        instruction_block.unwrap_or_default(),
+        file_access_prompt(&file_access),
+        // Same function the chat loop calls, so the estimate covers the block.
+        crate::voice::prompt::voice_context_block(active_path, false).unwrap_or_default(),
+    ];
     tokio::task::spawn_blocking(move || {
         let Ok(mut conn) = pool2.get() else { return (String::new(), String::new()) };
         let (persona, memory_block) =
@@ -359,6 +364,7 @@ pub async fn get_context_info(
         project_path.as_deref(),
         project_id.as_deref(),
         context_limit,
+        &ctx.path,
     ).await;
 
     // Mirrors the chat path exactly, memory block included, so the figure the

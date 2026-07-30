@@ -2,9 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '@/api'
 import type { Memory, MemoryEnums, MemorySubject, Project } from '@/types'
 
-/** Which branch of the left-hand filter is selected. */
+/** Which branch of the left-hand filter is selected.
+ *
+ *  `clientGlobal` and `global` are siblings, not nested: one is what the user
+ *  told Meridian directly, the other is the bot side. Neither is injected into
+ *  the other's conversations. */
 export type ScopeFilter =
   | { kind: 'all' }
+  | { kind: 'clientGlobal' }
   | { kind: 'global' }
   | { kind: 'chats' }
   | { kind: 'project'; projectId: string }
@@ -54,6 +59,9 @@ export function useMemoryBrowser() {
   const visible = useMemo(() => {
     let rows = memories
     switch (filter.kind) {
+      case 'clientGlobal':
+        rows = rows.filter((m) => m.scope_type === 'client_global')
+        break
       case 'global':
         rows = rows.filter((m) => m.scope_type === 'onebot_global')
         break
@@ -87,6 +95,7 @@ export function useMemoryBrowser() {
   const counts = useMemo(
     () => ({
       all: memories.length,
+      clientGlobal: memories.filter((m) => m.scope_type === 'client_global').length,
       global: memories.filter((m) => m.scope_type === 'onebot_global').length,
       chats: memories.filter((m) => m.scope_type === 'project').length,
       people: memories.filter((m) => m.scope_type === 'onebot_user').length,

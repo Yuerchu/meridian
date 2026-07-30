@@ -26,7 +26,7 @@ function relativeTime(ms: number): string {
 interface ScopeNavProps {
   filter: ScopeFilter
   onFilterChange: (f: ScopeFilter) => void
-  counts: { all: number; global: number; chats: number; people: number }
+  counts: { all: number; clientGlobal: number; global: number; chats: number; people: number }
   projects: Project[]
   subjects: MemorySubject[]
   onChanged: () => void
@@ -72,6 +72,12 @@ export function ScopeNav({
 
       {row(filter.kind === 'all', t('settings.memory.nav.all'), counts.all, () =>
         onFilterChange({ kind: 'all' }),
+      )}
+      {row(
+        filter.kind === 'clientGlobal',
+        t('settings.memory.nav.clientGlobal'),
+        counts.clientGlobal,
+        () => onFilterChange({ kind: 'clientGlobal' }),
       )}
       {row(filter.kind === 'global', t('settings.memory.nav.global'), counts.global, () =>
         onFilterChange({ kind: 'global' }),

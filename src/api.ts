@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ChatMode, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, MessageTree, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset } from './types'
+import type { Assistant, ChatMode, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, MessageTree, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, VoiceModelStatus, VoiceTranscript } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -104,6 +104,7 @@ export const api = {
       assistantId?: string
       fast?: boolean
       mode?: ChatMode
+      voice?: boolean
     } = {},
   ) =>
     invoke<void>('chat', {
@@ -116,6 +117,7 @@ export const api = {
       assistantId: opts.assistantId ?? null,
       fast: opts.fast ?? null,
       mode: opts.mode ?? null,
+      voice: opts.voice ?? null,
     }),
 
   setSecret: (key: string, value: string) =>
@@ -320,6 +322,38 @@ export const api = {
 
   setPreference: (key: string, value: string) =>
     invoke<void>('set_preference', { key, value }),
+
+  // Voice input (desktop only)
+  /** Open the microphone early so the first word is not lost to device latency. */
+  voicePrewarm: () =>
+    invoke<void>('voice_prewarm'),
+
+  voiceReleasePrewarm: () =>
+    invoke<void>('voice_release_prewarm'),
+
+  voiceStartRecording: () =>
+    invoke<void>('voice_start_recording'),
+
+  voiceStopAndTranscribe: () =>
+    invoke<VoiceTranscript>('voice_stop_and_transcribe'),
+
+  voiceCancelRecording: () =>
+    invoke<void>('voice_cancel_recording'),
+
+  voiceModelStatus: () =>
+    invoke<VoiceModelStatus>('voice_model_status'),
+
+  voiceDownloadModel: (url?: string) =>
+    invoke<void>('voice_download_model', { url: url ?? null }),
+
+  voiceCancelDownload: () =>
+    invoke<void>('voice_cancel_download'),
+
+  voiceImportModel: (archivePath: string) =>
+    invoke<VoiceModelStatus>('voice_import_model', { archivePath }),
+
+  voiceDeleteModel: () =>
+    invoke<void>('voice_delete_model'),
 
   // Platform / Android file access
   getPlatform: () =>

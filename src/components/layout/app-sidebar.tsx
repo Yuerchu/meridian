@@ -4,7 +4,7 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 import {
   MessageSquare, MessageCircle, Plus, Settings, Trash2, FolderOpen, FolderPlus,
   Users, Archive, Download, ArrowLeft, Pin, PinOff, Pencil,
-  Cloud, Bot, Smile, Wrench, Sparkles, Plug, Brain, Radio, Settings2, Info,
+  Cloud, Bot, Smile, Wrench, Sparkles, Plug, Brain, Mic, Radio, Settings2, Info,
 } from 'lucide-react'
 import SpotlightCard from '@/components/SpotlightCard'
 import { useConversationStore } from '@/stores/conversation-store'
@@ -137,6 +137,7 @@ const settingsTabs: Array<{ id: SettingsTab; labelKey: string; icon: React.Eleme
   { id: 'skills', labelKey: 'settings.skillsTab', icon: Sparkles },
   { id: 'mcp', labelKey: 'settings.mcp', icon: Plug },
   { id: 'memories', labelKey: 'settings.memories', icon: Brain },
+  { id: 'voice', labelKey: 'settings.voice', icon: Mic },
   { id: 'onebot', labelKey: 'settings.onebot', icon: Radio },
   { id: 'general', labelKey: 'settings.general', icon: Settings2 },
   { id: 'about', labelKey: 'settings.about', icon: Info },
@@ -235,7 +236,7 @@ export function AppSidebar({
             <SidebarGroupLabel>{t('settings.title')}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {settingsTabs.filter((tab) => tab.id !== 'onebot' || platform !== 'android').map((tab) => (
+                {settingsTabs.filter((tab) => (tab.id !== 'onebot' && tab.id !== 'voice') || platform !== 'android').map((tab) => (
                   <SidebarMenuItem key={tab.id}>
                     <SidebarMenuButton
                       isActive={settingsTab === tab.id}

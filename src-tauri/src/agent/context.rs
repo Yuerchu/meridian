@@ -76,10 +76,20 @@ fn sender_ref(user_id: i64, names: &SenderNames) -> SenderRef {
 
 fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message, names: &SenderNames) {
     match m.role.as_str() {
-        "user" => match m.sender_id {
-            Some(uid) => msgs.push(ChatMessage::user_from(&m.content, sender_ref(uid, names))),
-            None => msgs.push(ChatMessage::user(&m.content)),
-        },
+        "user" => {
+            // Dictated messages carry a marker the voice_input prompt block
+            // explains. Applied to the payload only — the stored row and the
+            // UI keep the clean transcript.
+            let content = if m.source.as_deref() == Some("voice") {
+                std::borrow::Cow::Owned(format!("[voice] {}", m.content))
+            } else {
+                std::borrow::Cow::Borrowed(m.content.as_str())
+            };
+            match m.sender_id {
+                Some(uid) => msgs.push(ChatMessage::user_from(&content, sender_ref(uid, names))),
+                None => msgs.push(ChatMessage::user(&content)),
+            }
+        }
         "assistant" => {
             let tool_calls = if m.schema_version >= 2 {
                 parse_openai_tool_calls(m.tool_calls.as_deref())
@@ -336,6 +346,7 @@ mod tests {
             sender_id: None,
             parent_id: None,
             compact_anchor_id: None,
+            source: None,
         }
     }
 
@@ -606,6 +617,7 @@ mod injected_context_tests {
             sender_id: None,
             parent_id: None,
             compact_anchor_id: None,
+            source: None,
         }];
         let context = crate::db::ops::message::ActiveContext {
             path: Vec::new(),

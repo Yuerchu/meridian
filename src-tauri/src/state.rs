@@ -26,6 +26,33 @@ pub enum ApprovalDecision {
 }
 
 pub(crate) struct ApprovalWaiters(pub(crate) Mutex<HashMap<String, oneshot::Sender<ApprovalDecision>>>);
+
+/// Voice input state. The engine slot has its own lock so that a slow model
+/// load (~3.6s) naturally deduplicates: the prewarm task holds the lock while
+/// loading and a concurrent transcribe call just waits on it, then hits the
+/// cache instead of loading again.
+#[cfg(not(target_os = "android"))]
+pub(crate) struct VoiceState {
+    pub(crate) inner: Arc<Mutex<VoiceInner>>,
+    pub(crate) engine: Arc<Mutex<Option<Arc<crate::voice::engine::Engine>>>>,
+}
+
+#[cfg(not(target_os = "android"))]
+#[derive(Default)]
+pub(crate) struct VoiceInner {
+    pub(crate) session: Option<crate::voice::capture::RecordingSession>,
+    pub(crate) download: Option<CancellationToken>,
+}
+
+#[cfg(not(target_os = "android"))]
+impl VoiceState {
+    pub(crate) fn new() -> Self {
+        VoiceState {
+            inner: Arc::new(Mutex::new(VoiceInner::default())),
+            engine: Arc::new(Mutex::new(None)),
+        }
+    }
+}
 pub(crate) struct ActiveChats(pub(crate) Mutex<HashMap<String, CancellationToken>>);
 pub(crate) struct EditSessions(pub(crate) Mutex<HashMap<String, Arc<tokio::sync::Mutex<edit_session::EditSession>>>>);
 pub(crate) struct CompactBreakers(pub(crate) Mutex<HashMap<String, Arc<CompactCircuitBreaker>>>);

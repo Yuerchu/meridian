@@ -5,8 +5,9 @@ use diesel::sqlite::SqliteConnection;
 use crate::db::models::memory::{
     DeletedBy, Memory, MemoryProposal, MemorySubject, MemoryUpdate, NewMemory, NewMemoryProposal,
     NewMemorySubject, Origin, ProposalStatus, Visibility, GLOBAL_SCOPE_ID,
-    MAX_MEMORIES_PER_PROJECT, MAX_MEMORIES_PER_SUBJECT, MAX_MEMORY_CONTENT_LEN,
-    MAX_ONEBOT_GLOBAL_MEMORIES, MAX_PINNED_SUBJECTS, MAX_REMEMBERED_SUBJECTS, MAX_TRACKED_SUBJECTS,
+    MAX_CLIENT_GLOBAL_MEMORIES, MAX_MEMORIES_PER_PROJECT, MAX_MEMORIES_PER_SUBJECT,
+    MAX_MEMORY_CONTENT_LEN, MAX_ONEBOT_GLOBAL_MEMORIES, MAX_PINNED_SUBJECTS,
+    MAX_REMEMBERED_SUBJECTS, MAX_TRACKED_SUBJECTS,
 };
 use crate::db::models::memory::MemoryScope;
 use crate::db::schema::{memories, memory_proposals, memory_subjects};
@@ -174,6 +175,7 @@ pub fn list_trash(conn: &mut SqliteConnection, limit: i64) -> QueryResult<Vec<Me
 fn scope_quota(scope: MemoryScope) -> usize {
     match scope {
         MemoryScope::Project => MAX_MEMORIES_PER_PROJECT,
+        MemoryScope::ClientGlobal => MAX_CLIENT_GLOBAL_MEMORIES,
         MemoryScope::OnebotGlobal => MAX_ONEBOT_GLOBAL_MEMORIES,
         MemoryScope::OnebotUser => MAX_MEMORIES_PER_SUBJECT,
     }

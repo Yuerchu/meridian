@@ -244,6 +244,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     addUserBubble: boolean,
     files?: AttachedFile[],
     replaces?: string,
+    voice?: boolean,
   ) => {
     // A null message means "regenerate", which needs no text of its own.
     if ((text === null ? !replaces : !text) || streaming || submittingRef.current) return
@@ -335,6 +336,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         assistantId: selectedAssistantId ?? undefined,
         fast: fastMode || undefined,
         mode,
+        voice: voice || undefined,
       })
       .catch((err) => {
         storeSetError(conversationId, String(err))
@@ -359,6 +361,11 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
       sendMessage(initialMessage, true)
     }
   }, [initialMessage])
+
+  // Voice input sends directly, bypassing the textarea and any attachments.
+  const handleVoiceSend = useCallback((text: string) => {
+    if (text.trim()) sendMessage(text, true, undefined, undefined, true)
+  }, [sendMessage])
 
   const handleSubmit = useCallback(() => {
     const text = input.trim()
@@ -584,6 +591,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         value={input}
         onChange={setInput}
         onSubmit={handleSubmit}
+        onVoiceSend={handleVoiceSend}
         onStop={handleStop}
         disabled={streaming}
         streaming={streaming}

@@ -217,6 +217,7 @@ diesel::table! {
         sender_id -> Nullable<BigInt>,
         parent_id -> Nullable<Text>,
         compact_anchor_id -> Nullable<Text>,
+        source -> Nullable<Text>,
     }
 }
 

@@ -138,6 +138,19 @@ export interface OpenAIToolCall {
   function: { name: string; arguments: string }
 }
 
+export interface VoiceModelStatus {
+  installed: boolean
+  path: string | null
+  size_bytes: number
+  downloading: boolean
+}
+
+export interface VoiceTranscript {
+  status: 'ok' | 'too_short' | 'empty'
+  text: string
+  duration_ms: number
+}
+
 export interface Message {
   id: string
   conversation_id: string
@@ -158,6 +171,8 @@ export interface Message {
   /** The message this one answers or follows. Siblings under one parent are
    *  alternative versions of the same step. Null marks a root. */
   parent_id?: string | null
+  /** How the message was produced: null for typed, 'voice' for speech input. */
+  source?: string | null
   /** Only on compaction summaries: the first message the summary stands in
    *  front of. */
   compact_anchor_id?: string | null

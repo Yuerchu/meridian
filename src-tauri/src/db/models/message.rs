@@ -40,6 +40,9 @@ pub struct Message {
     /// summary stands in front of. A summary whose anchor is not on the active
     /// path does not apply.
     pub compact_anchor_id: Option<String>,
+    /// How this message was produced. `None` means typed; `"voice"` marks
+    /// offline speech-to-text, whose transcripts may carry homophone errors.
+    pub source: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
@@ -64,4 +67,5 @@ pub struct NewMessage<'a> {
     pub sender_id: Option<i64>,
     pub parent_id: Option<&'a str>,
     pub compact_anchor_id: Option<&'a str>,
+    pub source: Option<&'a str>,
 }

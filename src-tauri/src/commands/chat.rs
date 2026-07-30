@@ -260,6 +260,7 @@ pub async fn chat(
     assistant_id: Option<String>,
     fast: Option<bool>,
     mode: Option<String>,
+    voice: Option<bool>,
 ) -> Result<(), String> {
     let secrets = app.state::<AppSecrets>();
     let pool = app.state::<AppDb>().0.clone();
@@ -419,6 +420,10 @@ pub async fn chat(
     let context_blocks = vec![
         instruction_block.unwrap_or_default(),
         file_access_prompt(&file_access),
+        // Mirrored in conversation.rs's estimator via the same function; the
+        // OR with this turn's flag only matters before the message lands.
+        crate::voice::prompt::voice_context_block(&ctx.path, voice == Some(true))
+            .unwrap_or_default(),
     ];
     let turn = {
         let pool2 = pool.clone();
@@ -486,13 +491,20 @@ pub async fn chat(
             .clone()
     };
 
+    // What the provider sees; the stored row keeps the clean transcript. The
+    // [voice] marker matches what push_history_message adds to older rows.
+    let payload_message = match (message.as_deref(), voice == Some(true)) {
+        (Some(m), true) => Some(format!("[voice] {m}")),
+        (m, _) => m.map(String::from),
+    };
+
     // Auto-compact: if enabled and tokens exceed threshold, compact before sending
     let mut compacted = false;
     if auto_compact && circuit_breaker.can_compact() {
         let pre_msgs = build_messages_with_senders(
             system_prompt.trim(),
             &ctx,
-            trailing_with_memory(memory_block.as_deref(), message.as_deref().unwrap_or("")),
+            trailing_with_memory(memory_block.as_deref(), payload_message.as_deref().unwrap_or("")),
             &Default::default(),
         );
         budget.update_estimate(&pre_msgs);
@@ -545,7 +557,7 @@ pub async fn chat(
     let mut chat_messages = build_messages_with_senders(
         system_prompt.trim(),
         &ctx,
-        trailing_with_memory(memory_block.as_deref(), message.as_deref().unwrap_or("")),
+        trailing_with_memory(memory_block.as_deref(), payload_message.as_deref().unwrap_or("")),
         &Default::default(),
     );
     let files_root = app.path().app_data_dir().ok().map(|d| crate::files::files_dir(&d));
@@ -594,6 +606,7 @@ pub async fn chat(
                 // Desktop chats have a single implicit speaker.
                 sender_id: None,
                 parent_id: None, compact_anchor_id: None,
+                source: if voice == Some(true) { Some("voice") } else { None },
             }, parent.as_deref()).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
@@ -670,7 +683,7 @@ pub async fn chat(
                     output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
                     created_at: now_ms(), reasoning_content: None, rating: None, schema_version: 2,
                     is_compact_summary: 0, sender_id: None,
-                    parent_id: None, compact_anchor_id: None,
+                    parent_id: None, compact_anchor_id: None, source: None,
                 }, parent.as_deref()).map_err(|e| e.to_string())?;
                 Ok::<_, String>(())
             }).await.map_err(|e| e.to_string())??;
@@ -1181,7 +1194,7 @@ pub async fn chat(
                         sort_order: 0, created_at: now_ms(),
                         reasoning_content: None, rating: None, schema_version: 2,
                         is_compact_summary: 0, sender_id: None,
-                        parent_id: None, compact_anchor_id: None,
+                        parent_id: None, compact_anchor_id: None, source: None,
                     }, parent.as_deref()).map(|_| tool_msg_id).map_err(|e| e.to_string())
                 }).await;
 

@@ -20,7 +20,7 @@ fn resolve_scope(
         MemoryScope::Project => project_id
             .ok_or("A project must be selected for project-scoped memories")?
             .to_string(),
-        MemoryScope::OnebotGlobal => GLOBAL_SCOPE_ID.to_string(),
+        MemoryScope::ClientGlobal | MemoryScope::OnebotGlobal => GLOBAL_SCOPE_ID.to_string(),
         MemoryScope::OnebotUser => subject_scope_id
             .ok_or("A person must be selected for per-person memories")?
             .to_string(),
@@ -102,8 +102,10 @@ pub async fn save_memory_scoped(
         // operator would see it saved and active while it never reached a
         // conversation. Anything aimed at the OneBot layers is the operator
         // teaching the bot, which is what `Admin` means.
+        // The client layers are injected without an origin filter, so `Desktop`
+        // reaches the conversations they belong to.
         let origin = match scope {
-            MemoryScope::Project => Origin::Desktop,
+            MemoryScope::Project | MemoryScope::ClientGlobal => Origin::Desktop,
             MemoryScope::OnebotGlobal | MemoryScope::OnebotUser => Origin::Admin,
         };
         db::ops::memory::upsert_memory(

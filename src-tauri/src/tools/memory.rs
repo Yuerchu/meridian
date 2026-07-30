@@ -2,16 +2,36 @@ use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use super::{Permission, Tool, ToolContext};
-use crate::db::models::memory::{MemoryScope, NewMemory, Origin, Visibility};
+use crate::db::models::memory::{GLOBAL_SCOPE_ID, MemoryScope, NewMemory, Origin, Visibility};
 
-fn get_pool_and_project(context: &ToolContext) -> Result<(crate::db::DbPool, String), String> {
+/// Where a memory tool call reads and writes.
+///
+/// A conversation attached to a project uses that project's scope. One without a
+/// project falls back to the client-wide scope rather than failing: memories used
+/// to be refused outright there, so anything the model learned in an unattached
+/// conversation was lost the moment the turn ended.
+///
+/// Never `OnebotGlobal` — that layer belongs to the bot side and is not injected
+/// into client conversations, so writing there would store rows nobody reads.
+fn get_pool_and_scope(
+    context: &ToolContext,
+) -> Result<(crate::db::DbPool, MemoryScope, String), String> {
     let pool = context.db_pool.as_ref()
-        .ok_or("Memory tools require a project context")?
+        .ok_or("Memory tools are unavailable: no database handle")?
         .clone();
-    let project_id = context.project_id.as_ref()
-        .ok_or("Memory tools require a project context")?
-        .clone();
-    Ok((pool, project_id))
+    match context.project_id.as_ref() {
+        Some(pid) => Ok((pool, MemoryScope::Project, pid.clone())),
+        None => Ok((pool, MemoryScope::ClientGlobal, GLOBAL_SCOPE_ID.to_string())),
+    }
+}
+
+/// Names the scope in tool output so the model — and the user reading the tool
+/// card — can tell a project memory from a client-wide one.
+fn scope_label(scope: MemoryScope) -> &'static str {
+    match scope {
+        MemoryScope::Project => "this project",
+        _ => "all conversations in this app",
+    }
 }
 
 pub struct SaveMemoryTool;
@@ -21,7 +41,7 @@ impl Tool for SaveMemoryTool {
     fn name(&self) -> &str { "save_memory" }
 
     fn description(&self) -> &str {
-        "Save or update a persistent memory for the current project. Memories persist across conversations and are automatically injected into your context."
+        "Save or update a persistent memory. Memories persist across conversations and are automatically injected into your context. Scope is implicit: in a conversation belonging to a project the memory is stored for that project, otherwise it is stored app-wide."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -49,7 +69,7 @@ impl Tool for SaveMemoryTool {
     fn default_permission(&self) -> Permission { Permission::Always }
 
     async fn execute(&self, args: Value, context: &ToolContext) -> Result<String, String> {
-        let (pool, project_id) = get_pool_and_project(context)?;
+        let (pool, scope, scope_id) = get_pool_and_scope(context)?;
         let key = args.get("key").and_then(|v| v.as_str())
             .ok_or("Missing required parameter: key")?
             .to_string();
@@ -66,18 +86,18 @@ impl Tool for SaveMemoryTool {
             // Length and quota live in ops so this path and the IPC path cannot
             // disagree, and so neither can bypass the other.
             crate::db::ops::memory::validate_memory(
-                &mut conn, MemoryScope::Project, &project_id, &key, &content,
+                &mut conn, scope, &scope_id, &key, &content,
             )?;
             let existing = crate::db::ops::memory::get_memory_by_key(
-                &mut conn, MemoryScope::Project, &project_id, &key,
+                &mut conn, scope, &scope_id, &key,
             ).map_err(|e| e.to_string())?;
 
             let id = uuid::Uuid::new_v4().to_string();
             let now = crate::util::now_ms();
             crate::db::ops::memory::upsert_memory(&mut conn, &NewMemory {
                 id: &id,
-                scope_type: MemoryScope::Project.as_str(),
-                scope_id: &project_id,
+                scope_type: scope.as_str(),
+                scope_id: &scope_id,
                 key: &key,
                 content: &content,
                 memory_type: &memory_type,
@@ -89,10 +109,11 @@ impl Tool for SaveMemoryTool {
                 updated_at: now,
             }).map_err(|e| e.to_string())?;
 
+            let where_ = scope_label(scope);
             if existing.is_some() {
-                Ok(format!("Updated memory '{key}'."))
+                Ok(format!("Updated memory '{key}' for {where_}."))
             } else {
-                Ok(format!("Saved memory '{key}'."))
+                Ok(format!("Saved memory '{key}' for {where_}."))
             }
         }).await.map_err(|e| e.to_string())?
     }
@@ -105,7 +126,7 @@ impl Tool for RecallMemoryTool {
     fn name(&self) -> &str { "recall_memory" }
 
     fn description(&self) -> &str {
-        "Recall a specific memory by key from the current project."
+        "Recall a specific memory by key. Looks in the current project's memories, or the app-wide ones when the conversation has no project."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -124,7 +145,7 @@ impl Tool for RecallMemoryTool {
     fn default_permission(&self) -> Permission { Permission::Always }
 
     async fn execute(&self, args: Value, context: &ToolContext) -> Result<String, String> {
-        let (pool, project_id) = get_pool_and_project(context)?;
+        let (pool, scope, scope_id) = get_pool_and_scope(context)?;
         let key = args.get("key").and_then(|v| v.as_str())
             .ok_or("Missing required parameter: key")?
             .to_string();
@@ -132,7 +153,7 @@ impl Tool for RecallMemoryTool {
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
             match crate::db::ops::memory::get_memory_by_key(
-                &mut conn, MemoryScope::Project, &project_id, &key,
+                &mut conn, scope, &scope_id, &key,
             ).map_err(|e| e.to_string())? {
                 Some(m) => Ok(format!("[{}] {}: {}", m.memory_type, m.key, m.content)),
                 None => Ok(format!("No memory found for key '{key}'.")),
@@ -148,7 +169,7 @@ impl Tool for ListMemoriesTool {
     fn name(&self) -> &str { "list_memories" }
 
     fn description(&self) -> &str {
-        "List all stored memories for the current project."
+        "List stored memories for the current project, or the app-wide ones when the conversation has no project."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -161,12 +182,12 @@ impl Tool for ListMemoriesTool {
     fn default_permission(&self) -> Permission { Permission::Always }
 
     async fn execute(&self, _args: Value, context: &ToolContext) -> Result<String, String> {
-        let (pool, project_id) = get_pool_and_project(context)?;
+        let (pool, scope, scope_id) = get_pool_and_scope(context)?;
 
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
             let memories = crate::db::ops::memory::list_by_scope(
-                &mut conn, MemoryScope::Project, &project_id,
+                &mut conn, scope, &scope_id,
             ).map_err(|e| e.to_string())?;
 
             if memories.is_empty() {
@@ -191,7 +212,7 @@ impl Tool for DeleteMemoryTool {
     fn name(&self) -> &str { "delete_memory" }
 
     fn description(&self) -> &str {
-        "Delete a memory by key from the current project."
+        "Delete a memory by key from the current project, or from the app-wide ones when the conversation has no project."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -210,7 +231,7 @@ impl Tool for DeleteMemoryTool {
     fn default_permission(&self) -> Permission { Permission::Always }
 
     async fn execute(&self, args: Value, context: &ToolContext) -> Result<String, String> {
-        let (pool, project_id) = get_pool_and_project(context)?;
+        let (pool, scope, scope_id) = get_pool_and_scope(context)?;
         let key = args.get("key").and_then(|v| v.as_str())
             .ok_or("Missing required parameter: key")?
             .to_string();
@@ -218,7 +239,7 @@ impl Tool for DeleteMemoryTool {
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
             let existing = crate::db::ops::memory::get_memory_by_key(
-                &mut conn, MemoryScope::Project, &project_id, &key,
+                &mut conn, scope, &scope_id, &key,
             ).map_err(|e| e.to_string())?;
             let Some(existing) = existing else {
                 return Ok(format!("No memory found for key '{key}'."));

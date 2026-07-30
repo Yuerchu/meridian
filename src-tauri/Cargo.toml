@@ -62,6 +62,14 @@ dirs = "6"
 tiktoken = "3.5"
 tauri-plugin-notification = "2"
 
+# Offline voice input (desktop only; Android will reuse engine.rs with
+# SHERPA_ONNX_LIB_DIR pointing at the prebuilt android .so — see memory notes)
+[target.'cfg(not(target_os = "android"))'.dependencies]
+sherpa-onnx = { version = "1.13.4", default-features = false, features = ["shared"] }
+cpal = "0.15"
+tar = "0.4"
+bzip2 = "0.4"
+
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3.6", default-features = false, features = ["crypto-rust", "windows-native"] }
 sandbox-windows = { path = "crates/sandbox-windows" }

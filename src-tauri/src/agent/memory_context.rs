@@ -64,9 +64,18 @@ impl MemorySubjectRef {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct MemoryRequest {
     pub project_id: Option<String>,
-    /// Desktop turns are always false: the bot-wide persona layer belongs to the
-    /// OneBot side of the app.
+    /// The bot-wide layer. Sibling of `include_client_global`, not a superset:
+    /// what the bot learned over QQ is not background for a desktop chat.
     pub include_onebot_global: bool,
+    /// The client-wide layer: what the user told Meridian directly, outside any
+    /// project. Desktop turns read it because that is also where they write when
+    /// the conversation has no project.
+    pub include_client_global: bool,
+    /// Whether more than one person can be in the conversation. Gates the policy
+    /// preamble, whose rules are all about not leaking one person's memories to
+    /// another; on a single-speaker desktop chat they cost tokens and imply an
+    /// audience that is not there.
+    pub multi_speaker: bool,
     pub subjects: Vec<MemorySubjectRef>,
     /// Which origins may be shown for the subject layer. Groups pass the
     /// group-visible set; private chats pass `None` and see everything.
@@ -75,11 +84,16 @@ pub(crate) struct MemoryRequest {
 }
 
 impl MemoryRequest {
-    /// Desktop chat: one project, no bot layer, nobody's profile.
+    /// Desktop chat: the client-wide layer plus at most one project, nobody's
+    /// profile, and nothing from the OneBot side. The client layer is included
+    /// because a conversation with no project writes there — leaving it out meant
+    /// those memories were stored and then never injected again.
     pub fn desktop(project_id: Option<String>, budget_tokens: usize) -> Self {
         Self {
             project_id,
             include_onebot_global: false,
+            include_client_global: true,
+            multi_speaker: false,
             subjects: Vec::new(),
             subject_visibility: VisibilityCtx::private_injection(),
             budget_tokens,
@@ -96,6 +110,8 @@ impl MemoryRequest {
         Self {
             project_id,
             include_onebot_global: true,
+            include_client_global: false,
+            multi_speaker: true,
             subjects,
             subject_visibility: VisibilityCtx::group_injection(),
             budget_tokens,
@@ -109,6 +125,10 @@ impl MemoryRequest {
         Self {
             project_id: None,
             include_onebot_global: true,
+            include_client_global: false,
+            // One person is present, but they are not the only person the bot
+            // holds memories about, and those must not surface here either.
+            multi_speaker: true,
             subjects: vec![subject],
             subject_visibility: VisibilityCtx::private_injection(),
             budget_tokens,
@@ -179,16 +199,23 @@ pub(crate) fn load_memory_block_sync(
 ) -> Option<String> {
     let budgets = layer_budgets(req.budget_tokens);
 
-    let global = if req.include_onebot_global {
+    // The two global layers share one budget line: a turn only ever includes one
+    // of them, so splitting the allowance would just shrink whichever is in play.
+    let mut load_global = |scope: MemoryScope| {
         list_by_scopes(
             conn,
-            MemoryScope::OnebotGlobal,
+            scope,
             &[GLOBAL_SCOPE_ID.to_string()],
             &VisibilityCtx::private_injection(),
         )
         .ok()
         .map(|rows| fit_to_budget(rows, budgets.global))
         .unwrap_or_default()
+    };
+    let global = if req.include_onebot_global {
+        load_global(MemoryScope::OnebotGlobal)
+    } else if req.include_client_global {
+        load_global(MemoryScope::ClientGlobal)
     } else {
         Vec::new()
     };
@@ -251,19 +278,25 @@ pub(crate) fn load_memory_block_sync(
         return None;
     }
 
-    // A single-layer turn (the desktop, with nothing but ordinary project rows)
-    // keeps the exact block it has always received, tag and all. The policy
-    // preamble and the sectioning only earn their tokens where several layers,
-    // several people, or operator notes are in play; emitting them otherwise
-    // would change every existing assistant's context for no benefit.
+    // A single-speaker turn (the desktop) gets the plain layers with no policy
+    // preamble: every rule in it is about not leaking one person's memories to
+    // another, which cannot happen here. A desktop chat with nothing but project
+    // rows therefore keeps the exact block it has always received, tag and all.
     //
     // Owner notes force the full path even on the desktop: dropping them here
     // would silently discard rows the operator explicitly marked, and inlining
     // them would put them outside the tag their protection is attached to.
-    let single_layer =
-        !req.include_onebot_global && req.subjects.is_empty() && owner_notes.is_empty();
-    if single_layer {
-        return format_memory_section(&project, "project_memories", None);
+    if !req.multi_speaker && owner_notes.is_empty() {
+        let mut out = String::new();
+        // Global first: it is the more stable layer, so it sits earlier in the
+        // cached prefix than project rows that change per conversation.
+        if let Some(s) = format_memory_section(&global, "global_memories", None) {
+            out.push_str(&s);
+        }
+        if let Some(s) = format_memory_section(&project, "project_memories", None) {
+            out.push_str(&s);
+        }
+        return (!out.is_empty()).then_some(out);
     }
 
     let mut out = String::new();
@@ -412,6 +445,80 @@ mod tests {
             "\n\n<project_memories>\n- [general] stack: Rust + Tauri\n</project_memories>",
             "desktop keeps the legacy single-section block byte for byte"
         );
+    }
+
+    /// A conversation with no project writes to the client-global scope, so the
+    /// desktop has to read it back — otherwise those memories are stored and
+    /// never seen again. Still no policy preamble: one speaker, nothing to leak.
+    #[test]
+    fn desktop_reads_global_memories_without_the_policy_preamble() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        add(conn, "g1", MemoryScope::ClientGlobal, GLOBAL_SCOPE_ID, "editor_choice",
+            "用 Zed 写代码", Origin::Desktop, Visibility::Normal);
+
+        let block = load_memory_block_sync(conn, &MemoryRequest::desktop(None, 8_000)).unwrap();
+
+        assert_eq!(
+            block,
+            "\n\n<global_memories>\n- [general] editor_choice: 用 Zed 写代码\n</global_memories>",
+        );
+        assert!(!block.contains("<memory_policy>"));
+    }
+
+    /// Both layers render, global first so the stabler rows stay in the cached
+    /// prefix.
+    #[test]
+    fn desktop_renders_global_before_project() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        project(conn, "p1");
+        add(conn, "g1", MemoryScope::ClientGlobal, GLOBAL_SCOPE_ID, "editor_choice",
+            "用 Zed 写代码", Origin::Desktop, Visibility::Normal);
+        add(conn, "m1", MemoryScope::Project, "p1", "stack", "Rust + Tauri",
+            Origin::Desktop, Visibility::Normal);
+
+        let block = load_memory_block_sync(
+            conn,
+            &MemoryRequest::desktop(Some("p1".into()), 8_000),
+        )
+        .unwrap();
+
+        let global_at = block.find("<global_memories>").unwrap();
+        let project_at = block.find("<project_memories>").unwrap();
+        assert!(global_at < project_at);
+        assert!(!block.contains("<memory_policy>"));
+    }
+
+    /// The two global layers are siblings, not a hierarchy: what the bot learned
+    /// over QQ is not background for a desktop chat, and vice versa.
+    #[test]
+    fn the_two_global_layers_do_not_leak_into_each_other() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        add(conn, "bot", MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID, "bot_rule",
+            "群里少说话", Origin::Admin, Visibility::Normal);
+
+        // Desktop sees nothing: the only row lives on the bot side.
+        assert!(load_memory_block_sync(conn, &MemoryRequest::desktop(None, 8_000)).is_none());
+
+        add(conn, "client", MemoryScope::ClientGlobal, GLOBAL_SCOPE_ID, "editor_choice",
+            "用 Zed 写代码", Origin::Desktop, Visibility::Normal);
+
+        let desktop = load_memory_block_sync(conn, &MemoryRequest::desktop(None, 8_000)).unwrap();
+        assert!(desktop.contains("editor_choice"));
+        assert!(!desktop.contains("bot_rule"));
+
+        let private = load_memory_block_sync(
+            conn,
+            &MemoryRequest::onebot_private(
+                MemorySubjectRef { scope_id: onebot_user_scope_id(1), display_name: None },
+                8_000,
+            ),
+        )
+        .unwrap();
+        assert!(private.contains("bot_rule"));
+        assert!(!private.contains("editor_choice"));
     }
 
     /// The privacy boundary, end to end through the renderer.

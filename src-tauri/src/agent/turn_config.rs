@@ -438,4 +438,22 @@ mod tests {
         assert_eq!(a.system_prompt, b.system_prompt);
         assert!(a.system_prompt.contains("<todo_list>"));
     }
+
+    #[test]
+    fn the_voice_block_reaches_the_prompt_like_any_context_block() {
+        // chat.rs and the estimator both derive this block from
+        // voice::prompt::voice_context_block over the same active path; here we
+        // pin that whatever that function emits actually lands in the prompt.
+        let (pool, reg) = setup();
+        let mut conn = pool.get().unwrap();
+
+        let block = crate::voice::prompt::voice_context_block(&[], true).unwrap();
+        let mut i = input(super::super::modes::resolve(None), None);
+        i.context_blocks = vec![block];
+        let cfg = resolve(&mut conn, &reg, i);
+        assert!(cfg.system_prompt.contains("<voice_input>"));
+
+        // And a typed-only conversation adds nothing.
+        assert!(crate::voice::prompt::voice_context_block(&[], false).is_none());
+    }
 }

@@ -44,7 +44,9 @@ export function MemoryRow({
           {expanded ? <ChevronDown /> : <ChevronRight />}
         </Button>
         <span className="font-mono text-sm">{memory.key}</span>
-        <MemoryBadge tone="accent">{memory.scope_type.replace('onebot_', '')}</MemoryBadge>
+        <MemoryBadge tone="accent">
+          {memory.scope_type.replace('onebot_', '').replace('client_global', 'client')}
+        </MemoryBadge>
         <MemoryBadge tone="info">{memory.origin}</MemoryBadge>
         <MemoryBadge>{memory.memory_type}</MemoryBadge>
         {ownerOnly && (

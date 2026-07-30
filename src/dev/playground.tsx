@@ -41,6 +41,7 @@ import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { TurnSteps } from '@/components/chat/turn-steps'
 import { TodoBarView } from '@/components/chat/todo-bar'
 import { FastToggle, ModeSelector, ThinkingSelector } from '@/components/chat/toolbar'
+import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
 import { formatDuration, type TurnStep } from '@/lib/turns'
 import type { ChatMode, ProviderCapabilities, ThinkingEffort, ThinkingLevel, ToolCallDisplay } from '@/types'
 
@@ -699,6 +700,17 @@ export default function Playground() {
           <div className="flex flex-wrap gap-4">
             <FastCase label="关闭" initial={false} />
             <FastCase label="开启" initial />
+          </div>
+        </Section>
+
+        <Section title="VoiceButton / 语音输入按钮">
+          <div className="flex flex-wrap items-center gap-6">
+            {(['idle', 'recording-hold', 'recording-toggle', 'transcribing'] as VoiceButtonState[]).map((s) => (
+              <div key={s} className="flex flex-col items-center gap-1">
+                <VoiceButton state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
+                <span className="text-xs text-muted-foreground">{s}</span>
+              </div>
+            ))}
           </div>
         </Section>
       </div>

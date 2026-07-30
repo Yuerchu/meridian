@@ -30,6 +30,8 @@ import {
 import { CircularProgress } from '@/components/ui/circular-progress'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
+import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
+import { VoiceButton } from '@/components/ui/voice-button'
 import { Toolbar, MobileOptionsMenu } from './toolbar'
 import { EmojiPicker } from './emoji-picker'
 import type { Assistant, ChatMode, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
@@ -51,6 +53,8 @@ interface InputBarProps {
   value: string
   onChange: (value: string) => void
   onSubmit: () => void
+  /** Send transcribed speech directly, bypassing the textarea. */
+  onVoiceSend?: (text: string) => void
   onStop?: () => void
   disabled?: boolean
   streaming?: boolean
@@ -80,6 +84,7 @@ export function InputBar({
   value,
   onChange,
   onSubmit,
+  onVoiceSend,
   onStop,
   disabled,
   streaming,
@@ -109,6 +114,20 @@ export function InputBar({
   const isAndroid = platform === 'android'
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [selectedText, setSelectedText] = useState('')
+
+  // Transient one-line notice above the composer ("too short", model missing…)
+  const [voiceNotice, setVoiceNotice] = useState<string | null>(null)
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const showVoiceNotice = useCallback((notice: VoiceNotice, detail?: string) => {
+    const text = notice === 'error' && detail ? detail : t(`chat.voice.${notice}`)
+    setVoiceNotice(text)
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
+    noticeTimerRef.current = setTimeout(() => setVoiceNotice(null), 3000)
+  }, [t])
+  const voice = useVoiceRecorder({
+    onSend: (text) => onVoiceSend?.(text),
+    onNotice: showVoiceNotice,
+  })
 
   useEffect(() => {
     textareaRef.current?.focus()
@@ -216,6 +235,9 @@ export function InputBar({
   return (
     <div className="px-4 pb-[max(1rem,var(--safe-bottom))] pt-2">
       <div className="max-w-2xl mx-auto">
+        {voiceNotice && (
+          <p className="px-2 pb-1.5 text-xs text-muted-foreground">{voiceNotice}</p>
+        )}
         <ContextMenu onOpenChange={handleContextMenuOpen}>
         <ContextMenuTrigger>
         <InputGroup className="rounded-2xl">
@@ -319,6 +341,29 @@ export function InputBar({
                   assistantId={currentAssistantId}
                   onSelect={(syntax) => onChange(value + syntax)}
                 />
+                {!isAndroid && onVoiceSend && (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <span>
+                          <VoiceButton
+                            state={voice.state}
+                            elapsed={voice.elapsed}
+                            disabled={disabled || streaming}
+                            onPointerDown={voice.handlePointerDown}
+                            onPointerUp={voice.handlePointerUp}
+                            onPointerCancel={voice.handlePointerCancel}
+                            onPointerEnter={voice.handlePointerEnter}
+                            onPointerLeave={voice.handlePointerLeave}
+                          />
+                        </span>
+                      }
+                    />
+                    <TooltipContent side="top">
+                      {voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 {contextInfo && contextInfo.messageCount > 0 && (() => {
                   const ratio = contextInfo.estimatedTokens / contextInfo.contextLimit
                   const colorClass = ratio > 0.95

@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bot, Copy, Check, Trash2, RefreshCw, FileText, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Bot, Copy, Check, Trash2, RefreshCw, FileText, Mic, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
 import CountUp from '@/components/CountUp'
 import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
@@ -442,6 +442,9 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                       <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
                     )}
                     <div className="whitespace-pre-wrap">
+                      {message.source === 'voice' && (
+                        <Mic className="inline-block size-3 mr-1 -mt-0.5 opacity-60" aria-label={t('chat.voice.badge')} />
+                      )}
                       {emojiMap && Object.keys(emojiMap).length > 0
                         ? renderEmojisInText(body, emojiMap)
                         : body}

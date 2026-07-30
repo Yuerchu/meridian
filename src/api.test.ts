@@ -83,6 +83,7 @@ describe('api', () => {
         assistantId: null,
         fast: null,
         mode: null,
+        voice: null,
       })
     })
 
@@ -105,6 +106,7 @@ describe('api', () => {
         assistantId: null,
         fast: null,
         mode: null,
+        voice: null,
       })
     })
 

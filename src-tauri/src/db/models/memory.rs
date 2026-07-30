@@ -4,9 +4,9 @@ use strum::{EnumIter, IntoEnumIterator};
 
 use crate::db::schema::{memories, memory_proposals, memory_subjects};
 
-/// Bot-wide memories all share one row anchor. A literal `'_'` rather than an
-/// empty string so logs and debugging can tell "the global scope" apart from
-/// "scope_id was never set".
+/// Global memories all share one row anchor within their scope type. A literal
+/// `'_'` rather than an empty string so logs and debugging can tell "the global
+/// scope" apart from "scope_id was never set".
 pub const GLOBAL_SCOPE_ID: &str = "_";
 
 /// Longest a single memory may be, enforced in ops so every writer (IPC, slash
@@ -16,6 +16,10 @@ pub const MAX_MEMORY_CONTENT_LEN: usize = 500;
 
 pub const MAX_MEMORIES_PER_PROJECT: usize = 100;
 pub const MAX_ONEBOT_GLOBAL_MEMORIES: usize = 50;
+/// The client-side counterpart of the OneBot global layer. Same order of
+/// magnitude: it is injected into every desktop turn, so it competes with the
+/// project layer for the same budget.
+pub const MAX_CLIENT_GLOBAL_MEMORIES: usize = 50;
 /// People holding at least one live `normal` memory. Owner-only rows do not
 /// count: eviction never deletes them, so a person left with nothing but the
 /// operator's notes would hold a slot forever and evicting them would free
@@ -35,6 +39,10 @@ pub const MAX_PINNED_SUBJECTS: usize = 50;
 #[serde(rename_all = "snake_case")]
 pub enum MemoryScope {
     Project,
+    /// Everything the user says directly in Meridian, outside any project.
+    /// Deliberately separate from `OnebotGlobal`: the two are sibling roots, and
+    /// neither is injected into the other's conversations.
+    ClientGlobal,
     OnebotGlobal,
     OnebotUser,
 }
@@ -43,6 +51,7 @@ impl MemoryScope {
     pub fn as_str(&self) -> &'static str {
         match self {
             MemoryScope::Project => "project",
+            MemoryScope::ClientGlobal => "client_global",
             MemoryScope::OnebotGlobal => "onebot_global",
             MemoryScope::OnebotUser => "onebot_user",
         }
