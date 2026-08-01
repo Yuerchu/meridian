@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { Bot, ChevronLeft, ChevronRight, ChevronsRight, Cpu, Check, Star, Lightbulb, RefreshCw, Plus, Camera, ImageIcon, Paperclip, Zap, Hammer, Compass } from 'lucide-react'
 import { ModelIcon } from '@lobehub/icons'
 import { Button } from '@/components/ui/button'
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
@@ -35,73 +34,6 @@ const CHAT_MODES: Array<{ id: ChatMode; icon: typeof Hammer; labelKey: string; d
   { id: 'plan', icon: Compass, labelKey: 'toolbar.mode.plan', descKey: 'toolbar.mode.planDesc' },
 ]
 
-/**
- * A selector rather than a toggle: modes are an open set on the Rust side, and
- * a boolean would have to be unpicked the moment a third one appears.
- *
- * Not gated on provider capabilities, unlike the fast tier — a mode narrows what
- * the assistant may do, which every model can honour.
- */
-export function ModeSelector({
-  current,
-  onSelect,
-}: {
-  current: ChatMode
-  onSelect: (mode: ChatMode) => void
-}) {
-  const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
-  const active = CHAT_MODES.find((m) => m.id === current) ?? CHAT_MODES[0]
-  const ActiveIcon = active.icon
-  const isDefault = current === 'work'
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className={cn(
-        'flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors touch-hitbox',
-        isDefault
-          ? 'text-muted-foreground hover:text-foreground hover:bg-accent'
-          : 'text-info hover:text-info/80 hover:bg-accent',
-      )}>
-        <ActiveIcon className="w-3.5 h-3.5" />
-        {!isDefault && (
-          <span data-slot="mode-selector-label" className="max-w-[60px] truncate">
-            {t(active.labelKey)}
-          </span>
-        )}
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-56 gap-0 p-1 bg-popover border-border">
-        <div data-slot="mode-selector-heading" className="px-1.5 py-1 text-xs text-muted-foreground">
-          {t('toolbar.mode')}
-        </div>
-        {CHAT_MODES.map((m) => {
-          const Icon = m.icon
-          return (
-            <Button
-              key={m.id}
-              variant="ghost"
-              onClick={() => { onSelect(m.id); setOpen(false) }}
-              className={cn(
-                'w-full flex items-center gap-2 rounded-md px-1.5 py-1 h-auto text-sm justify-start',
-                m.id === current
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-              )}
-            >
-              <Icon className="size-4 shrink-0" />
-              <span data-slot="mode-option-label" className="flex-1 text-left">{t(m.labelKey)}</span>
-              <span data-slot="mode-option-desc" className="text-xs text-muted-foreground/60">
-                {t(m.descKey)}
-              </span>
-            </Button>
-          )
-        })}
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-
 interface GroupedModels {
   provider: Provider
   models: ModelInfo[]
@@ -127,96 +59,6 @@ function levelsFor(capabilities: ProviderCapabilities | null | undefined) {
   const allowed = allowedEfforts(capabilities ?? null)
   return THINKING_LEVELS.filter(
     (l) => l.id === 'default' || l.id === 'off' || allowed.includes(l.id as ThinkingEffort),
-  )
-}
-
-export function ThinkingSelector({
-  current,
-  onSelect,
-  capabilities,
-}: {
-  current: ThinkingLevel
-  onSelect: (level: ThinkingLevel) => void
-  capabilities?: ProviderCapabilities | null
-}) {
-  const { t } = useTranslation()
-  const [open, setOpen] = useState(false)
-  const isActive = current !== 'default' && current !== 'off'
-  const levels = levelsFor(capabilities)
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger className={cn(
-        'flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors touch-hitbox',
-        isActive
-          ? 'text-info hover:text-info/80 hover:bg-accent'
-          : 'text-muted-foreground hover:text-foreground hover:bg-accent',
-      )}>
-        <Lightbulb className="w-3.5 h-3.5" />
-        {current !== 'default' && (
-          <span className="max-w-[60px] truncate">{t(`toolbar.thinking.${current}`)}</span>
-        )}
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-56 gap-0 p-1 bg-popover border-border">
-        <div className="px-1.5 py-1 text-xs text-muted-foreground">
-          {t('toolbar.thinking')}
-        </div>
-        {levels.map((level) => (
-          <Button
-            key={level.id}
-            variant="ghost"
-            onClick={() => { onSelect(level.id); setOpen(false) }}
-            className={cn(
-              'w-full flex items-center justify-between gap-1.5 rounded-md px-1.5 py-1 h-auto text-sm',
-              level.id === current
-                ? 'bg-accent text-accent-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-            )}
-          >
-            <span>{t(level.labelKey)}</span>
-            <span className="text-xs text-muted-foreground/60">{t(level.descKey)}</span>
-          </Button>
-        ))}
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-/**
- * Low-latency tier toggle. Only rendered for models that advertise it, so an
- * explicit `true` is required rather than the optimistic `!== false` used for
- * the thinking selector -- offering a tier the model lacks would be a wasted
- * control, whereas offering an extra effort tier is harmless.
- */
-export function FastToggle({
-  active,
-  onToggle,
-}: {
-  active: boolean
-  onToggle: (next: boolean) => void
-}) {
-  const { t } = useTranslation()
-
-  return (
-    <Button
-      data-slot="fast-toggle"
-      variant="ghost"
-      aria-pressed={active}
-      onClick={() => onToggle(!active)}
-      className={cn(
-        // border-0 and an explicit icon size cancel out <Button>'s defaults
-        // (border-transparent, plus a svg:size-4 rule that only skips classes
-        // containing "size-") so this lines up with the bare PopoverTriggers
-        // sitting next to it.
-        'flex items-center gap-1 px-2 py-1 h-auto border-0 rounded-md text-xs transition-colors touch-hitbox',
-        active
-          ? 'text-warning hover:text-warning/80 hover:bg-accent'
-          : 'text-muted-foreground hover:text-foreground hover:bg-accent',
-      )}
-    >
-      <Zap className="size-3.5" />
-      {active && <span>{t('toolbar.fast')}</span>}
-    </Button>
   )
 }
 

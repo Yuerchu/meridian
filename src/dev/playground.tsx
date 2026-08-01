@@ -40,11 +40,10 @@ import {
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { TurnSteps } from '@/components/chat/turn-steps'
 import { TodoBarView } from '@/components/chat/todo-bar'
-import { FastToggle, ModeSelector, ThinkingSelector } from '@/components/chat/toolbar'
 import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
 import { formatDuration, type TurnStep } from '@/lib/turns'
-import type { ChatMode, ProviderCapabilities, ThinkingEffort, ThinkingLevel, ToolCallDisplay } from '@/types'
+import type { ChatMode, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -178,35 +177,6 @@ function TurnCase({
   )
 }
 
-/**
- * Drives a ThinkingSelector with local state so the whitelist coercion is
- * observable: pick a tier, then compare against a narrower capability shape.
- */
-function ModeCase({ label, initial }: { label: string; initial: ChatMode }) {
-  const [mode, setMode] = useState<ChatMode>(initial)
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="flex items-center rounded-lg border border-border px-2 py-1">
-        <ModeSelector current={mode} onSelect={setMode} />
-      </div>
-      <span className="text-xs text-muted-foreground/60">{mode}</span>
-    </div>
-  )
-}
-
-function ThinkingCase({ label, capabilities }: { label: string; capabilities: ProviderCapabilities | null }) {
-  const [level, setLevel] = useState<ThinkingLevel>('default')
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="flex items-center rounded-lg border border-border px-2 py-1">
-        <ThinkingSelector current={level} onSelect={setLevel} capabilities={capabilities} />
-      </div>
-      <span className="text-xs text-muted-foreground/60">{level}</span>
-    </div>
-  )
-}
 
 /**
  * The composer menu with nothing behind it: `providers` is empty, so the model
@@ -257,19 +227,7 @@ function ComposerMenuCase({
   )
 }
 
-function FastCase({ label, initial }: { label: string; initial: boolean }) {
-  const [on, setOn] = useState(initial)
-  return (
-    <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <div className="flex items-center rounded-lg border border-border px-2 py-1">
-        <FastToggle active={on} onToggle={setOn} />
-      </div>
-    </div>
-  )
-}
 
-const GPT_5_2_EFFORTS: ThinkingEffort[] = ['low', 'medium', 'high', 'xhigh']
 
 const READ_RESULT = [
   "import { defineConfig } from 'vite'",
@@ -703,13 +661,6 @@ export default function Playground() {
           </div>
         </Section>
 
-        <Section title="ModeSelector / 模式切换">
-          <div className="flex flex-wrap items-center gap-4">
-            <ModeCase label="执行模式" initial="work" />
-            <ModeCase label="谋定模式" initial="plan" />
-          </div>
-        </Section>
-
         <Section title="ComposerMenu / 输入框选项菜单">
           <div className="flex flex-wrap items-center gap-4">
             <ComposerMenuCase label="默认" mode="work" acceptEdits={false} />
@@ -745,21 +696,6 @@ export default function Playground() {
           </div>
         </Section>
 
-        <Section title="ThinkingSelector / 档位白名单">
-          <div className="flex flex-wrap gap-4">
-            <ThinkingCase label="gpt-5.6-sol（全量）" capabilities={caps()} />
-            <ThinkingCase label="gpt-5.2（无 minimal/max）" capabilities={caps({ supported_efforts: GPT_5_2_EFFORTS })} />
-            <ThinkingCase label="claude-haiku-4-5（无 effort）" capabilities={caps({ supported_efforts: [] })} />
-            <ThinkingCase label="能力未加载（乐观全量）" capabilities={null} />
-          </div>
-        </Section>
-
-        <Section title="FastToggle / 疾速开关">
-          <div className="flex flex-wrap gap-4">
-            <FastCase label="关闭" initial={false} />
-            <FastCase label="开启" initial />
-          </div>
-        </Section>
 
         <Section title="VoiceButton / 语音输入按钮">
           <div className="flex flex-wrap items-center gap-6">
