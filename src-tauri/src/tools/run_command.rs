@@ -55,6 +55,8 @@ impl Tool for RunCommandTool {
             .map(|p| p.timeout)
             .unwrap_or(COMMAND_TIMEOUT);
 
+        let sandboxed = context.sandbox_policy.is_some();
+        let started = std::time::Instant::now();
         let res = crate::sandbox::execute(
             &shell_argv,
             &cwd,
@@ -63,10 +65,50 @@ impl Tool for RunCommandTool {
             &context.cancel,
         )
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            // The command string is never logged: it is model-generated and
+            // routinely contains exported tokens and passwords.
+            tracing::warn!(
+                tool = "run_command",
+                sandboxed,
+                timeout_secs = timeout.as_secs(),
+                error = %e,
+                "run_command could not be executed"
+            );
+            e.to_string()
+        })?;
 
         if is_sandbox_denied(&res) {
+            // The user is about to get an "allow this without the sandbox?"
+            // prompt. Without this line there is nothing recording what was
+            // blocked or why they were asked.
+            tracing::warn!(
+                tool = "run_command",
+                exit_code = res.exit_code,
+                stdout_len = res.stdout.len(),
+                stderr_len = res.stderr.len(),
+                duration_ms = started.elapsed().as_millis() as u64,
+                "command blocked by the sandbox; asking whether to retry without it"
+            );
             return Err(super::encode_sandbox_denied(&format_output(&res)));
+        }
+
+        if res.timed_out {
+            tracing::warn!(
+                tool = "run_command",
+                timeout_secs = timeout.as_secs(),
+                sandboxed,
+                "run_command timed out"
+            );
+        } else if res.exit_code != 0 {
+            // Below info on purpose: a non-zero exit is an ordinary outcome the
+            // model sees and handles, not something worth a line in the file.
+            tracing::debug!(
+                tool = "run_command",
+                exit_code = res.exit_code,
+                duration_ms = started.elapsed().as_millis() as u64,
+                "run_command exited non-zero"
+            );
         }
 
         Ok(format_output(&res))

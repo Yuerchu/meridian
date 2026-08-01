@@ -11,7 +11,23 @@ pub(crate) fn provider_secret_name(provider_id: &str) -> String {
 
 pub(crate) fn get_provider_api_key(secrets: &SecretsManager, provider_id: &str) -> Option<String> {
     let key = provider_secret_name(provider_id);
-    secrets.get(&SecretScope::Global, &SecretName::new(&key).unwrap()).ok().flatten()
+    match secrets.get(&SecretScope::Global, &SecretName::new(&key).unwrap()) {
+        Ok(value) => value,
+        Err(e) => {
+            // Callers turn a None into "API Key not set", which sends a user who
+            // definitely set one to enter it again — and re-entering rewrites the
+            // store under a fresh passphrase, taking the other providers' keys
+            // with it. The distinction between "absent" and "unreadable" only
+            // exists here.
+            tracing::error!(
+                provider_id = %provider_id,
+                secret_name = %key,
+                error = %e,
+                "stored API key could not be read; it will look as though none was set"
+            );
+            None
+        }
+    }
 }
 
 /// Secrets exposed to tool executors (web_search provider selection + service

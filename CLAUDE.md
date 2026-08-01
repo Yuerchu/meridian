@@ -34,6 +34,17 @@ src-tauri/
 - **Messages are a tree, read as one path.** Each row has a `parent_id`; each conversation has a `head_message_id` naming the leaf its active path ends at. Regenerating or editing writes a sibling and leaves the original reachable. Read a conversation with `db::ops::message::active_context` — `sort_order` is insertion order, not transcript position, once branches interleave. Write only through `append_message`, which links the row and moves the head in one transaction. Delete only whole subtrees: dropping a lone row strands its tool results or leaves an answer to nothing. `parent_id` carries no foreign key on purpose (see migration 21).
 - **Branches switch the transcript, not the world.** The todo list, approved plan and collaboration mode stay per-conversation and do not follow a branch switch. Files edited and commands run cannot be rewound either, so making these alone branch-aware would imply more than actually happens.
 
+## Logging
+
+`tracing` events at info and above go to `{app_data_dir}/logs/meridian.log` as JSONL, rotated by size (5 MB × 5). The user reads them in Settings → About → View logs; the assistant reads them through the `read_app_logs` tool, which the `meridian-diagnostics` skill drives. All three share `logging::reader::query`.
+
+- **Never log message bodies, prompts or tool output.** Log a length instead (`chars = body.chars().count()`). Exported logs leave the machine.
+- Credentials are redacted by field name plus `secrets::sanitizer::redact_secrets`, but do not rely on it — don't put a key in a log line to begin with.
+- `error = %e` beats `format!("{e}")`: the visitor walks `source()` and records the whole chain.
+- Open a span where a request begins (`info_span!("chat", conversation_id = %id)`). Everything logged underneath inherits it, which is what makes "why did *this* conversation fail" a single query.
+- New call sites default to `debug!`. Only user-visible state changes and failures earn info and above, because only those reach the file.
+- `RUST_LOG` steers stdout only. The file level is the `logging.level` preference, so a debug session cannot evict the records it was meant to keep.
+
 ## UI Conventions (v0–v1.x)
 
 Follow shadcn/ui conventions (reference: local clone at `~/Documents/Code/shadcn-ui`, `apps/v4/registry/new-york-v4/ui/` for inline-Tailwind style, `bases/base/ui/` for base-ui structure). Meridian v2 plans to migrate to HeroUI v3 — design new component APIs in HeroUI's shape (compound components, prop names like `isStreaming`/`state`) so only the implementation layer changes later.

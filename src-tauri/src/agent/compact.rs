@@ -223,9 +223,23 @@ async fn compact_with_retry(
             Err(e) => {
                 let err_str = e.to_string();
                 if is_context_window_error(&err_str) && attempt < MAX_COMPACT_RETRIES {
-                    tracing::warn!("Compact request too large (attempt {attempt}), dropping oldest sections");
+                    tracing::warn!(
+                        model = %params.model,
+                        attempt,
+                        dropped_sections = drop_fraction,
+                        "compaction input too large; dropping the oldest sections and retrying"
+                    );
                     continue;
                 }
+                // `model` is the field that mattered when this last went wrong:
+                // the summariser was being refused by one specific model while
+                // ordinary chat on the same provider worked fine.
+                tracing::error!(
+                    model = %params.model,
+                    attempt,
+                    error = %err_str,
+                    "compaction summarisation failed"
+                );
                 return Err(format!("Compact summarization failed: {err_str}"));
             }
         }

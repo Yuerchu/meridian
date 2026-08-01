@@ -12,7 +12,9 @@ use sha2::Digest;
 use sha2::Sha256;
 
 mod local;
-mod sanitizer;
+/// Also the last line of defence for the log file, which is why it is reachable
+/// outside this module (`logging::redact`).
+pub(crate) mod sanitizer;
 
 pub use local::LocalSecretsBackend;
 

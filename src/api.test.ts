@@ -244,4 +244,59 @@ describe('api', () => {
       expect(mockInvoke).toHaveBeenCalledWith('respond_to_ask', { callId: 'ask-1', response: 'my answer' })
     })
   })
+
+  describe('logs', () => {
+    it('readLogs sends an explicit null for every unset filter', async () => {
+      mockInvoke.mockResolvedValueOnce({ entries: [], nextCursor: null })
+      await api.readLogs()
+      expect(mockInvoke).toHaveBeenCalledWith('read_logs', {
+        query: {
+          minLevel: null,
+          limit: null,
+          contains: null,
+          targetPrefix: null,
+          conversationId: null,
+          sinceTsMs: null,
+          untilTsMs: null,
+          cursor: null,
+        },
+      })
+    })
+
+    it('readLogs passes the filters it was given', async () => {
+      mockInvoke.mockResolvedValueOnce({ entries: [], nextCursor: null })
+      await api.readLogs({ minLevel: 'warn', limit: 50, contains: '401', sinceTsMs: 1000 })
+      expect(mockInvoke).toHaveBeenCalledWith('read_logs', {
+        query: expect.objectContaining({
+          minLevel: 'warn',
+          limit: 50,
+          contains: '401',
+          sinceTsMs: 1000,
+        }),
+      })
+    })
+
+    // Paging is only correct if the cursor survives the round trip untouched;
+    // reconstructing it from a timestamp would drop or repeat records.
+    it('readLogs forwards the paging cursor unchanged', async () => {
+      mockInvoke.mockResolvedValueOnce({ entries: [], nextCursor: null })
+      const cursor = { fileIndex: 1, byteOffset: 4096 }
+      await api.readLogs({ cursor })
+      expect(mockInvoke).toHaveBeenCalledWith('read_logs', {
+        query: expect.objectContaining({ cursor }),
+      })
+    })
+
+    it('exportLogs sends the chosen path', async () => {
+      mockInvoke.mockResolvedValueOnce(1024)
+      await api.exportLogs('/tmp/logs.jsonl')
+      expect(mockInvoke).toHaveBeenCalledWith('export_logs', { outputPath: '/tmp/logs.jsonl' })
+    })
+
+    it('setLogLevel sends the level', async () => {
+      mockInvoke.mockResolvedValueOnce(undefined)
+      await api.setLogLevel('debug')
+      expect(mockInvoke).toHaveBeenCalledWith('set_log_level', { level: 'debug' })
+    })
+  })
 })

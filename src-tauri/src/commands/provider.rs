@@ -115,9 +115,20 @@ pub async fn get_provider_key_exists(
 ) -> Result<bool, String> {
     let secrets = app.state::<AppSecrets>();
     let key_name = provider_secret_name(&provider_id);
-    let exists = secrets.0.get(&SecretScope::Global, &SecretName::new(&key_name).unwrap())
-        .ok().flatten().is_some();
-    Ok(exists)
+    // A read failure is not the same as "no key". Reporting it as absent sends
+    // the user to enter a key they already have, and re-entering rewrites the
+    // store under a fresh passphrase — taking the other providers' keys with it.
+    match secrets.0.get(&SecretScope::Global, &SecretName::new(&key_name).unwrap()) {
+        Ok(value) => Ok(value.is_some()),
+        Err(e) => {
+            tracing::error!(
+                provider_id = %provider_id,
+                error = %e,
+                "could not read the stored API key while checking whether one is set"
+            );
+            Err(format!("Could not read the saved key: {e}"))
+        }
+    }
 }
 
 #[tauri::command]

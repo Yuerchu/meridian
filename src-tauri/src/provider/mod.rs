@@ -137,6 +137,27 @@ pub const SENDER_PREFIX_NOTE: &str = "In this conversation a `<sender>name</send
 const INJECTED_OPEN: &str = "<injected_context>";
 const INJECTED_CLOSE: &str = "</injected_context>";
 
+/// Build a header value from a user-supplied API key.
+///
+/// Keys get pasted from web pages and routinely arrive with a trailing newline
+/// or stray whitespace, which `HeaderValue` rejects. Unwrapping that turned a
+/// copy-paste artefact into a panic inside an async task, so the send button
+/// appeared to do nothing at all — harder to diagnose than any HTTP error.
+/// Trimming covers the common case; anything still unrepresentable becomes a
+/// placeholder that fails as an ordinary 401.
+pub fn auth_header_value(value: &str) -> http::HeaderValue {
+    match http::HeaderValue::from_str(value.trim()) {
+        Ok(header) => header,
+        Err(_) => {
+            tracing::error!(
+                key_chars = value.trim().chars().count(),
+                "the API key contains characters that cannot be sent in a header"
+            );
+            http::HeaderValue::from_static("invalid-api-key")
+        }
+    }
+}
+
 /// Neutralise sender markers a user typed into their own message.
 ///
 /// This reduces format confusion; it is **not** the trust boundary. The actual

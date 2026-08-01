@@ -56,8 +56,15 @@ impl EditSession {
         self.pending.remove(path)
     }
 
-    pub fn approve_all(&mut self) -> Vec<(PathBuf, PendingEdit)> {
-        std::mem::take(&mut self.pending).into_iter().collect()
+    /// The paths currently staged.
+    ///
+    /// Approving in bulk walks this and drops each entry only once its write has
+    /// landed. Taking the whole map up front instead would mean a write that
+    /// fails half way leaves the remaining edits neither on disk nor in the
+    /// session — unrecoverable, and invisible until the user goes looking for
+    /// changes that are no longer there.
+    pub fn pending_paths(&self) -> Vec<PathBuf> {
+        self.pending.keys().cloned().collect()
     }
 
     pub fn reject(&mut self, path: &PathBuf) -> Option<PendingEdit> {
@@ -120,14 +127,32 @@ mod tests {
     }
 
     #[test]
-    fn approve_all() {
+    fn pending_paths_lists_everything_staged() {
         let mut session = EditSession::new();
         session.stage_write(PathBuf::from("/a"), None, "a".into(), "write_file");
         session.stage_write(PathBuf::from("/b"), None, "b".into(), "write_file");
 
-        let edits = session.approve_all();
-        assert_eq!(edits.len(), 2);
-        assert!(session.is_empty());
+        let mut paths = session.pending_paths();
+        paths.sort();
+        assert_eq!(paths, [PathBuf::from("/a"), PathBuf::from("/b")]);
+        // Listing must not consume: the bulk approval writes each file before
+        // dropping its entry.
+        assert!(!session.is_empty());
+    }
+
+    /// What a partial bulk approval must leave behind. The caller approves each
+    /// path only after its write succeeds, so a failure half way keeps the rest
+    /// staged instead of discarding them.
+    #[test]
+    fn approving_one_at_a_time_leaves_the_others_staged() {
+        let mut session = EditSession::new();
+        session.stage_write(PathBuf::from("/a"), None, "a".into(), "write_file");
+        session.stage_write(PathBuf::from("/b"), None, "b".into(), "write_file");
+
+        assert!(session.approve(&PathBuf::from("/a")).is_some());
+
+        assert!(!session.is_empty());
+        assert_eq!(session.pending_paths(), [PathBuf::from("/b")]);
     }
 
     #[test]

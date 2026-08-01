@@ -306,6 +306,14 @@ async fn execute_windows_sandboxed(
     }
 
     if writable_roots.is_empty() {
+        // The caller asked for a sandbox and is not getting one. `sandboxed`
+        // comes back false, which also disables the escape detection downstream,
+        // and nothing in the UI says so. OneBot turns land here by construction:
+        // they carry no project_dir, leaving only TEMP.
+        tracing::warn!(
+            has_project_dir = policy.project_dir.is_some(),
+            "sandbox requested but no writable root could be determined; running unsandboxed"
+        );
         return execute_unsandboxed(command, cwd, timeout, cancel).await;
     }
 
@@ -330,10 +338,16 @@ async fn execute_windows_sandboxed(
             cap_sid_strings.push(sid_str);
         }
 
-        let cap_sid_objs: Vec<token::LocalSid> = cap_sid_strings
-            .iter()
-            .filter_map(|s| token::LocalSid::from_string(s).ok())
-            .collect();
+        // Not filter_map: dropping an entry here shifts the zip further down, so
+        // a root would be paired with the *next* root's capability SID and the
+        // ACL would be written to the wrong directory. A SID that will not parse
+        // is a hard failure, not something to skip past.
+        let mut cap_sid_objs: Vec<token::LocalSid> = Vec::with_capacity(cap_sid_strings.len());
+        for sid_str in &cap_sid_strings {
+            let sid = token::LocalSid::from_string(sid_str)
+                .map_err(|e| internal(format!("parse capability SID: {e}")))?;
+            cap_sid_objs.push(sid);
+        }
         let cap_sid_ptrs: Vec<*mut std::ffi::c_void> =
             cap_sid_objs.iter().map(|s| s.as_ptr()).collect();
 

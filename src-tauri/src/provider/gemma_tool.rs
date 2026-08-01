@@ -62,7 +62,7 @@ impl GemmaToolProvider {
         );
         req.headers.insert(
             http::header::AUTHORIZATION,
-            format!("Bearer {}", self.api_key).parse().unwrap(),
+            super::auth_header_value(&format!("Bearer {}", self.api_key)),
         );
         req.body = Some(RequestBody::Json(body));
         req

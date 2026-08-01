@@ -4,6 +4,7 @@ import { Plus, Check, ChevronDown, ChevronRight, RefreshCw, Trash2, Cloud, Key, 
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
+import { Spinner } from '@/components/ui/spinner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
@@ -268,7 +269,8 @@ function ProviderEditor({
 }: {
   provider: Provider
   onUpdate: () => void
-  onDelete: (id: string) => void
+  /// Awaited so the button can show progress until the list has reloaded.
+  onDelete: (id: string) => Promise<void>
 }) {
   const { t } = useTranslation()
   const [name, setName] = useState(provider.name)
@@ -276,7 +278,12 @@ function ProviderEditor({
   const [baseUrl, setBaseUrl] = useState(provider.base_url)
   const [apiFormat, setApiFormat] = useState(provider.api_format || 'chat_completions')
   const [apiKey, setApiKey] = useState('')
-  const [hasKey, setHasKey] = useState(false)
+  // Not a boolean: while the lookup is in flight `false` renders exactly like
+  // "no key configured", and so does a lookup that failed. Both would invite the
+  // user to enter a key they already have — and saving one rewrites the store
+  // under a fresh passphrase, which is how the *other* providers' keys get lost.
+  const [keyStatus, setKeyStatus] = useState<'loading' | 'set' | 'unset' | 'error'>('loading')
+  const [savingKey, setSavingKey] = useState(false)
   const [keySaved, setKeySaved] = useState(false)
   const [saved, setSaved] = useState(false)
   const [models, setModels] = useState<ModelInfo[]>([])
@@ -284,9 +291,34 @@ function ProviderEditor({
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [modelConfigs, setModelConfigs] = useState<Map<string, ModelConfig>>(new Map())
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  // Deletion clears secrets and cached models before the list reloads, so the
+  // button has to stay disabled and say what it is doing — otherwise a slow
+  // delete looks like a click that did not register, and a second click races
+  // the first.
+  const handleDelete = useCallback(async () => {
+    setDeleting(true)
+    try {
+      await onDelete(provider.id)
+    } finally {
+      setDeleting(false)
+    }
+  }, [onDelete, provider.id])
 
   useEffect(() => {
-    api.getProviderKeyExists(provider.id).then(setHasKey)
+    let cancelled = false
+    setKeyStatus('loading')
+    api
+      .getProviderKeyExists(provider.id)
+      .then((exists) => {
+        if (!cancelled) setKeyStatus(exists ? 'set' : 'unset')
+      })
+      .catch((err) => {
+        console.error('Failed to check for a saved key:', err)
+        if (!cancelled) setKeyStatus('error')
+      })
+    return () => { cancelled = true }
   }, [provider.id])
 
   const handleSave = useCallback(async () => {
@@ -298,15 +330,18 @@ function ProviderEditor({
 
   const handleSaveKey = useCallback(async () => {
     if (!apiKey.trim()) return
+    setSavingKey(true)
     try {
       await api.setProviderKey(provider.id, apiKey.trim())
-      setHasKey(true)
+      setKeyStatus('set')
       setApiKey('')
       setKeySaved(true)
       setTimeout(() => setKeySaved(false), 2000)
     } catch (err) {
       console.error('Failed to save key:', err)
       alert(String(err))
+    } finally {
+      setSavingKey(false)
     }
   }, [provider.id, apiKey])
 
@@ -421,23 +456,47 @@ function ProviderEditor({
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder={hasKey ? t('settings.provider.apiKeyPlaceholderSet') : t('settings.provider.apiKeyPlaceholder')}
+            disabled={keyStatus === 'loading' || savingKey}
+            placeholder={
+              keyStatus === 'loading'
+                ? t('settings.provider.apiKeyChecking')
+                : keyStatus === 'set'
+                  ? t('settings.provider.apiKeyPlaceholderSet')
+                  : t('settings.provider.apiKeyPlaceholder')
+            }
             className="flex-1"
           />
-          <Button variant="outline" onClick={handleSaveKey} disabled={!apiKey.trim()}>
-            <Key className="w-3 h-3" />
+          <Button
+            variant="outline"
+            onClick={handleSaveKey}
+            disabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
+          >
+            {savingKey ? <Spinner className="w-3 h-3" /> : <Key className="w-3 h-3" />}
             {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
           </Button>
         </div>
-        {hasKey && (
+        {keyStatus === 'loading' && (
+          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <Spinner className="w-3 h-3" />
+            {t('settings.provider.apiKeyChecking')}
+          </p>
+        )}
+        {keyStatus === 'set' && (
           <p className="text-xs text-success">{t('settings.provider.keySaved')}</p>
+        )}
+        {keyStatus === 'error' && (
+          <p className="text-xs text-warning">{t('settings.provider.apiKeyCheckFailed')}</p>
         )}
       </div>
 
       <div className="border-t border-border pt-4 space-y-3">
         <div className="flex items-center justify-between">
           <label className="text-xs text-muted-foreground">{t('settings.provider.models')}</label>
-          <Button variant="outline" onClick={handleFetchModels} disabled={fetchingModels || !hasKey}>
+          <Button
+            variant="outline"
+            onClick={handleFetchModels}
+            disabled={fetchingModels || keyStatus !== 'set'}
+          >
             <RefreshCw className={cn("w-3 h-3", fetchingModels && "animate-spin")} />
             {t('settings.provider.fetchModels')}
           </Button>
@@ -486,9 +545,14 @@ function ProviderEditor({
       </div>
 
       <div className="border-t border-border pt-4">
-        <Button variant="ghost" className="text-destructive hover:text-destructive" onClick={() => onDelete(provider.id)}>
-          <Trash2 className="w-3 h-3" />
-          {t('settings.provider.deleteProvider')}
+        <Button
+          variant="ghost"
+          className="text-destructive hover:text-destructive"
+          onClick={handleDelete}
+          disabled={deleting}
+        >
+          {deleting ? <Spinner className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
+          {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
         </Button>
       </div>
     </div>

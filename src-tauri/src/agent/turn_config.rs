@@ -68,7 +68,17 @@ pub(crate) fn resolve(
             project_id.as_deref(),
             assistant.as_ref().map(|a| a.id.as_str()),
         )
-        .unwrap_or_default();
+        .unwrap_or_else(|e| {
+            // An empty list makes `apply_skill_catalog` remove `load_skill`
+            // entirely, so a failed query and "no skills bound" look the same:
+            // the model is never told skills exist.
+            tracing::warn!(
+                assistant_id = assistant.as_ref().map(|a| a.id.as_str()).unwrap_or(""),
+                error = %e,
+                "skill bindings could not be read; no skills will be offered this turn"
+            );
+            Vec::new()
+        });
         super::tool_defs::apply_skill_catalog(&mut defs, &available);
         defs
     } else {
@@ -108,15 +118,33 @@ pub(crate) fn resolve(
     // memories written — cannot be rewound by switching branches either. Making
     // these two alone branch-aware would imply the whole world rewinds, which
     // is a harder model to explain than "branches switch the transcript only".
-    if let Some(plan) = crate::db::ops::plan::get_active(conn, &conversation_id).ok().flatten() {
-        if let Some(block) = crate::db::ops::plan::format_plan_block(&plan) {
-            prompt.push_str(&block);
+    // A read failure drops the block from the prompt, and the model then ignores
+    // a plan it agreed to or forgets the checklist — read as "it went off the
+    // rails again" rather than as an error. `Ok(None)` is the ordinary case and
+    // stays quiet.
+    match crate::db::ops::plan::get_active(conn, &conversation_id) {
+        Ok(Some(plan)) => {
+            if let Some(block) = crate::db::ops::plan::format_plan_block(&plan) {
+                prompt.push_str(&block);
+            }
         }
+        Ok(None) => {}
+        Err(e) => tracing::warn!(
+            conversation_id = %conversation_id, block = "plan", error = %e,
+            "could not read the active plan; it will be missing from this turn"
+        ),
     }
-    if let Some(view) = crate::db::ops::todo::get_active_view(conn, &conversation_id).ok().flatten() {
-        if let Some(block) = crate::db::ops::todo::format_todo_block(&view) {
-            prompt.push_str(&block);
+    match crate::db::ops::todo::get_active_view(conn, &conversation_id) {
+        Ok(Some(view)) => {
+            if let Some(block) = crate::db::ops::todo::format_todo_block(&view) {
+                prompt.push_str(&block);
+            }
         }
+        Ok(None) => {}
+        Err(e) => tracing::warn!(
+            conversation_id = %conversation_id, block = "todo", error = %e,
+            "could not read the todo list; it will be missing from this turn"
+        ),
     }
 
     let offered = tool_defs.iter().map(|d| d.name.clone()).collect();
@@ -134,9 +162,22 @@ pub(crate) fn resolve(
 fn enabled_tools(conn: &mut SqliteConnection, assistant: Option<&Assistant>) -> Option<Vec<String>> {
     let assistant = assistant?;
     if let Some(preset_id) = assistant.tool_preset_id.as_ref() {
-        let names = crate::db::ops::tool_preset::get_preset(conn, preset_id)
-            .ok()
+        let preset = crate::db::ops::tool_preset::get_preset(conn, preset_id).ok();
+        let names = preset
+            .as_ref()
             .and_then(|p| serde_json::from_str::<Vec<String>>(&p.tool_names).ok());
+        if names.is_none() {
+            // Failing closed is deliberate, but from the outside "the preset row
+            // is unreadable" and "this model cannot use tools" look identical:
+            // the assistant simply stops using tools. Only this line separates
+            // them.
+            tracing::warn!(
+                assistant_id = %assistant.id,
+                tool_preset_id = %preset_id,
+                reason = if preset.is_none() { "preset_missing" } else { "tool_names_unparseable" },
+                "tool preset could not be read; the assistant gets no tools this turn"
+            );
+        }
         return Some(names.unwrap_or_default());
     }
     assistant
@@ -153,7 +194,7 @@ mod tests {
     use diesel::prelude::*;
 
     fn registry() -> ToolRegistry {
-        ToolRegistry::new(std::path::PathBuf::from("/nonexistent"))
+        ToolRegistry::new(std::path::PathBuf::from("/nonexistent"), std::path::PathBuf::from("/nonexistent"))
     }
 
     fn seed_conversation(conn: &mut SqliteConnection, id: &str) {

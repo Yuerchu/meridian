@@ -238,7 +238,7 @@ impl AnthropicProvider {
             http::Method::POST,
             format!("{}/v1/messages", self.base_url),
         );
-        req.headers.insert("x-api-key", self.api_key.parse().unwrap());
+        req.headers.insert("x-api-key", super::auth_header_value(&self.api_key));
         req.headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
         if params.fast {
             // Fast mode is a research preview and needs the beta opt-in

@@ -44,6 +44,12 @@ impl Tool for MoveFileTool {
             .ok_or("missing 'to' argument")?;
 
         if context.is_access_root(from_str) {
+            tracing::warn!(
+                tool = "move_file",
+                denied_path = %from_str,
+                guard = "access_root",
+                "refused a move of a protected path"
+            );
             return Err(format!(
                 "refusing to move '{from_str}': it is an authorized access root"
             ));

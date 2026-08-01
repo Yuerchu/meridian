@@ -42,7 +42,20 @@ impl Tool for DeleteFileTool {
             .ok_or("missing 'path' argument")?;
         let recursive = args["recursive"].as_bool().unwrap_or(false);
 
+        // A guard firing is a near miss worth recording: it says what the model
+        // tried to remove, and it answers the user's "why won't it delete this".
+        let refused = |guard: &'static str| {
+            tracing::warn!(
+                tool = "delete_file",
+                denied_path = %path_str,
+                guard,
+                recursive,
+                "refused a delete on a protected path"
+            );
+        };
+
         if context.is_access_root(path_str) {
+            refused("access_root");
             return Err(format!(
                 "refusing to delete '{path_str}': it is an authorized access root"
             ));
@@ -52,6 +65,7 @@ impl Tool for DeleteFileTool {
 
         if let ResolvedTarget::Real(ref p) = target {
             if p.parent().is_none() {
+                refused("filesystem_root");
                 return Err(format!(
                     "refusing to delete '{path_str}': it is a filesystem root"
                 ));
@@ -61,6 +75,7 @@ impl Tool for DeleteFileTool {
                     std::fs::canonicalize(wd).unwrap_or_else(|_| std::path::PathBuf::from(wd));
                 let target_canonical = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
                 if target_canonical == wd_canonical {
+                    refused("project_directory");
                     return Err(format!(
                         "refusing to delete '{path_str}': it is the project directory"
                     ));

@@ -18,8 +18,17 @@ pub struct CustomToolExecutor {
 
 impl CustomToolExecutor {
     pub fn from_db(tool: &crate::db::models::custom_tool::CustomTool) -> Self {
-        let schema: Value = serde_json::from_str(&tool.parameters_schema)
-            .unwrap_or_else(|_| serde_json::json!({"type": "object", "properties": {}}));
+        let schema: Value = serde_json::from_str(&tool.parameters_schema).unwrap_or_else(|e| {
+            // An empty schema means the model is never told what to pass, so the
+            // tool "just keeps failing" with no indication that its definition is
+            // the problem.
+            tracing::warn!(
+                tool = %tool.name,
+                error = %e,
+                "custom tool has an unparseable parameter schema; offering it with no parameters"
+            );
+            serde_json::json!({"type": "object", "properties": {}})
+        });
         let perm = match tool.permission.as_str() {
             "always" => Permission::Always,
             "never" => Permission::Never,

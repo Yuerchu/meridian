@@ -4,6 +4,7 @@ pub mod chat;
 pub mod conversation;
 pub mod edit_session;
 pub mod emoji;
+pub mod logs;
 pub mod mcp;
 pub mod memory;
 pub mod message;

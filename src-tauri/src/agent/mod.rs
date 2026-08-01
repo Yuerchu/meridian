@@ -1,6 +1,7 @@
 mod base_prompt;
 mod compact;
 mod context;
+pub(crate) mod diagnostics;
 mod file_access;
 mod inline_tag;
 mod loop_guard;
@@ -17,6 +18,16 @@ mod stream;
 mod tool_calls;
 pub(crate) mod tokenizer;
 mod truncate;
+
+/// Skills the app ships and rewrites on every launch. They are uneditable and
+/// undeletable through the UI, so the check has to be a set rather than a
+/// comparison against one name.
+pub(crate) const BUILTIN_SKILL_DIRS: &[&str] =
+    &[manual::MANUAL_DIR, diagnostics::DIAGNOSTICS_DIR];
+
+pub(crate) fn is_builtin_skill_dir(dir_name: &str) -> bool {
+    BUILTIN_SKILL_DIRS.contains(&dir_name)
+}
 
 pub(crate) use base_prompt::base_prompt;
 pub(crate) use compact::{do_compact, mid_turn_compact, CompactCircuitBreaker, CompactError, COMPACT_PROMPT};

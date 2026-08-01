@@ -151,7 +151,7 @@ mod tests {
     }
 
     fn registry() -> ToolRegistry {
-        ToolRegistry::new(std::path::PathBuf::from("/nonexistent"))
+        ToolRegistry::new(std::path::PathBuf::from("/nonexistent"), std::path::PathBuf::from("/nonexistent"))
     }
 
     fn named(names: &[&str]) -> Vec<ToolDefinition> {
@@ -357,7 +357,7 @@ mod tests {
 
     #[test]
     fn collect_filters_to_the_enabled_list() {
-        let registry = ToolRegistry::new(std::path::PathBuf::from("/nonexistent"));
+        let registry = ToolRegistry::new(std::path::PathBuf::from("/nonexistent"), std::path::PathBuf::from("/nonexistent"));
         let mcp = vec![ToolDefinition {
             name: "mcp__srv__thing".into(),
             description: "d".into(),

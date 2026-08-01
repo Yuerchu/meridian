@@ -199,18 +199,30 @@ pub(crate) fn load_memory_block_sync(
 ) -> Option<String> {
     let budgets = layer_budgets(req.budget_tokens);
 
+    // A query that fails leaves the layer empty, and an empty layer is
+    // indistinguishable from "nothing was ever remembered" — the model simply
+    // stops knowing things the user taught it, with no error anywhere.
+    let layer_or_empty = |rows: Result<Vec<_>, _>, layer: &'static str, budget: usize| match rows {
+        Ok(rows) => fit_to_budget(rows, budget),
+        Err(e) => {
+            tracing::warn!(layer, error = %e, "memory layer could not be read; it will be missing from this turn");
+            Vec::new()
+        }
+    };
+
     // The two global layers share one budget line: a turn only ever includes one
     // of them, so splitting the allowance would just shrink whichever is in play.
     let mut load_global = |scope: MemoryScope| {
-        list_by_scopes(
-            conn,
-            scope,
-            &[GLOBAL_SCOPE_ID.to_string()],
-            &VisibilityCtx::private_injection(),
+        layer_or_empty(
+            list_by_scopes(
+                conn,
+                scope,
+                &[GLOBAL_SCOPE_ID.to_string()],
+                &VisibilityCtx::private_injection(),
+            ),
+            "global",
+            budgets.global,
         )
-        .ok()
-        .map(|rows| fit_to_budget(rows, budgets.global))
-        .unwrap_or_default()
     };
     let global = if req.include_onebot_global {
         load_global(MemoryScope::OnebotGlobal)
@@ -221,15 +233,16 @@ pub(crate) fn load_memory_block_sync(
     };
 
     let project = match req.project_id.as_ref() {
-        Some(pid) => list_by_scopes(
-            conn,
-            MemoryScope::Project,
-            &[pid.clone()],
-            &VisibilityCtx::private_injection(),
-        )
-        .ok()
-        .map(|rows| fit_to_budget(rows, budgets.project))
-        .unwrap_or_default(),
+        Some(pid) => layer_or_empty(
+            list_by_scopes(
+                conn,
+                MemoryScope::Project,
+                &[pid.clone()],
+                &VisibilityCtx::private_injection(),
+            ),
+            "project",
+            budgets.project,
+        ),
         None => Vec::new(),
     };
 
@@ -249,8 +262,18 @@ pub(crate) fn load_memory_block_sync(
     let subject_rows = if scope_ids.is_empty() {
         Vec::new()
     } else {
-        list_by_scopes(conn, MemoryScope::OnebotUser, &scope_ids, &req.subject_visibility)
-            .unwrap_or_default()
+        match list_by_scopes(conn, MemoryScope::OnebotUser, &scope_ids, &req.subject_visibility) {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::warn!(
+                    layer = "subject",
+                    subject_count = scope_ids.len(),
+                    error = %e,
+                    "memory layer could not be read; it will be missing from this turn"
+                );
+                Vec::new()
+            }
+        }
     };
 
     // Owner notes get their own section: the "never quote" rule attaches to the

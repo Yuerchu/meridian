@@ -20,6 +20,9 @@ const FRONTMATTER: &str = "---\nname: meridian-manual\ndescription: How Meridian
 pub fn render(tool_defs: &[ToolDefinition]) -> String {
     let mut out = String::with_capacity(PROSE.len() + 2048);
     out.push_str(FRONTMATTER);
+    // Identifies the file as generated, so a launch can tell it from a skill a
+    // user happened to put under the same directory name.
+    out.push_str(&format!("<!-- {}; edits are overwritten on launch -->\n\n", super::skills::GENERATED_MARKER));
     out.push_str(PROSE.trim_end());
 
     out.push_str("\n\n## Tools in this build\n\n");
@@ -63,6 +66,7 @@ fn first_sentence(description: &str) -> String {
 /// stop the app.
 pub fn write_manual(skills_root: &Path, tool_defs: &[ToolDefinition]) -> std::io::Result<()> {
     let dir = skills_root.join(MANUAL_DIR);
+    super::skills::preserve_user_directory(&dir)?;
     std::fs::create_dir_all(&dir)?;
     std::fs::write(dir.join(super::skills::SKILL_FILE), render(tool_defs))
 }

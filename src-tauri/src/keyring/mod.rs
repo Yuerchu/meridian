@@ -58,7 +58,7 @@ impl KeyringStore for DefaultKeyringStore {
                 Ok(None)
             }
             Err(error) => {
-                trace!("keyring.load error, service={service}, account={account}, error={error}");
+                tracing::warn!(service, account, %error, "keyring load failed");
                 Err(CredentialStoreError::new(error))
             }
         }
@@ -76,7 +76,7 @@ impl KeyringStore for DefaultKeyringStore {
                 Ok(())
             }
             Err(error) => {
-                trace!("keyring.save error, service={service}, account={account}, error={error}");
+                tracing::warn!(service, account, %error, "keyring save failed");
                 Err(CredentialStoreError::new(error))
             }
         }
@@ -95,9 +95,7 @@ impl KeyringStore for DefaultKeyringStore {
                 Ok(false)
             }
             Err(error) => {
-                trace!(
-                    "keyring.delete error, service={service}, account={account}, error={error}"
-                );
+                tracing::warn!(service, account, %error, "keyring delete failed");
                 Err(CredentialStoreError::new(error))
             }
         }

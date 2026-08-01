@@ -13,13 +13,27 @@ use crate::util::{double_option, get_conn, now_ms};
 fn reload_custom_tools(app: &tauri::AppHandle) {
     let pool = app.state::<AppDb>();
     let registry = app.state::<AppTools>();
-    if let Ok(mut conn) = pool.0.get() {
-        if let Ok(list) = db::ops::custom_tool::list_enabled_tools(&mut conn) {
+    // Callers do not check the outcome, so a failure here means the database was
+    // updated but the running registry was not: the user disables a tool, the
+    // save succeeds, and the model keeps calling it.
+    let mut conn = match pool.0.get() {
+        Ok(conn) => conn,
+        Err(e) => {
+            tracing::warn!(error = %e, "custom tools not reloaded; the change takes effect on restart");
+            return;
+        }
+    };
+    match db::ops::custom_tool::list_enabled_tools(&mut conn) {
+        Ok(list) => {
             registry.0.set_custom_tools(list.iter().map(|ct| {
                 std::sync::Arc::new(crate::tools::custom::CustomToolExecutor::from_db(ct))
                     as std::sync::Arc<dyn crate::tools::Tool>
             }).collect());
         }
+        Err(e) => tracing::warn!(
+            error = %e,
+            "custom tools not reloaded; the change takes effect on restart"
+        ),
     }
 }
 

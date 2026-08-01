@@ -180,6 +180,13 @@ pub fn resolve(provider_type: &str, api_format: Option<&str>, model: &str) -> Pr
 pub fn apply_overrides(caps: &mut ProviderCapabilities, overrides: Option<&str>) {
     let Some(raw) = overrides else { return };
     let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(raw) else {
+        // The user hand-writes this in model settings. A stray comma saves
+        // fine, shows fine, and does nothing at all — with no way to tell that
+        // from an override that simply had no effect.
+        tracing::warn!(
+            raw_len = raw.len(),
+            "capability_overrides is not a JSON object; ignoring it entirely"
+        );
         return;
     };
     let as_bool = |v: &serde_json::Value| v.as_bool();
@@ -262,14 +269,35 @@ pub fn filter_params(params: &mut ChatParams, caps: &ProviderCapabilities) {
         params.top_p = None;
     }
     if !caps.supports_thinking {
+        // The UI still shows a thinking switch. Turning it on and getting no
+        // reasoning at all reads as a broken feature rather than as a model
+        // that cannot do it.
+        if params.thinking_enabled {
+            tracing::info!(
+                model = %params.model,
+                "thinking was requested but this model has no reasoning support; dropped"
+            );
+        }
         params.thinking_enabled = false;
         params.thinking_budget = None;
         params.thinking_effort = None;
     }
+    let requested_effort = params.thinking_effort.clone();
     params.thinking_effort = params
         .thinking_effort
         .as_deref()
         .and_then(|effort| nearest_supported_effort(effort, &caps.supported_efforts));
+    if requested_effort != params.thinking_effort {
+        // Picking "max" and silently getting "medium" is a user-visible state
+        // change: the interface and the request disagree, and the complaint
+        // arrives as "the highest tier does nothing".
+        tracing::info!(
+            model = %params.model,
+            requested = requested_effort.as_deref().unwrap_or(""),
+            effective = params.thinking_effort.as_deref().unwrap_or(""),
+            "thinking effort coerced to a tier this model accepts"
+        );
+    }
     // budget_tokens is rejected outright by adaptive/always-on models, and is
     // meaningless where effort is the only knob.
     if matches!(
@@ -279,6 +307,12 @@ pub fn filter_params(params: &mut ChatParams, caps: &ProviderCapabilities) {
         params.thinking_budget = None;
     }
     if !caps.supports_fast {
+        if params.fast {
+            tracing::info!(
+                model = %params.model,
+                "fast mode is not available on this model; dropped"
+            );
+        }
         params.fast = false;
     }
     if caps.supports_verbosity {
