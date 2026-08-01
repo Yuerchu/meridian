@@ -26,8 +26,20 @@ impl Tool for ListDirectoryTool {
         })
     }
 
+    /// Ask rather than Always. This reads the filesystem, and an absolute path
+    /// walks out of the project as easily as a relative one — as Always it was
+    /// a way to enumerate the machine without a prompt while `read_file` was
+    /// busy asking about files inside the project. `reach` is what keeps
+    /// listing inside the project from prompting.
     fn default_permission(&self) -> Permission {
-        Permission::Always
+        Permission::Ask
+    }
+
+    fn reach(&self, args: &serde_json::Value, context: &ToolContext) -> super::reach::Reach {
+        match args["path"].as_str() {
+            Some(p) => super::reach::locate(context, p, false),
+            None => super::reach::Reach::Outside,
+        }
     }
 
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {

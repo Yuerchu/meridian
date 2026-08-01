@@ -42,6 +42,13 @@ impl Tool for EditFileTool {
         Permission::Ask
     }
 
+    fn reach(&self, args: &serde_json::Value, context: &ToolContext) -> super::reach::Reach {
+        match args["file_path"].as_str() {
+            Some(p) => super::reach::locate(context, p, true),
+            None => super::reach::Reach::Outside,
+        }
+    }
+
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
         let file_path = args["file_path"]
             .as_str()
@@ -61,28 +68,27 @@ impl Tool for EditFileTool {
             return Err("old_string and new_string are identical".to_string());
         }
 
-        let target = context.resolve_and_validate(file_path)?;
-
-        let content = super::backend::read_to_string(&target).await?;
-
-        let count = content.matches(old_string).count();
-        if count == 0 {
-            return Err(format!(
-                "old_string not found in '{}'. File has {} bytes.",
-                file_path,
-                content.len()
-            ));
-        }
-
-        let new_content = if replace_all {
-            content.replace(old_string, new_string)
-        } else {
-            content.replacen(old_string, new_string, 1)
-        };
-
-        let replaced = if replace_all { count } else { 1 };
-
         if let Some(ref session) = context.edit_session {
+            // Staging resolves rather than opens, for the same reason as
+            // write_file: nothing is written now, and a staged edit that is
+            // never approved should leave no trace.
+            let target = context.resolve_and_validate(file_path)?;
+            let content = super::backend::read_to_string(&target).await?;
+            let count = content.matches(old_string).count();
+            if count == 0 {
+                return Err(format!(
+                    "old_string not found in '{}'. File has {} bytes.",
+                    file_path,
+                    content.len()
+                ));
+            }
+            let new_content = if replace_all {
+                content.replace(old_string, new_string)
+            } else {
+                content.replacen(old_string, new_string, 1)
+            };
+            let replaced = if replace_all { count } else { 1 };
+
             let resolved_path = match &target {
                 super::ResolvedTarget::Real(p) => p.clone(),
                 super::ResolvedTarget::Saf { .. } => {
@@ -95,8 +101,140 @@ impl Tool for EditFileTool {
             let diff = session.get(&resolved_path).unwrap().diff.clone();
             Ok(format!("Staged edit of {} occurrence(s) in {file_path} (pending approval).\n\n{diff}", replaced))
         } else {
-            super::backend::write_string(&target, &new_content).await?;
+            // Read and write ride the same handle, so the text that matched
+            // `old_string` is the text being replaced. `open_edit` also refuses
+            // to create the file: a failed match must not leave an empty one.
+            let target = context.open_edit(file_path)?;
+            let mut replaced = 0usize;
+            super::backend::edit_opened(target, |content| {
+                let count = content.matches(old_string).count();
+                if count == 0 {
+                    return Err(format!(
+                        "old_string not found in '{}'. File has {} bytes.",
+                        file_path,
+                        content.len()
+                    ));
+                }
+                replaced = if replace_all { count } else { 1 };
+                Ok(if replace_all {
+                    content.replace(old_string, new_string)
+                } else {
+                    content.replacen(old_string, new_string, 1)
+                })
+            })
+            .await?;
             Ok(format!("Replaced {} occurrence(s) in {}", replaced, file_path))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::{FileAccess, ShellType};
+
+    fn ctx(wd: &std::path::Path) -> ToolContext {
+        ToolContext {
+            working_directory: Some(wd.to_string_lossy().to_string()),
+            shell: ShellType::Bash,
+            file_access: FileAccess::Unrestricted,
+            project_id: None,
+            conversation_id: None,
+            assistant_id: None,
+            db_pool: None,
+            edit_session: None,
+            #[cfg(not(target_os = "android"))]
+            sandbox_policy: None,
+            tool_secrets: std::collections::HashMap::new(),
+            cancel: tokio_util::sync::CancellationToken::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn replaces_a_single_occurrence() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, "one two one").unwrap();
+
+        EditFileTool
+            .execute(
+                serde_json::json!({"file_path": "a.txt", "old_string": "one", "new_string": "1"}),
+                &ctx(dir.path()),
+            )
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "1 two one");
+    }
+
+    #[tokio::test]
+    async fn replace_all_shortens_the_file_without_leaving_a_tail() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, "aaaa aaaa aaaa").unwrap();
+
+        EditFileTool
+            .execute(
+                serde_json::json!({
+                    "file_path": "a.txt", "old_string": "aaaa", "new_string": "b",
+                    "replace_all": true
+                }),
+                &ctx(dir.path()),
+            )
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "b b b");
+    }
+
+    /// A failed match must change nothing at all — in particular it must not
+    /// have created the file on the way to failing.
+    #[tokio::test]
+    async fn a_missing_file_is_not_created_by_a_failed_edit() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = EditFileTool
+            .execute(
+                serde_json::json!({"file_path": "nope.txt", "old_string": "x", "new_string": "y"}),
+                &ctx(dir.path()),
+            )
+            .await
+            .unwrap_err();
+        assert!(!dir.path().join("nope.txt").exists(), "edit created the file: {err}");
+    }
+
+    #[tokio::test]
+    async fn an_unmatched_old_string_leaves_the_file_alone() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, "original").unwrap();
+
+        let err = EditFileTool
+            .execute(
+                serde_json::json!({"file_path": "a.txt", "old_string": "absent", "new_string": "z"}),
+                &ctx(dir.path()),
+            )
+            .await
+            .unwrap_err();
+        assert!(err.contains("not found"), "got {err}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "original");
+    }
+
+    #[tokio::test]
+    async fn refuses_to_edit_outside_the_project() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let victim = outside.path().join("important.txt");
+        std::fs::write(&victim, "must survive").unwrap();
+
+        let err = EditFileTool
+            .execute(
+                serde_json::json!({
+                    "file_path": victim.to_string_lossy(),
+                    "old_string": "must", "new_string": "did not"
+                }),
+                &ctx(dir.path()),
+            )
+            .await
+            .unwrap_err();
+        assert!(err.contains("Access denied"), "got {err}");
+        assert_eq!(std::fs::read_to_string(&victim).unwrap(), "must survive");
     }
 }

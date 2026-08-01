@@ -171,6 +171,25 @@ pub fn update_mode(
     Ok(())
 }
 
+/// Its own setter for the same reason as `update_mode`, and kept apart from it
+/// for a second one: a mode narrows what the assistant can do, this widens what
+/// it can do without asking. Writing both through one call would suggest they
+/// are two settings of the same kind.
+pub fn update_accept_edits(
+    conn: &mut SqliteConnection,
+    id: &str,
+    accept_edits: bool,
+    now: i64,
+) -> QueryResult<()> {
+    diesel::update(conversations::table.find(id))
+        .set((
+            conversations::accept_edits.eq(i32::from(accept_edits)),
+            conversations::updated_at.eq(now),
+        ))
+        .execute(conn)?;
+    Ok(())
+}
+
 pub fn delete_conversation(
     conn: &mut SqliteConnection,
     id: &str,

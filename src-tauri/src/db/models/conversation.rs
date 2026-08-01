@@ -27,6 +27,10 @@ pub struct Conversation {
     /// `sort_order` row, which is necessarily a leaf, so a missed write costs an
     /// alternative branch rather than the whole transcript.
     pub head_message_id: Option<String>,
+    /// The user's standing "yes" to ordinary edits inside the project. What it
+    /// can widen is bounded in `tools::reach` — never outside the project,
+    /// never anything irreversible, never a path that makes code run later.
+    pub accept_edits: i32,
 }
 
 #[derive(Debug, Insertable)]

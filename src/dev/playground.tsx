@@ -41,6 +41,7 @@ import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { TurnSteps } from '@/components/chat/turn-steps'
 import { TodoBarView } from '@/components/chat/todo-bar'
 import { FastToggle, ModeSelector, ThinkingSelector } from '@/components/chat/toolbar'
+import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
 import { formatDuration, type TurnStep } from '@/lib/turns'
 import type { ChatMode, ProviderCapabilities, ThinkingEffort, ThinkingLevel, ToolCallDisplay } from '@/types'
@@ -203,6 +204,55 @@ function ThinkingCase({ label, capabilities }: { label: string; capabilities: Pr
         <ThinkingSelector current={level} onSelect={setLevel} capabilities={capabilities} />
       </div>
       <span className="text-xs text-muted-foreground/60">{level}</span>
+    </div>
+  )
+}
+
+/**
+ * The composer menu with nothing behind it: `providers` is empty, so the model
+ * row opens an empty column instead of fetching. That is the state worth
+ * previewing anyway — the two-column layout has to hold before anything loads.
+ */
+function ComposerMenuCase({
+  label,
+  mode: initialMode,
+  acceptEdits: initialAcceptEdits,
+}: {
+  label: string
+  mode: ChatMode
+  acceptEdits: boolean
+}) {
+  const [mode, setMode] = useState<ChatMode>(initialMode)
+  const [acceptEdits, setAcceptEdits] = useState(initialAcceptEdits)
+  const [thinking, setThinking] = useState<ThinkingLevel>('default')
+  const [fast, setFast] = useState(false)
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex items-center rounded-lg border border-border px-2 py-1">
+        <ComposerMenu
+          assistants={[]}
+          providers={[]}
+          currentAssistantId={null}
+          currentModelId="gpt-5.6-sol"
+          currentProviderId={null}
+          onSelectAssistant={() => {}}
+          onSelectModel={() => {}}
+          thinkingLevel={thinking}
+          onSelectThinkingLevel={setThinking}
+          fastMode={fast}
+          onToggleFast={setFast}
+          mode={mode}
+          onSelectMode={setMode}
+          acceptEdits={acceptEdits}
+          onToggleAcceptEdits={setAcceptEdits}
+          capabilities={caps()}
+          onPickFile={() => {}}
+        />
+      </div>
+      <span className="text-xs text-muted-foreground/60">
+        {mode} · {acceptEdits ? 'accept-edits' : 'ask'}
+      </span>
     </div>
   )
 }
@@ -657,6 +707,14 @@ export default function Playground() {
           <div className="flex flex-wrap items-center gap-4">
             <ModeCase label="执行模式" initial="work" />
             <ModeCase label="谋定模式" initial="plan" />
+          </div>
+        </Section>
+
+        <Section title="ComposerMenu / 输入框选项菜单">
+          <div className="flex flex-wrap items-center gap-4">
+            <ComposerMenuCase label="默认" mode="work" acceptEdits={false} />
+            <ComposerMenuCase label="改动免批（触发器带警示点）" mode="work" acceptEdits />
+            <ComposerMenuCase label="谋定模式（不提供免批项）" mode="plan" acceptEdits={false} />
           </div>
         </Section>
 

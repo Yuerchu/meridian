@@ -6,6 +6,7 @@ mod edit_session;
 mod emoji;
 mod files;
 mod keyring;
+mod logging;
 mod mcp;
 #[cfg(not(target_os = "android"))]
 mod onebot;
@@ -45,7 +46,11 @@ use agent::provider_secret_name;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tracing_subscriber::fmt::init();
+    // Two stages: the subscriber has to exist before Tauri starts, but the file
+    // it writes to lives under a path only Tauri can resolve. Events in between
+    // are buffered and flushed by `attach_file_sink`.
+    logging::init_early();
+    logging::install_panic_hook();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
@@ -56,6 +61,7 @@ pub fn run() {
             let data_dir = app.path().app_data_dir()
                 .expect("failed to resolve app data dir");
             std::fs::create_dir_all(&data_dir).expect("failed to create app data dir");
+            logging::attach_file_sink(&data_dir);
             let mgr = Arc::new(SecretsManager::new(data_dir.clone()));
             app.manage(AppSecrets(mgr.clone()));
 
@@ -66,6 +72,9 @@ pub fn run() {
 
             let db_path = data_dir.join("meridian.db");
             let pool = db::init_db(db_path.to_str().expect("invalid db path"));
+            // The preference lives in the database, so the first few lines above
+            // are recorded at the default level.
+            logging::apply_saved_level(&pool);
 
             // Create default assistant on first run
             {
@@ -194,8 +203,8 @@ pub fn run() {
                 {
                     let now = now_ms();
                     let presets = [
-                        ("preset_coding", "Coding Agent", "All tools for coding tasks", r#"["ask_user","update_todos","read_file","write_file","edit_file","apply_patch","run_command","list_directory","search_files","glob"]"#, 0),
-                        ("preset_research", "Research", "Minimal tools for research and reading", r#"["ask_user","read_file","list_directory","search_files","glob","web_search"]"#, 1),
+                        ("preset_coding", "Coding Agent", "All tools for coding tasks", r#"["ask_user","update_todos","read_file","write_file","edit_file","apply_patch","run_command","list_directory","search_files","glob","read_app_logs"]"#, 0),
+                        ("preset_research", "Research", "Minimal tools for research and reading", r#"["ask_user","read_file","list_directory","search_files","glob","web_search","read_app_logs"]"#, 1),
                         ("preset_writing", "Writing", "Tools for writing and editing files", r#"["ask_user","read_file","write_file","edit_file"]"#, 2),
                     ];
                     // Seed per id (not only on an empty table) so existing installs
@@ -229,6 +238,15 @@ pub fn run() {
                                 names.push("update_todos".into());
                                 changed = true;
                             }
+                            // Diagnosing a failure is useful in both, and this
+                            // backfill is what reaches installs that already ran
+                            // the seed above.
+                            if matches!(p.id.as_str(), "preset_coding" | "preset_research")
+                                && p.is_builtin == 1
+                                && !names.iter().any(|n| n == "read_app_logs") {
+                                names.push("read_app_logs".into());
+                                changed = true;
+                            }
                             if changed {
                                 let _ = db::ops::tool_preset::update_preset(
                                     &mut conn, &p.id,
@@ -245,13 +263,18 @@ pub fn run() {
             }
 
             // Load custom tools from DB into tool registry
-            let registry = tools::ToolRegistry::new(skills_root.clone());
+            let registry = tools::ToolRegistry::new(skills_root.clone(), data_dir.join("logs"));
             {
                 let mut conn = pool.get().expect("db connection");
-                if let Ok(custom_tools) = db::ops::custom_tool::list_enabled_tools(&mut conn) {
-                    registry.set_custom_tools(custom_tools.iter().map(|ct| {
-                        Arc::new(tools::custom::CustomToolExecutor::from_db(ct)) as Arc<dyn tools::Tool>
-                    }).collect());
+                match db::ops::custom_tool::list_enabled_tools(&mut conn) {
+                    Ok(custom_tools) => {
+                        registry.set_custom_tools(custom_tools.iter().map(|ct| {
+                            Arc::new(tools::custom::CustomToolExecutor::from_db(ct)) as Arc<dyn tools::Tool>
+                        }).collect());
+                    }
+                    // Silently leaves the registry with no custom tools at all,
+                    // which the user reads as "my tools are gone".
+                    Err(e) => tracing::error!(error = %e, "custom tools could not be loaded at startup"),
                 }
             }
 
@@ -266,12 +289,17 @@ pub fn run() {
                 let mut tool_defs = agent::tool_defs::collect(&registry, Vec::new(), None);
                 agent::tool_defs::apply_mode(&mut tool_defs, agent::modes::resolve(None), &registry);
                 if let Err(e) = agent::manual::write_manual(&skills_root, &tool_defs) {
-                    eprintln!("failed to write the manual skill: {e}");
+                    tracing::error!(error = %e, "failed to write the manual skill");
+                }
+                if let Err(e) = agent::diagnostics::write_diagnostics(&skills_root) {
+                    tracing::error!(error = %e, "failed to write the diagnostics skill");
                 }
                 let mut conn = pool.get().expect("db connection");
                 if let Err(e) = commands::skill::sync_index(&mut conn, &skills_root) {
-                    eprintln!("failed to index skills: {e}");
+                    tracing::error!(error = %e, "failed to index skills");
                 }
+                // After the index, which creates the rows the bindings point at.
+                commands::skill::seed_builtin_bindings(&mut conn);
             }
 
             app.manage(AppDb(pool));
@@ -410,6 +438,7 @@ pub fn run() {
             commands::memory::delete_memory,
             commands::todo::get_active_todo_list,
             commands::conversation::set_conversation_mode,
+            commands::conversation::set_conversation_accept_edits,
             commands::memory::delete_memories,
             commands::memory::list_all_memories,
             commands::memory::list_memory_subjects,
@@ -489,6 +518,11 @@ pub fn run() {
             commands::skill::delete_skill,
             commands::skill::list_skill_bindings,
             commands::skill::set_skill_binding,
+            commands::logs::read_logs,
+            commands::logs::list_log_files,
+            commands::logs::get_log_settings,
+            commands::logs::set_log_level,
+            commands::logs::export_logs,
             commands::emoji::list_emoji_packs,
             commands::emoji::create_emoji_pack,
             commands::emoji::delete_emoji_pack,

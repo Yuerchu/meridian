@@ -3,6 +3,19 @@ use super::{Permission, ResolvedTarget, Tool, ToolContext};
 
 pub struct ApplyPatchTool;
 
+/// Resolve a patch's path against the patch's base directory.
+///
+/// Shared by `execute` and `reach` on purpose: if the two disagreed about which
+/// file a patch line names, the approval prompt would be describing a different
+/// file from the one that gets written.
+fn join_base(p: &str, base: Option<&str>) -> String {
+    let is_absolute = std::path::Path::new(p).is_absolute() || p.starts_with('/');
+    match base {
+        Some(base) if !is_absolute => format!("{base}/{p}"),
+        _ => p.to_string(),
+    }
+}
+
 #[async_trait]
 impl Tool for ApplyPatchTool {
     fn name(&self) -> &str {
@@ -39,6 +52,34 @@ impl Tool for ApplyPatchTool {
         Permission::Ask
     }
 
+    /// The widest reach of everything the patch touches.
+    ///
+    /// A patch is several operations at once, so one hook file among ten
+    /// ordinary edits still has to be asked about. Deletes and moves end the
+    /// question immediately: they are not reversible, and no width of mode
+    /// covers them.
+    fn reach(&self, args: &serde_json::Value, context: &ToolContext) -> super::reach::Reach {
+        use super::reach::Reach;
+        let Some(patch) = args["patch"].as_str() else { return Reach::Outside };
+        let Ok(ops) = parse_patch(patch) else { return Reach::Outside };
+        let base = args["base_path"]
+            .as_str()
+            .map(str::to_string)
+            .or_else(|| context.working_directory.clone());
+
+        let mut seen = Vec::new();
+        for op in &ops {
+            let path = match op {
+                FileOp::Delete { .. } => return Reach::Outside,
+                FileOp::Update(u) if u.move_to.is_some() => return Reach::Outside,
+                FileOp::Add { path, .. } => path,
+                FileOp::Update(u) => &u.path,
+            };
+            seen.push(super::reach::locate(context, &join_base(path, base.as_deref()), true));
+        }
+        super::reach::widest(seen)
+    }
+
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
         let patch = args["patch"]
             .as_str()
@@ -49,16 +90,9 @@ impl Tool for ApplyPatchTool {
 
         let ops = parse_patch(patch)?;
 
+        let join = |p: &str| join_base(p, base_str.as_deref());
         let resolve = |p: &str| -> Result<ResolvedTarget, String> {
-            let is_absolute = std::path::Path::new(p).is_absolute() || p.starts_with('/');
-            let joined = if is_absolute {
-                p.to_string()
-            } else if let Some(ref base) = base_str {
-                format!("{base}/{p}")
-            } else {
-                p.to_string()
-            };
-            context.resolve_and_validate(&joined)
+            context.resolve_and_validate(&join(p))
         };
 
         let mut added: Vec<String> = Vec::new();
@@ -69,23 +103,33 @@ impl Tool for ApplyPatchTool {
         for op in &ops {
             match op {
                 FileOp::Add { path, content } => {
-                    let target = resolve(path)?;
-                    if let ResolvedTarget::Real(ref p) = target {
-                        if tokio::fs::symlink_metadata(p).await.is_ok() {
-                            return Err(format!(
-                                "Add File: '{path}' already exists; use '*** Update File:' to modify it"
-                            ));
-                        }
-                    }
                     if let Some(ref session) = context.edit_session {
+                        let target = resolve(path)?;
                         if let ResolvedTarget::Real(ref p) = target {
+                            if tokio::fs::symlink_metadata(p).await.is_ok() {
+                                return Err(format!(
+                                    "Add File: '{path}' already exists; use '*** Update File:' to modify it"
+                                ));
+                            }
                             let mut session = session.lock().await;
                             session.stage_write(p.clone(), None, content.clone(), "apply_patch");
                         } else {
                             super::backend::write_string(&target, content).await?;
                         }
                     } else {
-                        super::backend::write_string(&target, content).await?;
+                        // The exclusive create both refuses an existing file and
+                        // hands back the handle that will be written, so nothing
+                        // is re-resolved between the two.
+                        let target = context.open_create_new(&join(path)).map_err(|e| {
+                            if e.contains("exists") {
+                                format!(
+                                    "Add File: '{path}' already exists; use '*** Update File:' to modify it"
+                                )
+                            } else {
+                                e
+                            }
+                        })?;
+                        super::backend::write_opened(target, content).await?;
                     }
                     added.push(path.clone());
                 }
@@ -102,18 +146,37 @@ impl Tool for ApplyPatchTool {
                     deleted.push(path.clone());
                 }
                 FileOp::Update(update) => {
+                    let apply = |original: &str| -> Result<String, String> {
+                        match &update.body {
+                            UpdateBody::Numbered(hunks) => apply_hunks(original, hunks),
+                            UpdateBody::Contextual(chunks) => {
+                                apply_context_chunks(original, chunks, &update.path)
+                            }
+                        }
+                    };
+
+                    // An in-place update with nothing staged is the one shape
+                    // that can run on a single handle: what the hunks matched
+                    // against is what gets rewritten. Staging needs the old text
+                    // in hand, and a move has to rename before it writes, so
+                    // both of those resolve by path instead.
+                    if update.move_to.is_none()
+                        && context.edit_session.is_none()
+                        && !update.is_new_file
+                    {
+                        let target = context.open_edit(&join(&update.path))?;
+                        super::backend::edit_opened(target, apply).await?;
+                        updated.push(update.path.clone());
+                        continue;
+                    }
+
                     let target = resolve(&update.path)?;
                     let original = if update.is_new_file {
                         String::new()
                     } else {
                         super::backend::read_to_string(&target).await?
                     };
-                    let result = match &update.body {
-                        UpdateBody::Numbered(hunks) => apply_hunks(&original, hunks)?,
-                        UpdateBody::Contextual(chunks) => {
-                            apply_context_chunks(&original, chunks, &update.path)?
-                        }
-                    };
+                    let result = apply(&original)?;
                     match &update.move_to {
                         None => {
                             if let Some(ref session) = context.edit_session {

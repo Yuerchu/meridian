@@ -35,8 +35,18 @@ impl Tool for SearchFilesTool {
         })
     }
 
+    /// Ask rather than Always, for the same reason as `list_directory`: pointed
+    /// at an absolute path this greps whatever it is given. Searching inside
+    /// the project still does not prompt.
     fn default_permission(&self) -> Permission {
-        Permission::Always
+        Permission::Ask
+    }
+
+    fn reach(&self, args: &serde_json::Value, context: &ToolContext) -> super::reach::Reach {
+        match args["path"].as_str() {
+            Some(p) => super::reach::locate(context, p, false),
+            None => super::reach::Reach::Outside,
+        }
     }
 
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {

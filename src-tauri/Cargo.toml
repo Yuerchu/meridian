@@ -32,7 +32,9 @@ eventsource-stream = "0.2"
 futures = { version = "0.3", default-features = false, features = ["std"] }
 thiserror = "2"
 tracing = "0.1"
-tracing-subscriber = "0.3"
+# env-filter is the only addition: registry and reload already arrive with the
+# default features, and the JSONL formatting is ours rather than `json`'s.
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Ported from Codex (Apache-2.0)
 keyring = { version = "3.6", default-features = false, features = ["crypto-rust"] }
 age = "0.11"
@@ -73,7 +75,7 @@ bzip2 = "0.4"
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3.6", default-features = false, features = ["crypto-rust", "windows-native"] }
 sandbox-windows = { path = "crates/sandbox-windows" }
-windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Power", "Win32_System_SystemServices"] }
+windows-sys = { version = "0.52", features = ["Win32_Foundation", "Win32_System_Threading", "Win32_System_Power", "Win32_System_SystemServices", "Win32_Storage_FileSystem"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "3.6", default-features = false, features = ["crypto-rust", "apple-native"] }

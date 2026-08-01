@@ -232,6 +232,13 @@ pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String) -> Result
 }
 
 #[tauri::command]
+// Everything this turn logs is tagged with the conversation, so "why did that
+// one fail" is a single query rather than a scan. skip_all because the message
+// body must never reach the log.
+#[tracing::instrument(
+    skip_all,
+    fields(conversation_id = %conversation_id, model = tracing::field::Empty)
+)]
 /// Run a turn.
 ///
 /// `message` and `replaces` together pick which of three things this is:
@@ -249,7 +256,34 @@ pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String) -> Result
 ///
 /// The named message is never modified or removed; it stays reachable as a
 /// sibling of what this turn writes.
+#[allow(clippy::too_many_arguments)]
 pub async fn chat(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    message: Option<String>,
+    replaces: Option<String>,
+    model_override: Option<String>,
+    provider_override: Option<String>,
+    thinking_level: Option<String>,
+    assistant_id: Option<String>,
+    fast: Option<bool>,
+    mode: Option<String>,
+    voice: Option<bool>,
+) -> Result<(), String> {
+    // Every way a turn can end early funnels through here, so the red bubble the
+    // user sees always has a matching record in the log. Doing it at one point
+    // rather than at each `?` also keeps a single failure from being reported
+    // twice.
+    chat_inner(
+        app, conversation_id, message, replaces, model_override, provider_override,
+        thinking_level, assistant_id, fast, mode, voice,
+    )
+    .await
+    .inspect_err(|e| tracing::error!(error = %e, "turn failed"))
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn chat_inner(
     app: tauri::AppHandle,
     conversation_id: String,
     message: Option<String>,
@@ -293,7 +327,12 @@ pub async fn chat(
             let project_id = project.as_ref().map(|p| p.id.clone());
             // Conversation-level reasoning prefs act as the fallback when the
             // request doesn't carry an explicit override.
-            let conv_prefs = (conv.thinking_level.clone(), conv.fast_mode != 0, conv.mode.clone());
+            let conv_prefs = (
+                conv.thinking_level.clone(),
+                conv.fast_mode != 0,
+                conv.mode.clone(),
+                conv.accept_edits != 0,
+            );
             // Where the new messages hang. Looked up from the message being
             // replaced rather than passed in, so replacing a root works without
             // a special case: its parent is None, and the new version becomes a
@@ -333,6 +372,9 @@ pub async fn chat(
         resolve_provider_config(&secrets.0, &pool, assistant.as_ref())?;
 
     let model = model_override.unwrap_or(model);
+    // Filled in now rather than declared at entry: which model a turn actually
+    // used is the first thing a provider error needs explaining.
+    tracing::Span::current().record("model", model.as_str());
 
     if let Some(ref pid) = provider_override {
         let pool2 = pool.clone();
@@ -453,7 +495,10 @@ pub async fn chat(
         .or_else(|| assistant.as_ref().and_then(|a| a.provider_id.clone()));
 
     // Precedence: per-request override > conversation preference > assistant default.
-    let (conv_thinking_level, conv_fast_mode, _) = conv_prefs;
+    // Read once at the top of the turn: a mid-turn flip should not retroactively
+    // widen calls the user is already looking at an approval card for.
+    let accept_edits = conv_prefs.3;
+    let (conv_thinking_level, conv_fast_mode, _, _) = conv_prefs;
     let effective_level = thinking_level.as_deref().or(conv_thinking_level.as_deref());
     // Resolved before the compaction check so the summariser and the turn it
     // summarises send parameters filtered against the same model.
@@ -759,11 +804,14 @@ pub async fn chat(
                             .await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
                     }
                     Err(e) if is_retryable_stream_error(&e) && attempt < MAX_STREAM_RETRIES => {
+                        tracing::warn!(error = %e, attempt, "request failed, retrying");
                         retry_delay = crate::agent::parse_retry_after(&e);
                         _last_err = e;
                         attempt += 1;
                         continue;
                     }
+                    // Logged once by the wrapper, together with every other way
+                    // a turn can end early.
                     Err(e) => return Err(e),
                 }
             }
@@ -1104,21 +1152,29 @@ pub async fn chat(
                     _ => ("Tool call denied by user.".to_string(), "denied"),
                 }
             } else if let Some(tool) = tool {
+                let args: serde_json::Value = serde_json::from_str(&tc.arguments)
+                    .unwrap_or_else(|_| serde_json::json!({}));
                 let permission = tool.default_permission();
-                let (approved, deny_reason): (bool, Option<String>) = match permission {
-                    tools::Permission::Always => (true, None),
-                    tools::Permission::Never => (false, None),
-                    tools::Permission::Ask => {
-                        match wait_for_approval(&app, &cancel, tc, &assistant_msg_id, &conversation_id, None).await? {
-                            Some(ApprovalDecision::Approved) => (true, None),
-                            Some(ApprovalDecision::Denied(reason)) => (false, reason),
-                            _ => (false, None),
-                        }
+                // The name alone cannot answer this: `read_file` inside the
+                // project and `read_file` pointed at ~/.ssh are the same tool.
+                // `reach` is advisory — it decides whether to prompt, not what
+                // the tool may touch. `tools::verified` enforces that against
+                // the handle when the I/O actually happens.
+                let reach = tool.reach(&args, &tool_context);
+                let (approved, deny_reason): (bool, Option<String>) = if permission
+                    == tools::Permission::Never
+                {
+                    (false, None)
+                } else if !tools::reach::needs_approval(permission, reach, accept_edits) {
+                    (true, None)
+                } else {
+                    match wait_for_approval(&app, &cancel, tc, &assistant_msg_id, &conversation_id, None).await? {
+                        Some(ApprovalDecision::Approved) => (true, None),
+                        Some(ApprovalDecision::Denied(reason)) => (false, reason),
+                        _ => (false, None),
                     }
                 };
                 if approved {
-                    let args: serde_json::Value = serde_json::from_str(&tc.arguments)
-                        .unwrap_or_else(|_| serde_json::json!({}));
                     match tool.execute(args.clone(), &tool_context).await {
                         Ok(output) => (output, "success"),
                         Err(e) => match tools::decode_sandbox_denied(&e) {

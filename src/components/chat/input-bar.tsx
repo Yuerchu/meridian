@@ -32,7 +32,8 @@ import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
 import { VoiceButton } from '@/components/ui/voice-button'
-import { Toolbar, MobileOptionsMenu } from './toolbar'
+import { MobileOptionsMenu } from './toolbar'
+import { ComposerMenu } from './composer-menu'
 import { EmojiPicker } from './emoji-picker'
 import type { Assistant, ChatMode, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
@@ -74,6 +75,8 @@ interface InputBarProps {
   onToggleFast: (next: boolean) => void
   mode: ChatMode
   onSelectMode: (mode: ChatMode) => void
+  acceptEdits: boolean
+  onToggleAcceptEdits: (next: boolean) => void
   capabilities?: ProviderCapabilities | null
   contextInfo?: ContextInfo
   compacting?: boolean
@@ -101,6 +104,8 @@ export function InputBar({
   onToggleFast,
   mode,
   onSelectMode,
+  acceptEdits,
+  onToggleAcceptEdits,
   capabilities,
   contextInfo,
   compacting,
@@ -295,6 +300,8 @@ export function InputBar({
                   onToggleFast={onToggleFast}
                   mode={mode}
                   onSelectMode={onSelectMode}
+                  acceptEdits={acceptEdits}
+                  onToggleAcceptEdits={onToggleAcceptEdits}
                   capabilities={capabilities}
                   onTakePhoto={handleTakePhoto}
                   onPickGallery={handlePickGallery}
@@ -302,7 +309,7 @@ export function InputBar({
                   supportsImages={capabilities?.supports_images !== false}
                 />
               ) : (
-                <Toolbar
+                <ComposerMenu
                   assistants={assistants}
                   providers={providers}
                   currentAssistantId={currentAssistantId}
@@ -316,27 +323,17 @@ export function InputBar({
                   onToggleFast={onToggleFast}
                   mode={mode}
                   onSelectMode={onSelectMode}
+                  acceptEdits={acceptEdits}
+                  onToggleAcceptEdits={onToggleAcceptEdits}
                   capabilities={capabilities}
+                  onPickFile={
+                    onAttachFiles && capabilities?.supports_images !== false
+                      ? handlePickFile
+                      : undefined
+                  }
                 />
               )}
               <div className="flex items-center gap-2 shrink-0">
-                {!isAndroid && onAttachFiles && capabilities?.supports_images !== false && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="text-muted-foreground hover:text-foreground"
-                          onClick={handlePickFile}
-                        >
-                          <Paperclip className="w-4 h-4" />
-                        </Button>
-                      }
-                    />
-                    <TooltipContent side="top">{t('chat.attach')}</TooltipContent>
-                  </Tooltip>
-                )}
                 <EmojiPicker
                   assistantId={currentAssistantId}
                   onSelect={(syntax) => onChange(value + syntax)}

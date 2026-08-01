@@ -2,6 +2,9 @@ node_modules/
 dist/
 src-tauri/target/
 src-tauri/.cargo/
+# Runtime DLLs that build.rs stages out of target/<profile>, so the bundle
+# config can name them without knowing which profile is being built.
+src-tauri/resources/
 src-tauri/*_dev.db
 *.apk
 *.idsig

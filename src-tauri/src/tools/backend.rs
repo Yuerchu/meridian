@@ -40,63 +40,149 @@ pub struct CappedRead {
     pub total_size: Option<u64>,
 }
 
-pub async fn read_capped(target: &ResolvedTarget, max_bytes: usize) -> Result<CappedRead, String> {
+/// Read through a handle that has already been verified, without naming a path
+/// again.
+///
+/// The path-based `read_capped` below resolves the name a second time, which is
+/// fine for tools that always ask the user first. This one exists for the tools
+/// that may skip the prompt: whatever the handle was confirmed to be is what
+/// gets read.
+pub async fn read_capped_opened(
+    target: super::OpenedTarget,
+    max_bytes: usize,
+) -> Result<CappedRead, String> {
     match target {
-        ResolvedTarget::Real(path) => {
-            let meta = tokio::fs::metadata(path).await
-                .map_err(|e| format!("cannot access '{}': {}", path.display(), e))?;
-            let file_size = meta.len();
-            if file_size <= max_bytes as u64 {
-                let content = tokio::fs::read_to_string(path).await
-                    .map_err(|e| format!("failed to read file '{}': {}", path.display(), e))?;
-                return Ok(CappedRead { content, truncated: false, total_size: Some(file_size) });
-            }
-            let path = path.clone();
-            let result = tokio::task::spawn_blocking(move || {
+        super::OpenedTarget::Real(vf) => {
+            let (mut file, real) = vf.into_parts();
+            tokio::task::spawn_blocking(move || {
                 use std::io::Read;
-                let mut f = std::fs::File::open(&path)
-                    .map_err(|e| format!("failed to open '{}': {}", path.display(), e))?;
-                let mut buf = vec![0u8; max_bytes];
-                let mut total = 0;
-                while total < max_bytes {
-                    match f.read(&mut buf[total..]) {
-                        Ok(0) => break,
-                        Ok(n) => total += n,
-                        Err(e) => return Err(format!("read error: {e}")),
+                let total_size = file.metadata().ok().map(|m| m.len());
+                let mut buf = Vec::new();
+                let read = (&mut file)
+                    .take(max_bytes as u64)
+                    .read_to_end(&mut buf)
+                    .map_err(|e| format!("failed to read '{}': {}", real.display(), e))?;
+                let truncated = total_size.is_some_and(|s| s > read as u64);
+                match String::from_utf8(buf) {
+                    Ok(content) => Ok(CappedRead { content, truncated, total_size }),
+                    // A cap can land mid-character; that is a truncation
+                    // artefact, not a binary file.
+                    Err(e) => {
+                        let bytes = e.as_bytes();
+                        match std::str::from_utf8(bytes) {
+                            Ok(s) => Ok(CappedRead {
+                                content: s.to_string(),
+                                truncated,
+                                total_size,
+                            }),
+                            Err(u) if truncated && u.error_len().is_none() && u.valid_up_to() > 0 => {
+                                Ok(CappedRead {
+                                    content: String::from_utf8_lossy(&bytes[..u.valid_up_to()])
+                                        .into_owned(),
+                                    truncated,
+                                    total_size,
+                                })
+                            }
+                            Err(_) => Err(format!(
+                                "'{}' is not valid UTF-8 (binary file?)",
+                                real.display()
+                            )),
+                        }
                     }
                 }
-                let buf = &buf[..total];
-                match std::str::from_utf8(buf) {
-                    Ok(s) => Ok(CappedRead {
-                        content: s.to_string(),
-                        truncated: true,
-                        total_size: Some(file_size),
-                    }),
-                    Err(e) if e.error_len().is_none() && e.valid_up_to() > 0 => {
-                        Ok(CappedRead {
-                            content: std::str::from_utf8(&buf[..e.valid_up_to()]).unwrap().to_string(),
-                            truncated: true,
-                            total_size: Some(file_size),
-                        })
-                    }
-                    Err(_) => Err(format!("'{}' is not valid UTF-8 (binary file?)", path.display())),
-                }
-            }).await.map_err(|e| format!("task failed: {e}"))?;
-            result
+            })
+            .await
+            .map_err(|e| format!("task failed: {e}"))?
         }
         #[cfg(target_os = "android")]
-        ResolvedTarget::Saf { tree_uri, rel, display } => {
-            let r = crate::android_bridge::saf_read(tree_uri, rel, max_bytes as i64)
+        super::OpenedTarget::Saf { tree_uri, rel, display } => {
+            let r = crate::android_bridge::saf_read(&tree_uri, &rel, max_bytes as i64)
                 .await
                 .map_err(|e| format!("'{display}': {e}"))?;
-            Ok(CappedRead {
-                content: r.content,
-                truncated: r.truncated,
-                total_size: r.size,
-            })
+            Ok(CappedRead { content: r.content, truncated: r.truncated, total_size: r.size })
         }
         #[cfg(not(target_os = "android"))]
-        ResolvedTarget::Saf { .. } => saf_unsupported(),
+        super::OpenedTarget::Saf { .. } => saf_unsupported(),
+    }
+}
+
+/// Read a file through a verified handle, transform the contents, and write the
+/// result back through that same handle.
+///
+/// Both halves on one handle is what makes an edit an edit: the bytes that were
+/// matched against are the bytes that get replaced. Reading by path and writing
+/// by path leaves a gap where the file can change, and the write would then
+/// discard whatever arrived in it without noticing.
+///
+/// `transform` returning `Err` leaves the file untouched — nothing is truncated
+/// until it has produced the replacement.
+pub async fn edit_opened<F>(target: super::OpenedTarget, transform: F) -> Result<(), String>
+where
+    F: FnOnce(&str) -> Result<String, String>,
+{
+    match target {
+        super::OpenedTarget::Real(vf) => {
+            use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+            let (std_file, real) = vf.into_parts();
+            let mut f = tokio::fs::File::from_std(std_file);
+            let mut content = String::new();
+            f.read_to_string(&mut content)
+                .await
+                .map_err(|e| format!("failed to read '{}': {}", real.display(), e))?;
+
+            let updated = transform(&content)?;
+
+            f.set_len(0).await.map_err(|e| format!("failed to truncate '{}': {}", real.display(), e))?;
+            f.seek(std::io::SeekFrom::Start(0))
+                .await
+                .map_err(|e| format!("failed to rewind '{}': {}", real.display(), e))?;
+            f.write_all(updated.as_bytes())
+                .await
+                .map_err(|e| format!("failed to write '{}': {}", real.display(), e))?;
+            f.flush().await.map_err(|e| format!("failed to flush '{}': {}", real.display(), e))
+        }
+        #[cfg(target_os = "android")]
+        super::OpenedTarget::Saf { tree_uri, rel, display } => {
+            let r = crate::android_bridge::saf_read(&tree_uri, &rel, -1)
+                .await
+                .map_err(|e| format!("'{display}': {e}"))?;
+            let updated = transform(&r.content)?;
+            crate::android_bridge::saf_write(&tree_uri, &rel, &updated)
+                .await
+                .map_err(|e| format!("'{display}': {e}"))
+        }
+        #[cfg(not(target_os = "android"))]
+        super::OpenedTarget::Saf { .. } => saf_unsupported(),
+    }
+}
+
+/// Write through an already-verified handle. Truncation happens here, after the
+/// check, so a refused write leaves the previous contents alone.
+pub async fn write_opened(target: super::OpenedTarget, content: &str) -> Result<(), String> {
+    match target {
+        super::OpenedTarget::Real(vf) => {
+            let (mut file, real) = vf.into_parts();
+            let content = content.to_string();
+            tokio::task::spawn_blocking(move || {
+                use std::io::{Seek, SeekFrom, Write};
+                file.set_len(0).map_err(|e| format!("failed to truncate '{}': {}", real.display(), e))?;
+                file.seek(SeekFrom::Start(0))
+                    .map_err(|e| format!("failed to rewind '{}': {}", real.display(), e))?;
+                file.write_all(content.as_bytes())
+                    .map_err(|e| format!("failed to write '{}': {}", real.display(), e))?;
+                file.flush().map_err(|e| format!("failed to flush '{}': {}", real.display(), e))
+            })
+            .await
+            .map_err(|e| format!("task failed: {e}"))?
+        }
+        #[cfg(target_os = "android")]
+        super::OpenedTarget::Saf { tree_uri, rel, display } => {
+            crate::android_bridge::saf_write(&tree_uri, &rel, content)
+                .await
+                .map_err(|e| format!("'{display}': {e}"))
+        }
+        #[cfg(not(target_os = "android"))]
+        super::OpenedTarget::Saf { .. } => saf_unsupported(),
     }
 }
 

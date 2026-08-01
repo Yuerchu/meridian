@@ -49,20 +49,34 @@ pub fn init_db(db_path: &str) -> DbPool {
         .ok();
     conn.run_pending_migrations(MIGRATIONS)
         .expect("failed to run migrations");
-    diesel::sql_query("PRAGMA foreign_keys=ON")
-        .execute(&mut conn)
-        .ok();
+    // If this one fails the connection spends the rest of its life without
+    // foreign keys, and cascades stop happening — deleting a conversation would
+    // leave its messages behind, silently.
+    if let Err(e) = diesel::sql_query("PRAGMA foreign_keys=ON").execute(&mut conn) {
+        tracing::error!(error = %e, "could not re-enable foreign keys after migrating");
+    }
 
     // Memories no longer hang off projects by foreign key, and migrations run
     // with foreign keys off anyway, so a table rebuild can leave orphans behind.
     let now = crate::util::now_ms();
-    let _ = ops::memory::purge_orphan_project_memories(&mut conn);
-    let _ = ops::memory::expire_proposals(&mut conn, now);
+    let orphans = ops::memory::purge_orphan_project_memories(&mut conn).unwrap_or(0);
+    let proposals = ops::memory::expire_proposals(&mut conn, now).unwrap_or(0);
     // Bounded-growth housekeeping. Kept off the write path: neither sweep
     // depends on what was just written, and the trash purge has no usable index
     // (both are partial on `deleted_at IS NULL`), so doing it per write meant a
     // full table scan each time.
-    let _ = ops::memory::sweep_untracked_subjects(&mut conn, now);
+    let swept = ops::memory::sweep_untracked_subjects(&mut conn, now).unwrap_or(0);
+    // Startup housekeeping deletes rows the user may later go looking for. When
+    // it removed nothing there is nothing to say, but when it did, this is the
+    // only record that it happened.
+    if orphans > 0 || proposals > 0 || swept > 0 {
+        tracing::info!(
+            orphan_memories_deleted = orphans,
+            proposals_expired = proposals,
+            subjects_swept = swept,
+            "startup housekeeping removed rows"
+        );
+    }
 
     pool
 }
@@ -91,6 +105,44 @@ mod migration_tests {
     struct CountRow {
         #[diesel(sql_type = BigInt)]
         n: i64,
+    }
+
+    /// Two migrations sharing a version number is silent: Diesel records the
+    /// version as applied and the second one never runs, so a column simply
+    /// never appears and every query against it fails at runtime. Cheap to
+    /// check, and it catches the case where a branch and its upstream both
+    /// claim the next number.
+    #[test]
+    fn no_two_migrations_claim_the_same_version() {
+        let all = MigrationSource::<diesel::sqlite::Sqlite>::migrations(&MIGRATIONS).unwrap();
+        let mut versions: Vec<String> =
+            all.iter().map(|m| m.name().version().as_owned().to_string()).collect();
+        let total = versions.len();
+        versions.sort();
+        versions.dedup();
+        assert_eq!(versions.len(), total, "duplicate migration version among {versions:?}");
+    }
+
+    /// Selecting the model checks every column the schema declares, so this
+    /// fails if `schema.rs` and the migrations have drifted apart — which is
+    /// otherwise a runtime error rather than a compile one.
+    #[test]
+    fn a_conversation_starts_out_asking_about_every_edit() {
+        use crate::db::models::conversation::Conversation;
+        use crate::db::schema::conversations::dsl::*;
+
+        let mut conn = SqliteConnection::establish(":memory:").unwrap();
+        conn.run_pending_migrations(MIGRATIONS).unwrap();
+        conn.batch_execute(
+            "INSERT INTO conversations
+                 (id, is_pinned, is_archived, message_count, created_at, updated_at)
+             VALUES ('c1', 0, 0, 0, 1, 1)",
+        )
+        .unwrap();
+
+        let c: Conversation =
+            conversations.find("c1").select(Conversation::as_select()).first(&mut conn).unwrap();
+        assert_eq!(c.accept_edits, 0, "a conversation that predates the column must keep asking");
     }
 
     /// Bring a database up to migration 18 only, so migration 19 can be tested

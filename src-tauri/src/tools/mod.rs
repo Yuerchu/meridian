@@ -1,3 +1,4 @@
+pub mod app_logs;
 pub mod apply_patch;
 pub mod ask_user;
 pub mod backend;
@@ -10,11 +11,13 @@ pub mod memory;
 pub mod move_file;
 pub mod plan;
 pub mod read_file;
+pub mod reach;
 #[cfg(not(target_os = "android"))]
 pub mod run_command;
 pub mod search_files;
 pub mod skill;
 pub mod todo;
+pub mod verified;
 pub mod web_search;
 pub mod write_file;
 
@@ -100,6 +103,20 @@ pub enum ResolvedTarget {
     Saf { tree_uri: String, rel: String, display: String },
 }
 
+/// A target that is not merely validated but *open*, with the check applied to
+/// the handle that will do the work.
+///
+/// The distinction from `ResolvedTarget` is the whole point of this layer. A
+/// resolved path was correct when it was checked; an opened target is correct
+/// when it is used, because there is no second resolution in between. Tools
+/// that may run without asking the user must use this. Tools that always ask
+/// may use `ResolvedTarget`, since a person is watching the gap.
+#[derive(Debug)]
+pub enum OpenedTarget {
+    Real(verified::VerifiedFile),
+    Saf { tree_uri: String, rel: String, display: String },
+}
+
 /// Lexically normalize a slash-separated path into segments, resolving "." and "..".
 /// Returns None if ".." escapes above the root.
 fn normalize_segments(path: &str) -> Option<Vec<String>> {
@@ -118,34 +135,6 @@ fn normalize_segments(path: &str) -> Option<Vec<String>> {
 
 fn prefix_segments(prefix: &str) -> Vec<&str> {
     prefix.split('/').filter(|s| !s.is_empty()).collect()
-}
-
-/// Canonicalize a path that may not exist yet: canonicalize the deepest
-/// existing ancestor and re-append the remaining segments. This keeps
-/// comparisons consistent on Windows where canonicalize adds a \\?\ prefix.
-fn canonicalize_lenient(path: &Path) -> PathBuf {
-    if let Ok(p) = std::fs::canonicalize(path) {
-        return p;
-    }
-    let mut rest = Vec::new();
-    let mut cur = path.to_path_buf();
-    loop {
-        let Some(name) = cur.file_name().map(|n| n.to_os_string()) else {
-            return path.to_path_buf();
-        };
-        rest.push(name);
-        let Some(parent) = cur.parent().map(Path::to_path_buf) else {
-            return path.to_path_buf();
-        };
-        if let Ok(canonical) = std::fs::canonicalize(&parent) {
-            let mut out = canonical;
-            for seg in rest.iter().rev() {
-                out.push(seg);
-            }
-            return out;
-        }
-        cur = parent;
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -185,18 +174,20 @@ impl ToolContext {
         }
     }
 
-    pub fn validate_path(&self, resolved: &Path) -> Result<(), String> {
-        if let Some(ref wd) = self.working_directory {
-            let wd_canonical = canonicalize_lenient(Path::new(wd));
-            let target = canonicalize_lenient(resolved);
-            if !target.starts_with(&wd_canonical) {
-                return Err(format!(
-                    "Access denied: path '{}' is outside the project directory",
-                    resolved.display()
-                ));
-            }
-        }
-        Ok(())
+    /// The project directory as the OS spells it, or None when the session is
+    /// not bound to a project.
+    ///
+    /// Resolved on every call rather than cached at construction: it is one
+    /// open plus one query, and caching it would mean a project directory that
+    /// gets replaced mid-session keeps being compared against the old object.
+    pub fn verified_root(&self) -> Result<Option<PathBuf>, String> {
+        let Some(ref wd) = self.working_directory else { return Ok(None) };
+        // A project directory that cannot be opened is a broken configuration,
+        // not a traversal attempt; the message should say so rather than
+        // blaming the file the model asked for.
+        verified::resolve_root(Path::new(wd))
+            .map(Some)
+            .map_err(|e| format!("project directory is unusable: {}", e.message()))
     }
 
     pub fn working_dir_or_current(&self) -> PathBuf {
@@ -206,20 +197,50 @@ impl ToolContext {
             .unwrap_or_else(|| std::env::current_dir().unwrap_or_default())
     }
 
+    /// Records a refusal.
+    ///
+    /// The three access modes fail for entirely different reasons, and from the
+    /// outside they all read as "Access denied" — an Android user who has
+    /// granted a folder and a model walking out of the project directory produce
+    /// the same message. `mode` and `reason` are what tell them apart. This is
+    /// also the only signal that a path traversal was attempted at all.
+    fn log_denied(&self, path: &str, mode: &'static str, reason: &'static str, root_count: usize) {
+        tracing::warn!(
+            denied_path = %path,
+            access_mode = mode,
+            reason,
+            // Not the roots themselves: those spell out the user's directory
+            // layout.
+            root_count,
+            "file access denied"
+        );
+    }
+
     /// Resolve a model-supplied path and enforce file access policy.
     /// All file tools must go through this instead of resolve_path/validate_path.
     pub fn resolve_and_validate(&self, path: &str) -> Result<ResolvedTarget, String> {
         match &self.file_access {
             FileAccess::Unrestricted => {
                 let resolved = self.resolve_path(path);
-                self.validate_path(&resolved)?;
-                Ok(ResolvedTarget::Real(resolved))
+                let root = self.verified_root()?;
+                // Returns the path the OS confirmed, not the one that was asked
+                // for, so path-based I/O downstream operates on the spelling
+                // that was actually checked.
+                let real = verified::verify_path(&resolved, root.as_deref())
+                    .map_err(|e| e.message())?;
+                Ok(ResolvedTarget::Real(real))
             }
             FileAccess::Roots(roots) => {
+                // An empty root set is the OneBot path and an Android install
+                // with nothing granted; worth telling apart from a path that
+                // simply missed.
+                let mode = if roots.is_empty() { "roots_empty" } else { "roots" };
                 if !(path.starts_with('/') || path.starts_with('\\')) {
+                    self.log_denied(path, mode, "relative_path_in_roots_mode", roots.len());
                     return Err(self.roots_denied_message(path, roots));
                 }
                 let segs = normalize_segments(path).ok_or_else(|| {
+                    self.log_denied(path, mode, "escapes_filesystem_root", roots.len());
                     format!("Access denied: path '{path}' escapes the filesystem root")
                 })?;
                 for root in roots {
@@ -244,7 +265,72 @@ impl ToolContext {
                         });
                     }
                 }
+                self.log_denied(path, mode, "no_matching_root", roots.len());
                 Err(self.roots_denied_message(path, roots))
+            }
+        }
+    }
+
+    /// Resolve, verify, and open a path for reading in one step.
+    ///
+    /// Policy still comes from `resolve_and_validate` — it knows about SAF
+    /// roots and the Android whitelist. What this adds is that the file is then
+    /// opened and re-confirmed against the handle, so the read cannot land
+    /// anywhere other than what was approved.
+    pub fn open_read(&self, path: &str) -> Result<OpenedTarget, String> {
+        match self.resolve_and_validate(path)? {
+            ResolvedTarget::Real(p) => {
+                let root = self.verified_root()?;
+                let vf = verified::open_read(&p, root.as_deref()).map_err(|e| e.message())?;
+                Ok(OpenedTarget::Real(vf))
+            }
+            ResolvedTarget::Saf { tree_uri, rel, display } => {
+                Ok(OpenedTarget::Saf { tree_uri, rel, display })
+            }
+        }
+    }
+
+    /// The same for writing. The file is created if absent but never truncated
+    /// before the check passes.
+    pub fn open_write(&self, path: &str) -> Result<OpenedTarget, String> {
+        match self.resolve_and_validate(path)? {
+            ResolvedTarget::Real(p) => {
+                let root = self.verified_root()?;
+                let vf = verified::open_write(&p, root.as_deref()).map_err(|e| e.message())?;
+                Ok(OpenedTarget::Real(vf))
+            }
+            ResolvedTarget::Saf { tree_uri, rel, display } => {
+                Ok(OpenedTarget::Saf { tree_uri, rel, display })
+            }
+        }
+    }
+
+    /// Create a file that must not already exist. The refusal is atomic with
+    /// the creation, so it cannot approve an overwrite of something that
+    /// appeared after the check.
+    pub fn open_create_new(&self, path: &str) -> Result<OpenedTarget, String> {
+        match self.resolve_and_validate(path)? {
+            ResolvedTarget::Real(p) => {
+                let root = self.verified_root()?;
+                let vf = verified::open_create_new(&p, root.as_deref()).map_err(|e| e.message())?;
+                Ok(OpenedTarget::Real(vf))
+            }
+            ResolvedTarget::Saf { tree_uri, rel, display } => {
+                Ok(OpenedTarget::Saf { tree_uri, rel, display })
+            }
+        }
+    }
+
+    /// The same for editing: the file must already exist, and is never created.
+    pub fn open_edit(&self, path: &str) -> Result<OpenedTarget, String> {
+        match self.resolve_and_validate(path)? {
+            ResolvedTarget::Real(p) => {
+                let root = self.verified_root()?;
+                let vf = verified::open_edit(&p, root.as_deref()).map_err(|e| e.message())?;
+                Ok(OpenedTarget::Real(vf))
+            }
+            ResolvedTarget::Saf { tree_uri, rel, display } => {
+                Ok(OpenedTarget::Saf { tree_uri, rel, display })
             }
         }
     }
@@ -298,6 +384,17 @@ pub trait Tool: Send + Sync {
     fn description(&self) -> &str;
     fn parameters_schema(&self) -> serde_json::Value;
     fn default_permission(&self) -> Permission;
+
+    /// What this particular call would touch.
+    ///
+    /// The default is the conservative answer: a tool that has not worked out
+    /// where it lands is always asked about. Only tools whose `Permission` is
+    /// `Ask` need to override it — for `Always` and `Never` the reach changes
+    /// nothing.
+    fn reach(&self, _args: &serde_json::Value, _context: &ToolContext) -> reach::Reach {
+        reach::Reach::Outside
+    }
+
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String>;
 }
 
@@ -307,14 +404,19 @@ pub struct ToolRegistry {
 }
 
 impl ToolRegistry {
-    /// `skills_root` is where skill directories live on disk
-    /// (`{app_data_dir}/skills`). It is app-global rather than per-request, so
-    /// the tool holds it instead of reading it out of `ToolContext`.
-    pub fn new(skills_root: std::path::PathBuf) -> Self {
+    /// `skills_root` and `logs_dir` are where skill directories and the
+    /// application log live on disk (`{app_data_dir}/skills` and `/logs`). Both
+    /// are app-global rather than per-request, so the tools hold them instead of
+    /// reading them out of `ToolContext` — and both sit outside every
+    /// `FileAccess` root, which is why these two tools resolve their own paths.
+    pub fn new(skills_root: std::path::PathBuf, logs_dir: std::path::PathBuf) -> Self {
         #[allow(unused_mut)]
         let mut tools: Vec<Arc<dyn Tool>> = vec![
             Arc::new(ask_user::AskUserTool),
             Arc::new(skill::LoadSkillTool::new(skills_root)),
+            // Registered unconditionally: unlike run_command, this one matters
+            // most exactly where the file tools cannot reach.
+            Arc::new(app_logs::ReadAppLogsTool::new(logs_dir)),
             Arc::new(read_file::ReadFileTool),
             Arc::new(write_file::WriteFileTool),
             Arc::new(list_directory::ListDirectoryTool),

@@ -69,6 +69,9 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const conversationMode = useConversationStore(
     (s) => (s.conversations.find((c) => c.id === conversationId)?.mode ?? 'work') as ChatMode,
   )
+  const conversationAcceptEdits = useConversationStore(
+    (s) => (s.conversations.find((c) => c.id === conversationId)?.accept_edits ?? 0) !== 0,
+  )
   const refreshConversations = useConversationStore((s) => s.refreshConversations)
 
   const messages = session?.messages ?? NO_MESSAGES
@@ -85,6 +88,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('default')
   const [fastMode, setFastMode] = useState(false)
   const [mode, setMode] = useState<ChatMode>('work')
+  const [acceptEdits, setAcceptEdits] = useState(false)
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [capabilities, setCapabilities] = useState<ProviderCapabilities | null>(null)
   const [showCompactedMessages, setShowCompactedMessages] = useState(false)
@@ -206,12 +210,33 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
       })
   }, [conversationId, mode, refreshConversations, storeSetError])
 
+  const handleToggleAcceptEdits = useCallback((next: boolean) => {
+    const previous = acceptEdits
+    setAcceptEdits(next)
+    api.setConversationAcceptEdits(conversationId, next)
+      .then(() => refreshConversations())
+      .catch((err) => {
+        // Rolled back rather than kept locally, for the same reason as the mode:
+        // a toolbar claiming edits are pre-approved when the backend never
+        // recorded it would have the user expecting silence and getting prompts
+        // — or worse, the reverse.
+        setAcceptEdits(previous)
+        storeSetError(conversationId, String(err))
+      })
+  }, [conversationId, acceptEdits, refreshConversations, storeSetError])
+
   // Tracks the stored value continuously: approving a plan switches the mode on
   // the backend, which emits `conversation-updated`, and the toolbar has to
   // follow rather than keep claiming the conversation is still planning.
   useEffect(() => {
     setMode(conversationMode)
   }, [conversationMode])
+
+  // Same reason, plus one of its own: switching conversations must not carry a
+  // standing approval over from the one before it.
+  useEffect(() => {
+    setAcceptEdits(conversationAcceptEdits)
+  }, [conversationAcceptEdits])
 
   const handleStop = useCallback(() => {
     api.stopChat(conversationId)
@@ -465,14 +490,6 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         <MessageScroller className="flex-1 min-h-0">
           <MessageScrollerViewport>
             <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6">
-        {error && (
-          <MessageScrollerItem messageId="__error">
-            <Bubble variant="destructive">
-              <BubbleContent className="break-all">{error}</BubbleContent>
-            </Bubble>
-          </MessageScrollerItem>
-        )}
-
         {compactedTurns.length > 0 && (
           <MessageScrollerItem messageId="__compact-region" className="space-y-6">
             {showCompactedMessages ? (
@@ -574,6 +591,18 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
             </Marker>
           </MessageScrollerItem>
         )}
+        {/* After the turns, not before them: the error belongs to the turn that
+            just failed, and the user is already at the bottom when it arrives.
+            Deliberately not a scrollAnchor — an anchor aligns its item to the
+            top of the viewport, which is what put the error out of sight in the
+            first place. */}
+        {error && (
+          <MessageScrollerItem messageId="__error">
+            <Bubble variant="destructive">
+              <BubbleContent className="break-all">{error}</BubbleContent>
+            </Bubble>
+          </MessageScrollerItem>
+        )}
         {messages.length === 0 && (
           <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
             {t('chat.startHint')}
@@ -608,6 +637,8 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         onToggleFast={handleToggleFast}
         mode={mode}
         onSelectMode={handleSelectMode}
+        acceptEdits={acceptEdits}
+        onToggleAcceptEdits={handleToggleAcceptEdits}
         capabilities={capabilities}
         contextInfo={contextInfo}
         compacting={compacting}

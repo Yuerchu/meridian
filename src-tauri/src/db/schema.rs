@@ -72,6 +72,7 @@ diesel::table! {
         fast_mode -> Integer,
         mode -> Nullable<Text>,
         head_message_id -> Nullable<Text>,
+        accept_edits -> Integer,
     }
 }
 

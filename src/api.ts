@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ChatMode, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, MessageTree, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, VoiceModelStatus, VoiceTranscript } from './types'
+import type { Assistant, ChatMode, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, LogFileInfo, LogPage, LogQuery, LogSettings, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, MessageTree, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, VoiceModelStatus, VoiceTranscript } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -21,6 +21,12 @@ export const api = {
   // two columns at once, so every caller has to pass the other's current value.
   setConversationMode: (id: string, mode: ChatMode | null) =>
     invoke<void>('set_conversation_mode', { id, mode }),
+
+  // Also its own setter, and kept apart from the mode for a second reason: a
+  // mode narrows what the assistant may do, this widens what it may do without
+  // asking. One call writing both would suggest they are the same kind of thing.
+  setConversationAcceptEdits: (id: string, acceptEdits: boolean) =>
+    invoke<void>('set_conversation_accept_edits', { id, acceptEdits }),
 
   togglePinConversation: (id: string) =>
     invoke<Conversation>('toggle_pin_conversation', { id }),
@@ -616,6 +622,30 @@ export const api = {
 
   setSkillBinding: (layer: SkillLayer, anchorId: string | null, dirName: string, bound: boolean) =>
     invoke<string[]>('set_skill_binding', { layer, anchorId: anchorId ?? null, dirName, bound }),
+
+  // Application logs
+  readLogs: (query: LogQuery = {}) =>
+    invoke<LogPage>('read_logs', {
+      query: {
+        minLevel: query.minLevel ?? null,
+        limit: query.limit ?? null,
+        contains: query.contains ?? null,
+        targetPrefix: query.targetPrefix ?? null,
+        conversationId: query.conversationId ?? null,
+        sinceTsMs: query.sinceTsMs ?? null,
+        untilTsMs: query.untilTsMs ?? null,
+        cursor: query.cursor ?? null,
+      },
+    }),
+
+  listLogFiles: () => invoke<LogFileInfo[]>('list_log_files'),
+
+  getLogSettings: () => invoke<LogSettings>('get_log_settings'),
+
+  setLogLevel: (level: string) => invoke<void>('set_log_level', { level }),
+
+  /** Returns the number of bytes written. */
+  exportLogs: (outputPath: string) => invoke<number>('export_logs', { outputPath }),
 
   // Service Keys (for tool services like Tavily, Zhipu search)
   setServiceKey: (service: string, key: string) =>

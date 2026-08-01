@@ -42,6 +42,17 @@ pub async fn compact(
 
     let result = do_compact(&pool, &secrets.0, &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await;
 
+    if let Err(ref e) = result {
+        // The automatic path logs its failures; this one used to hand the error
+        // straight to the frontend and leave nothing behind.
+        tracing::error!(
+            conversation_id = %conversation_id,
+            keep_recent,
+            error = %e,
+            "manual compaction failed"
+        );
+    }
+
     app.emit("compact-done", serde_json::json!({
         "conversation_id": &conversation_id,
     })).map_err(|e| e.to_string())?;
@@ -130,6 +141,27 @@ pub async fn set_conversation_mode(
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::update_mode(&mut conn, &id, mode.as_deref(), now_ms())
+            .map_err(|e| e.to_string())
+    }).await.map_err(|e| e.to_string())?
+}
+
+/// Turn the standing approval for ordinary edits on or off.
+///
+/// What this widens is bounded by `tools::reach`, not by this call: edits
+/// outside the project, anything irreversible, and paths that make code run
+/// later keep asking however this is set. Per-conversation, like the mode and
+/// the todo list, because it describes this stretch of work rather than a
+/// general preference.
+#[tauri::command]
+pub async fn set_conversation_accept_edits(
+    app: tauri::AppHandle,
+    id: String,
+    accept_edits: bool,
+) -> Result<(), String> {
+    let pool = app.state::<AppDb>().0.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::conversation::update_accept_edits(&mut conn, &id, accept_edits, now_ms())
             .map_err(|e| e.to_string())
     }).await.map_err(|e| e.to_string())?
 }

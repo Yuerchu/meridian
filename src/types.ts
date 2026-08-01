@@ -91,6 +91,12 @@ export interface Conversation {
   mode: string | null
   /** Leaf the active path ends at. Null falls back to the newest message. */
   head_message_id?: string | null
+  /**
+   * Standing approval for ordinary edits inside the project. What it widens is
+   * bounded in the backend, not here: never outside the project, never anything
+   * irreversible, never a path that makes code run later.
+   */
+  accept_edits: number
 }
 
 /** A step on the active path that was answered more than once. */
@@ -419,6 +425,71 @@ export interface ContextInfo {
   auto_compact_enabled: boolean
   circuit_breaker_state: string
   message_count: number
+}
+
+export type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE' | 'UNKNOWN'
+
+/** Where a page of log records stopped, so the next one resumes exactly there. */
+export interface LogCursor {
+  fileIndex: number
+  byteOffset: number
+}
+
+/** One line of the application log, already parsed and redacted by the backend. */
+export interface LogEntry {
+  /** RFC3339, UTC. */
+  ts: string
+  ts_ms: number
+  level: LogLevel
+  /** Tracing target, e.g. "meridian_lib::provider::openai_compat". */
+  target: string
+  msg: string
+  /** Fields the event itself carried. */
+  fields?: Record<string, unknown>
+  /** Enclosing span names, outermost first. */
+  spans?: string[]
+  /** Fields inherited from those spans, such as conversation_id. */
+  span_fields?: Record<string, unknown>
+  file?: string
+  line?: number
+  /** Present instead of the parsed fields when the line could not be read. */
+  raw?: string
+  cursor: LogCursor
+}
+
+export interface LogPage {
+  entries: LogEntry[]
+  /** Null once the scan reached the oldest available record. */
+  nextCursor: LogCursor | null
+  /** The scan stopped on its size budget, so older matches may exist. */
+  scanTruncated: boolean
+  filesScanned: string[]
+}
+
+export interface LogQuery {
+  minLevel?: string
+  limit?: number
+  contains?: string
+  targetPrefix?: string
+  conversationId?: string
+  sinceTsMs?: number
+  untilTsMs?: number
+  cursor?: LogCursor | null
+}
+
+export interface LogFileInfo {
+  name: string
+  size: number
+}
+
+export interface LogSettings {
+  level: string
+  levels: string[]
+  directory: string
+  maxFileBytes: number
+  maxFiles: number
+  /** False when the log file could not be opened; the panel says so. */
+  available: boolean
 }
 
 export interface StreamChunk {

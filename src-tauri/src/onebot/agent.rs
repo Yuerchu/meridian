@@ -542,9 +542,9 @@ pub async fn headless_chat(
         working_directory: None,
         shell: shell_type.map(|s| tools::ShellType::from_str(&s))
             .unwrap_or_else(tools::ShellType::default_for_platform),
-        // Headless (QQ) sessions have no project dir; with Unrestricted access
-        // validate_path is a no-op and the model could read the whole host
-        // filesystem. An empty root set denies every path at the validation layer.
+        // Headless (QQ) sessions have no project dir, and Unrestricted access
+        // with no directory to be restricted to is the whole host filesystem.
+        // An empty root set denies every path at the validation layer instead.
         file_access: tools::FileAccess::Roots(vec![]),
         project_id: project_id.map(|s| s.to_string()),
         conversation_id: Some(conversation_id.to_string()),

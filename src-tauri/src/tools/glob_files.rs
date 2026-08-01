@@ -30,8 +30,20 @@ impl Tool for GlobFilesTool {
         })
     }
 
+    /// Ask rather than Always. This one followed symlinks out of its base
+    /// directory as well, so as Always it was the widest unprompted read in the
+    /// tool set. Globbing inside the project still does not prompt.
     fn default_permission(&self) -> Permission {
-        Permission::Always
+        Permission::Ask
+    }
+
+    fn reach(&self, args: &serde_json::Value, context: &ToolContext) -> super::reach::Reach {
+        // Absent path means the project root, which is inside by definition.
+        match args["path"].as_str() {
+            Some(p) => super::reach::locate(context, p, false),
+            None if context.working_directory.is_some() => super::reach::Reach::ReadsProject,
+            None => super::reach::Reach::Outside,
+        }
     }
 
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
