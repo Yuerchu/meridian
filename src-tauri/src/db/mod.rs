@@ -12,6 +12,13 @@ const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 pub type DbPool = Pool<ConnectionManager<SqliteConnection>>;
 pub type PooledConn = PooledConnection<ConnectionManager<SqliteConnection>>;
 
+/// How long a connection waits for a lock before giving up.
+///
+/// Long enough to sit through any write this app makes — they are single-row
+/// inserts and updates — while still failing rather than hanging if something
+/// holds the write lock indefinitely.
+const BUSY_TIMEOUT_MS: u32 = 5_000;
+
 /// SQLite pragmas are per-connection, so they must run on every connection the
 /// pool hands out — running them once on a single connection leaves the other
 /// pooled connections without foreign key enforcement.
@@ -20,6 +27,19 @@ struct ConnectionCustomizer;
 
 impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> for ConnectionCustomizer {
     fn on_acquire(&self, conn: &mut SqliteConnection) -> Result<(), diesel::r2d2::Error> {
+        // First, so that the statement after it is covered too.
+        //
+        // SQLite defaults this to zero: a connection that meets a held lock
+        // fails on the spot with "database is locked" instead of waiting. WAL
+        // lets readers run alongside a writer, but two writers still collide,
+        // and a single turn writes from several places — the user row, the
+        // assistant placeholder, then a row per tool result, all while the
+        // frontend is polling context size. That is what put the error in the
+        // log, raised from r2d2 handing out a connection rather than from any
+        // one query, because even this pragma run below could not get in.
+        diesel::sql_query(format!("PRAGMA busy_timeout={BUSY_TIMEOUT_MS}"))
+            .execute(conn)
+            .map_err(diesel::r2d2::Error::QueryError)?;
         diesel::sql_query("PRAGMA foreign_keys=ON")
             .execute(conn)
             .map_err(diesel::r2d2::Error::QueryError)?;
@@ -79,6 +99,31 @@ pub fn init_db(db_path: &str) -> DbPool {
     }
 
     pool
+}
+
+#[cfg(test)]
+mod pool_tests {
+    use super::*;
+    use diesel::prelude::*;
+    use diesel::sql_types::Integer;
+
+    #[derive(QueryableByName)]
+    struct BusyTimeout {
+        #[diesel(sql_type = Integer)]
+        timeout: i32,
+    }
+
+    /// Without this every pooled connection fails the moment it meets a lock,
+    /// which is what "database is locked" in the log was.
+    #[test]
+    fn test_pooled_connections_wait_for_locks() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        let rows: Vec<BusyTimeout> = diesel::sql_query("PRAGMA busy_timeout")
+            .load(&mut conn)
+            .unwrap();
+        assert_eq!(rows[0].timeout, BUSY_TIMEOUT_MS as i32);
+    }
 }
 
 #[cfg(test)]
