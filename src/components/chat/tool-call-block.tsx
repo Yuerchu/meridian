@@ -1,6 +1,8 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { diffLines, parsePatch } from 'diff'
+import hljs from 'highlight.js/lib/common'
+import { fileIconUrl } from '@/lib/file-icon'
 import { AnimatePresence, motion } from 'motion/react'
 import {
   Check, X, Loader2, MessageCircleQuestion, Send,
@@ -472,17 +474,59 @@ function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDif
   }
 }
 
-function diffLineClass(kind: DiffLineKind): string {
+/** Highlighted lines keep the tint and give up the tinted foreground: syntax
+ *  colours are the point of turning it on, and a green identifier on a green
+ *  wash reads worse than either alone. The sign in the gutter stays coloured,
+ *  so added and removed are still one glance apart. */
+function diffLineClass(kind: DiffLineKind, highlighted: boolean): string {
   switch (kind) {
     case 'add':
-      return 'bg-success/10 text-success'
+      return highlighted ? 'bg-success/10 text-foreground/80' : 'bg-success/10 text-success'
     case 'remove':
-      return 'bg-destructive/10 text-destructive'
+      return highlighted ? 'bg-destructive/10 text-foreground/80' : 'bg-destructive/10 text-destructive'
     case 'hunk':
       return 'text-muted-foreground/60'
     default:
       return 'text-foreground/80'
   }
+}
+
+function diffSignClass(kind: DiffLineKind): string | undefined {
+  if (kind === 'add') return 'text-success'
+  if (kind === 'remove') return 'text-destructive'
+  return undefined
+}
+
+/** Extensions highlight.js does not already know by that name. Everything else
+ *  (`ts`, `py`, `rs`, `json`, `yml`, …) is an alias it resolves on its own. */
+const EXT_ALIASES: Record<string, string> = {
+  tsx: 'typescript',
+  jsx: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  h: 'c',
+  hpp: 'cpp',
+  vue: 'xml',
+  svelte: 'xml',
+}
+
+function diffLanguage(path: string): string | undefined {
+  const ext = path.split('.').pop()?.toLowerCase()
+  if (!ext || ext === path.toLowerCase()) return undefined
+  const name = EXT_ALIASES[ext] ?? ext
+  return hljs.getLanguage(name) ? name : undefined
+}
+
+/**
+ * Highlights each line on its own rather than the file as a whole.
+ *
+ * A diff is not a program: its lines come from two versions at once and the
+ * context between them is missing, so there is no whole to parse. Line by line
+ * a template literal or block comment spanning several lines loses its colour
+ * after the first — the price of colouring the other 99%.
+ */
+function highlightDiffLine(text: string, language: string): string {
+  return hljs.highlight(text, { language, ignoreIllegals: true }).value
 }
 
 function diffLinePrefix(kind: DiffLineKind): string {
@@ -498,6 +542,13 @@ function diffLinePrefix(kind: DiffLineKind): string {
   }
 }
 
+function FileIcon({ path }: { path: string }) {
+  const src = fileIconUrl(path)
+  if (!src) return <FileText className="w-3.5 h-3.5 shrink-0" />
+  // Decorative: the file name it sits beside already names the file.
+  return <img src={src} alt="" aria-hidden className="size-3.5 shrink-0" />
+}
+
 function FileDiffCard({ diff }: { diff: FileDiff }) {
   const { t } = useTranslation()
   const added = diff.lines.filter((l) => l.kind === 'add').length
@@ -505,6 +556,7 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
   const fileName = diff.path.split(/[/\\]/).pop() ?? diff.path
   const shown = diff.lines.slice(0, MAX_DIFF_LINES)
   const hidden = diff.lines.length - shown.length
+  const language = diffLanguage(diff.path)
 
   return (
     <div data-slot="file-diff" className="rounded-lg bg-muted/40 overflow-hidden">
@@ -513,7 +565,7 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
           data-slot="file-diff-header"
           className="flex items-center gap-2 px-3 py-1 bg-muted/30 text-xs text-muted-foreground border-b border-border/50"
         >
-          <FileText className="w-3 h-3 shrink-0" />
+          <FileIcon path={diff.path} />
           <span className="font-mono truncate" title={diff.path}>{fileName}</span>
           {diff.op === 'create' && <span className="text-success shrink-0">{t('chat.tool.diff.newFile')}</span>}
           {diff.op === 'delete' && <span className="text-destructive shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
@@ -534,10 +586,13 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
               key={i}
               data-slot="file-diff-line"
               data-kind={line.kind}
-              className={cn('px-3 whitespace-pre', diffLineClass(line.kind))}
+              className={cn('px-3 whitespace-pre', diffLineClass(line.kind, !!language))}
             >
-              {diffLinePrefix(line.kind)}
-              {line.text || ' '}
+              <span className={diffSignClass(line.kind)}>{diffLinePrefix(line.kind)}</span>
+              {language && line.kind !== 'hunk' && line.text
+                // hljs escapes what it emits, and the sign beside it is ours.
+                ? <span dangerouslySetInnerHTML={{ __html: highlightDiffLine(line.text, language) }} />
+                : line.text || ' '}
             </div>
           ))}
           {hidden > 0 && (
@@ -559,7 +614,7 @@ function ReadFileResult({ result, path }: { result: string; path: string }) {
   return (
     <div className="rounded-lg bg-muted/40 overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-1 bg-muted/30 text-xs text-muted-foreground border-b border-border/50">
-        <FileText className="w-3 h-3" />
+        <FileIcon path={path} />
         <span className="font-mono truncate">{fileName}</span>
       </div>
       <div className="max-h-60 overflow-auto">
@@ -620,7 +675,7 @@ function SearchResult({ result }: { result: string }) {
       {Array.from(grouped.entries()).map(([file, items]) => (
         <div key={file} className="not-first:border-t not-first:border-border/50">
           <div className="flex items-center gap-1.5 px-3 py-1 bg-muted/30 text-xs text-muted-foreground">
-            <FileText className="w-3 h-3 shrink-0" />
+            <FileIcon path={file} />
             <span className="font-mono truncate">{file.split(/[/\\]/).pop()}</span>
             <span className="text-muted-foreground/50 ml-auto shrink-0">{items.length}</span>
           </div>

@@ -24,6 +24,15 @@ function toolCall(
   }
 }
 
+/** Diff lines are syntax-highlighted, so their text is split across token
+ *  spans and `getByText` — which only reads a node's own text children — no
+ *  longer sees a whole line. Read the rendered diff as one string instead. */
+function diffText(container: HTMLElement): string {
+  return Array.from(container.querySelectorAll('[data-slot="file-diff-line"]'))
+    .map((line) => line.textContent)
+    .join('\n')
+}
+
 describe('ToolCallBlock file-edit diff rendering', () => {
   beforeAll(async () => {
     await i18n.changeLanguage('en')
@@ -39,16 +48,16 @@ describe('ToolCallBlock file-edit diff rendering', () => {
       '+) -> AssetCreateResponse:',
       '*** End Patch',
     ].join('\n')
-    render(<ToolCallBlock data={toolCall('apply_patch', { base_path: '.', patch })} />)
+    const { container } = render(<ToolCallBlock data={toolCall('apply_patch', { base_path: '.', patch })} />)
 
     expect(screen.getByText('__init__.py')).toBeInTheDocument()
-    expect(screen.getByText(') -> AssetCreateResponse:', { exact: false })).toBeInTheDocument()
-    expect(screen.getByText('async def create_volcengine_asset(', { exact: false })).toBeInTheDocument()
+    expect(diffText(container)).toContain(') -> AssetCreateResponse:')
+    expect(diffText(container)).toContain('async def create_volcengine_asset(')
     expect(screen.getByText('+1')).toBeInTheDocument()
     expect(screen.getByText('-1')).toBeInTheDocument()
     // The envelope markers and escaped-JSON dump must not appear.
-    expect(screen.queryByText('*** Begin Patch', { exact: false })).not.toBeInTheDocument()
-    expect(screen.queryByText('base_path', { exact: false })).not.toBeInTheDocument()
+    expect(container.textContent).not.toContain('*** Begin Patch')
+    expect(container.textContent).not.toContain('base_path')
     // Approval buttons still render for pending calls.
     expect(screen.getByText('Allow')).toBeInTheDocument()
   })
@@ -64,11 +73,11 @@ describe('ToolCallBlock file-edit diff rendering', () => {
       '-fn old() {}',
       '+fn new() {}',
     ].join('\n')
-    render(<ToolCallBlock data={toolCall('apply_patch', { patch })} />)
+    const { container } = render(<ToolCallBlock data={toolCall('apply_patch', { patch })} />)
 
     expect(screen.getByText('lib.rs')).toBeInTheDocument()
-    expect(screen.getByText('fn new() {}', { exact: false })).toBeInTheDocument()
-    expect(screen.getByText('fn old() {}', { exact: false })).toBeInTheDocument()
+    expect(diffText(container)).toContain('fn new() {}')
+    expect(diffText(container)).toContain('fn old() {}')
   })
 
   it('renders edit_file as a real line diff, keeping common lines as context', () => {
@@ -91,15 +100,15 @@ describe('ToolCallBlock file-edit diff rendering', () => {
   })
 
   it('renders write_file content with the file name header', () => {
-    render(
+    const { container } = render(
       <ToolCallBlock
         data={toolCall('write_file', { path: 'notes/todo.md', content: '# Todo\n- item one\n' })}
       />,
     )
 
     expect(screen.getByText('todo.md')).toBeInTheDocument()
-    expect(screen.getByText('# Todo', { exact: false })).toBeInTheDocument()
-    expect(screen.getByText('- item one', { exact: false })).toBeInTheDocument()
+    expect(diffText(container)).toContain('# Todo')
+    expect(diffText(container)).toContain('- item one')
     expect(screen.getByText('+2')).toBeInTheDocument()
   })
 
