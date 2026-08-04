@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Meridian</title>
+    <!-- Painted before the stylesheet arrives, so the window does not flash
+         white on the way to the app. Same value as `--background` under `.dark`
+         in index.css — oklch(0.145 0 0) — and has to be changed with it. The
+         window's own colour is set in tauri.conf.json for the frame before
+         that. -->
+    <style>
+      html { background-color: #0a0a0a; }
+    </style>
   </head>
   <body>
     <div id="root"></div>
