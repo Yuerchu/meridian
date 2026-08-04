@@ -38,12 +38,13 @@ import {
   type TurnStatus,
 } from '@/components/ui/turn'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
+import { TurnItem } from '@/components/chat/turn-item'
 import { TurnSteps } from '@/components/chat/turn-steps'
 import { TodoBarView } from '@/components/chat/todo-bar'
 import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
-import { formatDuration, type TurnStep } from '@/lib/turns'
-import type { ChatMode, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
+import { buildTurns, formatDuration, type TurnStep } from '@/lib/turns'
+import type { ChatMode, ContentBlock, Message, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -96,6 +97,76 @@ const DEMO_STEPS: TurnStep[] = [
 const MANY_STEPS: TurnStep[] = Array.from({ length: 40 }, (_, i) =>
   step({ kind: 'tool', data: tool({ tool_name: 'read_file', status: 'completed', call_id: `pg-many-${i}`, arguments: `{"path":"src/file-${i}.ts"}` }) }),
 )
+
+/** Fixed so the relative timestamps below stay on "刚刚" between reloads. */
+const PG_NOW = Date.now()
+
+function msg(
+  over: Partial<Message> & Pick<Message, 'id' | 'role' | 'content'>,
+): Message {
+  return {
+    conversation_id: 'pg',
+    provider_id: 'openai',
+    model_id: 'gpt-5.6-sol',
+    input_tokens: null,
+    output_tokens: null,
+    tool_calls: null,
+    tool_call_id: null,
+    sort_order: 0,
+    created_at: PG_NOW,
+    reasoning_content: null,
+    rating: null,
+    schema_version: 1,
+    is_compact_summary: 0,
+    ...over,
+  }
+}
+
+const ANSWER = '加上这条后，v3.1 可以视为定稿并开始拆 MR 实施。'
+
+/** An answer opening on a heading, which is where the leading margin shows. */
+const ANSWER_MD = [
+  '## 终审结论',
+  '',
+  'v3.1 的架构和实施边界已经基本正确，**可以进入实施阶段**。没有再发现需要整体改写计划的阻塞性设计错误。',
+  '',
+  '但编码前建议在计划中补充以下 4 个精确说明，避免实施者走偏。',
+].join('\n')
+
+/**
+ * A whole turn as the chat view renders it: avatar, attribution, the collapsed
+ * process line and the footer. Built through `buildTurns` so the preview splits
+ * process from conclusion the same way the real transcript does.
+ */
+function TurnItemCase({ label, blocks, streaming = false }: {
+  label: string
+  blocks: ContentBlock[]
+  streaming?: boolean
+}) {
+  const turns = buildTurns([
+    msg({ id: `${label}-u`, role: 'user', content: '把审批矩阵那一节补完，然后我们定稿。', sort_order: 0 }),
+    msg({
+      id: `${label}-a`,
+      role: 'assistant',
+      content: ANSWER,
+      sort_order: 1,
+      created_at: PG_NOW + 450_000,
+      input_tokens: 611_603,
+      output_tokens: 6_699,
+      _blocks: blocks,
+    }),
+  ], { streaming })
+  return (
+    <div className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
+      <div className="text-xs text-muted-foreground/60">{label}</div>
+      {turns.map((turn) => (
+        <TurnItem key={turn.id} turn={turn} conversationId="pg" isLastTurn={streaming} streaming={streaming} onRegenerate={noop} onRate={noop} onDelete={noop} />
+      ))}
+    </div>
+  )
+}
+
+function noop() {}
 
 /**
  * A turn collapse with local open state, so the header, the panel transition
@@ -666,6 +737,27 @@ export default function Playground() {
             <ComposerMenuCase label="默认" mode="work" acceptEdits={false} />
             <ComposerMenuCase label="改动免批（触发器带警示点）" mode="work" acceptEdits />
             <ComposerMenuCase label="谋定模式（不提供免批项）" mode="plan" acceptEdits={false} />
+          </div>
+        </Section>
+
+        <Section title="TurnItem / 一整个回合的排版">
+          <div className="space-y-3">
+            <TurnItemCase label="有中间过程 · 头像与署名在回合顶部" blocks={[
+              { type: 'thinking', text: '先确认改动范围，再决定从哪个文件读起。' },
+              { type: 'tool_call', data: tool({ tool_name: 'read_file', status: 'completed', call_id: 'pg-turnitem-read', arguments: '{"path":"docs/approval.md"}', result: '## 审批矩阵' }) },
+              { type: 'text', text: ANSWER_MD },
+            ]} />
+            <TurnItemCase label="纯问答 · 头像与署名在结论行" blocks={[{ type: 'text', text: ANSWER }]} />
+            <TurnItemCase label="工具已返回、模型还没开口 · 底部留一行 shimmer" streaming blocks={[
+              { type: 'text', text: '我先看看项目里有什么。' },
+              { type: 'tool_call', data: tool({ tool_name: 'run_command', status: 'completed', call_id: 'pg-waiting-ls', arguments: '{"command":"ls"}', result: 'main.py' }) },
+            ]} />
+            <TurnItemCase label="待审批 · 引出它的那句话留在它上方" blocks={[
+              { type: 'text', text: '我先看看项目里有什么。' },
+              { type: 'tool_call', data: tool({ tool_name: 'run_command', status: 'completed', call_id: 'pg-approval-ls', arguments: '{"command":"ls"}', result: 'main.py' }) },
+              { type: 'text', text: '看下 main.py。' },
+              { type: 'tool_call', data: tool({ tool_name: 'run_command', status: 'pending', call_id: 'pg-approval-cat', arguments: '{"command":"Get-Content main.py"}' }) },
+            ]} />
           </div>
         </Section>
 

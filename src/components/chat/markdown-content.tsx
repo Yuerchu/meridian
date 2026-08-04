@@ -68,6 +68,9 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
 export const proseClasses = cn(
   "text-sm leading-relaxed prose prose-invert prose-sm max-w-none",
   "prose-p:my-1.5 prose-headings:mt-4 prose-headings:mb-2",
+  // Typography's own first/last reset loses to the heading rules above, so an
+  // answer opening on a heading pushes itself away from whatever introduced it.
+  "[&>:first-child]:mt-0 [&>:last-child]:mb-0",
   "prose-pre:p-0 prose-pre:bg-transparent prose-pre:my-0",
   "prose-code:before:content-none prose-code:after:content-none",
   "prose-table:text-sm prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5",

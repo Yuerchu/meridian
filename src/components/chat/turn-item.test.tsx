@@ -154,6 +154,89 @@ describe('TurnItem', () => {
     expect(screen.getByText(/tokens/)).toBeInTheDocument()
   })
 
+  describe('activity marker', () => {
+    const streamingTurn = (blocks: ContentBlock[]) => {
+      const u = msg('user', { content: 'q', created_at: 1000 })
+      const a = msg('assistant', { _blocks: blocks, created_at: 10_000 })
+      return buildTurns([u, a], { streaming: true })[0]
+    }
+    const marker = (root: HTMLElement) => root.querySelector('[data-slot="marker"][role="status"]')
+
+    it('marks the wait between a tool returning and the model speaking', () => {
+      const turn = streamingTurn([text('let me check'), toolBlock('read_file')])
+      const { container } = render(<TurnItem turn={turn} conversationId={CONV} isLastTurn streaming />)
+      // Where the user is looking. The headline saying the same thing is at the
+      // top of the turn, which by now is far above the viewport.
+      expect(marker(container)).toBeInTheDocument()
+      // A dotted key that resolves to nothing renders as itself, which would
+      // put "chat.turn.working.thinking" on screen and still pass the check above.
+      expect(marker(container)!.textContent).not.toContain('chat.turn')
+    })
+
+    it('marks a turn that has produced nothing yet', () => {
+      const turn = streamingTurn([])
+      const { container } = render(<TurnItem turn={turn} conversationId={CONV} isLastTurn streaming />)
+      expect(marker(container)).toBeInTheDocument()
+    })
+
+    it('gets out of the way once the answer starts arriving', () => {
+      const turn = streamingTurn([text('let me check'), toolBlock('read_file'), text('here it is')])
+      const { container } = render(<TurnItem turn={turn} conversationId={CONV} isLastTurn streaming />)
+      expect(marker(container)).not.toBeInTheDocument()
+    })
+
+    it('leaves a turn waiting on the user alone', () => {
+      // That turn is not working, it is blocked — and the approval card it is
+      // blocked on is the last thing on screen already.
+      const turn = streamingTurn([text('need approval'), toolBlock('run_command', 'pending')])
+      const { container } = render(<TurnItem turn={turn} conversationId={CONV} isLastTurn streaming />)
+      expect(turn.status).toBe('awaiting-input')
+      expect(marker(container)).not.toBeInTheDocument()
+    })
+  })
+
+  describe('attribution', () => {
+    /** True when `later` comes after `earlier` in document order. */
+    const follows = (earlier: Element, later: Element) =>
+      Boolean(earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING)
+
+    it('opens a collapsed turn with the avatar and the model that answered', () => {
+      const u = msg('user', { content: 'q', created_at: 1000 })
+      const a = msg('assistant', {
+        model_id: 'gpt-5.6-sol',
+        _blocks: [text('let me check'), toolBlock('read_file'), text('the answer')],
+        content: 'the answer',
+        created_at: 10_000,
+      })
+      const turn = buildTurns([u, a])[0]
+
+      const { container } = render(<TurnItem turn={turn} conversationId={CONV} onRegenerate={vi.fn()} />)
+
+      // One speaker, one avatar: the conclusion below the collapsed steps is the
+      // same turn talking, not a second one.
+      const avatars = container.querySelectorAll('[data-slot="message-avatar"]')
+      expect(avatars).toHaveLength(1)
+
+      // Both sit above the process line, so the avatar has something to name.
+      const trigger = container.querySelector('[data-slot="turn-trigger"]')!
+      expect(follows(avatars[0], trigger)).toBe(true)
+      expect(follows(screen.getByText('gpt-5.6-sol'), trigger)).toBe(true)
+    })
+
+    it('draws one avatar for a run of answers from the same model', () => {
+      const u = msg('user', { content: 'q' })
+      const a1 = msg('assistant', { model_id: 'm', _blocks: [text('one')], content: 'one' })
+      const a2 = msg('assistant', { model_id: 'm', _blocks: [text('two')], content: 'two' })
+      const turn = buildTurns([u, a1, a2])[0]
+
+      const { container } = render(<TurnItem turn={turn} conversationId={CONV} />)
+
+      const avatars = container.querySelectorAll('[data-slot="message-avatar"]')
+      expect(avatars).toHaveLength(1)
+      expect(follows(avatars[0], screen.getByText('two'))).toBe(true)
+    })
+  })
+
   it('offers editing only when no stream is in flight', () => {
     const u = msg('user', { content: 'q' })
     const a = msg('assistant', { _blocks: [text('a')], content: 'a' })

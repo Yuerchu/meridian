@@ -30,12 +30,16 @@ function Message({
   )
 }
 
+/** Sits at the top of the message, level with the header naming the model. The
+ *  bottom-anchored placement instant messengers use assumes short bubbles and a
+ *  known correspondent; an answer that runs for pages would leave its avatar
+ *  floating somewhere in the middle of the text, attached to nothing. */
 function MessageAvatar({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="message-avatar"
       className={cn(
-        "flex w-fit min-w-8 shrink-0 items-center justify-center self-end overflow-hidden rounded-full bg-muted group-has-data-[slot=message-footer]/message:-translate-y-8",
+        "flex w-fit min-w-8 shrink-0 items-center justify-center self-start overflow-hidden rounded-full bg-muted",
         className
       )}
       {...props}

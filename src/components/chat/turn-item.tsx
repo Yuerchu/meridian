@@ -2,8 +2,9 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { useTranslation } from 'react-i18next'
 import { cn } from '@/lib/utils'
 import { ErrorBoundary } from '@/components/error-boundary'
-import { MessageItem } from './message-item'
+import { AssistantAvatar, MessageItem, MessageMeta } from './message-item'
 import { TurnSteps } from './turn-steps'
+import { Marker, MarkerContent } from '@/components/ui/marker'
 import {
   Turn as TurnCollapse,
   TurnBranchPager,
@@ -21,6 +22,27 @@ import type { EmojiMap } from './emoji-renderer'
  *  arrives would shrink the turn once, then reflow again when the snapshot
  *  replaces the rows — two jumps where there should be one. */
 const COLLAPSE_DELAY_MS = 300
+
+/** Ways of saying the model is still thinking. Which one a turn gets is decided
+ *  by its id rather than at random: the wait can last a minute and re-render
+ *  many times over, and a label that reshuffled underneath the user would read
+ *  as new activity every time. */
+const WORKING_KEYS = [
+  'chat.turn.working.thinking',
+  'chat.turn.working.pondering',
+  'chat.turn.working.brewing',
+  'chat.turn.working.deliberating',
+  'chat.turn.working.plotting',
+  'chat.turn.working.musing',
+] as const
+
+function workingKey(turnId: string): string {
+  let hash = 0
+  for (let i = 0; i < turnId.length; i++) {
+    hash = (hash * 31 + turnId.charCodeAt(i)) | 0
+  }
+  return WORKING_KEYS[Math.abs(hash) % WORKING_KEYS.length]
+}
 
 export interface TurnItemProps {
   turn: Turn
@@ -224,6 +246,20 @@ export const TurnItem = React.memo(function TurnItem({
     </div>
   )
 
+  // Between a tool returning and the model speaking again, nothing in the
+  // viewport moves: the answer has not started, and the "processing" headline
+  // is at the top of a turn the user has long since scrolled past. Approving a
+  // call lands exactly here — the approval card resolves and the screen goes
+  // still, leaving the stop button as the only sign the turn is alive. A tail
+  // marker keeps that sign where the user is already looking.
+  const tail = turn.steps[turn.steps.length - 1]
+  const awaitingModel = isTurnStreaming && !turn.result && (!tail || tail.kind === 'tool')
+  const activityMarker = awaitingModel && (
+    <Marker role="status" className="pl-10">
+      <MarkerContent className="shimmer text-xs">{t(workingKey(turn.id))}</MarkerContent>
+    </Marker>
+  )
+
   // Plain question-and-answer keeps the original layout. Wrapping a two-line
   // reply in "Worked for 3s ›" buries it behind a click for nothing.
   if (!collapsible) {
@@ -249,11 +285,11 @@ export const TurnItem = React.memo(function TurnItem({
                 emojiMap={emojiMap}
                 assistantAvatar={assistantAvatar}
                 isFirstInGroup={i === 0 || assistants[i - 1].model_id !== m.model_id}
-                isLastInGroup={isLast || assistants[i + 1].model_id !== m.model_id}
               />
             </ErrorBoundary>
           )
         })}
+        {activityMarker}
         {answerPager}
       </div>
     )
@@ -270,47 +306,67 @@ export const TurnItem = React.memo(function TurnItem({
     >
       {question}
       {questionPager}
-      <div className="flex w-full min-w-0 gap-2 text-sm">
-        <div className="min-w-8 shrink-0" />
-        <div className="flex w-full min-w-0 flex-col">
-          <TurnCollapse status={turn.status} open={open} onOpenChange={handleOpenChange}>
-            <TurnTrigger>
-              <span className="inline-flex items-center gap-1.5">
-                <TurnStatusIcon />
-                {headline}
-              </span>
-            </TurnTrigger>
-            <TurnContent disableTransition={suppressTransition}>
-              <TurnSteps steps={turn.steps} isOneBot={isOneBot} emojiMap={emojiMap} />
-            </TurnContent>
-            {turn.pinned.length > 0 && (
-              <TurnPinned>
-                <TurnSteps steps={turn.pinned} isOneBot={isOneBot} emojiMap={emojiMap} />
-              </TurnPinned>
+      {/* The process line and the conclusion are one answer, so they sit at a
+          message's internal rhythm rather than the six-unit gap the turn keeps
+          between the question and the answer as a whole. */}
+      <div className="space-y-2.5">
+        <div className="flex w-full min-w-0 gap-2 text-sm">
+          <AssistantAvatar src={assistantAvatar} modelId={assistants[0]?.model_id} />
+          <div className="flex w-full min-w-0 flex-col">
+            {assistants[0] && (
+              <MessageMeta
+                modelId={assistants[0].model_id}
+                createdAt={assistants[0].created_at}
+                animate={isLastTurn}
+              />
             )}
-          </TurnCollapse>
+            <TurnCollapse status={turn.status} open={open} onOpenChange={handleOpenChange}>
+              <TurnTrigger>
+                <span className="inline-flex items-center gap-1.5">
+                  <TurnStatusIcon />
+                  {headline}
+                </span>
+              </TurnTrigger>
+              <TurnContent disableTransition={suppressTransition}>
+                <TurnSteps steps={turn.steps} isOneBot={isOneBot} emojiMap={emojiMap} />
+              </TurnContent>
+              {turn.pinned.length > 0 && (
+                <TurnPinned>
+                  <TurnSteps steps={turn.pinned} isOneBot={isOneBot} emojiMap={emojiMap} />
+                </TurnPinned>
+              )}
+            </TurnCollapse>
+          </div>
         </div>
+        {/* Skipped while the turn is still working towards one: that row would
+            render an empty bubble and a footer whose only live action is copying
+            nothing, leaving a gap between the last step and the marker below. */}
+        {conclusionOwner && !awaitingModel && (
+          <ErrorBoundary fallback={renderError}>
+            <MessageItem
+              message={conclusionOwner}
+              // Only the conclusion renders as a message here, so it is the row the
+              // stream is writing into whenever this turn is the live one.
+              isStreaming={streaming && isLastTurn}
+              isLastMessage={isLastTurn}
+              // Avatar and attribution already sit above the collapsed region,
+              // where the turn starts. This row only carries the conclusion.
+              showAvatar={false}
+              isFirstInGroup={false}
+              showFooter
+              tokenTotals={turn.tokens}
+              onDelete={onDeleteTurn}
+              onRegenerate={onRegenerateTurn}
+              onRate={onRate}
+              isOneBot={isOneBot}
+              emojiMap={emojiMap}
+              assistantAvatar={assistantAvatar}
+              blocksOverride={turn.result?.blocks ?? []}
+            />
+          </ErrorBoundary>
+        )}
+        {activityMarker}
       </div>
-      {conclusionOwner && (
-        <ErrorBoundary fallback={renderError}>
-          <MessageItem
-            message={conclusionOwner}
-            // Only the conclusion renders as a message here, so it is the row the
-            // stream is writing into whenever this turn is the live one.
-            isStreaming={streaming && isLastTurn}
-            isLastMessage={isLastTurn}
-            showFooter
-            tokenTotals={turn.tokens}
-            onDelete={onDeleteTurn}
-            onRegenerate={onRegenerateTurn}
-            onRate={onRate}
-            isOneBot={isOneBot}
-            emojiMap={emojiMap}
-            assistantAvatar={assistantAvatar}
-            blocksOverride={turn.result?.blocks ?? []}
-          />
-        </ErrorBoundary>
-      )}
       {answerPager}
     </div>
   )

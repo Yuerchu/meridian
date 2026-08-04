@@ -1,10 +1,12 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bot, Copy, Check, Trash2, RefreshCw, FileText, Mic, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { Copy, Check, Trash2, RefreshCw, FileText, Mic, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { ModelIcon } from '@/components/ui/model-icon'
 import CountUp from '@/components/CountUp'
 import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { CopyButton, MarkdownContent } from './markdown-content'
 import { Textarea } from '@/components/ui/textarea'
 import {
@@ -73,6 +75,57 @@ function useRelativeTime() {
     if (diff < 86400_000) return t('chat.time.hAgo', { count: Math.floor(diff / 3600_000) })
     return new Date(ts).toLocaleDateString()
   }
+}
+
+/**
+ * Who answered and when, sitting level with the avatar at the top of a message.
+ *
+ * Exported because a collapsed turn hoists this above its collapsed steps: the
+ * attribution belongs to the whole turn, and leaving it below the process line
+ * would sit it closer to the conclusion than to the avatar it names.
+ */
+export function MessageMeta({ modelId, createdAt, animate }: {
+  modelId?: string | null
+  createdAt: number
+  animate?: boolean
+}) {
+  const relativeTime = useRelativeTime()
+  return (
+    // `px-0`: the header's own padding exists to line it up with a padded
+    // bubble, and an assistant's is ghost. Left on, the name sits 12px right of
+    // both the process line and the answer it names.
+    <MessageHeader className="h-8 gap-2 px-0">
+      {modelId && (
+        animate
+          ? <DecryptedText text={modelId} animateOn="view" speed={25} sequential />
+          : <span>{modelId}</span>
+      )}
+      <span className="font-normal text-muted-foreground/60">{relativeTime(createdAt)}</span>
+    </MessageHeader>
+  )
+}
+
+/**
+ * Who is speaking: the assistant's own picture when it has one, otherwise the
+ * logo of the model that wrote the row.
+ *
+ * `ModelIcon` matches on the model name and falls back to a generic mark of its
+ * own, so a model nobody has a logo for still lands as something round rather
+ * than a hole. Exported for the same reason as {@link MessageMeta}.
+ */
+export function AssistantAvatar({ src, modelId }: { src?: string | null; modelId?: string | null }) {
+  return (
+    <MessageAvatar className="size-8">
+      <Avatar>
+        <AvatarImage src={src ?? undefined} />
+        {/* The icon brings its own background; `bg-muted` underneath it would
+            only show through the rounding. */}
+        <AvatarFallback className="bg-transparent">
+          <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />
+        </AvatarFallback>
+      </Avatar>
+    </MessageAvatar>
+  )
 }
 
 
@@ -273,8 +326,14 @@ interface MessageItemProps {
   isOneBot?: boolean
   emojiMap?: EmojiMap
   assistantAvatar?: string | null
+  /** First row of a run of answers from the same model: carries the avatar and
+   *  the header naming it, where the rows after it only indent to match. */
   isFirstInGroup?: boolean
-  isLastInGroup?: boolean
+  /** Off for the row that concludes a collapsed turn: the avatar already marks
+   *  the top of that turn, above the collapsed region, and drawing a second one
+   *  here would read as a second speaker. Defaults to `isFirstInGroup`, which
+   *  is where the header naming the model sits. */
+  showAvatar?: boolean
   /** Off for the intermediate rows of a turn, whose actions all live on the
    *  turn's conclusion instead — rating a "let me check that" step would only
    *  muddy the feedback, and every regenerate button in a turn does the same
@@ -289,9 +348,8 @@ interface MessageItemProps {
   blocksOverride?: ContentBlock[]
 }
 
-export const MessageItem = React.memo(function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, onEdit, onRate, isOneBot, emojiMap, assistantAvatar, isFirstInGroup = true, isLastInGroup = true, showFooter = true, tokenTotals, blocksOverride }: MessageItemProps) {
+export const MessageItem = React.memo(function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, onEdit, onRate, isOneBot, emojiMap, assistantAvatar, isFirstInGroup = true, showAvatar, showFooter = true, tokenTotals, blocksOverride }: MessageItemProps) {
   const { t } = useTranslation()
-  const relativeTime = useRelativeTime()
   const isUser = message.role === 'user'
   const footerTokens = tokenTotals ?? { input: message.input_tokens, output: message.output_tokens }
   const renderBlocks = blocksOverride ?? message._blocks
@@ -536,27 +594,14 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
   const assistantContent = (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
       <ContextMenuTrigger render={<Message align="start" />}>
-        {isLastInGroup ? (
-          <MessageAvatar className="size-8">
-            {assistantAvatar ? (
-              <img src={assistantAvatar} className="size-full object-cover" />
-            ) : (
-              <Bot className="w-3.5 h-3.5 text-muted-foreground" />
-            )}
-          </MessageAvatar>
+        {(showAvatar ?? isFirstInGroup) ? (
+          <AssistantAvatar src={assistantAvatar} modelId={message.model_id} />
         ) : (
           <div className="min-w-8 shrink-0" />
         )}
         <MessageContent>
           {isFirstInGroup && (
-            <MessageHeader className="gap-2">
-              {message.model_id && (
-                isLastMessage
-                  ? <DecryptedText text={message.model_id} animateOn="view" speed={25} sequential className="text-xs text-muted-foreground" />
-                  : <span className="text-xs text-muted-foreground">{message.model_id}</span>
-              )}
-              <span className="text-xs text-muted-foreground/60 font-normal">{relativeTime(message.created_at)}</span>
-            </MessageHeader>
+            <MessageMeta modelId={message.model_id} createdAt={message.created_at} animate={isLastMessage} />
           )}
 
           <Bubble variant="ghost" className="w-full">
@@ -570,9 +615,9 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
           </Bubble>
 
           {showFooter && (
-          <MessageFooter className="gap-1 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
+          <MessageFooter className="gap-2 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
             {(footerTokens.input || footerTokens.output) && (
-              <span className="text-xs text-muted-foreground/50 mr-1 font-normal">
+              <span className="text-xs text-muted-foreground/60 font-normal tabular-nums">
                 {footerTokens.input && footerTokens.output
                   ? <><CountUp to={footerTokens.input} separator="," duration={1} /> + <CountUp to={footerTokens.output} separator="," duration={1} /> tokens</>
                   : <><CountUp to={(footerTokens.output ?? footerTokens.input)!} separator="," duration={1} /> tokens</>}
