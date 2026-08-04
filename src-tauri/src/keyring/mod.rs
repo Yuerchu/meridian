@@ -107,11 +107,14 @@ pub(crate) mod test_support {
     use super::*;
     use std::collections::HashMap;
     use std::sync::Mutex;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering as AtomicOrdering;
 
     #[derive(Debug, Default)]
     pub struct MockKeyringStore {
         store: Mutex<HashMap<String, String>>,
         errors: Mutex<HashMap<String, String>>,
+        loads: AtomicUsize,
     }
 
     impl MockKeyringStore {
@@ -121,6 +124,13 @@ pub(crate) mod test_support {
 
         fn key(service: &str, account: &str) -> String {
             format!("{service}:{account}")
+        }
+
+        /// How many times the passphrase has been fetched — a stand-in for how
+        /// many times the secrets file was decrypted, which is the expensive
+        /// half of a lookup.
+        pub fn load_count(&self) -> usize {
+            self.loads.load(AtomicOrdering::SeqCst)
         }
 
         pub fn set_error(&self, service: &str, account: &str, msg: &str) {
@@ -137,6 +147,7 @@ pub(crate) mod test_support {
             service: &str,
             account: &str,
         ) -> Result<Option<String>, CredentialStoreError> {
+            self.loads.fetch_add(1, AtomicOrdering::SeqCst);
             if let Some(msg) = self.errors.lock().unwrap().remove(&Self::key(service, account)) {
                 return Err(CredentialStoreError::Other(
                     KeyringError::PlatformFailure(msg.into()),
