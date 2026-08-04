@@ -147,6 +147,32 @@ describe('buildTurns — result', () => {
     expect(turn.steps.some((s) => s.kind === 'tool')).toBe(false)
   })
 
+  /** The reported bug: "看下 main.py" rendered below the approval it announced.
+   *  Pinning the blocked call left the narration as the text after the last
+   *  remaining tool, which is exactly the shape of a conclusion. */
+  it('keeps text that introduces a blocked call above it', () => {
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', {
+      _blocks: [
+        text('let me look around'),
+        tool('run_command'),
+        text('now let me read main.py'),
+        tool('read_file', 'pending'),
+      ],
+    })
+    const turn = buildTurns([u, a])[0]
+
+    // Nothing has concluded while the turn is blocked, so both lines stay in
+    // the process — where they still read before the approval.
+    expect(turn.result).toBeNull()
+    expect(turn.steps.flatMap((s) => (s.kind === 'text' ? [s.text] : []))).toEqual([
+      'let me look around',
+      'now let me read main.py',
+    ])
+    expect(turn.pinned).toHaveLength(1)
+    expect(turn.status).toBe('awaiting-input')
+  })
+
   it('pins ask_user while it is still running', () => {
     const u = msg('user', { content: 'q' })
     const a = msg('assistant', { _blocks: [tool('ask_user', 'running')] })

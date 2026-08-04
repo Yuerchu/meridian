@@ -181,7 +181,15 @@ function finalize(group: OpenTurn, isStreaming: boolean): Turn {
   }
 
   const pinned = flat.filter(isPinned)
-  const { process, conclusion } = splitAtConclusion(flat.filter((s) => !isPinned(s)))
+  // A turn blocked on the user has not concluded: whatever it said before the
+  // blocked call was introducing that call, not answering the question. Reading
+  // the conclusion off the remaining steps would find that text sitting after
+  // the last *unblocked* tool and render it below the approval it introduces —
+  // the wrong way round. It also keeps the text from moving once the call is
+  // approved and the turn carries on past it.
+  const { process, conclusion } = pinned.length > 0
+    ? { process: flat.filter((s) => !isPinned(s)), conclusion: [] }
+    : splitAtConclusion(flat)
 
   const resultOwner = conclusion.length > 0
     ? assistantMessages.find((m) => m.id === conclusion[conclusion.length - 1].messageId) ?? null
