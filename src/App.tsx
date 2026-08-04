@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { ChatView } from '@/components/chat/chat-view'
 import { EmptyState } from '@/components/chat/empty-state'
-import SettingsPage from '@/components/settings'
+// Settings is a couple of dozen components behind a button most sessions never
+// press. Split out so the chat window is not waiting on it to start.
+const SettingsPage = lazy(() => import('@/components/settings'))
 import type { SettingsTab } from '@/components/settings'
 import { api } from '@/api'
 import DecryptedText from '@/components/DecryptedText'
@@ -152,7 +154,11 @@ function App() {
 
         <main className="flex-1 min-h-0 overflow-hidden">
           {page === 'settings' ? (
-            <SettingsPage activeTab={settingsTab} />
+            // No spinner: the chunk is on local disk and resolves within a
+            // frame or two, where a flash of "loading" would read as jank.
+            <Suspense fallback={null}>
+              <SettingsPage activeTab={settingsTab} />
+            </Suspense>
           ) : activeId ? (
             <ChatView
               key={activeId}

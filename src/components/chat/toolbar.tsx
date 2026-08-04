@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bot, ChevronLeft, ChevronRight, ChevronsRight, Cpu, Check, Star, Lightbulb, RefreshCw, Plus, Camera, ImageIcon, Paperclip, Zap, Hammer, Compass } from 'lucide-react'
-import { ModelIcon } from '@lobehub/icons'
+import { ModelIcon } from '@/components/ui/model-icon'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
