@@ -543,7 +543,7 @@ impl ChatProvider for GemmaToolProvider {
         } else {
             Some(tools.as_slice())
         };
-        let transport = ReqwestTransport::new(reqwest::Client::new());
+        let transport = ReqwestTransport::shared();
         let req = self.build_request(&messages, tools_opt, &params, true);
         let resp = transport.stream(req).await?;
 
@@ -590,7 +590,7 @@ impl ChatProvider for GemmaToolProvider {
         messages: Vec<ChatMessage>,
         params: ChatParams,
     ) -> Result<String, ProviderError> {
-        let transport = ReqwestTransport::new(reqwest::Client::new());
+        let transport = ReqwestTransport::shared();
         let req = self.build_request(&messages, None, &params, false);
         let resp = transport.execute(req).await?;
 
@@ -609,7 +609,7 @@ impl ChatProvider for GemmaToolProvider {
         tools: Vec<ToolDefinition>,
         params: ChatParams,
     ) -> Result<AgentResponse, ProviderError> {
-        let transport = ReqwestTransport::new(reqwest::Client::new());
+        let transport = ReqwestTransport::shared();
         let req = self.build_request(&messages, Some(&tools), &params, false);
         let resp = transport.execute(req).await?;
 

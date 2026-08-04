@@ -35,7 +35,7 @@ async fn fetch_openai_models(
     api_key: &str,
 ) -> Result<Vec<ModelInfo>, ProviderError> {
     let base_url = base_url.trim_end_matches('/');
-    let transport = ReqwestTransport::new(reqwest::Client::new());
+    let transport = ReqwestTransport::shared();
 
     let mut req = Request::new(http::Method::GET, format!("{base_url}/models"));
     req.headers.insert(
@@ -90,7 +90,7 @@ async fn fetch_anthropic_models(
     api_key: &str,
 ) -> Result<Vec<ModelInfo>, ProviderError> {
     let base_url = base_url.trim_end_matches('/');
-    let transport = ReqwestTransport::new(reqwest::Client::new());
+    let transport = ReqwestTransport::shared();
 
     let mut req = Request::new(http::Method::GET, format!("{base_url}/v1/models"));
     req.headers.insert("x-api-key", super::auth_header_value(api_key));

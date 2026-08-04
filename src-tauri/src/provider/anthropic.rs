@@ -303,7 +303,7 @@ impl ChatProvider for AnthropicProvider {
         params: ChatParams,
     ) -> Result<ChatStream, ProviderError> {
         let tools_opt = if tools.is_empty() { None } else { Some(tools.as_slice()) };
-        let transport = ReqwestTransport::new(reqwest::Client::new());
+        let transport = ReqwestTransport::shared();
         let req = self.build_request(&messages, tools_opt, &params, true);
         let resp = transport.stream(req).await?;
 
@@ -423,7 +423,7 @@ impl ChatProvider for AnthropicProvider {
         messages: Vec<ChatMessage>,
         params: ChatParams,
     ) -> Result<String, ProviderError> {
-        let transport = ReqwestTransport::new(reqwest::Client::new());
+        let transport = ReqwestTransport::shared();
         let req = self.build_request(&messages, None, &params, false);
         let resp = transport.execute(req).await?;
 
@@ -442,7 +442,7 @@ impl ChatProvider for AnthropicProvider {
         tools: Vec<ToolDefinition>,
         params: ChatParams,
     ) -> Result<AgentResponse, ProviderError> {
-        let transport = ReqwestTransport::new(reqwest::Client::new());
+        let transport = ReqwestTransport::shared();
         let req = self.build_request(&messages, Some(&tools), &params, false);
         let resp = transport.execute(req).await?;
         let parsed: serde_json::Value = serde_json::from_slice(&resp.body)

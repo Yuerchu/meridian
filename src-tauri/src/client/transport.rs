@@ -7,6 +7,7 @@ use futures::stream::BoxStream;
 use http::HeaderMap;
 use http::Method;
 use http::StatusCode;
+use std::sync::OnceLock;
 
 pub type ByteStream = BoxStream<'static, Result<Bytes, TransportError>>;
 
@@ -30,6 +31,24 @@ pub struct ReqwestTransport {
 impl ReqwestTransport {
     pub fn new(client: reqwest::Client) -> Self {
         Self { client }
+    }
+
+    /// The process-wide client.
+    ///
+    /// A `reqwest::Client` *is* the connection pool. Building one per request
+    /// throws away every kept-alive connection and pays DNS, TCP and the TLS
+    /// handshake again — on every turn, and again on every iteration of a tool
+    /// loop. Cloning is cheap; the client is an `Arc` inside.
+    ///
+    /// Built explicitly rather than with `Client::new()`, which panics if the
+    /// TLS backend fails to initialise. Should that happen, every request will
+    /// fail on its own terms instead of taking the process down.
+    pub fn shared() -> Self {
+        static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+        let client = CLIENT
+            .get_or_init(|| reqwest::Client::builder().build().unwrap_or_default())
+            .clone();
+        Self::new(client)
     }
 
     fn build(&self, req: &Request) -> Result<reqwest::RequestBuilder, TransportError> {
