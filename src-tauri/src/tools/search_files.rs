@@ -11,7 +11,7 @@ impl Tool for SearchFilesTool {
     }
 
     fn description(&self) -> &str {
-        "Search for a text pattern in files within a directory. Returns matching lines with file paths and line numbers. Supports regex patterns."
+        "Search for a text pattern in files under a directory, or in a single file. Returns matching lines with file paths and line numbers. Supports regex patterns."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
@@ -24,7 +24,7 @@ impl Tool for SearchFilesTool {
                 },
                 "path": {
                     "type": "string",
-                    "description": "Absolute path to the directory to search in"
+                    "description": "Absolute path to the directory to search in, or to a single file to search"
                 },
                 "max_results": {
                     "type": "integer",
@@ -90,7 +90,15 @@ fn search(root: &std::path::Path, pattern: &str, max_results: usize) -> Result<S
         .map_err(|e| format!("invalid regex pattern: {e}"))?;
 
     let mut matches = Vec::new();
-    walk_and_search(root, &re, 0, max_results, &mut matches)?;
+    // Models routinely aim this at one file rather than a tree. Walking a file
+    // would surface as a bare "os error 3" on Windows, so search it directly.
+    let meta = std::fs::metadata(root)
+        .map_err(|e| format!("failed to read '{}': {}", root.display(), e))?;
+    if meta.is_file() {
+        search_file(root, &re, max_results, &mut matches);
+    } else {
+        walk_and_search(root, &re, 0, max_results, &mut matches)?;
+    }
 
     if matches.is_empty() {
         return Ok("No matches found.".to_string());
