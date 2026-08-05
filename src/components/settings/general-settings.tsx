@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
+import { Input } from '@heroui/react'
 import { Button } from '@/components/ui/button'
 import { Check } from 'lucide-react'
 import { LANGUAGES, setLocale } from '@/i18n'
@@ -172,7 +172,7 @@ export function GeneralSettings() {
           </SelectContent>
         </Select>
         <div className="flex items-center gap-2">
-          <Input
+          <Input fullWidth
             type="password"
             value={searchApiKey}
             onChange={(e) => setSearchApiKey(e.target.value)}

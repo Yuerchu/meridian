@@ -4,7 +4,7 @@ import { ChevronRight, ChevronDown, Trash2, AlertTriangle } from 'lucide-react'
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@heroui/react'
-import { Textarea } from '@/components/ui/textarea'
+import { TextArea } from '@heroui/react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MemoryBadge } from './memory-badge'
 import type { Memory } from '@/types'
@@ -80,7 +80,7 @@ export function MemoryRow({
 
       {expanded && (
         <div data-slot="memory-row-editor" className="space-y-2 border-t border-border p-3">
-          <Textarea
+          <TextArea fullWidth
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={3}

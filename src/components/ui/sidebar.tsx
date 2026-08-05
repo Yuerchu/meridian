@@ -8,7 +8,7 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Input } from '@heroui/react';
 import { Separator } from '@heroui/react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Skeleton } from '@heroui/react'
@@ -294,7 +294,7 @@ function SidebarInset({ className, ...props }: React.ComponentProps<'main'>) {
 
 function SidebarInput({ className, ...props }: React.ComponentProps<typeof Input>) {
   return (
-    <Input
+    <Input fullWidth
       data-slot="sidebar-input"
       data-sidebar="input"
       className={cn('h-8 w-full bg-background shadow-none', className)}

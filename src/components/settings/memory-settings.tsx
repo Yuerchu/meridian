@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash, X, Check } from 'lucide-react'
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@heroui/react'
+import { TextArea } from '@heroui/react'
 import {
   Select,
   SelectContent,
@@ -101,7 +101,7 @@ export function MemorySettings() {
 
         <div data-slot="memory-list" className="min-w-0 flex-1 space-y-2">
           <div className="flex items-center gap-2">
-            <Input
+            <Input fullWidth
               type="text"
               value={browser.search}
               onChange={(e) => browser.setSearch(e.target.value)}
@@ -126,14 +126,14 @@ export function MemorySettings() {
 
           {showAdd && (
             <div className="space-y-2 rounded-lg border border-border bg-default/30 p-3">
-              <Input
+              <Input fullWidth
                 type="text"
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value)}
                 placeholder={t('settings.memory.key')}
                 autoFocus
               />
-              <Textarea
+              <TextArea fullWidth
                 value={newContent}
                 onChange={(e) => setNewContent(e.target.value)}
                 placeholder={t('settings.memory.content')}

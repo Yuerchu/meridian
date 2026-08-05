@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, ChevronDown, ChevronRight, BookOpen, Check, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@heroui/react'
+import { TextArea } from '@heroui/react'
 import { Checkbox } from '@heroui/react'
 import { api } from '@/api'
 import type { Skill } from '@/types'
@@ -85,7 +85,7 @@ function SkillEditor({
           <label data-slot="skill-editor-label" className="text-xs text-muted">
             {t('settings.skills.dirName')}
           </label>
-          <Input
+          <Input fullWidth
             value={dirName}
             onChange={(e) => setDirName(e.target.value)}
             placeholder="my-skill"
@@ -106,7 +106,7 @@ function SkillEditor({
         <label data-slot="skill-editor-label" className="text-xs text-muted">
           {t('settings.skills.displayName')}
         </label>
-        <Input
+        <Input fullWidth
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder={skill?.llm_name ?? dirName}
@@ -117,7 +117,7 @@ function SkillEditor({
         <label data-slot="skill-editor-label" className="text-xs text-muted">
           {t('settings.skills.description')}
         </label>
-        <Textarea
+        <TextArea fullWidth
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           disabled={isBuiltin}
@@ -138,7 +138,7 @@ function SkillEditor({
             {t('common.loading')}
           </p>
         ) : (
-          <Textarea
+          <TextArea fullWidth
             value={body}
             onChange={(e) => setBody(e.target.value)}
             disabled={isBuiltin}

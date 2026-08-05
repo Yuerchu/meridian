@@ -4,7 +4,7 @@ import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Trash2 } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
+import { Input } from '@heroui/react'
 import { Button } from '@/components/ui/button'
 import { CircularProgress } from '@/components/ui/circular-progress'
 import { api } from '@/api'
@@ -179,7 +179,7 @@ export function VoiceSettings() {
         <label className="block text-xs font-medium text-muted">
           {t('settings.voice.mirror')}
         </label>
-        <Input
+        <Input fullWidth
           value={mirrorUrl}
           onChange={(e) => handleMirrorChange(e.target.value)}
           placeholder={t('settings.voice.mirrorPlaceholder')}

@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ChevronDown, ChevronRight, BookTemplate, Sparkles, Code, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@heroui/react'
+import { TextArea } from '@heroui/react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/api'
@@ -107,7 +107,7 @@ function TemplateCreator({
   return (
     <div className="space-y-3 border border-border rounded-lg p-3">
       <div className="grid grid-cols-2 gap-2">
-        <Input
+        <Input fullWidth
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={t('settings.template.name')}
@@ -123,7 +123,7 @@ function TemplateCreator({
           </SelectContent>
         </Select>
       </div>
-      <Textarea
+      <TextArea fullWidth
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder={t('settings.template.content')}

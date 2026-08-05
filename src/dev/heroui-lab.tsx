@@ -16,12 +16,14 @@ import {
   Button as HButton,
   Checkbox as HCheckbox,
   Disclosure as HDisclosure,
+  Input as HInput,
   ListBox as HListBox,
   Popover as HPopover,
   ProgressCircle as HProgressCircle,
   Select as HSelect,
   Slider as HSlider,
   Switch as HSwitch,
+  TextArea as HTextArea,
   Tooltip as HTooltip,
 } from '@heroui/react'
 import '@heroui/react/styles'
@@ -197,6 +199,11 @@ export default function HeroUiLab() {
                   复选
                 </HCheckbox.Content>
               </HCheckbox>
+            </div>
+
+            <div className="max-w-sm space-y-2">
+              <HInput fullWidth placeholder="Input：单行输入" />
+              <HTextArea fullWidth placeholder="TextArea：多行输入" rows={2} />
             </div>
 
             <HSlider defaultValue={40} className="max-w-xs" aria-label="滑块">

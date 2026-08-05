@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Upload, ChevronDown, ChevronRight, Package } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input } from '@heroui/react'
 import { api } from '@/api'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import type { Emoji, EmojiPack } from '@/types'
@@ -68,7 +68,7 @@ function PackCard({
                   className="w-10 h-10 object-contain rounded"
                 />
                 {editingId === e.id ? (
-                  <Input
+                  <Input fullWidth
                     autoFocus
                     value={editName}
                     onChange={(ev) => setEditName(ev.target.value)}
@@ -198,7 +198,7 @@ export function EmojiSettings() {
       </div>
 
       <div className="flex gap-2">
-        <Input
+        <Input fullWidth
           value={newPackName}
           onChange={(e) => setNewPackName(e.target.value)}
           placeholder={t('settings.emoji.packName')}

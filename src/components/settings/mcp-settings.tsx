@@ -3,8 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Plug, PlugZap, Trash2, ArrowLeft, ClipboardPaste } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@heroui/react'
+import { TextArea } from '@heroui/react'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -60,7 +60,7 @@ function JsonImportDialog({
 
   return (
     <div className="space-y-3">
-      <Textarea
+      <TextArea fullWidth
         className="h-40 font-mono resize-none"
         placeholder={t('settings.mcp.importJsonPlaceholder')}
         value={text}
@@ -166,7 +166,7 @@ function McpServerEditor({
     <div className="space-y-4">
       <div>
         <label className="text-sm font-medium">{t('settings.mcp.name')}</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
+        <Input fullWidth value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
       </div>
 
       <div>
@@ -203,26 +203,26 @@ function McpServerEditor({
         <>
           <div>
             <label className="text-sm font-medium">{t('settings.mcp.url')}</label>
-            <Input value={url} onChange={(e) => setUrl(e.target.value)} className="mt-1" placeholder="https://example.com/mcp" />
+            <Input fullWidth value={url} onChange={(e) => setUrl(e.target.value)} className="mt-1" placeholder="https://example.com/mcp" />
           </div>
           <div>
             <label className="text-sm font-medium">{t('settings.mcp.headers')}</label>
-            <Input value={headers} onChange={(e) => setHeaders(e.target.value)} className="mt-1" placeholder='{"Authorization": "Bearer ..."}' />
+            <Input fullWidth value={headers} onChange={(e) => setHeaders(e.target.value)} className="mt-1" placeholder='{"Authorization": "Bearer ..."}' />
           </div>
         </>
       ) : (
         <>
           <div>
             <label className="text-sm font-medium">{t('settings.mcp.command')}</label>
-            <Input value={command} onChange={(e) => setCommand(e.target.value)} className="mt-1" placeholder="npx" />
+            <Input fullWidth value={command} onChange={(e) => setCommand(e.target.value)} className="mt-1" placeholder="npx" />
           </div>
           <div>
             <label className="text-sm font-medium">{t('settings.mcp.args')}</label>
-            <Input value={args} onChange={(e) => setArgs(e.target.value)} className="mt-1" placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]' />
+            <Input fullWidth value={args} onChange={(e) => setArgs(e.target.value)} className="mt-1" placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]' />
           </div>
           <div>
             <label className="text-sm font-medium">{t('settings.mcp.env')}</label>
-            <Input value={env} onChange={(e) => setEnv(e.target.value)} className="mt-1" placeholder='{}' />
+            <Input fullWidth value={env} onChange={(e) => setEnv(e.target.value)} className="mt-1" placeholder='{}' />
           </div>
         </>
       )}

@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { CopyButton, MarkdownContent } from './markdown-content'
-import { Textarea } from '@/components/ui/textarea'
+import { TextArea } from '@heroui/react'
 import {
   Message,
   MessageAvatar,
@@ -464,7 +464,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
             {editing ? (
               <Bubble align="end" variant="outline">
                 <BubbleContent>
-                  <Textarea
+                  <TextArea fullWidth
                     ref={editRef}
                     value={editText}
                     onChange={(e) => {

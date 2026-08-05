@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Check, ChevronDown, ChevronRight, RefreshCw, Trash2, Cloud, Key, ArrowLeft, Settings2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Input } from '@/components/ui/input'
+import { Input } from '@heroui/react'
 import { Spinner } from '@heroui/react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
@@ -173,29 +173,29 @@ function ModelConfigEditor({
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label className="text-xs text-muted">{t('settings.model.contextWindow')}</label>
-          <Input value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
+          <Input fullWidth value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
         </div>
         <div>
           <label className="text-xs text-muted">{t('settings.model.compactThreshold')}</label>
-          <Input value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
+          <Input fullWidth value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
         </div>
       </div>
       <div>
         <label className="text-xs text-muted">{t('settings.model.maxOutput')}</label>
-        <Input value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
+        <Input fullWidth value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div>
           <label className="text-xs text-muted">{t('settings.model.inputPrice')}</label>
-          <Input value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
+          <Input fullWidth value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
         </div>
         <div>
           <label className="text-xs text-muted">{t('settings.model.outputPrice')}</label>
-          <Input value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
+          <Input fullWidth value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
         </div>
         <div>
           <label className="text-xs text-muted">{t('settings.model.cachePrice')}</label>
-          <Input value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
+          <Input fullWidth value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
         </div>
       </div>
       <div data-slot="capability-overrides" className="pt-1">
@@ -398,7 +398,7 @@ function ProviderEditor({
     <div className="space-y-5">
       <div className="space-y-1.5">
         <label className="block text-xs text-muted">{t('settings.provider.name')}</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} />
+        <Input fullWidth value={name} onChange={(e) => setName(e.target.value)} />
       </div>
 
       <div className="space-y-1.5">
@@ -417,7 +417,7 @@ function ProviderEditor({
 
       <div className="space-y-1.5">
         <label className="block text-xs text-muted">{t('settings.provider.baseUrl')}</label>
-        <Input
+        <Input fullWidth
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder={providerType === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
@@ -452,7 +452,7 @@ function ProviderEditor({
       <div className="border-t border-border pt-4 space-y-3">
         <label className="block text-xs text-muted">{t('settings.provider.apiKey')}</label>
         <div className="flex gap-2">
-          <Input
+          <Input fullWidth
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}

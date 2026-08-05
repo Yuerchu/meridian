@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ChevronDown, ChevronRight, Star, Check, BookTemplate } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+import { Input } from '@heroui/react'
+import { TextArea } from '@heroui/react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Checkbox } from '@heroui/react'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -119,7 +119,7 @@ function AssistantEditor({
     <div className="space-y-4 pl-7 pr-2 pb-4">
       <div className="space-y-1.5">
         <label className="block text-xs text-muted">{t('settings.assistant.name')}</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} />
+        <Input fullWidth value={name} onChange={(e) => setName(e.target.value)} />
       </div>
 
       <div className="space-y-1.5">
@@ -151,7 +151,7 @@ function AssistantEditor({
             ))}
           </ScrollArea>
         )}
-        <Textarea
+        <TextArea fullWidth
           value={systemPrompt}
           onChange={(e) => setSystemPrompt(e.target.value)}
           rows={6}
@@ -215,7 +215,7 @@ function AssistantEditor({
               </SelectContent>
             </Select>
           ) : (
-            <Input
+            <Input fullWidth
               value={modelId}
               onChange={(e) => setModelId(e.target.value)}
               placeholder={t('settings.assistant.modelPlaceholder')}
@@ -227,7 +227,7 @@ function AssistantEditor({
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label className="block text-xs text-muted">{t('settings.assistant.temperature')}</label>
-          <Input
+          <Input fullWidth
             type="number"
             value={temperature}
             onChange={(e) => setTemperature(e.target.value)}
@@ -239,7 +239,7 @@ function AssistantEditor({
         </div>
         <div className="space-y-1.5">
           <label className="block text-xs text-muted">{t('settings.assistant.contextLimit')}</label>
-          <Input
+          <Input fullWidth
             type="number"
             value={contextLimit}
             onChange={(e) => setContextLimit(e.target.value)}
@@ -273,7 +273,7 @@ function AssistantEditor({
         </div>
         {thinkingEnabled && (
           <div className="space-y-1 mt-2">
-            <Input
+            <Input fullWidth
               type="number"
               value={thinkingBudget}
               onChange={(e) => setThinkingBudget(e.target.value)}

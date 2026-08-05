@@ -10,7 +10,7 @@ import {
   FileText, Globe, ChevronUp, TriangleAlert, ListTodo, ClipboardList, Compass,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input } from '@heroui/react'
 import {
   ChatTool,
   ChatToolApproval,
@@ -168,7 +168,7 @@ function QuestionBlock({
         </div>
       )}
 
-      <Input
+      <Input fullWidth
         type="text"
         value={value.notes}
         onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
@@ -787,7 +787,7 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
 
   return (
     <div className="space-y-2">
-      <Input
+      <Input fullWidth
         type="text"
         value={feedback}
         onChange={(e) => setFeedback(e.target.value)}
@@ -1068,7 +1068,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
         <div data-slot="exit-plan-actions" className="border-t border-border px-3 py-2">
           {ui === 'feedback' ? (
             <div data-slot="exit-plan-feedback" className="space-y-2">
-              <Input
+              <Input fullWidth
                 type="text"
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}

@@ -13,7 +13,7 @@ import type { SettingsTab } from '@/components/settings'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input } from '@heroui/react'
 import {
   Sidebar,
   SidebarContent,
@@ -81,7 +81,7 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
 
   return (
     <div className="px-2 py-1.5 space-y-1.5">
-      <Input
+      <Input fullWidth
         type="text"
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -172,7 +172,7 @@ function InlineRenameInput({ value, onSubmit, onCancel }: { value: string; onSub
   }, [])
 
   return (
-    <Input
+    <Input fullWidth
       ref={inputRef}
       type="text"
       value={text}

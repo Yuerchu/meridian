@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Input } from '@heroui/react'
 import { Checkbox } from '@heroui/react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Assistant } from '@/types'
@@ -161,7 +161,7 @@ export function OneBotSettings() {
           <label className="block text-xs font-medium text-muted">
             {t('settings.onebot.host')}
           </label>
-          <Input
+          <Input fullWidth
             value={config.host}
             onChange={(e) => setConfig({ ...config, host: e.target.value })}
             placeholder="127.0.0.1"
@@ -171,7 +171,7 @@ export function OneBotSettings() {
           <label className="block text-xs font-medium text-muted">
             {t('settings.onebot.port')}
           </label>
-          <Input
+          <Input fullWidth
             type="number"
             min={1}
             max={65535}
@@ -186,7 +186,7 @@ export function OneBotSettings() {
         <label className="block text-xs font-medium text-muted">
           {t('settings.onebot.accessToken')}
         </label>
-        <Input
+        <Input fullWidth
           type="password"
           value={config.access_token ?? ''}
           onChange={(e) => setConfig({ ...config, access_token: e.target.value || null })}
@@ -221,7 +221,7 @@ export function OneBotSettings() {
         <label className="block text-xs font-medium text-muted">
           {t('settings.onebot.adminUsers')}
         </label>
-        <Input
+        <Input fullWidth
           value={adminInput}
           onChange={(e) => setAdminInput(e.target.value)}
           placeholder="12345, 67890"
@@ -235,7 +235,7 @@ export function OneBotSettings() {
         <label className="block text-xs font-medium text-muted">
           {t('settings.onebot.ackEmoji')}
         </label>
-        <Input
+        <Input fullWidth
           value={config.ack_emoji_id}
           onChange={(e) => setConfig({ ...config, ack_emoji_id: e.target.value })}
           placeholder="76"
