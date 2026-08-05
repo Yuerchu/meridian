@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Checkbox } from '@heroui/react'
 import { api } from '@/api'
 import type { SafRootEntry } from '@/types'
 
@@ -125,13 +125,14 @@ export function AndroidFileAccess() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox
-            checked={manageEnabled}
-            onCheckedChange={(checked) => handleManageToggle(!!checked)}
-          />
-          {t('settings.fileAccess.manageToggle')}
-        </label>
+        <Checkbox className="text-sm" isSelected={manageEnabled} onChange={handleManageToggle}>
+          <Checkbox.Content>
+            <Checkbox.Control>
+              <Checkbox.Indicator />
+            </Checkbox.Control>
+            {t('settings.fileAccess.manageToggle')}
+          </Checkbox.Content>
+        </Checkbox>
         <p className="text-xs text-muted">
           {manageEnabled && !manageGranted
             ? t('settings.fileAccess.manageNotGranted')

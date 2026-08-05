@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Checkbox } from '@heroui/react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { Assistant } from '@/types'
 
@@ -133,11 +133,19 @@ export function OneBotSettings() {
       </div>
 
       <div className="flex items-start gap-2">
+        {/* Label stays outside because a description sits under it; the id is
+            what ties the two together. */}
         <Checkbox
           id="onebot-enabled"
-          checked={config.enabled}
-          onCheckedChange={(checked) => setConfig({ ...config, enabled: !!checked })}
-        />
+          isSelected={config.enabled}
+          onChange={(selected) => setConfig({ ...config, enabled: selected })}
+        >
+          <Checkbox.Content>
+            <Checkbox.Control>
+              <Checkbox.Indicator />
+            </Checkbox.Control>
+          </Checkbox.Content>
+        </Checkbox>
         <div className="space-y-0.5">
           <label htmlFor="onebot-enabled" className="text-sm font-medium cursor-pointer">
             {t('settings.onebot.enable')}

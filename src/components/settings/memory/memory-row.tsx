@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronDown, Trash2, AlertTriangle } from 'lucide-react'
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Checkbox } from '@heroui/react'
 import { Textarea } from '@/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { MemoryBadge } from './memory-badge'
@@ -39,7 +39,19 @@ export function MemoryRow({
   return (
     <div data-slot="memory-row" className="rounded-lg border border-border">
       <div data-slot="memory-row-header" className="flex items-center gap-2 p-3">
-        <Checkbox checked={checked} onCheckedChange={onToggleCheck} data-slot="memory-row-check" />
+        {/* No label of its own — the row's key names it. */}
+        <Checkbox
+          data-slot="memory-row-check"
+          aria-label={memory.key}
+          isSelected={checked}
+          onChange={onToggleCheck}
+        >
+          <Checkbox.Content>
+            <Checkbox.Control>
+              <Checkbox.Indicator />
+            </Checkbox.Control>
+          </Checkbox.Content>
+        </Checkbox>
         <Button variant="ghost" size="icon" onClick={onToggleExpand} data-slot="memory-row-toggle">
           {expanded ? <ChevronDown /> : <ChevronRight />}
         </Button>

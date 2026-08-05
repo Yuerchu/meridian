@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Checkbox } from '@heroui/react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { api } from '@/api'
@@ -249,25 +249,27 @@ function AssistantEditor({
 
       <div className="space-y-1.5">
         <label className="block text-xs text-muted">{t('settings.assistant.autoCompact')}</label>
-        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-          <Checkbox
-            checked={autoCompactEnabled}
-            onCheckedChange={(checked) => setAutoCompactEnabled(!!checked)}
-          />
-          <span>{t('settings.assistant.autoCompactHint')}</span>
-        </label>
+        <Checkbox className="text-xs" isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled}>
+          <Checkbox.Content>
+            <Checkbox.Control>
+              <Checkbox.Indicator />
+            </Checkbox.Control>
+            {t('settings.assistant.autoCompactHint')}
+          </Checkbox.Content>
+        </Checkbox>
       </div>
 
       <div className="space-y-1.5">
         <label className="block text-xs text-muted">{t('settings.assistant.thinking')}</label>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-            <Checkbox
-              checked={thinkingEnabled}
-              onCheckedChange={(checked) => setThinkingEnabled(!!checked)}
-            />
-            <span>{t('settings.assistant.thinkingEnabled')}</span>
-          </label>
+          <Checkbox className="text-xs" isSelected={thinkingEnabled} onChange={setThinkingEnabled}>
+            <Checkbox.Content>
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+              {t('settings.assistant.thinkingEnabled')}
+            </Checkbox.Content>
+          </Checkbox>
         </div>
         {thinkingEnabled && (
           <div className="space-y-1 mt-2">
@@ -319,21 +321,27 @@ function AssistantEditor({
         {toolMode === 'custom' && (
           <ScrollArea className="max-h-40 border border-border rounded-lg"><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
             {allTools.map((tool) => (
-              <label key={tool.name} className="flex items-center gap-1.5 text-xs cursor-pointer py-0.5">
-                <Checkbox
-                  checked={selectedTools.has(tool.name)}
-                  onCheckedChange={(checked) => {
-                    const next = new Set(selectedTools)
-                    if (checked) next.add(tool.name)
-                    else next.delete(tool.name)
-                    setSelectedTools(next)
-                  }}
-                />
-                <span className="font-mono truncate">{tool.name}</span>
-                {tool.source === 'mcp' && (
-                  <span className="text-muted/50 text-xs">MCP</span>
-                )}
-              </label>
+              <Checkbox
+                key={tool.name}
+                className="py-0.5 text-xs"
+                isSelected={selectedTools.has(tool.name)}
+                onChange={(selected) => {
+                  const next = new Set(selectedTools)
+                  if (selected) next.add(tool.name)
+                  else next.delete(tool.name)
+                  setSelectedTools(next)
+                }}
+              >
+                <Checkbox.Content>
+                  <Checkbox.Control>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                  <span className="truncate font-mono">{tool.name}</span>
+                  {tool.source === 'mcp' && (
+                    <span className="text-xs text-muted/50">MCP</span>
+                  )}
+                </Checkbox.Content>
+              </Checkbox>
             ))}
           </div></ScrollArea>
         )}
@@ -344,25 +352,31 @@ function AssistantEditor({
           <label className="block text-xs text-muted">{t('settings.assistant.emojiPacks')}</label>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2 border border-border rounded-lg">
             {allPacks.map((pack) => (
-              <label key={pack.id} className="flex items-center gap-1.5 text-xs cursor-pointer py-0.5">
-                <Checkbox
-                  checked={assignedPackIds.has(pack.id)}
-                  onCheckedChange={async (checked) => {
-                    if (checked) {
-                      await api.assignEmojiPack(assistant.id, pack.id)
-                      setAssignedPackIds((prev) => new Set([...prev, pack.id]))
-                    } else {
-                      await api.unassignEmojiPack(assistant.id, pack.id)
-                      setAssignedPackIds((prev) => {
-                        const next = new Set(prev)
-                        next.delete(pack.id)
-                        return next
-                      })
-                    }
-                  }}
-                />
-                <span className="truncate">{pack.name}</span>
-              </label>
+              <Checkbox
+                key={pack.id}
+                className="py-0.5 text-xs"
+                isSelected={assignedPackIds.has(pack.id)}
+                onChange={async (selected) => {
+                  if (selected) {
+                    await api.assignEmojiPack(assistant.id, pack.id)
+                    setAssignedPackIds((prev) => new Set([...prev, pack.id]))
+                  } else {
+                    await api.unassignEmojiPack(assistant.id, pack.id)
+                    setAssignedPackIds((prev) => {
+                      const next = new Set(prev)
+                      next.delete(pack.id)
+                      return next
+                    })
+                  }
+                }}
+              >
+                <Checkbox.Content>
+                  <Checkbox.Control>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                  <span className="truncate">{pack.name}</span>
+                </Checkbox.Content>
+              </Checkbox>
             ))}
           </div>
         </div>
@@ -374,24 +388,30 @@ function AssistantEditor({
           <p className="text-xs text-muted/60">{t('settings.skills.assistantHint')}</p>
           <ScrollArea className="max-h-40 border border-border rounded-lg"><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
             {allSkills.map((skill) => (
-              <label key={skill.dir_name} className="flex items-center gap-1.5 text-xs cursor-pointer py-0.5">
-                <Checkbox
-                  checked={boundSkillDirs.has(skill.dir_name)}
-                  disabled={skill.is_enabled === 0}
-                  onCheckedChange={async (checked) => {
-                    setSkillError(null)
-                    try {
-                      // The cap on bindings per anchor lives in the backend, so
-                      // take the returned set rather than guessing locally.
-                      const next = await api.setSkillBinding('assistant', assistant.id, skill.dir_name, !!checked)
-                      setBoundSkillDirs(new Set(next))
-                    } catch (e) {
-                      setSkillError(String(e))
-                    }
-                  }}
-                />
-                <span className="truncate">{skill.display_name}</span>
-              </label>
+              <Checkbox
+                key={skill.dir_name}
+                className="py-0.5 text-xs"
+                isSelected={boundSkillDirs.has(skill.dir_name)}
+                isDisabled={skill.is_enabled === 0}
+                onChange={async (selected) => {
+                  setSkillError(null)
+                  try {
+                    // The cap on bindings per anchor lives in the backend, so
+                    // take the returned set rather than guessing locally.
+                    const next = await api.setSkillBinding('assistant', assistant.id, skill.dir_name, selected)
+                    setBoundSkillDirs(new Set(next))
+                  } catch (e) {
+                    setSkillError(String(e))
+                  }
+                }}
+              >
+                <Checkbox.Content>
+                  <Checkbox.Control>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                  <span className="truncate">{skill.display_name}</span>
+                </Checkbox.Content>
+              </Checkbox>
             ))}
           </div></ScrollArea>
           {skillError && <p className="text-xs text-danger">{skillError}</p>}

@@ -4,7 +4,7 @@ import { Plus, Trash2, ChevronDown, ChevronRight, BookOpen, Check, RefreshCw } f
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Checkbox } from '@heroui/react'
 import { api } from '@/api'
 import type { Skill } from '@/types'
 
@@ -300,20 +300,32 @@ export function SkillSettings() {
                     {t(`settings.skills.source.${skill.source}`)}
                   </span>
                 </Button>
-                <label data-slot="skill-item-enabled" className="flex items-center gap-1.5 text-xs cursor-pointer shrink-0">
-                  <Checkbox
-                    checked={skill.is_enabled === 1}
-                    onCheckedChange={(checked) => toggleEnabled(skill, !!checked)}
-                  />
-                  <span>{t('settings.skills.enabled')}</span>
-                </label>
-                <label data-slot="skill-item-global" className="flex items-center gap-1.5 text-xs cursor-pointer shrink-0">
-                  <Checkbox
-                    checked={globalBound.has(skill.dir_name)}
-                    onCheckedChange={(checked) => toggleGlobal(skill.dir_name, !!checked)}
-                  />
-                  <span>{t('settings.skills.globalBinding')}</span>
-                </label>
+                <Checkbox
+                  data-slot="skill-item-enabled"
+                  className="shrink-0 text-xs"
+                  isSelected={skill.is_enabled === 1}
+                  onChange={(selected) => toggleEnabled(skill, selected)}
+                >
+                  <Checkbox.Content>
+                    <Checkbox.Control>
+                      <Checkbox.Indicator />
+                    </Checkbox.Control>
+                    {t('settings.skills.enabled')}
+                  </Checkbox.Content>
+                </Checkbox>
+                <Checkbox
+                  data-slot="skill-item-global"
+                  className="shrink-0 text-xs"
+                  isSelected={globalBound.has(skill.dir_name)}
+                  onChange={(selected) => toggleGlobal(skill.dir_name, selected)}
+                >
+                  <Checkbox.Content>
+                    <Checkbox.Control>
+                      <Checkbox.Indicator />
+                    </Checkbox.Control>
+                    {t('settings.skills.globalBinding')}
+                  </Checkbox.Content>
+                </Checkbox>
               </div>
               {isExpanded && (
                 <div data-slot="skill-item-body" className="px-3 pb-3 space-y-2">
