@@ -37,6 +37,7 @@ import {
   TurnTrigger,
   type TurnStatus,
 } from '@/components/ui/turn'
+import HeroUiLab from './heroui-lab'
 import ScrollLab from './scroll-lab'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { TurnItem } from '@/components/chat/turn-item'
@@ -441,6 +442,7 @@ export default function Playground() {
   // scroll harness needs the full viewport height, which a page that scrolls as
   // a whole cannot give it.
   if (window.location.hash === '#playground/scroll') return <ScrollLab />
+  if (window.location.hash === '#playground/heroui') return <HeroUiLab />
   return <Gallery />
 }
 
