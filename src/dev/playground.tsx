@@ -37,6 +37,7 @@ import {
   TurnTrigger,
   type TurnStatus,
 } from '@/components/ui/turn'
+import ScrollLab from './scroll-lab'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { TurnItem } from '@/components/chat/turn-item'
 import { TurnSteps } from '@/components/chat/turn-steps'
@@ -436,6 +437,14 @@ const PLAN_MD = [
 const PLAN_ARGS = JSON.stringify({ plan: PLAN_MD })
 
 export default function Playground() {
+  // Sub-views get their own hash rather than a section in the gallery: the
+  // scroll harness needs the full viewport height, which a page that scrolls as
+  // a whole cannot give it.
+  if (window.location.hash === '#playground/scroll') return <ScrollLab />
+  return <Gallery />
+}
+
+function Gallery() {
   return (
     <div className="h-full overflow-y-auto bg-background text-foreground">
       <div className="mx-auto max-w-2xl space-y-10 px-6 py-10">

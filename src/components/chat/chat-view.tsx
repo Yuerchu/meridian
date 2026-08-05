@@ -1,23 +1,14 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
-import { useImeBottom } from '@/hooks/use-android-insets'
 import { Button } from '@/components/ui/button'
-import {
-  MessageScroller,
-  MessageScrollerButton,
-  MessageScrollerContent,
-  MessageScrollerItem,
-  MessageScrollerProvider,
-  MessageScrollerViewport,
-} from '@/components/ui/message-scroller'
+import { MessageScrollerItem } from '@/components/ui/message-scroller'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
 import { Spinner } from '@/components/ui/spinner'
-import { motion } from 'motion/react'
+import { ChatTranscript } from './chat-transcript'
 import { TurnItem } from './turn-item'
 import { useTurns } from '@/hooks/use-turns'
-import { useMessageScroller } from '@/components/ui/message-scroller'
 import { InputBar, type AttachedFile } from './input-bar'
 import { TodoBar } from './todo-bar'
 import { useEmojiMap } from './emoji-renderer'
@@ -25,18 +16,9 @@ import { useConversationStore } from '@/stores/conversation-store'
 import { coerceThinkingLevel } from '@/lib/thinking'
 import type { Assistant, ChatMode, Message, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
-const MotionMessageScrollerItem = motion.create(MessageScrollerItem)
-
 // Stable identity for the empty case: `?? []` would hand useTurns a new array on
 // every render of a conversation whose session has not been created yet.
 const NO_MESSAGES: Message[] = []
-
-function ImeScrollSync() {
-  const ime = useImeBottom()
-  const { scrollToEnd } = useMessageScroller()
-  useEffect(() => { if (ime > 0) scrollToEnd() }, [ime, scrollToEnd])
-  return null
-}
 
 function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsumed }: {
   conversationId: string
@@ -483,136 +465,111 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     return () => { cancelled = true; clearTimeout(timer) }
   }, [conversationId, messages.length, compactBoundary])
 
-  return (
-    <div className="flex flex-col h-full">
-      <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={48}>
-        <ImeScrollSync />
-        <MessageScroller className="flex-1 min-h-0">
-          <MessageScrollerViewport>
-            <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6">
-        {compactedTurns.length > 0 && (
-          <MessageScrollerItem messageId="__compact-region" className="space-y-6">
-            {showCompactedMessages ? (
-              <>
-                <Button
-                  variant="ghost"
-                  onClick={() => setShowCompactedMessages(false)}
-                  className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground py-2"
-                >
-                  {t('chat.compact.hideCompacted', { count: compactedCount })}
-                </Button>
-                {compactedTurns.map((turn) => (
-                  <div key={turn.id} className="opacity-40">
-                    <TurnItem
-                      turn={turn}
-                      conversationId={conversationId}
-                      onDelete={handleDelete}
-                      isOneBot={isOneBot}
-                      emojiMap={emojiMap}
-                      assistantAvatar={selectedAssistant?.avatar}
-                    />
-                  </div>
-                ))}
-              </>
-            ) : (
+  const leading = (
+    <>
+      {compactedTurns.length > 0 && (
+        <MessageScrollerItem messageId="__compact-region" className="space-y-6">
+          {showCompactedMessages ? (
+            <>
               <Button
                 variant="ghost"
-                onClick={() => setShowCompactedMessages(true)}
+                onClick={() => setShowCompactedMessages(false)}
                 className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground py-2"
               >
-                {t('chat.compact.showCompacted', { count: compactedCount })}
+                {t('chat.compact.hideCompacted', { count: compactedCount })}
               </Button>
-            )}
-            <Marker variant="separator" className="py-3 px-2">
-              <MarkerContent>
-                <Button
-                  variant="ghost"
-                  onClick={() => setShowCompactSummary((v) => !v)}
-                  className="text-xs text-muted-foreground/60 hover:text-muted-foreground whitespace-nowrap h-auto px-2 py-0"
-                >
-                  {t('chat.compact.boundary', { count: compactedCount })}
-                </Button>
-              </MarkerContent>
-            </Marker>
-            {compactSummary && showCompactSummary && (
-              <div className="px-4 py-2 mb-2 text-xs text-muted-foreground bg-muted/30 rounded-lg border border-muted-foreground/10 whitespace-pre-wrap">
-                {compactSummary.content}
-              </div>
-            )}
-          </MessageScrollerItem>
-        )}
-
-        {activeTurns.map((turn, i) => {
-          const isLastTurn = i === activeTurns.length - 1
-          const turnEl = (
-            <TurnItem
-              turn={turn}
-              conversationId={conversationId}
-              isLastTurn={isLastTurn}
-              streaming={streaming}
-              onDelete={handleDelete}
-              onRegenerate={handleRegenerate}
-              onEdit={handleEdit}
-              onRate={handleRate}
-              isOneBot={isOneBot}
-              emojiMap={emojiMap}
-              assistantAvatar={selectedAssistant?.avatar}
-            />
-          )
-          // Turns hold many messages each, so the reveal animation covers fewer
-          // items than the old per-message window did.
-          if (i >= activeTurns.length - 2) {
-            return (
-              <MotionMessageScrollerItem
-                key={turn.id}
-                messageId={turn.id}
-                scrollAnchor={turn.userMessage != null}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
+              {compactedTurns.map((turn) => (
+                <div key={turn.id} className="opacity-40">
+                  <TurnItem
+                    turn={turn}
+                    conversationId={conversationId}
+                    onDelete={handleDelete}
+                    isOneBot={isOneBot}
+                    emojiMap={emojiMap}
+                    assistantAvatar={selectedAssistant?.avatar}
+                  />
+                </div>
+              ))}
+            </>
+          ) : (
+            <Button
+              variant="ghost"
+              onClick={() => setShowCompactedMessages(true)}
+              className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground py-2"
+            >
+              {t('chat.compact.showCompacted', { count: compactedCount })}
+            </Button>
+          )}
+          <Marker variant="separator" className="py-3 px-2">
+            <MarkerContent>
+              <Button
+                variant="ghost"
+                onClick={() => setShowCompactSummary((v) => !v)}
+                className="text-xs text-muted-foreground/60 hover:text-muted-foreground whitespace-nowrap h-auto px-2 py-0"
               >
-                {turnEl}
-              </MotionMessageScrollerItem>
-            )
-          }
-          return (
-            <MessageScrollerItem key={turn.id} messageId={turn.id} scrollAnchor={turn.userMessage != null}>
-              {turnEl}
-            </MessageScrollerItem>
-          )
-        })}
-        {compacting && (
-          <MessageScrollerItem messageId="__compacting">
-            <Marker role="status" className="justify-center py-3">
-              <MarkerIcon>
-                <Spinner />
-              </MarkerIcon>
-              <MarkerContent className="shimmer text-xs">{t('chat.compact.inProgress')}</MarkerContent>
-            </Marker>
-          </MessageScrollerItem>
-        )}
-        {/* After the turns, not before them: the error belongs to the turn that
-            just failed, and the user is already at the bottom when it arrives.
-            Deliberately not a scrollAnchor — an anchor aligns its item to the
-            top of the viewport, which is what put the error out of sight in the
-            first place. */}
-        {error && (
-          <MessageScrollerItem messageId="__error">
-            <Bubble variant="destructive">
-              <BubbleContent className="break-all">{error}</BubbleContent>
-            </Bubble>
-          </MessageScrollerItem>
-        )}
-        {messages.length === 0 && (
+                {t('chat.compact.boundary', { count: compactedCount })}
+              </Button>
+            </MarkerContent>
+          </Marker>
+          {compactSummary && showCompactSummary && (
+            <div className="px-4 py-2 mb-2 text-xs text-muted-foreground bg-muted/30 rounded-lg border border-muted-foreground/10 whitespace-pre-wrap">
+              {compactSummary.content}
+            </div>
+          )}
+        </MessageScrollerItem>
+      )}
+    </>
+  )
+
+  const trailing = (
+    <>
+      {compacting && (
+        <MessageScrollerItem messageId="__compacting">
+          <Marker role="status" className="justify-center py-3">
+            <MarkerIcon>
+              <Spinner />
+            </MarkerIcon>
+            <MarkerContent className="shimmer text-xs">{t('chat.compact.inProgress')}</MarkerContent>
+          </Marker>
+        </MessageScrollerItem>
+      )}
+      {/* After the turns, not before them: the error belongs to the turn that
+          just failed, and the user is already at the bottom when it arrives.
+          Deliberately not a scrollAnchor — an anchor aligns its item to the
+          top of the viewport, which is what put the error out of sight in the
+          first place. */}
+      {error && (
+        <MessageScrollerItem messageId="__error">
+          <Bubble variant="destructive">
+            <BubbleContent className="break-all">{error}</BubbleContent>
+          </Bubble>
+        </MessageScrollerItem>
+      )}
+    </>
+  )
+
+  return (
+    <div className="flex flex-col h-full">
+      <ChatTranscript
+        turns={activeTurns}
+        conversationId={conversationId}
+        streaming={streaming}
+        onDelete={handleDelete}
+        onRegenerate={handleRegenerate}
+        onEdit={handleEdit}
+        onRate={handleRate}
+        isOneBot={isOneBot}
+        emojiMap={emojiMap}
+        assistantAvatar={selectedAssistant?.avatar}
+        leading={leading}
+        trailing={trailing}
+        emptyState={messages.length === 0 ? (
           <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
             {t('chat.startHint')}
           </div>
-        )}
-            </MessageScrollerContent>
-          </MessageScrollerViewport>
-          <MessageScrollerButton aria-label={t('chat.scrollToBottom')} />
-        </MessageScroller>
-      </MessageScrollerProvider>
+        ) : null}
+        scrollToBottomLabel={t('chat.scrollToBottom')}
+      />
 
       <TodoBar conversationId={conversationId} />
 

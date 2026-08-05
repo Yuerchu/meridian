@@ -3,18 +3,15 @@ import { useCallback, useRef } from 'react'
 /**
  * Keeps the viewport still when a turn collapses above the fold.
  *
- * The scroller compensates for height changes on its own in two of its four
- * modes: it re-anchors when pinned to a message, and re-sticks to the bottom
- * when following it. In `free-scrolling` — the user has scrolled back through
- * history — nothing compensates, and the page yanks upward by however much the
- * collapsed region shed.
+ * The scroller absorbs height changes in `follow`, where re-sticking to the live
+ * edge takes care of them. In `idle` — the reader has scrolled back through
+ * history, and nothing may move without them — nothing compensates, and the
+ * transcript yanks upward by however much the collapsed region shed.
  *
- * `scrollToMessage` looks like the fix and is not: it routes to `scrollToElement`
- * without `keepPreviousPeek`, which drops the scroller into `settling-jump` and
- * clears its anchor. Every later height change then goes uncompensated, and
- * `settling-jump` is excluded from the return to `following-bottom`, so the
- * scroller stays stuck there. This adjusts `scrollTop` directly and leaves the
- * scroller's state machine untouched.
+ * `scrollToMessage` looks like the fix and is not: it is a command, and a
+ * command announces itself. It re-solves the spacer and parks the reader at a
+ * row they never asked to be taken to. This adjusts `scrollTop` by exactly what
+ * the collapse removed and leaves the scroller's state machine untouched.
  */
 export function useCollapseScrollAnchor<T extends HTMLElement = HTMLDivElement>() {
   const ref = useRef<T | null>(null)

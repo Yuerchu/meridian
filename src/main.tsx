@@ -13,8 +13,9 @@ if (isBrowserDev) {
 }
 
 // Dev-only component playground; the dynamic import below is dead code in
-// production builds, so the chunk is never emitted.
-if (isBrowserDev && window.location.hash === '#playground') {
+// production builds, so the chunk is never emitted. `#playground/…` selects a
+// sub-view — see `dev/playground.tsx`.
+if (isBrowserDev && window.location.hash.startsWith('#playground')) {
   import('./dev/playground').then(({ default: Playground }) => {
     root.render(
       <StrictMode>

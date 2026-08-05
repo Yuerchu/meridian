@@ -70,6 +70,18 @@ export interface Turn {
   firstSortOrder: number
 }
 
+/**
+ * The scroller id for a turn's answer, as opposed to the turn as a whole.
+ *
+ * A turn is one scroller row so that collapsing its middle cannot move its own
+ * top, but "put me back at the start of the answer" has to name something below
+ * the question. Derived rather than stored so both ends agree without threading
+ * an id through the tree.
+ */
+export function answerAnchorId(turnId: string): string {
+  return `${turnId}:answer`
+}
+
 export interface BuildTurnsContext {
   /** Whether the conversation has a stream in flight; only the last turn can be
    *  the one streaming. */

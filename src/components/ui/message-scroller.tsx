@@ -4,7 +4,7 @@ import {
   useMessageScroller,
   useMessageScrollerScrollable,
   useMessageScrollerVisibility,
-} from "@shadcn/react/message-scroller"
+} from "@/lib/message-scroller"
 
 import { cn } from "@/lib/utils"
 import { usePlatform } from "@/hooks/use-platform"
@@ -86,6 +86,21 @@ function MessageScrollerItem({
   )
 }
 
+/** An addressable point inside a row — see the primitive for why. Carries no
+ *  styles of its own so it can wrap a region without changing its layout. */
+function MessageScrollerAnchor({
+  className,
+  ...props
+}: React.ComponentProps<typeof MessageScrollerPrimitive.Anchor>) {
+  return (
+    <MessageScrollerPrimitive.Anchor
+      data-slot="message-scroller-anchor"
+      className={cn("min-w-0", className)}
+      {...props}
+    />
+  )
+}
+
 function MessageScrollerButton({
   direction = "end",
   className,
@@ -129,6 +144,7 @@ export {
   MessageScrollerViewport,
   MessageScrollerContent,
   MessageScrollerItem,
+  MessageScrollerAnchor,
   MessageScrollerButton,
   useMessageScroller,
   useMessageScrollerScrollable,

@@ -5,6 +5,7 @@ import { ErrorBoundary } from '@/components/error-boundary'
 import { AssistantAvatar, MessageItem, MessageMeta } from './message-item'
 import { TurnSteps } from './turn-steps'
 import { Marker, MarkerContent } from '@/components/ui/marker'
+import { MessageScrollerAnchor } from '@/components/ui/message-scroller'
 import {
   Turn as TurnCollapse,
   TurnBranchPager,
@@ -15,7 +16,7 @@ import {
 } from '@/components/ui/turn'
 import { useCollapseScrollAnchor } from '@/hooks/use-collapse-scroll-anchor'
 import { useConversationStore } from '@/stores/conversation-store'
-import { formatDuration, hasCollapsibleProcess, type Turn } from '@/lib/turns'
+import { answerAnchorId, formatDuration, hasCollapsibleProcess, type Turn } from '@/lib/turns'
 import type { EmojiMap } from './emoji-renderer'
 
 /** Long enough for `handleStop`'s reload to land first. Collapsing before it
@@ -267,6 +268,7 @@ export const TurnItem = React.memo(function TurnItem({
       <div data-slot="turn" data-status={turn.status} className={cn('space-y-6', className)}>
         {question}
         {questionPager}
+        <MessageScrollerAnchor messageId={answerAnchorId(turn.id)} className="space-y-6">
         {assistants.map((m, i) => {
           const isLast = i === assistants.length - 1
           const ownsActions = m.id === actionMessageId
@@ -290,6 +292,7 @@ export const TurnItem = React.memo(function TurnItem({
           )
         })}
         {activityMarker}
+        </MessageScrollerAnchor>
         {answerPager}
       </div>
     )
@@ -309,7 +312,7 @@ export const TurnItem = React.memo(function TurnItem({
       {/* The process line and the conclusion are one answer, so they sit at a
           message's internal rhythm rather than the six-unit gap the turn keeps
           between the question and the answer as a whole. */}
-      <div className="space-y-2.5">
+      <MessageScrollerAnchor messageId={answerAnchorId(turn.id)} className="space-y-2.5">
         <div className="flex w-full min-w-0 gap-2 text-sm">
           <AssistantAvatar src={assistantAvatar} modelId={assistants[0]?.model_id} />
           <div className="flex w-full min-w-0 flex-col">
@@ -366,7 +369,7 @@ export const TurnItem = React.memo(function TurnItem({
           </ErrorBoundary>
         )}
         {activityMarker}
-      </div>
+      </MessageScrollerAnchor>
       {answerPager}
     </div>
   )
