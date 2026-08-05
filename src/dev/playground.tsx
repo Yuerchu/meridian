@@ -467,7 +467,7 @@ function Gallery() {
         </header>
 
         <Section title="ChainOfThought / 基础 + Steps">
-          <ChainOfThought defaultOpen>
+          <ChainOfThought defaultExpanded>
             <ChainOfThoughtTrigger>Thought for 4 seconds</ChainOfThoughtTrigger>
             <ChainOfThoughtContent>
               <ChainOfThoughtSteps>
@@ -483,7 +483,7 @@ function Gallery() {
         </Section>
 
         <Section title="ChainOfThought / 流式 (shimmer)">
-          <ChainOfThought defaultOpen isStreaming>
+          <ChainOfThought defaultExpanded isStreaming>
             <ChainOfThoughtTrigger>思考过程</ChainOfThoughtTrigger>
             <ChainOfThoughtContent className="text-xs text-muted/70 leading-relaxed whitespace-pre-wrap">
               {'用户想要一个简单的登录页。这是一个直接的 UI 任务——我应该先生成一些设计灵感确保观感，然后再搭页面。'}

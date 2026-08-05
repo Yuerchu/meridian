@@ -174,7 +174,7 @@ function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; i
   const { t } = useTranslation()
 
   return (
-    <ChainOfThought defaultOpen={!!(isStreaming || defaultExpanded)} isStreaming={isStreaming} className="my-2">
+    <ChainOfThought defaultExpanded={!!(isStreaming || defaultExpanded)} isStreaming={isStreaming} className="my-2">
       <ChainOfThoughtTrigger>{t('chat.thinking')}</ChainOfThoughtTrigger>
       <ChainOfThoughtContent className="text-xs text-muted/70 leading-relaxed whitespace-pre-wrap">
         {text}
