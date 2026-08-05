@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, ChevronDown, ChevronRight, Wrench, Terminal, Check } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input, ListBox, Select } from '@heroui/react'
+import { Button, Input, ListBox, Select } from '@heroui/react'
 import { api } from '@/api'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
 
@@ -101,7 +100,7 @@ function CustomToolEditor({
         <Input fullWidth type="number" value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} className="w-32" />
       </div>
       <div className="flex items-center gap-2">
-        <Button onClick={handleSave} disabled={!name.trim() || !command.trim()}>
+        <Button onClick={handleSave} isDisabled={!name.trim() || !command.trim()}>
           {t('common.save')}
         </Button>
         {saved && (

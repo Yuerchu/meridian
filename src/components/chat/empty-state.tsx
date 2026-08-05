@@ -67,9 +67,9 @@ export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
             <div className="flex items-center justify-end w-full">
               <InputGroupButton
                 size="icon-sm"
-                variant="default"
+                variant="primary"
                 onClick={handleSubmit}
-                disabled={disabled || !value.trim()}
+                isDisabled={disabled || !value.trim()}
                 className="rounded-full"
               >
                 <ArrowUp className="size-4" strokeWidth={2.5} />

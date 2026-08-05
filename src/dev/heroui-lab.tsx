@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
+  Button,
   Button as HButton,
   Checkbox as HCheckbox,
   Disclosure as HDisclosure,
@@ -28,7 +29,6 @@ import {
 } from '@heroui/react'
 import '@heroui/react/styles'
 
-import { Button } from '@/components/ui/button'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 
 /** Feature detections, each phrased so `true` means "WebView2 will render it". */
@@ -206,6 +206,17 @@ export default function HeroUiLab() {
               <HTextArea fullWidth placeholder="TextArea：多行输入" rows={2} />
             </div>
 
+            {/* HeroUI declares `.button`'s height as a plain rule, not inside a
+                utility layer — so a Tailwind size class on the same element may
+                or may not outrank it. Everything the composer builds on top of
+                Button sizes itself this way. */}
+            <div data-probe="size-override" className="flex flex-wrap items-center gap-3">
+              <HButton className="h-6 px-1.5">h-6</HButton>
+              <HButton className="size-6 p-0">size-6</HButton>
+              <HButton className="h-auto p-1">h-auto p-1</HButton>
+              <HButton isIconOnly className="size-8">size-8</HButton>
+            </div>
+
             <HSlider defaultValue={40} className="max-w-xs" aria-label="滑块">
               <HSlider.Track>
                 <HSlider.Fill />
@@ -283,7 +294,7 @@ export default function HeroUiLab() {
               <Button size="sm">Meridian Button</Button>
               <Button size="sm" variant="secondary">Secondary</Button>
               <Button size="sm" variant="ghost">Ghost</Button>
-              <Button size="sm" variant="destructive">Destructive</Button>
+              <Button size="sm" variant="danger-soft">Destructive</Button>
             </div>
             <Bubble>
               <BubbleContent>气泡的圆角、底色、内边距应当和迁移前一致。</BubbleContent>

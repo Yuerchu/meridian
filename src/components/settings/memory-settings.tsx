@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash, X, Check } from 'lucide-react'
 import { api } from '@/api'
-import { Button } from '@/components/ui/button'
-import { Input, ListBox, Select, TextArea } from '@heroui/react'
+import { Button, Input, ListBox, Select, TextArea } from '@heroui/react'
 import {
   AlertDialog,
   AlertDialogClose,
@@ -74,7 +73,7 @@ export function MemorySettings() {
             <Trash />
             {t('settings.memory.trash.title')}
           </Button>
-          <Button variant="secondary" onClick={() => setShowAdd(true)} disabled={!canAdd}>
+          <Button variant="secondary" onClick={() => setShowAdd(true)} isDisabled={!canAdd}>
             <Plus />
             {t('settings.memory.new')}
           </Button>
@@ -158,14 +157,14 @@ export function MemorySettings() {
                   </Select.Popover>
                 </Select>
                 <div className="flex-1" />
-                <Button variant="ghost" size="icon" onClick={() => setShowAdd(false)}>
+                <Button variant="ghost" isIconOnly onClick={() => setShowAdd(false)}>
                   <X />
                 </Button>
                 <Button
                   variant="secondary"
-                  size="icon"
+                  isIconOnly
                   onClick={handleAdd}
-                  disabled={!newKey.trim() || !newContent.trim()}
+                  isDisabled={!newKey.trim() || !newContent.trim()}
                 >
                   <Check />
                 </Button>

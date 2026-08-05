@@ -1,10 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Plug, PlugZap, Trash2, ArrowLeft, ClipboardPaste } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Input, TextArea } from '@heroui/react'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Button, Input, TextArea, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
@@ -236,7 +234,7 @@ function McpServerEditor({
             {t('settings.mcp.disconnect')}
           </Button>
         ) : (
-          <Button variant="outline" onClick={handleConnect} disabled={connecting}>
+          <Button variant="outline" onClick={handleConnect} isDisabled={connecting}>
             <Plug className="w-3.5 h-3.5 mr-1.5" />
             {connecting ? t('common.loading') : t('settings.mcp.connect')}
           </Button>
@@ -264,7 +262,7 @@ function McpServerEditor({
       )}
 
       <div className="pt-4 border-t border-border">
-        <Button variant="destructive" onClick={() => onDelete(server.id)}>
+        <Button variant="danger-soft" onClick={() => onDelete(server.id)}>
           <Trash2 className="w-3.5 h-3.5 mr-1.5" />
           {t('settings.mcp.deleteServer')}
         </Button>
@@ -347,15 +345,13 @@ export function McpSettings() {
 
   const headerActions = (
     <div className="flex items-center gap-1">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button variant="outline" onClick={() => setShowImport(true)}>
-              <ClipboardPaste className="w-4 h-4" />
-            </Button>
-          }
-        />
-        <TooltipContent side="top">{t('settings.mcp.importJson')}</TooltipContent>
+      <Tooltip delay={0}>
+        <Tooltip.Trigger>
+          <Button variant="outline" onClick={() => setShowImport(true)}>
+            <ClipboardPaste className="w-4 h-4" />
+          </Button>
+        </Tooltip.Trigger>
+        <Tooltip.Content placement="top">{t('settings.mcp.importJson')}</Tooltip.Content>
       </Tooltip>
       <Button variant="outline" onClick={handleAdd}>
         <Plus className="w-4 h-4" />

@@ -1,7 +1,7 @@
 import { memo, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Copy } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import type { LogEntry } from '@/types'
 import { LogLevelBadge } from './log-level-badge'
@@ -90,9 +90,10 @@ function LogRowImpl({ entry }: { entry: LogEntry }) {
       </div>
 
       <Button
+        isIconOnly
         data-slot="log-row-copy"
         variant="ghost"
-        size="icon-sm"
+        size="sm"
         aria-label={t('settings.about.logs.copyRecord')}
         onClick={onCopy}
         className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"

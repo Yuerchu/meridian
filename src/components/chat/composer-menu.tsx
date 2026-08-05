@@ -3,10 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
 import { Bot, ChevronRight, ChevronsRight, Compass, Cpu, Hammer, Lightbulb, Paperclip, Plus, Zap } from 'lucide-react'
 import { ModelIcon } from '@/components/ui/model-icon'
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { Spinner, Switch } from '@heroui/react'
-import { Button } from '@/components/ui/button'
+
+import { Button, Popover, Spinner, Switch, Tooltip } from '@heroui/react'
+
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
@@ -254,45 +253,43 @@ export function ComposerMenu(props: ComposerMenuProps) {
 
   return (
     <Popover
-      open={open}
+      isOpen={open}
       onOpenChange={(o) => {
         setOpen(o)
         if (!o) setHovered(null)
       }}
     >
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger
-              render={
-                <Button
-                  data-slot="composer-menu-trigger"
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    'relative text-muted hover:text-foreground',
-                    open && 'bg-default text-foreground',
-                  )}
-                />
-              }
-            >
-              <Plus className="size-4" />
-              {alert && (
-                <span
-                  data-slot="composer-menu-alert"
-                  className={cn(
-                    'absolute right-1 top-1 size-1.5 rounded-full',
-                    alert === 'warning' ? 'bg-warning' : 'bg-info',
-                  )}
-                />
-              )}
-            </PopoverTrigger>
-          }
-        />
-        <TooltipContent side="top">{t('composer.menu')}</TooltipContent>
+      {/* Tooltip wraps the trigger rather than the other way round: React Aria
+          passes press and focus down through context, so the Button at the
+          bottom of this stack receives both the popover's and the tooltip's
+          behaviour without either needing to know about the other. */}
+      <Tooltip delay={0}>
+        <Tooltip.Trigger>
+          <Button
+            isIconOnly
+            data-slot="composer-menu-trigger"
+            variant="ghost"
+            className={cn(
+              'relative text-muted hover:text-foreground',
+              open && 'bg-default text-foreground',
+            )}
+          >
+            <Plus className="size-4" />
+            {alert && (
+              <span
+                data-slot="composer-menu-alert"
+                className={cn(
+                  'absolute right-1 top-1 size-1.5 rounded-full',
+                  alert === 'warning' ? 'bg-warning' : 'bg-info',
+                )}
+              />
+            )}
+          </Button>
+        </Tooltip.Trigger>
+        <Tooltip.Content placement="top">{t('composer.menu')}</Tooltip.Content>
       </Tooltip>
 
-      <PopoverContent side="top" align="start" className="w-auto p-0 gap-0 overflow-hidden">
+      <Popover.Content placement="top start" className="w-auto overflow-hidden p-0">
         {/* Fixed height, each column scrolling on its own.
             The popup opens upwards, so its bottom edge is pinned to the trigger
             and any growth pushes the top up — a right column taller than the
@@ -313,10 +310,16 @@ export function ComposerMenu(props: ComposerMenuProps) {
               const expandable = Boolean(entry.options || entry.loading)
               const isToggle = entry.checked !== undefined
               return (
-                <Button
+                // A plain button rather than the component: these rows are
+                // menu items and say so with `role="switch"`, which React Aria's
+                // Button will not surrender — it owns `role` and fixes it to
+                // "button". The visual weight was coming from the className
+                // below in any case.
+                // eslint-disable-next-line no-restricted-syntax -- role="switch" is unreachable through a React Aria Button
+                <button
                   key={entry.key}
+                  type="button"
                   data-slot="composer-menu-item"
-                  variant="ghost"
                   onMouseEnter={() => setHovered(entry.key)}
                   onFocus={() => setHovered(entry.key)}
                   role={isToggle ? "switch" : undefined}
@@ -335,7 +338,8 @@ export function ComposerMenu(props: ComposerMenuProps) {
                     setHovered((prev) => (prev === entry.key ? null : entry.key))
                   }}
                   className={cn(
-                    'w-full h-auto justify-start gap-2 rounded-md px-1.5 py-1 text-sm font-normal',
+                    'flex w-full items-center justify-start gap-2 rounded-md px-1.5 py-1 text-left text-sm font-normal outline-none',
+                    'focus-visible:ring-3 focus-visible:ring-focus/50',
                     isHovered
                       ? 'bg-default text-default-foreground'
                       : 'text-muted hover:bg-default/50 hover:text-foreground',
@@ -387,7 +391,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                     </Switch>
                   )}
                   {expandable && <ChevronRight className="size-4 shrink-0 text-muted" />}
-                </Button>
+                </button>
               )
             })}
           </div>
@@ -456,7 +460,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
             )}
           </AnimatePresence>
         </div>
-      </PopoverContent>
+      </Popover.Content>
     </Popover>
   )
 }

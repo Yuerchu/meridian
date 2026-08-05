@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bot, ChevronLeft, ChevronRight, ChevronsRight, Cpu, Check, Star, Lightbulb, RefreshCw, Plus, Camera, ImageIcon, Paperclip, Zap, Hammer, Compass } from 'lucide-react'
 import { ModelIcon } from '@/components/ui/model-icon'
-import { Button } from '@/components/ui/button'
+import { Button } from '@heroui/react'
 import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
@@ -253,7 +253,7 @@ export function MobileOptionsMenu({
         {panel === 'assistant' && (
           <div className="flex flex-col">
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-              <Button variant="ghost" size="icon" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
+              <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
                 <ChevronLeft className="w-4 h-4" />
               </Button>
               <span className="text-sm font-medium">{t('toolbar.noAssistant').replace(/^No /, 'Select ')}</span>
@@ -284,13 +284,13 @@ export function MobileOptionsMenu({
         {panel === 'model' && (
           <div className="flex flex-col">
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-              <Button variant="ghost" size="icon" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
+              <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
                 <ChevronLeft className="w-4 h-4" />
               </Button>
               <span className="text-sm font-medium flex-1">{t('toolbar.models')}</span>
               <Button
+                isIconOnly
                 variant="ghost"
-                size="icon"
                 className="h-6 w-6"
                 onClick={() => {
                   setLoadingModels(true)
@@ -310,7 +310,7 @@ export function MobileOptionsMenu({
                     setLoadingModels(false)
                   })
                 }}
-                disabled={loadingModels}
+                isDisabled={loadingModels}
               >
                 <RefreshCw className={cn('w-3.5 h-3.5', loadingModels && 'animate-spin')} />
               </Button>
@@ -351,7 +351,7 @@ export function MobileOptionsMenu({
         {panel === 'mode' && (
           <div className="flex flex-col">
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-              <Button variant="ghost" size="icon" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
+              <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
                 <ChevronLeft className="w-4 h-4" />
               </Button>
               <span className="text-sm font-medium">{t('toolbar.mode')}</span>
@@ -379,7 +379,7 @@ export function MobileOptionsMenu({
         {panel === 'thinking' && (
           <div className="flex flex-col">
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-              <Button variant="ghost" size="icon" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
+              <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
                 <ChevronLeft className="w-4 h-4" />
               </Button>
               <span className="text-sm font-medium">{t('toolbar.thinking')}</span>

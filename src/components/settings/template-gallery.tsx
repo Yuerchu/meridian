@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ChevronDown, ChevronRight, BookTemplate, Sparkles, Code, Trash2 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input, ListBox, Select, TextArea } from '@heroui/react'
+import { Button, Input, ListBox, Select, TextArea } from '@heroui/react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/api'
 import type { PromptTemplate, TemplateVariable } from '@/types'
@@ -134,7 +133,7 @@ function TemplateCreator({
         rows={4}
         className="resize-none font-mono text-xs"
       />
-      <Button onClick={handleCreate} disabled={!name.trim() || !text.trim()}>
+      <Button onClick={handleCreate} isDisabled={!name.trim() || !text.trim()}>
         {t('common.save')}
       </Button>
     </div>

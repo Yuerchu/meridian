@@ -4,7 +4,7 @@ import { useRender } from "@base-ui/react/use-render"
 import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
+import { Button } from "@heroui/react"
 
 const attachmentVariants = cva(
   "group/attachment relative flex w-fit max-w-full min-w-0 shrink-0 flex-wrap rounded-xl border bg-surface text-surface-foreground transition-colors focus-within:ring-1 focus-within:ring-focus/50 has-[>a,>button]:hover:bg-default/50 data-[state=error]:border-danger/30 data-[state=idle]:border-dashed",
@@ -145,11 +145,12 @@ function AttachmentActions({
 function AttachmentAction({
   className,
   variant,
-  size = "icon-xs",
+  size = "sm",
   ...props
 }: React.ComponentProps<typeof Button>) {
   return (
     <Button
+      isIconOnly
       data-slot="attachment-action"
       variant={variant ?? "ghost"}
       size={size}

@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, Upload, ChevronDown, ChevronRight, Package } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@heroui/react'
+import { Button, Input } from '@heroui/react'
 import { api } from '@/api'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import type { Emoji, EmojiPack } from '@/types'
@@ -94,7 +93,7 @@ function PackCard({
                 {detail.pack.is_builtin === 0 && (
                   <Button
                     variant="ghost"
-                    size="icon"
+                    isIconOnly
                     className="absolute -top-1 -right-1 !size-4 rounded-full bg-danger text-danger-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={() => onDeleteEmoji(e.id)}
                   >
@@ -205,7 +204,7 @@ export function EmojiSettings() {
           className="flex-1"
           onKeyDown={(e) => { if (e.key === 'Enter') handleCreate() }}
         />
-        <Button variant="outline" onClick={handleCreate} disabled={!newPackName.trim()}>
+        <Button variant="outline" onClick={handleCreate} isDisabled={!newPackName.trim()}>
           <Plus className="w-3.5 h-3.5" />
           {t('settings.emoji.newPack')}
         </Button>

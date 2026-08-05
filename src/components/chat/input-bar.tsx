@@ -4,7 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowUp, Square, Paperclip, X as XIcon, Scissors, Copy, ClipboardPaste, TextSelect } from 'lucide-react'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button } from '@/components/ui/button'
+import { Tooltip } from '@heroui/react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -28,7 +28,6 @@ import {
   AttachmentTitle,
 } from '@/components/ui/attachment'
 import { CircularProgress } from '@/components/ui/circular-progress'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
 import { VoiceButton } from '@/components/ui/voice-button'
@@ -339,26 +338,24 @@ export function InputBar({
                   onSelect={(syntax) => onChange(value + syntax)}
                 />
                 {!isAndroid && onVoiceSend && (
-                  <Tooltip>
-                    <TooltipTrigger
-                      render={
-                        <span>
-                          <VoiceButton
-                            state={voice.state}
-                            elapsed={voice.elapsed}
-                            disabled={disabled || streaming}
-                            onPointerDown={voice.handlePointerDown}
-                            onPointerUp={voice.handlePointerUp}
-                            onPointerCancel={voice.handlePointerCancel}
-                            onPointerEnter={voice.handlePointerEnter}
-                            onPointerLeave={voice.handlePointerLeave}
-                          />
-                        </span>
-                      }
-                    />
-                    <TooltipContent side="top">
+                  <Tooltip delay={0}>
+                    <Tooltip.Trigger>
+                      <span>
+                        <VoiceButton
+                          state={voice.state}
+                          elapsed={voice.elapsed}
+                          disabled={disabled || streaming}
+                          onPointerDown={voice.handlePointerDown}
+                          onPointerUp={voice.handlePointerUp}
+                          onPointerCancel={voice.handlePointerCancel}
+                          onPointerEnter={voice.handlePointerEnter}
+                          onPointerLeave={voice.handlePointerLeave}
+                        />
+                      </span>
+                    </Tooltip.Trigger>
+                    <Tooltip.Content placement="top">
                       {voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
-                    </TooltipContent>
+                    </Tooltip.Content>
                   </Tooltip>
                 )}
                 {contextInfo && contextInfo.messageCount > 0 && (() => {
@@ -369,8 +366,8 @@ export function InputBar({
                       ? 'text-warning'
                       : 'text-muted/60'
                   return (
-                    <Tooltip>
-                      <TooltipTrigger className={compacting ? 'text-muted' : colorClass}>
+                    <Tooltip delay={0}>
+                      <Tooltip.Trigger className={compacting ? 'text-muted' : colorClass}>
                         <CircularProgress
                           value={contextInfo.estimatedTokens}
                           max={contextInfo.contextLimit}
@@ -378,8 +375,8 @@ export function InputBar({
                           strokeWidth={2.5}
                           indeterminate={compacting}
                         />
-                      </TooltipTrigger>
-                      <TooltipContent side="top" className="flex flex-col gap-1 text-xs tabular-nums">
+                      </Tooltip.Trigger>
+                      <Tooltip.Content placement="top" className="flex flex-col gap-1 text-xs tabular-nums">
                         {compacting ? (
                           <span>{t('chat.compact.inProgress')}</span>
                         ) : (
@@ -390,24 +387,25 @@ export function InputBar({
                               <span>{Math.max(0, Math.round((1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100))}% {t('chat.compact.untilAutoCompact')}</span>
                             )}
                             {onCompact && !streaming && (
-                              <Button
-                                variant="link"
-                                className="mt-0.5 h-auto justify-start p-0 text-xs font-normal text-background/70 underline underline-offset-2 hover:text-background"
+                              // eslint-disable-next-line no-restricted-syntax -- a text link inside the tooltip: HeroUI's .button base sets height, padding and background outside the utility layer, so no className can undo them
+                              <button
+                                type="button"
+                                className="mt-0.5 inline-flex h-auto shrink-0 items-center justify-start p-0 text-xs font-normal text-background/70 underline underline-offset-2 outline-none transition-colors hover:text-background"
                                 onClick={onCompact}
                               >
                                 {t('chat.compact.manual')}
-                              </Button>
+                              </button>
                             )}
                           </>
                         )}
-                      </TooltipContent>
+                      </Tooltip.Content>
                     </Tooltip>
                   )
                 })()}
                 {streaming ? (
                   <InputGroupButton
                     size="icon-sm"
-                    variant="default"
+                    variant="primary"
                     onClick={onStop}
                     className="rounded-full"
                   >
@@ -416,9 +414,9 @@ export function InputBar({
                 ) : (
                   <InputGroupButton
                     size="icon-sm"
-                    variant="default"
+                    variant="primary"
                     onClick={onSubmit}
-                    disabled={disabled || !value.trim()}
+                    isDisabled={disabled || !value.trim()}
                     className="rounded-full"
                   >
                     <ArrowUp className="size-4" strokeWidth={2.5} />

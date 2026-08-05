@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Input, ListBox, Select } from '@heroui/react'
-import { Button } from '@/components/ui/button'
+import { Button, Input, ListBox, Select } from '@heroui/react'
 import { Check } from 'lucide-react'
 import { LANGUAGES, setLocale } from '@/i18n'
 import { api } from '@/api'
@@ -196,9 +195,9 @@ export function GeneralSettings() {
             className="max-w-xs"
           />
           <Button
-            variant={searchKeySaved ? 'default' : 'outline'}
+            variant={searchKeySaved ? 'primary' : 'outline'}
             onClick={handleSaveSearchKey}
-            disabled={!searchApiKey.trim()}
+            isDisabled={!searchApiKey.trim()}
           >
             {searchKeySaved ? <Check className="w-4 h-4" /> : t('settings.general.save')}
           </Button>

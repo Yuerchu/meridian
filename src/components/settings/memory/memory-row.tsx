@@ -2,9 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ChevronRight, ChevronDown, Trash2, AlertTriangle } from 'lucide-react'
 import { api } from '@/api'
-import { Button } from '@/components/ui/button'
-import { Checkbox, TextArea } from '@heroui/react'
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { Button, Checkbox, TextArea, Tooltip } from '@heroui/react'
 import { MemoryBadge } from './memory-badge'
 import type { Memory } from '@/types'
 
@@ -51,7 +49,7 @@ export function MemoryRow({
             </Checkbox.Control>
           </Checkbox.Content>
         </Checkbox>
-        <Button variant="ghost" size="icon" onClick={onToggleExpand} data-slot="memory-row-toggle">
+        <Button variant="ghost" isIconOnly onClick={onToggleExpand} data-slot="memory-row-toggle">
           {expanded ? <ChevronDown /> : <ChevronRight />}
         </Button>
         <span className="font-mono text-sm">{memory.key}</span>
@@ -61,16 +59,14 @@ export function MemoryRow({
         <MemoryBadge tone="info">{memory.origin}</MemoryBadge>
         <MemoryBadge>{memory.memory_type}</MemoryBadge>
         {ownerOnly && (
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <MemoryBadge tone="warning">
-                  <AlertTriangle className="mr-1 size-3" />
-                  {t('settings.memory.ownerOnly')}
-                </MemoryBadge>
-              }
-            />
-            <TooltipContent>{t('settings.memory.ownerOnlyHint')}</TooltipContent>
+          <Tooltip delay={0}>
+            <Tooltip.Trigger>
+              <MemoryBadge tone="warning">
+                <AlertTriangle className="mr-1 size-3" />
+                {t('settings.memory.ownerOnly')}
+              </MemoryBadge>
+            </Tooltip.Trigger>
+            <Tooltip.Content>{t('settings.memory.ownerOnlyHint')}</Tooltip.Content>
           </Tooltip>
         )}
         <div className="flex-1" />
@@ -98,7 +94,7 @@ export function MemoryRow({
           <div className="flex items-center gap-2">
             <Button
               variant="secondary"
-              disabled={saving || draft === memory.content}
+              isDisabled={saving || draft === memory.content}
               onClick={async () => {
                 setSaving(true)
                 try {
@@ -114,7 +110,7 @@ export function MemoryRow({
             <div className="flex-1" />
             <Button
               variant="ghost"
-              size="icon"
+              isIconOnly
               onClick={async () => {
                 await api.deleteMemories([memory.id])
                 onChanged()

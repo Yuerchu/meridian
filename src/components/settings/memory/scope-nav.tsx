@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pin, UserX } from 'lucide-react'
 import { api } from '@/api'
-import { Button } from '@/components/ui/button'
+import { Button } from '@heroui/react'
 import {
   AlertDialog,
   AlertDialogClose,

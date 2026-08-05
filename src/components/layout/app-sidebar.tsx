@@ -12,8 +12,7 @@ import type { Conversation, Project } from '@/types'
 import type { SettingsTab } from '@/components/settings'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button } from '@/components/ui/button'
-import { Input } from '@heroui/react'
+import { Button, Input } from '@heroui/react'
 import {
   Sidebar,
   SidebarContent,
@@ -108,7 +107,7 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
         <Button
           variant="secondary"
           onClick={() => name.trim() && path.trim() && onSubmit(name.trim(), path.trim())}
-          disabled={!name.trim() || !path.trim()}
+          isDisabled={!name.trim() || !path.trim()}
           className="flex-1"
         >
           {t('common.save')}
@@ -274,8 +273,8 @@ export function AppSidebar({
           <SidebarGroupLabel>
             <span>{t('sidebar.projects')}</span>
             <Button
+              isIconOnly
               variant="ghost"
-              size="icon"
               onClick={() => setShowNewProject(true)}
               className="ml-auto text-muted"
             >

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Undo2 } from 'lucide-react'
 import { api } from '@/api'
-import { Button } from '@/components/ui/button'
+import { Button } from '@heroui/react'
 import {
   Sheet,
   SheetContent,
@@ -72,7 +72,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                 <div className="flex-1" />
                 <Button
                   variant="ghost"
-                  size="icon"
+                  isIconOnly
                   onClick={async () => {
                     await api.restoreMemories([m.id])
                     load()
@@ -84,7 +84,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                 </Button>
                 <Button
                   variant="ghost"
-                  size="icon"
+                  isIconOnly
                   onClick={async () => {
                     await api.purgeMemories([m.id])
                     load()

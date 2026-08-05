@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, ChevronDown, ChevronRight, BookOpen, Check, RefreshCw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Checkbox, Input, TextArea } from '@heroui/react'
+import { Button, Checkbox, Input, TextArea } from '@heroui/react'
 import { api } from '@/api'
 import type { Skill } from '@/types'
 
@@ -160,7 +159,7 @@ function SkillEditor({
       )}
 
       <div data-slot="skill-editor-actions" className="flex items-center gap-2">
-        <Button onClick={handleSave} disabled={!canSave}>
+        <Button onClick={handleSave} isDisabled={!canSave}>
           {t('common.save')}
         </Button>
         {saved && (
@@ -255,7 +254,7 @@ export function SkillSettings() {
           </p>
         </div>
         <div data-slot="skill-settings-actions" className="flex items-center gap-1 shrink-0">
-          <Button variant="outline" onClick={handleRescan} disabled={rescanning}>
+          <Button variant="outline" onClick={handleRescan} isDisabled={rescanning}>
             <RefreshCw className={rescanning ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />
             {t('settings.skills.rescan')}
           </Button>

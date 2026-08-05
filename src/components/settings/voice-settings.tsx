@@ -3,8 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Trash2 } from 'lucide-react'
-import { Input, ListBox, Select } from '@heroui/react'
-import { Button } from '@/components/ui/button'
+import { Button, Input, ListBox, Select } from '@heroui/react'
 import { CircularProgress } from '@/components/ui/circular-progress'
 import { api } from '@/api'
 import type { VoiceModelStatus } from '@/types'
@@ -136,7 +135,7 @@ export function VoiceSettings() {
                   {formatSize(status.size_bytes)} · {status.path}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" onClick={handleDelete} disabled={downloading}>
+              <Button isIconOnly variant="ghost" onClick={handleDelete} isDisabled={downloading}>
                 <Trash2 className="w-4 h-4" />
               </Button>
             </div>
@@ -164,7 +163,7 @@ export function VoiceSettings() {
                 <Button size="sm" onClick={handleDownload}>
                   {t('settings.voice.download')}
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleImport} disabled={importing}>
+                <Button variant="outline" size="sm" onClick={handleImport} isDisabled={importing}>
                   {importing ? t('settings.voice.importing') : t('settings.voice.import')}
                 </Button>
               </div>

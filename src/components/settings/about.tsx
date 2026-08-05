@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getVersion } from '@tauri-apps/api/app'
 import { ChevronRight, ScrollText } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Button } from '@heroui/react'
 import { LogViewer } from './logs/log-viewer'
 
 export function About() {

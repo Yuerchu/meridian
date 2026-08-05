@@ -1,10 +1,8 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Check, ChevronDown, ChevronRight, RefreshCw, Trash2, Cloud, Key, ArrowLeft, Settings2, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Input, ListBox, Select, Spinner } from '@heroui/react'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Button, Input, ListBox, Select, Spinner, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
@@ -223,7 +221,7 @@ function ModelConfigEditor({
                     <Button
                       key={tier}
                       data-slot="effort-chip"
-                      variant={on ? 'default' : 'outline'}
+                      variant={on ? 'primary' : 'outline'}
                       size="sm"
                       aria-pressed={on}
                       className="h-6 px-2 text-xs font-normal"
@@ -485,7 +483,7 @@ function ProviderEditor({
           <Button
             variant="outline"
             onClick={handleSaveKey}
-            disabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
+            isDisabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
           >
             {savingKey ? <Spinner className="w-3 h-3" /> : <Key className="w-3 h-3" />}
             {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
@@ -511,7 +509,7 @@ function ProviderEditor({
           <Button
             variant="outline"
             onClick={handleFetchModels}
-            disabled={fetchingModels || keyStatus !== 'set'}
+            isDisabled={fetchingModels || keyStatus !== 'set'}
           >
             <RefreshCw className={cn("w-3 h-3", fetchingModels && "animate-spin")} />
             {t('settings.provider.fetchModels')}
@@ -533,8 +531,8 @@ function ProviderEditor({
                       {cfg && <span className="ml-1.5 text-xs text-success">●</span>}
                     </span>
                     <Button
+                      isIconOnly
                       variant="ghost"
-                      size="icon"
                       className="h-6 w-6"
                       onClick={() => setEditingModelId(isEditing ? null : m.id)}
                     >
@@ -565,7 +563,7 @@ function ProviderEditor({
           variant="ghost"
           className="text-danger hover:text-danger"
           onClick={handleDelete}
-          disabled={deleting}
+          isDisabled={deleting}
         >
           {deleting ? <Spinner className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
           {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
@@ -668,15 +666,13 @@ export function ProviderSettings() {
           <div className="space-y-2">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-medium">{t('settings.provider.title')}</h2>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button variant="ghost" size="icon" onClick={handleCreate}>
-                      <Plus className="w-4 h-4" />
-                    </Button>
-                  }
-                />
-                <TooltipContent side="top">{t('settings.provider.addProvider')}</TooltipContent>
+              <Tooltip delay={0}>
+                <Tooltip.Trigger>
+                  <Button isIconOnly variant="ghost" onClick={handleCreate}>
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </Tooltip.Trigger>
+                <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
               </Tooltip>
             </div>
             {providerList}
@@ -691,15 +687,13 @@ export function ProviderSettings() {
       <div className="w-44 flex-shrink-0 space-y-2">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-medium">{t('settings.provider.title')}</h2>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button variant="ghost" size="icon" onClick={handleCreate}>
-                  <Plus className="w-4 h-4" />
-                </Button>
-              }
-            />
-            <TooltipContent side="top">{t('settings.provider.addProvider')}</TooltipContent>
+          <Tooltip delay={0}>
+            <Tooltip.Trigger>
+              <Button isIconOnly variant="ghost" onClick={handleCreate}>
+                <Plus className="w-4 h-4" />
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
           </Tooltip>
         </div>
         {providerList}

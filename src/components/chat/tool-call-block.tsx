@@ -9,8 +9,7 @@ import {
   SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck,
   FileText, Globe, ChevronUp, TriangleAlert, ListTodo, ClipboardList, Compass,
 } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@heroui/react'
+import { Button, Input } from '@heroui/react'
 import {
   ChatTool,
   ChatToolApproval,
@@ -253,9 +252,8 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
           ))}
           <div className="pt-1">
             <Button
-              variant="default"
               onClick={handleSubmit}
-              disabled={!canSubmit}
+              isDisabled={!canSubmit}
             >
               <Send className="w-3 h-3" />
               {t('chat.tool.askUserSubmit')}
@@ -776,7 +774,7 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
             <X className="w-3 h-3" />
             {t('chat.tool.deny')}
           </Button>
-          <Button variant="default" onClick={() => { setApproved(true); api.approveToolCall(callId) }}>
+          <Button onClick={() => { setApproved(true); api.approveToolCall(callId) }}>
             <Check className="w-3 h-3" />
             {isEscalation ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
           </Button>
@@ -999,7 +997,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
               <X className="w-3 h-3" />
               {t('chat.plan.keepBuilding')}
             </Button>
-            <Button variant="default" onClick={() => decide(() => api.approveToolCall(data.call_id))}>
+            <Button onClick={() => decide(() => api.approveToolCall(data.call_id))}>
               <Compass className="w-3 h-3" />
               {t('chat.plan.startPlanning')}
             </Button>
@@ -1094,7 +1092,6 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                 {t('chat.plan.revise')}
               </Button>
               <Button
-                variant="default"
                 onClick={() => decide(() => api.approveToolCall(data.call_id))}
               >
                 <Check className="w-3 h-3" />

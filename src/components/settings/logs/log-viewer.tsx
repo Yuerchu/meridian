@@ -3,9 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { ChevronLeft, Download, RefreshCw, Search } from 'lucide-react'
 import { api } from '@/api'
-import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { InputGroup, ListBox, Select, Skeleton, Spinner } from '@heroui/react'
+import { Button, InputGroup, ListBox, Select, Skeleton, Spinner } from '@heroui/react'
 import { LogRow } from './log-row'
 import { MAX_RENDERED, useAppLogs, type LevelFilter, type RangeFilter } from './use-app-logs'
 
@@ -38,7 +37,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         </Button>
         <h2 className="text-lg font-medium">{t('settings.about.logs.title')}</h2>
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={logs.refresh} disabled={logs.loading}>
+          <Button variant="ghost" size="sm" onClick={logs.refresh} isDisabled={logs.loading}>
             <RefreshCw className="size-4" />
             {t('settings.about.logs.refresh')}
           </Button>
@@ -168,7 +167,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
                     variant="ghost"
                     size="sm"
                     onClick={logs.loadOlder}
-                    disabled={logs.loadingMore}
+                    isDisabled={logs.loadingMore}
                   >
                     {logs.loadingMore && <Spinner className="size-4" />}
                     {t('settings.about.logs.loadOlder')}

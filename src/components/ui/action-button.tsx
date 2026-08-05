@@ -1,12 +1,14 @@
 import * as React from "react"
 
-import { Button } from "@/components/ui/button"
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
+import { Button, Tooltip } from "@heroui/react"
 
 /**
  * An icon button with a tooltip. Lives here rather than beside the message
  * list because the markdown renderer needs it too, and importing it from a
  * message component would put a cycle between the two.
+ *
+ * `delay={0}` because these sit in dense rows of icons: a tooltip that waits
+ * before appearing reads as the interface being slow to answer.
  */
 function ActionButton({ label, onClick, className, children }: {
   label: string
@@ -15,15 +17,19 @@ function ActionButton({ label, onClick, className, children }: {
   children: React.ReactNode
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button data-slot="action-button" variant="ghost" size="icon" onClick={onClick} className={className}>
-            {children}
-          </Button>
-        }
-      />
-      <TooltipContent side="top">{label}</TooltipContent>
+    <Tooltip delay={0}>
+      <Tooltip.Trigger>
+        <Button
+          isIconOnly
+          data-slot="action-button"
+          variant="ghost"
+          onClick={onClick}
+          className={className}
+        >
+          {children}
+        </Button>
+      </Tooltip.Trigger>
+      <Tooltip.Content placement="top">{label}</Tooltip.Content>
     </Tooltip>
   )
 }

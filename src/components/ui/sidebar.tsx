@@ -7,10 +7,8 @@ import { cva, type VariantProps } from 'class-variance-authority';
 
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
-import { Input, Separator, Skeleton } from '@heroui/react'
+import { Button, Input, Separator, Skeleton, Tooltip } from '@heroui/react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PanelLeftIcon } from 'lucide-react';
 
 const SIDEBAR_COOKIE_NAME = 'sidebar_state';
@@ -237,8 +235,8 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
     <Button
       data-sidebar="trigger"
       data-slot="sidebar-trigger"
+      isIconOnly
       variant="ghost"
-      size="icon"
       className={cn(className)}
       onClick={(event) => {
         onClick?.(event);
@@ -473,7 +471,7 @@ function SidebarMenuButton({
 }: useRender.ComponentProps<'button'> &
   React.ComponentProps<'button'> & {
     isActive?: boolean;
-    tooltip?: string | React.ComponentProps<typeof TooltipContent>;
+    tooltip?: string | React.ComponentProps<typeof Tooltip.Content>;
   } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const { isMobile, state } = useSidebar();
   const comp = useRender({
@@ -484,7 +482,7 @@ function SidebarMenuButton({
       },
       props,
     ),
-    render: !tooltip ? render : <TooltipTrigger render={render} />,
+    render,
     state: {
       slot: 'sidebar-menu-button',
       sidebar: 'menu-button',
@@ -504,9 +502,9 @@ function SidebarMenuButton({
   }
 
   return (
-    <Tooltip>
-      {comp}
-      <TooltipContent side="right" align="center" hidden={state !== 'collapsed' || isMobile} {...tooltip} />
+    <Tooltip delay={0}>
+      <Tooltip.Trigger className="w-full">{comp}</Tooltip.Trigger>
+      <Tooltip.Content placement="right" hidden={state !== 'collapsed' || isMobile} {...tooltip} />
     </Tooltip>
   );
 }

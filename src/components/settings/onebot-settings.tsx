@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
-import { Button } from '@/components/ui/button'
-import { Checkbox, Input, ListBox, Select } from '@heroui/react'
+import { Button, Checkbox, Input, ListBox, Select } from '@heroui/react'
 import type { Assistant } from '@/types'
 
 interface OneBotConfig {
@@ -254,11 +253,11 @@ export function OneBotSettings() {
       )}
 
       <div className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onClick={handleSave} disabled={saving}>
+        <Button variant="outline" onClick={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {running ? (
-          <Button variant="destructive" onClick={handleStop}>
+          <Button variant="danger-soft" onClick={handleStop}>
             {t('settings.onebot.stop')}
           </Button>
         ) : (

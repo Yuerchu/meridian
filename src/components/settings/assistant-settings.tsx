@@ -1,10 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ChevronDown, ChevronRight, Star, Check, BookTemplate } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Checkbox, Input, ListBox, Select, TextArea } from '@heroui/react'
+import { Button, Checkbox, Input, ListBox, Select, TextArea, Tooltip } from '@heroui/react'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { api } from '@/api'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
 
@@ -157,19 +155,17 @@ function AssistantEditor({
         {templateVars.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {templateVars.map((v) => (
-              <Tooltip key={v.name}>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="outline"
-                      className="text-xs px-1.5 py-0.5 bg-default/50 text-muted hover:bg-default font-mono"
-                      onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
-                    >
-                      {`{{${v.name}}}`}
-                    </Button>
-                  }
-                />
-                <TooltipContent side="top">{v.description_en}</TooltipContent>
+              <Tooltip key={v.name} delay={0}>
+                <Tooltip.Trigger>
+                  <Button
+                    variant="outline"
+                    className="text-xs px-1.5 py-0.5 bg-default/50 text-muted hover:bg-default font-mono"
+                    onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
+                  >
+                    {`{{${v.name}}}`}
+                  </Button>
+                </Tooltip.Trigger>
+                <Tooltip.Content placement="top">{v.description_en}</Tooltip.Content>
               </Tooltip>
             ))}
           </div>
@@ -298,17 +294,17 @@ function AssistantEditor({
         <label className="block text-xs text-muted">{t('settings.assistant.tools')}</label>
         <div className="flex gap-2 mb-2">
           <Button
-            variant={toolMode === 'all' ? 'default' : 'outline'}
+            variant={toolMode === 'all' ? 'primary' : 'outline'}
             onClick={() => setToolMode('all')}
           >{t('settings.assistant.toolsAll')}</Button>
           {toolPresets.length > 0 && (
             <Button
-              variant={toolMode === 'preset' ? 'default' : 'outline'}
+              variant={toolMode === 'preset' ? 'primary' : 'outline'}
               onClick={() => setToolMode('preset')}
             >{t('settings.tools.preset')}</Button>
           )}
           <Button
-            variant={toolMode === 'custom' ? 'default' : 'outline'}
+            variant={toolMode === 'custom' ? 'primary' : 'outline'}
             onClick={() => setToolMode('custom')}
           >{t('settings.assistant.toolsCustom')}</Button>
         </div>

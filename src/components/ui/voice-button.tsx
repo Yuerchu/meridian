@@ -1,6 +1,5 @@
 import { Mic, Square } from 'lucide-react'
-import { Spinner } from '@heroui/react'
-import { Button } from '@/components/ui/button'
+import { Button, Spinner } from '@heroui/react'
 import { cn } from '@/lib/utils'
 
 export type VoiceButtonState =
@@ -47,9 +46,9 @@ export function VoiceButton({
         </span>
       )}
       <Button
+        isIconOnly
         variant="ghost"
-        size="icon"
-        disabled={disabled || state === 'transcribing'}
+        isDisabled={disabled || state === 'transcribing'}
         className={cn(
           'touch-hitbox touch-none select-none',
           recording && 'text-danger hover:text-danger animate-pulse',

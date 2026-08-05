@@ -1,11 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Smile, Search } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@heroui/react'
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
+import { Button, Input, Popover, Tooltip } from '@heroui/react'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { api } from '@/api'
 import type { Emoji, EmojiPack } from '@/types'
 
@@ -79,18 +76,16 @@ export function EmojiPicker({
   if (!assistantId) return null
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger render={<Button variant="ghost" size="icon" />}>
-              <Smile className="w-4 h-4" />
-            </PopoverTrigger>
-          }
-        />
-        <TooltipContent side="top">{t('chat.emoji')}</TooltipContent>
+    <Popover isOpen={open} onOpenChange={setOpen}>
+      <Tooltip delay={0}>
+        <Tooltip.Trigger>
+          <Button isIconOnly variant="ghost">
+            <Smile className="w-4 h-4" />
+          </Button>
+        </Tooltip.Trigger>
+        <Tooltip.Content placement="top">{t('chat.emoji')}</Tooltip.Content>
       </Tooltip>
-      <PopoverContent side="top" align="end" className="w-72 p-0 gap-0">
+      <Popover.Content placement="top end" className="w-72 p-0">
         <div className="p-2 border-b border-border">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
@@ -112,13 +107,12 @@ export function EmojiPicker({
                   variant="ghost"
                   className="h-auto p-1 rounded hover:bg-default/50 transition-colors"
                   onClick={() => handleSelect(e)}
-                  // eslint-disable-next-line no-restricted-syntax -- grid cells: per-cell Tooltip is too heavy
-                  title={e.name}
                 >
                   <img
                     src={urls[e.id]}
                     alt={e.name}
                     className="w-7 h-7 object-contain"
+                    title={e.name}
                   />
                 </Button>
               ))}
@@ -139,15 +133,14 @@ export function EmojiPicker({
                     <Button
                       key={e.id}
                       variant="ghost"
-                      className="h-auto p-1 rounded hover:bg-default/50 transition-colors"
+                      className="h-auto rounded p-1 transition-colors hover:bg-default/50"
                       onClick={() => handleSelect(e)}
-                      // eslint-disable-next-line no-restricted-syntax -- grid cells: per-cell Tooltip is too heavy
-                      title={e.name}
                     >
                       <img
                         src={urls[e.id]}
                         alt={e.name}
                         className="w-7 h-7 object-contain"
+                        title={e.name}
                       />
                     </Button>
                   ))}
@@ -161,7 +154,7 @@ export function EmojiPicker({
             </p>
           )}
         </div></ScrollArea>
-      </PopoverContent>
+      </Popover.Content>
     </Popover>
   )
 }

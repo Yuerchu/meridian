@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@heroui/react'
+import { Button, Checkbox } from '@heroui/react'
 import { api } from '@/api'
 import type { SafRootEntry } from '@/types'
 
@@ -107,7 +106,7 @@ export function AndroidFileAccess() {
                 </div>
                 <Button
                   variant="ghost"
-                  size="icon"
+                  isIconOnly
                   className="shrink-0"
                   onClick={() => handleRemove(root.uri)}
                   aria-label={t('settings.fileAccess.removeDir')}
@@ -118,7 +117,7 @@ export function AndroidFileAccess() {
             ))}
           </ul>
         )}
-        <Button variant="outline" onClick={handleAddDirectory} disabled={picking}>
+        <Button variant="outline" onClick={handleAddDirectory} isDisabled={picking}>
           <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
           {t('settings.fileAccess.addDir')}
         </Button>

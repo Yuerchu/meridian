@@ -3,8 +3,7 @@
 import { useState } from 'react'
 import { Moon, Sun } from 'lucide-react'
 
-import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Button, Tooltip } from '@heroui/react'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -452,20 +451,18 @@ function Gallery() {
       <div className="mx-auto max-w-2xl space-y-10 px-6 py-10">
         <header className="flex items-center justify-between">
           <h1 className="text-lg font-semibold">组件预览</h1>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => document.documentElement.classList.toggle('dark')}
-                >
-                  <Sun className="hidden size-4 dark:block" />
-                  <Moon className="size-4 dark:hidden" />
-                </Button>
-              }
-            />
-            <TooltipContent side="top">切换主题</TooltipContent>
+          <Tooltip delay={0}>
+            <Tooltip.Trigger>
+              <Button
+                isIconOnly
+                variant="outline"
+                onClick={() => document.documentElement.classList.toggle('dark')}
+              >
+                <Sun className="hidden size-4 dark:block" />
+                <Moon className="size-4 dark:hidden" />
+              </Button>
+            </Tooltip.Trigger>
+            <Tooltip.Content placement="top">切换主题</Tooltip.Content>
           </Tooltip>
         </header>
 
@@ -541,7 +538,7 @@ function Gallery() {
                 <ChatToolArgs value={{ to: 'team@acme.com', subject: 'Launch update' }} />
                 <ChatToolApproval>
                   <Button variant="outline">Reject</Button>
-                  <Button variant="default">Approve</Button>
+                  <Button>Approve</Button>
                 </ChatToolApproval>
               </ChatToolContent>
             </ChatTool>
