@@ -4,9 +4,8 @@ import { save } from '@tauri-apps/plugin-dialog'
 import { ChevronLeft, Download, RefreshCw, Search } from 'lucide-react'
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { ListBox, Select, Skeleton, Spinner } from '@heroui/react'
+import { InputGroup, ListBox, Select, Skeleton, Spinner } from '@heroui/react'
 import { LogRow } from './log-row'
 import { MAX_RENDERED, useAppLogs, type LevelFilter, type RangeFilter } from './use-app-logs'
 
@@ -77,10 +76,10 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         </Select>
 
         <InputGroup className="max-w-xs flex-1">
-          <InputGroupAddon>
+          <InputGroup.Prefix>
             <Search className="size-4" />
-          </InputGroupAddon>
-          <InputGroupInput
+          </InputGroup.Prefix>
+          <InputGroup.Input
             value={logs.search}
             onChange={(e) => logs.setSearch(e.target.value)}
             placeholder={t('settings.about.logs.searchPlaceholder')}
