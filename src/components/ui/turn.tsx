@@ -1,7 +1,6 @@
 import * as React from "react"
-import { Collapsible } from "@base-ui/react/collapsible"
+import { Disclosure } from "@heroui/react"
 import {
-  ChevronDownIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   CircleAlertIcon,
@@ -21,7 +20,7 @@ type TurnStatus =
 
 const TurnStatusContext = React.createContext<TurnStatus>("complete")
 
-interface TurnProps extends Collapsible.Root.Props {
+interface TurnProps extends React.ComponentProps<typeof Disclosure> {
   status?: TurnStatus
 }
 
@@ -35,7 +34,7 @@ interface TurnProps extends Collapsible.Root.Props {
 function Turn({ status, className, ...props }: TurnProps) {
   return (
     <TurnStatusContext.Provider value={status ?? "complete"}>
-      <Collapsible.Root
+      <Disclosure
         data-slot="turn-collapsible"
         data-status={status ?? "complete"}
         className={cn("flex w-full min-w-0 flex-col", className)}
@@ -45,36 +44,45 @@ function Turn({ status, className, ...props }: TurnProps) {
   )
 }
 
-interface TurnTriggerProps extends Collapsible.Trigger.Props {
+interface TurnTriggerProps
+  extends Omit<React.ComponentProps<typeof Disclosure.Trigger>, "children"> {
   /** Sits between the label and the chevron — a duration, a step count. Mirrors
    *  `ChatToolTrigger`'s slot of the same name; an `ml-auto` child would fight
    *  the label row, which already absorbs the free space. */
   endContent?: React.ReactNode
+  // Narrower than HeroUI's, which also accepts a render function: this trigger
+  // wraps its label in a span the status shimmers on, and a function has
+  // nothing to wrap.
+  children?: React.ReactNode
 }
 
 function TurnTrigger({ className, children, endContent, ...props }: TurnTriggerProps) {
   const status = React.useContext(TurnStatusContext)
   return (
-    <Collapsible.Trigger
-      data-slot="turn-trigger"
-      className={cn(
-        "group/turn-trigger flex w-full items-center gap-1.5 rounded-md py-1 text-left text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50",
-        className
-      )}
-      {...props}
-    >
-      <span
-        data-slot="turn-trigger-label"
-        className={cn("min-w-0 truncate", status === "streaming" && "shimmer")}
+    <Disclosure.Heading>
+      {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto` and
+          `shrink-0`, which only mean anything inside a flex container. */}
+      <Disclosure.Trigger
+        data-slot="turn-trigger"
+        className={cn(
+          "flex w-full items-center gap-1.5 rounded-md py-1 text-left text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50",
+          className
+        )}
+        {...props}
       >
-        {children}
-      </span>
-      {endContent}
-      <ChevronDownIcon
-        aria-hidden
-        className="size-3.5 shrink-0 transition-transform duration-200 group-data-panel-open/turn-trigger:rotate-180"
-      />
-    </Collapsible.Trigger>
+        <span
+          data-slot="turn-trigger-label"
+          className={cn("min-w-0 truncate", status === "streaming" && "shimmer")}
+        >
+          {children}
+        </span>
+        {endContent}
+        {/* `ms-0` undoes the indicator's own `ms-auto`: this chevron reads as
+            punctuation on the end of the label, not as a control parked at the
+            far edge of a full-width row. */}
+        <Disclosure.Indicator className="ms-0 size-3.5 shrink-0" />
+      </Disclosure.Trigger>
+    </Disclosure.Heading>
   )
 }
 
@@ -96,7 +104,7 @@ function TurnStatusIcon({ className }: { className?: string }) {
   }
 }
 
-interface TurnContentProps extends Collapsible.Panel.Props {
+interface TurnContentProps extends React.ComponentProps<typeof Disclosure.Content> {
   /** Set while a collapse is being height-compensated by hand, so the panel
    *  snaps instead of animating and the correction lands in one layout pass. */
   disableTransition?: boolean
@@ -104,21 +112,26 @@ interface TurnContentProps extends Collapsible.Panel.Props {
 
 function TurnContent({ className, children, disableTransition, ...props }: TurnContentProps) {
   return (
-    <Collapsible.Panel
+    // `min-h-0` is load-bearing: the turn is a flex column, and a flex item's
+    // default `min-height: auto` floors it at its content height — so the panel
+    // would take `height: 0` and still render full size.
+    <Disclosure.Content
       data-slot="turn-content"
       data-no-transition={disableTransition ? "" : undefined}
-      className={cn(
-        "h-(--collapsible-panel-height) w-full overflow-hidden transition-[height] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0",
-        "data-[no-transition]:transition-none"
-      )}
+      className="min-h-0 w-full data-[no-transition]:transition-none"
       {...props}
     >
-      {/* gap rather than space-y: children may zero out their own margins, and
+      {/* Body, not a plain div: it is what keeps the panel measurable, so
+          without it the content never collapses — it just loses its
+          `aria-expanded`.
+          gap rather than space-y: children may zero out their own margins, and
           Tailwind v4's space-y sits inside `:where()`, so a plain `my-0` wins. */}
-      <div className={cn("mt-2 ml-1.5 flex flex-col gap-3 border-l-2 border-border pl-4", className)}>
+      <Disclosure.Body
+        className={cn("mt-2 ml-1.5 flex flex-col gap-3 border-l-2 border-border pl-4", className)}
+      >
         {children}
-      </div>
-    </Collapsible.Panel>
+      </Disclosure.Body>
+    </Disclosure.Content>
   )
 }
 

@@ -845,7 +845,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (data.status === 'pending') {
     return (
-      <ChatTool state="requires-action" defaultOpen className="my-3">
+      <ChatTool state="requires-action" defaultExpanded className="my-3">
         <ChatToolTrigger>
           <ChatToolStatusIcon />
           <span className="font-medium text-foreground shrink-0">{t('chat.tool.name.web_search')}</span>
@@ -1120,7 +1120,7 @@ function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: s
   const { done, total } = todoProgress(todos)
 
   return (
-    <ChatTool state={mapChatToolState(data.status)} defaultOpen={done < total} className="my-3">
+    <ChatTool state={mapChatToolState(data.status)} defaultExpanded={done < total} className="my-3">
       <ChatToolTrigger
         endContent={
           <span className="shrink-0 text-muted tabular-nums">
@@ -1249,7 +1249,7 @@ export function ToolCallBlock({ data, className }: { data: ToolCallDisplay; clas
   return (
     <ChatTool
       state={mapChatToolState(data.status)}
-      defaultOpen={!isCompleted}
+      defaultExpanded={!isCompleted}
       className={cn('my-3', className)}
     >
       <ChatToolTrigger>

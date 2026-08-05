@@ -323,7 +323,11 @@ export const TurnItem = React.memo(function TurnItem({
                 animate={isLastTurn}
               />
             )}
-            <TurnCollapse status={turn.status} open={open} onOpenChange={handleOpenChange}>
+            <TurnCollapse
+              status={turn.status}
+              isExpanded={open}
+              onExpandedChange={handleOpenChange}
+            >
               <TurnTrigger>
                 <span className="inline-flex items-center gap-1.5">
                   <TurnStatusIcon />

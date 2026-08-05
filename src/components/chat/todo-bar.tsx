@@ -1,5 +1,4 @@
-import { Collapsible } from '@base-ui/react/collapsible'
-import { ChevronDownIcon } from 'lucide-react'
+import { Disclosure } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 
 import { CircularProgress } from '@/components/ui/circular-progress'
@@ -26,50 +25,52 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
   return (
     <div data-slot="todo-bar-shell" className={cn('px-4 pt-2', className)}>
       <div className="mx-auto max-w-2xl">
-        <Collapsible.Root
+        <Disclosure
           data-slot="todo-bar"
           className="w-full overflow-hidden rounded-xl border border-border bg-surface/30 text-xs"
         >
-          <Collapsible.Trigger
-            data-slot="todo-bar-trigger"
-            className="group/todo-bar flex w-full items-center gap-2 px-3 py-2 text-left transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30"
-          >
-            <CircularProgress
-              value={done}
-              max={total}
-              size={14}
-              strokeWidth={2.5}
-              className="shrink-0 text-info"
-            />
-            {/* Same shape as ChatToolTrigger: the label row absorbs the slack
-                so the count and chevron sit at the right edge without an
-                ml-auto fighting for the free space. */}
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span
-                data-slot="todo-bar-title"
-                className="max-w-40 shrink-0 truncate font-medium text-foreground"
-              >
-                {todos.title}
+          <Disclosure.Heading>
+            {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
+                and `shrink-0`, which only mean anything inside a flex container. */}
+            <Disclosure.Trigger
+              data-slot="todo-bar-trigger"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30"
+            >
+              <CircularProgress
+                value={done}
+                max={total}
+                size={14}
+                strokeWidth={2.5}
+                className="shrink-0 text-info"
+              />
+              {/* Same shape as ChatToolTrigger: the label row absorbs the slack
+                  so the count and chevron sit at the right edge without an
+                  ml-auto fighting for the free space. */}
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span
+                  data-slot="todo-bar-title"
+                  className="max-w-40 shrink-0 truncate font-medium text-foreground"
+                >
+                  {todos.title}
+                </span>
+                <span data-slot="todo-bar-current" className="truncate text-muted">
+                  {current ? current.active_form : t('chat.todo.idle')}
+                </span>
+              </div>
+              <span className="shrink-0 tabular-nums text-muted">
+                {t('chat.todo.progress', { done, total })}
               </span>
-              <span data-slot="todo-bar-current" className="truncate text-muted">
-                {current ? current.active_form : t('chat.todo.idle')}
-              </span>
-            </div>
-            <span className="shrink-0 tabular-nums text-muted">
-              {t('chat.todo.progress', { done, total })}
-            </span>
-            <ChevronDownIcon
-              aria-hidden
-              className="size-3.5 shrink-0 text-muted transition-transform duration-200 group-data-panel-open/todo-bar:rotate-180"
-            />
-          </Collapsible.Trigger>
-          <Collapsible.Panel
-            data-slot="todo-bar-content"
-            className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0"
-          >
-            <TodoItemList todos={todos.todos} className="px-3 pb-2.5" />
-          </Collapsible.Panel>
-        </Collapsible.Root>
+              <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+            </Disclosure.Trigger>
+          </Disclosure.Heading>
+          <Disclosure.Content data-slot="todo-bar-content">
+            {/* Body, not a plain wrapper: it is what keeps the panel measurable,
+                so without it the list never collapses. */}
+            <Disclosure.Body>
+              <TodoItemList todos={todos.todos} className="px-3 pb-2.5" />
+            </Disclosure.Body>
+          </Disclosure.Content>
+        </Disclosure>
       </div>
     </div>
   )

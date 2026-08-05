@@ -337,6 +337,21 @@ export default function ScrollLab() {
     })
 
     // 2. Ending a turn hands the answer back at its beginning.
+    //
+    // Streamed from scratch rather than continuing the turn above, so this
+    // scenario owns its state: the assertion is about where a turn lands, and
+    // inheriting a viewport that another scenario left somewhere makes a
+    // failure here impossible to read.
+    reset(); await frames(4)
+    seedHistory(3); await frames(8)
+    sendUser(3); await frames(8)
+    startAssistant(); await frames(6)
+    for (let i = 0; i < 4; i++) { streamChunk(i); await frames(4) }
+    callTool(); await frames(6)
+    finishTool(); await frames(6)
+    // Twice through, so the answer clears the viewport with room to spare: it
+    // has to still be out of sight once the turn collapses.
+    for (let i = 4; i < ANSWER_CHUNKS.length * 2; i++) { streamChunk(i); await frames(4) }
     finishTurn(); await settled()
     const settledAt = metrics()
     out.push({

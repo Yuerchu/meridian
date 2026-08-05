@@ -207,7 +207,7 @@ function TurnCase({
   return (
     <div className="group/turn w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
       <div className="text-xs text-muted/60">{label}</div>
-      <Turn status={status} open={open} onOpenChange={setOpen}>
+      <Turn status={status} isExpanded={open} onExpandedChange={setOpen}>
         <TurnTrigger>
           <span className="inline-flex items-center gap-1.5">
             <TurnStatusIcon />
@@ -493,7 +493,7 @@ function Gallery() {
 
         <Section title="ChatTool / 预设五态">
           <div className="space-y-3">
-            <ChatTool state="output-available" defaultOpen>
+            <ChatTool state="output-available" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
                 <span className="text-muted">Used tool:</span>
@@ -505,7 +505,7 @@ function Gallery() {
               </ChatToolContent>
             </ChatTool>
 
-            <ChatTool state="input-streaming" defaultOpen>
+            <ChatTool state="input-streaming" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
                 <span className="text-muted">Running tool:</span>
@@ -516,7 +516,7 @@ function Gallery() {
               </ChatToolContent>
             </ChatTool>
 
-            <ChatTool state="output-error" defaultOpen>
+            <ChatTool state="output-error" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
                 <span className="text-muted">Failed tool:</span>
@@ -528,7 +528,7 @@ function Gallery() {
               </ChatToolContent>
             </ChatTool>
 
-            <ChatTool state="requires-action" defaultOpen>
+            <ChatTool state="requires-action" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
                 <span className="text-muted">Approval needed:</span>
@@ -543,7 +543,7 @@ function Gallery() {
               </ChatToolContent>
             </ChatTool>
 
-            <ChatToolGroup defaultOpen>
+            <ChatToolGroup defaultExpanded>
               <ChatToolGroupTrigger>2 tool calls</ChatToolGroupTrigger>
               <ChatToolGroupContent>
                 <ChatTool state="output-available">

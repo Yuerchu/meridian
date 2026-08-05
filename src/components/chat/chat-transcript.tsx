@@ -47,7 +47,7 @@ function AnswerSettle({ streaming, anchorId }: { streaming: boolean; anchorId: s
     // Run now rather than a frame later. The reload that follows a turn lands
     // asynchronously and re-keys this row, which would re-run this effect and
     // cancel a deferred scroll before it ever happened.
-    scrollToMessage(anchorId, { align: 'start', behavior: 'smooth', onlyWhenAbove: true })
+    scrollToMessage(anchorId, { align: 'start', onlyWhenAbove: true })
   }, [streaming, anchorId, isFollowing, scrollToMessage])
 
   return null

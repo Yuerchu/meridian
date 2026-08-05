@@ -270,7 +270,7 @@ function ToolCallGroup({ items }: { items: ToolCallBlockItem[] }) {
     block.data.status === 'pending' || block.data.status === 'approved' || block.data.status === 'running',
   )
   return (
-    <ChatToolGroup defaultOpen={hasActive} className="my-3">
+    <ChatToolGroup defaultExpanded={hasActive} className="my-3">
       <ChatToolGroupTrigger>{t('chat.tool.groupCount', { count: items.length })}</ChatToolGroupTrigger>
       <ChatToolGroupContent>
         {items.map(({ block, index }) => (
