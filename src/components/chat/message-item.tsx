@@ -97,10 +97,12 @@ export function MessageMeta({ modelId, createdAt, animate }: {
     <MessageHeader className="h-8 gap-2 px-0">
       {modelId && (
         animate
-          ? <DecryptedText text={modelId} animateOn="view" speed={25} sequential />
-          : <span>{modelId}</span>
+          ? <DecryptedText text={modelId} animateOn="view" speed={25} sequential className="truncate" />
+          : <span className="truncate">{modelId}</span>
       )}
-      <span className="font-normal text-muted-foreground/60">{relativeTime(createdAt)}</span>
+      {/* The row is a fixed height, so a long model id has to give way rather
+          than push the timestamp out of the message. */}
+      <span className="shrink-0 font-normal text-muted-foreground/60">{relativeTime(createdAt)}</span>
     </MessageHeader>
   )
 }
