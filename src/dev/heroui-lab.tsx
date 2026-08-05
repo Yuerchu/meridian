@@ -17,7 +17,6 @@ import {
   Checkbox as HCheckbox,
   Disclosure as HDisclosure,
   ListBox as HListBox,
-  ListBoxItem as HListBoxItem,
   Popover as HPopover,
   ProgressCircle as HProgressCircle,
   Select as HSelect,
@@ -179,18 +178,24 @@ export default function HeroUiLab() {
               <HProgressCircle isIndeterminate aria-label="加载中" />
             </div>
 
+            {/* Control 嵌在 Content 里面，不是它的兄弟：Content 是那个可点击的
+                <label>，Control 挪到外面就再也点不动了 */}
             <div className="flex flex-wrap items-center gap-6">
               <HSwitch defaultSelected>
-                <HSwitch.Control>
-                  <HSwitch.Thumb />
-                </HSwitch.Control>
-                <HSwitch.Content>开关</HSwitch.Content>
+                <HSwitch.Content>
+                  <HSwitch.Control>
+                    <HSwitch.Thumb />
+                  </HSwitch.Control>
+                  开关
+                </HSwitch.Content>
               </HSwitch>
               <HCheckbox defaultSelected>
-                <HCheckbox.Control>
-                  <HCheckbox.Indicator />
-                </HCheckbox.Control>
-                <HCheckbox.Content>复选</HCheckbox.Content>
+                <HCheckbox.Content>
+                  <HCheckbox.Control>
+                    <HCheckbox.Indicator />
+                  </HCheckbox.Control>
+                  复选
+                </HCheckbox.Content>
               </HCheckbox>
             </div>
 
@@ -218,14 +223,27 @@ export default function HeroUiLab() {
                 </HPopover.Content>
               </HPopover>
 
-              {/* 集合项必须带 id（不是 key/value），否则选中态和焦点全失效 */}
-              <HSelect defaultSelectedKey="opus" aria-label="模型" className="w-44">
-                <HSelect.Trigger />
+              {/* Trigger 得自己放 Value 和 Indicator，否则是个空框；集合项必须带
+                  id（不是 key/value），非纯文本内容还要补 textValue */}
+              <HSelect defaultValue="opus" aria-label="模型" className="w-44">
+                <HSelect.Trigger>
+                  <HSelect.Value />
+                  <HSelect.Indicator />
+                </HSelect.Trigger>
                 <HSelect.Popover>
                   <HListBox>
-                    <HListBoxItem id="opus">Opus</HListBoxItem>
-                    <HListBoxItem id="sonnet">Sonnet</HListBoxItem>
-                    <HListBoxItem id="haiku">Haiku</HListBoxItem>
+                    <HListBox.Item id="opus" textValue="Opus">
+                      Opus
+                      <HListBox.ItemIndicator />
+                    </HListBox.Item>
+                    <HListBox.Item id="sonnet" textValue="Sonnet">
+                      Sonnet
+                      <HListBox.ItemIndicator />
+                    </HListBox.Item>
+                    <HListBox.Item id="haiku" textValue="Haiku">
+                      Haiku
+                      <HListBox.ItemIndicator />
+                    </HListBox.Item>
                   </HListBox>
                 </HSelect.Popover>
               </HSelect>
@@ -234,7 +252,11 @@ export default function HeroUiLab() {
             {/* 与聊天里的折叠卡片同类，foxlinepro_dash 在这上面踩过虚拟滚动的坑 */}
             <HDisclosure>
               <HDisclosure.Heading>
-                <HDisclosure.Trigger>
+                {/* flex 是必须自己加的：HeroUI 把 .disclosure__trigger 定成
+                    inline-block，却给 indicator 用了 ms-auto / shrink-0 这些只在
+                    flex 容器里成立的类，再叠上 Tailwind preflight 的
+                    `svg { display: block }`，箭头就掉到标题下一行去了 */}
+                <HDisclosure.Trigger className="flex w-full items-center gap-2">
                   展开看折叠动画
                   <HDisclosure.Indicator />
                 </HDisclosure.Trigger>
