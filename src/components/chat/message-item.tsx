@@ -6,9 +6,8 @@ import CountUp from '@/components/CountUp'
 import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { CopyButton, MarkdownContent } from './markdown-content'
-import { TextArea } from '@heroui/react'
+import { Avatar, TextArea } from '@heroui/react'
 import {
   Message,
   MessageAvatar,
@@ -118,13 +117,13 @@ export function MessageMeta({ modelId, createdAt, animate }: {
 export function AssistantAvatar({ src, modelId }: { src?: string | null; modelId?: string | null }) {
   return (
     <MessageAvatar className="size-8">
-      <Avatar>
-        <AvatarImage src={src ?? undefined} />
+      <Avatar className="size-full">
+        <Avatar.Image src={src ?? undefined} />
         {/* The icon brings its own background; `bg-default` underneath it would
             only show through the rounding. */}
-        <AvatarFallback className="bg-transparent">
+        <Avatar.Fallback className="bg-transparent">
           <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />
-        </AvatarFallback>
+        </Avatar.Fallback>
       </Avatar>
     </MessageAvatar>
   )
