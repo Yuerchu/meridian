@@ -5,8 +5,7 @@ import { Bot, ChevronRight, ChevronsRight, Compass, Cpu, Hammer, Lightbulb, Pape
 import { ModelIcon } from '@/components/ui/model-icon'
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { Spinner } from '@/components/ui/spinner'
-import { Switch } from '@/components/ui/switch'
+import { Spinner, Switch } from '@heroui/react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
@@ -371,21 +370,21 @@ export function ComposerMenu(props: ComposerMenuProps) {
                     // The row owns the interaction, so the switch is decoration
                     // with a state: letting it take pointer events too would
                     // fire the handler twice on the switch and once elsewhere.
-                    //
-                    // `after:hidden` drops the switch's own hit-area pseudo
-                    // element. It reaches 12px past the control on every side,
-                    // which is useless on something that ignores the pointer,
-                    // and sitting at the right edge of the row that was enough
-                    // to overflow the column — `overflow-y-auto` promotes
-                    // `overflow-x` from visible to auto, so it showed up as a
-                    // scrollbar under the whole list.
+                    // `inert` says all of that at once — not focusable, not
+                    // clickable, not in the accessibility tree — which a switch
+                    // nested inside a button has to be anyway.
                     <Switch
+                      inert
+                      isReadOnly
                       size="sm"
-                      checked={entry.checked}
-                      tabIndex={-1}
-                      aria-hidden
-                      className="pointer-events-none after:hidden data-checked:bg-warning"
-                    />
+                      isSelected={entry.checked}
+                    >
+                      <Switch.Content>
+                        <Switch.Control className="data-[selected=true]:bg-warning">
+                          <Switch.Thumb />
+                        </Switch.Control>
+                      </Switch.Content>
+                    </Switch>
                   )}
                   {expandable && <ChevronRight className="size-4 shrink-0 text-muted" />}
                 </Button>

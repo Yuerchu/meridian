@@ -1,5 +1,5 @@
 import { Mic, Square } from 'lucide-react'
-import { Spinner } from '@/components/ui/spinner'
+import { Spinner } from '@heroui/react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
