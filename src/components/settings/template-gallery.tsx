@@ -36,14 +36,14 @@ function TemplateCard({
         className="w-full justify-start h-auto px-3 py-2.5 text-sm"
       >
         {expanded ? (
-          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          <ChevronDown className="w-4 h-4 text-muted" />
         ) : (
-          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          <ChevronRight className="w-4 h-4 text-muted" />
         )}
-        <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+        <Icon className="w-3.5 h-3.5 text-muted" />
         <span className="flex-1 truncate">{template.name}</span>
         {template.is_builtin === 1 && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
+          <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">
             {t('settings.template.builtin')}
           </span>
         )}
@@ -51,10 +51,10 @@ function TemplateCard({
       {expanded && (
         <div className="px-3 pb-3 space-y-2">
           {template.description && (
-            <p className="text-xs text-muted-foreground">{template.description}</p>
+            <p className="text-xs text-muted">{template.description}</p>
           )}
           <ScrollArea className="max-h-40">
-            <pre className="text-xs bg-accent/30 rounded-md p-2.5 whitespace-pre-wrap break-words font-mono leading-relaxed">
+            <pre className="text-xs bg-default/30 rounded-md p-2.5 whitespace-pre-wrap break-words font-mono leading-relaxed">
               {template.template_text}
             </pre>
           </ScrollArea>
@@ -168,7 +168,7 @@ export function TemplateGallery({
   }, [refresh])
 
   if (loading) {
-    return <div className="text-muted-foreground text-sm">{t('common.loading')}</div>
+    return <div className="text-muted text-sm">{t('common.loading')}</div>
   }
 
   return (
@@ -176,7 +176,7 @@ export function TemplateGallery({
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-medium">{t('settings.template.title')}</h2>
-          <p className="text-xs text-muted-foreground mt-1">{t('settings.template.subtitle')}</p>
+          <p className="text-xs text-muted mt-1">{t('settings.template.subtitle')}</p>
         </div>
         <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
           <Plus className="w-3.5 h-3.5" />
@@ -200,15 +200,15 @@ export function TemplateGallery({
       </div>
 
       <div className="space-y-2">
-        <h3 className="text-sm font-medium text-muted-foreground">{t('settings.template.variables')}</h3>
-        <p className="text-xs text-muted-foreground/70">{t('settings.template.variablesHint')}</p>
+        <h3 className="text-sm font-medium text-muted">{t('settings.template.variables')}</h3>
+        <p className="text-xs text-muted/70">{t('settings.template.variablesHint')}</p>
         <div className="grid grid-cols-1 gap-1">
           {variables.map((v) => (
             <div key={v.name} className="flex items-center gap-2 text-xs">
-              <code className="bg-accent/50 px-1.5 py-0.5 rounded font-mono text-xs">
+              <code className="bg-default/50 px-1.5 py-0.5 rounded font-mono text-xs">
                 {`{{${v.name}}}`}
               </code>
-              <span className="text-muted-foreground">
+              <span className="text-muted">
                 {isZh ? v.description_zh : v.description_en}
               </span>
             </div>

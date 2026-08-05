@@ -142,7 +142,7 @@ export function OneBotSettings() {
           <label htmlFor="onebot-enabled" className="text-sm font-medium cursor-pointer">
             {t('settings.onebot.enable')}
           </label>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted">
             {t('settings.onebot.enableHint')}
           </p>
         </div>
@@ -150,7 +150,7 @@ export function OneBotSettings() {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-muted-foreground">
+          <label className="block text-xs font-medium text-muted">
             {t('settings.onebot.host')}
           </label>
           <Input
@@ -160,7 +160,7 @@ export function OneBotSettings() {
           />
         </div>
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-muted-foreground">
+          <label className="block text-xs font-medium text-muted">
             {t('settings.onebot.port')}
           </label>
           <Input
@@ -175,7 +175,7 @@ export function OneBotSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.onebot.accessToken')}
         </label>
         <Input
@@ -187,7 +187,7 @@ export function OneBotSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.onebot.assistant')}
         </label>
         <Select
@@ -204,13 +204,13 @@ export function OneBotSettings() {
             ))}
           </SelectContent>
         </Select>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           {t('settings.onebot.assistantHint')}
         </p>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.onebot.adminUsers')}
         </label>
         <Input
@@ -218,13 +218,13 @@ export function OneBotSettings() {
           onChange={(e) => setAdminInput(e.target.value)}
           placeholder="12345, 67890"
         />
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           {t('settings.onebot.adminUsersHint')}
         </p>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.onebot.ackEmoji')}
         </label>
         <Input
@@ -232,7 +232,7 @@ export function OneBotSettings() {
           onChange={(e) => setConfig({ ...config, ack_emoji_id: e.target.value })}
           placeholder="76"
         />
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           {t('settings.onebot.ackEmojiHint')}
         </p>
       </div>
@@ -259,13 +259,13 @@ export function OneBotSettings() {
       {status && (
         <div className="rounded-lg border p-3 space-y-1 text-sm">
           <div className="flex items-center gap-2">
-            <span className={`inline-block w-2 h-2 rounded-full ${running ? 'bg-success' : 'bg-muted-foreground'}`} />
+            <span className={`inline-block w-2 h-2 rounded-full ${running ? 'bg-success' : 'bg-muted'}`} />
             <span className="font-medium">
               {running ? t('settings.onebot.statusRunning') : t('settings.onebot.statusStopped')}
             </span>
           </div>
           {running && (
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted text-xs">
               {t('settings.onebot.clients', { count: status.connected_clients })}
               {' · '}
               {status.host}:{status.port}

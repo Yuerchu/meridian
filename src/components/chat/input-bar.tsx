@@ -241,7 +241,7 @@ export function InputBar({
     <div className="px-4 pb-[max(1rem,var(--safe-bottom))] pt-2">
       <div className="max-w-2xl mx-auto">
         {voiceNotice && (
-          <p className="px-2 pb-1.5 text-xs text-muted-foreground">{voiceNotice}</p>
+          <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>
         )}
         <ContextMenu onOpenChange={handleContextMenuOpen}>
         <ContextMenuTrigger>
@@ -367,10 +367,10 @@ export function InputBar({
                     ? 'text-destructive'
                     : ratio > 0.8
                       ? 'text-warning'
-                      : 'text-muted-foreground/60'
+                      : 'text-muted/60'
                   return (
                     <Tooltip>
-                      <TooltipTrigger className={compacting ? 'text-muted-foreground' : colorClass}>
+                      <TooltipTrigger className={compacting ? 'text-muted' : colorClass}>
                         <CircularProgress
                           value={contextInfo.estimatedTokens}
                           max={contextInfo.contextLimit}
@@ -435,25 +435,25 @@ export function InputBar({
               <ContextMenuItem onClick={handleCut}>
                 <Scissors />
                 {t('contextMenu.cut')}
-                <span className="ml-auto text-xs text-muted-foreground">Ctrl+X</span>
+                <span className="ml-auto text-xs text-muted">Ctrl+X</span>
               </ContextMenuItem>
               <ContextMenuItem onClick={handleCopy}>
                 <Copy />
                 {t('chat.copy')}
-                <span className="ml-auto text-xs text-muted-foreground">Ctrl+C</span>
+                <span className="ml-auto text-xs text-muted">Ctrl+C</span>
               </ContextMenuItem>
             </>
           )}
           <ContextMenuItem onClick={handlePaste}>
             <ClipboardPaste />
             {t('contextMenu.paste')}
-            <span className="ml-auto text-xs text-muted-foreground">Ctrl+V</span>
+            <span className="ml-auto text-xs text-muted">Ctrl+V</span>
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onClick={handleSelectAll}>
             <TextSelect />
             {t('contextMenu.selectAll')}
-            <span className="ml-auto text-xs text-muted-foreground">Ctrl+A</span>
+            <span className="ml-auto text-xs text-muted">Ctrl+A</span>
           </ContextMenuItem>
         </ContextMenuContent>
         </ContextMenu>

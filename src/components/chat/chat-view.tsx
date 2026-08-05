@@ -474,7 +474,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
               <Button
                 variant="ghost"
                 onClick={() => setShowCompactedMessages(false)}
-                className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground py-2"
+                className="w-full text-center text-xs text-muted/60 hover:text-muted py-2"
               >
                 {t('chat.compact.hideCompacted', { count: compactedCount })}
               </Button>
@@ -495,7 +495,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
             <Button
               variant="ghost"
               onClick={() => setShowCompactedMessages(true)}
-              className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground py-2"
+              className="w-full text-center text-xs text-muted/60 hover:text-muted py-2"
             >
               {t('chat.compact.showCompacted', { count: compactedCount })}
             </Button>
@@ -505,14 +505,14 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
               <Button
                 variant="ghost"
                 onClick={() => setShowCompactSummary((v) => !v)}
-                className="text-xs text-muted-foreground/60 hover:text-muted-foreground whitespace-nowrap h-auto px-2 py-0"
+                className="text-xs text-muted/60 hover:text-muted whitespace-nowrap h-auto px-2 py-0"
               >
                 {t('chat.compact.boundary', { count: compactedCount })}
               </Button>
             </MarkerContent>
           </Marker>
           {compactSummary && showCompactSummary && (
-            <div className="px-4 py-2 mb-2 text-xs text-muted-foreground bg-muted/30 rounded-lg border border-muted-foreground/10 whitespace-pre-wrap">
+            <div className="px-4 py-2 mb-2 text-xs text-muted bg-default/30 rounded-lg border border-muted/10 whitespace-pre-wrap">
               {compactSummary.content}
             </div>
           )}
@@ -564,7 +564,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         leading={leading}
         trailing={trailing}
         emptyState={messages.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
+          <div className="flex flex-1 items-center justify-center text-muted text-sm">
             {t('chat.startHint')}
           </div>
         ) : null}

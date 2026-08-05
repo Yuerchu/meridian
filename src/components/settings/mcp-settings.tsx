@@ -178,8 +178,8 @@ function McpServerEditor({
             className={cn(
               'px-3 py-1.5 rounded-md text-sm transition-colors',
               !isHttp
-                ? 'bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                ? 'bg-default text-default-foreground hover:bg-default hover:text-default-foreground'
+                : 'text-muted hover:text-foreground hover:bg-default/50'
             )}
           >
             {t('settings.mcp.transportStdio')}
@@ -190,8 +190,8 @@ function McpServerEditor({
             className={cn(
               'px-3 py-1.5 rounded-md text-sm transition-colors',
               isHttp
-                ? 'bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                ? 'bg-default text-default-foreground hover:bg-default hover:text-default-foreground'
+                : 'text-muted hover:text-foreground hover:bg-default/50'
             )}
           >
             {t('settings.mcp.transportHttp')}
@@ -255,9 +255,9 @@ function McpServerEditor({
           <label className="text-sm font-medium">{t('settings.mcp.tools')} ({tools.length})</label>
           <div className="mt-1 space-y-1">
             {tools.map((tool) => (
-              <div key={tool.qualified_name} className="flex items-center gap-2 px-2 py-1 rounded bg-muted/50 text-xs">
+              <div key={tool.qualified_name} className="flex items-center gap-2 px-2 py-1 rounded bg-default/50 text-xs">
                 <span className="font-mono">{tool.name}</span>
-                <span className="text-muted-foreground truncate">{tool.description}</span>
+                <span className="text-muted truncate">{tool.description}</span>
               </div>
             ))}
           </div>
@@ -330,14 +330,14 @@ export function McpSettings() {
           className={cn(
             'w-full justify-start h-auto px-3 py-2',
             selectedId === s.id
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground',
+              ? 'bg-default text-default-foreground'
+              : 'text-muted',
           )}
         >
           <div className="flex items-center gap-2 w-full">
             <Plug className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="truncate">{s.name}</span>
-            <span className="text-xs text-muted-foreground ml-auto flex-shrink-0">
+            <span className="text-xs text-muted ml-auto flex-shrink-0">
               {s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
             </span>
           </div>
@@ -377,7 +377,7 @@ export function McpSettings() {
             <Button
               variant="ghost"
               onClick={() => setSelectedId(null)}
-              className="text-muted-foreground mb-4"
+              className="text-muted mb-4"
             >
               <ArrowLeft />
               {t('common.back')}
@@ -396,7 +396,7 @@ export function McpSettings() {
               {headerActions}
             </div>
             {servers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('settings.mcp.noServers')}</p>
+              <p className="text-sm text-muted">{t('settings.mcp.noServers')}</p>
             ) : (
               serverList
             )}
@@ -420,7 +420,7 @@ export function McpSettings() {
       )}
 
       {servers.length === 0 && !showImport ? (
-        <p className="text-sm text-muted-foreground">{t('settings.mcp.noServers')}</p>
+        <p className="text-sm text-muted">{t('settings.mcp.noServers')}</p>
       ) : (
         <div className="flex gap-4">
           <ScrollArea className="w-48 flex-shrink-0">
@@ -436,7 +436,7 @@ export function McpSettings() {
                 onDelete={handleDelete}
               />
             ) : (
-              <p className="text-sm text-muted-foreground">{t('settings.mcp.selectServer')}</p>
+              <p className="text-sm text-muted">{t('settings.mcp.selectServer')}</p>
             )}
           </div>
         </div>

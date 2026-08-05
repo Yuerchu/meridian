@@ -64,7 +64,7 @@ export function TodoStatusIcon({ status, className }: { status: TodoItemStatus; 
         'size-3.5 shrink-0',
         status === 'completed' && 'text-success',
         status === 'in_progress' && 'text-info',
-        status === 'pending' && 'text-muted-foreground',
+        status === 'pending' && 'text-muted',
         className,
       )}
     />
@@ -83,9 +83,9 @@ export function TodoItemRow({ item, className }: { item: TodoDraft; className?: 
         data-slot="todo-item-content"
         className={cn(
           'min-w-0 flex-1',
-          item.status === 'completed' && 'text-muted-foreground line-through',
+          item.status === 'completed' && 'text-muted line-through',
           item.status === 'in_progress' && 'font-medium text-foreground',
-          item.status === 'pending' && 'text-muted-foreground',
+          item.status === 'pending' && 'text-muted',
         )}
       >
         {item.content}

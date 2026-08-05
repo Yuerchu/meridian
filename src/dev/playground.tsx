@@ -51,7 +51,7 @@ import type { ChatMode, ContentBlock, Message, ProviderCapabilities, ThinkingLev
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-muted-foreground">{title}</h2>
+      <h2 className="text-sm font-semibold text-muted">{title}</h2>
       {children}
     </section>
   )
@@ -160,7 +160,7 @@ function TurnItemCase({ label, blocks, streaming = false }: {
   ], { streaming })
   return (
     <div className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
-      <div className="text-xs text-muted-foreground/60">{label}</div>
+      <div className="text-xs text-muted/60">{label}</div>
       {turns.map((turn) => (
         <TurnItem key={turn.id} turn={turn} conversationId="pg" isLastTurn={streaming} streaming={streaming} onRegenerate={noop} onRate={noop} onDelete={noop} />
       ))}
@@ -207,7 +207,7 @@ function TurnCase({
 
   return (
     <div className="group/turn w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
-      <div className="text-xs text-muted-foreground/60">{label}</div>
+      <div className="text-xs text-muted/60">{label}</div>
       <Turn status={status} open={open} onOpenChange={setOpen}>
         <TurnTrigger>
           <span className="inline-flex items-center gap-1.5">
@@ -239,7 +239,7 @@ function TurnCase({
               nextLabel="下一个版本"
             />
           )}
-          <span className="text-muted-foreground/50">1,204 + 318 tokens</span>
+          <span className="text-muted/50">1,204 + 318 tokens</span>
           <TurnActions>
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">复制</Button>
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">重新生成</Button>
@@ -271,7 +271,7 @@ function ComposerMenuCase({
   const [fast, setFast] = useState(false)
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs text-muted">{label}</span>
       <div className="flex items-center rounded-lg border border-border px-2 py-1">
         <ComposerMenu
           assistants={[]}
@@ -293,7 +293,7 @@ function ComposerMenuCase({
           onPickFile={() => {}}
         />
       </div>
-      <span className="text-xs text-muted-foreground/60">
+      <span className="text-xs text-muted/60">
         {mode} · {acceptEdits ? 'accept-edits' : 'ask'}
       </span>
     </div>
@@ -488,7 +488,7 @@ function Gallery() {
         <Section title="ChainOfThought / 流式 (shimmer)">
           <ChainOfThought defaultOpen isStreaming>
             <ChainOfThoughtTrigger>思考过程</ChainOfThoughtTrigger>
-            <ChainOfThoughtContent className="text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
+            <ChainOfThoughtContent className="text-xs text-muted/70 leading-relaxed whitespace-pre-wrap">
               {'用户想要一个简单的登录页。这是一个直接的 UI 任务——我应该先生成一些设计灵感确保观感，然后再搭页面。'}
             </ChainOfThoughtContent>
           </ChainOfThought>
@@ -499,7 +499,7 @@ function Gallery() {
             <ChatTool state="output-available" defaultOpen>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span className="text-muted-foreground">Used tool:</span>
+                <span className="text-muted">Used tool:</span>
                 <span className="font-medium text-foreground">getWeather</span>
               </ChatToolTrigger>
               <ChatToolContent>
@@ -511,7 +511,7 @@ function Gallery() {
             <ChatTool state="input-streaming" defaultOpen>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span className="text-muted-foreground">Running tool:</span>
+                <span className="text-muted">Running tool:</span>
                 <span className="font-medium text-foreground">searchDocs</span>
               </ChatToolTrigger>
               <ChatToolContent>
@@ -522,7 +522,7 @@ function Gallery() {
             <ChatTool state="output-error" defaultOpen>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span className="text-muted-foreground">Failed tool:</span>
+                <span className="text-muted">Failed tool:</span>
                 <span className="font-medium text-foreground">fetchPage</span>
               </ChatToolTrigger>
               <ChatToolContent>
@@ -534,7 +534,7 @@ function Gallery() {
             <ChatTool state="requires-action" defaultOpen>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span className="text-muted-foreground">Approval needed:</span>
+                <span className="text-muted">Approval needed:</span>
                 <span className="font-medium text-foreground">sendEmail</span>
               </ChatToolTrigger>
               <ChatToolContent>
@@ -552,7 +552,7 @@ function Gallery() {
                 <ChatTool state="output-available">
                   <ChatToolTrigger>
                     <ChatToolStatusIcon />
-                    <span className="text-muted-foreground">Used tool:</span>
+                    <span className="text-muted">Used tool:</span>
                     <span className="font-medium text-foreground">searchDocs</span>
                   </ChatToolTrigger>
                   <ChatToolContent>
@@ -562,7 +562,7 @@ function Gallery() {
                 <ChatTool state="output-available">
                   <ChatToolTrigger>
                     <ChatToolStatusIcon />
-                    <span className="text-muted-foreground">Used tool:</span>
+                    <span className="text-muted">Used tool:</span>
                     <span className="font-medium text-foreground">fetchPage</span>
                   </ChatToolTrigger>
                   <ChatToolContent>
@@ -805,7 +805,7 @@ function Gallery() {
             {(['idle', 'recording-hold', 'recording-toggle', 'transcribing'] as VoiceButtonState[]).map((s) => (
               <div key={s} className="flex flex-col items-center gap-1">
                 <VoiceButton state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
-                <span className="text-xs text-muted-foreground">{s}</span>
+                <span className="text-xs text-muted">{s}</span>
               </div>
             ))}
           </div>

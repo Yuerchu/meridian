@@ -60,7 +60,7 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
     <section className="space-y-2">
       <h2 className="text-sm font-semibold">
         {title}
-        {hint && <span className="ml-2 font-normal text-muted-foreground">{hint}</span>}
+        {hint && <span className="ml-2 font-normal text-muted">{hint}</span>}
       </h2>
       {children}
     </section>
@@ -143,7 +143,7 @@ export default function HeroUiLab() {
       <div className="mx-auto max-w-3xl space-y-8 px-6 py-8">
         <header className="space-y-1">
           <h1 className="text-lg font-semibold">HeroUI v3 在 WebView2 的落地探测</h1>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted">
             必须在 <code>pnpm tauri dev</code> 的窗口里看。浏览器里跑出来的结果不作数。
           </p>
         </header>
@@ -163,7 +163,7 @@ export default function HeroUiLab() {
               {copied ? '已复制' : '重新采集并复制'}
             </Button>
           </div>
-          <pre className="max-h-96 overflow-auto rounded-lg border bg-muted/30 p-3 font-mono text-xs whitespace-pre-wrap select-all">
+          <pre className="max-h-96 overflow-auto rounded-lg border bg-default/30 p-3 font-mono text-xs whitespace-pre-wrap select-all">
             {asText}
           </pre>
         </Section>
@@ -262,7 +262,7 @@ export default function HeroUiLab() {
                 </HDisclosure.Trigger>
               </HDisclosure.Heading>
               <HDisclosure.Content>
-                <HDisclosure.Body className="text-sm text-muted-foreground">
+                <HDisclosure.Body className="text-sm text-muted">
                   展开时高度过渡是否平滑，有没有闪烁或跳动。
                 </HDisclosure.Body>
               </HDisclosure.Content>
@@ -281,8 +281,8 @@ export default function HeroUiLab() {
             <Bubble>
               <BubbleContent>气泡的圆角、底色、内边距应当和迁移前一致。</BubbleContent>
             </Bubble>
-            <p className="text-xs text-muted-foreground">
-              这行是 text-muted-foreground，应当是灰的；如果变成正文色，说明 token 被抢了。
+            <p className="text-xs text-muted">
+              这行是 text-default-foreground，应当是灰的；如果变成正文色，说明 token 被抢了。
             </p>
           </div>
         </Section>
@@ -295,7 +295,7 @@ export default function HeroUiLab() {
             `}</style>
             <div className="probe-host flex flex-wrap gap-1">
               {Array.from({ length: 200 }, (_, i) => (
-                <span key={i} className="probe-item rounded bg-muted px-1 text-xs">{i}</span>
+                <span key={i} className="probe-item rounded bg-default px-1 text-xs">{i}</span>
               ))}
             </div>
           </div>

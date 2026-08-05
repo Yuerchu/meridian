@@ -28,7 +28,7 @@ function ChainOfThoughtTrigger({ className, children, ...props }: Collapsible.Tr
     <Collapsible.Trigger
       data-slot="chain-of-thought-trigger"
       className={cn(
-        "group/cot-trigger flex items-center gap-1 rounded-md text-xs text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+        "group/cot-trigger flex items-center gap-1 rounded-md text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
         className
       )}
       {...props}
@@ -74,9 +74,9 @@ function ChainOfThoughtStep({ label, className, children, ...props }: ChainOfTho
       {label && (
         <div
           data-slot="chain-of-thought-step-label"
-          className="mb-1 flex items-center gap-2 text-xs text-muted-foreground"
+          className="mb-1 flex items-center gap-2 text-xs text-muted"
         >
-          <span aria-hidden className="size-1 shrink-0 rounded-full bg-muted-foreground/60" />
+          <span aria-hidden className="size-1 shrink-0 rounded-full bg-muted/60" />
           {label}
         </div>
       )}

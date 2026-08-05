@@ -60,13 +60,13 @@ export function ScopeNav({
       data-slot="memory-scope-row"
     >
       <span className="truncate">{label}</span>
-      {count !== null && <span className="text-xs text-muted-foreground">{count}</span>}
+      {count !== null && <span className="text-xs text-muted">{count}</span>}
     </Button>
   )
 
   return (
     <div data-slot="memory-scope-nav" className="flex w-56 shrink-0 flex-col gap-0.5">
-      <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">
+      <div className="px-2 pb-1 text-xs font-medium text-muted">
         {t('settings.memory.nav.scope')}
       </div>
 
@@ -115,7 +115,7 @@ export function ScopeNav({
           <div className="text-sm font-medium">
             {selectedPerson.display_name ?? selectedPerson.scope_id}
           </div>
-          <div className="text-xs text-muted-foreground">
+          <div className="text-xs text-muted">
             {t('settings.memory.person.lastSeen', {
               when: relativeTime(selectedPerson.last_seen_at),
             })}
@@ -137,7 +137,7 @@ export function ScopeNav({
             }}
             data-slot="memory-pin-toggle"
           >
-            <Pin className={selectedPerson.is_pinned !== 0 ? 'text-foreground' : 'text-muted-foreground'} />
+            <Pin className={selectedPerson.is_pinned !== 0 ? 'text-foreground' : 'text-muted'} />
             {selectedPerson.is_pinned !== 0
               ? t('settings.memory.unpin')
               : t('settings.memory.pin')}
@@ -163,7 +163,7 @@ export function ScopeNav({
                 {t('settings.memory.person.forgetConfirmBody')}
               </AlertDialogDescription>
               <AlertDialogFooter>
-                <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
+                <AlertDialogClose className="bg-default text-default-foreground hover:bg-default/80">
                   {t('common.cancel')}
                 </AlertDialogClose>
                 <AlertDialogClose

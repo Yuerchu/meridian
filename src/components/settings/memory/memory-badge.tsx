@@ -11,11 +11,11 @@ const memoryBadgeVariants = cva(
   {
     variants: {
       tone: {
-        neutral: 'bg-muted text-muted-foreground',
-        accent: 'bg-accent text-accent-foreground',
+        neutral: 'bg-default text-muted',
+        accent: 'bg-default text-default-foreground',
         /** Owner-only rows: the subject cannot see these. */
-        warning: 'bg-muted text-warning',
-        info: 'bg-muted text-info',
+        warning: 'bg-default text-warning',
+        info: 'bg-default text-info',
       },
     },
     defaultVariants: { tone: 'neutral' },

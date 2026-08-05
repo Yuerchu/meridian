@@ -52,7 +52,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">{t('settings.about.logs.exportHint')}</p>
+      <p className="text-xs text-muted">{t('settings.about.logs.exportHint')}</p>
 
       <div data-slot="log-toolbar" className="flex flex-wrap items-center gap-2">
         <Select value={logs.level} onValueChange={(v) => logs.setLevel(v as LevelFilter)}>
@@ -92,7 +92,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         {logs.entries.length > 0 && (
           // Only what is on screen. The reader stops as soon as it has a page,
           // so a total would be a number nobody actually counted.
-          <span className="ml-auto text-xs text-muted-foreground">
+          <span className="ml-auto text-xs text-muted">
             {t('settings.about.logs.count', { shown: logs.entries.length })}
           </span>
         )}
@@ -104,7 +104,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
       >
         <ScrollArea className="h-full">
           {unavailable ? (
-            <p className="p-6 text-sm text-muted-foreground">
+            <p className="p-6 text-sm text-muted">
               {t('settings.about.logs.unavailable')}
             </p>
           ) : logs.error ? (
@@ -116,7 +116,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
               ))}
             </div>
           ) : logs.entries.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">
+            <p className="p-6 text-sm text-muted">
               {logs.isFiltered
                 ? t('settings.about.logs.empty')
                 : t('settings.about.logs.emptyRange')}
@@ -131,12 +131,12 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
               ))}
               <div className="flex flex-col items-center gap-2 p-3">
                 {logs.truncated && (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted">
                     {t('settings.about.logs.truncated')}
                   </p>
                 )}
                 {logs.capped ? (
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted">
                     {t('settings.about.logs.capped', { max: MAX_RENDERED })}
                   </p>
                 ) : logs.canLoadOlder ? (

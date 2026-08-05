@@ -45,7 +45,7 @@ if (isDev && window.location.hash.startsWith('#playground')) {
         fallback={(error) => (
           <div className="flex h-screen flex-col items-center justify-center gap-2 p-8 text-center">
             <p className="text-sm font-medium">Something went wrong</p>
-            <p className="text-xs text-muted-foreground break-all max-w-md">{String(error)}</p>
+            <p className="text-xs text-muted break-all max-w-md">{String(error)}</p>
           </div>
         )}
       >

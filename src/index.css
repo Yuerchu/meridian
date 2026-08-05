@@ -1,43 +1,109 @@
-@import 'tailwindcss';
+/* HeroUI brings Tailwind and tw-animate-css with it, and declares the layer
+   order (theme, base, components, utilities) — importing Tailwind again here
+   would fight it. */
+@import '@heroui/styles';
+/* Kept for `shimmer`, `no-scrollbar` and the `data-*` variants; it defines no
+   colour tokens of its own, so it cannot collide with the theme above. */
+@import 'shadcn/tailwind.css';
 @import 'highlight.js/styles/github-dark.css';
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
-@import "@fontsource-variable/geist";
+@import '@fontsource-variable/geist';
 
+/* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.
+   Ours is deliberate: the theme is an explicit setting, and a dark OS must not
+   darken an app the user asked to keep light. Declared after the import so it
+   wins. */
 @custom-variant dark (&:is(.dark *));
 @plugin '@tailwindcss/typography';
 
+/* HeroUI already maps every one of its own tokens to a Tailwind colour utility
+   (`themes/shared/theme.css`), including the whole radius scale. Only what the
+   project adds on top needs mapping here. */
+@theme inline {
+  --font-heading: var(--font-sans);
+  --font-sans: 'Geist Variable', sans-serif;
+  /* HeroUI has success, warning and danger but no informational colour. */
+  --color-info: var(--info);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/*
+ * Theme values.
+ *
+ * Deliberately outside `@layer`: HeroUI defines its defaults in `layer(theme)`,
+ * and an unlayered rule outranks every layer. This is the documented way to
+ * override them.
+ *
+ * The palette is neutral grey by design — HeroUI's own defaults carry a
+ * blue-violet cast (the 285.89 hue running through its greys) that does not
+ * belong here.
+ */
 :root {
   --font-sans: 'PingFang SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'Maple Mono NF CN', ui-monospace, 'Cascadia Code', monospace;
 
+  --radius: 0.5rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+
+  /* Panels — cards, disclosure groups, anything non-floating. */
+  --surface: oklch(1 0 0);
+  --surface-foreground: oklch(0.145 0 0);
+  --surface-secondary: oklch(0.97 0 0);
+  --surface-secondary-foreground: oklch(0.205 0 0);
+  --surface-tertiary: oklch(0.95 0 0);
+  --surface-tertiary-foreground: oklch(0.205 0 0);
+
+  /* Floating things — tooltips, popovers, menus, modals. */
+  --overlay: oklch(1 0 0);
+  --overlay-foreground: oklch(0.145 0 0);
+
+  /* `muted` is a *text* colour in HeroUI, the opposite of what it meant under
+     shadcn. What used to be `--muted` (a pale background) is `--default`. */
+  --muted: oklch(0.556 0 0);
+  --default: oklch(0.97 0 0);
+  --default-foreground: oklch(0.205 0 0);
+
+  /* The main action colour: HeroUI reads it for Button primary, Switch and
+     Slider fills, and focus rings. Meridian has no brand colour, so this stays
+     the near-black it has always been — a brand colour later is this one value. */
+  --accent: oklch(0.205 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+
+  --danger: oklch(0.577 0.245 27.325);
+  --danger-foreground: oklch(0.985 0 0);
+  --success: oklch(72.3% 0.219 149.579);
+  --success-foreground: oklch(0.145 0 0);
+  --warning: oklch(76.9% 0.188 70.08);
+  --warning-foreground: oklch(0.145 0 0);
+  /* Project extension: HeroUI has no informational colour. */
+  --info: oklch(62.3% 0.214 259.815);
+
+  --border: oklch(0.922 0 0);
+  --separator: oklch(0.922 0 0);
+  /* Not `var(--accent)` as HeroUI defaults it: a near-black focus ring on a
+     near-black button is invisible. */
+  --focus: oklch(0.708 0 0);
+
+  --field-background: oklch(1 0 0);
+  --field-foreground: oklch(0.145 0 0);
+  --field-border: oklch(0.922 0 0);
+  --field-placeholder: oklch(0.556 0 0);
+
+  --scrollbar-thumb: oklch(0.922 0 0);
+  --scrollbar-track: transparent;
+
+  /* Project extension: HeroUI has no sidebar. */
   --sidebar-width: 16rem;
   --sidebar-width-mobile: 18rem;
   --sidebar-width-icon: 3rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -46,88 +112,67 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
-  /* Project extension (not in shadcn scaffold): status colors, Tailwind palette values */
-  --success: oklch(72.3% 0.219 149.579);
-  --warning: oklch(76.9% 0.188 70.08);
-  --info: oklch(62.3% 0.214 259.815);
-}
 
-body {
-  margin: 0;
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-}
-
-@theme inline {
-  --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-success: var(--success);
-  --color-warning: var(--warning);
-  --color-info: var(--info);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --color-foreground: var(--foreground);
-  --color-background: var(--background);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  /*
+   * Migration shims. Each is a shadcn name still standing because the class
+   * names that use it have not been rewritten yet; every one of these goes away
+   * with the batch that renames its call sites. `--muted` is absent on purpose
+   * — its meaning inverted, so it could not be shimmed and was rewritten first.
+   */
+  --card: var(--surface);
+  --card-foreground: var(--surface-foreground);
+  --popover: var(--overlay);
+  --popover-foreground: var(--overlay-foreground);
+  --primary: var(--accent);
+  --primary-foreground: var(--accent-foreground);
+  --secondary: var(--default);
+  --secondary-foreground: var(--default-foreground);
+  --destructive: var(--danger);
+  --input: var(--field-border);
+  --ring: var(--focus);
 }
 
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
+
+  --surface: oklch(0.205 0 0);
+  --surface-foreground: oklch(0.985 0 0);
+  --surface-secondary: oklch(0.269 0 0);
+  --surface-secondary-foreground: oklch(0.985 0 0);
+  --surface-tertiary: oklch(0.31 0 0);
+  --surface-tertiary-foreground: oklch(0.985 0 0);
+
+  --overlay: oklch(0.205 0 0);
+  --overlay-foreground: oklch(0.985 0 0);
+
+  --muted: oklch(0.708 0 0);
+  --default: oklch(0.269 0 0);
+  --default-foreground: oklch(0.985 0 0);
+
+  --accent: oklch(0.922 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+
+  --danger: oklch(0.704 0.191 22.216);
+  --danger-foreground: oklch(0.985 0 0);
+  --success: oklch(79.2% 0.209 151.711);
+  --success-foreground: oklch(0.145 0 0);
+  --warning: oklch(82.8% 0.189 84.429);
+  --warning-foreground: oklch(0.145 0 0);
+  --info: oklch(70.7% 0.165 254.624);
+
   --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --separator: oklch(1 0 0 / 10%);
+  --focus: oklch(0.556 0 0);
+
+  --field-background: oklch(0.205 0 0);
+  --field-foreground: oklch(0.985 0 0);
+  --field-border: oklch(1 0 0 / 15%);
+  --field-placeholder: oklch(0.708 0 0);
+
+  --scrollbar-thumb: oklch(1 0 0 / 10%);
+  --scrollbar-track: transparent;
+
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
   --sidebar-primary: oklch(0.488 0.243 264.376);
@@ -136,14 +181,17 @@ body {
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
-  --success: oklch(79.2% 0.209 151.711);
-  --warning: oklch(82.8% 0.189 84.429);
-  --info: oklch(70.7% 0.165 254.624);
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-focus/50;
   }
   body {
     @apply bg-background text-foreground;
@@ -157,15 +205,16 @@ body {
     @apply h-full overflow-hidden;
     overscroll-behavior: none;
   }
-  /* 全局把原生滚动条对齐 ui/scroll-area.tsx 里 ScrollBar 的视觉。写在 base layer 里，
-     base-ui 注入的 .base-ui-disable-scrollbar（ScrollArea Viewport）与 scrollbar-* utilities 都能覆盖它。 */
+  /* 全局把原生滚动条对齐 HeroUI 的 --scrollbar-thumb。写在 base layer 里，
+     base-ui 注入的 .base-ui-disable-scrollbar（ScrollArea Viewport）与
+     scrollbar-* utilities 都能覆盖它。 */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
   }
   ::-webkit-scrollbar-track,
   ::-webkit-scrollbar-corner {
-    background: transparent;
+    background: var(--scrollbar-track);
   }
   ::-webkit-scrollbar-button {
     display: none;
@@ -173,11 +222,11 @@ body {
   ::-webkit-scrollbar-thumb {
     border: 1px solid transparent;
     border-radius: 9999px;
-    background-color: var(--border);
+    background-color: var(--scrollbar-thumb);
     background-clip: content-box;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background-color: var(--ring);
+    background-color: var(--focus);
   }
 }
 
@@ -197,12 +246,8 @@ img.emoji-sticker {
   --safe-right: var(--native-inset-right, env(safe-area-inset-right, 0px));
 }
 
-/* MessageScrollerViewport 引用的 scrollbar utilities（shadcn 包只发布了 no-scrollbar，这几个需自行定义） */
-@utility scrollbar-thin {
-  scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
-}
-
+/* HeroUI ships `scrollbar`, `scrollbar-thin`, `scrollbar-default` and
+   `scrollbar-none`; these three are the ones it has no equivalent for. */
 @utility scrollbar-gutter-stable {
   scrollbar-gutter: stable;
 }
@@ -218,13 +263,6 @@ img.emoji-sticker {
   scrollbar-color: transparent transparent;
   &::-webkit-scrollbar-track {
     background: transparent;
-  }
-}
-
-@utility scrollbar-none {
-  scrollbar-width: none;
-  &::-webkit-scrollbar {
-    display: none;
   }
 }
 

@@ -39,15 +39,15 @@ function PackCard({
         className="w-full flex items-center gap-2 px-3 py-2.5 h-auto text-sm justify-start rounded-none"
       >
         {expanded ? (
-          <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <ChevronDown className="w-4 h-4 text-muted flex-shrink-0" />
         ) : (
-          <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <ChevronRight className="w-4 h-4 text-muted flex-shrink-0" />
         )}
-        <Package className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+        <Package className="w-3.5 h-3.5 text-muted flex-shrink-0" />
         <span className="flex-1 truncate text-left">{detail.pack.name}</span>
-        <span className="text-xs text-muted-foreground">{detail.emojis.length}</span>
+        <span className="text-xs text-muted">{detail.emojis.length}</span>
         {detail.pack.is_builtin === 1 && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
+          <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">
             {t('settings.template.builtin')}
           </span>
         )}
@@ -56,7 +56,7 @@ function PackCard({
       {expanded && (
         <div className="px-3 pb-3 space-y-3">
           {detail.pack.description && (
-            <p className="text-xs text-muted-foreground">{detail.pack.description}</p>
+            <p className="text-xs text-muted">{detail.pack.description}</p>
           )}
 
           <div className="grid grid-cols-6 gap-2">
@@ -80,11 +80,11 @@ function PackCard({
                       if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur()
                       if (ev.key === 'Escape') setEditingId(null)
                     }}
-                    className="w-full h-auto text-xs text-center bg-transparent border-0 border-b border-accent rounded-none px-0 py-0 mt-0.5 focus-visible:ring-0"
+                    className="w-full h-auto text-xs text-center bg-transparent border-0 border-b border-default rounded-none px-0 py-0 mt-0.5 focus-visible:ring-0"
                   />
                 ) : (
                   <p
-                    className="text-xs text-muted-foreground text-center truncate mt-0.5 cursor-pointer hover:text-foreground"
+                    className="text-xs text-muted text-center truncate mt-0.5 cursor-pointer hover:text-foreground"
                     onClick={() => { setEditingId(e.id); setEditName(e.name) }}
                     title={t('settings.emoji.clickToRename')}
                   >
@@ -187,14 +187,14 @@ export function EmojiSettings() {
   }, [refresh])
 
   if (loading) {
-    return <div className="text-muted-foreground text-sm">{t('common.loading')}</div>
+    return <div className="text-muted text-sm">{t('common.loading')}</div>
   }
 
   return (
     <div className="max-w-lg space-y-6">
       <div>
         <h2 className="text-lg font-medium">{t('settings.emoji.title')}</h2>
-        <p className="text-xs text-muted-foreground mt-1">{t('settings.emoji.subtitle')}</p>
+        <p className="text-xs text-muted mt-1">{t('settings.emoji.subtitle')}</p>
       </div>
 
       <div className="flex gap-2">
@@ -223,7 +223,7 @@ export function EmojiSettings() {
           />
         ))}
         {details.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-6">
+          <p className="text-sm text-muted text-center py-6">
             {t('settings.emoji.noPacks')}
           </p>
         )}

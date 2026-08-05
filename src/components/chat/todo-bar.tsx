@@ -32,7 +32,7 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
         >
           <Collapsible.Trigger
             data-slot="todo-bar-trigger"
-            className="group/todo-bar flex w-full items-center gap-2 px-3 py-2 text-left transition-colors outline-none hover:bg-muted/30 focus-visible:bg-muted/30"
+            className="group/todo-bar flex w-full items-center gap-2 px-3 py-2 text-left transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30"
           >
             <CircularProgress
               value={done}
@@ -51,16 +51,16 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
               >
                 {todos.title}
               </span>
-              <span data-slot="todo-bar-current" className="truncate text-muted-foreground">
+              <span data-slot="todo-bar-current" className="truncate text-muted">
                 {current ? current.active_form : t('chat.todo.idle')}
               </span>
             </div>
-            <span className="shrink-0 tabular-nums text-muted-foreground">
+            <span className="shrink-0 tabular-nums text-muted">
               {t('chat.todo.progress', { done, total })}
             </span>
             <ChevronDownIcon
               aria-hidden
-              className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-panel-open/todo-bar:rotate-180"
+              className="size-3.5 shrink-0 text-muted transition-transform duration-200 group-data-panel-open/todo-bar:rotate-180"
             />
           </Collapsible.Trigger>
           <Collapsible.Panel

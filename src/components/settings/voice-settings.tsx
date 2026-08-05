@@ -121,11 +121,11 @@ export function VoiceSettings() {
     <div className="max-w-lg space-y-6">
       <div>
         <h2 className="text-lg font-medium">{t('settings.voice.title')}</h2>
-        <p className="text-xs text-muted-foreground mt-1">{t('settings.voice.intro')}</p>
+        <p className="text-xs text-muted mt-1">{t('settings.voice.intro')}</p>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.voice.model')}
         </label>
         <div className="rounded-lg border border-border px-3 py-2.5 space-y-2">
@@ -133,7 +133,7 @@ export function VoiceSettings() {
             <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm">{t('settings.voice.modelInstalled')}</p>
-                <p className="text-xs text-muted-foreground truncate">
+                <p className="text-xs text-muted truncate">
                   {formatSize(status.size_bytes)} · {status.path}
                 </p>
               </div>
@@ -149,7 +149,7 @@ export function VoiceSettings() {
                 indeterminate={!progress.total}
                 size={20}
               />
-              <span className="text-xs text-muted-foreground flex-1">
+              <span className="text-xs text-muted flex-1">
                 {formatSize(progress.downloaded)}
                 {progress.total ? ` / ${formatSize(progress.total)}` : ''}
               </span>
@@ -160,7 +160,7 @@ export function VoiceSettings() {
           ) : (
             <div className="space-y-2">
               <p className="text-sm">{t('settings.voice.modelMissing')}</p>
-              <p className="text-xs text-muted-foreground">{t('settings.voice.modelHint')}</p>
+              <p className="text-xs text-muted">{t('settings.voice.modelHint')}</p>
               <div className="flex items-center gap-2">
                 <Button size="sm" onClick={handleDownload}>
                   {t('settings.voice.download')}
@@ -176,7 +176,7 @@ export function VoiceSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.voice.mirror')}
         </label>
         <Input
@@ -186,11 +186,11 @@ export function VoiceSettings() {
           className="w-full"
           disabled={downloading}
         />
-        <p className="text-xs text-muted-foreground">{t('settings.voice.mirrorHint')}</p>
+        <p className="text-xs text-muted">{t('settings.voice.mirrorHint')}</p>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.voice.filterLevel')}
         </label>
         <Select value={filterLevel} onValueChange={(v) => v && handleFilterChange(v)} items={filterOptions}>
@@ -205,7 +205,7 @@ export function VoiceSettings() {
             ))}
           </SelectContent>
         </Select>
-        <p className="text-xs text-muted-foreground">{t('settings.voice.filterHint')}</p>
+        <p className="text-xs text-muted">{t('settings.voice.filterHint')}</p>
       </div>
     </div>
   )

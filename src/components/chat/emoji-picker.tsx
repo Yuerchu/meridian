@@ -93,7 +93,7 @@ export function EmojiPicker({
       <PopoverContent side="top" align="end" className="w-72 p-0 gap-0">
         <div className="p-2 border-b border-border">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
             <Input
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
@@ -110,7 +110,7 @@ export function EmojiPicker({
                 <Button
                   key={e.id}
                   variant="ghost"
-                  className="h-auto p-1 rounded hover:bg-accent/50 transition-colors"
+                  className="h-auto p-1 rounded hover:bg-default/50 transition-colors"
                   onClick={() => handleSelect(e)}
                   // eslint-disable-next-line no-restricted-syntax -- grid cells: per-cell Tooltip is too heavy
                   title={e.name}
@@ -123,7 +123,7 @@ export function EmojiPicker({
                 </Button>
               ))}
               {searchResults.length === 0 && (
-                <p className="col-span-6 text-xs text-muted-foreground text-center py-3">
+                <p className="col-span-6 text-xs text-muted text-center py-3">
                   {t('chat.emojiNotFound')}
                 </p>
               )}
@@ -131,7 +131,7 @@ export function EmojiPicker({
           ) : (
             packs.map(({ pack, emojis }) => (
               <div key={pack.id} className="mb-2">
-                <p className="text-xs text-muted-foreground font-medium mb-1 px-1">
+                <p className="text-xs text-muted font-medium mb-1 px-1">
                   {pack.name}
                 </p>
                 <div className="grid grid-cols-6 gap-1">
@@ -139,7 +139,7 @@ export function EmojiPicker({
                     <Button
                       key={e.id}
                       variant="ghost"
-                      className="h-auto p-1 rounded hover:bg-accent/50 transition-colors"
+                      className="h-auto p-1 rounded hover:bg-default/50 transition-colors"
                       onClick={() => handleSelect(e)}
                       // eslint-disable-next-line no-restricted-syntax -- grid cells: per-cell Tooltip is too heavy
                       title={e.name}
@@ -156,7 +156,7 @@ export function EmojiPicker({
             ))
           )}
           {packs.length === 0 && !search.trim() && (
-            <p className="text-xs text-muted-foreground text-center py-4">
+            <p className="text-xs text-muted text-center py-4">
               {t('chat.emojiNoPacks')}
             </p>
           )}

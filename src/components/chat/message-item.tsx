@@ -102,7 +102,7 @@ export function MessageMeta({ modelId, createdAt, animate }: {
       )}
       {/* The row is a fixed height, so a long model id has to give way rather
           than push the timestamp out of the message. */}
-      <span className="shrink-0 font-normal text-muted-foreground/60">{relativeTime(createdAt)}</span>
+      <span className="shrink-0 font-normal text-muted/60">{relativeTime(createdAt)}</span>
     </MessageHeader>
   )
 }
@@ -120,7 +120,7 @@ export function AssistantAvatar({ src, modelId }: { src?: string | null; modelId
     <MessageAvatar className="size-8">
       <Avatar>
         <AvatarImage src={src ?? undefined} />
-        {/* The icon brings its own background; `bg-muted` underneath it would
+        {/* The icon brings its own background; `bg-default` underneath it would
             only show through the rounding. */}
         <AvatarFallback className="bg-transparent">
           <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />
@@ -177,7 +177,7 @@ function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; i
   return (
     <ChainOfThought defaultOpen={!!(isStreaming || defaultExpanded)} isStreaming={isStreaming} className="my-2">
       <ChainOfThoughtTrigger>{t('chat.thinking')}</ChainOfThoughtTrigger>
-      <ChainOfThoughtContent className="text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
+      <ChainOfThoughtContent className="text-xs text-muted/70 leading-relaxed whitespace-pre-wrap">
         {text}
       </ChainOfThoughtContent>
     </ChainOfThought>
@@ -438,7 +438,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
         <ContextMenuTrigger render={<Message align="end" />}>
           <MessageContent>
             {senderPrefix && (
-              <MessageHeader className="justify-end text-muted-foreground/60 font-normal">{senderPrefix}</MessageHeader>
+              <MessageHeader className="justify-end text-muted/60 font-normal">{senderPrefix}</MessageHeader>
             )}
             {hasAttachments && (
               <AttachmentGroup className="items-start max-w-[80%]">
@@ -480,7 +480,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     <ActionButton
                       label="Esc"
                       onClick={handleCancelEdit}
-                      className="text-muted-foreground"
+                      className="text-muted"
                     >
                       <X className="w-3.5 h-3.5" />
                     </ActionButton>
@@ -516,7 +516,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     <ActionButton
                       label={t('chat.edit')}
                       onClick={handleStartEdit}
-                      className="text-muted-foreground hover:text-foreground"
+                      className="text-muted hover:text-foreground"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </ActionButton>
@@ -526,7 +526,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     <ActionButton
                       label={t('chat.delete')}
                       onClick={() => setShowDeleteConfirm(true)}
-                      className="text-muted-foreground hover:text-destructive"
+                      className="text-muted hover:text-destructive"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </ActionButton>
@@ -576,7 +576,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
               <AlertDialogTitle>{t('confirm.title')}</AlertDialogTitle>
               <AlertDialogDescription>{t('confirm.deleteMessage')}</AlertDialogDescription>
               <AlertDialogFooter>
-                <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
+                <AlertDialogClose className="bg-default text-default-foreground hover:bg-default/80">
                   {t('common.cancel')}
                 </AlertDialogClose>
                 <AlertDialogClose
@@ -619,7 +619,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
           {showFooter && (
           <MessageFooter className="gap-2 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
             {(footerTokens.input || footerTokens.output) && (
-              <span className="text-xs text-muted-foreground/60 font-normal tabular-nums">
+              <span className="text-xs text-muted/60 font-normal tabular-nums">
                 {footerTokens.input && footerTokens.output
                   ? <><CountUp to={footerTokens.input} separator="," duration={1} /> + <CountUp to={footerTokens.output} separator="," duration={1} /> tokens</>
                   : <><CountUp to={(footerTokens.output ?? footerTokens.input)!} separator="," duration={1} /> tokens</>}
@@ -633,7 +633,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     label={t('chat.thumbsUp')}
                     onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}
                     className={cn(
-                      message.rating === 1 ? 'text-success' : 'text-muted-foreground hover:text-foreground',
+                      message.rating === 1 ? 'text-success' : 'text-muted hover:text-foreground',
                     )}
                   >
                     <ThumbsUp className="w-3.5 h-3.5" />
@@ -642,7 +642,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     label={t('chat.thumbsDown')}
                     onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}
                     className={cn(
-                      message.rating === -1 ? 'text-destructive' : 'text-muted-foreground hover:text-foreground',
+                      message.rating === -1 ? 'text-destructive' : 'text-muted hover:text-foreground',
                     )}
                   >
                     <ThumbsDown className="w-3.5 h-3.5" />
@@ -653,7 +653,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                 <ActionButton
                   label={t('chat.regenerate')}
                   onClick={() => onRegenerate(message.id)}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="text-muted hover:text-foreground"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                 </ActionButton>
@@ -662,7 +662,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                 <ActionButton
                   label={t('chat.delete')}
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="text-muted-foreground hover:text-destructive"
+                  className="text-muted hover:text-destructive"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </ActionButton>
@@ -724,7 +724,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
             <AlertDialogTitle>{t('confirm.title')}</AlertDialogTitle>
             <AlertDialogDescription>{t('confirm.deleteMessage')}</AlertDialogDescription>
             <AlertDialogFooter>
-              <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
+              <AlertDialogClose className="bg-default text-default-foreground hover:bg-default/80">
                 {t('common.cancel')}
               </AlertDialogClose>
               <AlertDialogClose

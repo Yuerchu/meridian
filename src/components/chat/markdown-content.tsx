@@ -22,7 +22,7 @@ export function CopyButton({ text }: { text: string }) {
     <ActionButton
       label={t('chat.copy')}
       onClick={handleCopy}
-      className="text-muted-foreground hover:text-foreground"
+      className="text-muted hover:text-foreground"
     >
       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
     </ActionButton>
@@ -47,12 +47,12 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
   // Fenced blocks without a language get no className; they still contain a
   // trailing newline, while inline code never contains one.
   if (!className && !rawCode.includes('\n')) {
-    return <code className="px-1.5 py-0.5 bg-muted rounded text-xs" {...props}>{children}</code>
+    return <code className="px-1.5 py-0.5 bg-default rounded text-xs" {...props}>{children}</code>
   }
 
   return (
     <div className="group relative my-3 rounded-lg overflow-hidden bg-card border border-border">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 text-xs text-muted-foreground">
+      <div className="flex items-center justify-between px-3 py-1.5 bg-default/50 text-xs text-muted">
         <span>{lang ?? 'code'}</span>
         <CopyButton text={code} />
       </div>
@@ -75,7 +75,7 @@ export const proseClasses = cn(
   "prose-code:before:content-none prose-code:after:content-none",
   "prose-table:text-sm prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5",
   "prose-table:border prose-table:border-border",
-  "prose-th:border prose-th:border-border prose-th:bg-muted/50",
+  "prose-th:border prose-th:border-border prose-th:bg-default/50",
   "prose-td:border prose-td:border-border",
 )
 
@@ -123,7 +123,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, is
         {processed}
       </ReactMarkdown>
       {isStreaming && (
-        <span className="inline-block w-2 h-4 ml-0.5 bg-muted-foreground animate-pulse" />
+        <span className="inline-block w-2 h-4 ml-0.5 bg-muted animate-pulse" />
       )}
     </div>
   )

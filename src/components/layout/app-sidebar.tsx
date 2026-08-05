@@ -99,8 +99,8 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
         onClick={handleBrowse}
         className="w-full justify-start text-xs"
       >
-        <FolderOpen className="text-muted-foreground" />
-        <span className={path ? 'text-foreground truncate' : 'text-muted-foreground'}>
+        <FolderOpen className="text-muted" />
+        <span className={path ? 'text-foreground truncate' : 'text-muted'}>
           {path || t('sidebar.browsePath')}
         </span>
       </Button>
@@ -277,7 +277,7 @@ export function AppSidebar({
               variant="ghost"
               size="icon"
               onClick={() => setShowNewProject(true)}
-              className="ml-auto text-muted-foreground"
+              className="ml-auto text-muted"
             >
               <FolderPlus />
             </Button>
@@ -425,7 +425,7 @@ export function AppSidebar({
             {deleteTarget?.type === 'project' ? t('confirm.deleteProject') : t('confirm.deleteConversation')}
           </AlertDialogDescription>
           <AlertDialogFooter>
-            <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
+            <AlertDialogClose className="bg-default text-default-foreground hover:bg-default/80">
               {t('common.cancel')}
             </AlertDialogClose>
             <AlertDialogClose

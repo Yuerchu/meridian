@@ -92,7 +92,7 @@ export function GeneralSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.general.language')}
         </label>
         <Select value={i18n.language} onValueChange={(v) => v && setLocale(v)} items={LANGUAGE_OPTIONS}>
@@ -111,7 +111,7 @@ export function GeneralSettings() {
 
       {platform !== null && platform !== 'android' && (
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-muted-foreground">
+          <label className="block text-xs font-medium text-muted">
             {t('settings.general.shell')}
           </label>
           <Select value={shell} onValueChange={(v) => v && handleShellChange(v)} items={SHELLS}>
@@ -126,7 +126,7 @@ export function GeneralSettings() {
               ))}
             </SelectContent>
           </Select>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted">
             {t('settings.general.shellHint')}
           </p>
         </div>
@@ -134,7 +134,7 @@ export function GeneralSettings() {
 
       {platform === 'windows' && (
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-muted-foreground">
+          <label className="block text-xs font-medium text-muted">
             {t('settings.general.sandbox')}
           </label>
           <Select value={sandboxEnabled ? 'on' : 'off'} onValueChange={(v) => v && handleSandboxChange(v)} items={sandboxOptions}>
@@ -149,14 +149,14 @@ export function GeneralSettings() {
               ))}
             </SelectContent>
           </Select>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted">
             {t('settings.general.sandboxHint')}
           </p>
         </div>
       )}
 
       <div className="space-y-3">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.general.webSearch')}
         </label>
         <Select value={searchProvider} onValueChange={(v) => v && handleSearchProviderChange(v)} items={SEARCH_PROVIDERS}>
@@ -188,7 +188,7 @@ export function GeneralSettings() {
             {searchKeySaved ? <Check className="w-4 h-4" /> : t('settings.general.save')}
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           {t('settings.general.searchHint')}
         </p>
       </div>

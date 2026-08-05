@@ -60,18 +60,18 @@ function LogRowImpl({ entry }: { entry: LogEntry }) {
         isError && 'bg-destructive/5',
       )}
     >
-      <span data-slot="log-row-time" className="font-mono text-xs tabular-nums text-muted-foreground">
+      <span data-slot="log-row-time" className="font-mono text-xs tabular-nums text-muted">
         {time}
       </span>
 
       <div data-slot="log-row-body" className="min-w-0 space-y-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <LogLevelBadge level={entry.level} />
-          <span className="truncate font-mono text-xs text-muted-foreground">{entry.target}</span>
+          <span className="truncate font-mono text-xs text-muted">{entry.target}</span>
         </div>
         <p className="text-sm break-words text-foreground">
           {entry.raw ? (
-            <span className="text-muted-foreground italic">
+            <span className="text-muted italic">
               {t('settings.about.logs.unparseable')}: {entry.raw}
             </span>
           ) : (
@@ -79,7 +79,7 @@ function LogRowImpl({ entry }: { entry: LogEntry }) {
           )}
         </p>
         {fields.length > 0 && (
-          <div data-slot="log-row-fields" className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs text-muted-foreground">
+          <div data-slot="log-row-fields" className="flex flex-wrap gap-x-3 gap-y-0.5 font-mono text-xs text-muted">
             {fields.map(([key, value]) => (
               <span key={key} className="break-all">
                 {key}={renderValue(value)}

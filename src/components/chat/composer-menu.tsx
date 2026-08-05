@@ -271,8 +271,8 @@ export function ComposerMenu(props: ComposerMenuProps) {
                   variant="ghost"
                   size="icon"
                   className={cn(
-                    'relative text-muted-foreground hover:text-foreground',
-                    open && 'bg-accent text-foreground',
+                    'relative text-muted hover:text-foreground',
+                    open && 'bg-default text-foreground',
                   )}
                 />
               }
@@ -338,8 +338,8 @@ export function ComposerMenu(props: ComposerMenuProps) {
                   className={cn(
                     'w-full h-auto justify-start gap-2 rounded-md px-1.5 py-1 text-sm font-normal',
                     isHovered
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                      ? 'bg-default text-default-foreground'
+                      : 'text-muted hover:bg-default/50 hover:text-foreground',
                   )}
                 >
                   <Icon
@@ -361,7 +361,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                           ? 'text-warning'
                           : entry.tone === 'info'
                             ? 'text-info'
-                            : 'text-muted-foreground/60',
+                            : 'text-muted/60',
                       )}
                     >
                       {entry.value}
@@ -387,7 +387,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                       className="pointer-events-none after:hidden data-checked:bg-warning"
                     />
                   )}
-                  {expandable && <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
+                  {expandable && <ChevronRight className="size-4 shrink-0 text-muted" />}
                 </Button>
               )
             })}
@@ -419,7 +419,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                           {heading && (
                             <div
                               data-slot="composer-menu-detail-heading"
-                              className="px-1.5 pt-2 pb-1 text-xs text-muted-foreground"
+                              className="px-1.5 pt-2 pb-1 text-xs text-muted"
                             >
                               {heading}
                             </div>
@@ -434,15 +434,15 @@ export function ComposerMenu(props: ComposerMenuProps) {
                             className={cn(
                               'w-full h-auto justify-start gap-2 rounded-md px-1.5 py-1 text-sm font-normal',
                               opt.selected
-                                ? 'bg-accent text-accent-foreground'
-                                : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                                ? 'bg-default text-default-foreground'
+                                : 'text-muted hover:bg-default/50 hover:text-foreground',
                             )}
                           >
                             {opt.icon && <span className="shrink-0">{opt.icon}</span>}
                             <span className="flex-1 min-w-0 text-left">
                               <span className="block truncate">{opt.label}</span>
                               {opt.description && (
-                                <span className="block truncate text-xs text-muted-foreground/60">
+                                <span className="block truncate text-xs text-muted/60">
                                   {opt.description}
                                 </span>
                               )}

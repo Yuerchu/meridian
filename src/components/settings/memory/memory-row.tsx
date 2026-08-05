@@ -63,7 +63,7 @@ export function MemoryRow({
           </Tooltip>
         )}
         <div className="flex-1" />
-        <span className="text-xs text-muted-foreground">{formatDate(memory.updated_at)}</span>
+        <span className="text-xs text-muted">{formatDate(memory.updated_at)}</span>
       </div>
 
       {expanded && (
@@ -74,7 +74,7 @@ export function MemoryRow({
             rows={3}
             className="resize-y"
           />
-          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
             <span>
               {t('settings.memory.learnedAt')}: {formatDate(memory.created_at)}
             </span>

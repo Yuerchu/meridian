@@ -56,7 +56,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
 
         <div className="space-y-2 overflow-y-auto p-4">
           {rows.length === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground">
+            <p className="py-6 text-center text-sm text-muted">
               {t('settings.memory.trash.empty')}
             </p>
           )}
@@ -95,7 +95,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                   <Trash2 className="text-destructive" />
                 </Button>
               </div>
-              <p className="whitespace-pre-wrap text-sm text-muted-foreground">{m.content}</p>
+              <p className="whitespace-pre-wrap text-sm text-muted">{m.content}</p>
             </div>
           ))}
         </div>

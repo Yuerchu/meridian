@@ -75,7 +75,7 @@ export function MemorySettings() {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-lg font-semibold">{t('settings.memory.title')}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t('settings.memory.subtitle')}</p>
+          <p className="mt-1 text-sm text-muted">{t('settings.memory.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" onClick={() => setTrashOpen(true)} data-slot="memory-trash-open">
@@ -125,7 +125,7 @@ export function MemorySettings() {
           </div>
 
           {showAdd && (
-            <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
+            <div className="space-y-2 rounded-lg border border-border bg-default/30 p-3">
               <Input
                 type="text"
                 value={newKey}
@@ -172,7 +172,7 @@ export function MemorySettings() {
           )}
 
           {browser.visible.length === 0 && !showAdd && (
-            <p className="py-6 text-center text-sm text-muted-foreground">
+            <p className="py-6 text-center text-sm text-muted">
               {t('settings.memory.empty')}
             </p>
           )}
@@ -192,9 +192,9 @@ export function MemorySettings() {
           {browser.selected.size > 0 && (
             <div
               data-slot="memory-bulk-bar"
-              className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 p-3"
+              className="flex items-center gap-2 rounded-lg border border-border bg-default/30 p-3"
             >
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm text-muted">
                 {t('settings.memory.selectedCount', { count: browser.selected.size })}
               </span>
               <div className="flex-1" />
@@ -215,7 +215,7 @@ export function MemorySettings() {
                     {t('settings.memory.deleteConfirmBody')}
                   </AlertDialogDescription>
                   <AlertDialogFooter>
-                    <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
+                    <AlertDialogClose className="bg-default text-default-foreground hover:bg-default/80">
                       {t('common.cancel')}
                     </AlertDialogClose>
                     <AlertDialogClose

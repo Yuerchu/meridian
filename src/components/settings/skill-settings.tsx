@@ -82,7 +82,7 @@ function SkillEditor({
     <div data-slot="skill-editor" className="space-y-3 p-3 border border-border rounded-lg">
       {!skill && (
         <div data-slot="skill-editor-field" className="space-y-1">
-          <label data-slot="skill-editor-label" className="text-xs text-muted-foreground">
+          <label data-slot="skill-editor-label" className="text-xs text-muted">
             {t('settings.skills.dirName')}
           </label>
           <Input
@@ -91,7 +91,7 @@ function SkillEditor({
             placeholder="my-skill"
             className="font-mono text-xs"
           />
-          <p data-slot="skill-editor-hint" className="text-xs text-muted-foreground/60">
+          <p data-slot="skill-editor-hint" className="text-xs text-muted/60">
             {t('settings.skills.dirNameHint')}
           </p>
           {dirName.trim().length > 0 && !dirNameValid && (
@@ -103,7 +103,7 @@ function SkillEditor({
       )}
 
       <div data-slot="skill-editor-field" className="space-y-1">
-        <label data-slot="skill-editor-label" className="text-xs text-muted-foreground">
+        <label data-slot="skill-editor-label" className="text-xs text-muted">
           {t('settings.skills.displayName')}
         </label>
         <Input
@@ -114,7 +114,7 @@ function SkillEditor({
       </div>
 
       <div data-slot="skill-editor-field" className="space-y-1">
-        <label data-slot="skill-editor-label" className="text-xs text-muted-foreground">
+        <label data-slot="skill-editor-label" className="text-xs text-muted">
           {t('settings.skills.description')}
         </label>
         <Textarea
@@ -124,17 +124,17 @@ function SkillEditor({
           rows={2}
           className="resize-none text-xs"
         />
-        <p data-slot="skill-editor-hint" className="text-xs text-muted-foreground/60">
+        <p data-slot="skill-editor-hint" className="text-xs text-muted/60">
           {t('settings.skills.descriptionHint')}
         </p>
       </div>
 
       <div data-slot="skill-editor-field" className="space-y-1">
-        <label data-slot="skill-editor-label" className="text-xs text-muted-foreground">
+        <label data-slot="skill-editor-label" className="text-xs text-muted">
           {t('settings.skills.body')}
         </label>
         {bodyLoading ? (
-          <p data-slot="skill-editor-hint" className="text-xs text-muted-foreground">
+          <p data-slot="skill-editor-hint" className="text-xs text-muted">
             {t('common.loading')}
           </p>
         ) : (
@@ -146,7 +146,7 @@ function SkillEditor({
             className="resize-none font-mono text-xs"
           />
         )}
-        <p data-slot="skill-editor-hint" className="text-xs text-muted-foreground/60">
+        <p data-slot="skill-editor-hint" className="text-xs text-muted/60">
           {t('settings.skills.bodyHint')}
         </p>
       </div>
@@ -244,7 +244,7 @@ export function SkillSettings() {
   }, [])
 
   if (loading) {
-    return <div data-slot="skill-settings-loading" className="text-muted-foreground text-sm">{t('common.loading')}</div>
+    return <div data-slot="skill-settings-loading" className="text-muted text-sm">{t('common.loading')}</div>
   }
 
   return (
@@ -252,7 +252,7 @@ export function SkillSettings() {
       <div data-slot="skill-settings-header" className="flex items-start justify-between gap-2">
         <div data-slot="skill-settings-heading">
           <h2 data-slot="skill-settings-title" className="text-lg font-medium">{t('settings.skills.title')}</h2>
-          <p data-slot="skill-settings-subtitle" className="text-xs text-muted-foreground mt-1">
+          <p data-slot="skill-settings-subtitle" className="text-xs text-muted mt-1">
             {t('settings.skills.subtitle')}
           </p>
         </div>
@@ -291,12 +291,12 @@ export function SkillSettings() {
                   className="flex-1 min-w-0 justify-start h-auto px-3 py-2 text-xs"
                 >
                   {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                  <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
+                  <BookOpen className="w-3.5 h-3.5 text-muted" />
                   <span data-slot="skill-item-name" className="truncate">{skill.display_name}</span>
-                  <span data-slot="skill-item-slug" className="font-mono text-muted-foreground/60 truncate">
+                  <span data-slot="skill-item-slug" className="font-mono text-muted/60 truncate">
                     {skill.llm_name}
                   </span>
-                  <span data-slot="skill-item-source" className="ml-auto text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground shrink-0">
+                  <span data-slot="skill-item-source" className="ml-auto text-xs px-1.5 py-0.5 rounded bg-default text-muted shrink-0">
                     {t(`settings.skills.source.${skill.source}`)}
                   </span>
                 </Button>
@@ -317,7 +317,7 @@ export function SkillSettings() {
               </div>
               {isExpanded && (
                 <div data-slot="skill-item-body" className="px-3 pb-3 space-y-2">
-                  <p data-slot="skill-item-description" className="text-xs text-muted-foreground">
+                  <p data-slot="skill-item-description" className="text-xs text-muted">
                     {skill.llm_description}
                   </p>
                   <SkillEditor
@@ -340,13 +340,13 @@ export function SkillSettings() {
           )
         })}
         {skills.length === 0 && !showCreate && (
-          <p data-slot="skill-settings-empty" className="text-xs text-muted-foreground text-center py-4">
+          <p data-slot="skill-settings-empty" className="text-xs text-muted text-center py-4">
             {t('settings.skills.noSkills')}
           </p>
         )}
       </div>
 
-      <p data-slot="skill-settings-global-hint" className="text-xs text-muted-foreground/60">
+      <p data-slot="skill-settings-global-hint" className="text-xs text-muted/60">
         {t('settings.skills.globalBindingHint')}
       </p>
     </div>

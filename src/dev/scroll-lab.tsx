@@ -486,7 +486,7 @@ export default function ScrollLab() {
             <div key={r.name} className="flex gap-2 py-0.5">
               <span className={r.pass ? 'text-success' : 'text-destructive'}>{r.pass ? 'PASS' : 'FAIL'}</span>
               <span className="font-medium">{r.name}</span>
-              <span className="text-muted-foreground">{r.detail}</span>
+              <span className="text-muted">{r.detail}</span>
             </div>
           ))}
         </div>
@@ -494,7 +494,7 @@ export default function ScrollLab() {
 
       <div
         data-testid="scroll-lab-readout"
-        className="border-t px-4 py-2 font-mono text-xs text-muted-foreground"
+        className="border-t px-4 py-2 font-mono text-xs text-muted"
       >
         {readout}
       </div>

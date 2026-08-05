@@ -58,7 +58,7 @@ function TurnTrigger({ className, children, endContent, ...props }: TurnTriggerP
     <Collapsible.Trigger
       data-slot="turn-trigger"
       className={cn(
-        "group/turn-trigger flex w-full items-center gap-1.5 rounded-md py-1 text-left text-xs text-muted-foreground transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+        "group/turn-trigger flex w-full items-center gap-1.5 rounded-md py-1 text-left text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
         className
       )}
       {...props}
@@ -83,16 +83,16 @@ function TurnStatusIcon({ className }: { className?: string }) {
   const shared = cn("size-3.5 shrink-0", className)
   switch (status) {
     case "streaming":
-      return <Loader2Icon aria-hidden className={cn(shared, "animate-spin text-muted-foreground")} />
+      return <Loader2Icon aria-hidden className={cn(shared, "animate-spin text-muted")} />
     case "awaiting-input":
       return <CircleAlertIcon aria-hidden className={cn(shared, "text-warning")} />
     case "interrupted":
-      return <CircleSlashIcon aria-hidden className={cn(shared, "text-muted-foreground")} />
+      return <CircleSlashIcon aria-hidden className={cn(shared, "text-muted")} />
     case "empty":
-      return <CircleSlashIcon aria-hidden className={cn(shared, "text-muted-foreground")} />
+      return <CircleSlashIcon aria-hidden className={cn(shared, "text-muted")} />
     case "complete":
     default:
-      return <CircleCheckIcon aria-hidden className={cn(shared, "text-muted-foreground")} />
+      return <CircleCheckIcon aria-hidden className={cn(shared, "text-muted")} />
   }
 }
 
@@ -140,7 +140,7 @@ function TurnFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="turn-footer"
-      className={cn("mt-1 flex min-w-0 items-center gap-1 text-xs text-muted-foreground", className)}
+      className={cn("mt-1 flex min-w-0 items-center gap-1 text-xs text-muted", className)}
       {...props}
     />
   )
@@ -189,7 +189,7 @@ function TurnBranchPager({
   return (
     <div
       data-slot="turn-branch-pager"
-      className={cn("flex items-center gap-0.5 text-xs text-muted-foreground", className)}
+      className={cn("flex items-center gap-0.5 text-xs text-muted", className)}
       {...props}
     >
       <button

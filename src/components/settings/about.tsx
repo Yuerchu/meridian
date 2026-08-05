@@ -33,19 +33,19 @@ export function About() {
       <div className="space-y-4 text-sm text-foreground">
         <div>
           <span className="shimmer shimmer-duration-3000 text-xl font-semibold">{t('app.name')}</span>
-          {version && <div className="text-muted-foreground mt-0.5">v{version}</div>}
+          {version && <div className="text-muted mt-0.5">v{version}</div>}
         </div>
 
-        <p className="text-muted-foreground leading-relaxed">
+        <p className="text-muted leading-relaxed">
           {t('settings.about.description')}
         </p>
 
         <div data-slot="about-logs-card" className="rounded-lg border border-border p-4 space-y-3">
           <div className="flex items-start gap-3">
-            <ScrollText className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
+            <ScrollText className="size-4 mt-0.5 shrink-0 text-muted" />
             <div className="space-y-1">
               <p className="font-medium">{t('settings.about.logs.title')}</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
+              <p className="text-xs text-muted leading-relaxed">
                 {t('settings.about.logs.subtitle')}
               </p>
             </div>
@@ -56,7 +56,7 @@ export function About() {
           </Button>
         </div>
 
-        <div className="pt-2 border-t border-border space-y-2 text-xs text-muted-foreground">
+        <div className="pt-2 border-t border-border space-y-2 text-xs text-muted">
           <p>{t('settings.about.copyright')}</p>
           <p>{t('settings.about.notice')}</p>
         </div>

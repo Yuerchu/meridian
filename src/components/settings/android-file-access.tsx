@@ -79,17 +79,17 @@ export function AndroidFileAccess() {
     <div className="space-y-4">
       <div>
         <h3 className="text-sm font-medium">{t('settings.fileAccess.title')}</h3>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           {t('settings.fileAccess.description')}
         </p>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.fileAccess.safDirs')}
         </label>
         {safRoots.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted">
             {t('settings.fileAccess.safEmpty')}
           </p>
         ) : (
@@ -101,7 +101,7 @@ export function AndroidFileAccess() {
               >
                 <div className="min-w-0">
                   <div className="truncate font-medium">{root.display_name}</div>
-                  <div className="truncate text-xs text-muted-foreground">
+                  <div className="truncate text-xs text-muted">
                     {root.virtual_prefix}
                   </div>
                 </div>
@@ -132,14 +132,14 @@ export function AndroidFileAccess() {
           />
           {t('settings.fileAccess.manageToggle')}
         </label>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           {manageEnabled && !manageGranted
             ? t('settings.fileAccess.manageNotGranted')
             : t('settings.fileAccess.manageHint')}
         </p>
       </div>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-muted">
         {t('settings.fileAccess.approvalNote')}
       </p>
     </div>

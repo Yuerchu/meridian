@@ -73,7 +73,7 @@ function ChatToolTrigger({ className, children, endContent, ...props }: ChatTool
     <Collapsible.Trigger
       data-slot="chat-tool-trigger"
       className={cn(
-        "group/chat-tool-trigger flex w-full items-center gap-2 px-3 py-2 text-left transition-colors outline-none hover:bg-muted/30 focus-visible:bg-muted/30",
+        "group/chat-tool-trigger flex w-full items-center gap-2 px-3 py-2 text-left transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30",
         className
       )}
       {...props}
@@ -87,7 +87,7 @@ function ChatToolTrigger({ className, children, endContent, ...props }: ChatTool
       {endContent}
       <ChevronDownIcon
         aria-hidden
-        className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-panel-open/chat-tool-trigger:rotate-180"
+        className="size-3.5 shrink-0 text-muted transition-transform duration-200 group-data-panel-open/chat-tool-trigger:rotate-180"
       />
     </Collapsible.Trigger>
   )
@@ -101,7 +101,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
       return (
         <Loader2Icon
           aria-hidden
-          className={cn("size-3.5 shrink-0 animate-spin text-muted-foreground", className)}
+          className={cn("size-3.5 shrink-0 animate-spin text-muted", className)}
         />
       )
     case "output-available":
@@ -161,7 +161,7 @@ function ChatToolArgs({ value, text, className, children, ...props }: ChatToolPa
   return (
     <div
       data-slot="chat-tool-args"
-      className={cn("max-h-40 overflow-auto rounded-lg bg-muted/40 px-3 py-2", className)}
+      className={cn("max-h-40 overflow-auto rounded-lg bg-default/40 px-3 py-2", className)}
       {...props}
     >
       {children ??
@@ -179,7 +179,7 @@ function ChatToolResult({ value, text, className, children, ...props }: ChatTool
   return (
     <div
       data-slot="chat-tool-result"
-      className={cn("max-h-60 overflow-auto rounded-lg bg-muted/40 px-3 py-2", className)}
+      className={cn("max-h-60 overflow-auto rounded-lg bg-default/40 px-3 py-2", className)}
       {...props}
     >
       {children ??
@@ -230,7 +230,7 @@ function ChatToolGroupTrigger({ className, children, ...props }: Collapsible.Tri
     <Collapsible.Trigger
       data-slot="chat-tool-group-trigger"
       className={cn(
-        "group/chat-tool-group-trigger flex w-full items-center gap-2 px-3 py-2 text-left font-medium text-foreground transition-colors outline-none hover:bg-muted/30 focus-visible:bg-muted/30",
+        "group/chat-tool-group-trigger flex w-full items-center gap-2 px-3 py-2 text-left font-medium text-foreground transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30",
         className
       )}
       {...props}
@@ -238,7 +238,7 @@ function ChatToolGroupTrigger({ className, children, ...props }: Collapsible.Tri
       {children}
       <ChevronDownIcon
         aria-hidden
-        className="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-panel-open/chat-tool-group-trigger:rotate-180"
+        className="ml-auto size-3.5 shrink-0 text-muted transition-transform duration-200 group-data-panel-open/chat-tool-group-trigger:rotate-180"
       />
     </Collapsible.Trigger>
   )

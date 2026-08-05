@@ -118,13 +118,13 @@ function AssistantEditor({
   return (
     <div className="space-y-4 pl-7 pr-2 pb-4">
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted-foreground">{t('settings.assistant.name')}</label>
+        <label className="block text-xs text-muted">{t('settings.assistant.name')}</label>
         <Input value={name} onChange={(e) => setName(e.target.value)} />
       </div>
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <label className="block text-xs text-muted-foreground">{t('settings.assistant.systemPrompt')}</label>
+          <label className="block text-xs text-muted">{t('settings.assistant.systemPrompt')}</label>
           <Button
             variant="ghost"
             className="text-xs gap-1"
@@ -145,7 +145,7 @@ function AssistantEditor({
               >
                 <span className="font-medium">{tpl.name}</span>
                 {tpl.description && (
-                  <span className="text-muted-foreground ml-2">{tpl.description}</span>
+                  <span className="text-muted ml-2">{tpl.description}</span>
                 )}
               </Button>
             ))}
@@ -165,7 +165,7 @@ function AssistantEditor({
                   render={
                     <Button
                       variant="outline"
-                      className="text-xs px-1.5 py-0.5 bg-accent/50 text-muted-foreground hover:bg-accent font-mono"
+                      className="text-xs px-1.5 py-0.5 bg-default/50 text-muted hover:bg-default font-mono"
                       onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
                     >
                       {`{{${v.name}}}`}
@@ -181,7 +181,7 @@ function AssistantEditor({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.assistant.provider')}</label>
+          <label className="block text-xs text-muted">{t('settings.assistant.provider')}</label>
           <Select
             value={providerId || '_default'}
             onValueChange={(v) => { setProviderId(!v || v === '_default' ? '' : v); setModelId('') }}
@@ -198,7 +198,7 @@ function AssistantEditor({
           </Select>
         </div>
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.assistant.model')}</label>
+          <label className="block text-xs text-muted">{t('settings.assistant.model')}</label>
           {models.length > 0 ? (
             <Select
               value={modelId || '_none'}
@@ -226,7 +226,7 @@ function AssistantEditor({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.assistant.temperature')}</label>
+          <label className="block text-xs text-muted">{t('settings.assistant.temperature')}</label>
           <Input
             type="number"
             value={temperature}
@@ -238,7 +238,7 @@ function AssistantEditor({
           />
         </div>
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.assistant.contextLimit')}</label>
+          <label className="block text-xs text-muted">{t('settings.assistant.contextLimit')}</label>
           <Input
             type="number"
             value={contextLimit}
@@ -248,7 +248,7 @@ function AssistantEditor({
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted-foreground">{t('settings.assistant.autoCompact')}</label>
+        <label className="block text-xs text-muted">{t('settings.assistant.autoCompact')}</label>
         <label className="flex items-center gap-1.5 text-xs cursor-pointer">
           <Checkbox
             checked={autoCompactEnabled}
@@ -259,7 +259,7 @@ function AssistantEditor({
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted-foreground">{t('settings.assistant.thinking')}</label>
+        <label className="block text-xs text-muted">{t('settings.assistant.thinking')}</label>
         <div className="flex items-center gap-3">
           <label className="flex items-center gap-1.5 text-xs cursor-pointer">
             <Checkbox
@@ -277,13 +277,13 @@ function AssistantEditor({
               onChange={(e) => setThinkingBudget(e.target.value)}
               placeholder={t('settings.assistant.thinkingBudget')}
             />
-            <p className="text-xs text-muted-foreground/60">{t('settings.assistant.thinkingBudgetHint')}</p>
+            <p className="text-xs text-muted/60">{t('settings.assistant.thinkingBudgetHint')}</p>
           </div>
         )}
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted-foreground">{t('settings.assistant.tools')}</label>
+        <label className="block text-xs text-muted">{t('settings.assistant.tools')}</label>
         <div className="flex gap-2 mb-2">
           <Button
             variant={toolMode === 'all' ? 'default' : 'outline'}
@@ -331,7 +331,7 @@ function AssistantEditor({
                 />
                 <span className="font-mono truncate">{tool.name}</span>
                 {tool.source === 'mcp' && (
-                  <span className="text-muted-foreground/50 text-xs">MCP</span>
+                  <span className="text-muted/50 text-xs">MCP</span>
                 )}
               </label>
             ))}
@@ -341,7 +341,7 @@ function AssistantEditor({
 
       {allPacks.length > 0 && (
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.assistant.emojiPacks')}</label>
+          <label className="block text-xs text-muted">{t('settings.assistant.emojiPacks')}</label>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2 border border-border rounded-lg">
             {allPacks.map((pack) => (
               <label key={pack.id} className="flex items-center gap-1.5 text-xs cursor-pointer py-0.5">
@@ -370,8 +370,8 @@ function AssistantEditor({
 
       {allSkills.length > 0 && (
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.skills.assistantSection')}</label>
-          <p className="text-xs text-muted-foreground/60">{t('settings.skills.assistantHint')}</p>
+          <label className="block text-xs text-muted">{t('settings.skills.assistantSection')}</label>
+          <p className="text-xs text-muted/60">{t('settings.skills.assistantHint')}</p>
           <ScrollArea className="max-h-40 border border-border rounded-lg"><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
             {allSkills.map((skill) => (
               <label key={skill.dir_name} className="flex items-center gap-1.5 text-xs cursor-pointer py-0.5">
@@ -459,7 +459,7 @@ export function AssistantSettings() {
   )
 
   if (loading) {
-    return <div className="text-muted-foreground text-sm">{t('common.loading')}</div>
+    return <div className="text-muted text-sm">{t('common.loading')}</div>
   }
 
   return (
@@ -467,7 +467,7 @@ export function AssistantSettings() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-medium">{t('settings.assistant.title')}</h2>
-          <p className="text-xs text-muted-foreground mt-1">{t('settings.assistant.subtitle')}</p>
+          <p className="text-xs text-muted mt-1">{t('settings.assistant.subtitle')}</p>
         </div>
         <Button variant="outline" onClick={handleCreate}>
           <Plus className="w-3.5 h-3.5" />
@@ -489,18 +489,18 @@ export function AssistantSettings() {
                 className="w-full justify-start h-auto px-3 py-2.5 text-sm"
               >
                 {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                  <ChevronDown className="w-4 h-4 text-muted" />
                 ) : (
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                  <ChevronRight className="w-4 h-4 text-muted" />
                 )}
                 <span className="flex-1 truncate">{a.name}</span>
                 {/* eslint-disable-next-line no-restricted-syntax -- gold-star semantics: default-assistant marker is intentionally amber (CLAUDE.md whitelist) */}
                 {isDefault && <Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" />}
                 {providerName && (
-                  <span className="text-xs text-muted-foreground">{providerName}</span>
+                  <span className="text-xs text-muted">{providerName}</span>
                 )}
                 {a.model_id && (
-                  <span className="text-xs text-muted-foreground/60">{a.model_id}</span>
+                  <span className="text-xs text-muted/60">{a.model_id}</span>
                 )}
               </Button>
               {isExpanded && (
