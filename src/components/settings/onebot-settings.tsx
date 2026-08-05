@@ -238,7 +238,7 @@ export function OneBotSettings() {
       </div>
 
       {error && (
-        <p className="text-xs text-destructive break-all">{error}</p>
+        <p className="text-xs text-danger break-all">{error}</p>
       )}
 
       <div className="flex items-center gap-3 pt-2">

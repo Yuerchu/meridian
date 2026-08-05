@@ -57,7 +57,7 @@ function LogRowImpl({ entry }: { entry: LogEntry }) {
       data-slot="log-row"
       className={cn(
         'group grid grid-cols-[auto_1fr_auto] items-start gap-x-3 gap-y-1 border-b border-border px-3 py-2 last:border-b-0',
-        isError && 'bg-destructive/5',
+        isError && 'bg-danger/5',
       )}
     >
       <span data-slot="log-row-time" className="font-mono text-xs tabular-nums text-muted">

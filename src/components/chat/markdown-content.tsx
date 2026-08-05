@@ -51,7 +51,7 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
   }
 
   return (
-    <div className="group relative my-3 rounded-lg overflow-hidden bg-card border border-border">
+    <div className="group relative my-3 rounded-lg overflow-hidden bg-surface border border-border">
       <div className="flex items-center justify-between px-3 py-1.5 bg-default/50 text-xs text-muted">
         <span>{lang ?? 'code'}</span>
         <CopyButton text={code} />

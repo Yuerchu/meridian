@@ -95,7 +95,7 @@ function PackCard({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="absolute -top-1 -right-1 !size-4 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="absolute -top-1 -right-1 !size-4 rounded-full bg-danger text-danger-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={() => onDeleteEmoji(e.id)}
                   >
                     <Trash2 className="!size-2.5" />
@@ -113,7 +113,7 @@ function PackCard({
             {onDelete && detail.pack.is_builtin === 0 && (
               <Button
                 variant="ghost"
-                className="ml-auto text-destructive hover:text-destructive"
+                className="ml-auto text-danger hover:text-danger"
                 onClick={onDelete}
               >
                 <Trash2 className="w-3.5 h-3.5" />

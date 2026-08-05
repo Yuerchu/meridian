@@ -261,7 +261,7 @@ export function InputBar({
                       <AttachmentAction
                         aria-label={t('chat.removeAttachment', { name: f.name })}
                         onClick={() => onRemoveFile(i)}
-                        className="hover:text-destructive"
+                        className="hover:text-danger"
                       >
                         <XIcon />
                       </AttachmentAction>
@@ -364,7 +364,7 @@ export function InputBar({
                 {contextInfo && contextInfo.messageCount > 0 && (() => {
                   const ratio = contextInfo.estimatedTokens / contextInfo.contextLimit
                   const colorClass = ratio > 0.95
-                    ? 'text-destructive'
+                    ? 'text-danger'
                     : ratio > 0.8
                       ? 'text-warning'
                       : 'text-muted/60'

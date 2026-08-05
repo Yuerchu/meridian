@@ -253,7 +253,7 @@ function ModelConfigEditor({
       <div className="flex items-center gap-2 pt-1">
         <Button size="sm" className="h-7 text-xs" onClick={handleSave}>{t('common.save')}</Button>
         {onDelete && (
-          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={onDelete}>
+          <Button size="sm" variant="ghost" className="h-7 text-xs text-danger" onClick={onDelete}>
             {t('common.delete')}
           </Button>
         )}
@@ -502,7 +502,7 @@ function ProviderEditor({
           </Button>
         </div>
         {modelsError && (
-          <p className="text-xs text-destructive break-all">{modelsError}</p>
+          <p className="text-xs text-danger break-all">{modelsError}</p>
         )}
         {models.length > 0 && (
           <ScrollArea className="h-60 border border-border rounded-lg">
@@ -547,7 +547,7 @@ function ProviderEditor({
       <div className="border-t border-border pt-4">
         <Button
           variant="ghost"
-          className="text-destructive hover:text-destructive"
+          className="text-danger hover:text-danger"
           onClick={handleDelete}
           disabled={deleting}
         >

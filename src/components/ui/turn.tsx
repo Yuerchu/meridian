@@ -58,7 +58,7 @@ function TurnTrigger({ className, children, endContent, ...props }: TurnTriggerP
     <Collapsible.Trigger
       data-slot="turn-trigger"
       className={cn(
-        "group/turn-trigger flex w-full items-center gap-1.5 rounded-md py-1 text-left text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+        "group/turn-trigger flex w-full items-center gap-1.5 rounded-md py-1 text-left text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50",
         className
       )}
       {...props}
@@ -198,7 +198,7 @@ function TurnBranchPager({
         aria-label={previousLabel}
         disabled={isDisabled || index <= 1}
         onClick={onPrevious}
-        className="rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
+        className="rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50 disabled:pointer-events-none disabled:opacity-40"
       >
         <ChevronLeftIcon aria-hidden className="size-3.5" />
       </button>
@@ -211,7 +211,7 @@ function TurnBranchPager({
         aria-label={nextLabel}
         disabled={isDisabled || index >= total}
         onClick={onNext}
-        className="rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
+        className="rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50 disabled:pointer-events-none disabled:opacity-40"
       >
         <ChevronRightIcon aria-hidden className="size-3.5" />
       </button>

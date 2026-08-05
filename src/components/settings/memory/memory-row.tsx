@@ -110,7 +110,7 @@ export function MemoryRow({
               }}
               data-slot="memory-row-delete"
             >
-              <Trash2 className="text-destructive" />
+              <Trash2 className="text-danger" />
             </Button>
           </div>
         </div>

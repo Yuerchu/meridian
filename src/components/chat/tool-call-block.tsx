@@ -230,7 +230,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   )
 
   return (
-    <div className="my-3 border border-border rounded-xl bg-card/30 overflow-hidden text-xs">
+    <div className="my-3 border border-border rounded-xl bg-surface/30 overflow-hidden text-xs">
       <div className="flex items-center gap-2 px-3 py-2 bg-default/30">
         <MessageCircleQuestion className="w-3.5 h-3.5 text-muted" />
         <span className="font-medium text-foreground">{t('chat.tool.askUser')}</span>
@@ -483,7 +483,7 @@ function diffLineClass(kind: DiffLineKind, highlighted: boolean): string {
     case 'add':
       return highlighted ? 'bg-success/10 text-foreground/80' : 'bg-success/10 text-success'
     case 'remove':
-      return highlighted ? 'bg-destructive/10 text-foreground/80' : 'bg-destructive/10 text-destructive'
+      return highlighted ? 'bg-danger/10 text-foreground/80' : 'bg-danger/10 text-danger'
     case 'hunk':
       return 'text-muted/60'
     default:
@@ -493,7 +493,7 @@ function diffLineClass(kind: DiffLineKind, highlighted: boolean): string {
 
 function diffSignClass(kind: DiffLineKind): string | undefined {
   if (kind === 'add') return 'text-success'
-  if (kind === 'remove') return 'text-destructive'
+  if (kind === 'remove') return 'text-danger'
   return undefined
 }
 
@@ -568,13 +568,13 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
           <FileIcon path={diff.path} />
           <span className="font-mono truncate" title={diff.path}>{fileName}</span>
           {diff.op === 'create' && <span className="text-success shrink-0">{t('chat.tool.diff.newFile')}</span>}
-          {diff.op === 'delete' && <span className="text-destructive shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
+          {diff.op === 'delete' && <span className="text-danger shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
           {diff.replaceAll && <span className="shrink-0">{t('chat.tool.diff.replaceAll')}</span>}
           {(added > 0 || removed > 0) && (
             <span data-slot="file-diff-stats" className="ml-auto shrink-0 font-mono">
               {added > 0 && <span className="text-success">+{added}</span>}
               {added > 0 && removed > 0 && ' '}
-              {removed > 0 && <span className="text-destructive">-{removed}</span>}
+              {removed > 0 && <span className="text-danger">-{removed}</span>}
             </span>
           )}
         </div>
@@ -770,7 +770,7 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
         <ChatToolApproval>
           <Button
             variant="outline"
-            className="text-destructive hover:text-destructive"
+            className="text-danger hover:text-danger"
             onClick={() => setShowFeedback(true)}
           >
             <X className="w-3 h-3" />
@@ -802,7 +802,7 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
         </Button>
         <Button
           variant="outline"
-          className="text-destructive hover:text-destructive"
+          className="text-danger hover:text-danger"
           onClick={() => api.denyToolCall(callId, feedback || undefined)}
         >
           <X className="w-3 h-3" />
@@ -874,7 +874,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
     return (
       <div className="my-2 flex items-center gap-2 text-xs text-muted">
         <Globe className="w-3.5 h-3.5" />
-        <X className="w-3 h-3 text-destructive" />
+        <X className="w-3 h-3 text-danger" />
       </div>
     )
   }
@@ -882,8 +882,8 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   if (data.status === 'error' || sources === null) {
     return (
       <div className="my-2 flex items-center gap-2 text-xs">
-        <Globe className="w-3.5 h-3.5 text-destructive shrink-0" />
-        <span className="text-destructive">{t('chat.tool.webSearch.failed')}</span>
+        <Globe className="w-3.5 h-3.5 text-danger shrink-0" />
+        <span className="text-danger">{t('chat.tool.webSearch.failed')}</span>
         {data.result && (
           <span className="text-muted truncate max-w-80" title={data.result}>
             {data.result.length > 200 ? `${data.result.slice(0, 200)}...` : data.result}
@@ -975,7 +975,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
       data-slot="enter-plan"
       data-status={data.status}
       className={cn(
-        'my-3 overflow-hidden rounded-xl border bg-card/30 text-xs',
+        'my-3 overflow-hidden rounded-xl border bg-surface/30 text-xs',
         declined ? 'border-border' : 'border-info/40',
       )}
     >
@@ -1047,7 +1047,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       data-slot="exit-plan"
       data-status={data.status}
       className={cn(
-        'my-3 overflow-hidden rounded-xl border bg-card/30 text-xs',
+        'my-3 overflow-hidden rounded-xl border bg-surface/30 text-xs',
         wasRejected ? 'border-border' : 'border-info/40',
       )}
     >

@@ -429,7 +429,7 @@ export function AppSidebar({
               {t('common.cancel')}
             </AlertDialogClose>
             <AlertDialogClose
-              className="bg-destructive text-white hover:bg-destructive/80"
+              className="bg-danger text-white hover:bg-danger/80"
               onClick={() => {
                 if (deleteTarget?.type === 'conversation') onDelete(deleteTarget.id)
                 else if (deleteTarget?.type === 'project') onDeleteProject(deleteTarget.id)

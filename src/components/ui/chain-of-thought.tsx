@@ -28,7 +28,7 @@ function ChainOfThoughtTrigger({ className, children, ...props }: Collapsible.Tr
     <Collapsible.Trigger
       data-slot="chain-of-thought-trigger"
       className={cn(
-        "group/cot-trigger flex items-center gap-1 rounded-md text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+        "group/cot-trigger flex items-center gap-1 rounded-md text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50",
         className
       )}
       {...props}

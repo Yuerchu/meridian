@@ -148,7 +148,7 @@ export function ScopeNav({
             className="w-full justify-start font-normal"
             onClick={() => setConfirmForget(true)}
           >
-            <UserX className="text-destructive" />
+            <UserX className="text-danger" />
             {t('settings.memory.person.forget')}
           </Button>
           <AlertDialog
@@ -167,7 +167,7 @@ export function ScopeNav({
                   {t('common.cancel')}
                 </AlertDialogClose>
                 <AlertDialogClose
-                  className="bg-destructive text-white hover:bg-destructive/80"
+                  className="bg-danger text-white hover:bg-danger/80"
                   onClick={async () => {
                     await api.forgetMemorySubject(selectedPerson.scope_id)
                     onChanged()

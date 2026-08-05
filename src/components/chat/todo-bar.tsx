@@ -28,7 +28,7 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
       <div className="mx-auto max-w-2xl">
         <Collapsible.Root
           data-slot="todo-bar"
-          className="w-full overflow-hidden rounded-xl border border-border bg-card/30 text-xs"
+          className="w-full overflow-hidden rounded-xl border border-border bg-surface/30 text-xs"
         >
           <Collapsible.Trigger
             data-slot="todo-bar-trigger"

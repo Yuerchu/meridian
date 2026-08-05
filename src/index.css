@@ -113,23 +113,6 @@
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
-  /*
-   * Migration shims. Each is a shadcn name still standing because the class
-   * names that use it have not been rewritten yet; every one of these goes away
-   * with the batch that renames its call sites. `--muted` is absent on purpose
-   * — its meaning inverted, so it could not be shimmed and was rewritten first.
-   */
-  --card: var(--surface);
-  --card-foreground: var(--surface-foreground);
-  --popover: var(--overlay);
-  --popover-foreground: var(--overlay-foreground);
-  --primary: var(--accent);
-  --primary-foreground: var(--accent-foreground);
-  --secondary: var(--default);
-  --secondary-foreground: var(--default-foreground);
-  --destructive: var(--danger);
-  --input: var(--field-border);
-  --ring: var(--focus);
 }
 
 .dark {

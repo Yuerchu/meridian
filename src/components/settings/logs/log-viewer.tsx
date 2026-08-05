@@ -108,7 +108,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
               {t('settings.about.logs.unavailable')}
             </p>
           ) : logs.error ? (
-            <p className="p-6 text-sm text-destructive">{t('settings.about.logs.loadError')}</p>
+            <p className="p-6 text-sm text-danger">{t('settings.about.logs.loadError')}</p>
           ) : logs.loading ? (
             <div className="space-y-3 p-3">
               {Array.from({ length: 5 }, (_, i) => (

@@ -92,7 +92,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                   }}
                   data-slot="memory-trash-purge"
                 >
-                  <Trash2 className="text-destructive" />
+                  <Trash2 className="text-danger" />
                 </Button>
               </div>
               <p className="whitespace-pre-wrap text-sm text-muted">{m.content}</p>

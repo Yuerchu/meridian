@@ -95,7 +95,7 @@ function SkillEditor({
             {t('settings.skills.dirNameHint')}
           </p>
           {dirName.trim().length > 0 && !dirNameValid && (
-            <p data-slot="skill-editor-error" className="text-xs text-destructive">
+            <p data-slot="skill-editor-error" className="text-xs text-danger">
               {t('settings.skills.dirNameInvalid')}
             </p>
           )}
@@ -158,7 +158,7 @@ function SkillEditor({
       )}
 
       {error && (
-        <p data-slot="skill-editor-error" className="text-xs text-destructive">{error}</p>
+        <p data-slot="skill-editor-error" className="text-xs text-danger">{error}</p>
       )}
 
       <div data-slot="skill-editor-actions" className="flex items-center gap-2">
@@ -171,7 +171,7 @@ function SkillEditor({
           </span>
         )}
         {onDelete && !isBuiltin && (
-          <Button variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={onDelete}>
+          <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
         )}
@@ -269,7 +269,7 @@ export function SkillSettings() {
       </div>
 
       {error && (
-        <p data-slot="skill-settings-error" className="text-xs text-destructive">{error}</p>
+        <p data-slot="skill-settings-error" className="text-xs text-danger">{error}</p>
       )}
 
       {showCreate && (

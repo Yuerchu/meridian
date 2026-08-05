@@ -394,7 +394,7 @@ function AssistantEditor({
               </label>
             ))}
           </div></ScrollArea>
-          {skillError && <p className="text-xs text-destructive">{skillError}</p>}
+          {skillError && <p className="text-xs text-danger">{skillError}</p>}
         </div>
       )}
 
@@ -406,7 +406,7 @@ function AssistantEditor({
           </span>
         )}
         {onDelete && (
-          <Button variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={() => onDelete(assistant.id)}>
+          <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={() => onDelete(assistant.id)}>
             {t('common.delete')}
           </Button>
         )}

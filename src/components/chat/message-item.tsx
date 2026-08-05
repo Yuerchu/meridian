@@ -161,7 +161,7 @@ function parseOneBotContent(content: string): ParsedOneBotContent {
 
 function QuotedMessageBlock({ sender, content }: { sender: string; content: string }) {
   return (
-    <div className="mb-2 pl-3 border-l-2 border-primary-foreground/30 text-xs text-primary-foreground/70">
+    <div className="mb-2 pl-3 border-l-2 border-accent-foreground/30 text-xs text-accent-foreground/70">
       <span className="font-medium">{sender}</span>
       <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap">{content}</p>
     </div>
@@ -487,7 +487,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     <ActionButton
                       label="Enter"
                       onClick={handleSaveEdit}
-                      className="text-primary"
+                      className="text-accent"
                     >
                       <Check className="w-3.5 h-3.5" />
                     </ActionButton>
@@ -526,7 +526,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     <ActionButton
                       label={t('chat.delete')}
                       onClick={() => setShowDeleteConfirm(true)}
-                      className="text-muted hover:text-destructive"
+                      className="text-muted hover:text-danger"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </ActionButton>
@@ -580,7 +580,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                   {t('common.cancel')}
                 </AlertDialogClose>
                 <AlertDialogClose
-                  className="bg-destructive text-white hover:bg-destructive/80"
+                  className="bg-danger text-white hover:bg-danger/80"
                   onClick={() => onDelete(message.id)}
                 >
                   {t('common.confirm')}
@@ -642,7 +642,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     label={t('chat.thumbsDown')}
                     onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}
                     className={cn(
-                      message.rating === -1 ? 'text-destructive' : 'text-muted hover:text-foreground',
+                      message.rating === -1 ? 'text-danger' : 'text-muted hover:text-foreground',
                     )}
                   >
                     <ThumbsDown className="w-3.5 h-3.5" />
@@ -662,7 +662,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                 <ActionButton
                   label={t('chat.delete')}
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="text-muted hover:text-destructive"
+                  className="text-muted hover:text-danger"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </ActionButton>
@@ -693,7 +693,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
               {t('chat.thumbsUp')}
             </ContextMenuItem>
             <ContextMenuItem onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}>
-              <ThumbsDown className={message.rating === -1 ? 'text-destructive' : ''} />
+              <ThumbsDown className={message.rating === -1 ? 'text-danger' : ''} />
               {t('chat.thumbsDown')}
             </ContextMenuItem>
           </>
@@ -728,7 +728,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                 {t('common.cancel')}
               </AlertDialogClose>
               <AlertDialogClose
-                className="bg-destructive text-white hover:bg-destructive/80"
+                className="bg-danger text-white hover:bg-danger/80"
                 onClick={() => onDelete(message.id)}
               >
                 {t('common.confirm')}

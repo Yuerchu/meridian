@@ -7,7 +7,7 @@ const levelBadgeVariants = cva(
   {
     variants: {
       level: {
-        error: 'text-destructive',
+        error: 'text-danger',
         warn: 'text-warning',
         info: 'text-info',
         muted: 'text-muted',
@@ -20,7 +20,7 @@ const levelBadgeVariants = cva(
 const dotVariants = cva('size-1.5 shrink-0 rounded-full', {
   variants: {
     level: {
-      error: 'bg-destructive',
+      error: 'bg-danger',
       warn: 'bg-warning',
       info: 'bg-info',
       muted: 'bg-muted',

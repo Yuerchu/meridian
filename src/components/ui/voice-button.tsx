@@ -42,7 +42,7 @@ export function VoiceButton({
   return (
     <div data-slot="voice-button" className="flex items-center gap-1.5">
       {recording && (
-        <span className="text-xs tabular-nums text-destructive select-none">
+        <span className="text-xs tabular-nums text-danger select-none">
           {Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}
         </span>
       )}
@@ -52,7 +52,7 @@ export function VoiceButton({
         disabled={disabled || state === 'transcribing'}
         className={cn(
           'touch-hitbox touch-none select-none',
-          recording && 'text-destructive hover:text-destructive animate-pulse',
+          recording && 'text-danger hover:text-danger animate-pulse',
           state === 'starting' && 'text-muted/40',
           state !== 'starting' && !recording && 'text-muted hover:text-foreground',
         )}

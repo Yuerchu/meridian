@@ -67,7 +67,7 @@ function JsonImportDialog({
         onChange={(e) => { setText(e.target.value); setError(false) }}
       />
       {error && (
-        <p className="text-sm text-destructive">{t('settings.mcp.importJsonError')}</p>
+        <p className="text-sm text-danger">{t('settings.mcp.importJsonError')}</p>
       )}
       <div className="flex gap-2">
         <Button onClick={handleSubmit}>{t('settings.mcp.importJsonSubmit')}</Button>
@@ -245,7 +245,7 @@ function McpServerEditor({
       </div>
 
       {error && (
-        <div className="p-2 bg-destructive/10 border border-destructive/30 rounded text-sm text-destructive break-all">
+        <div className="p-2 bg-danger/10 border border-danger/30 rounded text-sm text-danger break-all">
           {error}
         </div>
       )}

@@ -103,7 +103,7 @@ function CustomToolEditor({
           </span>
         )}
         {onDelete && (
-          <Button variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={onDelete}>
+          <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
             <Trash2 className="w-3.5 h-3.5" />
           </Button>
         )}

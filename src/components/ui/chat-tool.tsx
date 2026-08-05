@@ -25,14 +25,14 @@ type ChatToolState =
 const ChatToolStateContext = React.createContext<ChatToolState>("input-available")
 
 const chatToolVariants = cva(
-  "flex w-full flex-col overflow-hidden rounded-xl border bg-card/30 text-xs",
+  "flex w-full flex-col overflow-hidden rounded-xl border bg-surface/30 text-xs",
   {
     variants: {
       state: {
         "input-streaming": "border-border",
         "input-available": "border-border",
         "output-available": "border-border",
-        "output-error": "border-destructive/40",
+        "output-error": "border-danger/40",
         "requires-action": "border-warning/40",
       },
     },
@@ -115,7 +115,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
       return (
         <CircleXIcon
           aria-hidden
-          className={cn("size-3.5 shrink-0 text-destructive", className)}
+          className={cn("size-3.5 shrink-0 text-danger", className)}
         />
       )
     case "requires-action":
@@ -196,7 +196,7 @@ function ChatToolError({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="chat-tool-error"
-      className={cn("px-0.5 whitespace-pre-wrap text-destructive", className)}
+      className={cn("px-0.5 whitespace-pre-wrap text-danger", className)}
       {...props}
     />
   )
@@ -217,7 +217,7 @@ function ChatToolGroup({ className, ...props }: Collapsible.Root.Props) {
     <Collapsible.Root
       data-slot="chat-tool-group"
       className={cn(
-        "flex w-full flex-col overflow-hidden rounded-xl border border-border bg-card/30 text-xs",
+        "flex w-full flex-col overflow-hidden rounded-xl border border-border bg-surface/30 text-xs",
         className
       )}
       {...props}

@@ -67,7 +67,7 @@ function TemplateCard({
             {onDelete && template.is_builtin === 0 && (
               <Button
                 variant="ghost"
-                className="ml-auto text-destructive hover:text-destructive"
+                className="ml-auto text-danger hover:text-danger"
                 onClick={() => onDelete(template.id)}
               >
                 <Trash2 className="w-3.5 h-3.5" />

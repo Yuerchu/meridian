@@ -202,7 +202,7 @@ export function MemorySettings() {
                 {t('settings.memory.clearSelection')}
               </Button>
               <Button variant="ghost" onClick={() => setConfirmBulk(true)}>
-                <Trash className="text-destructive" />
+                <Trash className="text-danger" />
                 {t('settings.memory.deleteSelected')}
               </Button>
               <AlertDialog
@@ -219,7 +219,7 @@ export function MemorySettings() {
                       {t('common.cancel')}
                     </AlertDialogClose>
                     <AlertDialogClose
-                      className="bg-destructive text-white hover:bg-destructive/80"
+                      className="bg-danger text-white hover:bg-danger/80"
                       onClick={async () => {
                         await api.deleteMemories([...browser.selected])
                         browser.clearSelection()
