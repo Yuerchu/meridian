@@ -3,8 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Trash2 } from 'lucide-react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Input } from '@heroui/react'
+import { Input, ListBox, Select } from '@heroui/react'
 import { Button } from '@/components/ui/button'
 import { CircularProgress } from '@/components/ui/circular-progress'
 import { api } from '@/api'
@@ -193,17 +192,21 @@ export function VoiceSettings() {
         <label className="block text-xs font-medium text-muted">
           {t('settings.voice.filterLevel')}
         </label>
-        <Select value={filterLevel} onValueChange={(v) => v && handleFilterChange(v)} items={filterOptions}>
-          <SelectTrigger className="w-full max-w-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {filterOptions.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
+        <Select fullWidth value={filterLevel} onChange={(v) => v && handleFilterChange(String(v))}>
+          <Select.Trigger className="max-w-xs">
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {filterOptions.map((o) => (
+                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                  {o.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
         <p className="text-xs text-muted">{t('settings.voice.filterHint')}</p>
       </div>

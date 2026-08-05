@@ -2,10 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ChevronDown, ChevronRight, Star, Check, BookTemplate } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@heroui/react'
-import { TextArea } from '@heroui/react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Checkbox } from '@heroui/react'
+import { Checkbox, Input, ListBox, Select, TextArea } from '@heroui/react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { api } from '@/api'
@@ -183,36 +180,49 @@ function AssistantEditor({
         <div className="space-y-1.5">
           <label className="block text-xs text-muted">{t('settings.assistant.provider')}</label>
           <Select
+            fullWidth
             value={providerId || '_default'}
-            onValueChange={(v) => { setProviderId(!v || v === '_default' ? '' : v); setModelId('') }}
-            items={providerOptions}
+            onChange={(v) => { setProviderId(!v || v === '_default' ? '' : String(v)); setModelId('') }}
           >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {providerOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {providerOptions.map((o) => (
+                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                    {o.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         </div>
         <div className="space-y-1.5">
           <label className="block text-xs text-muted">{t('settings.assistant.model')}</label>
           {models.length > 0 ? (
             <Select
+              fullWidth
               value={modelId || '_none'}
-              onValueChange={(v) => setModelId(!v || v === '_none' ? '' : v)}
-              items={modelOptions}
+              onChange={(v) => setModelId(!v || v === '_none' ? '' : String(v))}
+              placeholder={t('settings.assistant.selectModel')}
             >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('settings.assistant.selectModel')} />
-              </SelectTrigger>
-              <SelectContent>
-                {modelOptions.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
+              <Select.Trigger>
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  {modelOptions.map((o) => (
+                    <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                      {o.label}
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Select.Popover>
             </Select>
           ) : (
             <Input fullWidth
@@ -304,18 +314,24 @@ function AssistantEditor({
         </div>
         {toolMode === 'preset' && (
           <Select
+            fullWidth
             value={selectedPresetId || '_none'}
-            onValueChange={(v) => { if (v) setSelectedPresetId(v === '_none' ? '' : v) }}
-            items={presetOptions}
+            onChange={(v) => { if (v) setSelectedPresetId(v === '_none' ? '' : String(v)) }}
           >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {presetOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {presetOptions.map((o) => (
+                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                    {o.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         )}
         {toolMode === 'custom' && (

@@ -6,9 +6,7 @@ import { api } from '@/api'
 import { Button } from '@/components/ui/button'
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Skeleton } from '@heroui/react'
-import { Spinner } from '@heroui/react'
+import { ListBox, Select, Skeleton, Spinner } from '@heroui/react'
 import { LogRow } from './log-row'
 import { MAX_RENDERED, useAppLogs, type LevelFilter, type RangeFilter } from './use-app-logs'
 
@@ -55,15 +53,27 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
       <p className="text-xs text-muted">{t('settings.about.logs.exportHint')}</p>
 
       <div data-slot="log-toolbar" className="flex flex-wrap items-center gap-2">
-        <Select value={logs.level} onValueChange={(v) => logs.setLevel(v as LevelFilter)}>
-          <SelectTrigger className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('settings.about.logs.levelAll')}</SelectItem>
-            <SelectItem value="warn">{t('settings.about.logs.levelWarn')}</SelectItem>
-            <SelectItem value="error">{t('settings.about.logs.levelError')}</SelectItem>
-          </SelectContent>
+        <Select value={logs.level} onChange={(v) => logs.setLevel(String(v) as LevelFilter)}>
+          <Select.Trigger className="w-44">
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              <ListBox.Item id="all" textValue={t('settings.about.logs.levelAll')}>
+                {t('settings.about.logs.levelAll')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="warn" textValue={t('settings.about.logs.levelWarn')}>
+                {t('settings.about.logs.levelWarn')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="error" textValue={t('settings.about.logs.levelError')}>
+                {t('settings.about.logs.levelError')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+            </ListBox>
+          </Select.Popover>
         </Select>
 
         <InputGroup className="max-w-xs flex-1">
@@ -77,16 +87,31 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           />
         </InputGroup>
 
-        <Select value={logs.range} onValueChange={(v) => logs.setRange(v as RangeFilter)}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="15m">{t('settings.about.logs.range15m')}</SelectItem>
-            <SelectItem value="1h">{t('settings.about.logs.range1h')}</SelectItem>
-            <SelectItem value="24h">{t('settings.about.logs.range24h')}</SelectItem>
-            <SelectItem value="all">{t('settings.about.logs.rangeAll')}</SelectItem>
-          </SelectContent>
+        <Select value={logs.range} onChange={(v) => logs.setRange(String(v) as RangeFilter)}>
+          <Select.Trigger className="w-40">
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              <ListBox.Item id="15m" textValue={t('settings.about.logs.range15m')}>
+                {t('settings.about.logs.range15m')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="1h" textValue={t('settings.about.logs.range1h')}>
+                {t('settings.about.logs.range1h')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="24h" textValue={t('settings.about.logs.range24h')}>
+                {t('settings.about.logs.range24h')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="all" textValue={t('settings.about.logs.rangeAll')}>
+                {t('settings.about.logs.rangeAll')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+            </ListBox>
+          </Select.Popover>
         </Select>
 
         {logs.entries.length > 0 && (

@@ -2,9 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
-import { Input } from '@heroui/react'
-import { Checkbox } from '@heroui/react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Checkbox, Input, ListBox, Select } from '@heroui/react'
 import type { Assistant } from '@/types'
 
 interface OneBotConfig {
@@ -199,18 +197,24 @@ export function OneBotSettings() {
           {t('settings.onebot.assistant')}
         </label>
         <Select
+          fullWidth
           value={config.assistant_id ?? '_default'}
-          onValueChange={(v) => setConfig({ ...config, assistant_id: v === '_default' ? null : v })}
-          items={assistantOptions}
+          onChange={(v) => setConfig({ ...config, assistant_id: v === '_default' ? null : String(v) })}
         >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {assistantOptions.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
+          <Select.Trigger>
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {assistantOptions.map((o) => (
+                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                  {o.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
         <p className="text-xs text-muted">
           {t('settings.onebot.assistantHint')}

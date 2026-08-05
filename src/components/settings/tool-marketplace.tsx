@@ -2,8 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2, ChevronDown, ChevronRight, Wrench, Terminal, Check } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@heroui/react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input, ListBox, Select } from '@heroui/react'
 import { api } from '@/api'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
 
@@ -66,13 +65,21 @@ function CustomToolEditor({
         </div>
         <div className="space-y-1">
           <label className="text-xs text-muted">{t('settings.tools.permission')}</label>
-          <Select value={permission} onValueChange={(v) => { if (v) setPermission(v) }} items={permissionOptions}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {permissionOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
+          <Select value={permission} onChange={(v) => { if (v) setPermission(String(v)) }}>
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {permissionOptions.map((o) => (
+                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                    {o.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         </div>
       </div>

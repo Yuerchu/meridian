@@ -3,15 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash, X, Check } from 'lucide-react'
 import { api } from '@/api'
 import { Button } from '@/components/ui/button'
-import { Input } from '@heroui/react'
-import { TextArea } from '@heroui/react'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { Input, ListBox, Select, TextArea } from '@heroui/react'
 import {
   AlertDialog,
   AlertDialogClose,
@@ -110,17 +102,22 @@ export function MemorySettings() {
             />
             <Select
               value={browser.originFilter}
-              onValueChange={(v) => { if (v) browser.setOriginFilter(v) }}
-              items={originOptions}
+              onChange={(v) => { if (v) browser.setOriginFilter(String(v)) }}
             >
-              <SelectTrigger className="w-auto">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {originOptions.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
+              <Select.Trigger className="w-auto">
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  {originOptions.map((o) => (
+                    <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                      {o.label}
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Select.Popover>
             </Select>
           </div>
 
@@ -143,17 +140,22 @@ export function MemorySettings() {
               <div className="flex items-center gap-2">
                 <Select
                   value={newType}
-                  onValueChange={(v) => { if (v) setNewType(v) }}
-                  items={typeOptions}
+                  onChange={(v) => { if (v) setNewType(String(v)) }}
                 >
-                  <SelectTrigger className="w-auto">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {typeOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                    ))}
-                  </SelectContent>
+                  <Select.Trigger className="w-auto">
+                    <Select.Value />
+                    <Select.Indicator />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      {typeOptions.map((o) => (
+                        <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                          {o.label}
+                          <ListBox.ItemIndicator />
+                        </ListBox.Item>
+                      ))}
+                    </ListBox>
+                  </Select.Popover>
                 </Select>
                 <div className="flex-1" />
                 <Button variant="ghost" size="icon" onClick={() => setShowAdd(false)}>

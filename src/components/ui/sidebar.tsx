@@ -8,10 +8,8 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Input } from '@heroui/react';
-import { Separator } from '@heroui/react'
+import { Input, Separator, Skeleton } from '@heroui/react'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { Skeleton } from '@heroui/react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { PanelLeftIcon } from 'lucide-react';
 

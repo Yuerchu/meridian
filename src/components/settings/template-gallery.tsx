@@ -2,9 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ChevronDown, ChevronRight, BookTemplate, Sparkles, Code, Trash2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Input } from '@heroui/react'
-import { TextArea } from '@heroui/react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input, ListBox, Select, TextArea } from '@heroui/react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/api'
 import type { PromptTemplate, TemplateVariable } from '@/types'
@@ -112,15 +110,21 @@ function TemplateCreator({
           onChange={(e) => setName(e.target.value)}
           placeholder={t('settings.template.name')}
         />
-        <Select value={category} onValueChange={(v) => { if (v) setCategory(v) }} items={categoryOptions}>
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {categoryOptions.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
+        <Select value={category} onChange={(v) => { if (v) setCategory(String(v)) }}>
+          <Select.Trigger>
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {categoryOptions.map((o) => (
+                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                  {o.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </div>
       <TextArea fullWidth

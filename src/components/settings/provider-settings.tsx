@@ -3,9 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Check, ChevronDown, ChevronRight, RefreshCw, Trash2, Cloud, Key, ArrowLeft, Settings2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Input } from '@heroui/react'
-import { Spinner } from '@heroui/react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Input, ListBox, Select, Spinner } from '@heroui/react'
 import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -61,15 +59,21 @@ function CapabilityTriRow({
   return (
     <div data-slot="capability-tri-row" className="flex items-center justify-between gap-2">
       <label className="text-xs text-muted">{label}</label>
-      <Select value={value} onValueChange={(v) => v && onChange(v as Tri)}>
-        <SelectTrigger className="h-7 w-32 text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((o) => (
-            <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
-          ))}
-        </SelectContent>
+      <Select value={value} onChange={(v) => v && onChange(String(v) as Tri)}>
+        <Select.Trigger className="h-7 w-32 text-xs">
+          <Select.Value />
+          <Select.Indicator />
+        </Select.Trigger>
+        <Select.Popover>
+          <ListBox>
+            {options.map((o) => (
+              <ListBox.Item key={o.value} id={o.value} textValue={o.label} className="text-xs">
+                {o.label}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+            ))}
+          </ListBox>
+        </Select.Popover>
       </Select>
     </div>
   )
@@ -403,15 +407,21 @@ function ProviderEditor({
 
       <div className="space-y-1.5">
         <label className="block text-xs text-muted">{t('settings.provider.type')}</label>
-        <Select value={providerType} onValueChange={(v) => v && setProviderType(v)} items={typeOptions}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {typeOptions.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
+        <Select fullWidth value={providerType} onChange={(v) => v && setProviderType(String(v))}>
+          <Select.Trigger>
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {typeOptions.map((o) => (
+                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                  {o.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </div>
 
@@ -427,15 +437,21 @@ function ProviderEditor({
       {providerType !== 'anthropic' && (
         <div className="space-y-1.5">
           <label className="block text-xs text-muted">{t('settings.provider.apiFormat')}</label>
-          <Select value={apiFormat} onValueChange={(v) => v && setApiFormat(v)} items={formatOptions}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {formatOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
+          <Select fullWidth value={apiFormat} onChange={(v) => v && setApiFormat(String(v))}>
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {formatOptions.map((o) => (
+                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                    {o.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         </div>
       )}
