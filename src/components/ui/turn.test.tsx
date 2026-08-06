@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Turn, TurnBranchPager, TurnContent, TurnTrigger } from './turn'
+import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 
 describe('TurnBranchPager', () => {
   it('renders nothing when there is only one version', () => {
@@ -50,7 +51,7 @@ describe('TurnBranchPager', () => {
 })
 
 describe('Turn', () => {
-  it('reports its collapsed state on the trigger', async () => {
+  it('keeps the process out of sight until the trigger is used', async () => {
     render(
       <Turn status="complete">
         <TurnTrigger>Worked for 9m 46s</TurnTrigger>
@@ -58,11 +59,15 @@ describe('Turn', () => {
       </Turn>,
     )
 
+    // `aria-expanded` on its own proves nothing: the panel renders its children
+    // either way, so the state has to be read off the panel as well.
     const trigger = screen.getByRole('button', { name: /Worked for/ })
-    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    expectCollapsed(trigger)
+    expect(screen.getByText('process')).not.toBeVisible()
 
     await userEvent.click(trigger)
-    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    expectExpanded(trigger)
+    expect(screen.getByText('process')).toBeVisible()
   })
 
   it('exposes the status for styling hooks', () => {

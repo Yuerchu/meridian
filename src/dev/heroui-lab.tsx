@@ -1,19 +1,21 @@
-// Dev-only probe for the HeroUI v3 migration. Reachable at #playground/heroui.
+// Dev-only probe for HeroUI under WebView2. Reachable at #playground/heroui.
 //
-// The question this exists to answer is not "does HeroUI work" — it does, in a
-// browser, in someone else's production app. It is whether WebView2 renders it,
-// which no amount of reading can settle: this project has already had WebView2
+// It was built to decide whether WebView2 renders HeroUI at all, because no
+// amount of reading could settle it: this project had already had WebView2
 // crash on `content-visibility` and misplace content under `contain`, both of
-// which Chromium was perfectly happy with. HeroUI leans on `oklch`,
-// `color-mix()`, `:has()`, `@property` and view transitions, so the same class
-// of surprise is available to it.
+// which Chromium was perfectly happy with. The answer came back yes, and the
+// migration went on to build on it — every wrapper component is HeroUI now.
 //
-// Open it under `pnpm tauri dev`, not in a browser — a browser answers a
-// question nobody asked.
+// What it still earns its keep for is the next WebView2 update: HeroUI leans on
+// `oklch`, `color-mix()`, `:has()`, `@property` and view transitions, and this
+// is where a regression in any of them shows up as something other than a
+// puzzling screenshot.
+//
+// Read it under `pnpm tauri dev`. A browser only reports on Chromium, which was
+// never the doubtful side.
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import {
-  Button,
   Button as HButton,
   Checkbox as HCheckbox,
   Disclosure as HDisclosure,
@@ -27,7 +29,6 @@ import {
   TextArea as HTextArea,
   Tooltip as HTooltip,
 } from '@heroui/react'
-import '@heroui/react/styles'
 
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 
@@ -152,7 +153,7 @@ export default function HeroUiLab() {
 
         <Section title="探测结果" hint="复制这段发回给我">
           <div className="flex gap-2">
-            <Button
+            <HButton
               size="sm"
               onClick={() => {
                 setReport(collect())
@@ -163,7 +164,7 @@ export default function HeroUiLab() {
               }}
             >
               {copied ? '已复制' : '重新采集并复制'}
-            </Button>
+            </HButton>
           </div>
           <pre className="max-h-96 overflow-auto rounded-lg border bg-default/30 p-3 font-mono text-xs whitespace-pre-wrap select-all">
             {asText}
@@ -226,9 +227,7 @@ export default function HeroUiLab() {
 
             <div className="flex flex-wrap items-center gap-3">
               <HTooltip delay={0}>
-                <HTooltip.Trigger>
-                  <HButton variant="secondary">悬停看 Tooltip</HButton>
-                </HTooltip.Trigger>
+                <HButton variant="secondary">悬停看 Tooltip</HButton>
                 <HTooltip.Content>浮层定位对不对</HTooltip.Content>
               </HTooltip>
 
@@ -288,19 +287,18 @@ export default function HeroUiLab() {
           </div>
         </Section>
 
-        <Section title="现有组件对照" hint="HeroUI 的样式表有没有污染它们">
+        {/* 这里原本是「现有组件对照」：一排 Meridian 的 Button 挨着上面 HeroUI 的
+            Button，用来看 HeroUI 的样式表有没有污染我们的包装。包装已经全部删掉，
+            两边的 Button 是同一个组件，那个对照也就照不出任何东西了。留下的是
+            HeroUI 不提供、因而仍由本项目自己拼的组合件——只有它们还会自己读
+            token，也只有它们能显示出主题层被抢的后果。 */}
+        <Section title="本项目自有组合件" hint="仍自己读 token 的那部分">
           <div className="space-y-3 rounded-lg border p-4">
-            <div className="flex flex-wrap items-center gap-3">
-              <Button size="sm">Meridian Button</Button>
-              <Button size="sm" variant="secondary">Secondary</Button>
-              <Button size="sm" variant="ghost">Ghost</Button>
-              <Button size="sm" variant="danger-soft">Destructive</Button>
-            </div>
             <Bubble>
               <BubbleContent>气泡的圆角、底色、内边距应当和迁移前一致。</BubbleContent>
             </Bubble>
             <p className="text-xs text-muted">
-              这行是 text-default-foreground，应当是灰的；如果变成正文色，说明 token 被抢了。
+              这行是 text-muted，应当是灰的；如果变成正文色，说明 --muted 被抢了。
             </p>
           </div>
         </Section>

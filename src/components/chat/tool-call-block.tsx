@@ -139,7 +139,7 @@ function QuestionBlock({
                 key={opt.label}
                 variant="ghost"
                 onClick={() => isMulti ? toggleMulti(opt.label) : selectSingle(opt.label)}
-                className={`w-full justify-start gap-2 h-auto px-2.5 py-1.5 text-left ${
+                className={`w-full justify-start gap-2 h-auto rounded-lg px-2.5 py-1.5 text-left ${
                   checked
                     ? 'bg-default/80 text-default-foreground'
                     : 'text-muted'

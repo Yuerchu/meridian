@@ -2,6 +2,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { TurnItem } from './turn-item'
+import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import { buildTurns } from '@/lib/turns'
 import { useConversationStore } from '@/stores/conversation-store'
 import i18n from '@/i18n'
@@ -237,24 +238,26 @@ describe('TurnItem', () => {
     })
   })
 
-  it('offers editing only when no stream is in flight', () => {
+  it('offers editing only when no stream is in flight', async () => {
     const u = msg('user', { content: 'q' })
     const a = msg('assistant', { _blocks: [text('a')], content: 'a' })
     const turn = buildTurns([u, a])[0]
     const onEdit = vi.fn()
 
-    // ActionButton puts its label in a tooltip that is absent until hover, so
-    // the edit affordance is counted rather than queried by name.
-    const countActions = (root: HTMLElement) =>
-      root.querySelectorAll('[data-slot="action-button"]').length
-
-    const { container, rerender } = render(
+    // Named rather than counted: ActionButton labels its button through
+    // `aria-label`, so any other icon showing up in the footer cannot stand in
+    // for the edit affordance.
+    const { rerender } = render(
       <TurnItem turn={turn} conversationId={CONV} onEdit={onEdit} streaming />,
     )
-    const whileStreaming = countActions(container)
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
 
     rerender(<TurnItem turn={turn} conversationId={CONV} onEdit={onEdit} streaming={false} />)
-    expect(countActions(container)).toBe(whileStreaming + 1)
+    const edit = screen.getByRole('button', { name: 'Edit' })
+    expect(edit).toHaveAttribute('data-slot', 'action-button')
+
+    await userEvent.click(edit)
+    expect(screen.getByDisplayValue('q')).toBeVisible()
   })
 
   describe('branch pager', () => {
@@ -283,8 +286,11 @@ describe('TurnItem', () => {
         },
       }))
 
-      render(<TurnItem turn={turn} conversationId={CONV} />)
-      expect(screen.getByText('2/3')).toBeInTheDocument()
+      const { container } = render(<TurnItem turn={turn} conversationId={CONV} />)
+      expect(screen.getByText('2/3')).toBeVisible()
+      // Pins the slot the "stays hidden" test queries: without this the pager
+      // could lose the attribute and both tests would still pass.
+      expect(container.querySelector('[data-slot="turn-branch-pager"]')).toBeInTheDocument()
     })
 
     it('switches to the neighbouring version', async () => {
@@ -345,6 +351,10 @@ describe('TurnItem', () => {
 
       const { container } = render(<TurnItem turn={turn} conversationId={CONV} />)
       expect(container.querySelector('[data-slot="turn-trigger"]')).not.toBeInTheDocument()
+      // The other half of that claim: a turn that does collapse is found by the
+      // same selector, so renaming the slot cannot quietly retire the check above.
+      const { container: withTools } = render(<TurnItem turn={toolTurn()} conversationId={CONV} />)
+      expect(withTools.querySelector('[data-slot="turn-trigger"]')).toBeInTheDocument()
     })
 
     it('collapses a turn that used tools, showing its duration', () => {
@@ -352,9 +362,12 @@ describe('TurnItem', () => {
       render(<TurnItem turn={turn} conversationId={CONV} />)
 
       const trigger = screen.getByRole('button', { name: /Worked for 9s/ })
-      expect(trigger).toHaveAttribute('aria-expanded', 'false')
-      // The conclusion stays outside the collapsed region.
-      expect(screen.getByText('the answer')).toBeInTheDocument()
+      expectCollapsed(trigger)
+      // The narration that introduced the tool call is inside the collapsed
+      // region — rendered, but not on screen.
+      expect(screen.getByText('let me check')).not.toBeVisible()
+      // The conclusion stays outside it.
+      expect(screen.getByText('the answer')).toBeVisible()
     })
 
     it('falls back to a step count when timestamps carry no duration', () => {
@@ -377,23 +390,36 @@ describe('TurnItem', () => {
       const turn = buildTurns([u, a], { streaming: true })[0]
 
       render(<TurnItem turn={turn} conversationId={CONV} streaming isLastTurn />)
-      expect(screen.getByRole('button', { name: /Working/ })).toHaveAttribute('aria-expanded', 'true')
+      expectExpanded(screen.getByRole('button', { name: /Working/ }))
+      expect(screen.getByText('working')).toBeVisible()
     })
 
-    it('stays open while waiting on the user, so the prompt is reachable', () => {
+    it('stays open while waiting on the user, so the prompt is reachable', async () => {
       const turn = toolTurn({ status: 'pending', conclusion: false })
       expect(turn.status).toBe('awaiting-input')
 
       render(<TurnItem turn={turn} conversationId={CONV} />)
-      expect(screen.getByRole('button', { name: /Waiting for you/ })).toHaveAttribute('aria-expanded', 'true')
+      const trigger = screen.getByRole('button', { name: /Waiting for you/ })
+      expectExpanded(trigger)
+
+      // What actually makes the prompt reachable is that the blocked call sits
+      // outside the panel: collapsing the turn by hand must not take the
+      // approval buttons with it.
+      await userEvent.click(trigger)
+      expectCollapsed(trigger)
+      expect(screen.getByText('Allow')).toBeVisible()
+      expect(screen.getByText('Deny')).toBeVisible()
     })
 
     it('remembers a turn the user opened by hand', async () => {
       const turn = toolTurn()
       render(<TurnItem turn={turn} conversationId={CONV} />)
 
-      await userEvent.click(screen.getByRole('button', { name: /Worked for/ }))
+      const trigger = screen.getByRole('button', { name: /Worked for/ })
+      await userEvent.click(trigger)
 
+      expectExpanded(trigger)
+      expect(screen.getByText('let me check')).toBeVisible()
       expect(useConversationStore.getState().sessions[CONV]?.expandedTurns[turn.id]).toBe(true)
     })
 
@@ -416,15 +442,16 @@ describe('TurnItem', () => {
         const { rerender } = render(
           <TurnItem turn={live} conversationId={CONV} streaming isLastTurn />,
         )
-        expect(screen.getByRole('button', { name: /Working/ })).toHaveAttribute('aria-expanded', 'true')
+        expectExpanded(screen.getByRole('button', { name: /Working/ }))
 
         rerender(<TurnItem turn={settled} conversationId={CONV} isLastTurn />)
         // Deliberately not immediate: the post-stop reload lands first, so
         // collapsing right away would reflow twice.
-        expect(screen.getByRole('button', { name: /Worked for/ })).toHaveAttribute('aria-expanded', 'true')
+        expectExpanded(screen.getByRole('button', { name: /Worked for/ }))
 
         await act(async () => { vi.advanceTimersByTime(400) })
-        expect(screen.getByRole('button', { name: /Worked for/ })).toHaveAttribute('aria-expanded', 'false')
+        expectCollapsed(screen.getByRole('button', { name: /Worked for/ }))
+        expect(screen.getByText('working')).not.toBeVisible()
       } finally {
         vi.useRealTimers()
       }

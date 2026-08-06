@@ -336,20 +336,22 @@ export function InputBar({
               />
               {!isAndroid && onVoiceSend && (
                 <Tooltip delay={0}>
-                  <Tooltip.Trigger>
-                    <span>
-                      <VoiceButton
-                        state={voice.state}
-                        elapsed={voice.elapsed}
-                        disabled={disabled || streaming}
-                        onPointerDown={voice.handlePointerDown}
-                        onPointerUp={voice.handlePointerUp}
-                        onPointerCancel={voice.handlePointerCancel}
-                        onPointerEnter={voice.handlePointerEnter}
-                        onPointerLeave={voice.handlePointerLeave}
-                      />
-                    </span>
-                  </Tooltip.Trigger>
+                  {/* The button inside picks the tooltip's trigger props up from
+                      context, so `Tooltip.Trigger` would only add a second,
+                      inert tab stop around a real button. */}
+                  <VoiceButton
+                    aria-label={
+                      voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')
+                    }
+                    state={voice.state}
+                    elapsed={voice.elapsed}
+                    disabled={disabled || streaming}
+                    onPointerDown={voice.handlePointerDown}
+                    onPointerUp={voice.handlePointerUp}
+                    onPointerCancel={voice.handlePointerCancel}
+                    onPointerEnter={voice.handlePointerEnter}
+                    onPointerLeave={voice.handlePointerLeave}
+                  />
                   <Tooltip.Content placement="top">
                     {voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
                   </Tooltip.Content>
@@ -397,7 +399,7 @@ export function InputBar({
                             // eslint-disable-next-line no-restricted-syntax -- a text link inside the tooltip: HeroUI's .button base sets height, padding and background outside the utility layer, so no className can undo them
                             <button
                               type="button"
-                              className="mt-0.5 inline-flex h-auto shrink-0 items-center justify-start p-0 text-xs font-normal text-background/70 underline underline-offset-2 outline-none transition-colors hover:text-background"
+                              className="mt-0.5 inline-flex h-auto shrink-0 items-center justify-start p-0 text-xs font-normal text-overlay-foreground/70 underline underline-offset-2 outline-none transition-colors hover:text-overlay-foreground"
                               onClick={onCompact}
                             >
                               {t('chat.compact.manual')}

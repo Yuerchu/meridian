@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash, X, Check } from 'lucide-react'
 import { api } from '@/api'
@@ -17,6 +17,9 @@ export function MemorySettings() {
   const [newKey, setNewKey] = useState('')
   const [newContent, setNewContent] = useState('')
   const [newType, setNewType] = useState('general')
+  // `AlertDialog.Body` is a plain div — only a `Heading slot="title"` is wired
+  // up for us, so without this the dialog announces its title and nothing else.
+  const bulkDeleteDescId = useId()
 
   const typeOptions = (browser.enums?.memory_types ?? ['general']).map((v) => ({
     value: v,
@@ -169,22 +172,25 @@ export function MemorySettings() {
             </p>
           )}
 
-          {browser.visible.length > 0 && (
-            // One open at a time is the group's own default
-            // (`allowsMultipleExpanded` is off), so the single-open rule lives
-            // in the primitive rather than in a hand-held `expandedId`.
-            <DisclosureGroup data-slot="memory-rows" className="flex flex-col gap-2">
-              {browser.visible.map((m) => (
-                <MemoryRow
-                  key={m.id}
-                  memory={m}
-                  checked={browser.selected.has(m.id)}
-                  onToggleCheck={() => browser.toggleSelected(m.id)}
-                  onChanged={browser.refresh}
-                />
-              ))}
-            </DisclosureGroup>
-          )}
+          {/* One open at a time is the group's own default
+              (`allowsMultipleExpanded` is off), so the single-open rule lives
+              in the primitive rather than in a hand-held `expandedId`. Which is
+              also why the group is mounted unconditionally: its expanded key is
+              uncontrolled state, so gating it on a non-empty list would forget
+              which row was open every time a search matched nothing. Empty, it
+              renders a bare `w-full` div with no children for `gap-2` to space —
+              nothing shows. */}
+          <DisclosureGroup data-slot="memory-rows" className="flex flex-col gap-2">
+            {browser.visible.map((m) => (
+              <MemoryRow
+                key={m.id}
+                memory={m}
+                checked={browser.selected.has(m.id)}
+                onToggleCheck={() => browser.toggleSelected(m.id)}
+                onChanged={browser.refresh}
+              />
+            ))}
+          </DisclosureGroup>
 
           {browser.selected.size > 0 && (
             <div
@@ -204,13 +210,13 @@ export function MemorySettings() {
               </Button>
               <AlertDialog.Backdrop isOpen={confirmBulk} onOpenChange={setConfirmBulk}>
                 <AlertDialog.Container>
-                  <AlertDialog.Dialog>
+                  <AlertDialog.Dialog aria-describedby={bulkDeleteDescId}>
                     <AlertDialog.Header>
                       <AlertDialog.Heading>
                         {t('settings.memory.deleteConfirmTitle')}
                       </AlertDialog.Heading>
                     </AlertDialog.Header>
-                    <AlertDialog.Body>
+                    <AlertDialog.Body id={bulkDeleteDescId}>
                       {t('settings.memory.deleteConfirmBody')}
                     </AlertDialog.Body>
                     <AlertDialog.Footer>

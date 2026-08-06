@@ -264,28 +264,27 @@ export function ComposerMenu(props: ComposerMenuProps) {
           bottom of this stack receives both the popover's and the tooltip's
           behaviour without either needing to know about the other. */}
       <Tooltip delay={0}>
-        <Tooltip.Trigger>
-          <Button
-            isIconOnly
-            data-slot="composer-menu-trigger"
-            variant="ghost"
-            className={cn(
-              'relative text-muted hover:text-foreground',
-              open && 'bg-default text-foreground',
-            )}
-          >
-            <Plus className="size-4" />
-            {alert && (
-              <span
-                data-slot="composer-menu-alert"
-                className={cn(
-                  'absolute right-1 top-1 size-1.5 rounded-full',
-                  alert === 'warning' ? 'bg-warning' : 'bg-info',
-                )}
-              />
-            )}
-          </Button>
-        </Tooltip.Trigger>
+        <Button
+          isIconOnly
+          aria-label={t('composer.menu')}
+          data-slot="composer-menu-trigger"
+          variant="ghost"
+          className={cn(
+            'relative text-muted hover:text-foreground',
+            open && 'bg-default text-foreground',
+          )}
+        >
+          <Plus className="size-4" />
+          {alert && (
+            <span
+              data-slot="composer-menu-alert"
+              className={cn(
+                'absolute right-1 top-1 size-1.5 rounded-full',
+                alert === 'warning' ? 'bg-warning' : 'bg-info',
+              )}
+            />
+          )}
+        </Button>
         <Tooltip.Content placement="top">{t('composer.menu')}</Tooltip.Content>
       </Tooltip>
 
@@ -338,7 +337,11 @@ export function ComposerMenu(props: ComposerMenuProps) {
                     setHovered((prev) => (prev === entry.key ? null : entry.key))
                   }}
                   className={cn(
-                    'flex w-full items-center justify-start gap-2 rounded-md px-1.5 py-1 text-left text-sm font-normal outline-none',
+                    // `rounded-2xl` is what `.menu-item` uses for a row sitting
+                    // in a `p-1` list inside the 24px popover: at `rounded-md`
+                    // the popover's own curve cuts into the first and last row's
+                    // hover fill.
+                    'flex w-full items-center justify-start gap-2 rounded-2xl px-1.5 py-1 text-left text-sm font-normal outline-none',
                     'focus-visible:ring-3 focus-visible:ring-focus/50',
                     isHovered
                       ? 'bg-default text-default-foreground'
@@ -377,14 +380,19 @@ export function ComposerMenu(props: ComposerMenuProps) {
                     // `inert` says all of that at once — not focusable, not
                     // clickable, not in the accessibility tree — which a switch
                     // nested inside a button has to be anyway.
+                    // `data-selected` only ever lands on the Switch root, so the
+                    // track is coloured through the custom property the
+                    // component publishes for it rather than a class on the
+                    // control, which would match nothing.
                     <Switch
                       inert
                       isReadOnly
                       size="sm"
                       isSelected={entry.checked}
+                      className="[--switch-control-bg-checked:var(--warning)]"
                     >
                       <Switch.Content>
-                        <Switch.Control className="data-[selected=true]:bg-warning">
+                        <Switch.Control>
                           <Switch.Thumb />
                         </Switch.Control>
                       </Switch.Content>
@@ -435,7 +443,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                               close()
                             }}
                             className={cn(
-                              'w-full h-auto justify-start gap-2 rounded-md px-1.5 py-1 text-sm font-normal',
+                              'w-full h-auto justify-start gap-2 rounded-2xl px-1.5 py-1 text-sm font-normal',
                               opt.selected
                                 ? 'bg-default text-default-foreground'
                                 : 'text-muted hover:bg-default/50 hover:text-foreground',

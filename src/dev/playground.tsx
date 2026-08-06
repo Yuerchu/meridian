@@ -452,16 +452,15 @@ function Gallery() {
         <header className="flex items-center justify-between">
           <h1 className="text-lg font-semibold">组件预览</h1>
           <Tooltip delay={0}>
-            <Tooltip.Trigger>
-              <Button
-                isIconOnly
-                variant="outline"
-                onClick={() => document.documentElement.classList.toggle('dark')}
-              >
-                <Sun className="hidden size-4 dark:block" />
-                <Moon className="size-4 dark:hidden" />
-              </Button>
-            </Tooltip.Trigger>
+            <Button
+              isIconOnly
+              aria-label="切换主题"
+              variant="outline"
+              onClick={() => document.documentElement.classList.toggle('dark')}
+            >
+              <Sun className="hidden size-4 dark:block" />
+              <Moon className="size-4 dark:hidden" />
+            </Button>
             <Tooltip.Content placement="top">切换主题</Tooltip.Content>
           </Tooltip>
         </header>
@@ -801,7 +800,7 @@ function Gallery() {
           <div className="flex flex-wrap items-center gap-6">
             {(['idle', 'recording-hold', 'recording-toggle', 'transcribing'] as VoiceButtonState[]).map((s) => (
               <div key={s} className="flex flex-col items-center gap-1">
-                <VoiceButton state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
+                <VoiceButton aria-label="语音输入" state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
                 <span className="text-xs text-muted">{s}</span>
               </div>
             ))}

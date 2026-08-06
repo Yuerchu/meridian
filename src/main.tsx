@@ -8,6 +8,7 @@ import './index.css'
 const root = createRoot(document.getElementById('root')!)
 
 const isDev = import.meta.env.DEV
+const isBrowserDev = isDev && !('__TAURI_INTERNALS__' in window)
 
 // A Tauri window has no address bar, so `VITE_PLAYGROUND=heroui pnpm tauri dev`
 // is the only way in. Written with replaceState rather than by assigning the
@@ -18,7 +19,11 @@ if (wantedPlayground && !window.location.hash.startsWith('#playground')) {
   window.history.replaceState(null, '', route)
 }
 
-if (isDev) {
+// Browser only: the address bar is the sole way to switch playground routes
+// there, and nothing picks up a hash change on its own. Under Tauri the hash is
+// set once at startup and never edited by hand, so the same listener would only
+// reload the whole app whenever someone clicks an `#anchor` in a message.
+if (isBrowserDev) {
   window.addEventListener('hashchange', () => window.location.reload())
 }
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pin, UserX } from 'lucide-react'
 import { api } from '@/api'
@@ -39,6 +39,9 @@ export function ScopeNav({
 }: ScopeNavProps) {
   const { t } = useTranslation()
   const [confirmForget, setConfirmForget] = useState(false)
+  // `AlertDialog.Body` is a plain div — only a `Heading slot="title"` is wired
+  // up for us, so without this the dialog announces its title and nothing else.
+  const forgetDescId = useId()
 
   const selectedPerson =
     filter.kind === 'person' ? subjects.find((s) => s.scope_id === filter.scopeId) : undefined
@@ -145,13 +148,13 @@ export function ScopeNav({
           </Button>
           <AlertDialog.Backdrop isOpen={confirmForget} onOpenChange={setConfirmForget}>
             <AlertDialog.Container>
-              <AlertDialog.Dialog>
+              <AlertDialog.Dialog aria-describedby={forgetDescId}>
                 <AlertDialog.Header>
                   <AlertDialog.Heading>
                     {t('settings.memory.person.forgetConfirmTitle')}
                   </AlertDialog.Heading>
                 </AlertDialog.Header>
-                <AlertDialog.Body>
+                <AlertDialog.Body id={forgetDescId}>
                   {t('settings.memory.person.forgetConfirmBody')}
                 </AlertDialog.Body>
                 <AlertDialog.Footer>

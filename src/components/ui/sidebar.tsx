@@ -460,22 +460,20 @@ function SidebarMenuButton({
   tooltip?: string | React.ComponentProps<typeof Tooltip.Content>;
 } & VariantProps<typeof sidebarMenuButtonVariants>) {
   const { isMobile, state } = useSidebar();
-  const comp = (
-    <dom.button
-      data-slot="sidebar-menu-button"
-      data-sidebar="menu-button"
-      data-size={size}
-      // Present-when-true, matching the `data-active:` and `peer-data-active/menu-button:`
-      // selectors that read it.
-      data-active={isActive ? '' : undefined}
-      className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
-      render={render}
-      {...props}
-    />
-  );
+  const buttonProps = {
+    'data-slot': 'sidebar-menu-button',
+    'data-sidebar': 'menu-button',
+    'data-size': size,
+    // Present-when-true, matching the `data-active:` and `peer-data-active/menu-button:`
+    // selectors that read it.
+    'data-active': isActive ? '' : undefined,
+    className: cn(sidebarMenuButtonVariants({ variant, size }), className),
+    render,
+    ...props,
+  };
 
   if (!tooltip) {
-    return comp;
+    return <dom.button {...buttonProps} />;
   }
 
   if (typeof tooltip === 'string') {
@@ -486,7 +484,16 @@ function SidebarMenuButton({
 
   return (
     <Tooltip delay={0}>
-      <Tooltip.Trigger className="w-full">{comp}</Tooltip.Trigger>
+      {/* `render`, not a wrapping trigger: the default `Tooltip.Trigger` is a
+          focusable `role="button"` div, and around a real button that is a
+          second tab stop which does nothing when pressed. It cannot be dropped
+          altogether the way it can around a HeroUI `Button` — `dom.button` does
+          not read React Aria's focusable context, so with no trigger element
+          nothing would pick the tooltip's props up. Rendering the trigger *as*
+          the button leaves one tab stop and keeps the tooltip. */}
+      <Tooltip.Trigger<'button'>
+        render={(triggerProps) => <dom.button {...triggerProps} {...buttonProps} />}
+      />
       <Tooltip.Content placement="right" hidden={state !== 'collapsed' || isMobile} {...tooltip} />
     </Tooltip>
   );

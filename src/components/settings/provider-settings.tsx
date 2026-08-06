@@ -209,7 +209,7 @@ function ModelConfigEditor({
           {/* `inline-flex`, not `flex`: a block-level flex row would stretch the
               trigger across the form and the indicator's own `ms-auto` would
               fling the chevron to the far edge. */}
-          <Disclosure.Trigger className="inline-flex items-center gap-1 text-xs text-muted transition-colors outline-none hover:text-foreground">
+          <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50">
             {t('settings.model.capabilities')}
             <Disclosure.Indicator className="size-3" />
           </Disclosure.Trigger>
@@ -676,11 +676,14 @@ export function ProviderSettings() {
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-medium">{t('settings.provider.title')}</h2>
               <Tooltip delay={0}>
-                <Tooltip.Trigger>
-                  <Button isIconOnly variant="ghost" onClick={handleCreate}>
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </Tooltip.Trigger>
+                <Button
+                  isIconOnly
+                  aria-label={t('settings.provider.addProvider')}
+                  variant="ghost"
+                  onClick={handleCreate}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
                 <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
               </Tooltip>
             </div>
@@ -697,11 +700,14 @@ export function ProviderSettings() {
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-medium">{t('settings.provider.title')}</h2>
           <Tooltip delay={0}>
-            <Tooltip.Trigger>
-              <Button isIconOnly variant="ghost" onClick={handleCreate}>
-                <Plus className="w-4 h-4" />
-              </Button>
-            </Tooltip.Trigger>
+            <Button
+              isIconOnly
+              aria-label={t('settings.provider.addProvider')}
+              variant="ghost"
+              onClick={handleCreate}
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
             <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
           </Tooltip>
         </div>

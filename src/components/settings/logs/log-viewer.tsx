@@ -50,7 +50,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
       <p className="text-xs text-muted">{t('settings.about.logs.exportHint')}</p>
 
       <div data-slot="log-toolbar" className="flex flex-wrap items-center gap-2">
-        <Select value={logs.level} onChange={(v) => logs.setLevel(String(v) as LevelFilter)}>
+        <Select value={logs.level} onChange={(v) => { if (v) logs.setLevel(String(v) as LevelFilter) }}>
           <Select.Trigger className="w-44">
             <Select.Value />
             <Select.Indicator />
@@ -84,7 +84,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           />
         </InputGroup>
 
-        <Select value={logs.range} onChange={(v) => logs.setRange(String(v) as RangeFilter)}>
+        <Select value={logs.range} onChange={(v) => { if (v) logs.setRange(String(v) as RangeFilter) }}>
           <Select.Trigger className="w-40">
             <Select.Value />
             <Select.Indicator />

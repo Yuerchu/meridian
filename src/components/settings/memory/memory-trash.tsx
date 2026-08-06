@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Undo2 } from 'lucide-react'
 import { api } from '@/api'
@@ -19,6 +19,9 @@ interface MemoryTrashProps {
 export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps) {
   const { t } = useTranslation()
   const [rows, setRows] = useState<Memory[]>([])
+  // `Drawer.Heading` is wired up for us, the hint under it is not — without this
+  // the drawer announces its title and nothing else.
+  const hintId = useId()
 
   const load = useCallback(() => {
     api.listMemoryTrash(200).then(setRows).catch(() => setRows([]))
@@ -42,11 +45,17 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
   return (
     <Drawer.Backdrop isOpen={open} onOpenChange={onOpenChange}>
       <Drawer.Content placement="right">
-        <Drawer.Dialog className="w-[28rem] max-w-[85vw]" data-slot="memory-trash">
+        <Drawer.Dialog
+          aria-describedby={hintId}
+          className="w-[28rem] max-w-[85vw]"
+          data-slot="memory-trash"
+        >
           <Drawer.CloseTrigger />
           <Drawer.Header className="gap-1">
             <Drawer.Heading>{t('settings.memory.trash.title')}</Drawer.Heading>
-            <p className="text-sm text-muted">{t('settings.memory.trash.retentionHint')}</p>
+            <p id={hintId} className="text-sm text-muted">
+              {t('settings.memory.trash.retentionHint')}
+            </p>
           </Drawer.Header>
 
           <Drawer.Body className="space-y-2">

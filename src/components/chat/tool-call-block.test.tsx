@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import { ToolCallBlock } from './tool-call-block'
+import { expectExpanded } from '@/test/disclosure'
 import i18n from '@/i18n'
 import type { ToolCallDisplay } from '@/types'
 
@@ -26,11 +27,21 @@ function toolCall(
 
 /** Diff lines are syntax-highlighted, so their text is split across token
  *  spans and `getByText` — which only reads a node's own text children — no
- *  longer sees a whole line. Read the rendered diff as one string instead. */
+ *  longer sees a whole line. Read the rendered diff as one string instead.
+ *
+ *  The visibility check is not decoration: the card is a HeroUI `Disclosure`,
+ *  which renders its panel collapsed or not, so a diff pulled straight out of
+ *  the DOM would read the same either way. */
 function diffText(container: HTMLElement): string {
-  return Array.from(container.querySelectorAll('[data-slot="file-diff-line"]'))
-    .map((line) => line.textContent)
-    .join('\n')
+  const lines = Array.from(container.querySelectorAll('[data-slot="file-diff-line"]'))
+  expect(lines.length, 'no diff lines rendered').toBeGreaterThan(0)
+  for (const line of lines) expect(line).toBeVisible()
+  return lines.map((line) => line.textContent).join('\n')
+}
+
+/** A pending call opens itself, because it is asking for something. */
+function expectCardOpen(container: HTMLElement) {
+  expectExpanded(container.querySelector('[data-slot="chat-tool-trigger"]')!)
 }
 
 describe('ToolCallBlock file-edit diff rendering', () => {
@@ -50,16 +61,17 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     ].join('\n')
     const { container } = render(<ToolCallBlock data={toolCall('apply_patch', { base_path: '.', patch })} />)
 
-    expect(screen.getByText('__init__.py')).toBeInTheDocument()
+    expectCardOpen(container)
+    expect(screen.getByText('__init__.py')).toBeVisible()
     expect(diffText(container)).toContain(') -> AssetCreateResponse:')
     expect(diffText(container)).toContain('async def create_volcengine_asset(')
-    expect(screen.getByText('+1')).toBeInTheDocument()
-    expect(screen.getByText('-1')).toBeInTheDocument()
+    expect(screen.getByText('+1')).toBeVisible()
+    expect(screen.getByText('-1')).toBeVisible()
     // The envelope markers and escaped-JSON dump must not appear.
     expect(container.textContent).not.toContain('*** Begin Patch')
     expect(container.textContent).not.toContain('base_path')
     // Approval buttons still render for pending calls.
-    expect(screen.getByText('Allow')).toBeInTheDocument()
+    expect(screen.getByText('Allow')).toBeVisible()
   })
 
   it('renders a unified diff apply_patch with per-file grouping', () => {
@@ -75,13 +87,14 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     ].join('\n')
     const { container } = render(<ToolCallBlock data={toolCall('apply_patch', { patch })} />)
 
-    expect(screen.getByText('lib.rs')).toBeInTheDocument()
+    expectCardOpen(container)
+    expect(screen.getByText('lib.rs')).toBeVisible()
     expect(diffText(container)).toContain('fn new() {}')
     expect(diffText(container)).toContain('fn old() {}')
   })
 
   it('renders edit_file as a real line diff, keeping common lines as context', () => {
-    render(
+    const { container } = render(
       <ToolCallBlock
         data={toolCall('edit_file', {
           file_path: 'src/app.py',
@@ -91,9 +104,10 @@ describe('ToolCallBlock file-edit diff rendering', () => {
       />,
     )
 
-    expect(screen.getByText('app.py')).toBeInTheDocument()
-    expect(screen.getByText(/line_b/)).toBeInTheDocument()
-    expect(screen.getByText(/line_B/)).toBeInTheDocument()
+    expectCardOpen(container)
+    expect(screen.getByText('app.py')).toBeVisible()
+    expect(screen.getByText(/line_b/)).toBeVisible()
+    expect(screen.getByText(/line_B/)).toBeVisible()
     // Unchanged lines appear once as context, not duplicated as -/+ pairs.
     expect(screen.getAllByText(/line_a/)).toHaveLength(1)
     expect(screen.getAllByText(/line_c/)).toHaveLength(1)
@@ -106,17 +120,21 @@ describe('ToolCallBlock file-edit diff rendering', () => {
       />,
     )
 
-    expect(screen.getByText('todo.md')).toBeInTheDocument()
+    expectCardOpen(container)
+    expect(screen.getByText('todo.md')).toBeVisible()
     expect(diffText(container)).toContain('# Todo')
     expect(diffText(container)).toContain('- item one')
-    expect(screen.getByText('+2')).toBeInTheDocument()
+    expect(screen.getByText('+2')).toBeVisible()
   })
 
   it('shows an unrecognized patch format as plain text with real newlines', () => {
-    render(<ToolCallBlock data={toolCall('apply_patch', { patch: 'not a real patch\nsecond line' })} />)
+    const { container } = render(
+      <ToolCallBlock data={toolCall('apply_patch', { patch: 'not a real patch\nsecond line' })} />,
+    )
 
-    expect(screen.getByText('not a real patch', { exact: false })).toBeInTheDocument()
-    expect(screen.getByText('second line', { exact: false })).toBeInTheDocument()
+    expectCardOpen(container)
+    expect(screen.getByText('not a real patch', { exact: false })).toBeVisible()
+    expect(screen.getByText('second line', { exact: false })).toBeVisible()
   })
 
   it('falls back to raw argument text while the JSON is still streaming', () => {
@@ -124,8 +142,10 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     const partial = '{"path": "a.txt", "cont'
     const { container } = render(<ToolCallBlock data={toolCall('write_file', partial)} />)
 
+    expectCardOpen(container)
     const args = container.querySelector('[data-slot="chat-tool-args"]')
     expect(args).not.toBeNull()
+    expect(args!).toBeVisible()
     expect(args!.textContent).toContain(partial)
   })
 })

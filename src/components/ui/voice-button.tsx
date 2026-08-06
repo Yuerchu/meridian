@@ -13,6 +13,8 @@ export type VoiceButtonState =
 
 interface VoiceButtonProps {
   state: VoiceButtonState
+  /** Named by the caller, which is where the state-dependent wording lives. */
+  'aria-label'?: string
   /** Seconds recorded so far; shown while recording. */
   elapsed?: number
   disabled?: boolean
@@ -28,6 +30,7 @@ interface VoiceButtonProps {
  *  this stays renderable in the browser playground without a Tauri backend. */
 export function VoiceButton({
   state,
+  'aria-label': ariaLabel,
   elapsed = 0,
   disabled,
   onPointerDown,
@@ -47,6 +50,7 @@ export function VoiceButton({
       )}
       <Button
         isIconOnly
+        aria-label={ariaLabel}
         variant="ghost"
         isDisabled={disabled || state === 'transcribing'}
         className={cn(

@@ -39,17 +39,25 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
                   accent/default/success/warning/danger. The stroke reads a
                   custom property, so pointing that at the token is the
                   supported way in rather than restyling the circle. */}
-              <ProgressCircle
-                aria-label={t('chat.todo.progress', { done, total })}
-                value={done}
-                maxValue={total}
-                className="shrink-0 [--progress-circle-stroke:var(--info)]"
-              >
-                <ProgressCircle.Track className="size-3.5">
-                  <ProgressCircle.TrackCircle />
-                  <ProgressCircle.FillCircle />
-                </ProgressCircle.Track>
-              </ProgressCircle>
+              {/* Hidden from the accessibility tree: the trigger takes its name
+                  from its contents and the count is already spelled out to the
+                  right, so an exposed ring has it announced twice. The attribute
+                  sits on a wrapper because React Aria's ProgressBar filters
+                  `aria-hidden` off its own element; the label it insists on
+                  never surfaces from in here. */}
+              <span aria-hidden="true" className="shrink-0">
+                <ProgressCircle
+                  aria-label={t('chat.todo.progress', { done, total })}
+                  value={done}
+                  maxValue={total}
+                  className="[--progress-circle-stroke:var(--info)]"
+                >
+                  <ProgressCircle.Track className="size-3.5">
+                    <ProgressCircle.TrackCircle />
+                    <ProgressCircle.FillCircle />
+                  </ProgressCircle.Track>
+                </ProgressCircle>
+              </span>
               {/* Same shape as ChatToolTrigger: the label row absorbs the slack
                   so the count and chevron sit at the right edge without an
                   ml-auto fighting for the free space. */}

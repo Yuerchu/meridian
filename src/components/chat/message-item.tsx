@@ -373,6 +373,10 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
   const editRef = useRef<HTMLTextAreaElement>(null)
   const [selectedText, setSelectedText] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  // `AlertDialog.Body` is a plain div: only a `Heading slot="title"` is wired up
+  // for us, so without this the dialog announces its title and nothing else.
+  // Generated, because every message in the list has one of these.
+  const deleteDescId = React.useId()
 
   const handleContextMenuOpenChange = useCallback((open: boolean) => {
     if (open) {
@@ -564,11 +568,11 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
         {onDelete && (
           <AlertDialog.Backdrop isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
             <AlertDialog.Container>
-              <AlertDialog.Dialog>
+              <AlertDialog.Dialog aria-describedby={deleteDescId}>
                 <AlertDialog.Header>
                   <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
                 </AlertDialog.Header>
-                <AlertDialog.Body>{t('confirm.deleteMessage')}</AlertDialog.Body>
+                <AlertDialog.Body id={deleteDescId}>{t('confirm.deleteMessage')}</AlertDialog.Body>
                 <AlertDialog.Footer>
                   <Button slot="close" variant="tertiary">
                     {t('common.cancel')}
@@ -713,11 +717,11 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
       {onDelete && (
         <AlertDialog.Backdrop isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
           <AlertDialog.Container>
-            <AlertDialog.Dialog>
+            <AlertDialog.Dialog aria-describedby={deleteDescId}>
               <AlertDialog.Header>
                 <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
               </AlertDialog.Header>
-              <AlertDialog.Body>{t('confirm.deleteMessage')}</AlertDialog.Body>
+              <AlertDialog.Body id={deleteDescId}>{t('confirm.deleteMessage')}</AlertDialog.Body>
               <AlertDialog.Footer>
                 <Button slot="close" variant="tertiary">
                   {t('common.cancel')}

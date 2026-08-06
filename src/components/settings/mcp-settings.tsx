@@ -345,11 +345,13 @@ export function McpSettings() {
   const headerActions = (
     <div className="flex items-center gap-1">
       <Tooltip delay={0}>
-        <Tooltip.Trigger>
-          <Button variant="outline" onClick={() => setShowImport(true)}>
-            <ClipboardPaste className="w-4 h-4" />
-          </Button>
-        </Tooltip.Trigger>
+        <Button
+          aria-label={t('settings.mcp.importJson')}
+          variant="outline"
+          onClick={() => setShowImport(true)}
+        >
+          <ClipboardPaste className="w-4 h-4" />
+        </Button>
         <Tooltip.Content placement="top">{t('settings.mcp.importJson')}</Tooltip.Content>
       </Tooltip>
       <Button variant="outline" onClick={handleAdd}>

@@ -158,15 +158,13 @@ function AssistantEditor({
           <div className="flex flex-wrap gap-1">
             {templateVars.map((v) => (
               <Tooltip key={v.name} delay={0}>
-                <Tooltip.Trigger>
-                  <Button
-                    variant="outline"
-                    className="text-xs px-1.5 py-0.5 bg-default/50 text-muted hover:bg-default font-mono"
-                    onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
-                  >
-                    {`{{${v.name}}}`}
-                  </Button>
-                </Tooltip.Trigger>
+                <Button
+                  variant="outline"
+                  className="text-xs px-1.5 py-0.5 bg-default/50 text-muted hover:bg-default font-mono"
+                  onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
+                >
+                  {`{{${v.name}}}`}
+                </Button>
                 <Tooltip.Content placement="top">{v.description_en}</Tooltip.Content>
               </Tooltip>
             ))}

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useId, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import {
@@ -207,6 +207,9 @@ export function AppSidebar({
   const [renamingConvId, setRenamingConvId] = useState<string | null>(null)
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'conversation' | 'project'; id: string } | null>(null)
+  // `AlertDialog.Body` is a plain div — only a `Heading slot="title"` is wired
+  // up for us, so without this the dialog announces its title and nothing else.
+  const deleteDescId = useId()
 
   if (page === 'settings') {
     return (
@@ -266,9 +269,10 @@ export function AppSidebar({
             <span>{t('sidebar.projects')}</span>
             <Button
               isIconOnly
+              size="sm"
               variant="ghost"
               onClick={() => setShowNewProject(true)}
-              className="ml-auto text-muted"
+              className="ml-auto size-8 text-muted"
             >
               <FolderPlus />
             </Button>
@@ -414,11 +418,11 @@ export function AppSidebar({
         onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
       >
         <AlertDialog.Container>
-          <AlertDialog.Dialog>
+          <AlertDialog.Dialog aria-describedby={deleteDescId}>
             <AlertDialog.Header>
               <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
             </AlertDialog.Header>
-            <AlertDialog.Body>
+            <AlertDialog.Body id={deleteDescId}>
               {deleteTarget?.type === 'project' ? t('confirm.deleteProject') : t('confirm.deleteConversation')}
             </AlertDialog.Body>
             <AlertDialog.Footer>

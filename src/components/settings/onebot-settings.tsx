@@ -198,7 +198,7 @@ export function OneBotSettings() {
         <Select
           fullWidth
           value={config.assistant_id ?? '_default'}
-          onChange={(v) => setConfig({ ...config, assistant_id: v === '_default' ? null : String(v) })}
+          onChange={(v) => { if (v) setConfig({ ...config, assistant_id: v === '_default' ? null : String(v) }) }}
         >
           <Select.Trigger>
             <Select.Value />

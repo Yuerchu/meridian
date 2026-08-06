@@ -473,7 +473,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
               <Button
                 variant="ghost"
                 onClick={() => setShowCompactedMessages(false)}
-                className="w-full text-center text-xs text-muted/60 hover:text-muted py-2"
+                className="w-full h-auto rounded-lg text-center text-xs text-muted/60 hover:text-muted py-2"
               >
                 {t('chat.compact.hideCompacted', { count: compactedCount })}
               </Button>
@@ -494,7 +494,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
             <Button
               variant="ghost"
               onClick={() => setShowCompactedMessages(true)}
-              className="w-full text-center text-xs text-muted/60 hover:text-muted py-2"
+              className="w-full h-auto rounded-lg text-center text-xs text-muted/60 hover:text-muted py-2"
             >
               {t('chat.compact.showCompacted', { count: compactedCount })}
             </Button>
