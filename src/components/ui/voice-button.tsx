@@ -56,7 +56,7 @@ export function VoiceButton({
         className={cn(
           'touch-hitbox touch-none select-none',
           recording && 'text-danger hover:text-danger animate-pulse',
-          state === 'starting' && 'text-muted/40',
+          state === 'starting' && 'text-muted',
           state !== 'starting' && !recording && 'text-muted hover:text-foreground',
         )}
         onPointerDown={onPointerDown}

@@ -95,7 +95,7 @@ function CustomToolEditor({
       <div className="space-y-1">
         <label className="text-xs text-muted">{t('settings.tools.argsTemplate')}</label>
         <Input fullWidth value={argsTemplate} onChange={(e) => setArgsTemplate(e.target.value)} placeholder="--input {{input}} --output {{output}}" className="font-mono text-xs" />
-        <p className="text-xs text-muted/60">{t('settings.tools.argsTemplateHint')}</p>
+        <p className="text-xs text-muted">{t('settings.tools.argsTemplateHint')}</p>
       </div>
       <div className="space-y-1">
         <label className="text-xs text-muted">{t('settings.tools.timeout')}</label>
@@ -164,7 +164,7 @@ export function ToolMarketplace() {
             <div key={tool.name} className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg">
               <Wrench className="w-3.5 h-3.5 text-muted flex-shrink-0" />
               <span className="font-mono flex-1">{tool.name}</span>
-              <span className="text-muted/60 truncate max-w-[200px]">{tool.description}</span>
+              <span className="text-muted truncate max-w-[200px]">{tool.description}</span>
             </div>
           ))}
         </div>
@@ -179,7 +179,7 @@ export function ToolMarketplace() {
               <div key={tool.name} className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg">
                 <Wrench className="w-3.5 h-3.5 text-muted flex-shrink-0" />
                 <span className="font-mono flex-1">{tool.name}</span>
-                <span className="text-muted/60 truncate max-w-[160px]">
+                <span className="text-muted truncate max-w-[160px]">
                   {t(`settings.tools.qq.${tool.name}`)}
                 </span>
                 {tool.scope === 'group' && (
@@ -241,7 +241,7 @@ export function ToolMarketplace() {
                   <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
                     <Terminal className="w-3.5 h-3.5 shrink-0 text-muted" />
                     <span className="font-mono min-w-0 flex-1 truncate">{ct.name}</span>
-                    <span className="text-muted/60 truncate">{ct.command}</span>
+                    <span className="text-muted truncate">{ct.command}</span>
                     {ct.is_enabled === 0 && (
                       <span className="text-xs text-muted bg-default px-1 rounded shrink-0">{t('settings.tools.disabled')}</span>
                     )}
@@ -289,7 +289,7 @@ export function ToolMarketplace() {
             return (
               <div key={preset.id} className="flex items-center gap-2 px-3 py-2 text-xs border border-border rounded-lg">
                 <span className="font-medium flex-1">{preset.name}</span>
-                <span className="text-muted/60">{toolNames.length} tools</span>
+                <span className="text-muted">{toolNames.length} tools</span>
                 {preset.is_builtin === 1 && (
                   <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.template.builtin')}</span>
                 )}

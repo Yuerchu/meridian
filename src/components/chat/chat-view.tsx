@@ -473,7 +473,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
               <Button
                 variant="ghost"
                 onClick={() => setShowCompactedMessages(false)}
-                className="w-full h-auto rounded-lg text-center text-xs text-muted/60 hover:text-muted py-2"
+                className="w-full h-auto rounded-lg text-center text-xs text-muted hover:text-muted py-2"
               >
                 {t('chat.compact.hideCompacted', { count: compactedCount })}
               </Button>
@@ -494,7 +494,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
             <Button
               variant="ghost"
               onClick={() => setShowCompactedMessages(true)}
-              className="w-full h-auto rounded-lg text-center text-xs text-muted/60 hover:text-muted py-2"
+              className="w-full h-auto rounded-lg text-center text-xs text-muted hover:text-muted py-2"
             >
               {t('chat.compact.showCompacted', { count: compactedCount })}
             </Button>
@@ -504,14 +504,14 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
               <Button
                 variant="ghost"
                 onClick={() => setShowCompactSummary((v) => !v)}
-                className="text-xs text-muted/60 hover:text-muted whitespace-nowrap h-auto px-2 py-0"
+                className="text-xs text-muted hover:text-muted whitespace-nowrap h-auto px-2 py-0"
               >
                 {t('chat.compact.boundary', { count: compactedCount })}
               </Button>
             </MarkerContent>
           </Marker>
           {compactSummary && showCompactSummary && (
-            <div className="px-4 py-2 mb-2 text-xs text-muted bg-default/30 rounded-lg border border-muted/10 whitespace-pre-wrap">
+            <div className="px-4 py-2 mb-2 text-xs text-muted bg-default/30 rounded-lg border border-border whitespace-pre-wrap">
               {compactSummary.content}
             </div>
           )}

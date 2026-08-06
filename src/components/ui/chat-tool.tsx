@@ -56,7 +56,7 @@ const CHAT_TOOL_CARD = "overflow-hidden rounded-2xl bg-surface shadow-surface"
 
 const chatToolVariants = tv({
   slots: {
-    base: "flex w-full flex-col text-xs",
+    base: "flex w-full flex-col text-sm",
     // `p-4` matches `.accordion__trigger` (`px-4 py-4`), and the hover fill is
     // the full-strength `bg-default` that `.accordion--surface` uses — at /30
     // over an opaque panel it barely moved.
@@ -281,7 +281,7 @@ function ChatToolGroup({ className, ...props }: React.ComponentProps<typeof Disc
   return (
     <Disclosure
       data-slot="chat-tool-group"
-      className={cn("flex w-full flex-col text-xs", CHAT_TOOL_CARD, className)}
+      className={cn("flex w-full flex-col text-sm", CHAT_TOOL_CARD, className)}
       {...props}
     />
   )

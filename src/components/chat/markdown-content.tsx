@@ -9,7 +9,7 @@ import { ActionButton } from '@/components/ui/action-button'
 import { cn } from '@/lib/utils'
 import type { EmojiMap } from './emoji-renderer'
 
-export function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text, className }: { text: string; className?: string }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const handleCopy = useCallback(() => {
@@ -22,7 +22,7 @@ export function CopyButton({ text }: { text: string }) {
     <ActionButton
       label={t('chat.copy')}
       onClick={handleCopy}
-      className="text-muted hover:text-foreground"
+      className={cn('text-muted hover:text-foreground', className)}
     >
       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
     </ActionButton>

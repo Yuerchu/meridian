@@ -285,7 +285,7 @@ function AssistantEditor({
               onChange={(e) => setThinkingBudget(e.target.value)}
               placeholder={t('settings.assistant.thinkingBudget')}
             />
-            <p className="text-xs text-muted/60">{t('settings.assistant.thinkingBudgetHint')}</p>
+            <p className="text-xs text-muted">{t('settings.assistant.thinkingBudgetHint')}</p>
           </div>
         )}
       </div>
@@ -353,7 +353,7 @@ function AssistantEditor({
                   </Checkbox.Control>
                   <span className="truncate font-mono">{tool.name}</span>
                   {tool.source === 'mcp' && (
-                    <span className="text-xs text-muted/50">MCP</span>
+                    <span className="text-xs text-muted">MCP</span>
                   )}
                 </Checkbox.Content>
               </Checkbox>
@@ -400,7 +400,7 @@ function AssistantEditor({
       {allSkills.length > 0 && (
         <div className="space-y-1.5">
           <label className="block text-xs text-muted">{t('settings.skills.assistantSection')}</label>
-          <p className="text-xs text-muted/60">{t('settings.skills.assistantHint')}</p>
+          <p className="text-xs text-muted">{t('settings.skills.assistantHint')}</p>
           <div
             data-slot="skill-list"
             className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
@@ -544,7 +544,7 @@ export function AssistantSettings() {
                     <span className="text-xs text-muted">{providerName}</span>
                   )}
                   {a.model_id && (
-                    <span className="text-xs text-muted/60">{a.model_id}</span>
+                    <span className="text-xs text-muted">{a.model_id}</span>
                   )}
                   <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
                 </Disclosure.Trigger>

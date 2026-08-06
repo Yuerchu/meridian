@@ -28,7 +28,7 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
             opaque `bg-surface`, `shadow-surface`) and no border. */}
         <Disclosure
           data-slot="todo-bar"
-          className="w-full overflow-hidden rounded-2xl bg-surface text-xs shadow-surface"
+          className="w-full overflow-hidden rounded-2xl bg-surface text-sm shadow-surface"
         >
           <Disclosure.Heading>
             {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`

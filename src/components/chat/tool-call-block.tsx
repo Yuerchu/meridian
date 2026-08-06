@@ -594,7 +594,7 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
             </div>
           ))}
           {hidden > 0 && (
-            <div className="px-3 text-muted/60">
+            <div className="px-3 text-muted">
               {t('chat.tool.diff.moreLines', { count: hidden })}
             </div>
           )}
@@ -675,11 +675,11 @@ function SearchResult({ result }: { result: string }) {
           <div className="flex items-center gap-1.5 px-3 py-1 bg-default/30 text-xs text-muted">
             <FileIcon path={file} />
             <span className="font-mono truncate">{file.split(/[/\\]/).pop()}</span>
-            <span className="text-muted/50 ml-auto shrink-0">{items.length}</span>
+            <span className="text-muted ml-auto shrink-0">{items.length}</span>
           </div>
           {items.map((item, i) => (
             <div key={i} className="flex gap-2 px-3 py-0.5 text-xs hover:bg-default/20">
-              <span className="text-muted/50 font-mono w-8 text-right shrink-0">{item.line}</span>
+              <span className="text-muted font-mono w-8 text-right shrink-0">{item.line}</span>
               <span className="text-foreground font-mono truncate">{item.text}</span>
             </div>
           ))}
@@ -975,7 +975,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
       data-slot="enter-plan"
       data-status={data.status}
       className={cn(
-        'my-3 overflow-hidden rounded-2xl bg-surface text-xs shadow-surface',
+        'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface',
         !declined && 'ring-1 ring-info/40 ring-inset',
       )}
     >
@@ -1047,7 +1047,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       data-slot="exit-plan"
       data-status={data.status}
       className={cn(
-        'my-3 overflow-hidden rounded-2xl bg-surface text-xs shadow-surface',
+        'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface',
         !wasRejected && 'ring-1 ring-info/40 ring-inset',
       )}
     >

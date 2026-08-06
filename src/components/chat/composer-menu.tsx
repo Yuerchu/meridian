@@ -453,7 +453,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                             <span className="flex-1 min-w-0 text-left">
                               <span className="block truncate">{opt.label}</span>
                               {opt.description && (
-                                <span className="block truncate text-xs text-muted/60">
+                                <span className="block truncate text-xs text-muted">
                                   {opt.description}
                                 </span>
                               )}

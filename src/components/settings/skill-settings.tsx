@@ -90,7 +90,7 @@ function SkillEditor({
             placeholder="my-skill"
             className="font-mono text-xs"
           />
-          <p data-slot="skill-editor-hint" className="text-xs text-muted/60">
+          <p data-slot="skill-editor-hint" className="text-xs text-muted">
             {t('settings.skills.dirNameHint')}
           </p>
           {dirName.trim().length > 0 && !dirNameValid && (
@@ -123,7 +123,7 @@ function SkillEditor({
           rows={2}
           className="resize-none text-xs"
         />
-        <p data-slot="skill-editor-hint" className="text-xs text-muted/60">
+        <p data-slot="skill-editor-hint" className="text-xs text-muted">
           {t('settings.skills.descriptionHint')}
         </p>
       </div>
@@ -314,7 +314,7 @@ export function SkillSettings() {
                         margin fighting the indicator's own `ms-auto`. */}
                     <div className="flex min-w-0 flex-1 items-center gap-2">
                       <span data-slot="skill-item-name" className="truncate">{skill.display_name}</span>
-                      <span data-slot="skill-item-slug" className="font-mono text-muted/60 truncate">
+                      <span data-slot="skill-item-slug" className="font-mono text-muted truncate">
                         {skill.llm_name}
                       </span>
                     </div>
@@ -396,7 +396,7 @@ export function SkillSettings() {
         )}
       </DisclosureGroup>
 
-      <p data-slot="skill-settings-global-hint" className="text-xs text-muted/60">
+      <p data-slot="skill-settings-global-hint" className="text-xs text-muted">
         {t('settings.skills.globalBindingHint')}
       </p>
     </div>

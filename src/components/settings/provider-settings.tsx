@@ -246,7 +246,7 @@ function ModelConfigEditor({
             </div>
             <CapabilityTriRow label={t('settings.model.capThinking')} value={capThinking} onChange={setCapThinking} />
             <CapabilityTriRow label={t('settings.model.capFast')} value={capFast} onChange={setCapFast} />
-            <p className="text-xs text-muted/60">{t('settings.model.capabilitiesHint')}</p>
+            <p className="text-xs text-muted">{t('settings.model.capabilitiesHint')}</p>
             <Button
               variant="ghost"
               size="sm"

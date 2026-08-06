@@ -92,7 +92,7 @@ export function MessageMeta({ modelId, createdAt, animate }: {
       )}
       {/* The row is a fixed height, so a long model id has to give way rather
           than push the timestamp out of the message. */}
-      <span className="shrink-0 font-normal text-muted/60">{relativeTime(createdAt)}</span>
+      <span className="shrink-0 font-normal text-muted">{relativeTime(createdAt)}</span>
     </MessageHeader>
   )
 }
@@ -167,7 +167,7 @@ function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; i
   return (
     <ChainOfThought defaultExpanded={!!(isStreaming || defaultExpanded)} isStreaming={isStreaming} className="my-2">
       <ChainOfThoughtTrigger>{t('chat.thinking')}</ChainOfThoughtTrigger>
-      <ChainOfThoughtContent className="text-xs text-muted/70 leading-relaxed whitespace-pre-wrap">
+      <ChainOfThoughtContent className="text-xs text-muted leading-relaxed whitespace-pre-wrap">
         {text}
       </ChainOfThoughtContent>
     </ChainOfThought>
@@ -432,7 +432,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
         <ContextMenuTrigger render={<Message align="end" />}>
           <MessageContent>
             {senderPrefix && (
-              <MessageHeader className="justify-end text-muted/60 font-normal">{senderPrefix}</MessageHeader>
+              <MessageHeader className="justify-end text-muted font-normal">{senderPrefix}</MessageHeader>
             )}
             {hasAttachments && (
               <AttachmentGroup className="items-start max-w-[80%]">

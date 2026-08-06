@@ -59,6 +59,15 @@ export function GeneralSettings() {
     api.setPreference('shell', value)
   }
 
+  // Unlike the settings below, the theme is not a Tauri preference: it has to be
+  // readable before the first paint, so it lives in localStorage — see
+  // `src/lib/theme.tsx`.
+  const themeOptions: { value: ThemePreference; label: string }[] = [
+    { value: 'system', label: t('settings.general.themeSystem') },
+    { value: 'light', label: t('settings.general.themeLight') },
+    { value: 'dark', label: t('settings.general.themeDark') },
+  ]
+
   const sandboxOptions = [
     { value: 'on', label: t('settings.general.sandboxOn') },
     { value: 'off', label: t('settings.general.sandboxOff') },

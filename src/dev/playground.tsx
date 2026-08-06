@@ -160,7 +160,7 @@ function TurnItemCase({ label, blocks, streaming = false }: {
   ], { streaming })
   return (
     <div className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
-      <div className="text-xs text-muted/60">{label}</div>
+      <div className="text-xs text-muted">{label}</div>
       {turns.map((turn) => (
         <TurnItem key={turn.id} turn={turn} conversationId="pg" isLastTurn={streaming} streaming={streaming} onRegenerate={noop} onRate={noop} onDelete={noop} />
       ))}
@@ -207,7 +207,7 @@ function TurnCase({
 
   return (
     <div className="group/turn w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
-      <div className="text-xs text-muted/60">{label}</div>
+      <div className="text-xs text-muted">{label}</div>
       <Turn status={status} isExpanded={open} onExpandedChange={setOpen}>
         <TurnTrigger>
           <span className="inline-flex items-center gap-1.5">
@@ -239,7 +239,7 @@ function TurnCase({
               nextLabel="下一个版本"
             />
           )}
-          <span className="text-muted/50">1,204 + 318 tokens</span>
+          <span className="text-muted">1,204 + 318 tokens</span>
           <TurnActions>
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">复制</Button>
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">重新生成</Button>
@@ -293,7 +293,7 @@ function ComposerMenuCase({
           onPickFile={() => {}}
         />
       </div>
-      <span className="text-xs text-muted/60">
+      <span className="text-xs text-muted">
         {mode} · {acceptEdits ? 'accept-edits' : 'ask'}
       </span>
     </div>
@@ -489,7 +489,7 @@ function Gallery() {
         <Section title="ChainOfThought / 流式 (shimmer)">
           <ChainOfThought defaultExpanded isStreaming>
             <ChainOfThoughtTrigger>思考过程</ChainOfThoughtTrigger>
-            <ChainOfThoughtContent className="text-xs text-muted/70 leading-relaxed whitespace-pre-wrap">
+            <ChainOfThoughtContent className="text-xs text-muted leading-relaxed whitespace-pre-wrap">
               {'用户想要一个简单的登录页。这是一个直接的 UI 任务——我应该先生成一些设计灵感确保观感，然后再搭页面。'}
             </ChainOfThoughtContent>
           </ChainOfThought>
