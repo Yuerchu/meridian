@@ -131,6 +131,13 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # linuxdeploy and its appimage plugin are themselves AppImages, and an
+          # AppImage mounts itself with FUSE 2 — which ubuntu-24.04 stopped
+          # shipping. This tells the runtime to unpack to a temp directory and
+          # run from there instead, which is what AppImage recommends for CI and
+          # does not depend on a package whose name changed in that same release
+          # (`libfuse2` became `libfuse2t64`). Ignored everywhere else.
+          APPIMAGE_EXTRACT_AND_RUN: 1
         with:
           tagName: ${{ github.ref_name }}
           releaseName: Meridian ${{ github.ref_name }}
