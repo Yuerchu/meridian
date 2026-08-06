@@ -317,11 +317,7 @@ export const TurnItem = React.memo(function TurnItem({
           <AssistantAvatar src={assistantAvatar} modelId={assistants[0]?.model_id} />
           <div className="flex w-full min-w-0 flex-col">
             {assistants[0] && (
-              <MessageMeta
-                modelId={assistants[0].model_id}
-                createdAt={assistants[0].created_at}
-                animate={isLastTurn}
-              />
+              <MessageMeta modelId={assistants[0].model_id} createdAt={assistants[0].created_at} />
             )}
             <TurnCollapse
               status={turn.status}

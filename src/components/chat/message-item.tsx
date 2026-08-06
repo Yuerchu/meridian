@@ -2,7 +2,6 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowsRotateRight, Check, Copy, FileText, Microphone, Pencil, ThumbsDown, ThumbsUp, TrashBin, Xmark } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
-import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
 import { CopyButton, MarkdownContent } from './markdown-content'
@@ -74,10 +73,9 @@ function useRelativeTime() {
  * attribution belongs to the whole turn, and leaving it below the process line
  * would sit it closer to the conclusion than to the avatar it names.
  */
-export function MessageMeta({ modelId, createdAt, animate }: {
+export function MessageMeta({ modelId, createdAt }: {
   modelId?: string | null
   createdAt: number
-  animate?: boolean
 }) {
   const relativeTime = useRelativeTime()
   return (
@@ -85,11 +83,7 @@ export function MessageMeta({ modelId, createdAt, animate }: {
     // bubble, and an assistant's is ghost. Left on, the name sits 12px right of
     // both the process line and the answer it names.
     <MessageHeader className="h-8 gap-2 px-0">
-      {modelId && (
-        animate
-          ? <DecryptedText text={modelId} animateOn="view" speed={25} sequential className="truncate" />
-          : <span className="truncate">{modelId}</span>
-      )}
+      {modelId && <span className="truncate">{modelId}</span>}
       {/* The row is a fixed height, so a long model id has to give way rather
           than push the timestamp out of the message. */}
       <span className="shrink-0 font-normal text-muted">{relativeTime(createdAt)}</span>
@@ -598,7 +592,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
         )}
         <MessageContent>
           {isFirstInGroup && (
-            <MessageMeta modelId={message.model_id} createdAt={message.created_at} animate={isLastMessage} />
+            <MessageMeta modelId={message.model_id} createdAt={message.created_at} />
           )}
 
           <Bubble variant="ghost" className="w-full">

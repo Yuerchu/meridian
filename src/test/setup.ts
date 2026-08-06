@@ -12,9 +12,10 @@ vi.mock('@lobehub/icons', () => ({
     createElement('span', { 'data-slot': 'model-icon', 'data-model': model }),
 }))
 
-// jsdom ships neither observer. Components that animate on scroll (DecryptedText
-// via framer-motion's inView) throw on mount without them, and the failure
-// surfaces as an ErrorBoundary fallback rather than the component under test.
+// jsdom ships neither observer. `message-scroller` uses both — an
+// IntersectionObserver to know which rows are on screen, a ResizeObserver to
+// re-solve the spacer — and while it degrades rather than throws when they are
+// missing, that degraded path is not the one under test.
 if (!('IntersectionObserver' in globalThis)) {
   class IntersectionObserverStub implements IntersectionObserver {
     readonly root = null
