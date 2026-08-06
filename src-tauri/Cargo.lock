@@ -2953,7 +2953,7 @@ dependencies = [
 
 [[package]]
 name = "meridian"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "age",
  "android-keyring",
