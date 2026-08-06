@@ -109,12 +109,10 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: build-${{ matrix.target }}
-          # `sherpa-onnx-sys` unpacks its prebuilt libraries here and returns early
-          # if the directory exists. Without this the cache restores the build
-          # script's fingerprint but not its output: the script never re-runs, the
-          # libraries are never re-downloaded, and the linker is handed a `-L` for a
-          # path that is gone.
-          cache-directories: src-tauri/target/sherpa-onnx-prebuilt
+          # Under the triple, not beside it: `--target` moves everything cargo
+          # writes down a level, the unpacked libraries included. The guard step
+          # below covers a miss either way, but only by re-downloading.
+          cache-directories: src-tauri/target/${{ matrix.target }}/sherpa-onnx-prebuilt
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'

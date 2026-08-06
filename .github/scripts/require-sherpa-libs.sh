@@ -1,42 +1,53 @@
 #!/usr/bin/env bash
-# Make Cargo re-download sherpa-onnx when the cache handed back an empty shell.
+# Make Cargo re-download sherpa-onnx when the cache kept the bookkeeping but
+# dropped the libraries.
 #
-# `sherpa-onnx-sys` unpacks prebuilt libraries into
-# `target/sherpa-onnx-prebuilt/<release>/lib` and, on any later build, returns
-# early if that directory merely *exists*. Caching breaks that assumption in a
-# way the crate cannot see: the restore brings back the build script's
-# fingerprint — so Cargo considers the script done and replays its recorded
-# `rustc-link-search` — while the libraries themselves may not survive, since
-# the cache action prunes the target directory before saving it.
+# `sherpa-onnx-sys` unpacks prebuilt libraries under the target directory and,
+# on any later build, returns early if the `lib` directory merely exists. The
+# cache breaks that assumption invisibly: a restore brings back Cargo's record
+# that the build script already ran, while the libraries themselves may not
+# survive, since the cache action prunes the target directory before saving it.
 #
-# The result is a link against a directory that is present and empty:
+# What follows is a link against a path that is present and empty —
 #
 #   ld: library 'sherpa-onnx-c-api' not found
 #
-# and on Windows our own build script panics looking for the DLLs it stages.
+# — or, on Windows, our own build script panicking over the DLLs it stages.
 #
-# So check the invariant the crate assumes but never verifies — the unpack is
-# complete — and if it does not hold, remove both halves of the inconsistency.
-# Cargo then re-runs the script, which downloads afresh. This is a no-op on a
-# cold cache and on a warm one that is intact.
+# So check the pairing the crate assumes and never verifies: if Cargo thinks
+# the script has run, the libraries have to be there. When they are not, remove
+# both halves so the script runs again and downloads afresh.
 set -euo pipefail
 
 target="src-tauri/target"
-prebuilt="$target/sherpa-onnx-prebuilt"
+[ -d "$target" ] || { echo "no target directory yet"; exit 0; }
 
-# A `lib` directory holding at least one file is what "unpacked" means here.
-if compgen -G "$prebuilt/*/lib/*" > /dev/null; then
+# Two possible homes for the unpack, and which one is used depends on how the
+# job invokes cargo: plain `cargo test` puts it at target/sherpa-onnx-prebuilt,
+# while `--target <triple>` moves it under target/<triple>/. Match both rather
+# than assuming, which is the mistake this script previously made.
+libs() {
+  find "$target" -maxdepth 5 -type f -path '*/sherpa-onnx-prebuilt/*/lib/*' -print -quit 2>/dev/null
+}
+
+# Cargo splits its record in two — the fingerprint that decides whether to
+# re-run, and the recorded output of the last run. Both are keyed per crate,
+# and both sit under a profile directory whose depth varies with --target.
+records() {
+  find "$target" -type d -name 'sherpa-onnx-sys-*' -print -quit 2>/dev/null
+}
+
+if [ -n "$(libs)" ]; then
   echo "sherpa-onnx libraries present, leaving the cache alone"
   exit 0
 fi
 
-echo "sherpa-onnx libraries missing — clearing the unpack and its build script fingerprints"
-rm -rf "$prebuilt"
+if [ -z "$(records)" ]; then
+  echo "nothing built yet; the build script will download on its own"
+  exit 0
+fi
 
-# The fingerprints live under `build/`, one directory per build script run.
-# Removing them is what actually makes Cargo run the script again; deleting the
-# unpack alone would leave it convinced there is nothing to do.
-for profile in "$target"/*/build; do
-  [ -d "$profile" ] || continue
-  find "$profile" -maxdepth 1 -name 'sherpa-onnx-sys-*' -exec rm -rf {} +
-done
+echo "cargo has a record of the build script but the libraries are gone — clearing both"
+find "$target" -maxdepth 2 -type d -name sherpa-onnx-prebuilt -print0 2>/dev/null | xargs -0 -r rm -rf
+find "$target" -type d -name 'sherpa-onnx-sys-*' -print0 2>/dev/null | xargs -0 -r rm -rf
+echo "cleared"
