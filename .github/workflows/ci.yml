@@ -63,6 +63,10 @@ jobs:
       - name: Frontend tests
         run: pnpm test
 
+      - name: Drop a half-restored sherpa-onnx unpack
+        shell: bash
+        run: .github/scripts/require-sherpa-libs.sh
+
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test

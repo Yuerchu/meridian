@@ -61,6 +61,10 @@ jobs:
       - name: Frontend tests
         run: pnpm test
 
+      - name: Drop a half-restored sherpa-onnx unpack
+        shell: bash
+        run: .github/scripts/require-sherpa-libs.sh
+
       - name: Rust tests
         working-directory: src-tauri
         run: cargo test
@@ -119,6 +123,10 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
       - run: pnpm install
+
+      - name: Drop a half-restored sherpa-onnx unpack
+        shell: bash
+        run: .github/scripts/require-sherpa-libs.sh
 
       - uses: tauri-apps/tauri-action@v0
         env:
