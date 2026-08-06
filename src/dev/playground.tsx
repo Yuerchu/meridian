@@ -45,6 +45,7 @@ import { TodoBarView } from '@/components/chat/todo-bar'
 import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
 import { buildTurns, formatDuration, type TurnStep } from '@/lib/turns'
+import { useAppTheme } from '@/lib/theme'
 import type { ChatMode, ContentBlock, Message, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -446,6 +447,10 @@ export default function Playground() {
 }
 
 function Gallery() {
+  // Through `setTheme` rather than toggling the class directly: the hook keeps
+  // its own record of what it wrote, and a class it did not write is a class it
+  // will not remove.
+  const { resolvedTheme, setTheme } = useAppTheme()
   return (
     <div className="h-full overflow-y-auto bg-background text-foreground">
       <div className="mx-auto max-w-2xl space-y-10 px-6 py-10">
@@ -456,7 +461,7 @@ function Gallery() {
               isIconOnly
               aria-label="切换主题"
               variant="outline"
-              onClick={() => document.documentElement.classList.toggle('dark')}
+              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
             >
               <Sun className="hidden size-4 dark:block" />
               <Moon className="size-4 dark:hidden" />

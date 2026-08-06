@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Button, Input, ListBox, Select } from '@heroui/react'
 import { Check } from '@gravity-ui/icons'
 import { LANGUAGES, setLocale } from '@/i18n'
+import { useAppTheme, type ThemePreference } from '@/lib/theme'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { AndroidFileAccess } from './android-file-access'
@@ -23,6 +24,7 @@ const SEARCH_PROVIDERS = [
 export function GeneralSettings() {
   const { t, i18n } = useTranslation()
   const platform = usePlatform()
+  const { theme, setTheme } = useAppTheme()
   const [shell, setShell] = useState('bash')
   const [sandboxEnabled, setSandboxEnabled] = useState(true)
   const [searchProvider, setSearchProvider] = useState('tavily')
@@ -103,6 +105,28 @@ export function GeneralSettings() {
               {LANGUAGE_OPTIONS.map((lang) => (
                 <ListBox.Item key={lang.value} id={lang.value} textValue={lang.label}>
                   {lang.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
+        </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="block text-xs font-medium text-muted">
+          {t('settings.general.theme')}
+        </label>
+        <Select fullWidth value={theme} onChange={(v) => v && setTheme(String(v) as ThemePreference)}>
+          <Select.Trigger className="max-w-xs">
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {themeOptions.map((o) => (
+                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                  {o.label}
                   <ListBox.ItemIndicator />
                 </ListBox.Item>
               ))}

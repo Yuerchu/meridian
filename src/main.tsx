@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
 import { ErrorBoundary } from './components/error-boundary'
+import { ThemeProvider } from './lib/theme'
 import './i18n'
 import './index.css'
 
@@ -39,23 +40,27 @@ if (isDev && window.location.hash.startsWith('#playground')) {
   import('./dev/playground').then(({ default: Playground }) => {
     root.render(
       <StrictMode>
-        <Playground />
+        <ThemeProvider>
+          <Playground />
+        </ThemeProvider>
       </StrictMode>,
     )
   })
 } else {
   root.render(
     <StrictMode>
-      <ErrorBoundary
-        fallback={(error) => (
-          <div className="flex h-screen flex-col items-center justify-center gap-2 p-8 text-center">
-            <p className="text-sm font-medium">Something went wrong</p>
-            <p className="text-xs text-muted break-all max-w-md">{String(error)}</p>
-          </div>
-        )}
-      >
-        <App />
-      </ErrorBoundary>
+      <ThemeProvider>
+        <ErrorBoundary
+          fallback={(error) => (
+            <div className="flex h-screen flex-col items-center justify-center gap-2 p-8 text-center">
+              <p className="text-sm font-medium">Something went wrong</p>
+              <p className="text-xs text-muted break-all max-w-md">{String(error)}</p>
+            </div>
+          )}
+        >
+          <App />
+        </ErrorBoundary>
+      </ThemeProvider>
     </StrictMode>,
   )
 }

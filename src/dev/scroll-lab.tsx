@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '@heroui/react'
 import { ChatTranscript } from '@/components/chat/chat-transcript'
 import { useTurns } from '@/hooks/use-turns'
+import { useAppTheme } from '@/lib/theme'
 import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
 
 const LAB_CONVERSATION = 'scroll-lab'
@@ -141,6 +142,10 @@ declare global {
 }
 
 export default function ScrollLab() {
+  // Through `setTheme` rather than toggling the class directly: the hook keeps
+  // its own record of what it wrote, and a class it did not write is a class it
+  // will not remove.
+  const { resolvedTheme, setTheme } = useAppTheme()
   const [messages, setMessages] = useState<Message[]>([])
   const [streaming, setStreaming] = useState(false)
   // Only ever read through the updater, so the value itself is never rendered.
@@ -481,7 +486,7 @@ export default function ScrollLab() {
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => document.documentElement.classList.toggle('dark')}
+          onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
         >
           主题
         </Button>
