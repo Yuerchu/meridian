@@ -13,8 +13,8 @@ const memoryBadgeVariants = tv({
       neutral: 'bg-default text-muted',
       accent: 'bg-default text-default-foreground',
       /** Owner-only rows: the subject cannot see these. */
-      warning: 'bg-default text-warning',
-      info: 'bg-default text-info',
+      warning: 'bg-default text-warning-soft-foreground',
+      info: 'bg-default text-info-soft-foreground',
     },
   },
   defaultVariants: { tone: 'neutral' },

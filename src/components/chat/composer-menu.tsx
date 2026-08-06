@@ -351,8 +351,8 @@ export function ComposerMenu(props: ComposerMenuProps) {
                   <Icon
                     className={cn(
                       'size-4 shrink-0',
-                      entry.tone === 'warning' && 'text-warning',
-                      entry.tone === 'info' && 'text-info',
+                      entry.tone === 'warning' && 'text-warning-soft-foreground',
+                      entry.tone === 'info' && 'text-info-soft-foreground',
                     )}
                   />
                   <span data-slot="composer-menu-item-label" className="flex-1 text-left truncate">
@@ -364,10 +364,10 @@ export function ComposerMenu(props: ComposerMenuProps) {
                       className={cn(
                         'text-xs truncate max-w-[88px]',
                         entry.tone === 'warning'
-                          ? 'text-warning'
+                          ? 'text-warning-soft-foreground'
                           : entry.tone === 'info'
-                            ? 'text-info'
-                            : 'text-muted/60',
+                            ? 'text-info-soft-foreground'
+                            : 'text-muted',
                       )}
                     >
                       {entry.value}

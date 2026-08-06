@@ -229,12 +229,12 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   )
 
   return (
-    <div className="my-3 overflow-hidden rounded-2xl bg-surface text-xs shadow-surface">
+    <div className="my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface">
       <div className="flex items-center gap-2 bg-default px-4 py-3">
         <CircleQuestion className="w-3.5 h-3.5 text-muted" />
         <span className="font-medium text-foreground">{t('chat.tool.askUser')}</span>
         {data.status === 'running' && <CircleDashed className="w-3.5 h-3.5 animate-spin text-muted ml-auto" />}
-        {data.status === 'completed' && <Check className="w-3.5 h-3.5 text-success ml-auto" />}
+        {data.status === 'completed' && <Check className="w-3.5 h-3.5 text-success-soft-foreground ml-auto" />}
       </div>
 
       {data.status === 'pending' && (
@@ -479,18 +479,18 @@ function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDif
 function diffLineClass(kind: DiffLineKind, highlighted: boolean): string {
   switch (kind) {
     case 'add':
-      return highlighted ? 'bg-success/10 text-foreground/80' : 'bg-success/10 text-success'
+      return highlighted ? 'bg-success/10 text-foreground/80' : 'bg-success/10 text-success-soft-foreground'
     case 'remove':
       return highlighted ? 'bg-danger/10 text-foreground/80' : 'bg-danger/10 text-danger'
     case 'hunk':
-      return 'text-muted/60'
+      return 'text-muted'
     default:
       return 'text-foreground/80'
   }
 }
 
 function diffSignClass(kind: DiffLineKind): string | undefined {
-  if (kind === 'add') return 'text-success'
+  if (kind === 'add') return 'text-success-soft-foreground'
   if (kind === 'remove') return 'text-danger'
   return undefined
 }
@@ -565,12 +565,12 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
         >
           <FileIcon path={diff.path} />
           <span className="font-mono truncate" title={diff.path}>{fileName}</span>
-          {diff.op === 'create' && <span className="text-success shrink-0">{t('chat.tool.diff.newFile')}</span>}
+          {diff.op === 'create' && <span className="text-success-soft-foreground shrink-0">{t('chat.tool.diff.newFile')}</span>}
           {diff.op === 'delete' && <span className="text-danger shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
           {diff.replaceAll && <span className="shrink-0">{t('chat.tool.diff.replaceAll')}</span>}
           {(added > 0 || removed > 0) && (
             <span data-slot="file-diff-stats" className="ml-auto shrink-0 font-mono">
-              {added > 0 && <span className="text-success">+{added}</span>}
+              {added > 0 && <span className="text-success-soft-foreground">+{added}</span>}
               {added > 0 && removed > 0 && ' '}
               {removed > 0 && <span className="text-danger">-{removed}</span>}
             </span>
@@ -761,7 +761,7 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
       <>
         {isEscalation && (
           <div className="flex items-start gap-1.5 px-0.5 text-xs text-muted">
-            <TriangleExclamation className="w-3.5 h-3.5 text-warning shrink-0" />
+            <TriangleExclamation className="w-3.5 h-3.5 text-warning-soft-foreground shrink-0" />
             <span>{t('chat.tool.sandboxRetryPrompt')}</span>
           </div>
         )}
@@ -984,7 +984,7 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
         <span data-slot="enter-plan-title" className="font-medium text-foreground">
           {t('chat.plan.enterTitle')}
         </span>
-        {data.status === 'completed' && <Check className="ml-auto size-3.5 text-success" />}
+        {data.status === 'completed' && <Check className="ml-auto size-3.5 text-success-soft-foreground" />}
         {declined && <Xmark className="ml-auto size-3.5 text-muted" />}
       </div>
 
@@ -1056,7 +1056,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
         <span data-slot="exit-plan-title" className="font-medium text-foreground">
           {t('chat.plan.title')}
         </span>
-        {data.status === 'completed' && <Check className="ml-auto size-3.5 text-success" />}
+        {data.status === 'completed' && <Check className="ml-auto size-3.5 text-success-soft-foreground" />}
         {wasRejected && <Xmark className="ml-auto size-3.5 text-muted" />}
       </div>
 

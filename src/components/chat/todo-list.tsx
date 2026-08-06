@@ -62,8 +62,8 @@ export function TodoStatusIcon({ status, className }: { status: TodoItemStatus; 
       data-status={status}
       className={cn(
         'size-3.5 shrink-0',
-        status === 'completed' && 'text-success',
-        status === 'in_progress' && 'text-info',
+        status === 'completed' && 'text-success-soft-foreground',
+        status === 'in_progress' && 'text-info-soft-foreground',
         status === 'pending' && 'text-muted',
         className,
       )}

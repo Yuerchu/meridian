@@ -113,7 +113,7 @@ export function ScopeNav({
             </Card.Description>
           </Card.Header>
           {selectedPerson.opted_out !== 0 && (
-            <div className="text-xs text-warning">{t('settings.memory.person.optedOut')}</div>
+            <div className="text-xs text-warning-soft-foreground">{t('settings.memory.person.optedOut')}</div>
           )}
 
           <Button

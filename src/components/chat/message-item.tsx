@@ -632,7 +632,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     label={t('chat.thumbsUp')}
                     onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}
                     className={cn(
-                      message.rating === 1 ? 'text-success' : 'text-muted hover:text-foreground',
+                      message.rating === 1 ? 'text-success-soft-foreground' : 'text-muted hover:text-foreground',
                     )}
                   >
                     <ThumbsUp className="w-3.5 h-3.5" />
@@ -688,7 +688,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
         {onRate && !isStreaming && (
           <>
             <ContextMenuItem onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}>
-              <ThumbsUp className={message.rating === 1 ? 'text-success' : ''} />
+              <ThumbsUp className={message.rating === 1 ? 'text-success-soft-foreground' : ''} />
               {t('chat.thumbsUp')}
             </ContextMenuItem>
             <ContextMenuItem onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}>

@@ -164,7 +164,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
       return (
         <CircleCheck
           aria-hidden
-          className={cn("size-3.5 shrink-0 text-success", className)}
+          className={cn("size-3.5 shrink-0 text-success-soft-foreground", className)}
         />
       )
     case "output-error":
@@ -178,7 +178,7 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
       return (
         <CircleExclamation
           aria-hidden
-          className={cn("size-3.5 shrink-0 text-warning", className)}
+          className={cn("size-3.5 shrink-0 text-warning-soft-foreground", className)}
         />
       )
   }

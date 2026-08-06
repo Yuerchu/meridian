@@ -145,13 +145,13 @@ function SkillEditor({
             className="resize-none font-mono text-xs"
           />
         )}
-        <p data-slot="skill-editor-hint" className="text-xs text-muted/60">
+        <p data-slot="skill-editor-hint" className="text-xs text-muted">
           {t('settings.skills.bodyHint')}
         </p>
       </div>
 
       {isBuiltin && (
-        <p data-slot="skill-editor-builtin-notice" className="text-xs text-info">
+        <p data-slot="skill-editor-builtin-notice" className="text-xs text-info-soft-foreground">
           {t('settings.skills.builtinNotice')}
         </p>
       )}
@@ -165,7 +165,7 @@ function SkillEditor({
           {t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="skill-editor-saved" className="flex items-center gap-1 text-xs text-success">
+          <span data-slot="skill-editor-saved" className="flex items-center gap-1 text-xs text-success-soft-foreground">
             <Check className="w-3.5 h-3.5" /> {t('common.saved')}
           </span>
         )}

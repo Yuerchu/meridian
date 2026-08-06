@@ -439,7 +439,7 @@ function AssistantEditor({
       <div className="flex items-center gap-2 pt-1">
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success">
+          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
             <Check className="w-3.5 h-3.5" /> {t('common.saved')}
           </span>
         )}

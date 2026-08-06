@@ -190,7 +190,7 @@ export function MobileOptionsMenu({
                         const Icon = active.icon
                         return (
                           <>
-                            <Icon className={cn('w-4 h-4', mode === 'work' ? 'text-muted' : 'text-info')} />
+                            <Icon className={cn('w-4 h-4', mode === 'work' ? 'text-muted' : 'text-info-soft-foreground')} />
                             <span>{t('toolbar.mode')}: {t(active.labelKey)}</span>
                           </>
                         )
@@ -217,7 +217,7 @@ export function MobileOptionsMenu({
                   {supportsThinking && (
                     <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('thinking')}>
                       <span className="flex items-center gap-3">
-                        <Bulb className={cn('w-4 h-4', thinkingLevel !== 'default' && thinkingLevel !== 'off' ? 'text-info' : 'text-muted')} />
+                        <Bulb className={cn('w-4 h-4', thinkingLevel !== 'default' && thinkingLevel !== 'off' ? 'text-info-soft-foreground' : 'text-muted')} />
                         <span>{t('toolbar.thinking')}: {thinkingLabel}</span>
                       </span>
                       <ChevronRight className="w-4 h-4 text-muted" />
@@ -233,7 +233,7 @@ export function MobileOptionsMenu({
                     >
                       <span className="flex items-center gap-3">
                         <ChevronsRight
-                          className={cn('w-4 h-4', acceptEdits ? 'text-warning' : 'text-muted')}
+                          className={cn('w-4 h-4', acceptEdits ? 'text-warning-soft-foreground' : 'text-muted')}
                         />
                         <span>{t('toolbar.acceptEdits')}</span>
                       </span>
@@ -251,7 +251,7 @@ export function MobileOptionsMenu({
                       onClick={() => onToggleFast(!fastMode)}
                     >
                       <span className="flex items-center gap-3">
-                        <Thunderbolt className={cn('w-4 h-4', fastMode ? 'text-warning' : 'text-muted')} />
+                        <Thunderbolt className={cn('w-4 h-4', fastMode ? 'text-warning-soft-foreground' : 'text-muted')} />
                         <span>{t('toolbar.fast')}</span>
                       </span>
                       <span className="text-xs text-muted">

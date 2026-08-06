@@ -93,7 +93,7 @@ function TurnStatusIcon({ className }: { className?: string }) {
     case "streaming":
       return <CircleDashed aria-hidden className={cn(shared, "animate-spin text-muted")} />
     case "awaiting-input":
-      return <CircleExclamation aria-hidden className={cn(shared, "text-warning")} />
+      return <CircleExclamation aria-hidden className={cn(shared, "text-warning-soft-foreground")} />
     case "interrupted":
       return <Ban aria-hidden className={cn(shared, "text-muted")} />
     case "empty":

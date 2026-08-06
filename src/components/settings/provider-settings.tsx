@@ -463,7 +463,7 @@ function ProviderEditor({
       <div className="flex items-center gap-2">
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success">
+          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
             <Check className="w-3.5 h-3.5" /> {t('common.saved')}
           </span>
         )}
@@ -502,10 +502,10 @@ function ProviderEditor({
           </p>
         )}
         {keyStatus === 'set' && (
-          <p className="text-xs text-success">{t('settings.provider.keySaved')}</p>
+          <p className="text-xs text-success-soft-foreground">{t('settings.provider.keySaved')}</p>
         )}
         {keyStatus === 'error' && (
-          <p className="text-xs text-warning">{t('settings.provider.apiKeyCheckFailed')}</p>
+          <p className="text-xs text-warning-soft-foreground">{t('settings.provider.apiKeyCheckFailed')}</p>
         )}
       </div>
 
@@ -537,7 +537,7 @@ function ProviderEditor({
                   <div className="flex items-center justify-between px-3 py-1.5">
                     <span className={cn("text-xs", cfg ? "text-foreground" : "text-muted")}>
                       {m.name}
-                      {cfg && <span className="ml-1.5 text-xs text-success">●</span>}
+                      {cfg && <span className="ml-1.5 text-xs text-success-soft-foreground">●</span>}
                     </span>
                     <Button
                       isIconOnly

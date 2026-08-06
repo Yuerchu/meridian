@@ -504,7 +504,7 @@ export default function ScrollLab() {
         <div data-testid="scroll-lab-results" className="max-h-48 overflow-y-auto border-t px-4 py-2 text-xs">
           {results.map((r) => (
             <div key={r.name} className="flex gap-2 py-0.5">
-              <span className={r.pass ? 'text-success' : 'text-danger'}>{r.pass ? 'PASS' : 'FAIL'}</span>
+              <span className={r.pass ? 'text-success-soft-foreground' : 'text-danger'}>{r.pass ? 'PASS' : 'FAIL'}</span>
               <span className="font-medium">{r.name}</span>
               <span className="text-muted">{r.detail}</span>
             </div>

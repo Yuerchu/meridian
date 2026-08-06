@@ -7,8 +7,8 @@ const levelBadgeVariants = tv({
   variants: {
     level: {
       error: 'text-danger',
-      warn: 'text-warning',
-      info: 'text-info',
+      warn: 'text-warning-soft-foreground',
+      info: 'text-info-soft-foreground',
       muted: 'text-muted',
     },
   },
