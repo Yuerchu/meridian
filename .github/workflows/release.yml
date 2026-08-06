@@ -63,7 +63,7 @@ jobs:
 
       - name: Drop a half-restored sherpa-onnx unpack
         shell: bash
-        run: .github/scripts/require-sherpa-libs.sh
+        run: bash .github/scripts/require-sherpa-libs.sh
 
       - name: Rust tests
         working-directory: src-tauri
@@ -126,7 +126,7 @@ jobs:
 
       - name: Drop a half-restored sherpa-onnx unpack
         shell: bash
-        run: .github/scripts/require-sherpa-libs.sh
+        run: bash .github/scripts/require-sherpa-libs.sh
 
       - uses: tauri-apps/tauri-action@v0
         env:
