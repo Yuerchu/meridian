@@ -1,7 +1,6 @@
-import { Disclosure } from '@heroui/react'
+import { Disclosure, ProgressCircle } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 
-import { CircularProgress } from '@/components/ui/circular-progress'
 import { useConversationStore } from '@/stores/conversation-store'
 import { cn } from '@/lib/utils'
 import { TodoItemList, todoProgress, type TodoArgs } from './todo-list'
@@ -36,13 +35,21 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
               data-slot="todo-bar-trigger"
               className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30"
             >
-              <CircularProgress
+              {/* `--info` has no `color` variant of its own — HeroUI's are
+                  accent/default/success/warning/danger. The stroke reads a
+                  custom property, so pointing that at the token is the
+                  supported way in rather than restyling the circle. */}
+              <ProgressCircle
+                aria-label={t('chat.todo.progress', { done, total })}
                 value={done}
-                max={total}
-                size={14}
-                strokeWidth={2.5}
-                className="shrink-0 text-info"
-              />
+                maxValue={total}
+                className="shrink-0 [--progress-circle-stroke:var(--info)]"
+              >
+                <ProgressCircle.Track className="size-3.5">
+                  <ProgressCircle.TrackCircle />
+                  <ProgressCircle.FillCircle />
+                </ProgressCircle.Track>
+              </ProgressCircle>
               {/* Same shape as ChatToolTrigger: the label row absorbs the slack
                   so the count and chevron sit at the right edge without an
                   ml-auto fighting for the free space. */}

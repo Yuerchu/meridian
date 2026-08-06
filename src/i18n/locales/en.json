@@ -398,6 +398,7 @@
   "settings.voice.modelMissing": "No recognition model installed",
   "settings.voice.modelHint": "About 127 MB, downloaded once; app updates never re-download it.",
   "settings.voice.download": "Download model",
+  "settings.voice.downloading": "Downloading model",
   "settings.voice.cancelDownload": "Cancel",
   "settings.voice.import": "Import from file…",
   "settings.voice.importing": "Importing…",

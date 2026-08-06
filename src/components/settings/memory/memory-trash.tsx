@@ -2,14 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Undo2 } from 'lucide-react'
 import { api } from '@/api'
-import { Button } from '@heroui/react'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
+import { Button, Drawer } from '@heroui/react'
 import { MemoryBadge } from './memory-badge'
 import type { Memory } from '@/types'
 
@@ -47,59 +40,62 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[28rem]" data-slot="memory-trash">
-        <SheetHeader>
-          <SheetTitle>{t('settings.memory.trash.title')}</SheetTitle>
-          <SheetDescription>{t('settings.memory.trash.retentionHint')}</SheetDescription>
-        </SheetHeader>
+    <Drawer.Backdrop isOpen={open} onOpenChange={onOpenChange}>
+      <Drawer.Content placement="right">
+        <Drawer.Dialog className="w-[28rem] max-w-[85vw]" data-slot="memory-trash">
+          <Drawer.CloseTrigger />
+          <Drawer.Header className="gap-1">
+            <Drawer.Heading>{t('settings.memory.trash.title')}</Drawer.Heading>
+            <p className="text-sm text-muted">{t('settings.memory.trash.retentionHint')}</p>
+          </Drawer.Header>
 
-        <div className="space-y-2 overflow-y-auto p-4">
-          {rows.length === 0 && (
-            <p className="py-6 text-center text-sm text-muted">
-              {t('settings.memory.trash.empty')}
-            </p>
-          )}
-          {rows.map((m) => (
-            <div
-              key={m.id}
-              data-slot="memory-trash-row"
-              className="space-y-1.5 rounded-lg border border-border p-3"
-            >
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-sm">{m.key}</span>
-                <MemoryBadge tone="info">{deletedByLabel(m.deleted_by)}</MemoryBadge>
-                <div className="flex-1" />
-                <Button
-                  variant="ghost"
-                  isIconOnly
-                  onClick={async () => {
-                    await api.restoreMemories([m.id])
-                    load()
-                    onChanged()
-                  }}
-                  data-slot="memory-trash-restore"
-                >
-                  <Undo2 />
-                </Button>
-                <Button
-                  variant="ghost"
-                  isIconOnly
-                  onClick={async () => {
-                    await api.purgeMemories([m.id])
-                    load()
-                    onChanged()
-                  }}
-                  data-slot="memory-trash-purge"
-                >
-                  <Trash2 className="text-danger" />
-                </Button>
+          <Drawer.Body className="space-y-2">
+            {rows.length === 0 && (
+              <p className="py-6 text-center text-sm text-muted">
+                {t('settings.memory.trash.empty')}
+              </p>
+            )}
+            {rows.map((m) => (
+              <div
+                key={m.id}
+                data-slot="memory-trash-row"
+                className="space-y-1.5 rounded-lg border border-border p-3"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm">{m.key}</span>
+                  <MemoryBadge tone="info">{deletedByLabel(m.deleted_by)}</MemoryBadge>
+                  <div className="flex-1" />
+                  <Button
+                    variant="ghost"
+                    isIconOnly
+                    onClick={async () => {
+                      await api.restoreMemories([m.id])
+                      load()
+                      onChanged()
+                    }}
+                    data-slot="memory-trash-restore"
+                  >
+                    <Undo2 />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    isIconOnly
+                    onClick={async () => {
+                      await api.purgeMemories([m.id])
+                      load()
+                      onChanged()
+                    }}
+                    data-slot="memory-trash-purge"
+                  >
+                    <Trash2 className="text-danger" />
+                  </Button>
+                </div>
+                <p className="whitespace-pre-wrap text-sm text-muted">{m.content}</p>
               </div>
-              <p className="whitespace-pre-wrap text-sm text-muted">{m.content}</p>
-            </div>
-          ))}
-        </div>
-      </SheetContent>
-    </Sheet>
+            ))}
+          </Drawer.Body>
+        </Drawer.Dialog>
+      </Drawer.Content>
+    </Drawer.Backdrop>
   )
 }

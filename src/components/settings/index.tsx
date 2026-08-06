@@ -9,13 +9,12 @@ import { SkillSettings } from './skill-settings'
 import { MemorySettings } from './memory-settings'
 import { VoiceSettings } from './voice-settings'
 import { About } from './about'
-import { ScrollArea } from '@/components/ui/scroll-area'
 
 export type SettingsTab = 'provider' | 'assistants' | 'emoji' | 'tools' | 'skills' | 'mcp' | 'memories' | 'voice' | 'onebot' | 'general' | 'about'
 
 export default function SettingsPage({ activeTab }: { activeTab: SettingsTab }) {
   return (
-    <ScrollArea className="h-full">
+    <div data-slot="settings-page" className="h-full overflow-y-auto overscroll-contain">
       <div className="p-4 md:p-6">
         {activeTab === 'provider' && <ProviderSettings />}
         {activeTab === 'assistants' && <AssistantSettings />}
@@ -29,6 +28,6 @@ export default function SettingsPage({ activeTab }: { activeTab: SettingsTab }) 
         {activeTab === 'general' && <GeneralSettings />}
         {activeTab === 'about' && <About />}
       </div>
-    </ScrollArea>
+    </div>
   )
 }

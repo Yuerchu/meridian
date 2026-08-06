@@ -1,7 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Plug, PlugZap, Trash2, ArrowLeft, ClipboardPaste } from 'lucide-react'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button, Input, TextArea, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -418,9 +417,12 @@ export function McpSettings() {
         <p className="text-sm text-muted">{t('settings.mcp.noServers')}</p>
       ) : (
         <div className="flex gap-4">
-          <ScrollArea className="w-48 flex-shrink-0">
+          <div
+            data-slot="mcp-server-list"
+            className="w-48 flex-shrink-0 overflow-y-auto overscroll-contain"
+          >
             {serverList}
-          </ScrollArea>
+          </div>
 
           <div className="flex-1">
             {selected ? (

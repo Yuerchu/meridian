@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, ChevronDown, ChevronRight, BookOpen, Check, RefreshCw } from 'lucide-react'
-import { Button, Checkbox, Input, TextArea } from '@heroui/react'
+import { Plus, Trash2, BookOpen, Check, RefreshCw } from 'lucide-react'
+import { Button, Checkbox, Disclosure, DisclosureGroup, Input, TextArea } from '@heroui/react'
 import { api } from '@/api'
 import type { Skill } from '@/types'
 
@@ -275,28 +275,51 @@ export function SkillSettings() {
         />
       )}
 
-      <div data-slot="skill-settings-list" className="space-y-1">
+      {/* One open at a time is the group's own default (`allowsMultipleExpanded`
+          is off), so the single-open rule lives in the primitive rather than in
+          the click handler. */}
+      <DisclosureGroup
+        data-slot="skill-settings-list"
+        className="flex flex-col gap-1"
+        expandedKeys={expandedDir ? [expandedDir] : []}
+        onExpandedChange={(keys) => setExpandedDir((([...keys][0] as string | undefined) ?? null))}
+      >
         {skills.map((skill) => {
           const isExpanded = expandedDir === skill.dir_name
           const isBuiltin = skill.is_builtin === 1
           return (
-            <div key={skill.dir_name} data-slot="skill-item" className="border border-border rounded-lg overflow-hidden">
+            <Disclosure
+              key={skill.dir_name}
+              id={skill.dir_name}
+              data-slot="skill-item"
+              className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
+            >
               <div data-slot="skill-item-header" className="flex items-center gap-2 pr-3">
-                <Button
-                  variant="ghost"
-                  onClick={() => setExpandedDir(isExpanded ? null : skill.dir_name)}
-                  className="flex-1 min-w-0 justify-start h-auto px-3 py-2 text-xs"
-                >
-                  {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                  <BookOpen className="w-3.5 h-3.5 text-muted" />
-                  <span data-slot="skill-item-name" className="truncate">{skill.display_name}</span>
-                  <span data-slot="skill-item-slug" className="font-mono text-muted/60 truncate">
-                    {skill.llm_name}
-                  </span>
-                  <span data-slot="skill-item-source" className="ml-auto text-xs px-1.5 py-0.5 rounded bg-default text-muted shrink-0">
-                    {t(`settings.skills.source.${skill.source}`)}
-                  </span>
-                </Button>
+                {/* The checkboxes stay outside the trigger: it is a `<button>`,
+                    and a nested one would be invalid markup and swallow the
+                    click. */}
+                <Disclosure.Heading className="min-w-0 flex-1">
+                  {/* `flex` is not optional: HeroUI styles the indicator with
+                      `ms-auto` and `shrink-0`, which only mean anything inside a
+                      flex container. `text-start` undoes the button element's
+                      centred UA default. */}
+                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
+                    <BookOpen className="w-3.5 h-3.5 shrink-0 text-muted" />
+                    {/* The label row absorbs the slack, so the badge and the
+                        chevron sit at the right edge without a second auto
+                        margin fighting the indicator's own `ms-auto`. */}
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <span data-slot="skill-item-name" className="truncate">{skill.display_name}</span>
+                      <span data-slot="skill-item-slug" className="font-mono text-muted/60 truncate">
+                        {skill.llm_name}
+                      </span>
+                    </div>
+                    <span data-slot="skill-item-source" className="text-xs px-1.5 py-0.5 rounded bg-default text-muted shrink-0">
+                      {t(`settings.skills.source.${skill.source}`)}
+                    </span>
+                    <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+                  </Disclosure.Trigger>
+                </Disclosure.Heading>
                 <Checkbox
                   data-slot="skill-item-enabled"
                   className="shrink-0 text-xs"
@@ -324,28 +347,40 @@ export function SkillSettings() {
                   </Checkbox.Content>
                 </Checkbox>
               </div>
-              {isExpanded && (
-                <div data-slot="skill-item-body" className="px-3 pb-3 space-y-2">
-                  <p data-slot="skill-item-description" className="text-xs text-muted">
-                    {skill.llm_description}
-                  </p>
-                  <SkillEditor
-                    skill={skill}
-                    onSave={refresh}
-                    onDelete={isBuiltin ? undefined : async () => {
-                      setError(null)
-                      try {
-                        await api.deleteSkill(skill.dir_name)
-                        setExpandedDir(null)
-                        await refresh()
-                      } catch (e) {
-                        setError(String(e))
-                      }
-                    }}
-                  />
-                </div>
-              )}
-            </div>
+              {/* `min-h-0` is load-bearing: the card is a flex column, and a
+                  flex item's default `min-height: auto` floors it at its
+                  content height. */}
+              <Disclosure.Content className="min-h-0 w-full">
+                {/* Body, not a plain wrapper: it is what keeps the panel
+                    measurable, so without it the editor never collapses. */}
+                <Disclosure.Body data-slot="skill-item-body" className="space-y-2">
+                  {/* A collapsed panel is only hidden, not unmounted, so the
+                      editor still has to be gated: mounting one per row would
+                      read every skill's file on every visit to this page. */}
+                  {isExpanded && (
+                    <>
+                      <p data-slot="skill-item-description" className="text-xs text-muted">
+                        {skill.llm_description}
+                      </p>
+                      <SkillEditor
+                        skill={skill}
+                        onSave={refresh}
+                        onDelete={isBuiltin ? undefined : async () => {
+                          setError(null)
+                          try {
+                            await api.deleteSkill(skill.dir_name)
+                            setExpandedDir(null)
+                            await refresh()
+                          } catch (e) {
+                            setError(String(e))
+                          }
+                        }}
+                      />
+                    </>
+                  )}
+                </Disclosure.Body>
+              </Disclosure.Content>
+            </Disclosure>
           )
         })}
         {skills.length === 0 && !showCreate && (
@@ -353,7 +388,7 @@ export function SkillSettings() {
             {t('settings.skills.noSkills')}
           </p>
         )}
-      </div>
+      </DisclosureGroup>
 
       <p data-slot="skill-settings-global-hint" className="text-xs text-muted/60">
         {t('settings.skills.globalBindingHint')}

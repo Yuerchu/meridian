@@ -188,9 +188,12 @@ body {
     @apply h-full overflow-hidden;
     overscroll-behavior: none;
   }
-  /* 全局把原生滚动条对齐 HeroUI 的 --scrollbar-thumb。写在 base layer 里，
-     base-ui 注入的 .base-ui-disable-scrollbar（ScrollArea Viewport）与
-     scrollbar-* utilities 都能覆盖它。 */
+  /* 全局把原生滚动条对齐 HeroUI 的 --scrollbar-thumb。
+     注意这些规则是全局的最终答案，不是可以被覆盖的默认值：Chromium 一旦发现
+     ::-webkit-scrollbar 被指定了宽度，就整个忽略 scrollbar-width，所以
+     HeroUI 的 `scrollbar` / `scrollbar-thin` 在本项目里不产生任何效果。
+     `scrollbar-none` 是例外——隐藏滚动条仍然生效。要改某处滚动条的样子，
+     写 ::-webkit-scrollbar 而不是加 scrollbar-* utility。 */
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;

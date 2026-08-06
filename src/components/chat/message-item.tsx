@@ -7,7 +7,7 @@ import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
 import { CopyButton, MarkdownContent } from './markdown-content'
-import { Avatar, TextArea } from '@heroui/react'
+import { AlertDialog, Avatar, Button, TextArea } from '@heroui/react'
 import {
   Message,
   MessageAvatar,
@@ -40,14 +40,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import {
-  AlertDialog,
-  AlertDialogPopup,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogClose,
-  AlertDialogFooter,
-} from '@/components/ui/alert-dialog'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { ToolCallBlock } from './tool-call-block'
@@ -570,23 +562,24 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
       <>
         {userContent}
         {onDelete && (
-          <AlertDialog open={showDeleteConfirm} onOpenChange={(open) => { if (!open) setShowDeleteConfirm(false) }}>
-            <AlertDialogPopup>
-              <AlertDialogTitle>{t('confirm.title')}</AlertDialogTitle>
-              <AlertDialogDescription>{t('confirm.deleteMessage')}</AlertDialogDescription>
-              <AlertDialogFooter>
-                <AlertDialogClose className="bg-default text-default-foreground hover:bg-default/80">
-                  {t('common.cancel')}
-                </AlertDialogClose>
-                <AlertDialogClose
-                  className="bg-danger text-white hover:bg-danger/80"
-                  onClick={() => onDelete(message.id)}
-                >
-                  {t('common.confirm')}
-                </AlertDialogClose>
-              </AlertDialogFooter>
-            </AlertDialogPopup>
-          </AlertDialog>
+          <AlertDialog.Backdrop isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+            <AlertDialog.Container>
+              <AlertDialog.Dialog>
+                <AlertDialog.Header>
+                  <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
+                </AlertDialog.Header>
+                <AlertDialog.Body>{t('confirm.deleteMessage')}</AlertDialog.Body>
+                <AlertDialog.Footer>
+                  <Button slot="close" variant="tertiary">
+                    {t('common.cancel')}
+                  </Button>
+                  <Button slot="close" variant="danger" onClick={() => onDelete(message.id)}>
+                    {t('common.confirm')}
+                  </Button>
+                </AlertDialog.Footer>
+              </AlertDialog.Dialog>
+            </AlertDialog.Container>
+          </AlertDialog.Backdrop>
         )}
       </>
     )
@@ -718,23 +711,24 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
     <>
       {assistantContent}
       {onDelete && (
-        <AlertDialog open={showDeleteConfirm} onOpenChange={(open) => { if (!open) setShowDeleteConfirm(false) }}>
-          <AlertDialogPopup>
-            <AlertDialogTitle>{t('confirm.title')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('confirm.deleteMessage')}</AlertDialogDescription>
-            <AlertDialogFooter>
-              <AlertDialogClose className="bg-default text-default-foreground hover:bg-default/80">
-                {t('common.cancel')}
-              </AlertDialogClose>
-              <AlertDialogClose
-                className="bg-danger text-white hover:bg-danger/80"
-                onClick={() => onDelete(message.id)}
-              >
-                {t('common.confirm')}
-              </AlertDialogClose>
-            </AlertDialogFooter>
-          </AlertDialogPopup>
-        </AlertDialog>
+        <AlertDialog.Backdrop isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+          <AlertDialog.Container>
+            <AlertDialog.Dialog>
+              <AlertDialog.Header>
+                <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body>{t('confirm.deleteMessage')}</AlertDialog.Body>
+              <AlertDialog.Footer>
+                <Button slot="close" variant="tertiary">
+                  {t('common.cancel')}
+                </Button>
+                <Button slot="close" variant="danger" onClick={() => onDelete(message.id)}>
+                  {t('common.confirm')}
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
       )}
     </>
   )

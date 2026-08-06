@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, Upload, ChevronDown, ChevronRight, Package } from 'lucide-react'
-import { Button, Input } from '@heroui/react'
+import { Plus, Trash2, Upload, Package } from 'lucide-react'
+import { Button, Disclosure, Input } from '@heroui/react'
 import { api } from '@/api'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import type { Emoji, EmojiPack } from '@/types'
@@ -26,34 +26,34 @@ function PackCard({
   onRenameEmoji: (id: string, newName: string) => void
 }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      <Button
-        variant="ghost"
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2.5 h-auto text-sm justify-start rounded-none"
-      >
-        {expanded ? (
-          <ChevronDown className="w-4 h-4 text-muted flex-shrink-0" />
-        ) : (
-          <ChevronRight className="w-4 h-4 text-muted flex-shrink-0" />
-        )}
-        <Package className="w-3.5 h-3.5 text-muted flex-shrink-0" />
-        <span className="flex-1 truncate text-left">{detail.pack.name}</span>
-        <span className="text-xs text-muted">{detail.emojis.length}</span>
-        {detail.pack.is_builtin === 1 && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">
-            {t('settings.template.builtin')}
-          </span>
-        )}
-      </Button>
+    <Disclosure className="flex w-full flex-col overflow-hidden rounded-lg border border-border">
+      <Disclosure.Heading>
+        {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
+            and `shrink-0`, which only mean anything inside a flex container.
+            `text-start` undoes the button element's centred UA default. */}
+        <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
+          <Package className="w-3.5 h-3.5 shrink-0 text-muted" />
+          <span className="flex-1 truncate">{detail.pack.name}</span>
+          <span className="text-xs text-muted">{detail.emojis.length}</span>
+          {detail.pack.is_builtin === 1 && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted shrink-0">
+              {t('settings.template.builtin')}
+            </span>
+          )}
+          <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
+        </Disclosure.Trigger>
+      </Disclosure.Heading>
 
-      {expanded && (
-        <div className="px-3 pb-3 space-y-3">
+      {/* `min-h-0` is load-bearing: the card is a flex column, and a flex item's
+          default `min-height: auto` floors it at its content height. */}
+      <Disclosure.Content className="min-h-0 w-full">
+        {/* Body, not a plain wrapper: it is what keeps the panel measurable, so
+            without it the grid never collapses. */}
+        <Disclosure.Body className="space-y-3">
           {detail.pack.description && (
             <p className="text-xs text-muted">{detail.pack.description}</p>
           )}
@@ -120,9 +120,9 @@ function PackCard({
               </Button>
             )}
           </div>
-        </div>
-      )}
-    </div>
+        </Disclosure.Body>
+      </Disclosure.Content>
+    </Disclosure>
   )
 }
 

@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { ChevronLeft, Download, RefreshCw, Search } from 'lucide-react'
 import { api } from '@/api'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button, InputGroup, ListBox, Select, Skeleton, Spinner } from '@heroui/react'
 import { LogRow } from './log-row'
 import { MAX_RENDERED, useAppLogs, type LevelFilter, type RangeFilter } from './use-app-logs'
@@ -121,62 +120,63 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         )}
       </div>
 
+      {/* A page of log lines is read, not operated: the rows only carry a copy
+          button, so the list itself is the tab stop that scrolls it. */}
       <div
         data-slot="log-list"
-        className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border"
+        tabIndex={0}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-border outline-none focus-visible:ring-2 focus-visible:ring-focus/50"
       >
-        <ScrollArea className="h-full">
-          {unavailable ? (
-            <p className="p-6 text-sm text-muted">
-              {t('settings.about.logs.unavailable')}
-            </p>
-          ) : logs.error ? (
-            <p className="p-6 text-sm text-danger">{t('settings.about.logs.loadError')}</p>
-          ) : logs.loading ? (
-            <div className="space-y-3 p-3">
-              {Array.from({ length: 5 }, (_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
+        {unavailable ? (
+          <p className="p-6 text-sm text-muted">
+            {t('settings.about.logs.unavailable')}
+          </p>
+        ) : logs.error ? (
+          <p className="p-6 text-sm text-danger">{t('settings.about.logs.loadError')}</p>
+        ) : logs.loading ? (
+          <div className="space-y-3 p-3">
+            {Array.from({ length: 5 }, (_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        ) : logs.entries.length === 0 ? (
+          <p className="p-6 text-sm text-muted">
+            {logs.isFiltered
+              ? t('settings.about.logs.empty')
+              : t('settings.about.logs.emptyRange')}
+          </p>
+        ) : (
+          <>
+            {logs.entries.map((entry) => (
+              <LogRow
+                key={`${entry.cursor.fileIndex}:${entry.cursor.byteOffset}`}
+                entry={entry}
+              />
+            ))}
+            <div className="flex flex-col items-center gap-2 p-3">
+              {logs.truncated && (
+                <p className="text-xs text-muted">
+                  {t('settings.about.logs.truncated')}
+                </p>
+              )}
+              {logs.capped ? (
+                <p className="text-xs text-muted">
+                  {t('settings.about.logs.capped', { max: MAX_RENDERED })}
+                </p>
+              ) : logs.canLoadOlder ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={logs.loadOlder}
+                  isDisabled={logs.loadingMore}
+                >
+                  {logs.loadingMore && <Spinner className="size-4" />}
+                  {t('settings.about.logs.loadOlder')}
+                </Button>
+              ) : null}
             </div>
-          ) : logs.entries.length === 0 ? (
-            <p className="p-6 text-sm text-muted">
-              {logs.isFiltered
-                ? t('settings.about.logs.empty')
-                : t('settings.about.logs.emptyRange')}
-            </p>
-          ) : (
-            <>
-              {logs.entries.map((entry) => (
-                <LogRow
-                  key={`${entry.cursor.fileIndex}:${entry.cursor.byteOffset}`}
-                  entry={entry}
-                />
-              ))}
-              <div className="flex flex-col items-center gap-2 p-3">
-                {logs.truncated && (
-                  <p className="text-xs text-muted">
-                    {t('settings.about.logs.truncated')}
-                  </p>
-                )}
-                {logs.capped ? (
-                  <p className="text-xs text-muted">
-                    {t('settings.about.logs.capped', { max: MAX_RENDERED })}
-                  </p>
-                ) : logs.canLoadOlder ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={logs.loadOlder}
-                    isDisabled={logs.loadingMore}
-                  >
-                    {logs.loadingMore && <Spinner className="size-4" />}
-                    {t('settings.about.logs.loadOlder')}
-                  </Button>
-                ) : null}
-              </div>
-            </>
-          )}
-        </ScrollArea>
+          </>
+        )}
       </div>
     </div>
   )

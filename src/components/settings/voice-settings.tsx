@@ -3,8 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Trash2 } from 'lucide-react'
-import { Button, Input, ListBox, Select } from '@heroui/react'
-import { CircularProgress } from '@/components/ui/circular-progress'
+import { Button, Input, ListBox, ProgressCircle, Select } from '@heroui/react'
 import { api } from '@/api'
 import type { VoiceModelStatus } from '@/types'
 
@@ -141,12 +140,18 @@ export function VoiceSettings() {
             </div>
           ) : downloading ? (
             <div className="flex items-center gap-3">
-              <CircularProgress
+              <ProgressCircle
+                aria-label={t('settings.voice.downloading')}
                 value={progress.total ? progress.downloaded : undefined}
-                max={progress.total ?? undefined}
-                indeterminate={!progress.total}
-                size={20}
-              />
+                maxValue={progress.total ?? undefined}
+                isIndeterminate={!progress.total}
+                size="sm"
+              >
+                <ProgressCircle.Track>
+                  <ProgressCircle.TrackCircle />
+                  <ProgressCircle.FillCircle />
+                </ProgressCircle.Track>
+              </ProgressCircle>
               <span className="text-xs text-muted flex-1">
                 {formatSize(progress.downloaded)}
                 {progress.total ? ` / ${formatSize(progress.total)}` : ''}

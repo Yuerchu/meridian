@@ -2,15 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Pin, UserX } from 'lucide-react'
 import { api } from '@/api'
-import { Button } from '@heroui/react'
-import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogPopup,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { AlertDialog, Button } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import type { MemorySubject, Project } from '@/types'
 import type { ScopeFilter } from './use-memory-browser'
@@ -151,33 +143,35 @@ export function ScopeNav({
             <UserX className="text-danger" />
             {t('settings.memory.person.forget')}
           </Button>
-          <AlertDialog
-            open={confirmForget}
-            onOpenChange={(open) => { if (!open) setConfirmForget(false) }}
-          >
-            <AlertDialogPopup>
-              <AlertDialogTitle>
-                {t('settings.memory.person.forgetConfirmTitle')}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {t('settings.memory.person.forgetConfirmBody')}
-              </AlertDialogDescription>
-              <AlertDialogFooter>
-                <AlertDialogClose className="bg-default text-default-foreground hover:bg-default/80">
-                  {t('common.cancel')}
-                </AlertDialogClose>
-                <AlertDialogClose
-                  className="bg-danger text-white hover:bg-danger/80"
-                  onClick={async () => {
-                    await api.forgetMemorySubject(selectedPerson.scope_id)
-                    onChanged()
-                  }}
-                >
-                  {t('common.confirm')}
-                </AlertDialogClose>
-              </AlertDialogFooter>
-            </AlertDialogPopup>
-          </AlertDialog>
+          <AlertDialog.Backdrop isOpen={confirmForget} onOpenChange={setConfirmForget}>
+            <AlertDialog.Container>
+              <AlertDialog.Dialog>
+                <AlertDialog.Header>
+                  <AlertDialog.Heading>
+                    {t('settings.memory.person.forgetConfirmTitle')}
+                  </AlertDialog.Heading>
+                </AlertDialog.Header>
+                <AlertDialog.Body>
+                  {t('settings.memory.person.forgetConfirmBody')}
+                </AlertDialog.Body>
+                <AlertDialog.Footer>
+                  <Button slot="close" variant="tertiary">
+                    {t('common.cancel')}
+                  </Button>
+                  <Button
+                    slot="close"
+                    variant="danger"
+                    onClick={async () => {
+                      await api.forgetMemorySubject(selectedPerson.scope_id)
+                      onChanged()
+                    }}
+                  >
+                    {t('common.confirm')}
+                  </Button>
+                </AlertDialog.Footer>
+              </AlertDialog.Dialog>
+            </AlertDialog.Container>
+          </AlertDialog.Backdrop>
         </div>
       )}
     </div>

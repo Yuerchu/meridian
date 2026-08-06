@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Smile, Search } from 'lucide-react'
 import { Button, Input, Popover, Tooltip } from '@heroui/react'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { api } from '@/api'
 import type { Emoji, EmojiPack } from '@/types'
 
@@ -98,7 +97,7 @@ export function EmojiPicker({
           </div>
         </div>
 
-        <ScrollArea className="max-h-56"><div className="p-2">
+        <div data-slot="emoji-picker-list" className="max-h-56 overflow-y-auto overscroll-contain"><div className="p-2">
           {search.trim() ? (
             <div className="grid grid-cols-6 gap-1">
               {searchResults.map((e) => (
@@ -153,7 +152,7 @@ export function EmojiPicker({
               {t('chat.emojiNoPacks')}
             </p>
           )}
-        </div></ScrollArea>
+        </div></div>
       </Popover.Content>
     </Popover>
   )

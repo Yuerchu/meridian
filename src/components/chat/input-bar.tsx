@@ -4,7 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowUp, Square, Paperclip, X as XIcon, Scissors, Copy, ClipboardPaste, TextSelect } from 'lucide-react'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Tooltip } from '@heroui/react'
+import { Button, InputGroup, ProgressCircle, TextField, Tooltip } from '@heroui/react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -12,12 +12,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import {
-  InputGroup,
-  InputGroupTextarea,
-  InputGroupAddon,
-  InputGroupButton,
-} from '@/components/ui/input-group'
 import {
   Attachment,
   AttachmentAction,
@@ -27,7 +21,6 @@ import {
   AttachmentMedia,
   AttachmentTitle,
 } from '@/components/ui/attachment'
-import { CircularProgress } from '@/components/ui/circular-progress'
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
 import { VoiceButton } from '@/components/ui/voice-button'
@@ -244,33 +237,36 @@ export function InputBar({
         )}
         <ContextMenu onOpenChange={handleContextMenuOpen}>
         <ContextMenuTrigger>
-        <InputGroup className="rounded-2xl">
+        <TextField fullWidth aria-label={t('chat.placeholder')}>
+        <InputGroup fullWidth className="flex flex-col gap-2 rounded-2xl py-2">
           {attachedFiles.length > 0 && (
-            <AttachmentGroup className="px-3 pt-2.5">
-              {attachedFiles.map((f, i) => (
-                <Attachment key={i} state="done">
-                  <AttachmentMedia>
-                    <Paperclip />
-                  </AttachmentMedia>
-                  <AttachmentContent>
-                    <AttachmentTitle className="max-w-[120px]">{f.name}</AttachmentTitle>
-                  </AttachmentContent>
-                  {onRemoveFile && (
-                    <AttachmentActions>
-                      <AttachmentAction
-                        aria-label={t('chat.removeAttachment', { name: f.name })}
-                        onClick={() => onRemoveFile(i)}
-                        className="hover:text-danger"
-                      >
-                        <XIcon />
-                      </AttachmentAction>
-                    </AttachmentActions>
-                  )}
-                </Attachment>
-              ))}
-            </AttachmentGroup>
+            <InputGroup.Prefix className="w-full justify-start border-0 px-3.5 py-0">
+              <AttachmentGroup>
+                {attachedFiles.map((f, i) => (
+                  <Attachment key={i} state="done">
+                    <AttachmentMedia>
+                      <Paperclip />
+                    </AttachmentMedia>
+                    <AttachmentContent>
+                      <AttachmentTitle className="max-w-[120px]">{f.name}</AttachmentTitle>
+                    </AttachmentContent>
+                    {onRemoveFile && (
+                      <AttachmentActions>
+                        <AttachmentAction
+                          aria-label={t('chat.removeAttachment', { name: f.name })}
+                          onClick={() => onRemoveFile(i)}
+                          className="hover:text-danger"
+                        >
+                          <XIcon />
+                        </AttachmentAction>
+                      </AttachmentActions>
+                    )}
+                  </Attachment>
+                ))}
+              </AttachmentGroup>
+            </InputGroup.Prefix>
           )}
-          <InputGroupTextarea
+          <InputGroup.TextArea
             ref={textareaRef}
             value={value}
             onChange={(e) => {
@@ -280,152 +276,165 @@ export function InputBar({
             placeholder={t('chat.placeholder')}
             disabled={disabled && !streaming}
             rows={1}
-            className="min-h-[24px] max-h-[200px] py-3 px-4"
+            // `flex-none`: the input slot ships `flex-1`, which in this column
+            // layout makes flex-basis, not `adjustHeight`, decide the height.
+            className="min-h-6 max-h-[200px] w-full flex-none resize-none px-3.5 py-0"
           />
-          <InputGroupAddon align="block-end" className="px-2 pb-2 pt-0">
-            <div className="flex items-center justify-between w-full gap-1">
-              {isAndroid ? (
-                <MobileOptionsMenu
-                  assistants={assistants}
-                  providers={providers}
-                  currentAssistantId={currentAssistantId}
-                  currentModelId={currentModelId}
-                  currentProviderId={currentProviderId}
-                  onSelectAssistant={onSelectAssistant}
-                  onSelectModel={onSelectModel}
-                  thinkingLevel={thinkingLevel}
-                  onSelectThinkingLevel={onSelectThinkingLevel}
-                  fastMode={fastMode}
-                  onToggleFast={onToggleFast}
-                  mode={mode}
-                  onSelectMode={onSelectMode}
-                  acceptEdits={acceptEdits}
-                  onToggleAcceptEdits={onToggleAcceptEdits}
-                  capabilities={capabilities}
-                  onTakePhoto={handleTakePhoto}
-                  onPickGallery={handlePickGallery}
-                  onPickFile={handlePickFile}
-                  supportsImages={capabilities?.supports_images !== false}
-                />
-              ) : (
-                <ComposerMenu
-                  assistants={assistants}
-                  providers={providers}
-                  currentAssistantId={currentAssistantId}
-                  currentModelId={currentModelId}
-                  currentProviderId={currentProviderId}
-                  onSelectAssistant={onSelectAssistant}
-                  onSelectModel={onSelectModel}
-                  thinkingLevel={thinkingLevel}
-                  onSelectThinkingLevel={onSelectThinkingLevel}
-                  fastMode={fastMode}
-                  onToggleFast={onToggleFast}
-                  mode={mode}
-                  onSelectMode={onSelectMode}
-                  acceptEdits={acceptEdits}
-                  onToggleAcceptEdits={onToggleAcceptEdits}
-                  capabilities={capabilities}
-                  onPickFile={
-                    onAttachFiles && capabilities?.supports_images !== false
-                      ? handlePickFile
-                      : undefined
-                  }
-                />
+          <InputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
+            {isAndroid ? (
+              <MobileOptionsMenu
+                assistants={assistants}
+                providers={providers}
+                currentAssistantId={currentAssistantId}
+                currentModelId={currentModelId}
+                currentProviderId={currentProviderId}
+                onSelectAssistant={onSelectAssistant}
+                onSelectModel={onSelectModel}
+                thinkingLevel={thinkingLevel}
+                onSelectThinkingLevel={onSelectThinkingLevel}
+                fastMode={fastMode}
+                onToggleFast={onToggleFast}
+                mode={mode}
+                onSelectMode={onSelectMode}
+                acceptEdits={acceptEdits}
+                onToggleAcceptEdits={onToggleAcceptEdits}
+                capabilities={capabilities}
+                onTakePhoto={handleTakePhoto}
+                onPickGallery={handlePickGallery}
+                onPickFile={handlePickFile}
+                supportsImages={capabilities?.supports_images !== false}
+              />
+            ) : (
+              <ComposerMenu
+                assistants={assistants}
+                providers={providers}
+                currentAssistantId={currentAssistantId}
+                currentModelId={currentModelId}
+                currentProviderId={currentProviderId}
+                onSelectAssistant={onSelectAssistant}
+                onSelectModel={onSelectModel}
+                thinkingLevel={thinkingLevel}
+                onSelectThinkingLevel={onSelectThinkingLevel}
+                fastMode={fastMode}
+                onToggleFast={onToggleFast}
+                mode={mode}
+                onSelectMode={onSelectMode}
+                acceptEdits={acceptEdits}
+                onToggleAcceptEdits={onToggleAcceptEdits}
+                capabilities={capabilities}
+                onPickFile={
+                  onAttachFiles && capabilities?.supports_images !== false
+                    ? handlePickFile
+                    : undefined
+                }
+              />
+            )}
+            <div className="ms-auto flex items-center gap-2 shrink-0">
+              <EmojiPicker
+                assistantId={currentAssistantId}
+                onSelect={(syntax) => onChange(value + syntax)}
+              />
+              {!isAndroid && onVoiceSend && (
+                <Tooltip delay={0}>
+                  <Tooltip.Trigger>
+                    <span>
+                      <VoiceButton
+                        state={voice.state}
+                        elapsed={voice.elapsed}
+                        disabled={disabled || streaming}
+                        onPointerDown={voice.handlePointerDown}
+                        onPointerUp={voice.handlePointerUp}
+                        onPointerCancel={voice.handlePointerCancel}
+                        onPointerEnter={voice.handlePointerEnter}
+                        onPointerLeave={voice.handlePointerLeave}
+                      />
+                    </span>
+                  </Tooltip.Trigger>
+                  <Tooltip.Content placement="top">
+                    {voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
+                  </Tooltip.Content>
+                </Tooltip>
               )}
-              <div className="flex items-center gap-2 shrink-0">
-                <EmojiPicker
-                  assistantId={currentAssistantId}
-                  onSelect={(syntax) => onChange(value + syntax)}
-                />
-                {!isAndroid && onVoiceSend && (
+              {contextInfo && contextInfo.messageCount > 0 && (() => {
+                const ratio = contextInfo.estimatedTokens / contextInfo.contextLimit
+                // Below the warning threshold the ring is ambient, not a
+                // reading — quieter than `color="default"`, which is a
+                // foreground shade.
+                const color = ratio > 0.95 ? 'danger' : ratio > 0.8 ? 'warning' : undefined
+                return (
                   <Tooltip delay={0}>
                     <Tooltip.Trigger>
-                      <span>
-                        <VoiceButton
-                          state={voice.state}
-                          elapsed={voice.elapsed}
-                          disabled={disabled || streaming}
-                          onPointerDown={voice.handlePointerDown}
-                          onPointerUp={voice.handlePointerUp}
-                          onPointerCancel={voice.handlePointerCancel}
-                          onPointerEnter={voice.handlePointerEnter}
-                          onPointerLeave={voice.handlePointerLeave}
-                        />
-                      </span>
+                      <ProgressCircle
+                        aria-label={t('chat.context.tokens', {
+                          used: contextInfo.estimatedTokens.toLocaleString(),
+                          limit: contextInfo.contextLimit.toLocaleString(),
+                        })}
+                        value={contextInfo.estimatedTokens}
+                        maxValue={contextInfo.contextLimit}
+                        isIndeterminate={compacting}
+                        color={color}
+                        className={
+                          color && !compacting ? undefined : '[--progress-circle-stroke:var(--muted)]'
+                        }
+                      >
+                        <ProgressCircle.Track className="size-4.5">
+                          <ProgressCircle.TrackCircle />
+                          <ProgressCircle.FillCircle />
+                        </ProgressCircle.Track>
+                      </ProgressCircle>
                     </Tooltip.Trigger>
-                    <Tooltip.Content placement="top">
-                      {voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
+                    <Tooltip.Content placement="top" className="flex flex-col gap-1 text-xs tabular-nums">
+                      {compacting ? (
+                        <span>{t('chat.compact.inProgress')}</span>
+                      ) : (
+                        <>
+                          <span>{t('chat.context.messages', { count: contextInfo.messageCount })}</span>
+                          <span>{t('chat.context.tokens', { used: contextInfo.estimatedTokens.toLocaleString(), limit: contextInfo.contextLimit.toLocaleString() })}</span>
+                          {contextInfo.autoCompactEnabled && contextInfo.autoCompactThreshold > 0 && (
+                            <span>{Math.max(0, Math.round((1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100))}% {t('chat.compact.untilAutoCompact')}</span>
+                          )}
+                          {onCompact && !streaming && (
+                            // eslint-disable-next-line no-restricted-syntax -- a text link inside the tooltip: HeroUI's .button base sets height, padding and background outside the utility layer, so no className can undo them
+                            <button
+                              type="button"
+                              className="mt-0.5 inline-flex h-auto shrink-0 items-center justify-start p-0 text-xs font-normal text-background/70 underline underline-offset-2 outline-none transition-colors hover:text-background"
+                              onClick={onCompact}
+                            >
+                              {t('chat.compact.manual')}
+                            </button>
+                          )}
+                        </>
+                      )}
                     </Tooltip.Content>
                   </Tooltip>
-                )}
-                {contextInfo && contextInfo.messageCount > 0 && (() => {
-                  const ratio = contextInfo.estimatedTokens / contextInfo.contextLimit
-                  const colorClass = ratio > 0.95
-                    ? 'text-danger'
-                    : ratio > 0.8
-                      ? 'text-warning'
-                      : 'text-muted/60'
-                  return (
-                    <Tooltip delay={0}>
-                      <Tooltip.Trigger className={compacting ? 'text-muted' : colorClass}>
-                        <CircularProgress
-                          value={contextInfo.estimatedTokens}
-                          max={contextInfo.contextLimit}
-                          size={18}
-                          strokeWidth={2.5}
-                          indeterminate={compacting}
-                        />
-                      </Tooltip.Trigger>
-                      <Tooltip.Content placement="top" className="flex flex-col gap-1 text-xs tabular-nums">
-                        {compacting ? (
-                          <span>{t('chat.compact.inProgress')}</span>
-                        ) : (
-                          <>
-                            <span>{t('chat.context.messages', { count: contextInfo.messageCount })}</span>
-                            <span>{t('chat.context.tokens', { used: contextInfo.estimatedTokens.toLocaleString(), limit: contextInfo.contextLimit.toLocaleString() })}</span>
-                            {contextInfo.autoCompactEnabled && contextInfo.autoCompactThreshold > 0 && (
-                              <span>{Math.max(0, Math.round((1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100))}% {t('chat.compact.untilAutoCompact')}</span>
-                            )}
-                            {onCompact && !streaming && (
-                              // eslint-disable-next-line no-restricted-syntax -- a text link inside the tooltip: HeroUI's .button base sets height, padding and background outside the utility layer, so no className can undo them
-                              <button
-                                type="button"
-                                className="mt-0.5 inline-flex h-auto shrink-0 items-center justify-start p-0 text-xs font-normal text-background/70 underline underline-offset-2 outline-none transition-colors hover:text-background"
-                                onClick={onCompact}
-                              >
-                                {t('chat.compact.manual')}
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </Tooltip.Content>
-                    </Tooltip>
-                  )
-                })()}
-                {streaming ? (
-                  <InputGroupButton
-                    size="icon-sm"
-                    variant="primary"
-                    onClick={onStop}
-                    className="rounded-full"
-                  >
-                    <Square className="size-3.5" fill="currentColor" />
-                  </InputGroupButton>
-                ) : (
-                  <InputGroupButton
-                    size="icon-sm"
-                    variant="primary"
-                    onClick={onSubmit}
-                    isDisabled={disabled || !value.trim()}
-                    className="rounded-full"
-                  >
-                    <ArrowUp className="size-4" strokeWidth={2.5} />
-                  </InputGroupButton>
-                )}
-              </div>
+                )
+              })()}
+              {streaming ? (
+                <Button
+                  isIconOnly
+                  size="sm"
+                  aria-label={t('chat.stop')}
+                  onClick={onStop}
+                  className="rounded-full"
+                >
+                  <Square className="size-3.5" fill="currentColor" />
+                </Button>
+              ) : (
+                <Button
+                  isIconOnly
+                  size="sm"
+                  aria-label={t('chat.send')}
+                  onClick={onSubmit}
+                  isDisabled={disabled || !value.trim()}
+                  className="rounded-full"
+                >
+                  <ArrowUp className="size-4" strokeWidth={2.5} />
+                </Button>
+              )}
             </div>
-          </InputGroupAddon>
+          </InputGroup.Suffix>
         </InputGroup>
+        </TextField>
         </ContextMenuTrigger>
         <ContextMenuContent>
           {selectedText && (

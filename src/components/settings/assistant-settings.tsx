@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, ChevronDown, ChevronRight, Star, Check, BookTemplate } from 'lucide-react'
-import { Button, Checkbox, Input, ListBox, Select, TextArea, Tooltip } from '@heroui/react'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Plus, Star, Check, BookTemplate } from 'lucide-react'
+import { Button, Checkbox, Disclosure, DisclosureGroup, Input, ListBox, Select, TextArea, Tooltip } from '@heroui/react'
 import { api } from '@/api'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
 
@@ -111,7 +110,7 @@ function AssistantEditor({
   ]
 
   return (
-    <div className="space-y-4 pl-7 pr-2 pb-4">
+    <div className="space-y-4 px-1 pb-4">
       <div className="space-y-1.5">
         <label className="block text-xs text-muted">{t('settings.assistant.name')}</label>
         <Input fullWidth value={name} onChange={(e) => setName(e.target.value)} />
@@ -130,7 +129,10 @@ function AssistantEditor({
           </Button>
         </div>
         {showTemplates && (
-          <ScrollArea className="border border-border rounded-lg p-2 space-y-1 max-h-48">
+          <div
+            data-slot="template-list"
+            className="border border-border rounded-lg p-2 space-y-1 max-h-48 overflow-y-auto overscroll-contain"
+          >
             {templates.map((tpl) => (
               <Button
                 key={tpl.id}
@@ -144,7 +146,7 @@ function AssistantEditor({
                 )}
               </Button>
             ))}
-          </ScrollArea>
+          </div>
         )}
         <TextArea fullWidth
           value={systemPrompt}
@@ -331,7 +333,10 @@ function AssistantEditor({
           </Select>
         )}
         {toolMode === 'custom' && (
-          <ScrollArea className="max-h-40 border border-border rounded-lg"><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
+          <div
+            data-slot="tool-list"
+            className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
+          ><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
             {allTools.map((tool) => (
               <Checkbox
                 key={tool.name}
@@ -355,7 +360,7 @@ function AssistantEditor({
                 </Checkbox.Content>
               </Checkbox>
             ))}
-          </div></ScrollArea>
+          </div></div>
         )}
       </div>
 
@@ -398,7 +403,10 @@ function AssistantEditor({
         <div className="space-y-1.5">
           <label className="block text-xs text-muted">{t('settings.skills.assistantSection')}</label>
           <p className="text-xs text-muted/60">{t('settings.skills.assistantHint')}</p>
-          <ScrollArea className="max-h-40 border border-border rounded-lg"><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
+          <div
+            data-slot="skill-list"
+            className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
+          ><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
             {allSkills.map((skill) => (
               <Checkbox
                 key={skill.dir_name}
@@ -425,7 +433,7 @@ function AssistantEditor({
                 </Checkbox.Content>
               </Checkbox>
             ))}
-          </div></ScrollArea>
+          </div></div>
           {skillError && <p className="text-xs text-danger">{skillError}</p>}
         </div>
       )}
@@ -507,46 +515,66 @@ export function AssistantSettings() {
         </Button>
       </div>
 
-      <div className="space-y-1">
+      {/* One open at a time is the group's own default (`allowsMultipleExpanded`
+          is off), so the single-open rule lives in the primitive rather than in
+          the click handler. */}
+      <DisclosureGroup
+        className="flex flex-col gap-1"
+        expandedKeys={expandedId ? [expandedId] : []}
+        onExpandedChange={(keys) => setExpandedId((([...keys][0] as string | undefined) ?? null))}
+      >
         {assistants.map((a) => {
           const isExpanded = expandedId === a.id
           const isDefault = a.is_default === 1
           const providerName = providers.find((p) => p.id === a.provider_id)?.name
 
           return (
-            <div key={a.id} className="border border-border rounded-lg overflow-hidden">
-              <Button
-                variant="ghost"
-                onClick={() => setExpandedId(isExpanded ? null : a.id)}
-                className="w-full justify-start h-auto px-3 py-2.5 text-sm"
-              >
-                {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-muted" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 text-muted" />
-                )}
-                <span className="flex-1 truncate">{a.name}</span>
-                {/* eslint-disable-next-line no-restricted-syntax -- gold-star semantics: default-assistant marker is intentionally amber (CLAUDE.md whitelist) */}
-                {isDefault && <Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" />}
-                {providerName && (
-                  <span className="text-xs text-muted">{providerName}</span>
-                )}
-                {a.model_id && (
-                  <span className="text-xs text-muted/60">{a.model_id}</span>
-                )}
-              </Button>
-              {isExpanded && (
-                <AssistantEditor
-                  assistant={a}
-                  providers={providers}
-                  onSave={handleSave}
-                  onDelete={isDefault ? undefined : handleDelete}
-                />
-              )}
-            </div>
+            <Disclosure
+              key={a.id}
+              id={a.id}
+              className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
+            >
+              <Disclosure.Heading>
+                {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
+                    and `shrink-0`, which only mean anything inside a flex container.
+                    `text-start` undoes the button element's centred UA default. */}
+                <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
+                  <span className="flex-1 truncate">{a.name}</span>
+                  {/* eslint-disable-next-line no-restricted-syntax -- gold-star semantics: default-assistant marker is intentionally amber (CLAUDE.md whitelist) */}
+                  {isDefault && <Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" />}
+                  {providerName && (
+                    <span className="text-xs text-muted">{providerName}</span>
+                  )}
+                  {a.model_id && (
+                    <span className="text-xs text-muted/60">{a.model_id}</span>
+                  )}
+                  <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
+                </Disclosure.Trigger>
+              </Disclosure.Heading>
+              {/* `min-h-0` is load-bearing: the card is a flex column, and a flex
+                  item's default `min-height: auto` floors it at its content height. */}
+              <Disclosure.Content className="min-h-0 w-full">
+                {/* Body, not a plain wrapper: it is what keeps the panel
+                    measurable, so without it the editor never collapses. */}
+                <Disclosure.Body>
+                  {/* A collapsed panel is only hidden, not unmounted, so the
+                      editor still has to be gated: mounting one per row would
+                      fire its provider/model/tool/skill fetches for the whole
+                      list on every visit to this page. */}
+                  {isExpanded && (
+                    <AssistantEditor
+                      assistant={a}
+                      providers={providers}
+                      onSave={handleSave}
+                      onDelete={isDefault ? undefined : handleDelete}
+                    />
+                  )}
+                </Disclosure.Body>
+              </Disclosure.Content>
+            </Disclosure>
           )
         })}
-      </div>
+      </DisclosureGroup>
     </div>
   )
 }

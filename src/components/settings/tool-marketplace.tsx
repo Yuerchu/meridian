@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, ChevronDown, ChevronRight, Wrench, Terminal, Check } from 'lucide-react'
-import { Button, Input, ListBox, Select } from '@heroui/react'
+import { Plus, Trash2, Wrench, Terminal, Check } from 'lucide-react'
+import { Button, Disclosure, DisclosureGroup, Input, ListBox, Select } from '@heroui/react'
 import { api } from '@/api'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
 
@@ -215,44 +215,66 @@ export function ToolMarketplace() {
           </div>
         )}
 
-        <div className="space-y-1">
+        {/* One open at a time is the group's own default
+            (`allowsMultipleExpanded` is off), so the single-open rule lives in
+            the primitive rather than in the click handler. */}
+        <DisclosureGroup
+          className="flex flex-col gap-1"
+          expandedKeys={expandedToolId ? [expandedToolId] : []}
+          onExpandedChange={(keys) => setExpandedToolId((([...keys][0] as string | undefined) ?? null))}
+        >
           {customTools.map((ct) => {
             const isExpanded = expandedToolId === ct.id
             return (
-              <div key={ct.id} className="border border-border rounded-lg overflow-hidden">
-                <Button
-                  variant="ghost"
-                  onClick={() => setExpandedToolId(isExpanded ? null : ct.id)}
-                  className="w-full justify-start h-auto px-3 py-2 text-xs"
-                >
-                  {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                  <Terminal className="w-3.5 h-3.5 text-muted" />
-                  <span className="font-mono flex-1">{ct.name}</span>
-                  <span className="text-muted/60">{ct.command}</span>
-                  {ct.is_enabled === 0 && (
-                    <span className="text-xs text-muted bg-default px-1 rounded">{t('settings.tools.disabled')}</span>
-                  )}
-                </Button>
-                {isExpanded && (
-                  <div className="px-3 pb-3">
-                    <CustomToolEditor
-                      tool={ct}
-                      onSave={refresh}
-                      onDelete={async () => {
-                        await api.deleteCustomTool(ct.id)
-                        setExpandedToolId(null)
-                        refresh()
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
+              <Disclosure
+                key={ct.id}
+                id={ct.id}
+                className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
+              >
+                <Disclosure.Heading>
+                  {/* `flex` is not optional: HeroUI styles the indicator with
+                      `ms-auto` and `shrink-0`, which only mean anything inside a
+                      flex container. `text-start` undoes the button element's
+                      centred UA default. */}
+                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
+                    <Terminal className="w-3.5 h-3.5 shrink-0 text-muted" />
+                    <span className="font-mono min-w-0 flex-1 truncate">{ct.name}</span>
+                    <span className="text-muted/60 truncate">{ct.command}</span>
+                    {ct.is_enabled === 0 && (
+                      <span className="text-xs text-muted bg-default px-1 rounded shrink-0">{t('settings.tools.disabled')}</span>
+                    )}
+                    <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+                  </Disclosure.Trigger>
+                </Disclosure.Heading>
+                {/* `min-h-0` is load-bearing: the card is a flex column, and a
+                    flex item's default `min-height: auto` floors it at its
+                    content height. */}
+                <Disclosure.Content className="min-h-0 w-full">
+                  {/* Body, not a plain wrapper: it is what keeps the panel
+                      measurable, so without it the editor never collapses. */}
+                  <Disclosure.Body>
+                    {/* A collapsed panel is only hidden, not unmounted, so the
+                        editor is still gated on the open row. */}
+                    {isExpanded && (
+                      <CustomToolEditor
+                        tool={ct}
+                        onSave={refresh}
+                        onDelete={async () => {
+                          await api.deleteCustomTool(ct.id)
+                          setExpandedToolId(null)
+                          refresh()
+                        }}
+                      />
+                    )}
+                  </Disclosure.Body>
+                </Disclosure.Content>
+              </Disclosure>
             )
           })}
           {customTools.length === 0 && !showCreate && (
             <p className="text-xs text-muted text-center py-4">{t('settings.tools.noCustom')}</p>
           )}
-        </div>
+        </DisclosureGroup>
       </div>
 
       <div>

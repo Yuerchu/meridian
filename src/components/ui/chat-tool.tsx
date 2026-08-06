@@ -1,6 +1,5 @@
 import * as React from "react"
-import { Disclosure } from "@heroui/react"
-import { cva, type VariantProps } from "class-variance-authority"
+import { Disclosure, tv, type VariantProps } from "@heroui/react"
 import {
   CircleAlertIcon,
   CircleCheckIcon,
@@ -23,23 +22,21 @@ type ChatToolState =
 
 const ChatToolStateContext = React.createContext<ChatToolState>("input-available")
 
-const chatToolVariants = cva(
-  "flex w-full flex-col overflow-hidden rounded-xl border bg-surface/30 text-xs",
-  {
-    variants: {
-      state: {
-        "input-streaming": "border-border",
-        "input-available": "border-border",
-        "output-available": "border-border",
-        "output-error": "border-danger/40",
-        "requires-action": "border-warning/40",
-      },
+const chatToolVariants = tv({
+  base: "flex w-full flex-col overflow-hidden rounded-xl border bg-surface/30 text-xs",
+  variants: {
+    state: {
+      "input-streaming": "border-border",
+      "input-available": "border-border",
+      "output-available": "border-border",
+      "output-error": "border-danger/40",
+      "requires-action": "border-warning/40",
     },
-    defaultVariants: {
-      state: "input-available",
-    },
-  }
-)
+  },
+  defaultVariants: {
+    state: "input-available",
+  },
+})
 
 interface ChatToolProps
   extends React.ComponentProps<typeof Disclosure>,

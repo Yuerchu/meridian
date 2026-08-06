@@ -12,7 +12,7 @@ import type { Conversation, Project } from '@/types'
 import type { SettingsTab } from '@/components/settings'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, Input } from '@heroui/react'
+import { AlertDialog, Button, Input } from '@heroui/react'
 import {
   Sidebar,
   SidebarContent,
@@ -32,14 +32,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import {
-  AlertDialog,
-  AlertDialogPopup,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogClose,
-  AlertDialogFooter,
-} from '@/components/ui/alert-dialog'
 
 interface AppSidebarProps {
   conversations: Conversation[]
@@ -417,28 +409,36 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarFooter>
 
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
-        <AlertDialogPopup>
-          <AlertDialogTitle>{t('confirm.title')}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {deleteTarget?.type === 'project' ? t('confirm.deleteProject') : t('confirm.deleteConversation')}
-          </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogClose className="bg-default text-default-foreground hover:bg-default/80">
-              {t('common.cancel')}
-            </AlertDialogClose>
-            <AlertDialogClose
-              className="bg-danger text-white hover:bg-danger/80"
-              onClick={() => {
-                if (deleteTarget?.type === 'conversation') onDelete(deleteTarget.id)
-                else if (deleteTarget?.type === 'project') onDeleteProject(deleteTarget.id)
-              }}
-            >
-              {t('common.confirm')}
-            </AlertDialogClose>
-          </AlertDialogFooter>
-        </AlertDialogPopup>
-      </AlertDialog>
+      <AlertDialog.Backdrop
+        isOpen={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+      >
+        <AlertDialog.Container>
+          <AlertDialog.Dialog>
+            <AlertDialog.Header>
+              <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
+            </AlertDialog.Header>
+            <AlertDialog.Body>
+              {deleteTarget?.type === 'project' ? t('confirm.deleteProject') : t('confirm.deleteConversation')}
+            </AlertDialog.Body>
+            <AlertDialog.Footer>
+              <Button slot="close" variant="tertiary">
+                {t('common.cancel')}
+              </Button>
+              <Button
+                slot="close"
+                variant="danger"
+                onClick={() => {
+                  if (deleteTarget?.type === 'conversation') onDelete(deleteTarget.id)
+                  else if (deleteTarget?.type === 'project') onDeleteProject(deleteTarget.id)
+                }}
+              >
+                {t('common.confirm')}
+              </Button>
+            </AlertDialog.Footer>
+          </AlertDialog.Dialog>
+        </AlertDialog.Container>
+      </AlertDialog.Backdrop>
     </Sidebar>
   )
 }

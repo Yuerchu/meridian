@@ -398,6 +398,7 @@
   "settings.voice.modelMissing": "尚未安装识别模型",
   "settings.voice.modelHint": "约 127 MB，下载一次即可，应用更新不需要重新下载。",
   "settings.voice.download": "下载模型",
+  "settings.voice.downloading": "正在下载模型",
   "settings.voice.cancelDownload": "取消",
   "settings.voice.import": "从本地导入…",
   "settings.voice.importing": "导入中…",

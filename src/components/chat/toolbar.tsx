@@ -2,9 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Bot, ChevronLeft, ChevronRight, ChevronsRight, Cpu, Check, Star, Lightbulb, RefreshCw, Plus, Camera, ImageIcon, Paperclip, Zap, Hammer, Compass } from 'lucide-react'
 import { ModelIcon } from '@/components/ui/model-icon'
-import { Button } from '@heroui/react'
-import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Button, Drawer } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
@@ -140,264 +138,281 @@ export function MobileOptionsMenu({
   }, [panel, modelsLoaded, providers])
 
   // Also neutralizes ui Button defaults (h-8/rounded-lg/justify-center/font-medium)
-  // so the sheet items keep their original full-width list layout.
+  // so the drawer items keep their original full-width list layout.
   const itemCls = 'flex h-auto items-center justify-start gap-3 w-full rounded-none px-4 py-2.5 text-sm font-normal text-foreground active:bg-default transition-colors'
 
   return (
-    <Sheet open={open} onOpenChange={(o) => {
-      setOpen(o)
-      if (!o) setTimeout(() => setPanel('main'), 200)
-    }}>
-      <SheetTrigger className="inline-flex items-center justify-center rounded-md p-1 text-muted hover:text-foreground hover:bg-default transition-colors touch-hitbox">
+    <Drawer
+      isOpen={open}
+      onOpenChange={(o) => {
+        setOpen(o)
+        if (!o) setTimeout(() => setPanel('main'), 200)
+      }}
+    >
+      <Drawer.Trigger className="inline-flex items-center justify-center rounded-md p-1 text-muted hover:text-foreground hover:bg-default transition-colors touch-hitbox">
         <Plus className="w-4 h-4" />
-      </SheetTrigger>
-      <SheetContent side="bottom" showCloseButton={false} className="pb-[max(1rem,env(safe-area-inset-bottom))] max-h-[70vh]">
-        {panel === 'main' && (
-          <div className="flex flex-col">
-            {supportsImages && (
-              <>
-                <Button variant="ghost" className={itemCls} onClick={() => handleAction(onTakePhoto)}>
-                  <Camera className="w-4 h-4 text-muted" />
-                  {t('chat.takePhoto')}
-                </Button>
-                <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickGallery)}>
-                  <ImageIcon className="w-4 h-4 text-muted" />
-                  {t('chat.pickFromGallery')}
-                </Button>
-              </>
-            )}
-            <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickFile)}>
-              <Paperclip className="w-4 h-4 text-muted" />
-              {t('chat.attachFile')}
-            </Button>
-            <div className="h-px bg-border mx-4 my-1" />
-            <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('mode')}>
-              <span className="flex items-center gap-3">
-                {(() => {
-                  const active = CHAT_MODES.find((m) => m.id === mode) ?? CHAT_MODES[0]
-                  const Icon = active.icon
-                  return (
+      </Drawer.Trigger>
+      <Drawer.Backdrop>
+        <Drawer.Content placement="bottom">
+          <Drawer.Dialog
+            aria-label={t('composer.menu')}
+            className="max-h-[70vh] px-0 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]"
+          >
+            <Drawer.Handle />
+            {/* Only the colour is overridden. HeroUI's `-mx-3px p-3px` looks
+                like it would inset the rows, but the two cancel: the body
+                widens by 3px on each side and pads the same amount back, so a
+                focus ring has room without the rows losing any width. */}
+            <Drawer.Body className="text-foreground">
+              {panel === 'main' && (
+                <div className="flex flex-col">
+                  {supportsImages && (
                     <>
-                      <Icon className={cn('w-4 h-4', mode === 'work' ? 'text-muted' : 'text-info')} />
-                      <span>{t('toolbar.mode')}: {t(active.labelKey)}</span>
+                      <Button variant="ghost" className={itemCls} onClick={() => handleAction(onTakePhoto)}>
+                        <Camera className="w-4 h-4 text-muted" />
+                        {t('chat.takePhoto')}
+                      </Button>
+                      <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickGallery)}>
+                        <ImageIcon className="w-4 h-4 text-muted" />
+                        {t('chat.pickFromGallery')}
+                      </Button>
                     </>
-                  )
-                })()}
-              </span>
-              <ChevronRight className="w-4 h-4 text-muted" />
-            </Button>
-            <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('assistant')}>
-              <span className="flex items-center gap-3">
-                <Bot className="w-4 h-4 text-muted" />
-                <span>{currentAssistant?.name ?? t('toolbar.noAssistant')}</span>
-              </span>
-              <ChevronRight className="w-4 h-4 text-muted" />
-            </Button>
-            <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('model')}>
-              <span className="flex items-center gap-3">
-                {currentModelId
-                  ? <ModelIcon model={currentModelId} size={16} />
-                  : <Cpu className="w-4 h-4 text-muted" />}
-                <span className="truncate max-w-[200px]">{currentModelId ?? t('toolbar.selectModel')}</span>
-              </span>
-              <ChevronRight className="w-4 h-4 text-muted" />
-            </Button>
-            {supportsThinking && (
-              <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('thinking')}>
-                <span className="flex items-center gap-3">
-                  <Lightbulb className={cn('w-4 h-4', thinkingLevel !== 'default' && thinkingLevel !== 'off' ? 'text-info' : 'text-muted')} />
-                  <span>{t('toolbar.thinking')}: {thinkingLabel}</span>
-                </span>
-                <ChevronRight className="w-4 h-4 text-muted" />
-              </Button>
-            )}
-            {mode !== 'plan' && (
-              <Button
-                data-slot="mobile-accept-edits-row"
-                variant="ghost"
-                aria-pressed={acceptEdits}
-                className={cn(itemCls, 'justify-between')}
-                onClick={() => onToggleAcceptEdits(!acceptEdits)}
-              >
-                <span className="flex items-center gap-3">
-                  <ChevronsRight
-                    className={cn('w-4 h-4', acceptEdits ? 'text-warning' : 'text-muted')}
-                  />
-                  <span>{t('toolbar.acceptEdits')}</span>
-                </span>
-                <span className="text-xs text-muted">
-                  {acceptEdits ? t('toolbar.acceptEdits.on') : t('toolbar.acceptEdits.off')}
-                </span>
-              </Button>
-            )}
-            {supportsFast && (
-              <Button
-                data-slot="mobile-fast-row"
-                variant="ghost"
-                aria-pressed={fastMode}
-                className={cn(itemCls, 'justify-between')}
-                onClick={() => onToggleFast(!fastMode)}
-              >
-                <span className="flex items-center gap-3">
-                  <Zap className={cn('w-4 h-4', fastMode ? 'text-warning' : 'text-muted')} />
-                  <span>{t('toolbar.fast')}</span>
-                </span>
-                <span className="text-xs text-muted">
-                  {fastMode ? t('toolbar.fast.on') : t('toolbar.fast.off')}
-                </span>
-              </Button>
-            )}
-          </div>
-        )}
-
-        {panel === 'assistant' && (
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-              <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <span className="text-sm font-medium">{t('toolbar.noAssistant').replace(/^No /, 'Select ')}</span>
-            </div>
-            <ScrollArea className="max-h-[50vh]">
-              {assistants.map((a) => (
-                <Button
-                  key={a.id}
-                  variant="ghost"
-                  className={cn(itemCls, a.id === currentAssistantId && 'bg-default')}
-                  onClick={() => { onSelectAssistant(a.id); close() }}
-                >
-                  {a.is_default === 1 && (
-                    <Star
-                      // eslint-disable-next-line no-restricted-syntax -- CLAUDE.md whitelist: gold-star semantics
-                      className="w-3.5 h-3.5 text-amber-500 flex-shrink-0"
-                      fill="currentColor"
-                    />
                   )}
-                  <span className="flex-1 truncate">{a.name}</span>
-                  {a.id === currentAssistantId && <Check className="w-4 h-4 text-muted" />}
-                </Button>
-              ))}
-            </ScrollArea>
-          </div>
-        )}
-
-        {panel === 'model' && (
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-              <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <span className="text-sm font-medium flex-1">{t('toolbar.models')}</span>
-              <Button
-                isIconOnly
-                variant="ghost"
-                className="h-6 w-6"
-                onClick={() => {
-                  setLoadingModels(true)
-                  setGroups([])
-                  Promise.allSettled(
-                    providers.filter((p) => p.is_enabled).map(async (p) => ({
-                      provider: p,
-                      models: await api.fetchProviderModels(p.id, true),
-                    })),
-                  ).then((results) => {
-                    setGroups(
-                      results
-                        .filter((r): r is PromiseFulfilledResult<GroupedModels> => r.status === 'fulfilled')
-                        .map((r) => r.value)
-                        .filter((g) => g.models.length > 0),
-                    )
-                    setLoadingModels(false)
-                  })
-                }}
-                isDisabled={loadingModels}
-              >
-                <RefreshCw className={cn('w-3.5 h-3.5', loadingModels && 'animate-spin')} />
-              </Button>
-            </div>
-            <ScrollArea className="max-h-[50vh]">
-              {loadingModels && <div className="px-4 py-3 text-xs text-muted">{t('toolbar.loadingModels')}</div>}
-              {groups.map((g) => (
-                <div key={g.provider.id}>
-                  <div className="px-4 py-1 text-xs text-muted">
-                    {g.provider.name}
-                  </div>
-                  {g.models.map((m) => (
+                  <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickFile)}>
+                    <Paperclip className="w-4 h-4 text-muted" />
+                    {t('chat.attachFile')}
+                  </Button>
+                  <div className="h-px bg-border mx-4 my-1" />
+                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('mode')}>
+                    <span className="flex items-center gap-3">
+                      {(() => {
+                        const active = CHAT_MODES.find((m) => m.id === mode) ?? CHAT_MODES[0]
+                        const Icon = active.icon
+                        return (
+                          <>
+                            <Icon className={cn('w-4 h-4', mode === 'work' ? 'text-muted' : 'text-info')} />
+                            <span>{t('toolbar.mode')}: {t(active.labelKey)}</span>
+                          </>
+                        )
+                      })()}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-muted" />
+                  </Button>
+                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('assistant')}>
+                    <span className="flex items-center gap-3">
+                      <Bot className="w-4 h-4 text-muted" />
+                      <span>{currentAssistant?.name ?? t('toolbar.noAssistant')}</span>
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-muted" />
+                  </Button>
+                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('model')}>
+                    <span className="flex items-center gap-3">
+                      {currentModelId
+                        ? <ModelIcon model={currentModelId} size={16} />
+                        : <Cpu className="w-4 h-4 text-muted" />}
+                      <span className="truncate max-w-[200px]">{currentModelId ?? t('toolbar.selectModel')}</span>
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-muted" />
+                  </Button>
+                  {supportsThinking && (
+                    <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('thinking')}>
+                      <span className="flex items-center gap-3">
+                        <Lightbulb className={cn('w-4 h-4', thinkingLevel !== 'default' && thinkingLevel !== 'off' ? 'text-info' : 'text-muted')} />
+                        <span>{t('toolbar.thinking')}: {thinkingLabel}</span>
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-muted" />
+                    </Button>
+                  )}
+                  {mode !== 'plan' && (
                     <Button
-                      key={`${g.provider.id}-${m.id}`}
+                      data-slot="mobile-accept-edits-row"
                       variant="ghost"
-                      className={cn(
-                        itemCls,
-                        m.id === currentModelId && g.provider.id === currentProviderId && 'bg-default',
-                      )}
-                      onClick={() => { onSelectModel(m.id, g.provider.id); close() }}
+                      aria-pressed={acceptEdits}
+                      className={cn(itemCls, 'justify-between')}
+                      onClick={() => onToggleAcceptEdits(!acceptEdits)}
                     >
-                      <ModelIcon model={m.id} size={16} className="flex-shrink-0" />
-                      <span className="flex-1 truncate">{m.name}</span>
-                      {m.id === currentModelId && g.provider.id === currentProviderId && (
-                        <Check className="w-4 h-4 text-muted flex-shrink-0" />
-                      )}
+                      <span className="flex items-center gap-3">
+                        <ChevronsRight
+                          className={cn('w-4 h-4', acceptEdits ? 'text-warning' : 'text-muted')}
+                        />
+                        <span>{t('toolbar.acceptEdits')}</span>
+                      </span>
+                      <span className="text-xs text-muted">
+                        {acceptEdits ? t('toolbar.acceptEdits.on') : t('toolbar.acceptEdits.off')}
+                      </span>
+                    </Button>
+                  )}
+                  {supportsFast && (
+                    <Button
+                      data-slot="mobile-fast-row"
+                      variant="ghost"
+                      aria-pressed={fastMode}
+                      className={cn(itemCls, 'justify-between')}
+                      onClick={() => onToggleFast(!fastMode)}
+                    >
+                      <span className="flex items-center gap-3">
+                        <Zap className={cn('w-4 h-4', fastMode ? 'text-warning' : 'text-muted')} />
+                        <span>{t('toolbar.fast')}</span>
+                      </span>
+                      <span className="text-xs text-muted">
+                        {fastMode ? t('toolbar.fast.on') : t('toolbar.fast.off')}
+                      </span>
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {panel === 'assistant' && (
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+                    <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="text-sm font-medium">{t('toolbar.noAssistant').replace(/^No /, 'Select ')}</span>
+                  </div>
+                  <div data-slot="toolbar-assistant-list" className="max-h-[50vh] overflow-y-auto overscroll-contain">
+                    {assistants.map((a) => (
+                      <Button
+                        key={a.id}
+                        variant="ghost"
+                        className={cn(itemCls, a.id === currentAssistantId && 'bg-default')}
+                        onClick={() => { onSelectAssistant(a.id); close() }}
+                      >
+                        {a.is_default === 1 && (
+                          <Star
+                            // eslint-disable-next-line no-restricted-syntax -- CLAUDE.md whitelist: gold-star semantics
+                            className="w-3.5 h-3.5 text-amber-500 flex-shrink-0"
+                            fill="currentColor"
+                          />
+                        )}
+                        <span className="flex-1 truncate">{a.name}</span>
+                        {a.id === currentAssistantId && <Check className="w-4 h-4 text-muted" />}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {panel === 'model' && (
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+                    <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="text-sm font-medium flex-1">{t('toolbar.models')}</span>
+                    <Button
+                      isIconOnly
+                      variant="ghost"
+                      className="h-6 w-6"
+                      onClick={() => {
+                        setLoadingModels(true)
+                        setGroups([])
+                        Promise.allSettled(
+                          providers.filter((p) => p.is_enabled).map(async (p) => ({
+                            provider: p,
+                            models: await api.fetchProviderModels(p.id, true),
+                          })),
+                        ).then((results) => {
+                          setGroups(
+                            results
+                              .filter((r): r is PromiseFulfilledResult<GroupedModels> => r.status === 'fulfilled')
+                              .map((r) => r.value)
+                              .filter((g) => g.models.length > 0),
+                          )
+                          setLoadingModels(false)
+                        })
+                      }}
+                      isDisabled={loadingModels}
+                    >
+                      <RefreshCw className={cn('w-3.5 h-3.5', loadingModels && 'animate-spin')} />
+                    </Button>
+                  </div>
+                  <div data-slot="toolbar-model-list" className="max-h-[50vh] overflow-y-auto overscroll-contain">
+                    {loadingModels && <div className="px-4 py-3 text-xs text-muted">{t('toolbar.loadingModels')}</div>}
+                    {groups.map((g) => (
+                      <div key={g.provider.id}>
+                        <div className="px-4 py-1 text-xs text-muted">
+                          {g.provider.name}
+                        </div>
+                        {g.models.map((m) => (
+                          <Button
+                            key={`${g.provider.id}-${m.id}`}
+                            variant="ghost"
+                            className={cn(
+                              itemCls,
+                              m.id === currentModelId && g.provider.id === currentProviderId && 'bg-default',
+                            )}
+                            onClick={() => { onSelectModel(m.id, g.provider.id); close() }}
+                          >
+                            <ModelIcon model={m.id} size={16} className="flex-shrink-0" />
+                            <span className="flex-1 truncate">{m.name}</span>
+                            {m.id === currentModelId && g.provider.id === currentProviderId && (
+                              <Check className="w-4 h-4 text-muted flex-shrink-0" />
+                            )}
+                          </Button>
+                        ))}
+                      </div>
+                    ))}
+                    {!loadingModels && groups.length === 0 && (
+                      <div className="px-4 py-3 text-xs text-muted">{t('toolbar.noModels')}</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {panel === 'mode' && (
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+                    <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="text-sm font-medium">{t('toolbar.mode')}</span>
+                  </div>
+                  {CHAT_MODES.map((m) => {
+                    const Icon = m.icon
+                    return (
+                      <Button
+                        key={m.id}
+                        variant="ghost"
+                        className={cn(itemCls, 'justify-between', m.id === mode && 'bg-default')}
+                        onClick={() => { onSelectMode(m.id); close() }}
+                      >
+                        <span className="flex items-center gap-3">
+                          <Icon className="w-4 h-4 text-muted" />
+                          <span>{t(m.labelKey)}</span>
+                        </span>
+                        <span className="text-xs text-muted">{t(m.descKey)}</span>
+                      </Button>
+                    )
+                  })}
+                </div>
+              )}
+
+              {panel === 'thinking' && (
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
+                    <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="text-sm font-medium">{t('toolbar.thinking')}</span>
+                  </div>
+                  {levels.map((level) => (
+                    <Button
+                      key={level.id}
+                      variant="ghost"
+                      className={cn(itemCls, 'justify-between', level.id === thinkingLevel && 'bg-default')}
+                      onClick={() => { onSelectThinkingLevel(level.id); close() }}
+                    >
+                      <span>{t(level.labelKey)}</span>
+                      <span className="text-xs text-muted">{t(level.descKey)}</span>
                     </Button>
                   ))}
                 </div>
-              ))}
-              {!loadingModels && groups.length === 0 && (
-                <div className="px-4 py-3 text-xs text-muted">{t('toolbar.noModels')}</div>
               )}
-            </ScrollArea>
-          </div>
-        )}
-
-        {panel === 'mode' && (
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-              <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <span className="text-sm font-medium">{t('toolbar.mode')}</span>
-            </div>
-            {CHAT_MODES.map((m) => {
-              const Icon = m.icon
-              return (
-                <Button
-                  key={m.id}
-                  variant="ghost"
-                  className={cn(itemCls, 'justify-between', m.id === mode && 'bg-default')}
-                  onClick={() => { onSelectMode(m.id); close() }}
-                >
-                  <span className="flex items-center gap-3">
-                    <Icon className="w-4 h-4 text-muted" />
-                    <span>{t(m.labelKey)}</span>
-                  </span>
-                  <span className="text-xs text-muted">{t(m.descKey)}</span>
-                </Button>
-              )
-            })}
-          </div>
-        )}
-
-        {panel === 'thinking' && (
-          <div className="flex flex-col">
-            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-              <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
-                <ChevronLeft className="w-4 h-4" />
-              </Button>
-              <span className="text-sm font-medium">{t('toolbar.thinking')}</span>
-            </div>
-            {levels.map((level) => (
-              <Button
-                key={level.id}
-                variant="ghost"
-                className={cn(itemCls, 'justify-between', level.id === thinkingLevel && 'bg-default')}
-                onClick={() => { onSelectThinkingLevel(level.id); close() }}
-              >
-                <span>{t(level.labelKey)}</span>
-                <span className="text-xs text-muted">{t(level.descKey)}</span>
-              </Button>
-            ))}
-          </div>
-        )}
-      </SheetContent>
-    </Sheet>
+            </Drawer.Body>
+          </Drawer.Dialog>
+        </Drawer.Content>
+      </Drawer.Backdrop>
+    </Drawer>
   )
 }

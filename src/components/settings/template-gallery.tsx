@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, ChevronDown, ChevronRight, BookTemplate, Sparkles, Code, Trash2 } from 'lucide-react'
-import { Button, Input, ListBox, Select, TextArea } from '@heroui/react'
-import { ScrollArea } from '@/components/ui/scroll-area'
+import { Plus, BookTemplate, Sparkles, Code, Trash2 } from 'lucide-react'
+import { Button, Disclosure, Input, ListBox, Select, TextArea } from '@heroui/react'
 import { api } from '@/api'
 import type { PromptTemplate, TemplateVariable } from '@/types'
 
@@ -22,39 +21,43 @@ function TemplateCard({
   onDelete?: (id: string) => void
 }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
   const Icon = CATEGORY_ICONS[template.category] ?? BookTemplate
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      <Button
-        variant="ghost"
-        onClick={() => setExpanded(!expanded)}
-        className="w-full justify-start h-auto px-3 py-2.5 text-sm"
-      >
-        {expanded ? (
-          <ChevronDown className="w-4 h-4 text-muted" />
-        ) : (
-          <ChevronRight className="w-4 h-4 text-muted" />
-        )}
-        <Icon className="w-3.5 h-3.5 text-muted" />
-        <span className="flex-1 truncate">{template.name}</span>
-        {template.is_builtin === 1 && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">
-            {t('settings.template.builtin')}
-          </span>
-        )}
-      </Button>
-      {expanded && (
-        <div className="px-3 pb-3 space-y-2">
+    <Disclosure className="flex w-full flex-col overflow-hidden rounded-lg border border-border">
+      <Disclosure.Heading>
+        {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
+            and `shrink-0`, which only mean anything inside a flex container.
+            `text-start` undoes the button element's centred UA default. */}
+        <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
+          <Icon className="w-3.5 h-3.5 shrink-0 text-muted" />
+          <span className="flex-1 truncate">{template.name}</span>
+          {template.is_builtin === 1 && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted shrink-0">
+              {t('settings.template.builtin')}
+            </span>
+          )}
+          <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
+        </Disclosure.Trigger>
+      </Disclosure.Heading>
+      {/* `min-h-0` is load-bearing: the card is a flex column, and a flex item's
+          default `min-height: auto` floors it at its content height. */}
+      <Disclosure.Content className="min-h-0 w-full">
+        {/* Body, not a plain wrapper: it is what keeps the panel measurable, so
+            without it the content never collapses. */}
+        <Disclosure.Body className="space-y-2">
           {template.description && (
             <p className="text-xs text-muted">{template.description}</p>
           )}
-          <ScrollArea className="max-h-40">
-            <pre className="text-xs bg-default/30 rounded-md p-2.5 whitespace-pre-wrap break-words font-mono leading-relaxed">
-              {template.template_text}
-            </pre>
-          </ScrollArea>
+          {/* The reader is the only thing in here, so the scroller has to be its
+              own tab stop — otherwise a keyboard user cannot reach the text. */}
+          <pre
+            data-slot="template-preview"
+            tabIndex={0}
+            className="max-h-40 overflow-y-auto overscroll-contain text-xs bg-default/30 rounded-md p-2.5 whitespace-pre-wrap break-words font-mono leading-relaxed outline-none focus-visible:ring-2 focus-visible:ring-focus/50"
+          >
+            {template.template_text}
+          </pre>
           <div className="flex items-center gap-2 pt-1">
             {onApply && (
               <Button onClick={() => onApply(template.template_text)}>
@@ -71,9 +74,9 @@ function TemplateCard({
               </Button>
             )}
           </div>
-        </div>
-      )}
-    </div>
+        </Disclosure.Body>
+      </Disclosure.Content>
+    </Disclosure>
   )
 }
 

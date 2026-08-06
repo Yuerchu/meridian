@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Check, ChevronDown, ChevronRight, RefreshCw, Trash2, Cloud, Key, ArrowLeft, Settings2, X } from 'lucide-react'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Button, Input, ListBox, Select, Spinner, Tooltip } from '@heroui/react'
+import { Plus, Check, RefreshCw, Trash2, Cloud, Key, ArrowLeft, Settings2, X } from 'lucide-react'
+import { Button, Disclosure, Input, ListBox, Select, Spinner, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
@@ -200,18 +199,25 @@ function ModelConfigEditor({
           <Input fullWidth value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
         </div>
       </div>
-      <div data-slot="capability-overrides" className="pt-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-0 text-xs text-muted hover:text-foreground"
-          onClick={() => setShowCaps((v) => !v)}
-        >
-          {showCaps ? <ChevronDown className="w-3 h-3 mr-1" /> : <ChevronRight className="w-3 h-3 mr-1" />}
-          {t('settings.model.capabilities')}
-        </Button>
-        {showCaps && (
-          <div className="space-y-2 pt-2">
+      <Disclosure
+        data-slot="capability-overrides"
+        className="pt-1"
+        isExpanded={showCaps}
+        onExpandedChange={setShowCaps}
+      >
+        <Disclosure.Heading>
+          {/* `inline-flex`, not `flex`: a block-level flex row would stretch the
+              trigger across the form and the indicator's own `ms-auto` would
+              fling the chevron to the far edge. */}
+          <Disclosure.Trigger className="inline-flex items-center gap-1 text-xs text-muted transition-colors outline-none hover:text-foreground">
+            {t('settings.model.capabilities')}
+            <Disclosure.Indicator className="size-3" />
+          </Disclosure.Trigger>
+        </Disclosure.Heading>
+        <Disclosure.Content className="min-h-0 w-full">
+          {/* Body, not a plain wrapper: it is what keeps the panel measurable,
+              so without it the overrides never collapse. */}
+          <Disclosure.Body className="space-y-2">
             <div data-slot="effort-whitelist" className="space-y-1.5">
               <label className="text-xs text-muted">{t('settings.model.supportedEfforts')}</label>
               <div className="flex flex-wrap gap-1">
@@ -249,9 +255,9 @@ function ModelConfigEditor({
             >
               {t('settings.model.capReset')}
             </Button>
-          </div>
-        )}
-      </div>
+          </Disclosure.Body>
+        </Disclosure.Content>
+      </Disclosure>
       <div className="flex items-center gap-2 pt-1">
         <Button size="sm" className="h-7 text-xs" onClick={handleSave}>{t('common.save')}</Button>
         {onDelete && (
@@ -519,7 +525,10 @@ function ProviderEditor({
           <p className="text-xs text-danger break-all">{modelsError}</p>
         )}
         {models.length > 0 && (
-          <ScrollArea className="h-60 border border-border rounded-lg">
+          <div
+            data-slot="provider-model-list"
+            className="h-60 overflow-y-auto overscroll-contain border border-border rounded-lg"
+          >
             {models.map((m) => {
               const cfg = modelConfigs.get(m.id)
               const isEditing = editingModelId === m.id
@@ -551,7 +560,7 @@ function ProviderEditor({
                 </div>
               )
             })}
-          </ScrollArea>
+          </div>
         )}
         {models.length === 0 && !fetchingModels && !modelsError && (
           <p className="text-xs text-muted">{t('settings.provider.fetchModelsHint')}</p>

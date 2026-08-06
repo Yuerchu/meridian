@@ -2,15 +2,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash, X, Check } from 'lucide-react'
 import { api } from '@/api'
-import { Button, Input, ListBox, Select, TextArea } from '@heroui/react'
-import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogPopup,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { AlertDialog, Button, DisclosureGroup, Input, ListBox, Select, TextArea } from '@heroui/react'
 import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
 import { ScopeNav } from './memory/scope-nav'
@@ -19,7 +11,6 @@ import { useMemoryBrowser } from './memory/use-memory-browser'
 export function MemorySettings() {
   const { t } = useTranslation()
   const browser = useMemoryBrowser()
-  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [trashOpen, setTrashOpen] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [confirmBulk, setConfirmBulk] = useState(false)
@@ -178,17 +169,22 @@ export function MemorySettings() {
             </p>
           )}
 
-          {browser.visible.map((m) => (
-            <MemoryRow
-              key={m.id}
-              memory={m}
-              expanded={expandedId === m.id}
-              onToggleExpand={() => setExpandedId(expandedId === m.id ? null : m.id)}
-              checked={browser.selected.has(m.id)}
-              onToggleCheck={() => browser.toggleSelected(m.id)}
-              onChanged={browser.refresh}
-            />
-          ))}
+          {browser.visible.length > 0 && (
+            // One open at a time is the group's own default
+            // (`allowsMultipleExpanded` is off), so the single-open rule lives
+            // in the primitive rather than in a hand-held `expandedId`.
+            <DisclosureGroup data-slot="memory-rows" className="flex flex-col gap-2">
+              {browser.visible.map((m) => (
+                <MemoryRow
+                  key={m.id}
+                  memory={m}
+                  checked={browser.selected.has(m.id)}
+                  onToggleCheck={() => browser.toggleSelected(m.id)}
+                  onChanged={browser.refresh}
+                />
+              ))}
+            </DisclosureGroup>
+          )}
 
           {browser.selected.size > 0 && (
             <div
@@ -206,32 +202,36 @@ export function MemorySettings() {
                 <Trash className="text-danger" />
                 {t('settings.memory.deleteSelected')}
               </Button>
-              <AlertDialog
-                open={confirmBulk}
-                onOpenChange={(open) => { if (!open) setConfirmBulk(false) }}
-              >
-                <AlertDialogPopup>
-                  <AlertDialogTitle>{t('settings.memory.deleteConfirmTitle')}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('settings.memory.deleteConfirmBody')}
-                  </AlertDialogDescription>
-                  <AlertDialogFooter>
-                    <AlertDialogClose className="bg-default text-default-foreground hover:bg-default/80">
-                      {t('common.cancel')}
-                    </AlertDialogClose>
-                    <AlertDialogClose
-                      className="bg-danger text-white hover:bg-danger/80"
-                      onClick={async () => {
-                        await api.deleteMemories([...browser.selected])
-                        browser.clearSelection()
-                        browser.refresh()
-                      }}
-                    >
-                      {t('common.confirm')}
-                    </AlertDialogClose>
-                  </AlertDialogFooter>
-                </AlertDialogPopup>
-              </AlertDialog>
+              <AlertDialog.Backdrop isOpen={confirmBulk} onOpenChange={setConfirmBulk}>
+                <AlertDialog.Container>
+                  <AlertDialog.Dialog>
+                    <AlertDialog.Header>
+                      <AlertDialog.Heading>
+                        {t('settings.memory.deleteConfirmTitle')}
+                      </AlertDialog.Heading>
+                    </AlertDialog.Header>
+                    <AlertDialog.Body>
+                      {t('settings.memory.deleteConfirmBody')}
+                    </AlertDialog.Body>
+                    <AlertDialog.Footer>
+                      <Button slot="close" variant="tertiary">
+                        {t('common.cancel')}
+                      </Button>
+                      <Button
+                        slot="close"
+                        variant="danger"
+                        onClick={async () => {
+                          await api.deleteMemories([...browser.selected])
+                          browser.clearSelection()
+                          browser.refresh()
+                        }}
+                      >
+                        {t('common.confirm')}
+                      </Button>
+                    </AlertDialog.Footer>
+                  </AlertDialog.Dialog>
+                </AlertDialog.Container>
+              </AlertDialog.Backdrop>
             </div>
           )}
         </div>
