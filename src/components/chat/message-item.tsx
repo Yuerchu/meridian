@@ -2,7 +2,6 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowsRotateRight, Check, Copy, FileText, Microphone, Pencil, ThumbsDown, ThumbsUp, TrashBin, Xmark } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
-import CountUp from '@/components/CountUp'
 import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
@@ -614,11 +613,15 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
 
           {showFooter && (
           <MessageFooter className="gap-2 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
+            {/* Printed, not counted up to. The number is settled by the time the
+                footer exists, and the footer only appears on hover — so the
+                animation ran while the reader looked at a finished total, and
+                made it read as still being worked out. */}
             {(footerTokens.input || footerTokens.output) && (
-              <span className="text-xs text-muted/60 font-normal tabular-nums">
+              <span className="text-xs text-muted font-normal tabular-nums">
                 {footerTokens.input && footerTokens.output
-                  ? <><CountUp to={footerTokens.input} separator="," duration={1} /> + <CountUp to={footerTokens.output} separator="," duration={1} /> tokens</>
-                  : <><CountUp to={(footerTokens.output ?? footerTokens.input)!} separator="," duration={1} /> tokens</>}
+                  ? `${footerTokens.input.toLocaleString()} + ${footerTokens.output.toLocaleString()} tokens`
+                  : `${(footerTokens.output ?? footerTokens.input)!.toLocaleString()} tokens`}
               </span>
             )}
             <div className="flex gap-1">

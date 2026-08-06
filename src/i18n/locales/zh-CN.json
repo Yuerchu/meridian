@@ -436,6 +436,7 @@
   "settings.emoji.title": "表情包管理",
   "settings.emoji.subtitle": "管理表情包。支持导入 GIF、APNG、PNG、WebP、JPG 或 BMP 文件。",
   "settings.emoji.clickToRename": "点击重命名",
+  "settings.emoji.deleteEmoji": "删除这个表情",
   "settings.emoji.packName": "表情包名称",
   "settings.emoji.newPack": "新建表情包",
   "settings.emoji.import": "导入",

@@ -436,6 +436,7 @@
   "settings.emoji.title": "Emoji Packs",
   "settings.emoji.subtitle": "Manage emoji packs. Import GIF, APNG, PNG, WebP, JPG, or BMP files.",
   "settings.emoji.clickToRename": "Click to rename",
+  "settings.emoji.deleteEmoji": "Delete this emoji",
   "settings.emoji.packName": "Pack name",
   "settings.emoji.newPack": "New Pack",
   "settings.emoji.import": "Import",

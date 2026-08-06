@@ -52,9 +52,12 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
 
   return (
     <div className="group relative my-3 rounded-lg overflow-hidden bg-surface border border-border">
+      {/* The copy button is sized down from the default 36px: at full size it
+          sets the height of this strip, and its 24px radius reads as a pill
+          inside an 8px-cornered block. */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-default/50 text-xs text-muted">
         <span>{lang ?? 'code'}</span>
-        <CopyButton text={code} />
+        <CopyButton text={code} className="size-6 rounded-md" />
       </div>
       <div className="w-full overflow-x-auto">
         <pre className="p-3 text-xs leading-relaxed !bg-transparent !m-0 w-fit min-w-full">

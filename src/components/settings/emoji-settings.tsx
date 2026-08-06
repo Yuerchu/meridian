@@ -106,10 +106,11 @@ function PackCard({
                           <Button
                             variant="ghost"
                             isIconOnly
-                            className="absolute -top-1 -right-1 !size-4 rounded-full bg-danger text-danger-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                            aria-label={t('settings.emoji.deleteEmoji')}
+                            className="absolute -top-1.5 -right-1.5 !size-5 rounded-full bg-danger text-danger-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() => onDeleteEmoji(e.id)}
                           >
-                            <TrashBin className="!size-2.5" />
+                            <TrashBin className="!size-3" />
                           </Button>
                         )}
                       </div>
