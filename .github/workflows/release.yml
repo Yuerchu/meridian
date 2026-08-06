@@ -40,12 +40,18 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: test-${{ matrix.label }}
+          # `sherpa-onnx-sys` unpacks its prebuilt libraries here and returns early
+          # if the directory exists. Without this the cache restores the build
+          # script's fingerprint but not its output: the script never re-runs, the
+          # libraries are never re-downloaded, and the linker is handed a `-L` for a
+          # path that is gone.
+          cache-directories: src-tauri/target/sherpa-onnx-prebuilt
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
       - run: pnpm install
 
@@ -99,12 +105,18 @@ jobs:
         with:
           workspaces: src-tauri -> target
           key: build-${{ matrix.target }}
+          # `sherpa-onnx-sys` unpacks its prebuilt libraries here and returns early
+          # if the directory exists. Without this the cache restores the build
+          # script's fingerprint but not its output: the script never re-runs, the
+          # libraries are never re-downloaded, and the linker is handed a `-L` for a
+          # path that is gone.
+          cache-directories: src-tauri/target/sherpa-onnx-prebuilt
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
 
       - run: pnpm install
 
