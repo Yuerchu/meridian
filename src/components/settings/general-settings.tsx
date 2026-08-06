@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Input, ListBox, Select } from '@heroui/react'
-import { Check } from 'lucide-react'
+import { Check } from '@gravity-ui/icons'
 import { LANGUAGES, setLocale } from '@/i18n'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'

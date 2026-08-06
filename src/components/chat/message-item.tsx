@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Copy, Check, Trash2, RefreshCw, FileText, Mic, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { ArrowsRotateRight, Check, Copy, FileText, Microphone, Pencil, ThumbsDown, ThumbsUp, TrashBin, Xmark } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 import CountUp from '@/components/CountUp'
 import DecryptedText from '@/components/DecryptedText'
@@ -477,7 +477,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                       onClick={handleCancelEdit}
                       className="text-muted"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <Xmark className="w-3.5 h-3.5" />
                     </ActionButton>
                     <ActionButton
                       label="Enter"
@@ -498,7 +498,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     )}
                     <div className="whitespace-pre-wrap">
                       {message.source === 'voice' && (
-                        <Mic className="inline-block size-3 mr-1 -mt-0.5 opacity-60" aria-label={t('chat.voice.badge')} />
+                        <Microphone className="inline-block size-3.5 mr-1 -mt-0.5 opacity-60" aria-label={t('chat.voice.badge')} />
                       )}
                       {emojiMap && Object.keys(emojiMap).length > 0
                         ? renderEmojisInText(body, emojiMap)
@@ -523,7 +523,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                       onClick={() => setShowDeleteConfirm(true)}
                       className="text-muted hover:text-danger"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <TrashBin className="w-3.5 h-3.5" />
                     </ActionButton>
                   )}
                 </MessageFooter>
@@ -554,7 +554,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
           <ContextMenuSeparator />
           {onDelete && (
             <ContextMenuItem variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
-              <Trash2 />
+              <TrashBin />
               {t('chat.delete')}
             </ContextMenuItem>
           )}
@@ -651,7 +651,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                   onClick={() => onRegenerate(message.id)}
                   className="text-muted hover:text-foreground"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
+                  <ArrowsRotateRight className="w-3.5 h-3.5" />
                 </ActionButton>
               )}
               {onDelete && (
@@ -660,7 +660,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                   onClick={() => setShowDeleteConfirm(true)}
                   className="text-muted hover:text-danger"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <TrashBin className="w-3.5 h-3.5" />
                 </ActionButton>
               )}
             </div>
@@ -696,14 +696,14 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
         )}
         {onRegenerate && !isStreaming && (
           <ContextMenuItem onClick={() => onRegenerate(message.id)}>
-            <RefreshCw />
+            <ArrowsRotateRight />
             {t('chat.regenerate')}
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
         {onDelete && (
           <ContextMenuItem variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
-            <Trash2 />
+            <TrashBin />
             {t('chat.delete')}
           </ContextMenuItem>
         )}

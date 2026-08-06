@@ -1,4 +1,4 @@
-import { Square, SquareCheck, SquareDot } from 'lucide-react'
+import { Square, SquareCheck, SquareMinus } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'
 import type { TodoItem, TodoItemStatus } from '@/types'
@@ -54,7 +54,7 @@ export function todoProgress(todos: TodoDraft[]) {
 }
 
 export function TodoStatusIcon({ status, className }: { status: TodoItemStatus; className?: string }) {
-  const Icon = status === 'completed' ? SquareCheck : status === 'in_progress' ? SquareDot : Square
+  const Icon = status === 'completed' ? SquareCheck : status === 'in_progress' ? SquareMinus : Square
   return (
     <Icon
       aria-hidden

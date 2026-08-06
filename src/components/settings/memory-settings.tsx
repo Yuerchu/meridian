@@ -1,8 +1,8 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash, X, Check } from 'lucide-react'
+import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { AlertDialog, Button, DisclosureGroup, Input, ListBox, Select, TextArea } from '@heroui/react'
+import { AlertDialog, Button, Card, DisclosureGroup, Input, ListBox, Select, TextArea } from '@heroui/react'
 import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
 import { ScopeNav } from './memory/scope-nav'
@@ -64,7 +64,7 @@ export function MemorySettings() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" onClick={() => setTrashOpen(true)} data-slot="memory-trash-open">
-            <Trash />
+            <TrashBin />
             {t('settings.memory.trash.title')}
           </Button>
           <Button variant="secondary" onClick={() => setShowAdd(true)} isDisabled={!canAdd}>
@@ -115,7 +115,7 @@ export function MemorySettings() {
           </div>
 
           {showAdd && (
-            <div className="space-y-2 rounded-lg border border-border bg-default/30 p-3">
+            <Card data-slot="memory-add-form">
               <Input fullWidth
                 type="text"
                 value={newKey}
@@ -152,7 +152,7 @@ export function MemorySettings() {
                 </Select>
                 <div className="flex-1" />
                 <Button variant="ghost" isIconOnly onClick={() => setShowAdd(false)}>
-                  <X />
+                  <Xmark />
                 </Button>
                 <Button
                   variant="secondary"
@@ -163,7 +163,7 @@ export function MemorySettings() {
                   <Check />
                 </Button>
               </div>
-            </div>
+            </Card>
           )}
 
           {browser.visible.length === 0 && !showAdd && (
@@ -205,7 +205,7 @@ export function MemorySettings() {
                 {t('settings.memory.clearSelection')}
               </Button>
               <Button variant="ghost" onClick={() => setConfirmBulk(true)}>
-                <Trash className="text-danger" />
+                <TrashBin className="text-danger" />
                 {t('settings.memory.deleteSelected')}
               </Button>
               <AlertDialog.Backdrop isOpen={confirmBulk} onOpenChange={setConfirmBulk}>

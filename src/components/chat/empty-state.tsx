@@ -1,6 +1,6 @@
 import { useRef, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUp } from 'lucide-react'
+import { ArrowUp } from '@gravity-ui/icons'
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { Button, InputGroup, TextField } from '@heroui/react'
 
@@ -70,7 +70,7 @@ export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
                 isDisabled={disabled || !value.trim()}
                 className="ms-auto rounded-full"
               >
-                <ArrowUp className="size-4" strokeWidth={2.5} />
+                <ArrowUp className="size-4" />
               </Button>
             </InputGroup.Suffix>
           </InputGroup>

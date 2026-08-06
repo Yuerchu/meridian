@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Star, Check, BookTemplate } from 'lucide-react'
+import { Plus, StarFill, Check, SquareDashedText } from '@gravity-ui/icons'
 import { Button, Checkbox, Disclosure, DisclosureGroup, Input, ListBox, Select, TextArea, Tooltip } from '@heroui/react'
 import { api } from '@/api'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
@@ -124,7 +124,7 @@ function AssistantEditor({
             className="text-xs gap-1"
             onClick={() => setShowTemplates(!showTemplates)}
           >
-            <BookTemplate className="w-3 h-3" />
+            <SquareDashedText className="w-3.5 h-3.5" />
             {t('settings.assistant.browseTemplates')}
           </Button>
         </div>
@@ -440,7 +440,7 @@ function AssistantEditor({
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
           <span className="flex items-center gap-1 text-xs text-success">
-            <Check className="w-3 h-3" /> {t('common.saved')}
+            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
           </span>
         )}
         {onDelete && (
@@ -539,7 +539,7 @@ export function AssistantSettings() {
                 <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
                   <span className="flex-1 truncate">{a.name}</span>
                   {/* eslint-disable-next-line no-restricted-syntax -- gold-star semantics: default-assistant marker is intentionally amber (CLAUDE.md whitelist) */}
-                  {isDefault && <Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" />}
+                  {isDefault && <StarFill className="w-3.5 h-3.5 text-amber-500" />}
                   {providerName && (
                     <span className="text-xs text-muted">{providerName}</span>
                   )}

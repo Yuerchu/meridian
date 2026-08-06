@@ -3,7 +3,7 @@ import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu
 import { Separator } from "@base-ui/react/separator"
 
 import { cn } from "@/lib/utils"
-import { ChevronRightIcon, CheckIcon } from "lucide-react"
+import { Check, ChevronRight } from "@gravity-ui/icons"
 
 function ContextMenu({ ...props }: ContextMenuPrimitive.Root.Props) {
   return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />
@@ -103,7 +103,7 @@ function ContextMenuSubTrigger({
       {...props}
     >
       {children}
-      <ChevronRightIcon className="ml-auto" />
+      <ChevronRight className="ml-auto" />
     </ContextMenuPrimitive.SubmenuTrigger>
   )
 }
@@ -153,7 +153,7 @@ function ContextMenuCheckboxItem({
         data-slot="context-menu-checkbox-item-indicator"
       >
         <ContextMenuPrimitive.CheckboxItemIndicator>
-          <CheckIcon />
+          <Check />
         </ContextMenuPrimitive.CheckboxItemIndicator>
       </span>
       {children}

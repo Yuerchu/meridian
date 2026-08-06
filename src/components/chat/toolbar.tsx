@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bot, ChevronLeft, ChevronRight, ChevronsRight, Cpu, Check, Star, Lightbulb, RefreshCw, Plus, Camera, ImageIcon, Paperclip, Zap, Hammer, Compass } from 'lucide-react'
+import { ArrowsRotateRight, Bulb, Camera, Check, ChevronLeft, ChevronRight, ChevronsRight, Compass, Cpu, FaceRobot, Hammer, Paperclip, Picture, Plus, StarFill, Thunderbolt } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { Button, Drawer } from '@heroui/react'
 import { cn } from '@/lib/utils'
@@ -173,7 +173,7 @@ export function MobileOptionsMenu({
                         {t('chat.takePhoto')}
                       </Button>
                       <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickGallery)}>
-                        <ImageIcon className="w-4 h-4 text-muted" />
+                        <Picture className="w-4 h-4 text-muted" />
                         {t('chat.pickFromGallery')}
                       </Button>
                     </>
@@ -200,7 +200,7 @@ export function MobileOptionsMenu({
                   </Button>
                   <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('assistant')}>
                     <span className="flex items-center gap-3">
-                      <Bot className="w-4 h-4 text-muted" />
+                      <FaceRobot className="w-4 h-4 text-muted" />
                       <span>{currentAssistant?.name ?? t('toolbar.noAssistant')}</span>
                     </span>
                     <ChevronRight className="w-4 h-4 text-muted" />
@@ -217,7 +217,7 @@ export function MobileOptionsMenu({
                   {supportsThinking && (
                     <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('thinking')}>
                       <span className="flex items-center gap-3">
-                        <Lightbulb className={cn('w-4 h-4', thinkingLevel !== 'default' && thinkingLevel !== 'off' ? 'text-info' : 'text-muted')} />
+                        <Bulb className={cn('w-4 h-4', thinkingLevel !== 'default' && thinkingLevel !== 'off' ? 'text-info' : 'text-muted')} />
                         <span>{t('toolbar.thinking')}: {thinkingLabel}</span>
                       </span>
                       <ChevronRight className="w-4 h-4 text-muted" />
@@ -251,7 +251,7 @@ export function MobileOptionsMenu({
                       onClick={() => onToggleFast(!fastMode)}
                     >
                       <span className="flex items-center gap-3">
-                        <Zap className={cn('w-4 h-4', fastMode ? 'text-warning' : 'text-muted')} />
+                        <Thunderbolt className={cn('w-4 h-4', fastMode ? 'text-warning' : 'text-muted')} />
                         <span>{t('toolbar.fast')}</span>
                       </span>
                       <span className="text-xs text-muted">
@@ -279,10 +279,9 @@ export function MobileOptionsMenu({
                         onClick={() => { onSelectAssistant(a.id); close() }}
                       >
                         {a.is_default === 1 && (
-                          <Star
+                          <StarFill
                             // eslint-disable-next-line no-restricted-syntax -- CLAUDE.md whitelist: gold-star semantics
                             className="w-3.5 h-3.5 text-amber-500 flex-shrink-0"
-                            fill="currentColor"
                           />
                         )}
                         <span className="flex-1 truncate">{a.name}</span>
@@ -324,7 +323,7 @@ export function MobileOptionsMenu({
                       }}
                       isDisabled={loadingModels}
                     >
-                      <RefreshCw className={cn('w-3.5 h-3.5', loadingModels && 'animate-spin')} />
+                      <ArrowsRotateRight className={cn('w-3.5 h-3.5', loadingModels && 'animate-spin')} />
                     </Button>
                   </div>
                   <div data-slot="toolbar-model-list" className="max-h-[50vh] overflow-y-auto overscroll-contain">

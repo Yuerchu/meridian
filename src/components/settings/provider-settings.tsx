@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Check, RefreshCw, Trash2, Cloud, Key, ArrowLeft, Settings2, X } from 'lucide-react'
+import { Plus, Check, ArrowsRotateRight, TrashBin, Cloud, Key, ArrowLeft, Sliders, Xmark } from '@gravity-ui/icons'
 import { Button, Disclosure, Input, ListBox, Select, Spinner, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -211,7 +211,7 @@ function ModelConfigEditor({
               fling the chevron to the far edge. */}
           <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50">
             {t('settings.model.capabilities')}
-            <Disclosure.Indicator className="size-3" />
+            <Disclosure.Indicator className="size-3.5" />
           </Disclosure.Trigger>
         </Disclosure.Heading>
         <Disclosure.Content className="min-h-0 w-full">
@@ -464,7 +464,7 @@ function ProviderEditor({
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
           <span className="flex items-center gap-1 text-xs text-success">
-            <Check className="w-3 h-3" /> {t('common.saved')}
+            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
           </span>
         )}
       </div>
@@ -491,13 +491,13 @@ function ProviderEditor({
             onClick={handleSaveKey}
             isDisabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
           >
-            {savingKey ? <Spinner className="w-3 h-3" /> : <Key className="w-3 h-3" />}
+            {savingKey ? <Spinner className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
             {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
           </Button>
         </div>
         {keyStatus === 'loading' && (
           <p className="flex items-center gap-1.5 text-xs text-muted">
-            <Spinner className="w-3 h-3" />
+            <Spinner className="w-3.5 h-3.5" />
             {t('settings.provider.apiKeyChecking')}
           </p>
         )}
@@ -517,7 +517,7 @@ function ProviderEditor({
             onClick={handleFetchModels}
             isDisabled={fetchingModels || keyStatus !== 'set'}
           >
-            <RefreshCw className={cn("w-3 h-3", fetchingModels && "animate-spin")} />
+            <ArrowsRotateRight className={cn("w-3.5 h-3.5", fetchingModels && "animate-spin")} />
             {t('settings.provider.fetchModels')}
           </Button>
         </div>
@@ -545,7 +545,7 @@ function ProviderEditor({
                       className="h-6 w-6"
                       onClick={() => setEditingModelId(isEditing ? null : m.id)}
                     >
-                      {isEditing ? <X className="w-3 h-3" /> : <Settings2 className="w-3 h-3" />}
+                      {isEditing ? <Xmark className="w-3.5 h-3.5" /> : <Sliders className="w-3.5 h-3.5" />}
                     </Button>
                   </div>
                   {isEditing && (
@@ -574,7 +574,7 @@ function ProviderEditor({
           onClick={handleDelete}
           isDisabled={deleting}
         >
-          {deleting ? <Spinner className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
+          {deleting ? <Spinner className="w-3.5 h-3.5" /> : <TrashBin className="w-3.5 h-3.5" />}
           {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
         </Button>
       </div>

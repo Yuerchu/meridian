@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowUp, Square, Paperclip, X as XIcon, Scissors, Copy, ClipboardPaste, TextSelect } from 'lucide-react'
+import { ArrowDownToSquare, ArrowUp, Copy, Paperclip, Scissors, SquareDashedText, StopFill, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button, InputGroup, ProgressCircle, TextField, Tooltip } from '@heroui/react'
@@ -257,7 +257,7 @@ export function InputBar({
                           onClick={() => onRemoveFile(i)}
                           className="hover:text-danger"
                         >
-                          <XIcon />
+                          <Xmark />
                         </AttachmentAction>
                       </AttachmentActions>
                     )}
@@ -419,7 +419,7 @@ export function InputBar({
                   onClick={onStop}
                   className="rounded-full"
                 >
-                  <Square className="size-3.5" fill="currentColor" />
+                  <StopFill className="size-3.5" />
                 </Button>
               ) : (
                 <Button
@@ -430,7 +430,7 @@ export function InputBar({
                   isDisabled={disabled || !value.trim()}
                   className="rounded-full"
                 >
-                  <ArrowUp className="size-4" strokeWidth={2.5} />
+                  <ArrowUp className="size-4" />
                 </Button>
               )}
             </div>
@@ -454,13 +454,13 @@ export function InputBar({
             </>
           )}
           <ContextMenuItem onClick={handlePaste}>
-            <ClipboardPaste />
+            <ArrowDownToSquare />
             {t('contextMenu.paste')}
             <span className="ml-auto text-xs text-muted">Ctrl+V</span>
           </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onClick={handleSelectAll}>
-            <TextSelect />
+            <SquareDashedText />
             {t('contextMenu.selectAll')}
             <span className="ml-auto text-xs text-muted">Ctrl+A</span>
           </ContextMenuItem>

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy } from '@gravity-ui/icons'
 
 import { ActionButton } from '@/components/ui/action-button'
 import { cn } from '@/lib/utils'

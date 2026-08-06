@@ -526,7 +526,9 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         <MessageScrollerItem messageId="__compacting">
           <Marker role="status" className="justify-center py-3">
             <MarkerIcon>
-              <Spinner />
+              {/* `sm` is 16px, the size of the icon slot. Left at its default
+                  the spinner is 24px and overflows the row. */}
+              <Spinner size="sm" />
             </MarkerIcon>
             <MarkerContent className="shimmer text-xs">{t('chat.compact.inProgress')}</MarkerContent>
           </Marker>

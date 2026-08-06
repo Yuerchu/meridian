@@ -1,6 +1,6 @@
 import { memo, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy } from '@gravity-ui/icons'
 import { Button } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import type { LogEntry } from '@/types'

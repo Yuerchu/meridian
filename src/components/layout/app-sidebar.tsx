@@ -2,10 +2,11 @@ import { useState, useCallback, useId, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import {
-  MessageSquare, MessageCircle, Plus, Settings, Trash2, FolderOpen, FolderPlus,
-  Users, Archive, Download, ArrowLeft, Pin, PinOff, Pencil,
-  Cloud, Bot, Smile, Wrench, Sparkles, Plug, Brain, Mic, Radio, Settings2, Info,
-} from 'lucide-react'
+  Comment, Person, Plus, Gear, TrashBin, FolderOpen, FolderPlus,
+  Persons, Archive, ArrowDownToLine, ArrowLeft, Pin, PinSlash, Pencil,
+  Cloud, FaceRobot, FaceSmile, Wrench, Sparkles, LogoMcp, Bulb, Microphone,
+  BroadcastSignal, Sliders, CircleInfo,
+} from '@gravity-ui/icons'
 import SpotlightCard from '@/components/SpotlightCard'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { Conversation, Project } from '@/types'
@@ -114,24 +115,24 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
 
 function ProjectIcon({ sourceType }: { sourceType: string }) {
   switch (sourceType) {
-    case 'onebot_private': return <MessageCircle />
-    case 'onebot_group': return <Users />
+    case 'onebot_private': return <Person />
+    case 'onebot_group': return <Persons />
     default: return <FolderOpen />
   }
 }
 
 const settingsTabs: Array<{ id: SettingsTab; labelKey: string; icon: React.ElementType }> = [
   { id: 'provider', labelKey: 'settings.provider', icon: Cloud },
-  { id: 'assistants', labelKey: 'settings.assistants', icon: Bot },
-  { id: 'emoji', labelKey: 'settings.emoji', icon: Smile },
+  { id: 'assistants', labelKey: 'settings.assistants', icon: FaceRobot },
+  { id: 'emoji', labelKey: 'settings.emoji', icon: FaceSmile },
   { id: 'tools', labelKey: 'settings.toolsTab', icon: Wrench },
   { id: 'skills', labelKey: 'settings.skillsTab', icon: Sparkles },
-  { id: 'mcp', labelKey: 'settings.mcp', icon: Plug },
-  { id: 'memories', labelKey: 'settings.memories', icon: Brain },
-  { id: 'voice', labelKey: 'settings.voice', icon: Mic },
-  { id: 'onebot', labelKey: 'settings.onebot', icon: Radio },
-  { id: 'general', labelKey: 'settings.general', icon: Settings2 },
-  { id: 'about', labelKey: 'settings.about', icon: Info },
+  { id: 'mcp', labelKey: 'settings.mcp', icon: LogoMcp },
+  { id: 'memories', labelKey: 'settings.memories', icon: Bulb },
+  { id: 'voice', labelKey: 'settings.voice', icon: Microphone },
+  { id: 'onebot', labelKey: 'settings.onebot', icon: BroadcastSignal },
+  { id: 'general', labelKey: 'settings.general', icon: Sliders },
+  { id: 'about', labelKey: 'settings.about', icon: CircleInfo },
 ]
 
 function ConversationIndicator({ conversationId, activeId }: { conversationId: string; activeId: string | null }) {
@@ -314,7 +315,7 @@ export function AppSidebar({
                     </ContextMenuItem>
                     <ContextMenuSeparator />
                     <ContextMenuItem variant="destructive" onClick={() => setDeleteTarget({ type: 'project', id: project.id })}>
-                      <Trash2 />
+                      <TrashBin />
                       {t('sidebar.delete')}
                     </ContextMenuItem>
                   </ContextMenuContent>
@@ -356,7 +357,7 @@ export function AppSidebar({
                           onClick={() => onSelect(conv.id)}
                           className={conv.is_archived ? 'opacity-50' : undefined}
                         >
-                          {conv.is_archived ? <Archive /> : <MessageSquare />}
+                          {conv.is_archived ? <Archive /> : <Comment />}
                           {renamingConvId === conv.id ? (
                             <InlineRenameInput
                               value={conv.title ?? ''}
@@ -372,7 +373,7 @@ export function AppSidebar({
                     </ContextMenuTrigger>
                     <ContextMenuContent>
                       <ContextMenuItem onClick={() => onTogglePin(conv.id)}>
-                        {conv.is_pinned ? <PinOff /> : <Pin />}
+                        {conv.is_pinned ? <PinSlash /> : <Pin />}
                         {conv.is_pinned ? t('contextMenu.unpin') : t('contextMenu.pin')}
                       </ContextMenuItem>
                       <ContextMenuItem onClick={() => setRenamingConvId(conv.id)}>
@@ -381,16 +382,16 @@ export function AppSidebar({
                       </ContextMenuItem>
                       <ContextMenuSeparator />
                       <ContextMenuItem onClick={exportSft}>
-                        <Download />
+                        <ArrowDownToLine />
                         {t('sidebar.exportSft')}
                       </ContextMenuItem>
                       <ContextMenuItem onClick={exportDpo}>
-                        <Download />
+                        <ArrowDownToLine />
                         {t('sidebar.exportDpo')}
                       </ContextMenuItem>
                       <ContextMenuSeparator />
                       <ContextMenuItem variant="destructive" onClick={() => setDeleteTarget({ type: 'conversation', id: conv.id })}>
-                        <Trash2 />
+                        <TrashBin />
                         {t('sidebar.delete')}
                       </ContextMenuItem>
                     </ContextMenuContent>
@@ -406,7 +407,7 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={onOpenSettings}>
-              <Settings />
+              <Gear />
               <span>{t('sidebar.settings')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>

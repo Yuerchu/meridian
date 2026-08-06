@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Undo2 } from 'lucide-react'
+import { TrashBin, ArrowUturnCcwLeft } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button, Drawer } from '@heroui/react'
+import { Button, Card, Drawer } from '@heroui/react'
 import { MemoryBadge } from './memory-badge'
 import type { Memory } from '@/types'
 
@@ -64,12 +64,11 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                 {t('settings.memory.trash.empty')}
               </p>
             )}
+            {/* Secondary, not the default surface: the drawer itself is
+                `--overlay`, which is the same colour as `--surface`, so only the
+                sunken step reads as a row against it. */}
             {rows.map((m) => (
-              <div
-                key={m.id}
-                data-slot="memory-trash-row"
-                className="space-y-1.5 rounded-lg border border-border p-3"
-              >
+              <Card key={m.id} data-slot="memory-trash-row" variant="secondary">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm">{m.key}</span>
                   <MemoryBadge tone="info">{deletedByLabel(m.deleted_by)}</MemoryBadge>
@@ -84,7 +83,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                     }}
                     data-slot="memory-trash-restore"
                   >
-                    <Undo2 />
+                    <ArrowUturnCcwLeft />
                   </Button>
                   <Button
                     variant="ghost"
@@ -96,11 +95,11 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
                     }}
                     data-slot="memory-trash-purge"
                   >
-                    <Trash2 className="text-danger" />
+                    <TrashBin className="text-danger" />
                   </Button>
                 </div>
-                <p className="whitespace-pre-wrap text-sm text-muted">{m.content}</p>
-              </div>
+                <Card.Description className="whitespace-pre-wrap">{m.content}</Card.Description>
+              </Card>
             ))}
           </Drawer.Body>
         </Drawer.Dialog>

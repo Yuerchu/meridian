@@ -1,13 +1,13 @@
 import * as React from "react"
 import { Disclosure } from "@heroui/react"
 import {
-  ChevronLeftIcon,
-  ChevronRightIcon,
-  CircleAlertIcon,
-  CircleCheckIcon,
-  CircleSlashIcon,
-  Loader2Icon,
-} from "lucide-react"
+  Ban,
+  ChevronLeft,
+  ChevronRight,
+  CircleCheck,
+  CircleDashed,
+  CircleExclamation,
+} from "@gravity-ui/icons"
 
 import { cn } from "@/lib/utils"
 
@@ -91,16 +91,16 @@ function TurnStatusIcon({ className }: { className?: string }) {
   const shared = cn("size-3.5 shrink-0", className)
   switch (status) {
     case "streaming":
-      return <Loader2Icon aria-hidden className={cn(shared, "animate-spin text-muted")} />
+      return <CircleDashed aria-hidden className={cn(shared, "animate-spin text-muted")} />
     case "awaiting-input":
-      return <CircleAlertIcon aria-hidden className={cn(shared, "text-warning")} />
+      return <CircleExclamation aria-hidden className={cn(shared, "text-warning")} />
     case "interrupted":
-      return <CircleSlashIcon aria-hidden className={cn(shared, "text-muted")} />
+      return <Ban aria-hidden className={cn(shared, "text-muted")} />
     case "empty":
-      return <CircleSlashIcon aria-hidden className={cn(shared, "text-muted")} />
+      return <Ban aria-hidden className={cn(shared, "text-muted")} />
     case "complete":
     default:
-      return <CircleCheckIcon aria-hidden className={cn(shared, "text-muted")} />
+      return <CircleCheck aria-hidden className={cn(shared, "text-muted")} />
   }
 }
 
@@ -213,7 +213,7 @@ function TurnBranchPager({
         onClick={onPrevious}
         className="rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50 disabled:pointer-events-none disabled:opacity-40"
       >
-        <ChevronLeftIcon aria-hidden className="size-3.5" />
+        <ChevronLeft aria-hidden className="size-3.5" />
       </button>
       <span data-slot="turn-branch-pager-label" className="tabular-nums">
         {index}/{total}
@@ -226,7 +226,7 @@ function TurnBranchPager({
         onClick={onNext}
         className="rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50 disabled:pointer-events-none disabled:opacity-40"
       >
-        <ChevronRightIcon aria-hidden className="size-3.5" />
+        <ChevronRight aria-hidden className="size-3.5" />
       </button>
     </div>
   )

@@ -1,7 +1,7 @@
 // Dev-only component playground. Reachable at #playground from a plain browser
 // (vite dev without the Tauri backend); never included in production builds.
 import { useState } from 'react'
-import { Moon, Sun } from 'lucide-react'
+import { Moon, Sun } from '@gravity-ui/icons'
 
 import { Button, Tooltip } from '@heroui/react'
 import {

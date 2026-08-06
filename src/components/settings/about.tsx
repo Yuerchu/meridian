@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getVersion } from '@tauri-apps/api/app'
-import { ChevronRight, ScrollText } from 'lucide-react'
-import { Button } from '@heroui/react'
+import { ChevronRight, FileText } from '@gravity-ui/icons'
+import { Button, Card } from '@heroui/react'
 import { LogViewer } from './logs/log-viewer'
 
 export function About() {
@@ -40,21 +40,21 @@ export function About() {
           {t('settings.about.description')}
         </p>
 
-        <div data-slot="about-logs-card" className="rounded-lg border border-border p-4 space-y-3">
+        <Card data-slot="about-logs-card">
           <div className="flex items-start gap-3">
-            <ScrollText className="size-4 mt-0.5 shrink-0 text-muted" />
-            <div className="space-y-1">
-              <p className="font-medium">{t('settings.about.logs.title')}</p>
-              <p className="text-xs text-muted leading-relaxed">
-                {t('settings.about.logs.subtitle')}
-              </p>
-            </div>
+            <FileText className="size-4 mt-0.5 shrink-0 text-muted" />
+            <Card.Header>
+              <Card.Title>{t('settings.about.logs.title')}</Card.Title>
+              <Card.Description>{t('settings.about.logs.subtitle')}</Card.Description>
+            </Card.Header>
           </div>
-          <Button variant="secondary" size="sm" onClick={() => setShowLogs(true)}>
-            {t('settings.about.logs.open')}
-            <ChevronRight className="size-4" />
-          </Button>
-        </div>
+          <Card.Footer>
+            <Button variant="secondary" size="sm" onClick={() => setShowLogs(true)}>
+              {t('settings.about.logs.open')}
+              <ChevronRight className="size-4" />
+            </Button>
+          </Card.Footer>
+        </Card>
 
         <div className="pt-2 border-t border-border space-y-2 text-xs text-muted">
           <p>{t('settings.about.copyright')}</p>

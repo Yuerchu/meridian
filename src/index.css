@@ -50,15 +50,21 @@
 
   --radius: 0.5rem;
 
-  --background: oklch(1 0 0);
+  /* Not white. A HeroUI card carries no border — it is told apart by being
+     lighter than the page beneath it, plus a soft shadow. With the page at
+     white there was nothing for `--surface` to lift off, and every `bg-surface`
+     in the app resolved to the same colour as the page. The ladder below is
+     HeroUI's: the page in the middle, panels above it, wells below. */
+  --background: oklch(0.97 0 0);
   --foreground: oklch(0.145 0 0);
 
-  /* Panels — cards, disclosure groups, anything non-floating. */
+  /* Panels — cards, disclosure groups, anything non-floating. Above the page. */
   --surface: oklch(1 0 0);
   --surface-foreground: oklch(0.145 0 0);
-  --surface-secondary: oklch(0.97 0 0);
+  /* Below the page: wells sunk into a panel, not panels themselves. */
+  --surface-secondary: oklch(0.952 0 0);
   --surface-secondary-foreground: oklch(0.205 0 0);
-  --surface-tertiary: oklch(0.95 0 0);
+  --surface-tertiary: oklch(0.937 0 0);
   --surface-tertiary-foreground: oklch(0.205 0 0);
 
   /* Floating things — tooltips, popovers, menus, modals. */
@@ -68,7 +74,8 @@
   /* `muted` is a *text* colour in HeroUI, the opposite of what it meant under
      shadcn. What used to be `--muted` (a pale background) is `--default`. */
   --muted: oklch(0.556 0 0);
-  --default: oklch(0.97 0 0);
+  /* Darker than the page, so a hover wash still reads once the page is grey. */
+  --default: oklch(0.94 0 0);
   --default-foreground: oklch(0.205 0 0);
 
   /* The main action colour: HeroUI reads it for Button primary, Switch and

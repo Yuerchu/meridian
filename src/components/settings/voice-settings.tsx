@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Trash2 } from 'lucide-react'
-import { Button, Input, ListBox, ProgressCircle, Select } from '@heroui/react'
+import { TrashBin } from '@gravity-ui/icons'
+import { Button, Card, Input, ListBox, ProgressCircle, Select } from '@heroui/react'
 import { api } from '@/api'
 import type { VoiceModelStatus } from '@/types'
 
@@ -125,17 +125,17 @@ export function VoiceSettings() {
         <label className="block text-xs font-medium text-muted">
           {t('settings.voice.model')}
         </label>
-        <div className="rounded-lg border border-border px-3 py-2.5 space-y-2">
+        <Card>
           {status?.installed ? (
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-sm">{t('settings.voice.modelInstalled')}</p>
-                <p className="text-xs text-muted truncate">
+              <Card.Header className="min-w-0">
+                <Card.Title>{t('settings.voice.modelInstalled')}</Card.Title>
+                <Card.Description className="truncate">
                   {formatSize(status.size_bytes)} · {status.path}
-                </p>
-              </div>
+                </Card.Description>
+              </Card.Header>
               <Button isIconOnly variant="ghost" onClick={handleDelete} isDisabled={downloading}>
-                <Trash2 className="w-4 h-4" />
+                <TrashBin className="w-4 h-4" />
               </Button>
             </div>
           ) : downloading ? (
@@ -161,21 +161,23 @@ export function VoiceSettings() {
               </Button>
             </div>
           ) : (
-            <div className="space-y-2">
-              <p className="text-sm">{t('settings.voice.modelMissing')}</p>
-              <p className="text-xs text-muted">{t('settings.voice.modelHint')}</p>
-              <div className="flex items-center gap-2">
+            <>
+              <Card.Header>
+                <Card.Title>{t('settings.voice.modelMissing')}</Card.Title>
+                <Card.Description>{t('settings.voice.modelHint')}</Card.Description>
+              </Card.Header>
+              <Card.Footer className="gap-2">
                 <Button size="sm" onClick={handleDownload}>
                   {t('settings.voice.download')}
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleImport} isDisabled={importing}>
                   {importing ? t('settings.voice.importing') : t('settings.voice.import')}
                 </Button>
-              </div>
-            </div>
+              </Card.Footer>
+            </>
           )}
           {error && <p className="text-xs text-danger">{error}</p>}
-        </div>
+        </Card>
       </div>
 
       <div className="space-y-1.5">

@@ -9,7 +9,7 @@ import {
 import { cn } from "@/lib/utils"
 import { usePlatform } from "@/hooks/use-platform"
 import { Button } from "@heroui/react"
-import { ArrowDownIcon } from "lucide-react"
+import { ArrowDown } from "@gravity-ui/icons"
 
 function MessageScrollerProvider(
   props: React.ComponentProps<typeof MessageScrollerPrimitive.Provider>
@@ -140,7 +140,7 @@ function MessageScrollerButton({
     >
       {children ?? (
         <>
-          <ArrowDownIcon
+          <ArrowDown
           />
           <span className="sr-only">
             {direction === "end" ? "Scroll to end" : "Scroll to start"}

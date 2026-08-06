@@ -1,4 +1,4 @@
-import { Mic, Square } from 'lucide-react'
+import { Microphone, StopFill } from '@gravity-ui/icons'
 import { Button, Spinner } from '@heroui/react'
 import { cn } from '@/lib/utils'
 
@@ -70,9 +70,9 @@ export function VoiceButton({
         {state === 'transcribing' ? (
           <Spinner className="w-4 h-4" />
         ) : state === 'recording-toggle' ? (
-          <Square className="w-4 h-4" fill="currentColor" />
+          <StopFill className="w-4 h-4" />
         ) : (
-          <Mic className="w-4 h-4" />
+          <Microphone className="w-4 h-4" />
         )}
       </Button>
     </div>

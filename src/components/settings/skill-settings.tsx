@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, BookOpen, Check, RefreshCw } from 'lucide-react'
-import { Button, Checkbox, Disclosure, DisclosureGroup, Input, TextArea } from '@heroui/react'
+import { Plus, TrashBin, BookOpen, Check, ArrowsRotateRight } from '@gravity-ui/icons'
+import { Button, Card, Checkbox, Disclosure, DisclosureGroup, Input, TextArea } from '@heroui/react'
 import { api } from '@/api'
 import type { Skill } from '@/types'
 
@@ -75,8 +75,10 @@ function SkillEditor({
     }
   }
 
+  // No chrome of its own: the caller decides whether this is a card floating on
+  // the page or the body of an already-bounded disclosure row.
   return (
-    <div data-slot="skill-editor" className="space-y-3 p-3 border border-border rounded-lg">
+    <div data-slot="skill-editor" className="space-y-3">
       {!skill && (
         <div data-slot="skill-editor-field" className="space-y-1">
           <label data-slot="skill-editor-label" className="text-xs text-muted">
@@ -164,12 +166,12 @@ function SkillEditor({
         </Button>
         {saved && (
           <span data-slot="skill-editor-saved" className="flex items-center gap-1 text-xs text-success">
-            <Check className="w-3 h-3" /> {t('common.saved')}
+            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
           </span>
         )}
         {onDelete && !isBuiltin && (
           <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
-            <Trash2 className="w-3.5 h-3.5" />
+            <TrashBin className="w-3.5 h-3.5" />
           </Button>
         )}
       </div>
@@ -255,7 +257,7 @@ export function SkillSettings() {
         </div>
         <div data-slot="skill-settings-actions" className="flex items-center gap-1 shrink-0">
           <Button variant="outline" onClick={handleRescan} isDisabled={rescanning}>
-            <RefreshCw className={rescanning ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />
+            <ArrowsRotateRight className={rescanning ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />
             {t('settings.skills.rescan')}
           </Button>
           <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
@@ -270,9 +272,11 @@ export function SkillSettings() {
       )}
 
       {showCreate && (
-        <SkillEditor
-          onSave={async () => { setShowCreate(false); await refresh() }}
-        />
+        <Card>
+          <SkillEditor
+            onSave={async () => { setShowCreate(false); await refresh() }}
+          />
+        </Card>
       )}
 
       {/* One open at a time is the group's own default (`allowsMultipleExpanded`
@@ -352,8 +356,10 @@ export function SkillSettings() {
                   content height. */}
               <Disclosure.Content className="min-h-0 w-full">
                 {/* Body, not a plain wrapper: it is what keeps the panel
-                    measurable, so without it the editor never collapses. */}
-                <Disclosure.Body data-slot="skill-item-body" className="space-y-2">
+                    measurable, so without it the editor never collapses. The
+                    padding is the editor's own former `p-3`, moved out here now
+                    that the row is the only box around it. */}
+                <Disclosure.Body data-slot="skill-item-body" className="space-y-2 p-3">
                   {/* A collapsed panel is only hidden, not unmounted, so the
                       editor still has to be gated: mounting one per row would
                       read every skill's file on every visit to this page. */}

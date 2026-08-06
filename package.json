@@ -46,6 +46,7 @@
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@fontsource-variable/geist": "^5.3.0",
+    "@gravity-ui/icons": "^2.21.0",
     "@heroui/react": "^3.2.3",
     "@heroui/styles": "^3.2.3",
     "@lobehub/icons": "^5.14.0",
@@ -60,7 +61,6 @@
     "i18next": "^26.3.6",
     "i18next-browser-languagedetector": "^8.2.1",
     "immer": "^11.1.15",
-    "lucide-react": "^1.25.0",
     "material-icon-theme": "^5.37.0",
     "motion": "^12.42.2",
     "react": "^19.2.8",

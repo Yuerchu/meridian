@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Smile, Search } from 'lucide-react'
+import { FaceSmile, Magnifier } from '@gravity-ui/icons'
 import { Button, Input, Popover, Tooltip } from '@heroui/react'
 import { api } from '@/api'
 import type { Emoji, EmojiPack } from '@/types'
@@ -78,14 +78,14 @@ export function EmojiPicker({
     <Popover isOpen={open} onOpenChange={setOpen}>
       <Tooltip delay={0}>
         <Button isIconOnly aria-label={t('chat.emoji')} variant="ghost">
-          <Smile className="w-4 h-4" />
+          <FaceSmile className="w-4 h-4" />
         </Button>
         <Tooltip.Content placement="top">{t('chat.emoji')}</Tooltip.Content>
       </Tooltip>
       <Popover.Content placement="top end" className="w-72 overflow-hidden p-0">
         <div className="p-2 border-b border-border">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
+            <Magnifier className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
             <Input fullWidth
               value={search}
               onChange={(e) => handleSearch(e.target.value)}

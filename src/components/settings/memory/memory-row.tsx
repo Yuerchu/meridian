@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, AlertTriangle } from 'lucide-react'
+import { TrashBin, TriangleExclamation } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { Button, Checkbox, Disclosure, TextArea, Tooltip } from '@heroui/react'
 import { MemoryBadge } from './memory-badge'
@@ -74,7 +74,7 @@ export function MemoryRow({
           <Tooltip delay={0}>
             <Tooltip.Trigger>
               <MemoryBadge tone="warning">
-                <AlertTriangle className="mr-1 size-3" />
+                <TriangleExclamation className="mr-1 size-3.5" />
                 {t('settings.memory.ownerOnly')}
               </MemoryBadge>
             </Tooltip.Trigger>
@@ -140,7 +140,7 @@ export function MemoryRow({
               }}
               data-slot="memory-row-delete"
             >
-              <Trash2 className="text-danger" />
+              <TrashBin className="text-danger" />
             </Button>
           </div>
         </Disclosure.Body>

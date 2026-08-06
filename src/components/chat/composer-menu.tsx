@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
-import { Bot, ChevronRight, ChevronsRight, Compass, Cpu, Hammer, Lightbulb, Paperclip, Plus, Zap } from 'lucide-react'
+import { Bulb, ChevronRight, ChevronsRight, Compass, Cpu, FaceRobot, Hammer, Paperclip, Plus, Thunderbolt } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 
 import { Button, Popover, Spinner, Switch, Tooltip } from '@heroui/react'
@@ -184,7 +184,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
 
   entries.push({
     key: 'assistant',
-    icon: Bot,
+    icon: FaceRobot,
     label: t('toolbar.assistant'),
     value: currentAssistant?.name ?? t('toolbar.noAssistant'),
     options: props.assistants.map((a) => ({
@@ -216,7 +216,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
   if (props.capabilities?.supports_thinking !== false) {
     entries.push({
       key: 'thinking',
-      icon: Lightbulb,
+      icon: Bulb,
       label: t('toolbar.thinking'),
       value: t(`toolbar.thinking.${props.thinkingLevel}`),
       tone: props.thinkingLevel === 'default' ? 'muted' : 'info',
@@ -235,7 +235,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
   if (props.capabilities?.supports_fast === true) {
     entries.push({
       key: 'fast',
-      icon: Zap,
+      icon: Thunderbolt,
       label: t('toolbar.fast'),
       checked: props.fastMode,
       tone: props.fastMode ? 'warning' : 'muted',

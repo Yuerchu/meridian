@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 import { Button, Drawer, Input, Separator, Skeleton, Tooltip, dom, tv, type VariantProps } from '@heroui/react'
-import { PanelLeftIcon } from 'lucide-react';
+import { LayoutSideContentLeft } from '@gravity-ui/icons';
 
 const SIDEBAR_COOKIE_NAME = 'sidebar_state';
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
@@ -243,7 +243,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
       }}
       {...props}
     >
-      <PanelLeftIcon />
+      <LayoutSideContentLeft />
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
   );

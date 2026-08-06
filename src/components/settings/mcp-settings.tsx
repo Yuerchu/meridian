@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Plug, PlugZap, Trash2, ArrowLeft, ClipboardPaste } from 'lucide-react'
+import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowLeft, ArrowDownToSquare } from '@gravity-ui/icons'
 import { Button, Input, TextArea, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -229,12 +229,12 @@ function McpServerEditor({
         </Button>
         {connected ? (
           <Button variant="outline" onClick={handleDisconnect}>
-            <PlugZap className="w-3.5 h-3.5 mr-1.5" />
+            <PlugConnection className="w-3.5 h-3.5 mr-1.5" />
             {t('settings.mcp.disconnect')}
           </Button>
         ) : (
           <Button variant="outline" onClick={handleConnect} isDisabled={connecting}>
-            <Plug className="w-3.5 h-3.5 mr-1.5" />
+            <PlugWire className="w-3.5 h-3.5 mr-1.5" />
             {connecting ? t('common.loading') : t('settings.mcp.connect')}
           </Button>
         )}
@@ -262,7 +262,7 @@ function McpServerEditor({
 
       <div className="pt-4 border-t border-border">
         <Button variant="danger-soft" onClick={() => onDelete(server.id)}>
-          <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+          <TrashBin className="w-3.5 h-3.5 mr-1.5" />
           {t('settings.mcp.deleteServer')}
         </Button>
       </div>
@@ -331,7 +331,7 @@ export function McpSettings() {
           )}
         >
           <div className="flex items-center gap-2 w-full">
-            <Plug className="w-3.5 h-3.5 flex-shrink-0" />
+            <LogoMcp className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="truncate">{s.name}</span>
             <span className="text-xs text-muted ml-auto flex-shrink-0">
               {s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
@@ -350,7 +350,7 @@ export function McpSettings() {
           variant="outline"
           onClick={() => setShowImport(true)}
         >
-          <ClipboardPaste className="w-4 h-4" />
+          <ArrowDownToSquare className="w-4 h-4" />
         </Button>
         <Tooltip.Content placement="top">{t('settings.mcp.importJson')}</Tooltip.Content>
       </Tooltip>

@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, Wrench, Terminal, Check } from 'lucide-react'
-import { Button, Disclosure, DisclosureGroup, Input, ListBox, Select } from '@heroui/react'
+import { Plus, TrashBin, Wrench, Terminal, Check } from '@gravity-ui/icons'
+import { Button, Card, Disclosure, DisclosureGroup, Input, ListBox, Select } from '@heroui/react'
 import { api } from '@/api'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
 
@@ -55,8 +55,10 @@ function CustomToolEditor({
     { value: 'never', label: t('settings.tools.permNever') },
   ]
 
+  // No chrome of its own: the caller decides whether this is a card floating on
+  // the page or the body of an already-bounded disclosure row.
   return (
-    <div className="space-y-3 p-3 border border-border rounded-lg">
+    <div data-slot="custom-tool-editor" className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
           <label className="text-xs text-muted">{t('settings.tools.name')}</label>
@@ -105,12 +107,12 @@ function CustomToolEditor({
         </Button>
         {saved && (
           <span className="flex items-center gap-1 text-xs text-success">
-            <Check className="w-3 h-3" /> {t('common.saved')}
+            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
           </span>
         )}
         {onDelete && (
           <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
-            <Trash2 className="w-3.5 h-3.5" />
+            <TrashBin className="w-3.5 h-3.5" />
           </Button>
         )}
       </div>
@@ -208,11 +210,11 @@ export function ToolMarketplace() {
         </div>
 
         {showCreate && (
-          <div className="mb-3">
+          <Card className="mb-3">
             <CustomToolEditor
               onSave={() => { setShowCreate(false); refresh() }}
             />
-          </div>
+          </Card>
         )}
 
         {/* One open at a time is the group's own default
@@ -251,8 +253,10 @@ export function ToolMarketplace() {
                     content height. */}
                 <Disclosure.Content className="min-h-0 w-full">
                   {/* Body, not a plain wrapper: it is what keeps the panel
-                      measurable, so without it the editor never collapses. */}
-                  <Disclosure.Body>
+                      measurable, so without it the editor never collapses. The
+                      padding is the editor's own former `p-3`, moved out here
+                      now that the row is the only box around it. */}
+                  <Disclosure.Body className="p-3">
                     {/* A collapsed panel is only hidden, not unmounted, so the
                         editor is still gated on the open row. */}
                     {isExpanded && (

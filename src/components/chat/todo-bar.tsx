@@ -24,16 +24,21 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
   return (
     <div data-slot="todo-bar-shell" className={cn('px-4 pt-2', className)}>
       <div className="mx-auto max-w-2xl">
+        {/* Same card as the tool cards: HeroUI's `.card` values (24px radius,
+            opaque `bg-surface`, `shadow-surface`) and no border. */}
         <Disclosure
           data-slot="todo-bar"
-          className="w-full overflow-hidden rounded-xl border border-border bg-surface/30 text-xs"
+          className="w-full overflow-hidden rounded-2xl bg-surface text-xs shadow-surface"
         >
           <Disclosure.Heading>
             {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
                 and `shrink-0`, which only mean anything inside a flex container. */}
             <Disclosure.Trigger
               data-slot="todo-bar-trigger"
-              className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30"
+              className={cn(
+                'flex w-full items-center gap-2 p-4 text-left transition-colors outline-none',
+                'hover:bg-default focus-visible:bg-default',
+              )}
             >
               {/* `--info` has no `color` variant of its own — HeroUI's are
                   accent/default/success/warning/danger. The stroke reads a
@@ -82,7 +87,7 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
             {/* Body, not a plain wrapper: it is what keeps the panel measurable,
                 so without it the list never collapses. */}
             <Disclosure.Body>
-              <TodoItemList todos={todos.todos} className="px-3 pb-2.5" />
+              <TodoItemList todos={todos.todos} className="px-4 pb-4" />
             </Disclosure.Body>
           </Disclosure.Content>
         </Disclosure>

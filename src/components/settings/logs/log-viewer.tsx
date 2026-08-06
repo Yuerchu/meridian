@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
-import { ChevronLeft, Download, RefreshCw, Search } from 'lucide-react'
+import { ChevronLeft, ArrowDownToLine, ArrowsRotateRight, Magnifier } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { Button, InputGroup, ListBox, Select, Skeleton, Spinner } from '@heroui/react'
 import { LogRow } from './log-row'
@@ -37,11 +37,11 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         <h2 className="text-lg font-medium">{t('settings.about.logs.title')}</h2>
         <div className="ml-auto flex items-center gap-2">
           <Button variant="ghost" size="sm" onClick={logs.refresh} isDisabled={logs.loading}>
-            <RefreshCw className="size-4" />
+            <ArrowsRotateRight className="size-4" />
             {t('settings.about.logs.refresh')}
           </Button>
           <Button variant="secondary" size="sm" onClick={onExport}>
-            <Download className="size-4" />
+            <ArrowDownToLine className="size-4" />
             {exported ? t('settings.about.logs.exported') : t('settings.about.logs.export')}
           </Button>
         </div>
@@ -75,7 +75,7 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
 
         <InputGroup className="max-w-xs flex-1">
           <InputGroup.Prefix>
-            <Search className="size-4" />
+            <Magnifier className="size-4" />
           </InputGroup.Prefix>
           <InputGroup.Input
             value={logs.search}

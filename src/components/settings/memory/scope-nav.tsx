@@ -1,8 +1,8 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Pin, UserX } from 'lucide-react'
+import { Pin, PersonXmark } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { AlertDialog, Button } from '@heroui/react'
+import { AlertDialog, Button, Card } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import type { MemorySubject, Project } from '@/types'
 import type { ScopeFilter } from './use-memory-browser'
@@ -103,18 +103,15 @@ export function ScopeNav({
       )}
 
       {selectedPerson && (
-        <div
-          data-slot="memory-person-card"
-          className="mt-3 space-y-2 rounded-lg border border-border p-3"
-        >
-          <div className="text-sm font-medium">
-            {selectedPerson.display_name ?? selectedPerson.scope_id}
-          </div>
-          <div className="text-xs text-muted">
-            {t('settings.memory.person.lastSeen', {
-              when: relativeTime(selectedPerson.last_seen_at),
-            })}
-          </div>
+        <Card data-slot="memory-person-card" className="mt-3">
+          <Card.Header>
+            <Card.Title>{selectedPerson.display_name ?? selectedPerson.scope_id}</Card.Title>
+            <Card.Description>
+              {t('settings.memory.person.lastSeen', {
+                when: relativeTime(selectedPerson.last_seen_at),
+              })}
+            </Card.Description>
+          </Card.Header>
           {selectedPerson.opted_out !== 0 && (
             <div className="text-xs text-warning">{t('settings.memory.person.optedOut')}</div>
           )}
@@ -143,7 +140,7 @@ export function ScopeNav({
             className="w-full justify-start font-normal"
             onClick={() => setConfirmForget(true)}
           >
-            <UserX className="text-danger" />
+            <PersonXmark className="text-danger" />
             {t('settings.memory.person.forget')}
           </Button>
           <AlertDialog.Backdrop isOpen={confirmForget} onOpenChange={setConfirmForget}>
@@ -175,7 +172,7 @@ export function ScopeNav({
               </AlertDialog.Dialog>
             </AlertDialog.Container>
           </AlertDialog.Backdrop>
-        </div>
+        </Card>
       )}
     </div>
   )

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FolderOpen, X } from 'lucide-react'
+import { FolderOpen, Xmark } from '@gravity-ui/icons'
 import { Button, Checkbox } from '@heroui/react'
 import { api } from '@/api'
 import type { SafRootEntry } from '@/types'
@@ -111,7 +111,7 @@ export function AndroidFileAccess() {
                   onClick={() => handleRemove(root.uri)}
                   aria-label={t('settings.fileAccess.removeDir')}
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <Xmark className="h-3.5 w-3.5" />
                 </Button>
               </li>
             ))}

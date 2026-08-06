@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, Upload, Package } from 'lucide-react'
+import { Plus, TrashBin, ArrowUpFromLine, Sticker } from '@gravity-ui/icons'
 import { Button, Disclosure, Input } from '@heroui/react'
 import { api } from '@/api'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
@@ -41,7 +41,7 @@ function PackCard({
                 and `shrink-0`, which only mean anything inside a flex container.
                 `text-start` undoes the button element's centred UA default. */}
             <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
-              <Package className="w-3.5 h-3.5 shrink-0 text-muted" />
+              <Sticker className="w-3.5 h-3.5 shrink-0 text-muted" />
               <span className="flex-1 truncate">{detail.pack.name}</span>
               <span className="text-xs text-muted">{detail.emojis.length}</span>
               {detail.pack.is_builtin === 1 && (
@@ -109,7 +109,7 @@ function PackCard({
                             className="absolute -top-1 -right-1 !size-4 rounded-full bg-danger text-danger-foreground opacity-0 group-hover:opacity-100 transition-opacity"
                             onClick={() => onDeleteEmoji(e.id)}
                           >
-                            <Trash2 className="!size-2.5" />
+                            <TrashBin className="!size-2.5" />
                           </Button>
                         )}
                       </div>
@@ -118,7 +118,7 @@ function PackCard({
 
                   <div className="flex items-center gap-2">
                     <Button variant="outline" onClick={onImport}>
-                      <Upload className="w-3.5 h-3.5" />
+                      <ArrowUpFromLine className="w-3.5 h-3.5" />
                       {t('settings.emoji.import')}
                     </Button>
                     {onDelete && detail.pack.is_builtin === 0 && (
@@ -127,7 +127,7 @@ function PackCard({
                         className="ml-auto text-danger hover:text-danger"
                         onClick={onDelete}
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
+                        <TrashBin className="w-3.5 h-3.5" />
                         {t('common.delete')}
                       </Button>
                     )}
