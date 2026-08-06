@@ -9,7 +9,6 @@ import { EmptyState } from '@/components/chat/empty-state'
 const SettingsPage = lazy(() => import('@/components/settings'))
 import type { SettingsTab } from '@/components/settings'
 import { api } from '@/api'
-import DecryptedText from '@/components/DecryptedText'
 import { useContextMenuGuard } from '@/hooks/use-context-menu-guard'
 import { useAndroidInsets } from '@/hooks/use-android-insets'
 import { useGlobalEventListener } from '@/hooks/use-global-event-listener'
@@ -145,10 +144,7 @@ function App() {
           <span className="text-sm font-medium">
             {page === 'settings'
               ? t('settings.title')
-              : (() => {
-                  const title = activeConversation?.title ?? (activeProject?.name ?? t('app.name'))
-                  return <DecryptedText key={title} text={title} animateOn="view" speed={30} sequential revealDirection="start" />
-                })()}
+              : (activeConversation?.title ?? activeProject?.name ?? t('app.name'))}
           </span>
         </header>
 

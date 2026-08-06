@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 /**
  * The playground previews components; it must not be the only thing keeping one
@@ -17,6 +17,15 @@ import { join, resolve } from 'node:path'
 
 const SRC = resolve(process.cwd(), 'src')
 const PLAYGROUND = join(SRC, 'dev', 'playground.tsx')
+
+/**
+ * Directories that are not the product.
+ *
+ * `src/dev` is the whole point of the check — counting a sibling lab as a
+ * caller would let the playground vouch for itself. `src/test` is scaffolding;
+ * a component alive only because a helper imports it is still dead.
+ */
+const NOT_PRODUCT = [join(SRC, 'dev'), join(SRC, 'test')]
 
 /**
  * Components allowed in the playground with no caller in the product.
@@ -71,9 +80,17 @@ function walk(dir: string): string[] {
   })
 }
 
-function moduleToFile(module: string): string | null {
-  if (!module.startsWith('@/')) return null
-  const base = join(SRC, module.slice(2))
+/** Resolves an import specifier to the file it names, or null for a package.
+ *  Relative specifiers are resolved against the file that wrote them, which is
+ *  what makes `Button` from `@heroui/react` and `Button` from `./ui/button`
+ *  two different things. */
+function moduleToFile(module: string, from: string): string | null {
+  const base = module.startsWith('@/')
+    ? join(SRC, module.slice(2))
+    : module.startsWith('.')
+      ? resolve(dirname(from), module)
+      : null
+  if (base === null) return null
   for (const candidate of [`${base}.tsx`, `${base}.ts`, join(base, 'index.tsx'), join(base, 'index.ts')]) {
     try {
       readFileSync(candidate, 'utf8')
@@ -94,25 +111,35 @@ describe('playground', () => {
     // Anything the product imports by name is in use. Import is the signal
     // rather than JSX usage, because a component can be handed to
     // `motion.create()` or a `render` prop and never appear as a tag.
+    //
+    // Keyed by the file the name resolves to, not by the bare name: half of
+    // `@heroui/react`'s exports are called `Button`, `Select`, `Avatar` or
+    // `Spinner` too, and matching on the identifier alone would let any of them
+    // vouch for a local component of the same name that nothing renders.
     const productFiles = walk(SRC).filter(
-      (f) => f !== PLAYGROUND && !/\.test\.tsx?$/.test(f),
+      (f) => !NOT_PRODUCT.some((dir) => f.startsWith(dir)) && !/\.test\.tsx?$/.test(f),
     )
+    // `heroui-lab.tsx` and `scroll-lab.tsx` used to land in here, which let the
+    // playground's own neighbours vouch for what it previews.
+    expect(productFiles.filter((f) => f.startsWith(join(SRC, 'dev')))).toEqual([])
+
     const importedByProduct = new Set<string>()
     for (const file of productFiles) {
-      for (const { name } of parseNamedImports(readFileSync(file, 'utf8'))) {
-        importedByProduct.add(name)
+      for (const { name, module } of parseNamedImports(readFileSync(file, 'utf8'))) {
+        const target = moduleToFile(module, file)
+        if (target) importedByProduct.add(`${target}::${name}`)
       }
     }
 
     const orphans = previewed.filter(({ name, module }) => {
-      if (importedByProduct.has(name)) return false
       if (ALLOWED_WITHOUT_CALLER.has(name)) return false
       // A component can also be used by a sibling inside its own file without
       // ever being imported anywhere — `TodoBar` renders `TodoBarView` that
       // way. Missing this is what makes a naive version of this check delete
       // live code.
-      const file = moduleToFile(module)
+      const file = moduleToFile(module, PLAYGROUND)
       if (!file) return true
+      if (importedByProduct.has(`${file}::${name}`)) return false
       const source = readFileSync(file, 'utf8')
       return !new RegExp(`<${name}[\\s/>]`).test(source)
     })

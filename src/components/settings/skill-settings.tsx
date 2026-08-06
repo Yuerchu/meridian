@@ -1,10 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, ChevronDown, ChevronRight, BookOpen, Check, RefreshCw } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Checkbox } from '@/components/ui/checkbox'
+import { Plus, TrashBin, BookOpen, Check, ArrowsRotateRight } from '@gravity-ui/icons'
+import { Button, Card, Checkbox, Disclosure, DisclosureGroup, Input, TextArea } from '@heroui/react'
 import { api } from '@/api'
 import type { Skill } from '@/types'
 
@@ -78,24 +75,26 @@ function SkillEditor({
     }
   }
 
+  // No chrome of its own: the caller decides whether this is a card floating on
+  // the page or the body of an already-bounded disclosure row.
   return (
-    <div data-slot="skill-editor" className="space-y-3 p-3 border border-border rounded-lg">
+    <div data-slot="skill-editor" className="space-y-3">
       {!skill && (
         <div data-slot="skill-editor-field" className="space-y-1">
-          <label data-slot="skill-editor-label" className="text-xs text-muted-foreground">
+          <label data-slot="skill-editor-label" className="text-xs text-muted">
             {t('settings.skills.dirName')}
           </label>
-          <Input
+          <Input fullWidth
             value={dirName}
             onChange={(e) => setDirName(e.target.value)}
             placeholder="my-skill"
             className="font-mono text-xs"
           />
-          <p data-slot="skill-editor-hint" className="text-xs text-muted-foreground/60">
+          <p data-slot="skill-editor-hint" className="text-xs text-muted">
             {t('settings.skills.dirNameHint')}
           </p>
           {dirName.trim().length > 0 && !dirNameValid && (
-            <p data-slot="skill-editor-error" className="text-xs text-destructive">
+            <p data-slot="skill-editor-error" className="text-xs text-danger">
               {t('settings.skills.dirNameInvalid')}
             </p>
           )}
@@ -103,10 +102,10 @@ function SkillEditor({
       )}
 
       <div data-slot="skill-editor-field" className="space-y-1">
-        <label data-slot="skill-editor-label" className="text-xs text-muted-foreground">
+        <label data-slot="skill-editor-label" className="text-xs text-muted">
           {t('settings.skills.displayName')}
         </label>
-        <Input
+        <Input fullWidth
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder={skill?.llm_name ?? dirName}
@@ -114,31 +113,31 @@ function SkillEditor({
       </div>
 
       <div data-slot="skill-editor-field" className="space-y-1">
-        <label data-slot="skill-editor-label" className="text-xs text-muted-foreground">
+        <label data-slot="skill-editor-label" className="text-xs text-muted">
           {t('settings.skills.description')}
         </label>
-        <Textarea
+        <TextArea fullWidth
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           disabled={isBuiltin}
           rows={2}
           className="resize-none text-xs"
         />
-        <p data-slot="skill-editor-hint" className="text-xs text-muted-foreground/60">
+        <p data-slot="skill-editor-hint" className="text-xs text-muted">
           {t('settings.skills.descriptionHint')}
         </p>
       </div>
 
       <div data-slot="skill-editor-field" className="space-y-1">
-        <label data-slot="skill-editor-label" className="text-xs text-muted-foreground">
+        <label data-slot="skill-editor-label" className="text-xs text-muted">
           {t('settings.skills.body')}
         </label>
         {bodyLoading ? (
-          <p data-slot="skill-editor-hint" className="text-xs text-muted-foreground">
+          <p data-slot="skill-editor-hint" className="text-xs text-muted">
             {t('common.loading')}
           </p>
         ) : (
-          <Textarea
+          <TextArea fullWidth
             value={body}
             onChange={(e) => setBody(e.target.value)}
             disabled={isBuiltin}
@@ -146,33 +145,33 @@ function SkillEditor({
             className="resize-none font-mono text-xs"
           />
         )}
-        <p data-slot="skill-editor-hint" className="text-xs text-muted-foreground/60">
+        <p data-slot="skill-editor-hint" className="text-xs text-muted">
           {t('settings.skills.bodyHint')}
         </p>
       </div>
 
       {isBuiltin && (
-        <p data-slot="skill-editor-builtin-notice" className="text-xs text-info">
+        <p data-slot="skill-editor-builtin-notice" className="text-xs text-info-soft-foreground">
           {t('settings.skills.builtinNotice')}
         </p>
       )}
 
       {error && (
-        <p data-slot="skill-editor-error" className="text-xs text-destructive">{error}</p>
+        <p data-slot="skill-editor-error" className="text-xs text-danger">{error}</p>
       )}
 
       <div data-slot="skill-editor-actions" className="flex items-center gap-2">
-        <Button onClick={handleSave} disabled={!canSave}>
+        <Button onClick={handleSave} isDisabled={!canSave}>
           {t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="skill-editor-saved" className="flex items-center gap-1 text-xs text-success">
-            <Check className="w-3 h-3" /> {t('common.saved')}
+          <span data-slot="skill-editor-saved" className="flex items-center gap-1 text-xs text-success-soft-foreground">
+            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
           </span>
         )}
         {onDelete && !isBuiltin && (
-          <Button variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={onDelete}>
-            <Trash2 className="w-3.5 h-3.5" />
+          <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
+            <TrashBin className="w-3.5 h-3.5" />
           </Button>
         )}
       </div>
@@ -244,7 +243,7 @@ export function SkillSettings() {
   }, [])
 
   if (loading) {
-    return <div data-slot="skill-settings-loading" className="text-muted-foreground text-sm">{t('common.loading')}</div>
+    return <div data-slot="skill-settings-loading" className="text-muted text-sm">{t('common.loading')}</div>
   }
 
   return (
@@ -252,13 +251,13 @@ export function SkillSettings() {
       <div data-slot="skill-settings-header" className="flex items-start justify-between gap-2">
         <div data-slot="skill-settings-heading">
           <h2 data-slot="skill-settings-title" className="text-lg font-medium">{t('settings.skills.title')}</h2>
-          <p data-slot="skill-settings-subtitle" className="text-xs text-muted-foreground mt-1">
+          <p data-slot="skill-settings-subtitle" className="text-xs text-muted mt-1">
             {t('settings.skills.subtitle')}
           </p>
         </div>
         <div data-slot="skill-settings-actions" className="flex items-center gap-1 shrink-0">
-          <Button variant="outline" onClick={handleRescan} disabled={rescanning}>
-            <RefreshCw className={rescanning ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />
+          <Button variant="outline" onClick={handleRescan} isDisabled={rescanning}>
+            <ArrowsRotateRight className={rescanning ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />
             {t('settings.skills.rescan')}
           </Button>
           <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
@@ -269,84 +268,135 @@ export function SkillSettings() {
       </div>
 
       {error && (
-        <p data-slot="skill-settings-error" className="text-xs text-destructive">{error}</p>
+        <p data-slot="skill-settings-error" className="text-xs text-danger">{error}</p>
       )}
 
       {showCreate && (
-        <SkillEditor
-          onSave={async () => { setShowCreate(false); await refresh() }}
-        />
+        <Card>
+          <SkillEditor
+            onSave={async () => { setShowCreate(false); await refresh() }}
+          />
+        </Card>
       )}
 
-      <div data-slot="skill-settings-list" className="space-y-1">
+      {/* One open at a time is the group's own default (`allowsMultipleExpanded`
+          is off), so the single-open rule lives in the primitive rather than in
+          the click handler. */}
+      <DisclosureGroup
+        data-slot="skill-settings-list"
+        className="flex flex-col gap-1"
+        expandedKeys={expandedDir ? [expandedDir] : []}
+        onExpandedChange={(keys) => setExpandedDir((([...keys][0] as string | undefined) ?? null))}
+      >
         {skills.map((skill) => {
           const isExpanded = expandedDir === skill.dir_name
           const isBuiltin = skill.is_builtin === 1
           return (
-            <div key={skill.dir_name} data-slot="skill-item" className="border border-border rounded-lg overflow-hidden">
+            <Disclosure
+              key={skill.dir_name}
+              id={skill.dir_name}
+              data-slot="skill-item"
+              className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
+            >
               <div data-slot="skill-item-header" className="flex items-center gap-2 pr-3">
-                <Button
-                  variant="ghost"
-                  onClick={() => setExpandedDir(isExpanded ? null : skill.dir_name)}
-                  className="flex-1 min-w-0 justify-start h-auto px-3 py-2 text-xs"
+                {/* The checkboxes stay outside the trigger: it is a `<button>`,
+                    and a nested one would be invalid markup and swallow the
+                    click. */}
+                <Disclosure.Heading className="min-w-0 flex-1">
+                  {/* `flex` is not optional: HeroUI styles the indicator with
+                      `ms-auto` and `shrink-0`, which only mean anything inside a
+                      flex container. `text-start` undoes the button element's
+                      centred UA default. */}
+                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
+                    <BookOpen className="w-3.5 h-3.5 shrink-0 text-muted" />
+                    {/* The label row absorbs the slack, so the badge and the
+                        chevron sit at the right edge without a second auto
+                        margin fighting the indicator's own `ms-auto`. */}
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <span data-slot="skill-item-name" className="truncate">{skill.display_name}</span>
+                      <span data-slot="skill-item-slug" className="font-mono text-muted truncate">
+                        {skill.llm_name}
+                      </span>
+                    </div>
+                    <span data-slot="skill-item-source" className="text-xs px-1.5 py-0.5 rounded bg-default text-muted shrink-0">
+                      {t(`settings.skills.source.${skill.source}`)}
+                    </span>
+                    <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+                  </Disclosure.Trigger>
+                </Disclosure.Heading>
+                <Checkbox
+                  data-slot="skill-item-enabled"
+                  className="shrink-0 text-xs"
+                  isSelected={skill.is_enabled === 1}
+                  onChange={(selected) => toggleEnabled(skill, selected)}
                 >
-                  {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                  <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span data-slot="skill-item-name" className="truncate">{skill.display_name}</span>
-                  <span data-slot="skill-item-slug" className="font-mono text-muted-foreground/60 truncate">
-                    {skill.llm_name}
-                  </span>
-                  <span data-slot="skill-item-source" className="ml-auto text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground shrink-0">
-                    {t(`settings.skills.source.${skill.source}`)}
-                  </span>
-                </Button>
-                <label data-slot="skill-item-enabled" className="flex items-center gap-1.5 text-xs cursor-pointer shrink-0">
-                  <Checkbox
-                    checked={skill.is_enabled === 1}
-                    onCheckedChange={(checked) => toggleEnabled(skill, !!checked)}
-                  />
-                  <span>{t('settings.skills.enabled')}</span>
-                </label>
-                <label data-slot="skill-item-global" className="flex items-center gap-1.5 text-xs cursor-pointer shrink-0">
-                  <Checkbox
-                    checked={globalBound.has(skill.dir_name)}
-                    onCheckedChange={(checked) => toggleGlobal(skill.dir_name, !!checked)}
-                  />
-                  <span>{t('settings.skills.globalBinding')}</span>
-                </label>
+                  <Checkbox.Content>
+                    <Checkbox.Control>
+                      <Checkbox.Indicator />
+                    </Checkbox.Control>
+                    {t('settings.skills.enabled')}
+                  </Checkbox.Content>
+                </Checkbox>
+                <Checkbox
+                  data-slot="skill-item-global"
+                  className="shrink-0 text-xs"
+                  isSelected={globalBound.has(skill.dir_name)}
+                  onChange={(selected) => toggleGlobal(skill.dir_name, selected)}
+                >
+                  <Checkbox.Content>
+                    <Checkbox.Control>
+                      <Checkbox.Indicator />
+                    </Checkbox.Control>
+                    {t('settings.skills.globalBinding')}
+                  </Checkbox.Content>
+                </Checkbox>
               </div>
-              {isExpanded && (
-                <div data-slot="skill-item-body" className="px-3 pb-3 space-y-2">
-                  <p data-slot="skill-item-description" className="text-xs text-muted-foreground">
-                    {skill.llm_description}
-                  </p>
-                  <SkillEditor
-                    skill={skill}
-                    onSave={refresh}
-                    onDelete={isBuiltin ? undefined : async () => {
-                      setError(null)
-                      try {
-                        await api.deleteSkill(skill.dir_name)
-                        setExpandedDir(null)
-                        await refresh()
-                      } catch (e) {
-                        setError(String(e))
-                      }
-                    }}
-                  />
-                </div>
-              )}
-            </div>
+              {/* `min-h-0` is load-bearing: the card is a flex column, and a
+                  flex item's default `min-height: auto` floors it at its
+                  content height. */}
+              <Disclosure.Content className="min-h-0 w-full">
+                {/* Body, not a plain wrapper: it is what keeps the panel
+                    measurable, so without it the editor never collapses. The
+                    padding is the editor's own former `p-3`, moved out here now
+                    that the row is the only box around it. */}
+                <Disclosure.Body data-slot="skill-item-body" className="space-y-2 p-3">
+                  {/* A collapsed panel is only hidden, not unmounted, so the
+                      editor still has to be gated: mounting one per row would
+                      read every skill's file on every visit to this page. */}
+                  {isExpanded && (
+                    <>
+                      <p data-slot="skill-item-description" className="text-xs text-muted">
+                        {skill.llm_description}
+                      </p>
+                      <SkillEditor
+                        skill={skill}
+                        onSave={refresh}
+                        onDelete={isBuiltin ? undefined : async () => {
+                          setError(null)
+                          try {
+                            await api.deleteSkill(skill.dir_name)
+                            setExpandedDir(null)
+                            await refresh()
+                          } catch (e) {
+                            setError(String(e))
+                          }
+                        }}
+                      />
+                    </>
+                  )}
+                </Disclosure.Body>
+              </Disclosure.Content>
+            </Disclosure>
           )
         })}
         {skills.length === 0 && !showCreate && (
-          <p data-slot="skill-settings-empty" className="text-xs text-muted-foreground text-center py-4">
+          <p data-slot="skill-settings-empty" className="text-xs text-muted text-center py-4">
             {t('settings.skills.noSkills')}
           </p>
         )}
-      </div>
+      </DisclosureGroup>
 
-      <p data-slot="skill-settings-global-hint" className="text-xs text-muted-foreground/60">
+      <p data-slot="skill-settings-global-hint" className="text-xs text-muted">
         {t('settings.skills.globalBindingHint')}
       </p>
     </div>

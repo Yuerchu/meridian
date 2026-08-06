@@ -1,13 +1,11 @@
 import * as React from "react"
-import { Collapsible } from "@base-ui/react/collapsible"
-import { cva, type VariantProps } from "class-variance-authority"
+import { Disclosure, tv, type VariantProps } from "@heroui/react"
 import {
-  ChevronDownIcon,
-  CircleAlertIcon,
-  CircleCheckIcon,
-  CircleXIcon,
-  Loader2Icon,
-} from "lucide-react"
+  CircleCheck,
+  CircleDashed,
+  CircleExclamation,
+  CircleXmark,
+} from "@gravity-ui/icons"
 import hljs from "highlight.js/lib/core"
 import jsonLang from "highlight.js/lib/languages/json"
 
@@ -24,41 +22,98 @@ type ChatToolState =
 
 const ChatToolStateContext = React.createContext<ChatToolState>("input-available")
 
-const chatToolVariants = cva(
-  "flex w-full flex-col overflow-hidden rounded-xl border bg-card/30 text-xs",
-  {
-    variants: {
-      state: {
-        "input-streaming": "border-border",
-        "input-available": "border-border",
-        "output-available": "border-border",
-        "output-error": "border-destructive/40",
-        "requires-action": "border-warning/40",
-      },
+/**
+ * True for a tool card rendered inside a `ChatToolGroup`. The group is the card;
+ * its children are rows in it, the way `.accordion--surface` treats its items.
+ */
+const ChatToolNestedContext = React.createContext(false)
+
+/**
+ * A HeroUI card by value, not by class.
+ *
+ * `cardVariants({ variant }).base()` would be the documented escape hatch, but
+ * it drags `p-4 gap-3 overflow-visible` along and all three are wrong here: the
+ * trigger is a full-width hit target, so its padding has to sit inside it or the
+ * hover wash stops short of the edges, and the corners have to clip that wash.
+ * Overriding three properties off a class costs more than naming the three that
+ * actually carry the look, so these are the card's own values —
+ * `--radius-3xl` (24px, what `min(32px, var(--radius-3xl))` resolves to at our
+ * `--radius: 0.5rem`), `bg-surface`, `shadow-surface`.
+ *
+ * `bg-surface` is opaque now. The old `bg-surface/30` was compensation from when
+ * `--surface` and `--background` were both white and a solid fill would have
+ * been invisible; the token ladder puts panels above the page, so the fill is
+ * the whole point.
+ */
+/**
+ * 16px, not the 24px a HeroUI `Card` uses. A collapsed tool row is 48px tall,
+ * and a 24px radius on a 48px box makes both ends exact semicircles — a column
+ * of them reads as loose capsules rather than one run of steps. Everything else
+ * about the card is HeroUI's: no border, a surface fill above the page, and the
+ * shadow that separates the two.
+ */
+const CHAT_TOOL_CARD = "overflow-hidden rounded-2xl bg-surface shadow-surface"
+
+const chatToolVariants = tv({
+  slots: {
+    base: "flex w-full flex-col text-sm",
+    // `p-4` matches `.accordion__trigger` (`px-4 py-4`), and the hover fill is
+    // the full-strength `bg-default` that `.accordion--surface` uses — at /30
+    // over an opaque panel it barely moved.
+    trigger: [
+      "flex w-full items-center gap-2 p-4 text-left transition-colors outline-none",
+      "hover:bg-default focus-visible:bg-default",
+    ],
+  },
+  variants: {
+    nested: {
+      true: { base: "border-t border-separator" },
+      false: { base: CHAT_TOOL_CARD },
     },
-    defaultVariants: {
-      state: "input-available",
+    // A HeroUI card carries no edge, so the three ordinary states now have
+    // none — which is the point of the change, and what makes the two that do
+    // carry one worth noticing.
+    //
+    // A ring rather than a border, and only where there is something to say.
+    // The alternative measured worse: `.alert`'s way of colouring a status
+    // surface is a `-soft` wash, but `--danger-soft` under the trigger drops
+    // `text-muted` from 4.74:1 to 3.63:1 in light mode, and the argument
+    // summary in a real tool row is muted. A ring sits under no text at all,
+    // takes no space, and `ring-inset` keeps it inside the rounded corner.
+    state: {
+      "input-streaming": {},
+      "input-available": {},
+      "output-available": {},
+      "output-error": { base: "ring-1 ring-danger/40 ring-inset" },
+      "requires-action": { base: "ring-1 ring-warning/40 ring-inset" },
     },
-  }
-)
+  },
+  defaultVariants: {
+    nested: false,
+    state: "input-available",
+  },
+})
 
 interface ChatToolProps
-  extends Collapsible.Root.Props,
-    VariantProps<typeof chatToolVariants> {}
+  extends React.ComponentProps<typeof Disclosure>,
+    // `nested` is read from context, not passed: only `ChatToolGroup` knows.
+    Omit<VariantProps<typeof chatToolVariants>, "nested"> {}
 
 function ChatTool({ state, className, ...props }: ChatToolProps) {
+  const nested = React.useContext(ChatToolNestedContext)
   return (
     <ChatToolStateContext.Provider value={state ?? "input-available"}>
-      <Collapsible.Root
+      <Disclosure
         data-slot="chat-tool"
-        className={cn(chatToolVariants({ state }), className)}
+        className={cn(chatToolVariants({ state, nested }).base(), className)}
         {...props}
       />
     </ChatToolStateContext.Provider>
   )
 }
 
-interface ChatToolTriggerProps extends Collapsible.Trigger.Props {
+interface ChatToolTriggerProps
+  extends Omit<React.ComponentProps<typeof Disclosure.Trigger>, "children"> {
   /**
    * Pinned to the right edge, just left of the chevron — a progress count, a
    * duration, a badge. Use this rather than an `ml-auto` child: the label row
@@ -66,30 +121,31 @@ interface ChatToolTriggerProps extends Collapsible.Trigger.Props {
    * between the two instead of pushing everything over.
    */
   endContent?: React.ReactNode
+  // Narrower than HeroUI's, which also accepts a render function: this trigger
+  // lays its children out in a label row, and a function has nothing to lay out.
+  children?: React.ReactNode
 }
 
 function ChatToolTrigger({ className, children, endContent, ...props }: ChatToolTriggerProps) {
   return (
-    <Collapsible.Trigger
-      data-slot="chat-tool-trigger"
-      className={cn(
-        "group/chat-tool-trigger flex w-full items-center gap-2 px-3 py-2 text-left transition-colors outline-none hover:bg-muted/30 focus-visible:bg-muted/30",
-        className
-      )}
-      {...props}
-    >
-      <div
-        data-slot="chat-tool-trigger-label"
-        className="flex min-w-0 flex-1 items-center gap-2"
+    <Disclosure.Heading>
+      {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto` and
+          `shrink-0`, which only mean anything inside a flex container. */}
+      <Disclosure.Trigger
+        data-slot="chat-tool-trigger"
+        className={cn(chatToolVariants().trigger(), className)}
+        {...props}
       >
-        {children}
-      </div>
-      {endContent}
-      <ChevronDownIcon
-        aria-hidden
-        className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-panel-open/chat-tool-trigger:rotate-180"
-      />
-    </Collapsible.Trigger>
+        <div
+          data-slot="chat-tool-trigger-label"
+          className="flex min-w-0 flex-1 items-center gap-2"
+        >
+          {children}
+        </div>
+        {endContent}
+        <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+      </Disclosure.Trigger>
+    </Disclosure.Heading>
   )
 }
 
@@ -99,44 +155,53 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
     case "input-streaming":
     case "input-available":
       return (
-        <Loader2Icon
+        <CircleDashed
           aria-hidden
-          className={cn("size-3.5 shrink-0 animate-spin text-muted-foreground", className)}
+          className={cn("size-3.5 shrink-0 animate-spin text-muted", className)}
         />
       )
     case "output-available":
       return (
-        <CircleCheckIcon
+        <CircleCheck
           aria-hidden
-          className={cn("size-3.5 shrink-0 text-success", className)}
+          className={cn("size-3.5 shrink-0 text-success-soft-foreground", className)}
         />
       )
     case "output-error":
       return (
-        <CircleXIcon
+        <CircleXmark
           aria-hidden
-          className={cn("size-3.5 shrink-0 text-destructive", className)}
+          className={cn("size-3.5 shrink-0 text-danger", className)}
         />
       )
     case "requires-action":
       return (
-        <CircleAlertIcon
+        <CircleExclamation
           aria-hidden
-          className={cn("size-3.5 shrink-0 text-warning", className)}
+          className={cn("size-3.5 shrink-0 text-warning-soft-foreground", className)}
         />
       )
   }
 }
 
-function ChatToolContent({ className, children, ...props }: Collapsible.Panel.Props) {
+function ChatToolContent({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof Disclosure.Content>) {
   return (
-    <Collapsible.Panel
-      data-slot="chat-tool-content"
-      className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0"
-      {...props}
-    >
-      <div className={cn("flex flex-col gap-2 px-2.5 pb-2.5", className)}>{children}</div>
-    </Collapsible.Panel>
+    // `min-h-0` is load-bearing: the card is a flex column, and a flex item's
+    // default `min-height: auto` floors it at its content height — so the panel
+    // would take `height: 0` and still render full size.
+    <Disclosure.Content data-slot="chat-tool-content" className="min-h-0 w-full" {...props}>
+      {/* Body, not a plain div: it is what keeps the panel measurable, so
+          without it the content never collapses — it just loses its
+          `aria-expanded`.
+          `px-4 pt-0 pb-4` is `.accordion__body-inner`; `gap-3` is the card's. */}
+      <Disclosure.Body className={cn("flex flex-col gap-3 px-4 pb-4", className)}>
+        {children}
+      </Disclosure.Body>
+    </Disclosure.Content>
   )
 }
 
@@ -161,7 +226,7 @@ function ChatToolArgs({ value, text, className, children, ...props }: ChatToolPa
   return (
     <div
       data-slot="chat-tool-args"
-      className={cn("max-h-40 overflow-auto rounded-lg bg-muted/40 px-3 py-2", className)}
+      className={cn("max-h-40 overflow-auto rounded-lg bg-default/40 px-3 py-2", className)}
       {...props}
     >
       {children ??
@@ -179,7 +244,7 @@ function ChatToolResult({ value, text, className, children, ...props }: ChatTool
   return (
     <div
       data-slot="chat-tool-result"
-      className={cn("max-h-60 overflow-auto rounded-lg bg-muted/40 px-3 py-2", className)}
+      className={cn("max-h-60 overflow-auto rounded-lg bg-default/40 px-3 py-2", className)}
       {...props}
     >
       {children ??
@@ -196,7 +261,7 @@ function ChatToolError({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="chat-tool-error"
-      className={cn("px-0.5 whitespace-pre-wrap text-destructive", className)}
+      className={cn("px-0.5 whitespace-pre-wrap text-danger", className)}
       {...props}
     />
   )
@@ -212,47 +277,58 @@ function ChatToolApproval({ className, ...props }: React.ComponentProps<"div">) 
   )
 }
 
-function ChatToolGroup({ className, ...props }: Collapsible.Root.Props) {
+function ChatToolGroup({ className, ...props }: React.ComponentProps<typeof Disclosure>) {
   return (
-    <Collapsible.Root
+    <Disclosure
       data-slot="chat-tool-group"
-      className={cn(
-        "flex w-full flex-col overflow-hidden rounded-xl border border-border bg-card/30 text-xs",
-        className
-      )}
+      className={cn("flex w-full flex-col text-sm", CHAT_TOOL_CARD, className)}
       {...props}
     />
   )
 }
 
-function ChatToolGroupTrigger({ className, children, ...props }: Collapsible.Trigger.Props) {
+function ChatToolGroupTrigger({
+  className,
+  children,
+  ...props
+}: Omit<React.ComponentProps<typeof Disclosure.Trigger>, "children"> & {
+  children?: React.ReactNode
+}) {
   return (
-    <Collapsible.Trigger
-      data-slot="chat-tool-group-trigger"
-      className={cn(
-        "group/chat-tool-group-trigger flex w-full items-center gap-2 px-3 py-2 text-left font-medium text-foreground transition-colors outline-none hover:bg-muted/30 focus-visible:bg-muted/30",
-        className
-      )}
-      {...props}
-    >
-      {children}
-      <ChevronDownIcon
-        aria-hidden
-        className="ml-auto size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-panel-open/chat-tool-group-trigger:rotate-180"
-      />
-    </Collapsible.Trigger>
+    <Disclosure.Heading>
+      <Disclosure.Trigger
+        data-slot="chat-tool-group-trigger"
+        className={cn(
+          chatToolVariants().trigger(),
+          "font-medium text-foreground",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        {/* The indicator carries `ms-auto` of its own, which is what the hand-
+            written chevron used `ml-auto` for. */}
+        <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+      </Disclosure.Trigger>
+    </Disclosure.Heading>
   )
 }
 
-function ChatToolGroupContent({ className, children, ...props }: Collapsible.Panel.Props) {
+function ChatToolGroupContent({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof Disclosure.Content>) {
   return (
-    <Collapsible.Panel
-      data-slot="chat-tool-group-content"
-      className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0"
-      {...props}
-    >
-      <div className={cn("flex flex-col gap-2 px-2.5 pb-2.5", className)}>{children}</div>
-    </Collapsible.Panel>
+    <Disclosure.Content data-slot="chat-tool-group-content" className="min-h-0 w-full" {...props}>
+      {/* Flush, not inset: the group is the card, so its children are rows in it
+          rather than cards inside a card. A 24px card nested in a 24px card is
+          exactly the rounding a container is not allowed to have, and the gutter
+          it would need would only make the double frame more obvious. */}
+      <Disclosure.Body className={cn("flex flex-col", className)}>
+        <ChatToolNestedContext.Provider value={true}>{children}</ChatToolNestedContext.Provider>
+      </Disclosure.Body>
+    </Disclosure.Content>
   )
 }
 

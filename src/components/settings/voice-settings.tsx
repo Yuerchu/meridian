@@ -2,11 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
-import { Trash2 } from 'lucide-react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { CircularProgress } from '@/components/ui/circular-progress'
+import { TrashBin } from '@gravity-ui/icons'
+import { Button, Card, Input, ListBox, ProgressCircle, Select } from '@heroui/react'
 import { api } from '@/api'
 import type { VoiceModelStatus } from '@/types'
 
@@ -121,35 +118,41 @@ export function VoiceSettings() {
     <div className="max-w-lg space-y-6">
       <div>
         <h2 className="text-lg font-medium">{t('settings.voice.title')}</h2>
-        <p className="text-xs text-muted-foreground mt-1">{t('settings.voice.intro')}</p>
+        <p className="text-xs text-muted mt-1">{t('settings.voice.intro')}</p>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.voice.model')}
         </label>
-        <div className="rounded-lg border border-border px-3 py-2.5 space-y-2">
+        <Card>
           {status?.installed ? (
             <div className="flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="text-sm">{t('settings.voice.modelInstalled')}</p>
-                <p className="text-xs text-muted-foreground truncate">
+              <Card.Header className="min-w-0">
+                <Card.Title>{t('settings.voice.modelInstalled')}</Card.Title>
+                <Card.Description className="truncate">
                   {formatSize(status.size_bytes)} · {status.path}
-                </p>
-              </div>
-              <Button variant="ghost" size="icon" onClick={handleDelete} disabled={downloading}>
-                <Trash2 className="w-4 h-4" />
+                </Card.Description>
+              </Card.Header>
+              <Button isIconOnly variant="ghost" onClick={handleDelete} isDisabled={downloading}>
+                <TrashBin className="w-4 h-4" />
               </Button>
             </div>
           ) : downloading ? (
             <div className="flex items-center gap-3">
-              <CircularProgress
+              <ProgressCircle
+                aria-label={t('settings.voice.downloading')}
                 value={progress.total ? progress.downloaded : undefined}
-                max={progress.total ?? undefined}
-                indeterminate={!progress.total}
-                size={20}
-              />
-              <span className="text-xs text-muted-foreground flex-1">
+                maxValue={progress.total ?? undefined}
+                isIndeterminate={!progress.total}
+                size="sm"
+              >
+                <ProgressCircle.Track>
+                  <ProgressCircle.TrackCircle />
+                  <ProgressCircle.FillCircle />
+                </ProgressCircle.Track>
+              </ProgressCircle>
+              <span className="text-xs text-muted flex-1">
                 {formatSize(progress.downloaded)}
                 {progress.total ? ` / ${formatSize(progress.total)}` : ''}
               </span>
@@ -158,54 +161,60 @@ export function VoiceSettings() {
               </Button>
             </div>
           ) : (
-            <div className="space-y-2">
-              <p className="text-sm">{t('settings.voice.modelMissing')}</p>
-              <p className="text-xs text-muted-foreground">{t('settings.voice.modelHint')}</p>
-              <div className="flex items-center gap-2">
+            <>
+              <Card.Header>
+                <Card.Title>{t('settings.voice.modelMissing')}</Card.Title>
+                <Card.Description>{t('settings.voice.modelHint')}</Card.Description>
+              </Card.Header>
+              <Card.Footer className="gap-2">
                 <Button size="sm" onClick={handleDownload}>
                   {t('settings.voice.download')}
                 </Button>
-                <Button variant="outline" size="sm" onClick={handleImport} disabled={importing}>
+                <Button variant="outline" size="sm" onClick={handleImport} isDisabled={importing}>
                   {importing ? t('settings.voice.importing') : t('settings.voice.import')}
                 </Button>
-              </div>
-            </div>
+              </Card.Footer>
+            </>
           )}
-          {error && <p className="text-xs text-destructive">{error}</p>}
-        </div>
+          {error && <p className="text-xs text-danger">{error}</p>}
+        </Card>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.voice.mirror')}
         </label>
-        <Input
+        <Input fullWidth
           value={mirrorUrl}
           onChange={(e) => handleMirrorChange(e.target.value)}
           placeholder={t('settings.voice.mirrorPlaceholder')}
           className="w-full"
           disabled={downloading}
         />
-        <p className="text-xs text-muted-foreground">{t('settings.voice.mirrorHint')}</p>
+        <p className="text-xs text-muted">{t('settings.voice.mirrorHint')}</p>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.voice.filterLevel')}
         </label>
-        <Select value={filterLevel} onValueChange={(v) => v && handleFilterChange(v)} items={filterOptions}>
-          <SelectTrigger className="w-full max-w-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {filterOptions.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
+        <Select fullWidth value={filterLevel} onChange={(v) => v && handleFilterChange(String(v))}>
+          <Select.Trigger className="max-w-xs">
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {filterOptions.map((o) => (
+                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                  {o.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
-        <p className="text-xs text-muted-foreground">{t('settings.voice.filterHint')}</p>
+        <p className="text-xs text-muted">{t('settings.voice.filterHint')}</p>
       </div>
     </div>
   )

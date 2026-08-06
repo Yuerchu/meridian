@@ -1,8 +1,6 @@
-import { Collapsible } from '@base-ui/react/collapsible'
-import { ChevronDownIcon } from 'lucide-react'
+import { Disclosure, ProgressCircle } from '@heroui/react'
 import { useTranslation } from 'react-i18next'
 
-import { CircularProgress } from '@/components/ui/circular-progress'
 import { useConversationStore } from '@/stores/conversation-store'
 import { cn } from '@/lib/utils'
 import { TodoItemList, todoProgress, type TodoArgs } from './todo-list'
@@ -26,50 +24,73 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
   return (
     <div data-slot="todo-bar-shell" className={cn('px-4 pt-2', className)}>
       <div className="mx-auto max-w-2xl">
-        <Collapsible.Root
+        {/* Same card as the tool cards: HeroUI's `.card` values (24px radius,
+            opaque `bg-surface`, `shadow-surface`) and no border. */}
+        <Disclosure
           data-slot="todo-bar"
-          className="w-full overflow-hidden rounded-xl border border-border bg-card/30 text-xs"
+          className="w-full overflow-hidden rounded-2xl bg-surface text-sm shadow-surface"
         >
-          <Collapsible.Trigger
-            data-slot="todo-bar-trigger"
-            className="group/todo-bar flex w-full items-center gap-2 px-3 py-2 text-left transition-colors outline-none hover:bg-muted/30 focus-visible:bg-muted/30"
-          >
-            <CircularProgress
-              value={done}
-              max={total}
-              size={14}
-              strokeWidth={2.5}
-              className="shrink-0 text-info"
-            />
-            {/* Same shape as ChatToolTrigger: the label row absorbs the slack
-                so the count and chevron sit at the right edge without an
-                ml-auto fighting for the free space. */}
-            <div className="flex min-w-0 flex-1 items-center gap-2">
-              <span
-                data-slot="todo-bar-title"
-                className="max-w-40 shrink-0 truncate font-medium text-foreground"
-              >
-                {todos.title}
+          <Disclosure.Heading>
+            {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
+                and `shrink-0`, which only mean anything inside a flex container. */}
+            <Disclosure.Trigger
+              data-slot="todo-bar-trigger"
+              className={cn(
+                'flex w-full items-center gap-2 p-4 text-left transition-colors outline-none',
+                'hover:bg-default focus-visible:bg-default',
+              )}
+            >
+              {/* `--info` has no `color` variant of its own — HeroUI's are
+                  accent/default/success/warning/danger. The stroke reads a
+                  custom property, so pointing that at the token is the
+                  supported way in rather than restyling the circle. */}
+              {/* Hidden from the accessibility tree: the trigger takes its name
+                  from its contents and the count is already spelled out to the
+                  right, so an exposed ring has it announced twice. The attribute
+                  sits on a wrapper because React Aria's ProgressBar filters
+                  `aria-hidden` off its own element; the label it insists on
+                  never surfaces from in here. */}
+              <span aria-hidden="true" className="shrink-0">
+                <ProgressCircle
+                  aria-label={t('chat.todo.progress', { done, total })}
+                  value={done}
+                  maxValue={total}
+                  className="[--progress-circle-stroke:var(--info)]"
+                >
+                  <ProgressCircle.Track className="size-3.5">
+                    <ProgressCircle.TrackCircle />
+                    <ProgressCircle.FillCircle />
+                  </ProgressCircle.Track>
+                </ProgressCircle>
               </span>
-              <span data-slot="todo-bar-current" className="truncate text-muted-foreground">
-                {current ? current.active_form : t('chat.todo.idle')}
+              {/* Same shape as ChatToolTrigger: the label row absorbs the slack
+                  so the count and chevron sit at the right edge without an
+                  ml-auto fighting for the free space. */}
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <span
+                  data-slot="todo-bar-title"
+                  className="max-w-40 shrink-0 truncate font-medium text-foreground"
+                >
+                  {todos.title}
+                </span>
+                <span data-slot="todo-bar-current" className="truncate text-muted">
+                  {current ? current.active_form : t('chat.todo.idle')}
+                </span>
+              </div>
+              <span className="shrink-0 tabular-nums text-muted">
+                {t('chat.todo.progress', { done, total })}
               </span>
-            </div>
-            <span className="shrink-0 tabular-nums text-muted-foreground">
-              {t('chat.todo.progress', { done, total })}
-            </span>
-            <ChevronDownIcon
-              aria-hidden
-              className="size-3.5 shrink-0 text-muted-foreground transition-transform duration-200 group-data-panel-open/todo-bar:rotate-180"
-            />
-          </Collapsible.Trigger>
-          <Collapsible.Panel
-            data-slot="todo-bar-content"
-            className="h-(--collapsible-panel-height) overflow-hidden transition-[height] duration-200 ease-out data-ending-style:h-0 data-starting-style:h-0"
-          >
-            <TodoItemList todos={todos.todos} className="px-3 pb-2.5" />
-          </Collapsible.Panel>
-        </Collapsible.Root>
+              <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+            </Disclosure.Trigger>
+          </Disclosure.Heading>
+          <Disclosure.Content data-slot="todo-bar-content">
+            {/* Body, not a plain wrapper: it is what keeps the panel measurable,
+                so without it the list never collapses. */}
+            <Disclosure.Body>
+              <TodoItemList todos={todos.todos} className="px-4 pb-4" />
+            </Disclosure.Body>
+          </Disclosure.Content>
+        </Disclosure>
       </div>
     </div>
   )

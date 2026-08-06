@@ -1,11 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Plug, PlugZap, Trash2, ArrowLeft, ClipboardPaste } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowLeft, ArrowDownToSquare } from '@gravity-ui/icons'
+import { Button, Input, TextArea, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
@@ -60,14 +56,14 @@ function JsonImportDialog({
 
   return (
     <div className="space-y-3">
-      <Textarea
+      <TextArea fullWidth
         className="h-40 font-mono resize-none"
         placeholder={t('settings.mcp.importJsonPlaceholder')}
         value={text}
         onChange={(e) => { setText(e.target.value); setError(false) }}
       />
       {error && (
-        <p className="text-sm text-destructive">{t('settings.mcp.importJsonError')}</p>
+        <p className="text-sm text-danger">{t('settings.mcp.importJsonError')}</p>
       )}
       <div className="flex gap-2">
         <Button onClick={handleSubmit}>{t('settings.mcp.importJsonSubmit')}</Button>
@@ -166,7 +162,7 @@ function McpServerEditor({
     <div className="space-y-4">
       <div>
         <label className="text-sm font-medium">{t('settings.mcp.name')}</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
+        <Input fullWidth value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
       </div>
 
       <div>
@@ -178,8 +174,8 @@ function McpServerEditor({
             className={cn(
               'px-3 py-1.5 rounded-md text-sm transition-colors',
               !isHttp
-                ? 'bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                ? 'bg-default text-default-foreground hover:bg-default hover:text-default-foreground'
+                : 'text-muted hover:text-foreground hover:bg-default/50'
             )}
           >
             {t('settings.mcp.transportStdio')}
@@ -190,8 +186,8 @@ function McpServerEditor({
             className={cn(
               'px-3 py-1.5 rounded-md text-sm transition-colors',
               isHttp
-                ? 'bg-accent text-accent-foreground hover:bg-accent hover:text-accent-foreground'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                ? 'bg-default text-default-foreground hover:bg-default hover:text-default-foreground'
+                : 'text-muted hover:text-foreground hover:bg-default/50'
             )}
           >
             {t('settings.mcp.transportHttp')}
@@ -203,26 +199,26 @@ function McpServerEditor({
         <>
           <div>
             <label className="text-sm font-medium">{t('settings.mcp.url')}</label>
-            <Input value={url} onChange={(e) => setUrl(e.target.value)} className="mt-1" placeholder="https://example.com/mcp" />
+            <Input fullWidth value={url} onChange={(e) => setUrl(e.target.value)} className="mt-1" placeholder="https://example.com/mcp" />
           </div>
           <div>
             <label className="text-sm font-medium">{t('settings.mcp.headers')}</label>
-            <Input value={headers} onChange={(e) => setHeaders(e.target.value)} className="mt-1" placeholder='{"Authorization": "Bearer ..."}' />
+            <Input fullWidth value={headers} onChange={(e) => setHeaders(e.target.value)} className="mt-1" placeholder='{"Authorization": "Bearer ..."}' />
           </div>
         </>
       ) : (
         <>
           <div>
             <label className="text-sm font-medium">{t('settings.mcp.command')}</label>
-            <Input value={command} onChange={(e) => setCommand(e.target.value)} className="mt-1" placeholder="npx" />
+            <Input fullWidth value={command} onChange={(e) => setCommand(e.target.value)} className="mt-1" placeholder="npx" />
           </div>
           <div>
             <label className="text-sm font-medium">{t('settings.mcp.args')}</label>
-            <Input value={args} onChange={(e) => setArgs(e.target.value)} className="mt-1" placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]' />
+            <Input fullWidth value={args} onChange={(e) => setArgs(e.target.value)} className="mt-1" placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]' />
           </div>
           <div>
             <label className="text-sm font-medium">{t('settings.mcp.env')}</label>
-            <Input value={env} onChange={(e) => setEnv(e.target.value)} className="mt-1" placeholder='{}' />
+            <Input fullWidth value={env} onChange={(e) => setEnv(e.target.value)} className="mt-1" placeholder='{}' />
           </div>
         </>
       )}
@@ -233,19 +229,19 @@ function McpServerEditor({
         </Button>
         {connected ? (
           <Button variant="outline" onClick={handleDisconnect}>
-            <PlugZap className="w-3.5 h-3.5 mr-1.5" />
+            <PlugConnection className="w-3.5 h-3.5 mr-1.5" />
             {t('settings.mcp.disconnect')}
           </Button>
         ) : (
-          <Button variant="outline" onClick={handleConnect} disabled={connecting}>
-            <Plug className="w-3.5 h-3.5 mr-1.5" />
+          <Button variant="outline" onClick={handleConnect} isDisabled={connecting}>
+            <PlugWire className="w-3.5 h-3.5 mr-1.5" />
             {connecting ? t('common.loading') : t('settings.mcp.connect')}
           </Button>
         )}
       </div>
 
       {error && (
-        <div className="p-2 bg-destructive/10 border border-destructive/30 rounded text-sm text-destructive break-all">
+        <div className="p-2 bg-danger/10 border border-danger/30 rounded text-sm text-danger break-all">
           {error}
         </div>
       )}
@@ -255,9 +251,9 @@ function McpServerEditor({
           <label className="text-sm font-medium">{t('settings.mcp.tools')} ({tools.length})</label>
           <div className="mt-1 space-y-1">
             {tools.map((tool) => (
-              <div key={tool.qualified_name} className="flex items-center gap-2 px-2 py-1 rounded bg-muted/50 text-xs">
+              <div key={tool.qualified_name} className="flex items-center gap-2 px-2 py-1 rounded bg-default/50 text-xs">
                 <span className="font-mono">{tool.name}</span>
-                <span className="text-muted-foreground truncate">{tool.description}</span>
+                <span className="text-muted truncate">{tool.description}</span>
               </div>
             ))}
           </div>
@@ -265,8 +261,8 @@ function McpServerEditor({
       )}
 
       <div className="pt-4 border-t border-border">
-        <Button variant="destructive" onClick={() => onDelete(server.id)}>
-          <Trash2 className="w-3.5 h-3.5 mr-1.5" />
+        <Button variant="danger-soft" onClick={() => onDelete(server.id)}>
+          <TrashBin className="w-3.5 h-3.5 mr-1.5" />
           {t('settings.mcp.deleteServer')}
         </Button>
       </div>
@@ -330,14 +326,14 @@ export function McpSettings() {
           className={cn(
             'w-full justify-start h-auto px-3 py-2',
             selectedId === s.id
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground',
+              ? 'bg-default text-default-foreground'
+              : 'text-muted',
           )}
         >
           <div className="flex items-center gap-2 w-full">
-            <Plug className="w-3.5 h-3.5 flex-shrink-0" />
+            <LogoMcp className="w-3.5 h-3.5 flex-shrink-0" />
             <span className="truncate">{s.name}</span>
-            <span className="text-xs text-muted-foreground ml-auto flex-shrink-0">
+            <span className="text-xs text-muted ml-auto flex-shrink-0">
               {s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
             </span>
           </div>
@@ -348,15 +344,15 @@ export function McpSettings() {
 
   const headerActions = (
     <div className="flex items-center gap-1">
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button variant="outline" onClick={() => setShowImport(true)}>
-              <ClipboardPaste className="w-4 h-4" />
-            </Button>
-          }
-        />
-        <TooltipContent side="top">{t('settings.mcp.importJson')}</TooltipContent>
+      <Tooltip delay={0}>
+        <Button
+          aria-label={t('settings.mcp.importJson')}
+          variant="outline"
+          onClick={() => setShowImport(true)}
+        >
+          <ArrowDownToSquare className="w-4 h-4" />
+        </Button>
+        <Tooltip.Content placement="top">{t('settings.mcp.importJson')}</Tooltip.Content>
       </Tooltip>
       <Button variant="outline" onClick={handleAdd}>
         <Plus className="w-4 h-4" />
@@ -377,7 +373,7 @@ export function McpSettings() {
             <Button
               variant="ghost"
               onClick={() => setSelectedId(null)}
-              className="text-muted-foreground mb-4"
+              className="text-muted mb-4"
             >
               <ArrowLeft />
               {t('common.back')}
@@ -396,7 +392,7 @@ export function McpSettings() {
               {headerActions}
             </div>
             {servers.length === 0 ? (
-              <p className="text-sm text-muted-foreground">{t('settings.mcp.noServers')}</p>
+              <p className="text-sm text-muted">{t('settings.mcp.noServers')}</p>
             ) : (
               serverList
             )}
@@ -420,12 +416,15 @@ export function McpSettings() {
       )}
 
       {servers.length === 0 && !showImport ? (
-        <p className="text-sm text-muted-foreground">{t('settings.mcp.noServers')}</p>
+        <p className="text-sm text-muted">{t('settings.mcp.noServers')}</p>
       ) : (
         <div className="flex gap-4">
-          <ScrollArea className="w-48 flex-shrink-0">
+          <div
+            data-slot="mcp-server-list"
+            className="w-48 flex-shrink-0 overflow-y-auto overscroll-contain"
+          >
             {serverList}
-          </ScrollArea>
+          </div>
 
           <div className="flex-1">
             {selected ? (
@@ -436,7 +435,7 @@ export function McpSettings() {
                 onDelete={handleDelete}
               />
             ) : (
-              <p className="text-sm text-muted-foreground">{t('settings.mcp.selectServer')}</p>
+              <p className="text-sm text-muted">{t('settings.mcp.selectServer')}</p>
             )}
           </div>
         </div>

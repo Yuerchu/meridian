@@ -1,14 +1,11 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Copy, Check, Trash2, RefreshCw, FileText, Mic, Pencil, X, ThumbsUp, ThumbsDown } from 'lucide-react'
+import { ArrowsRotateRight, Check, Copy, FileText, Microphone, Pencil, ThumbsDown, ThumbsUp, TrashBin, Xmark } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
-import CountUp from '@/components/CountUp'
-import DecryptedText from '@/components/DecryptedText'
 import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { CopyButton, MarkdownContent } from './markdown-content'
-import { Textarea } from '@/components/ui/textarea'
+import { AlertDialog, Avatar, Button, TextArea } from '@heroui/react'
 import {
   Message,
   MessageAvatar,
@@ -41,14 +38,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import {
-  AlertDialog,
-  AlertDialogPopup,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogClose,
-  AlertDialogFooter,
-} from '@/components/ui/alert-dialog'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { ToolCallBlock } from './tool-call-block'
@@ -84,10 +73,9 @@ function useRelativeTime() {
  * attribution belongs to the whole turn, and leaving it below the process line
  * would sit it closer to the conclusion than to the avatar it names.
  */
-export function MessageMeta({ modelId, createdAt, animate }: {
+export function MessageMeta({ modelId, createdAt }: {
   modelId?: string | null
   createdAt: number
-  animate?: boolean
 }) {
   const relativeTime = useRelativeTime()
   return (
@@ -95,14 +83,10 @@ export function MessageMeta({ modelId, createdAt, animate }: {
     // bubble, and an assistant's is ghost. Left on, the name sits 12px right of
     // both the process line and the answer it names.
     <MessageHeader className="h-8 gap-2 px-0">
-      {modelId && (
-        animate
-          ? <DecryptedText text={modelId} animateOn="view" speed={25} sequential className="truncate" />
-          : <span className="truncate">{modelId}</span>
-      )}
+      {modelId && <span className="truncate">{modelId}</span>}
       {/* The row is a fixed height, so a long model id has to give way rather
           than push the timestamp out of the message. */}
-      <span className="shrink-0 font-normal text-muted-foreground/60">{relativeTime(createdAt)}</span>
+      <span className="shrink-0 font-normal text-muted">{relativeTime(createdAt)}</span>
     </MessageHeader>
   )
 }
@@ -118,13 +102,13 @@ export function MessageMeta({ modelId, createdAt, animate }: {
 export function AssistantAvatar({ src, modelId }: { src?: string | null; modelId?: string | null }) {
   return (
     <MessageAvatar className="size-8">
-      <Avatar>
-        <AvatarImage src={src ?? undefined} />
-        {/* The icon brings its own background; `bg-muted` underneath it would
+      <Avatar className="size-full">
+        <Avatar.Image src={src ?? undefined} />
+        {/* The icon brings its own background; `bg-default` underneath it would
             only show through the rounding. */}
-        <AvatarFallback className="bg-transparent">
+        <Avatar.Fallback className="bg-transparent">
           <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />
-        </AvatarFallback>
+        </Avatar.Fallback>
       </Avatar>
     </MessageAvatar>
   )
@@ -161,7 +145,7 @@ function parseOneBotContent(content: string): ParsedOneBotContent {
 
 function QuotedMessageBlock({ sender, content }: { sender: string; content: string }) {
   return (
-    <div className="mb-2 pl-3 border-l-2 border-primary-foreground/30 text-xs text-primary-foreground/70">
+    <div className="mb-2 pl-3 border-l-2 border-accent-foreground/30 text-xs text-accent-foreground/70">
       <span className="font-medium">{sender}</span>
       <p className="mt-0.5 line-clamp-3 whitespace-pre-wrap">{content}</p>
     </div>
@@ -175,9 +159,9 @@ function ThinkingBlock({ text, isStreaming, defaultExpanded }: { text: string; i
   const { t } = useTranslation()
 
   return (
-    <ChainOfThought defaultOpen={!!(isStreaming || defaultExpanded)} isStreaming={isStreaming} className="my-2">
+    <ChainOfThought defaultExpanded={!!(isStreaming || defaultExpanded)} isStreaming={isStreaming} className="my-2">
       <ChainOfThoughtTrigger>{t('chat.thinking')}</ChainOfThoughtTrigger>
-      <ChainOfThoughtContent className="text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
+      <ChainOfThoughtContent className="text-xs text-muted leading-relaxed whitespace-pre-wrap">
         {text}
       </ChainOfThoughtContent>
     </ChainOfThought>
@@ -271,7 +255,7 @@ function ToolCallGroup({ items }: { items: ToolCallBlockItem[] }) {
     block.data.status === 'pending' || block.data.status === 'approved' || block.data.status === 'running',
   )
   return (
-    <ChatToolGroup defaultOpen={hasActive} className="my-3">
+    <ChatToolGroup defaultExpanded={hasActive} className="my-3">
       <ChatToolGroupTrigger>{t('chat.tool.groupCount', { count: items.length })}</ChatToolGroupTrigger>
       <ChatToolGroupContent>
         {items.map(({ block, index }) => (
@@ -382,6 +366,10 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
   const editRef = useRef<HTMLTextAreaElement>(null)
   const [selectedText, setSelectedText] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  // `AlertDialog.Body` is a plain div: only a `Heading slot="title"` is wired up
+  // for us, so without this the dialog announces its title and nothing else.
+  // Generated, because every message in the list has one of these.
+  const deleteDescId = React.useId()
 
   const handleContextMenuOpenChange = useCallback((open: boolean) => {
     if (open) {
@@ -438,7 +426,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
         <ContextMenuTrigger render={<Message align="end" />}>
           <MessageContent>
             {senderPrefix && (
-              <MessageHeader className="justify-end text-muted-foreground/60 font-normal">{senderPrefix}</MessageHeader>
+              <MessageHeader className="justify-end text-muted font-normal">{senderPrefix}</MessageHeader>
             )}
             {hasAttachments && (
               <AttachmentGroup className="items-start max-w-[80%]">
@@ -464,7 +452,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
             {editing ? (
               <Bubble align="end" variant="outline">
                 <BubbleContent>
-                  <Textarea
+                  <TextArea fullWidth
                     ref={editRef}
                     value={editText}
                     onChange={(e) => {
@@ -480,14 +468,14 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     <ActionButton
                       label="Esc"
                       onClick={handleCancelEdit}
-                      className="text-muted-foreground"
+                      className="text-muted"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <Xmark className="w-3.5 h-3.5" />
                     </ActionButton>
                     <ActionButton
                       label="Enter"
                       onClick={handleSaveEdit}
-                      className="text-primary"
+                      className="text-accent"
                     >
                       <Check className="w-3.5 h-3.5" />
                     </ActionButton>
@@ -503,7 +491,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     )}
                     <div className="whitespace-pre-wrap">
                       {message.source === 'voice' && (
-                        <Mic className="inline-block size-3 mr-1 -mt-0.5 opacity-60" aria-label={t('chat.voice.badge')} />
+                        <Microphone className="inline-block size-3.5 mr-1 -mt-0.5 opacity-60" aria-label={t('chat.voice.badge')} />
                       )}
                       {emojiMap && Object.keys(emojiMap).length > 0
                         ? renderEmojisInText(body, emojiMap)
@@ -516,7 +504,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     <ActionButton
                       label={t('chat.edit')}
                       onClick={handleStartEdit}
-                      className="text-muted-foreground hover:text-foreground"
+                      className="text-muted hover:text-foreground"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </ActionButton>
@@ -526,9 +514,9 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     <ActionButton
                       label={t('chat.delete')}
                       onClick={() => setShowDeleteConfirm(true)}
-                      className="text-muted-foreground hover:text-destructive"
+                      className="text-muted hover:text-danger"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <TrashBin className="w-3.5 h-3.5" />
                     </ActionButton>
                   )}
                 </MessageFooter>
@@ -559,7 +547,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
           <ContextMenuSeparator />
           {onDelete && (
             <ContextMenuItem variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
-              <Trash2 />
+              <TrashBin />
               {t('chat.delete')}
             </ContextMenuItem>
           )}
@@ -571,23 +559,24 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
       <>
         {userContent}
         {onDelete && (
-          <AlertDialog open={showDeleteConfirm} onOpenChange={(open) => { if (!open) setShowDeleteConfirm(false) }}>
-            <AlertDialogPopup>
-              <AlertDialogTitle>{t('confirm.title')}</AlertDialogTitle>
-              <AlertDialogDescription>{t('confirm.deleteMessage')}</AlertDialogDescription>
-              <AlertDialogFooter>
-                <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
-                  {t('common.cancel')}
-                </AlertDialogClose>
-                <AlertDialogClose
-                  className="bg-destructive text-white hover:bg-destructive/80"
-                  onClick={() => onDelete(message.id)}
-                >
-                  {t('common.confirm')}
-                </AlertDialogClose>
-              </AlertDialogFooter>
-            </AlertDialogPopup>
-          </AlertDialog>
+          <AlertDialog.Backdrop isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+            <AlertDialog.Container>
+              <AlertDialog.Dialog aria-describedby={deleteDescId}>
+                <AlertDialog.Header>
+                  <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
+                </AlertDialog.Header>
+                <AlertDialog.Body id={deleteDescId}>{t('confirm.deleteMessage')}</AlertDialog.Body>
+                <AlertDialog.Footer>
+                  <Button slot="close" variant="tertiary">
+                    {t('common.cancel')}
+                  </Button>
+                  <Button slot="close" variant="danger" onClick={() => onDelete(message.id)}>
+                    {t('common.confirm')}
+                  </Button>
+                </AlertDialog.Footer>
+              </AlertDialog.Dialog>
+            </AlertDialog.Container>
+          </AlertDialog.Backdrop>
         )}
       </>
     )
@@ -603,7 +592,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
         )}
         <MessageContent>
           {isFirstInGroup && (
-            <MessageMeta modelId={message.model_id} createdAt={message.created_at} animate={isLastMessage} />
+            <MessageMeta modelId={message.model_id} createdAt={message.created_at} />
           )}
 
           <Bubble variant="ghost" className="w-full">
@@ -618,11 +607,15 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
 
           {showFooter && (
           <MessageFooter className="gap-2 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
+            {/* Printed, not counted up to. The number is settled by the time the
+                footer exists, and the footer only appears on hover — so the
+                animation ran while the reader looked at a finished total, and
+                made it read as still being worked out. */}
             {(footerTokens.input || footerTokens.output) && (
-              <span className="text-xs text-muted-foreground/60 font-normal tabular-nums">
+              <span className="text-xs text-muted font-normal tabular-nums">
                 {footerTokens.input && footerTokens.output
-                  ? <><CountUp to={footerTokens.input} separator="," duration={1} /> + <CountUp to={footerTokens.output} separator="," duration={1} /> tokens</>
-                  : <><CountUp to={(footerTokens.output ?? footerTokens.input)!} separator="," duration={1} /> tokens</>}
+                  ? `${footerTokens.input.toLocaleString()} + ${footerTokens.output.toLocaleString()} tokens`
+                  : `${(footerTokens.output ?? footerTokens.input)!.toLocaleString()} tokens`}
               </span>
             )}
             <div className="flex gap-1">
@@ -633,7 +626,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     label={t('chat.thumbsUp')}
                     onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}
                     className={cn(
-                      message.rating === 1 ? 'text-success' : 'text-muted-foreground hover:text-foreground',
+                      message.rating === 1 ? 'text-success-soft-foreground' : 'text-muted hover:text-foreground',
                     )}
                   >
                     <ThumbsUp className="w-3.5 h-3.5" />
@@ -642,7 +635,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                     label={t('chat.thumbsDown')}
                     onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}
                     className={cn(
-                      message.rating === -1 ? 'text-destructive' : 'text-muted-foreground hover:text-foreground',
+                      message.rating === -1 ? 'text-danger' : 'text-muted hover:text-foreground',
                     )}
                   >
                     <ThumbsDown className="w-3.5 h-3.5" />
@@ -653,18 +646,18 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                 <ActionButton
                   label={t('chat.regenerate')}
                   onClick={() => onRegenerate(message.id)}
-                  className="text-muted-foreground hover:text-foreground"
+                  className="text-muted hover:text-foreground"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
+                  <ArrowsRotateRight className="w-3.5 h-3.5" />
                 </ActionButton>
               )}
               {onDelete && (
                 <ActionButton
                   label={t('chat.delete')}
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="text-muted-foreground hover:text-destructive"
+                  className="text-muted hover:text-danger"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <TrashBin className="w-3.5 h-3.5" />
                 </ActionButton>
               )}
             </div>
@@ -689,25 +682,25 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
         {onRate && !isStreaming && (
           <>
             <ContextMenuItem onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}>
-              <ThumbsUp className={message.rating === 1 ? 'text-success' : ''} />
+              <ThumbsUp className={message.rating === 1 ? 'text-success-soft-foreground' : ''} />
               {t('chat.thumbsUp')}
             </ContextMenuItem>
             <ContextMenuItem onClick={() => onRate(message.id, message.rating === -1 ? null : -1)}>
-              <ThumbsDown className={message.rating === -1 ? 'text-destructive' : ''} />
+              <ThumbsDown className={message.rating === -1 ? 'text-danger' : ''} />
               {t('chat.thumbsDown')}
             </ContextMenuItem>
           </>
         )}
         {onRegenerate && !isStreaming && (
           <ContextMenuItem onClick={() => onRegenerate(message.id)}>
-            <RefreshCw />
+            <ArrowsRotateRight />
             {t('chat.regenerate')}
           </ContextMenuItem>
         )}
         <ContextMenuSeparator />
         {onDelete && (
           <ContextMenuItem variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
-            <Trash2 />
+            <TrashBin />
             {t('chat.delete')}
           </ContextMenuItem>
         )}
@@ -719,23 +712,24 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
     <>
       {assistantContent}
       {onDelete && (
-        <AlertDialog open={showDeleteConfirm} onOpenChange={(open) => { if (!open) setShowDeleteConfirm(false) }}>
-          <AlertDialogPopup>
-            <AlertDialogTitle>{t('confirm.title')}</AlertDialogTitle>
-            <AlertDialogDescription>{t('confirm.deleteMessage')}</AlertDialogDescription>
-            <AlertDialogFooter>
-              <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
-                {t('common.cancel')}
-              </AlertDialogClose>
-              <AlertDialogClose
-                className="bg-destructive text-white hover:bg-destructive/80"
-                onClick={() => onDelete(message.id)}
-              >
-                {t('common.confirm')}
-              </AlertDialogClose>
-            </AlertDialogFooter>
-          </AlertDialogPopup>
-        </AlertDialog>
+        <AlertDialog.Backdrop isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+          <AlertDialog.Container>
+            <AlertDialog.Dialog aria-describedby={deleteDescId}>
+              <AlertDialog.Header>
+                <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
+              </AlertDialog.Header>
+              <AlertDialog.Body id={deleteDescId}>{t('confirm.deleteMessage')}</AlertDialog.Body>
+              <AlertDialog.Footer>
+                <Button slot="close" variant="tertiary">
+                  {t('common.cancel')}
+                </Button>
+                <Button slot="close" variant="danger" onClick={() => onDelete(message.id)}>
+                  {t('common.confirm')}
+                </Button>
+              </AlertDialog.Footer>
+            </AlertDialog.Dialog>
+          </AlertDialog.Container>
+        </AlertDialog.Backdrop>
       )}
     </>
   )

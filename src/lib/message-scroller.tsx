@@ -1,6 +1,5 @@
 import * as React from 'react'
-import { mergeProps } from '@base-ui/react/merge-props'
-import { useRender } from '@base-ui/react/use-render'
+import { dom } from '@heroui/react'
 
 /**
  * The transcript scroller.
@@ -1076,7 +1075,7 @@ function Anchor({ messageId, ref, ...props }: MessageScrollerAnchorProps) {
   return <div ref={setRef} data-message-anchor={messageId} {...props} />
 }
 
-export interface MessageScrollerButtonProps extends useRender.ComponentProps<'button'> {
+export interface MessageScrollerButtonProps extends React.ComponentProps<typeof dom.button> {
   behavior?: ScrollBehavior
   direction?: 'start' | 'end'
 }
@@ -1101,34 +1100,29 @@ function Button({
     React.useCallback(() => (direction === 'start' ? stateStore.getSnapshot().start : stateStore.getSnapshot().end), [direction, stateStore]),
   )
 
-  return useRender({
-    defaultTagName: 'button',
-    render,
-    state: { active, direction },
-    stateAttributesMapping: {
-      active: (value) => ({ 'data-active': value ? 'true' : 'false' }),
-      direction: (value) => ({ 'data-direction': String(value) }),
-    },
-    props: mergeProps<'button'>(
-      {
-        type,
-        // Nothing to scroll toward means nothing to focus either, so an
-        // inactive control does not become an extra tab stop.
-        inert: !active,
-        tabIndex: active ? tabIndex : -1,
-        children: children ?? <span>Scroll to {direction}</span>,
-        onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
-          if (!active) return
-          onClickRef.current?.(event)
-          if (event.defaultPrevented) return
-          event.currentTarget.blur()
-          if (direction === 'start') scrollToStart({ behavior })
-          else scrollToEnd({ behavior })
-        },
-      },
-      props,
-    ),
-  })
+  return (
+    <dom.button
+      data-active={active ? 'true' : 'false'}
+      data-direction={String(direction)}
+      type={type}
+      // Nothing to scroll toward means nothing to focus either, so an
+      // inactive control does not become an extra tab stop.
+      inert={!active}
+      tabIndex={active ? tabIndex : -1}
+      onClick={(event: React.MouseEvent<HTMLButtonElement>) => {
+        if (!active) return
+        onClickRef.current?.(event)
+        if (event.defaultPrevented) return
+        event.currentTarget.blur()
+        if (direction === 'start') scrollToStart({ behavior })
+        else scrollToEnd({ behavior })
+      }}
+      render={render}
+      {...props}
+    >
+      {children ?? <span>Scroll to {direction}</span>}
+    </dom.button>
+  )
 }
 
 /* ------------------------------------------------------------------ hooks */

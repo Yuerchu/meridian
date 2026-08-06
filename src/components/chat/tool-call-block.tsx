@@ -5,12 +5,11 @@ import hljs from 'highlight.js/lib/common'
 import { fileIconUrl } from '@/lib/file-icon'
 import { AnimatePresence, motion } from 'motion/react'
 import {
-  Check, X, Loader2, MessageCircleQuestion, Send,
-  SkipForward, Undo2, Circle, CircleCheck, Square, SquareCheck,
-  FileText, Globe, ChevronUp, TriangleAlert, ListTodo, ClipboardList, Compass,
-} from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+  ArrowUturnCcwLeft, Check, ChevronUp, Circle, CircleCheck, CircleDashed,
+  CircleQuestion, Compass, FileText, ForwardStep, Globe, ListCheck,
+  PaperPlane, Square, SquareCheck, SquareListUl, TriangleExclamation, Xmark,
+} from '@gravity-ui/icons'
+import { Button, Input } from '@heroui/react'
 import {
   ChatTool,
   ChatToolApproval,
@@ -101,13 +100,13 @@ function QuestionBlock({
   if (skipped) {
     return (
       <div className="flex items-center justify-between py-1">
-        <span className="text-sm text-muted-foreground line-through">{q.question}</span>
+        <span className="text-sm text-muted line-through">{q.question}</span>
         <Button
           variant="ghost"
           onClick={() => onUnskip(q.id)}
-          className="text-xs text-muted-foreground shrink-0 ml-2"
+          className="text-xs text-muted shrink-0 ml-2"
         >
-          <Undo2 className="w-3 h-3" />
+          <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
           {t('chat.tool.undo')}
         </Button>
       </div>
@@ -121,9 +120,9 @@ function QuestionBlock({
         <Button
           variant="ghost"
           onClick={() => onSkip(q.id)}
-          className="text-xs text-muted-foreground shrink-0 mt-0.5"
+          className="text-xs text-muted shrink-0 mt-0.5"
         >
-          <SkipForward className="w-3 h-3" />
+          <ForwardStep className="w-3.5 h-3.5" />
           {t('chat.tool.skipQuestion')}
         </Button>
       </div>
@@ -140,10 +139,10 @@ function QuestionBlock({
                 key={opt.label}
                 variant="ghost"
                 onClick={() => isMulti ? toggleMulti(opt.label) : selectSingle(opt.label)}
-                className={`w-full justify-start gap-2 h-auto px-2.5 py-1.5 text-left ${
+                className={`w-full justify-start gap-2 h-auto rounded-lg px-2.5 py-1.5 text-left ${
                   checked
-                    ? 'bg-accent/80 text-accent-foreground'
-                    : 'text-muted-foreground'
+                    ? 'bg-default/80 text-default-foreground'
+                    : 'text-muted'
                 }`}
               >
                 <span className="mt-0.5 shrink-0">
@@ -159,7 +158,7 @@ function QuestionBlock({
                 <span className="flex-1 min-w-0">
                   <span className="text-xs font-medium text-foreground">{opt.label}</span>
                   {opt.description && (
-                    <span className="block text-xs text-muted-foreground">{opt.description}</span>
+                    <span className="block text-xs text-muted">{opt.description}</span>
                   )}
                 </span>
               </Button>
@@ -168,7 +167,7 @@ function QuestionBlock({
         </div>
       )}
 
-      <Input
+      <Input fullWidth
         type="text"
         value={value.notes}
         onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
@@ -230,16 +229,16 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   )
 
   return (
-    <div className="my-3 border border-border rounded-xl bg-card/30 overflow-hidden text-xs">
-      <div className="flex items-center gap-2 px-3 py-2 bg-muted/30">
-        <MessageCircleQuestion className="w-3.5 h-3.5 text-muted-foreground" />
+    <div className="my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface">
+      <div className="flex items-center gap-2 bg-default px-4 py-3">
+        <CircleQuestion className="w-3.5 h-3.5 text-muted" />
         <span className="font-medium text-foreground">{t('chat.tool.askUser')}</span>
-        {data.status === 'running' && <Loader2 className="w-3 h-3 animate-spin text-muted-foreground ml-auto" />}
-        {data.status === 'completed' && <Check className="w-3 h-3 text-success ml-auto" />}
+        {data.status === 'running' && <CircleDashed className="w-3.5 h-3.5 animate-spin text-muted ml-auto" />}
+        {data.status === 'completed' && <Check className="w-3.5 h-3.5 text-success-soft-foreground ml-auto" />}
       </div>
 
       {data.status === 'pending' && (
-        <div className="px-3 py-2 space-y-3">
+        <div className="space-y-3 px-4 py-3">
           {questions.map((q) => (
             <QuestionBlock
               key={q.id}
@@ -253,11 +252,10 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
           ))}
           <div className="pt-1">
             <Button
-              variant="default"
               onClick={handleSubmit}
-              disabled={!canSubmit}
+              isDisabled={!canSubmit}
             >
-              <Send className="w-3 h-3" />
+              <PaperPlane className="w-3.5 h-3.5" />
               {t('chat.tool.askUserSubmit')}
             </Button>
           </div>
@@ -265,9 +263,9 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
       )}
 
       {data.result && (
-        <div className="border-t border-border bg-muted/10">
+        <div className="border-t border-separator bg-default/40">
           <div className="max-h-40 overflow-y-auto ">
-            <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs">
+            <pre className="whitespace-pre-wrap text-foreground px-4 py-3 text-xs">
               {data.result}
             </pre>
           </div>
@@ -481,19 +479,19 @@ function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDif
 function diffLineClass(kind: DiffLineKind, highlighted: boolean): string {
   switch (kind) {
     case 'add':
-      return highlighted ? 'bg-success/10 text-foreground/80' : 'bg-success/10 text-success'
+      return highlighted ? 'bg-success/10 text-foreground/80' : 'bg-success/10 text-success-soft-foreground'
     case 'remove':
-      return highlighted ? 'bg-destructive/10 text-foreground/80' : 'bg-destructive/10 text-destructive'
+      return highlighted ? 'bg-danger/10 text-foreground/80' : 'bg-danger/10 text-danger'
     case 'hunk':
-      return 'text-muted-foreground/60'
+      return 'text-muted'
     default:
       return 'text-foreground/80'
   }
 }
 
 function diffSignClass(kind: DiffLineKind): string | undefined {
-  if (kind === 'add') return 'text-success'
-  if (kind === 'remove') return 'text-destructive'
+  if (kind === 'add') return 'text-success-soft-foreground'
+  if (kind === 'remove') return 'text-danger'
   return undefined
 }
 
@@ -559,22 +557,22 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
   const language = diffLanguage(diff.path)
 
   return (
-    <div data-slot="file-diff" className="rounded-lg bg-muted/40 overflow-hidden">
+    <div data-slot="file-diff" className="rounded-lg bg-default/40 overflow-hidden">
       {diff.path !== '' && (
         <div
           data-slot="file-diff-header"
-          className="flex items-center gap-2 px-3 py-1 bg-muted/30 text-xs text-muted-foreground border-b border-border/50"
+          className="flex items-center gap-2 px-3 py-1 bg-default/30 text-xs text-muted border-b border-border/50"
         >
           <FileIcon path={diff.path} />
           <span className="font-mono truncate" title={diff.path}>{fileName}</span>
-          {diff.op === 'create' && <span className="text-success shrink-0">{t('chat.tool.diff.newFile')}</span>}
-          {diff.op === 'delete' && <span className="text-destructive shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
+          {diff.op === 'create' && <span className="text-success-soft-foreground shrink-0">{t('chat.tool.diff.newFile')}</span>}
+          {diff.op === 'delete' && <span className="text-danger shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
           {diff.replaceAll && <span className="shrink-0">{t('chat.tool.diff.replaceAll')}</span>}
           {(added > 0 || removed > 0) && (
             <span data-slot="file-diff-stats" className="ml-auto shrink-0 font-mono">
-              {added > 0 && <span className="text-success">+{added}</span>}
+              {added > 0 && <span className="text-success-soft-foreground">+{added}</span>}
               {added > 0 && removed > 0 && ' '}
-              {removed > 0 && <span className="text-destructive">-{removed}</span>}
+              {removed > 0 && <span className="text-danger">-{removed}</span>}
             </span>
           )}
         </div>
@@ -596,7 +594,7 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
             </div>
           ))}
           {hidden > 0 && (
-            <div className="px-3 text-muted-foreground/60">
+            <div className="px-3 text-muted">
               {t('chat.tool.diff.moreLines', { count: hidden })}
             </div>
           )}
@@ -612,8 +610,8 @@ function ReadFileResult({ result, path }: { result: string; path: string }) {
   const fileName = path.split(/[/\\]/).pop() ?? path
 
   return (
-    <div className="rounded-lg bg-muted/40 overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-1 bg-muted/30 text-xs text-muted-foreground border-b border-border/50">
+    <div className="rounded-lg bg-default/40 overflow-hidden">
+      <div className="flex items-center gap-2 px-3 py-1 bg-default/30 text-xs text-muted border-b border-border/50">
         <FileIcon path={path} />
         <span className="font-mono truncate">{fileName}</span>
       </div>
@@ -664,24 +662,24 @@ function SearchResult({ result }: { result: string }) {
 
   if (!matches) {
     return (
-      <div className="rounded-lg bg-muted/40">
+      <div className="rounded-lg bg-default/40">
         <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs">{result}</pre>
       </div>
     )
   }
 
   return (
-    <div className="rounded-lg bg-muted/40 max-h-60 overflow-auto">
+    <div className="rounded-lg bg-default/40 max-h-60 overflow-auto">
       {Array.from(grouped.entries()).map(([file, items]) => (
         <div key={file} className="not-first:border-t not-first:border-border/50">
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-muted/30 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-default/30 text-xs text-muted">
             <FileIcon path={file} />
             <span className="font-mono truncate">{file.split(/[/\\]/).pop()}</span>
-            <span className="text-muted-foreground/50 ml-auto shrink-0">{items.length}</span>
+            <span className="text-muted ml-auto shrink-0">{items.length}</span>
           </div>
           {items.map((item, i) => (
-            <div key={i} className="flex gap-2 px-3 py-0.5 text-xs hover:bg-muted/20">
-              <span className="text-muted-foreground/50 font-mono w-8 text-right shrink-0">{item.line}</span>
+            <div key={i} className="flex gap-2 px-3 py-0.5 text-xs hover:bg-default/20">
+              <span className="text-muted font-mono w-8 text-right shrink-0">{item.line}</span>
               <span className="text-foreground font-mono truncate">{item.text}</span>
             </div>
           ))}
@@ -693,7 +691,7 @@ function SearchResult({ result }: { result: string }) {
 
 function CommandResult({ result }: { result: string }) {
   return (
-    <div className="rounded-lg bg-muted/40">
+    <div className="rounded-lg bg-default/40">
       <div className="max-h-60 overflow-auto">
         <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs font-mono leading-relaxed">
           {result.length > 2000 ? `${result.slice(0, 2000)}...` : result}
@@ -718,7 +716,7 @@ function GenericResult({ result }: { result: string }) {
   }
 
   return (
-    <div className="rounded-lg bg-muted/40">
+    <div className="rounded-lg bg-default/40">
       <div className="max-h-40 overflow-y-auto">
         <pre className="whitespace-pre-wrap text-foreground px-3 py-2 text-xs">
           {result.length > 1000 ? `${result.slice(0, 1000)}...` : result}
@@ -751,8 +749,8 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
 
   if (approved) {
     return (
-      <div className="flex items-center gap-2 px-0.5 text-muted-foreground">
-        <Loader2 className="w-3 h-3 animate-spin" />
+      <div className="flex items-center gap-2 px-0.5 text-muted">
+        <CircleDashed className="w-3.5 h-3.5 animate-spin" />
         <span className="text-xs">{t('chat.tool.running')}</span>
       </div>
     )
@@ -762,22 +760,22 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
     return (
       <>
         {isEscalation && (
-          <div className="flex items-start gap-1.5 px-0.5 text-xs text-muted-foreground">
-            <TriangleAlert className="w-3.5 h-3.5 text-warning shrink-0" />
+          <div className="flex items-start gap-1.5 px-0.5 text-xs text-muted">
+            <TriangleExclamation className="w-3.5 h-3.5 text-warning-soft-foreground shrink-0" />
             <span>{t('chat.tool.sandboxRetryPrompt')}</span>
           </div>
         )}
         <ChatToolApproval>
           <Button
             variant="outline"
-            className="text-destructive hover:text-destructive"
+            className="text-danger hover:text-danger"
             onClick={() => setShowFeedback(true)}
           >
-            <X className="w-3 h-3" />
+            <Xmark className="w-3.5 h-3.5" />
             {t('chat.tool.deny')}
           </Button>
-          <Button variant="default" onClick={() => { setApproved(true); api.approveToolCall(callId) }}>
-            <Check className="w-3 h-3" />
+          <Button onClick={() => { setApproved(true); api.approveToolCall(callId) }}>
+            <Check className="w-3.5 h-3.5" />
             {isEscalation ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
           </Button>
         </ChatToolApproval>
@@ -787,7 +785,7 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
 
   return (
     <div className="space-y-2">
-      <Input
+      <Input fullWidth
         type="text"
         value={feedback}
         onChange={(e) => setFeedback(e.target.value)}
@@ -802,10 +800,10 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
         </Button>
         <Button
           variant="outline"
-          className="text-destructive hover:text-destructive"
+          className="text-danger hover:text-danger"
           onClick={() => api.denyToolCall(callId, feedback || undefined)}
         >
-          <X className="w-3 h-3" />
+          <Xmark className="w-3.5 h-3.5" />
           {feedback.trim() ? t('chat.tool.denyWithReason') : t('chat.tool.deny')}
         </Button>
       </ChatToolApproval>
@@ -847,11 +845,11 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (data.status === 'pending') {
     return (
-      <ChatTool state="requires-action" defaultOpen className="my-3">
+      <ChatTool state="requires-action" defaultExpanded className="my-3">
         <ChatToolTrigger>
           <ChatToolStatusIcon />
           <span className="font-medium text-foreground shrink-0">{t('chat.tool.name.web_search')}</span>
-          {query && <span className="text-muted-foreground truncate">{query}</span>}
+          {query && <span className="text-muted truncate">{query}</span>}
         </ChatToolTrigger>
         <ChatToolContent>
           <PendingApproval callId={data.call_id} />
@@ -862,7 +860,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (data.status !== 'completed' && data.status !== 'denied' && data.status !== 'error') {
     return (
-      <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="my-2 flex items-center gap-2 text-xs text-muted">
         <Globe className="w-3.5 h-3.5 animate-pulse" />
         <span>{t('chat.tool.webSearch.searching')}</span>
         {query && <span className="text-foreground truncate max-w-60">{query}</span>}
@@ -872,9 +870,9 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (data.status === 'denied') {
     return (
-      <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="my-2 flex items-center gap-2 text-xs text-muted">
         <Globe className="w-3.5 h-3.5" />
-        <X className="w-3 h-3 text-destructive" />
+        <Xmark className="w-3.5 h-3.5 text-danger" />
       </div>
     )
   }
@@ -882,10 +880,10 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   if (data.status === 'error' || sources === null) {
     return (
       <div className="my-2 flex items-center gap-2 text-xs">
-        <Globe className="w-3.5 h-3.5 text-destructive shrink-0" />
-        <span className="text-destructive">{t('chat.tool.webSearch.failed')}</span>
+        <Globe className="w-3.5 h-3.5 text-danger shrink-0" />
+        <span className="text-danger">{t('chat.tool.webSearch.failed')}</span>
         {data.result && (
-          <span className="text-muted-foreground truncate max-w-80" title={data.result}>
+          <span className="text-muted truncate max-w-80" title={data.result}>
             {data.result.length > 200 ? `${data.result.slice(0, 200)}...` : data.result}
           </span>
         )}
@@ -895,7 +893,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   if (sources.length === 0) {
     return (
-      <div className="my-2 flex items-center gap-2 text-xs text-muted-foreground">
+      <div className="my-2 flex items-center gap-2 text-xs text-muted">
         <Globe className="w-3.5 h-3.5" />
         <span>{t('chat.tool.webSearch.noResults')}</span>
         {query && <span className="truncate max-w-60">{query}</span>}
@@ -908,10 +906,10 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
       <Button
         variant="ghost"
         onClick={() => setExpanded(!expanded)}
-        className="h-auto justify-start rounded-none p-0 gap-1.5 text-xs font-normal text-muted-foreground hover:text-foreground hover:bg-transparent dark:hover:bg-transparent transition-colors"
+        className="h-auto justify-start rounded-none p-0 gap-1.5 text-xs font-normal text-muted hover:text-foreground hover:bg-transparent dark:hover:bg-transparent transition-colors"
       >
         <span>{t('chat.tool.webSearch.sources', { count: sources.length })}</span>
-        <ChevronUp className={`w-3 h-3 transition-transform ${expanded ? '' : 'rotate-180'}`} />
+        <ChevronUp className={`w-3.5 h-3.5 transition-transform ${expanded ? '' : 'rotate-180'}`} />
       </Button>
       <AnimatePresence>
         {expanded && (
@@ -929,7 +927,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
                   href={src.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-default/50 px-2.5 py-1 text-xs text-muted hover:bg-default hover:text-foreground transition-colors"
                   title={src.title}
                 >
                   {src.favicon && (
@@ -970,37 +968,39 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
     send().catch(() => setSent(false))
   }, [])
 
+  // Same status ring as `ChatTool`: a HeroUI card carries no edge, so an edge
+  // is left to mean "this one is waiting on you". A decided plan is just a card.
   return (
     <div
       data-slot="enter-plan"
       data-status={data.status}
       className={cn(
-        'my-3 overflow-hidden rounded-xl border bg-card/30 text-xs',
-        declined ? 'border-border' : 'border-info/40',
+        'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface',
+        !declined && 'ring-1 ring-info/40 ring-inset',
       )}
     >
-      <div data-slot="enter-plan-header" className="flex items-center gap-2 bg-muted/30 px-3 py-2">
-        <Compass aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+      <div data-slot="enter-plan-header" className="flex items-center gap-2 bg-default px-4 py-3">
+        <Compass aria-hidden className="size-3.5 shrink-0 text-muted" />
         <span data-slot="enter-plan-title" className="font-medium text-foreground">
           {t('chat.plan.enterTitle')}
         </span>
-        {data.status === 'completed' && <Check className="ml-auto size-3 text-success" />}
-        {declined && <X className="ml-auto size-3 text-muted-foreground" />}
+        {data.status === 'completed' && <Check className="ml-auto size-3.5 text-success-soft-foreground" />}
+        {declined && <Xmark className="ml-auto size-3.5 text-muted" />}
       </div>
 
-      <div data-slot="enter-plan-reason" className="px-3 py-2 text-foreground">
+      <div data-slot="enter-plan-reason" className="px-4 py-3 text-foreground">
         {reason}
       </div>
 
       {data.status === 'pending' && !sent && (
-        <div data-slot="enter-plan-actions" className="border-t border-border px-3 py-2">
+        <div data-slot="enter-plan-actions" className="border-t border-separator px-4 py-3">
           <ChatToolApproval>
             <Button variant="outline" onClick={() => decide(() => api.denyToolCall(data.call_id))}>
-              <X className="w-3 h-3" />
+              <Xmark className="w-3.5 h-3.5" />
               {t('chat.plan.keepBuilding')}
             </Button>
-            <Button variant="default" onClick={() => decide(() => api.approveToolCall(data.call_id))}>
-              <Compass className="w-3 h-3" />
+            <Button onClick={() => decide(() => api.approveToolCall(data.call_id))}>
+              <Compass className="w-3.5 h-3.5" />
               {t('chat.plan.startPlanning')}
             </Button>
           </ChatToolApproval>
@@ -1010,9 +1010,9 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
       {data.status === 'pending' && sent && (
         <div
           data-slot="enter-plan-waiting"
-          className="flex items-center gap-2 border-t border-border px-3 py-2 text-muted-foreground"
+          className="flex items-center gap-2 border-t border-separator px-4 py-3 text-muted"
         >
-          <Loader2 className="w-3 h-3 animate-spin" />
+          <CircleDashed className="w-3.5 h-3.5 animate-spin" />
           <span>{t('chat.tool.running')}</span>
         </div>
       )}
@@ -1047,28 +1047,28 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       data-slot="exit-plan"
       data-status={data.status}
       className={cn(
-        'my-3 overflow-hidden rounded-xl border bg-card/30 text-xs',
-        wasRejected ? 'border-border' : 'border-info/40',
+        'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface',
+        !wasRejected && 'ring-1 ring-info/40 ring-inset',
       )}
     >
-      <div data-slot="exit-plan-header" className="flex items-center gap-2 bg-muted/30 px-3 py-2">
-        <ClipboardList aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+      <div data-slot="exit-plan-header" className="flex items-center gap-2 bg-default px-4 py-3">
+        <SquareListUl aria-hidden className="size-3.5 shrink-0 text-muted" />
         <span data-slot="exit-plan-title" className="font-medium text-foreground">
           {t('chat.plan.title')}
         </span>
-        {data.status === 'completed' && <Check className="ml-auto size-3 text-success" />}
-        {wasRejected && <X className="ml-auto size-3 text-muted-foreground" />}
+        {data.status === 'completed' && <Check className="ml-auto size-3.5 text-success-soft-foreground" />}
+        {wasRejected && <Xmark className="ml-auto size-3.5 text-muted" />}
       </div>
 
-      <div data-slot="exit-plan-body" className="max-h-96 overflow-y-auto px-3 py-2">
+      <div data-slot="exit-plan-body" className="max-h-96 overflow-y-auto px-4 py-3">
         <MarkdownContent content={plan} />
       </div>
 
       {data.status === 'pending' && ui !== 'sent' && (
-        <div data-slot="exit-plan-actions" className="border-t border-border px-3 py-2">
+        <div data-slot="exit-plan-actions" className="border-t border-separator px-4 py-3">
           {ui === 'feedback' ? (
             <div data-slot="exit-plan-feedback" className="space-y-2">
-              <Input
+              <Input fullWidth
                 type="text"
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
@@ -1082,7 +1082,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                   {t('chat.tool.cancel')}
                 </Button>
                 <Button variant="outline" onClick={sendBack}>
-                  <Undo2 className="w-3 h-3" />
+                  <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
                   {t('chat.plan.sendBack')}
                 </Button>
               </ChatToolApproval>
@@ -1090,14 +1090,13 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
           ) : (
             <ChatToolApproval>
               <Button variant="outline" onClick={() => setUi('feedback')}>
-                <Undo2 className="w-3 h-3" />
+                <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
                 {t('chat.plan.revise')}
               </Button>
               <Button
-                variant="default"
                 onClick={() => decide(() => api.approveToolCall(data.call_id))}
               >
-                <Check className="w-3 h-3" />
+                <Check className="w-3.5 h-3.5" />
                 {t('chat.plan.approve')}
               </Button>
             </ChatToolApproval>
@@ -1108,9 +1107,9 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       {data.status === 'pending' && ui === 'sent' && (
         <div
           data-slot="exit-plan-waiting"
-          className="flex items-center gap-2 border-t border-border px-3 py-2 text-muted-foreground"
+          className="flex items-center gap-2 border-t border-separator px-4 py-3 text-muted"
         >
-          <Loader2 className="w-3 h-3 animate-spin" />
+          <CircleDashed className="w-3.5 h-3.5 animate-spin" />
           <span>{t('chat.tool.running')}</span>
         </div>
       )}
@@ -1123,15 +1122,15 @@ function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: s
   const { done, total } = todoProgress(todos)
 
   return (
-    <ChatTool state={mapChatToolState(data.status)} defaultOpen={done < total} className="my-3">
+    <ChatTool state={mapChatToolState(data.status)} defaultExpanded={done < total} className="my-3">
       <ChatToolTrigger
         endContent={
-          <span className="shrink-0 text-muted-foreground tabular-nums">
+          <span className="shrink-0 text-muted tabular-nums">
             {t('chat.todo.progress', { done, total })}
           </span>
         }
       >
-        <ListTodo aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <ListCheck aria-hidden className="size-3.5 shrink-0 text-muted" />
         <span className="truncate font-medium text-foreground">{title}</span>
       </ChatToolTrigger>
       <ChatToolContent>
@@ -1252,7 +1251,7 @@ export function ToolCallBlock({ data, className }: { data: ToolCallDisplay; clas
   return (
     <ChatTool
       state={mapChatToolState(data.status)}
-      defaultOpen={!isCompleted}
+      defaultExpanded={!isCompleted}
       className={cn('my-3', className)}
     >
       <ChatToolTrigger>

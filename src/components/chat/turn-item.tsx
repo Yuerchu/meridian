@@ -85,7 +85,7 @@ export const TurnItem = React.memo(function TurnItem({
 }: TurnItemProps) {
   const { t } = useTranslation()
   const assistants = turn.assistantMessages
-  const renderError = <div className="text-xs text-destructive py-2">{t('chat.renderError')}</div>
+  const renderError = <div className="text-xs text-danger py-2">{t('chat.renderError')}</div>
 
   // The turn's actions belong to whichever row carries its conclusion. A turn
   // that was cut short has no conclusion, so they fall to the last row — leaving
@@ -317,13 +317,13 @@ export const TurnItem = React.memo(function TurnItem({
           <AssistantAvatar src={assistantAvatar} modelId={assistants[0]?.model_id} />
           <div className="flex w-full min-w-0 flex-col">
             {assistants[0] && (
-              <MessageMeta
-                modelId={assistants[0].model_id}
-                createdAt={assistants[0].created_at}
-                animate={isLastTurn}
-              />
+              <MessageMeta modelId={assistants[0].model_id} createdAt={assistants[0].created_at} />
             )}
-            <TurnCollapse status={turn.status} open={open} onOpenChange={handleOpenChange}>
+            <TurnCollapse
+              status={turn.status}
+              isExpanded={open}
+              onExpandedChange={handleOpenChange}
+            >
               <TurnTrigger>
                 <span className="inline-flex items-center gap-1.5">
                   <TurnStatusIcon />

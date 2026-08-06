@@ -1,25 +1,8 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash, X, Check } from 'lucide-react'
+import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogPopup,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { AlertDialog, Button, Card, DisclosureGroup, Input, ListBox, Select, TextArea } from '@heroui/react'
 import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
 import { ScopeNav } from './memory/scope-nav'
@@ -28,13 +11,15 @@ import { useMemoryBrowser } from './memory/use-memory-browser'
 export function MemorySettings() {
   const { t } = useTranslation()
   const browser = useMemoryBrowser()
-  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [trashOpen, setTrashOpen] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [confirmBulk, setConfirmBulk] = useState(false)
   const [newKey, setNewKey] = useState('')
   const [newContent, setNewContent] = useState('')
   const [newType, setNewType] = useState('general')
+  // `AlertDialog.Body` is a plain div — only a `Heading slot="title"` is wired
+  // up for us, so without this the dialog announces its title and nothing else.
+  const bulkDeleteDescId = useId()
 
   const typeOptions = (browser.enums?.memory_types ?? ['general']).map((v) => ({
     value: v,
@@ -75,14 +60,14 @@ export function MemorySettings() {
       <div className="flex items-start justify-between">
         <div>
           <h2 className="text-lg font-semibold">{t('settings.memory.title')}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{t('settings.memory.subtitle')}</p>
+          <p className="mt-1 text-sm text-muted">{t('settings.memory.subtitle')}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="ghost" onClick={() => setTrashOpen(true)} data-slot="memory-trash-open">
-            <Trash />
+            <TrashBin />
             {t('settings.memory.trash.title')}
           </Button>
-          <Button variant="secondary" onClick={() => setShowAdd(true)} disabled={!canAdd}>
+          <Button variant="secondary" onClick={() => setShowAdd(true)} isDisabled={!canAdd}>
             <Plus />
             {t('settings.memory.new')}
           </Button>
@@ -101,7 +86,7 @@ export function MemorySettings() {
 
         <div data-slot="memory-list" className="min-w-0 flex-1 space-y-2">
           <div className="flex items-center gap-2">
-            <Input
+            <Input fullWidth
               type="text"
               value={browser.search}
               onChange={(e) => browser.setSearch(e.target.value)}
@@ -110,30 +95,35 @@ export function MemorySettings() {
             />
             <Select
               value={browser.originFilter}
-              onValueChange={(v) => { if (v) browser.setOriginFilter(v) }}
-              items={originOptions}
+              onChange={(v) => { if (v) browser.setOriginFilter(String(v)) }}
             >
-              <SelectTrigger className="w-auto">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {originOptions.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
+              <Select.Trigger className="w-auto">
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  {originOptions.map((o) => (
+                    <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                      {o.label}
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Select.Popover>
             </Select>
           </div>
 
           {showAdd && (
-            <div className="space-y-2 rounded-lg border border-border bg-muted/30 p-3">
-              <Input
+            <Card data-slot="memory-add-form">
+              <Input fullWidth
                 type="text"
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value)}
                 placeholder={t('settings.memory.key')}
                 autoFocus
               />
-              <Textarea
+              <TextArea fullWidth
                 value={newContent}
                 onChange={(e) => setNewContent(e.target.value)}
                 placeholder={t('settings.memory.content')}
@@ -143,58 +133,71 @@ export function MemorySettings() {
               <div className="flex items-center gap-2">
                 <Select
                   value={newType}
-                  onValueChange={(v) => { if (v) setNewType(v) }}
-                  items={typeOptions}
+                  onChange={(v) => { if (v) setNewType(String(v)) }}
                 >
-                  <SelectTrigger className="w-auto">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {typeOptions.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                    ))}
-                  </SelectContent>
+                  <Select.Trigger className="w-auto">
+                    <Select.Value />
+                    <Select.Indicator />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      {typeOptions.map((o) => (
+                        <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                          {o.label}
+                          <ListBox.ItemIndicator />
+                        </ListBox.Item>
+                      ))}
+                    </ListBox>
+                  </Select.Popover>
                 </Select>
                 <div className="flex-1" />
-                <Button variant="ghost" size="icon" onClick={() => setShowAdd(false)}>
-                  <X />
+                <Button variant="ghost" isIconOnly onClick={() => setShowAdd(false)}>
+                  <Xmark />
                 </Button>
                 <Button
                   variant="secondary"
-                  size="icon"
+                  isIconOnly
                   onClick={handleAdd}
-                  disabled={!newKey.trim() || !newContent.trim()}
+                  isDisabled={!newKey.trim() || !newContent.trim()}
                 >
                   <Check />
                 </Button>
               </div>
-            </div>
+            </Card>
           )}
 
           {browser.visible.length === 0 && !showAdd && (
-            <p className="py-6 text-center text-sm text-muted-foreground">
+            <p className="py-6 text-center text-sm text-muted">
               {t('settings.memory.empty')}
             </p>
           )}
 
-          {browser.visible.map((m) => (
-            <MemoryRow
-              key={m.id}
-              memory={m}
-              expanded={expandedId === m.id}
-              onToggleExpand={() => setExpandedId(expandedId === m.id ? null : m.id)}
-              checked={browser.selected.has(m.id)}
-              onToggleCheck={() => browser.toggleSelected(m.id)}
-              onChanged={browser.refresh}
-            />
-          ))}
+          {/* One open at a time is the group's own default
+              (`allowsMultipleExpanded` is off), so the single-open rule lives
+              in the primitive rather than in a hand-held `expandedId`. Which is
+              also why the group is mounted unconditionally: its expanded key is
+              uncontrolled state, so gating it on a non-empty list would forget
+              which row was open every time a search matched nothing. Empty, it
+              renders a bare `w-full` div with no children for `gap-2` to space —
+              nothing shows. */}
+          <DisclosureGroup data-slot="memory-rows" className="flex flex-col gap-2">
+            {browser.visible.map((m) => (
+              <MemoryRow
+                key={m.id}
+                memory={m}
+                checked={browser.selected.has(m.id)}
+                onToggleCheck={() => browser.toggleSelected(m.id)}
+                onChanged={browser.refresh}
+              />
+            ))}
+          </DisclosureGroup>
 
           {browser.selected.size > 0 && (
             <div
               data-slot="memory-bulk-bar"
-              className="flex items-center gap-2 rounded-lg border border-border bg-muted/30 p-3"
+              className="flex items-center gap-2 rounded-lg border border-border bg-default/30 p-3"
             >
-              <span className="text-sm text-muted-foreground">
+              <span className="text-sm text-muted">
                 {t('settings.memory.selectedCount', { count: browser.selected.size })}
               </span>
               <div className="flex-1" />
@@ -202,35 +205,39 @@ export function MemorySettings() {
                 {t('settings.memory.clearSelection')}
               </Button>
               <Button variant="ghost" onClick={() => setConfirmBulk(true)}>
-                <Trash className="text-destructive" />
+                <TrashBin className="text-danger" />
                 {t('settings.memory.deleteSelected')}
               </Button>
-              <AlertDialog
-                open={confirmBulk}
-                onOpenChange={(open) => { if (!open) setConfirmBulk(false) }}
-              >
-                <AlertDialogPopup>
-                  <AlertDialogTitle>{t('settings.memory.deleteConfirmTitle')}</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    {t('settings.memory.deleteConfirmBody')}
-                  </AlertDialogDescription>
-                  <AlertDialogFooter>
-                    <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
-                      {t('common.cancel')}
-                    </AlertDialogClose>
-                    <AlertDialogClose
-                      className="bg-destructive text-white hover:bg-destructive/80"
-                      onClick={async () => {
-                        await api.deleteMemories([...browser.selected])
-                        browser.clearSelection()
-                        browser.refresh()
-                      }}
-                    >
-                      {t('common.confirm')}
-                    </AlertDialogClose>
-                  </AlertDialogFooter>
-                </AlertDialogPopup>
-              </AlertDialog>
+              <AlertDialog.Backdrop isOpen={confirmBulk} onOpenChange={setConfirmBulk}>
+                <AlertDialog.Container>
+                  <AlertDialog.Dialog aria-describedby={bulkDeleteDescId}>
+                    <AlertDialog.Header>
+                      <AlertDialog.Heading>
+                        {t('settings.memory.deleteConfirmTitle')}
+                      </AlertDialog.Heading>
+                    </AlertDialog.Header>
+                    <AlertDialog.Body id={bulkDeleteDescId}>
+                      {t('settings.memory.deleteConfirmBody')}
+                    </AlertDialog.Body>
+                    <AlertDialog.Footer>
+                      <Button slot="close" variant="tertiary">
+                        {t('common.cancel')}
+                      </Button>
+                      <Button
+                        slot="close"
+                        variant="danger"
+                        onClick={async () => {
+                          await api.deleteMemories([...browser.selected])
+                          browser.clearSelection()
+                          browser.refresh()
+                        }}
+                      >
+                        {t('common.confirm')}
+                      </Button>
+                    </AlertDialog.Footer>
+                  </AlertDialog.Dialog>
+                </AlertDialog.Container>
+              </AlertDialog.Backdrop>
             </div>
           )}
         </div>

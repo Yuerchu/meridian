@@ -1,6 +1,5 @@
-import { Mic, Square } from 'lucide-react'
-import { Spinner } from '@/components/ui/spinner'
-import { Button } from '@/components/ui/button'
+import { Microphone, StopFill } from '@gravity-ui/icons'
+import { Button, Spinner } from '@heroui/react'
 import { cn } from '@/lib/utils'
 
 export type VoiceButtonState =
@@ -14,6 +13,8 @@ export type VoiceButtonState =
 
 interface VoiceButtonProps {
   state: VoiceButtonState
+  /** Named by the caller, which is where the state-dependent wording lives. */
+  'aria-label'?: string
   /** Seconds recorded so far; shown while recording. */
   elapsed?: number
   disabled?: boolean
@@ -29,6 +30,7 @@ interface VoiceButtonProps {
  *  this stays renderable in the browser playground without a Tauri backend. */
 export function VoiceButton({
   state,
+  'aria-label': ariaLabel,
   elapsed = 0,
   disabled,
   onPointerDown,
@@ -42,19 +44,20 @@ export function VoiceButton({
   return (
     <div data-slot="voice-button" className="flex items-center gap-1.5">
       {recording && (
-        <span className="text-xs tabular-nums text-destructive select-none">
+        <span className="text-xs tabular-nums text-danger select-none">
           {Math.floor(elapsed / 60)}:{String(Math.floor(elapsed % 60)).padStart(2, '0')}
         </span>
       )}
       <Button
+        isIconOnly
+        aria-label={ariaLabel}
         variant="ghost"
-        size="icon"
-        disabled={disabled || state === 'transcribing'}
+        isDisabled={disabled || state === 'transcribing'}
         className={cn(
           'touch-hitbox touch-none select-none',
-          recording && 'text-destructive hover:text-destructive animate-pulse',
-          state === 'starting' && 'text-muted-foreground/40',
-          state !== 'starting' && !recording && 'text-muted-foreground hover:text-foreground',
+          recording && 'text-danger hover:text-danger animate-pulse',
+          state === 'starting' && 'text-muted',
+          state !== 'starting' && !recording && 'text-muted hover:text-foreground',
         )}
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
@@ -67,9 +70,9 @@ export function VoiceButton({
         {state === 'transcribing' ? (
           <Spinner className="w-4 h-4" />
         ) : state === 'recording-toggle' ? (
-          <Square className="w-4 h-4" fill="currentColor" />
+          <StopFill className="w-4 h-4" />
         ) : (
-          <Mic className="w-4 h-4" />
+          <Microphone className="w-4 h-4" />
         )}
       </Button>
     </div>

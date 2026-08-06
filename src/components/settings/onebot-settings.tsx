@@ -1,10 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Button, Checkbox, Input, ListBox, Select } from '@heroui/react'
 import type { Assistant } from '@/types'
 
 interface OneBotConfig {
@@ -133,16 +130,24 @@ export function OneBotSettings() {
       </div>
 
       <div className="flex items-start gap-2">
+        {/* Label stays outside because a description sits under it; the id is
+            what ties the two together. */}
         <Checkbox
           id="onebot-enabled"
-          checked={config.enabled}
-          onCheckedChange={(checked) => setConfig({ ...config, enabled: !!checked })}
-        />
+          isSelected={config.enabled}
+          onChange={(selected) => setConfig({ ...config, enabled: selected })}
+        >
+          <Checkbox.Content>
+            <Checkbox.Control>
+              <Checkbox.Indicator />
+            </Checkbox.Control>
+          </Checkbox.Content>
+        </Checkbox>
         <div className="space-y-0.5">
           <label htmlFor="onebot-enabled" className="text-sm font-medium cursor-pointer">
             {t('settings.onebot.enable')}
           </label>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted">
             {t('settings.onebot.enableHint')}
           </p>
         </div>
@@ -150,20 +155,20 @@ export function OneBotSettings() {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-muted-foreground">
+          <label className="block text-xs font-medium text-muted">
             {t('settings.onebot.host')}
           </label>
-          <Input
+          <Input fullWidth
             value={config.host}
             onChange={(e) => setConfig({ ...config, host: e.target.value })}
             placeholder="127.0.0.1"
           />
         </div>
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-muted-foreground">
+          <label className="block text-xs font-medium text-muted">
             {t('settings.onebot.port')}
           </label>
-          <Input
+          <Input fullWidth
             type="number"
             min={1}
             max={65535}
@@ -175,10 +180,10 @@ export function OneBotSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.onebot.accessToken')}
         </label>
-        <Input
+        <Input fullWidth
           type="password"
           value={config.access_token ?? ''}
           onChange={(e) => setConfig({ ...config, access_token: e.target.value || null })}
@@ -187,66 +192,72 @@ export function OneBotSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.onebot.assistant')}
         </label>
         <Select
+          fullWidth
           value={config.assistant_id ?? '_default'}
-          onValueChange={(v) => setConfig({ ...config, assistant_id: v === '_default' ? null : v })}
-          items={assistantOptions}
+          onChange={(v) => { if (v) setConfig({ ...config, assistant_id: v === '_default' ? null : String(v) }) }}
         >
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {assistantOptions.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
+          <Select.Trigger>
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {assistantOptions.map((o) => (
+                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                  {o.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           {t('settings.onebot.assistantHint')}
         </p>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.onebot.adminUsers')}
         </label>
-        <Input
+        <Input fullWidth
           value={adminInput}
           onChange={(e) => setAdminInput(e.target.value)}
           placeholder="12345, 67890"
         />
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           {t('settings.onebot.adminUsersHint')}
         </p>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.onebot.ackEmoji')}
         </label>
-        <Input
+        <Input fullWidth
           value={config.ack_emoji_id}
           onChange={(e) => setConfig({ ...config, ack_emoji_id: e.target.value })}
           placeholder="76"
         />
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           {t('settings.onebot.ackEmojiHint')}
         </p>
       </div>
 
       {error && (
-        <p className="text-xs text-destructive break-all">{error}</p>
+        <p className="text-xs text-danger break-all">{error}</p>
       )}
 
       <div className="flex items-center gap-3 pt-2">
-        <Button variant="outline" onClick={handleSave} disabled={saving}>
+        <Button variant="outline" onClick={handleSave} isDisabled={saving}>
           {saved ? t('common.saved') : t('common.save')}
         </Button>
         {running ? (
-          <Button variant="destructive" onClick={handleStop}>
+          <Button variant="danger-soft" onClick={handleStop}>
             {t('settings.onebot.stop')}
           </Button>
         ) : (
@@ -259,13 +270,13 @@ export function OneBotSettings() {
       {status && (
         <div className="rounded-lg border p-3 space-y-1 text-sm">
           <div className="flex items-center gap-2">
-            <span className={`inline-block w-2 h-2 rounded-full ${running ? 'bg-success' : 'bg-muted-foreground'}`} />
+            <span className={`inline-block w-2 h-2 rounded-full ${running ? 'bg-success' : 'bg-muted'}`} />
             <span className="font-medium">
               {running ? t('settings.onebot.statusRunning') : t('settings.onebot.statusStopped')}
             </span>
           </div>
           {running && (
-            <p className="text-muted-foreground text-xs">
+            <p className="text-muted text-xs">
               {t('settings.onebot.clients', { count: status.connected_clients })}
               {' · '}
               {status.host}:{status.port}

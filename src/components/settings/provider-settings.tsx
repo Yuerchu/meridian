@@ -1,12 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Check, ChevronDown, ChevronRight, RefreshCw, Trash2, Cloud, Key, ArrowLeft, Settings2, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Input } from '@/components/ui/input'
-import { Spinner } from '@/components/ui/spinner'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Plus, Check, ArrowsRotateRight, TrashBin, Cloud, Key, ArrowLeft, Sliders, Xmark } from '@gravity-ui/icons'
+import { Button, Disclosure, Input, ListBox, Select, Spinner, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
@@ -60,16 +55,22 @@ function CapabilityTriRow({
   ]
   return (
     <div data-slot="capability-tri-row" className="flex items-center justify-between gap-2">
-      <label className="text-xs text-muted-foreground">{label}</label>
-      <Select value={value} onValueChange={(v) => v && onChange(v as Tri)}>
-        <SelectTrigger className="h-7 w-32 text-xs">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((o) => (
-            <SelectItem key={o.value} value={o.value} className="text-xs">{o.label}</SelectItem>
-          ))}
-        </SelectContent>
+      <label className="text-xs text-muted">{label}</label>
+      <Select value={value} onChange={(v) => v && onChange(String(v) as Tri)}>
+        <Select.Trigger className="h-7 w-32 text-xs">
+          <Select.Value />
+          <Select.Indicator />
+        </Select.Trigger>
+        <Select.Popover>
+          <ListBox>
+            {options.map((o) => (
+              <ListBox.Item key={o.value} id={o.value} textValue={o.label} className="text-xs">
+                {o.label}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+            ))}
+          </ListBox>
+        </Select.Popover>
       </Select>
     </div>
   )
@@ -169,49 +170,56 @@ function ModelConfigEditor({
   }
 
   return (
-    <div className="px-3 pb-3 space-y-2 bg-muted/30">
+    <div className="px-3 pb-3 space-y-2 bg-default/30">
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-xs text-muted-foreground">{t('settings.model.contextWindow')}</label>
-          <Input value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
+          <label className="text-xs text-muted">{t('settings.model.contextWindow')}</label>
+          <Input fullWidth value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">{t('settings.model.compactThreshold')}</label>
-          <Input value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
+          <label className="text-xs text-muted">{t('settings.model.compactThreshold')}</label>
+          <Input fullWidth value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
         </div>
       </div>
       <div>
-        <label className="text-xs text-muted-foreground">{t('settings.model.maxOutput')}</label>
-        <Input value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
+        <label className="text-xs text-muted">{t('settings.model.maxOutput')}</label>
+        <Input fullWidth value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <label className="text-xs text-muted-foreground">{t('settings.model.inputPrice')}</label>
-          <Input value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
+          <label className="text-xs text-muted">{t('settings.model.inputPrice')}</label>
+          <Input fullWidth value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">{t('settings.model.outputPrice')}</label>
-          <Input value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
+          <label className="text-xs text-muted">{t('settings.model.outputPrice')}</label>
+          <Input fullWidth value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">{t('settings.model.cachePrice')}</label>
-          <Input value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
+          <label className="text-xs text-muted">{t('settings.model.cachePrice')}</label>
+          <Input fullWidth value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
         </div>
       </div>
-      <div data-slot="capability-overrides" className="pt-1">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-6 px-0 text-xs text-muted-foreground hover:text-foreground"
-          onClick={() => setShowCaps((v) => !v)}
-        >
-          {showCaps ? <ChevronDown className="w-3 h-3 mr-1" /> : <ChevronRight className="w-3 h-3 mr-1" />}
-          {t('settings.model.capabilities')}
-        </Button>
-        {showCaps && (
-          <div className="space-y-2 pt-2">
+      <Disclosure
+        data-slot="capability-overrides"
+        className="pt-1"
+        isExpanded={showCaps}
+        onExpandedChange={setShowCaps}
+      >
+        <Disclosure.Heading>
+          {/* `inline-flex`, not `flex`: a block-level flex row would stretch the
+              trigger across the form and the indicator's own `ms-auto` would
+              fling the chevron to the far edge. */}
+          <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50">
+            {t('settings.model.capabilities')}
+            <Disclosure.Indicator className="size-3.5" />
+          </Disclosure.Trigger>
+        </Disclosure.Heading>
+        <Disclosure.Content className="min-h-0 w-full">
+          {/* Body, not a plain wrapper: it is what keeps the panel measurable,
+              so without it the overrides never collapse. */}
+          <Disclosure.Body className="space-y-2">
             <div data-slot="effort-whitelist" className="space-y-1.5">
-              <label className="text-xs text-muted-foreground">{t('settings.model.supportedEfforts')}</label>
+              <label className="text-xs text-muted">{t('settings.model.supportedEfforts')}</label>
               <div className="flex flex-wrap gap-1">
                 {EFFORT_LADDER.map((tier) => {
                   const on = efforts.includes(tier)
@@ -219,7 +227,7 @@ function ModelConfigEditor({
                     <Button
                       key={tier}
                       data-slot="effort-chip"
-                      variant={on ? 'default' : 'outline'}
+                      variant={on ? 'primary' : 'outline'}
                       size="sm"
                       aria-pressed={on}
                       className="h-6 px-2 text-xs font-normal"
@@ -238,22 +246,22 @@ function ModelConfigEditor({
             </div>
             <CapabilityTriRow label={t('settings.model.capThinking')} value={capThinking} onChange={setCapThinking} />
             <CapabilityTriRow label={t('settings.model.capFast')} value={capFast} onChange={setCapFast} />
-            <p className="text-xs text-muted-foreground/60">{t('settings.model.capabilitiesHint')}</p>
+            <p className="text-xs text-muted">{t('settings.model.capabilitiesHint')}</p>
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 px-0 text-xs text-muted-foreground hover:text-foreground"
+              className="h-6 px-0 text-xs text-muted hover:text-foreground"
               onClick={resetOverrides}
             >
               {t('settings.model.capReset')}
             </Button>
-          </div>
-        )}
-      </div>
+          </Disclosure.Body>
+        </Disclosure.Content>
+      </Disclosure>
       <div className="flex items-center gap-2 pt-1">
         <Button size="sm" className="h-7 text-xs" onClick={handleSave}>{t('common.save')}</Button>
         {onDelete && (
-          <Button size="sm" variant="ghost" className="h-7 text-xs text-destructive" onClick={onDelete}>
+          <Button size="sm" variant="ghost" className="h-7 text-xs text-danger" onClick={onDelete}>
             {t('common.delete')}
           </Button>
         )}
@@ -397,27 +405,33 @@ function ProviderEditor({
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted-foreground">{t('settings.provider.name')}</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} />
+        <label className="block text-xs text-muted">{t('settings.provider.name')}</label>
+        <Input fullWidth value={name} onChange={(e) => setName(e.target.value)} />
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted-foreground">{t('settings.provider.type')}</label>
-        <Select value={providerType} onValueChange={(v) => v && setProviderType(v)} items={typeOptions}>
-          <SelectTrigger className="w-full">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {typeOptions.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
+        <label className="block text-xs text-muted">{t('settings.provider.type')}</label>
+        <Select fullWidth value={providerType} onChange={(v) => v && setProviderType(String(v))}>
+          <Select.Trigger>
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {typeOptions.map((o) => (
+                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                  {o.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted-foreground">{t('settings.provider.baseUrl')}</label>
-        <Input
+        <label className="block text-xs text-muted">{t('settings.provider.baseUrl')}</label>
+        <Input fullWidth
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder={providerType === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
@@ -426,16 +440,22 @@ function ProviderEditor({
 
       {providerType !== 'anthropic' && (
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.provider.apiFormat')}</label>
-          <Select value={apiFormat} onValueChange={(v) => v && setApiFormat(v)} items={formatOptions}>
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {formatOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
+          <label className="block text-xs text-muted">{t('settings.provider.apiFormat')}</label>
+          <Select fullWidth value={apiFormat} onChange={(v) => v && setApiFormat(String(v))}>
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {formatOptions.map((o) => (
+                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                    {o.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         </div>
       )}
@@ -443,16 +463,16 @@ function ProviderEditor({
       <div className="flex items-center gap-2">
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success">
-            <Check className="w-3 h-3" /> {t('common.saved')}
+          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
+            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
           </span>
         )}
       </div>
 
       <div className="border-t border-border pt-4 space-y-3">
-        <label className="block text-xs text-muted-foreground">{t('settings.provider.apiKey')}</label>
+        <label className="block text-xs text-muted">{t('settings.provider.apiKey')}</label>
         <div className="flex gap-2">
-          <Input
+          <Input fullWidth
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
@@ -469,60 +489,63 @@ function ProviderEditor({
           <Button
             variant="outline"
             onClick={handleSaveKey}
-            disabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
+            isDisabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
           >
-            {savingKey ? <Spinner className="w-3 h-3" /> : <Key className="w-3 h-3" />}
+            {savingKey ? <Spinner className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
             {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
           </Button>
         </div>
         {keyStatus === 'loading' && (
-          <p className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Spinner className="w-3 h-3" />
+          <p className="flex items-center gap-1.5 text-xs text-muted">
+            <Spinner className="w-3.5 h-3.5" />
             {t('settings.provider.apiKeyChecking')}
           </p>
         )}
         {keyStatus === 'set' && (
-          <p className="text-xs text-success">{t('settings.provider.keySaved')}</p>
+          <p className="text-xs text-success-soft-foreground">{t('settings.provider.keySaved')}</p>
         )}
         {keyStatus === 'error' && (
-          <p className="text-xs text-warning">{t('settings.provider.apiKeyCheckFailed')}</p>
+          <p className="text-xs text-warning-soft-foreground">{t('settings.provider.apiKeyCheckFailed')}</p>
         )}
       </div>
 
       <div className="border-t border-border pt-4 space-y-3">
         <div className="flex items-center justify-between">
-          <label className="text-xs text-muted-foreground">{t('settings.provider.models')}</label>
+          <label className="text-xs text-muted">{t('settings.provider.models')}</label>
           <Button
             variant="outline"
             onClick={handleFetchModels}
-            disabled={fetchingModels || keyStatus !== 'set'}
+            isDisabled={fetchingModels || keyStatus !== 'set'}
           >
-            <RefreshCw className={cn("w-3 h-3", fetchingModels && "animate-spin")} />
+            <ArrowsRotateRight className={cn("w-3.5 h-3.5", fetchingModels && "animate-spin")} />
             {t('settings.provider.fetchModels')}
           </Button>
         </div>
         {modelsError && (
-          <p className="text-xs text-destructive break-all">{modelsError}</p>
+          <p className="text-xs text-danger break-all">{modelsError}</p>
         )}
         {models.length > 0 && (
-          <ScrollArea className="h-60 border border-border rounded-lg">
+          <div
+            data-slot="provider-model-list"
+            className="h-60 overflow-y-auto overscroll-contain border border-border rounded-lg"
+          >
             {models.map((m) => {
               const cfg = modelConfigs.get(m.id)
               const isEditing = editingModelId === m.id
               return (
                 <div key={m.id} className="border-b border-border last:border-0">
                   <div className="flex items-center justify-between px-3 py-1.5">
-                    <span className={cn("text-xs", cfg ? "text-foreground" : "text-muted-foreground")}>
+                    <span className={cn("text-xs", cfg ? "text-foreground" : "text-muted")}>
                       {m.name}
-                      {cfg && <span className="ml-1.5 text-xs text-success">●</span>}
+                      {cfg && <span className="ml-1.5 text-xs text-success-soft-foreground">●</span>}
                     </span>
                     <Button
+                      isIconOnly
                       variant="ghost"
-                      size="icon"
                       className="h-6 w-6"
                       onClick={() => setEditingModelId(isEditing ? null : m.id)}
                     >
-                      {isEditing ? <X className="w-3 h-3" /> : <Settings2 className="w-3 h-3" />}
+                      {isEditing ? <Xmark className="w-3.5 h-3.5" /> : <Sliders className="w-3.5 h-3.5" />}
                     </Button>
                   </div>
                   {isEditing && (
@@ -537,21 +560,21 @@ function ProviderEditor({
                 </div>
               )
             })}
-          </ScrollArea>
+          </div>
         )}
         {models.length === 0 && !fetchingModels && !modelsError && (
-          <p className="text-xs text-muted-foreground">{t('settings.provider.fetchModelsHint')}</p>
+          <p className="text-xs text-muted">{t('settings.provider.fetchModelsHint')}</p>
         )}
       </div>
 
       <div className="border-t border-border pt-4">
         <Button
           variant="ghost"
-          className="text-destructive hover:text-destructive"
+          className="text-danger hover:text-danger"
           onClick={handleDelete}
-          disabled={deleting}
+          isDisabled={deleting}
         >
-          {deleting ? <Spinner className="w-3 h-3" /> : <Trash2 className="w-3 h-3" />}
+          {deleting ? <Spinner className="w-3.5 h-3.5" /> : <TrashBin className="w-3.5 h-3.5" />}
           {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
         </Button>
       </div>
@@ -599,7 +622,7 @@ export function ProviderSettings() {
   }, [selectedId, refresh])
 
   if (loading) {
-    return <div className="text-muted-foreground text-sm">{t('common.loading')}</div>
+    return <div className="text-muted text-sm">{t('common.loading')}</div>
   }
 
   const selected = providers.find((p) => p.id === selectedId)
@@ -614,8 +637,8 @@ export function ProviderSettings() {
           className={cn(
             'w-full justify-start h-auto px-3 py-2 text-sm',
             selectedId === p.id
-              ? 'bg-accent text-accent-foreground'
-              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+              ? 'bg-default text-default-foreground'
+              : 'text-muted hover:text-foreground hover:bg-default/50',
           )}
         >
           <Cloud className="w-4 h-4" />
@@ -623,7 +646,7 @@ export function ProviderSettings() {
         </Button>
       ))}
       {providers.length === 0 && (
-        <p className="text-xs text-muted-foreground px-3">{t('settings.provider.noProviders')}</p>
+        <p className="text-xs text-muted px-3">{t('settings.provider.noProviders')}</p>
       )}
     </>
   )
@@ -636,7 +659,7 @@ export function ProviderSettings() {
             <Button
               variant="ghost"
               onClick={() => setSelectedId(null)}
-              className="text-sm text-muted-foreground mb-4 hover:text-foreground"
+              className="text-sm text-muted mb-4 hover:text-foreground"
             >
               <ArrowLeft className="w-4 h-4" />
               {t('common.back')}
@@ -652,15 +675,16 @@ export function ProviderSettings() {
           <div className="space-y-2">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-medium">{t('settings.provider.title')}</h2>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button variant="ghost" size="icon" onClick={handleCreate}>
-                      <Plus className="w-4 h-4" />
-                    </Button>
-                  }
-                />
-                <TooltipContent side="top">{t('settings.provider.addProvider')}</TooltipContent>
+              <Tooltip delay={0}>
+                <Button
+                  isIconOnly
+                  aria-label={t('settings.provider.addProvider')}
+                  variant="ghost"
+                  onClick={handleCreate}
+                >
+                  <Plus className="w-4 h-4" />
+                </Button>
+                <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
               </Tooltip>
             </div>
             {providerList}
@@ -675,15 +699,16 @@ export function ProviderSettings() {
       <div className="w-44 flex-shrink-0 space-y-2">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg font-medium">{t('settings.provider.title')}</h2>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button variant="ghost" size="icon" onClick={handleCreate}>
-                  <Plus className="w-4 h-4" />
-                </Button>
-              }
-            />
-            <TooltipContent side="top">{t('settings.provider.addProvider')}</TooltipContent>
+          <Tooltip delay={0}>
+            <Button
+              isIconOnly
+              aria-label={t('settings.provider.addProvider')}
+              variant="ghost"
+              onClick={handleCreate}
+            >
+              <Plus className="w-4 h-4" />
+            </Button>
+            <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
           </Tooltip>
         </div>
         {providerList}
@@ -698,7 +723,7 @@ export function ProviderSettings() {
             onDelete={handleDelete}
           />
         ) : (
-          <div className="text-sm text-muted-foreground">{t('settings.provider.selectProvider')}</div>
+          <div className="text-sm text-muted">{t('settings.provider.selectProvider')}</div>
         )}
       </div>
     </div>

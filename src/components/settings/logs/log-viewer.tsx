@@ -1,14 +1,9 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
-import { ChevronLeft, Download, RefreshCw, Search } from 'lucide-react'
+import { ChevronLeft, ArrowDownToLine, ArrowsRotateRight, Magnifier } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button } from '@/components/ui/button'
-import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Skeleton } from '@/components/ui/skeleton'
-import { Spinner } from '@/components/ui/spinner'
+import { Button, InputGroup, ListBox, Select, Skeleton, Spinner } from '@heroui/react'
 import { LogRow } from './log-row'
 import { MAX_RENDERED, useAppLogs, type LevelFilter, type RangeFilter } from './use-app-logs'
 
@@ -41,119 +36,147 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         </Button>
         <h2 className="text-lg font-medium">{t('settings.about.logs.title')}</h2>
         <div className="ml-auto flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={logs.refresh} disabled={logs.loading}>
-            <RefreshCw className="size-4" />
+          <Button variant="ghost" size="sm" onClick={logs.refresh} isDisabled={logs.loading}>
+            <ArrowsRotateRight className="size-4" />
             {t('settings.about.logs.refresh')}
           </Button>
           <Button variant="secondary" size="sm" onClick={onExport}>
-            <Download className="size-4" />
+            <ArrowDownToLine className="size-4" />
             {exported ? t('settings.about.logs.exported') : t('settings.about.logs.export')}
           </Button>
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">{t('settings.about.logs.exportHint')}</p>
+      <p className="text-xs text-muted">{t('settings.about.logs.exportHint')}</p>
 
       <div data-slot="log-toolbar" className="flex flex-wrap items-center gap-2">
-        <Select value={logs.level} onValueChange={(v) => logs.setLevel(v as LevelFilter)}>
-          <SelectTrigger className="w-44">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t('settings.about.logs.levelAll')}</SelectItem>
-            <SelectItem value="warn">{t('settings.about.logs.levelWarn')}</SelectItem>
-            <SelectItem value="error">{t('settings.about.logs.levelError')}</SelectItem>
-          </SelectContent>
+        <Select value={logs.level} onChange={(v) => { if (v) logs.setLevel(String(v) as LevelFilter) }}>
+          <Select.Trigger className="w-44">
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              <ListBox.Item id="all" textValue={t('settings.about.logs.levelAll')}>
+                {t('settings.about.logs.levelAll')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="warn" textValue={t('settings.about.logs.levelWarn')}>
+                {t('settings.about.logs.levelWarn')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="error" textValue={t('settings.about.logs.levelError')}>
+                {t('settings.about.logs.levelError')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+            </ListBox>
+          </Select.Popover>
         </Select>
 
         <InputGroup className="max-w-xs flex-1">
-          <InputGroupAddon>
-            <Search className="size-4" />
-          </InputGroupAddon>
-          <InputGroupInput
+          <InputGroup.Prefix>
+            <Magnifier className="size-4" />
+          </InputGroup.Prefix>
+          <InputGroup.Input
             value={logs.search}
             onChange={(e) => logs.setSearch(e.target.value)}
             placeholder={t('settings.about.logs.searchPlaceholder')}
           />
         </InputGroup>
 
-        <Select value={logs.range} onValueChange={(v) => logs.setRange(v as RangeFilter)}>
-          <SelectTrigger className="w-40">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="15m">{t('settings.about.logs.range15m')}</SelectItem>
-            <SelectItem value="1h">{t('settings.about.logs.range1h')}</SelectItem>
-            <SelectItem value="24h">{t('settings.about.logs.range24h')}</SelectItem>
-            <SelectItem value="all">{t('settings.about.logs.rangeAll')}</SelectItem>
-          </SelectContent>
+        <Select value={logs.range} onChange={(v) => { if (v) logs.setRange(String(v) as RangeFilter) }}>
+          <Select.Trigger className="w-40">
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              <ListBox.Item id="15m" textValue={t('settings.about.logs.range15m')}>
+                {t('settings.about.logs.range15m')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="1h" textValue={t('settings.about.logs.range1h')}>
+                {t('settings.about.logs.range1h')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="24h" textValue={t('settings.about.logs.range24h')}>
+                {t('settings.about.logs.range24h')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+              <ListBox.Item id="all" textValue={t('settings.about.logs.rangeAll')}>
+                {t('settings.about.logs.rangeAll')}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+            </ListBox>
+          </Select.Popover>
         </Select>
 
         {logs.entries.length > 0 && (
           // Only what is on screen. The reader stops as soon as it has a page,
           // so a total would be a number nobody actually counted.
-          <span className="ml-auto text-xs text-muted-foreground">
+          <span className="ml-auto text-xs text-muted">
             {t('settings.about.logs.count', { shown: logs.entries.length })}
           </span>
         )}
       </div>
 
+      {/* A page of log lines is read, not operated: the rows only carry a copy
+          button, so the list itself is the tab stop that scrolls it. */}
       <div
         data-slot="log-list"
-        className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border"
+        tabIndex={0}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-border outline-none focus-visible:ring-2 focus-visible:ring-focus/50"
       >
-        <ScrollArea className="h-full">
-          {unavailable ? (
-            <p className="p-6 text-sm text-muted-foreground">
-              {t('settings.about.logs.unavailable')}
-            </p>
-          ) : logs.error ? (
-            <p className="p-6 text-sm text-destructive">{t('settings.about.logs.loadError')}</p>
-          ) : logs.loading ? (
-            <div className="space-y-3 p-3">
-              {Array.from({ length: 5 }, (_, i) => (
-                <Skeleton key={i} className="h-12 w-full" />
-              ))}
+        {unavailable ? (
+          <p className="p-6 text-sm text-muted">
+            {t('settings.about.logs.unavailable')}
+          </p>
+        ) : logs.error ? (
+          <p className="p-6 text-sm text-danger">{t('settings.about.logs.loadError')}</p>
+        ) : logs.loading ? (
+          <div className="space-y-3 p-3">
+            {Array.from({ length: 5 }, (_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
+          </div>
+        ) : logs.entries.length === 0 ? (
+          <p className="p-6 text-sm text-muted">
+            {logs.isFiltered
+              ? t('settings.about.logs.empty')
+              : t('settings.about.logs.emptyRange')}
+          </p>
+        ) : (
+          <>
+            {logs.entries.map((entry) => (
+              <LogRow
+                key={`${entry.cursor.fileIndex}:${entry.cursor.byteOffset}`}
+                entry={entry}
+              />
+            ))}
+            <div className="flex flex-col items-center gap-2 p-3">
+              {logs.truncated && (
+                <p className="text-xs text-muted">
+                  {t('settings.about.logs.truncated')}
+                </p>
+              )}
+              {logs.capped ? (
+                <p className="text-xs text-muted">
+                  {t('settings.about.logs.capped', { max: MAX_RENDERED })}
+                </p>
+              ) : logs.canLoadOlder ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={logs.loadOlder}
+                  isDisabled={logs.loadingMore}
+                >
+                  {logs.loadingMore && <Spinner className="size-4" />}
+                  {t('settings.about.logs.loadOlder')}
+                </Button>
+              ) : null}
             </div>
-          ) : logs.entries.length === 0 ? (
-            <p className="p-6 text-sm text-muted-foreground">
-              {logs.isFiltered
-                ? t('settings.about.logs.empty')
-                : t('settings.about.logs.emptyRange')}
-            </p>
-          ) : (
-            <>
-              {logs.entries.map((entry) => (
-                <LogRow
-                  key={`${entry.cursor.fileIndex}:${entry.cursor.byteOffset}`}
-                  entry={entry}
-                />
-              ))}
-              <div className="flex flex-col items-center gap-2 p-3">
-                {logs.truncated && (
-                  <p className="text-xs text-muted-foreground">
-                    {t('settings.about.logs.truncated')}
-                  </p>
-                )}
-                {logs.capped ? (
-                  <p className="text-xs text-muted-foreground">
-                    {t('settings.about.logs.capped', { max: MAX_RENDERED })}
-                  </p>
-                ) : logs.canLoadOlder ? (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={logs.loadOlder}
-                    disabled={logs.loadingMore}
-                  >
-                    {logs.loadingMore && <Spinner className="size-4" />}
-                    {t('settings.about.logs.loadOlder')}
-                  </Button>
-                ) : null}
-              </div>
-            </>
-          )}
-        </ScrollArea>
+          </>
+        )}
       </div>
     </div>
   )

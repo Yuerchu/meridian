@@ -11,9 +11,10 @@
 // step through a scenario deterministically instead of racing a timer.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { Button } from '@/components/ui/button'
+import { Button } from '@heroui/react'
 import { ChatTranscript } from '@/components/chat/chat-transcript'
 import { useTurns } from '@/hooks/use-turns'
+import { useAppTheme } from '@/lib/theme'
 import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
 
 const LAB_CONVERSATION = 'scroll-lab'
@@ -141,6 +142,10 @@ declare global {
 }
 
 export default function ScrollLab() {
+  // Through `setTheme` rather than toggling the class directly: the hook keeps
+  // its own record of what it wrote, and a class it did not write is a class it
+  // will not remove.
+  const { resolvedTheme, setTheme } = useAppTheme()
   const [messages, setMessages] = useState<Message[]>([])
   const [streaming, setStreaming] = useState(false)
   // Only ever read through the updater, so the value itself is never rendered.
@@ -337,6 +342,21 @@ export default function ScrollLab() {
     })
 
     // 2. Ending a turn hands the answer back at its beginning.
+    //
+    // Streamed from scratch rather than continuing the turn above, so this
+    // scenario owns its state: the assertion is about where a turn lands, and
+    // inheriting a viewport that another scenario left somewhere makes a
+    // failure here impossible to read.
+    reset(); await frames(4)
+    seedHistory(3); await frames(8)
+    sendUser(3); await frames(8)
+    startAssistant(); await frames(6)
+    for (let i = 0; i < 4; i++) { streamChunk(i); await frames(4) }
+    callTool(); await frames(6)
+    finishTool(); await frames(6)
+    // Twice through, so the answer clears the viewport with room to spare: it
+    // has to still be out of sight once the turn collapses.
+    for (let i = 4; i < ANSWER_CHUNKS.length * 2; i++) { streamChunk(i); await frames(4) }
     finishTurn(); await settled()
     const settledAt = metrics()
     out.push({
@@ -466,7 +486,7 @@ export default function ScrollLab() {
         <Button
           size="sm"
           variant="ghost"
-          onClick={() => document.documentElement.classList.toggle('dark')}
+          onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
         >
           主题
         </Button>
@@ -484,9 +504,9 @@ export default function ScrollLab() {
         <div data-testid="scroll-lab-results" className="max-h-48 overflow-y-auto border-t px-4 py-2 text-xs">
           {results.map((r) => (
             <div key={r.name} className="flex gap-2 py-0.5">
-              <span className={r.pass ? 'text-success' : 'text-destructive'}>{r.pass ? 'PASS' : 'FAIL'}</span>
+              <span className={r.pass ? 'text-success-soft-foreground' : 'text-danger'}>{r.pass ? 'PASS' : 'FAIL'}</span>
               <span className="font-medium">{r.name}</span>
-              <span className="text-muted-foreground">{r.detail}</span>
+              <span className="text-muted">{r.detail}</span>
             </div>
           ))}
         </div>
@@ -494,7 +514,7 @@ export default function ScrollLab() {
 
       <div
         data-testid="scroll-lab-readout"
-        className="border-t px-4 py-2 font-mono text-xs text-muted-foreground"
+        className="border-t px-4 py-2 font-mono text-xs text-muted"
       >
         {readout}
       </div>

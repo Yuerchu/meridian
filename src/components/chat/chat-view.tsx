@@ -1,11 +1,10 @@
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
-import { Button } from '@/components/ui/button'
 import { MessageScrollerItem } from '@/components/ui/message-scroller'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { Marker, MarkerContent, MarkerIcon } from '@/components/ui/marker'
-import { Spinner } from '@/components/ui/spinner'
+import { Button, Spinner } from '@heroui/react'
 import { ChatTranscript } from './chat-transcript'
 import { TurnItem } from './turn-item'
 import { useTurns } from '@/hooks/use-turns'
@@ -474,7 +473,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
               <Button
                 variant="ghost"
                 onClick={() => setShowCompactedMessages(false)}
-                className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground py-2"
+                className="w-full h-auto rounded-lg text-center text-xs text-muted hover:text-muted py-2"
               >
                 {t('chat.compact.hideCompacted', { count: compactedCount })}
               </Button>
@@ -495,7 +494,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
             <Button
               variant="ghost"
               onClick={() => setShowCompactedMessages(true)}
-              className="w-full text-center text-xs text-muted-foreground/60 hover:text-muted-foreground py-2"
+              className="w-full h-auto rounded-lg text-center text-xs text-muted hover:text-muted py-2"
             >
               {t('chat.compact.showCompacted', { count: compactedCount })}
             </Button>
@@ -505,14 +504,14 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
               <Button
                 variant="ghost"
                 onClick={() => setShowCompactSummary((v) => !v)}
-                className="text-xs text-muted-foreground/60 hover:text-muted-foreground whitespace-nowrap h-auto px-2 py-0"
+                className="text-xs text-muted hover:text-muted whitespace-nowrap h-auto px-2 py-0"
               >
                 {t('chat.compact.boundary', { count: compactedCount })}
               </Button>
             </MarkerContent>
           </Marker>
           {compactSummary && showCompactSummary && (
-            <div className="px-4 py-2 mb-2 text-xs text-muted-foreground bg-muted/30 rounded-lg border border-muted-foreground/10 whitespace-pre-wrap">
+            <div className="px-4 py-2 mb-2 text-xs text-muted bg-default/30 rounded-lg border border-border whitespace-pre-wrap">
               {compactSummary.content}
             </div>
           )}
@@ -527,7 +526,9 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         <MessageScrollerItem messageId="__compacting">
           <Marker role="status" className="justify-center py-3">
             <MarkerIcon>
-              <Spinner />
+              {/* `sm` is 16px, the size of the icon slot. Left at its default
+                  the spinner is 24px and overflows the row. */}
+              <Spinner size="sm" />
             </MarkerIcon>
             <MarkerContent className="shimmer text-xs">{t('chat.compact.inProgress')}</MarkerContent>
           </Marker>
@@ -564,7 +565,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         leading={leading}
         trailing={trailing}
         emptyState={messages.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center text-muted-foreground text-sm">
+          <div className="flex flex-1 items-center justify-center text-muted text-sm">
             {t('chat.startHint')}
           </div>
         ) : null}

@@ -8,7 +8,7 @@ Multi-provider AI desktop client with coding agent capabilities.
 |-------|-----------|
 | Runtime | Tauri v2 (Rust backend + WebView frontend) |
 | Frontend | React 19 + TypeScript + Vite |
-| UI | Tailwind CSS v4 (shadcn/ui planned) |
+| UI | Tailwind CSS v4 + HeroUI v3 (React Aria) |
 | Backend | Rust (tokio async runtime) |
 | AI Streaming | reqwest + eventsource-stream (SSE) |
 | Database | SQLite (planned) |
@@ -46,15 +46,21 @@ src-tauri/
 - New call sites default to `debug!`. Only user-visible state changes and failures earn info and above, because only those reach the file.
 - `RUST_LOG` steers stdout only. The file level is the `logging.level` preference, so a debug session cannot evict the records it was meant to keep.
 
-## UI Conventions (v0–v1.x)
+## UI Conventions
 
-Follow shadcn/ui conventions (reference: local clone at `~/Documents/Code/shadcn-ui`, `apps/v4/registry/new-york-v4/ui/` for inline-Tailwind style, `bases/base/ui/` for base-ui structure). Meridian v2 plans to migrate to HeroUI v3 — design new component APIs in HeroUI's shape (compound components, prop names like `isStreaming`/`state`) so only the implementation layer changes later.
+Built on HeroUI v3 (React Aria underneath). Read the component's own CSS before styling it — `node_modules/@heroui/styles/dist/components/*.css` says what it already does, and most "why won't this override" questions are answered there. The `heroui-react` skill fetches the official docs.
 
-- **Colors: theme tokens only.** No raw Tailwind palette classes (`green-500`, `amber-500`, ...) in components. Status colors use the project-extension tokens `--success` / `--warning` / `--info` (light = 500 shade, dark = 400 shade, defined in `src/index.css`). Whitelisted exceptions: "default" star markers (`text-amber-500`, gold-star semantics) and `text-white` on `bg-destructive` (official shadcn convention).
-- **Font sizes: Tailwind scale only** (`text-xs/sm/base/lg`). No px arbitrary sizes (`text-[11px]`). Sole exception: `button.tsx` `text-[0.8rem]` (rem-based, official lineage).
-- **Radius hierarchy:** composer input `rounded-2xl` → chat/tool cards `rounded-xl` → settings cards & overlays (dialogs, menus) `rounded-lg`.
-- **Component style:** `data-slot` on every DOM node, `cn()` with `className` last, cva for variants, base-ui `render`/`useRender` instead of `asChild`, base-ui data attributes (`data-open`, `data-starting-style`).
-- **Dev playground:** browser-only preview of chat/tool components at `http://localhost:5173/#playground` (vite dev without Tauri; tree-shaken from release builds). Add new component states there.
+Prefer HeroUI's answer over ours. Accepting a different radius or spacing is cheaper than a `className` that fights the library, and a wrapper that only re-exports a HeroUI component should not exist. What remains under `components/ui/` is what HeroUI has no equivalent for.
+
+- **Two tokens mean the opposite of what shadcn called them.** `--muted` is secondary *text*, not a pale background; `--accent` is the main action colour (Button primary, Switch and Slider fill, focus ring), not a neutral hover wash. The neutral hover wash is `--default`. Getting these backwards renders, so it survives review — check the token, not the look.
+- **Colors: theme tokens only.** No raw Tailwind palette classes (`green-500`, `amber-500`, ...). Status colours use `--success` / `--warning` / `--info`; `--info` is a project extension with no HeroUI `color` variant behind it, so components that take one need their custom property set instead (`[--progress-circle-stroke:var(--info)]`). Sole whitelisted exception: `text-amber-500` on "default" star markers, for gold-star semantics.
+- **Font sizes: Tailwind scale only** (`text-xs/sm/base/lg`). No px arbitrary sizes (`text-[11px]`), no exceptions.
+- **Radius: ours nests inside theirs, never the reverse.** Our containers keep composer `rounded-2xl` → chat/tool cards `rounded-xl` → settings cards `rounded-lg`. HeroUI's own are much rounder (Button and Popover 24px, Tooltip up to 32px) and are not bound by that ladder. So when a HeroUI component sits inside one of our clipped containers, its radius must not exceed the container's — otherwise its hover fill is cut into at the corners. Overriding `h-*`/`px-*` on a Button without also overriding `rounded-*` is the usual way in.
+- **Component style:** `data-slot` on every DOM node, `cn()` with `className` last, `tv` from `@heroui/react` for variants, `dom.*` with a `render` prop instead of `asChild`.
+- **HeroUI's state attributes live where HeroUI puts them.** `data-expanded` / `data-entering` / `data-exiting` / `data-hovered` / `data-pressed` / `data-focus-visible` / `data-selected` — and several of those only appear on the component *root*, styled from there with a descendant selector. `data-[selected=true]:` on a `Switch.Control` matches nothing.
+- **A tooltip does not name its trigger.** It contributes `aria-describedby`, so an icon-only button still needs `aria-label`. Wrap a child in `Tooltip.Trigger` only when it cannot take focus itself: around a real button that wrapper becomes a second tab stop that does nothing.
+- **base-ui is down to `ui/context-menu.tsx`** — HeroUI's menus are click-triggered and have no right-click equivalent. Don't reach for base-ui anywhere else.
+- **Dev playground:** `http://localhost:5173/#playground` in any dev build (tree-shaken from release). `#playground/scroll` is the scroll regression harness, `#playground/heroui` probes CSS support against the WebView. Add new component states there.
 
 ## Android
 

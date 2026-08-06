@@ -1,29 +1,28 @@
-import { cva, type VariantProps } from 'class-variance-authority'
+import { tv, type VariantProps } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import type { LogLevel } from '@/types'
 
-const levelBadgeVariants = cva(
-  'inline-flex shrink-0 items-center gap-1.5 font-mono text-xs uppercase tabular-nums',
-  {
-    variants: {
-      level: {
-        error: 'text-destructive',
-        warn: 'text-warning',
-        info: 'text-info',
-        muted: 'text-muted-foreground',
-      },
-    },
-    defaultVariants: { level: 'muted' },
-  },
-)
-
-const dotVariants = cva('size-1.5 shrink-0 rounded-full', {
+const levelBadgeVariants = tv({
+  base: 'inline-flex shrink-0 items-center gap-1.5 font-mono text-xs uppercase tabular-nums',
   variants: {
     level: {
-      error: 'bg-destructive',
+      error: 'text-danger',
+      warn: 'text-warning-soft-foreground',
+      info: 'text-info-soft-foreground',
+      muted: 'text-muted',
+    },
+  },
+  defaultVariants: { level: 'muted' },
+})
+
+const dotVariants = tv({
+  base: 'size-1.5 shrink-0 rounded-full',
+  variants: {
+    level: {
+      error: 'bg-danger',
       warn: 'bg-warning',
       info: 'bg-info',
-      muted: 'bg-muted-foreground',
+      muted: 'bg-muted',
     },
   },
   defaultVariants: { level: 'muted' },

@@ -1,11 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Smile, Search } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { FaceSmile, Magnifier } from '@gravity-ui/icons'
+import { Button, Input, Popover, Tooltip } from '@heroui/react'
 import { api } from '@/api'
 import type { Emoji, EmojiPack } from '@/types'
 
@@ -79,22 +75,18 @@ export function EmojiPicker({
   if (!assistantId) return null
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger render={<Button variant="ghost" size="icon" />}>
-              <Smile className="w-4 h-4" />
-            </PopoverTrigger>
-          }
-        />
-        <TooltipContent side="top">{t('chat.emoji')}</TooltipContent>
+    <Popover isOpen={open} onOpenChange={setOpen}>
+      <Tooltip delay={0}>
+        <Button isIconOnly aria-label={t('chat.emoji')} variant="ghost">
+          <FaceSmile className="w-4 h-4" />
+        </Button>
+        <Tooltip.Content placement="top">{t('chat.emoji')}</Tooltip.Content>
       </Tooltip>
-      <PopoverContent side="top" align="end" className="w-72 p-0 gap-0">
+      <Popover.Content placement="top end" className="w-72 overflow-hidden p-0">
         <div className="p-2 border-b border-border">
           <div className="relative">
-            <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <Input
+            <Magnifier className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
+            <Input fullWidth
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
               placeholder={t('chat.emojiSearch')}
@@ -103,27 +95,26 @@ export function EmojiPicker({
           </div>
         </div>
 
-        <ScrollArea className="max-h-56"><div className="p-2">
+        <div data-slot="emoji-picker-list" className="max-h-56 overflow-y-auto overscroll-contain"><div className="p-2">
           {search.trim() ? (
             <div className="grid grid-cols-6 gap-1">
               {searchResults.map((e) => (
                 <Button
                   key={e.id}
                   variant="ghost"
-                  className="h-auto p-1 rounded hover:bg-accent/50 transition-colors"
+                  className="h-auto p-1 rounded hover:bg-default/50 transition-colors"
                   onClick={() => handleSelect(e)}
-                  // eslint-disable-next-line no-restricted-syntax -- grid cells: per-cell Tooltip is too heavy
-                  title={e.name}
                 >
                   <img
                     src={urls[e.id]}
                     alt={e.name}
                     className="w-7 h-7 object-contain"
+                    title={e.name}
                   />
                 </Button>
               ))}
               {searchResults.length === 0 && (
-                <p className="col-span-6 text-xs text-muted-foreground text-center py-3">
+                <p className="col-span-6 text-xs text-muted text-center py-3">
                   {t('chat.emojiNotFound')}
                 </p>
               )}
@@ -131,7 +122,7 @@ export function EmojiPicker({
           ) : (
             packs.map(({ pack, emojis }) => (
               <div key={pack.id} className="mb-2">
-                <p className="text-xs text-muted-foreground font-medium mb-1 px-1">
+                <p className="text-xs text-muted font-medium mb-1 px-1">
                   {pack.name}
                 </p>
                 <div className="grid grid-cols-6 gap-1">
@@ -139,15 +130,14 @@ export function EmojiPicker({
                     <Button
                       key={e.id}
                       variant="ghost"
-                      className="h-auto p-1 rounded hover:bg-accent/50 transition-colors"
+                      className="h-auto rounded p-1 transition-colors hover:bg-default/50"
                       onClick={() => handleSelect(e)}
-                      // eslint-disable-next-line no-restricted-syntax -- grid cells: per-cell Tooltip is too heavy
-                      title={e.name}
                     >
                       <img
                         src={urls[e.id]}
                         alt={e.name}
                         className="w-7 h-7 object-contain"
+                        title={e.name}
                       />
                     </Button>
                   ))}
@@ -156,12 +146,12 @@ export function EmojiPicker({
             ))
           )}
           {packs.length === 0 && !search.trim() && (
-            <p className="text-xs text-muted-foreground text-center py-4">
+            <p className="text-xs text-muted text-center py-4">
               {t('chat.emojiNoPacks')}
             </p>
           )}
-        </div></ScrollArea>
-      </PopoverContent>
+        </div></div>
+      </Popover.Content>
     </Popover>
   )
 }

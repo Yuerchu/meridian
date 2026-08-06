@@ -1,8 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, Upload, ChevronDown, ChevronRight, Package } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { Plus, TrashBin, ArrowUpFromLine, Sticker } from '@gravity-ui/icons'
+import { Button, Disclosure, Input } from '@heroui/react'
 import { api } from '@/api'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import type { Emoji, EmojiPack } from '@/types'
@@ -27,103 +26,120 @@ function PackCard({
   onRenameEmoji: (id: string, newName: string) => void
 }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
-      <Button
-        variant="ghost"
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center gap-2 px-3 py-2.5 h-auto text-sm justify-start rounded-none"
-      >
-        {expanded ? (
-          <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-        ) : (
-          <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-        )}
-        <Package className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-        <span className="flex-1 truncate text-left">{detail.pack.name}</span>
-        <span className="text-xs text-muted-foreground">{detail.emojis.length}</span>
-        {detail.pack.is_builtin === 1 && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">
-            {t('settings.template.builtin')}
-          </span>
-        )}
-      </Button>
+    // Render prop rather than a controlled `isExpanded`: the open state is only
+    // read one level down, so the card keeps its own uncontrolled state and no
+    // caller has to hold it.
+    <Disclosure className="flex w-full flex-col overflow-hidden rounded-lg border border-border">
+      {({ isExpanded }) => (
+        <>
+          <Disclosure.Heading>
+            {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
+                and `shrink-0`, which only mean anything inside a flex container.
+                `text-start` undoes the button element's centred UA default. */}
+            <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
+              <Sticker className="w-3.5 h-3.5 shrink-0 text-muted" />
+              <span className="flex-1 truncate">{detail.pack.name}</span>
+              <span className="text-xs text-muted">{detail.emojis.length}</span>
+              {detail.pack.is_builtin === 1 && (
+                <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted shrink-0">
+                  {t('settings.template.builtin')}
+                </span>
+              )}
+              <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
+            </Disclosure.Trigger>
+          </Disclosure.Heading>
 
-      {expanded && (
-        <div className="px-3 pb-3 space-y-3">
-          {detail.pack.description && (
-            <p className="text-xs text-muted-foreground">{detail.pack.description}</p>
-          )}
+          {/* `min-h-0` is load-bearing: the card is a flex column, and a flex item's
+              default `min-height: auto` floors it at its content height. */}
+          <Disclosure.Content className="min-h-0 w-full">
+            {/* Body, not a plain wrapper: it is what keeps the panel measurable, so
+                without it the grid never collapses. */}
+            <Disclosure.Body className="space-y-3">
+              {/* A collapsed panel is only hidden, not unmounted, so the grid
+                  has to be gated: every pack's images — GIF and APNG among them
+                  — would otherwise be decoded and held as bitmaps on every
+                  visit to this page, open or not. The cost is that collapsing
+                  drops the content in the same frame as the height animation. */}
+              {isExpanded && (
+                <>
+                  {detail.pack.description && (
+                    <p className="text-xs text-muted">{detail.pack.description}</p>
+                  )}
 
-          <div className="grid grid-cols-6 gap-2">
-            {detail.emojis.map((e) => (
-              <div key={e.id} className="group relative">
-                <img
-                  src={detail.urls[e.id]}
-                  alt={e.name}
-                  className="w-10 h-10 object-contain rounded"
-                />
-                {editingId === e.id ? (
-                  <Input
-                    autoFocus
-                    value={editName}
-                    onChange={(ev) => setEditName(ev.target.value)}
-                    onBlur={() => {
-                      if (editName.trim() && editName.trim() !== e.name) onRenameEmoji(e.id, editName.trim())
-                      setEditingId(null)
-                    }}
-                    onKeyDown={(ev) => {
-                      if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur()
-                      if (ev.key === 'Escape') setEditingId(null)
-                    }}
-                    className="w-full h-auto text-xs text-center bg-transparent border-0 border-b border-accent rounded-none px-0 py-0 mt-0.5 focus-visible:ring-0"
-                  />
-                ) : (
-                  <p
-                    className="text-xs text-muted-foreground text-center truncate mt-0.5 cursor-pointer hover:text-foreground"
-                    onClick={() => { setEditingId(e.id); setEditName(e.name) }}
-                    title={t('settings.emoji.clickToRename')}
-                  >
-                    {e.name}
-                  </p>
-                )}
-                {detail.pack.is_builtin === 0 && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute -top-1 -right-1 !size-4 rounded-full bg-destructive text-destructive-foreground opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => onDeleteEmoji(e.id)}
-                  >
-                    <Trash2 className="!size-2.5" />
-                  </Button>
-                )}
-              </div>
-            ))}
-          </div>
+                  <div className="grid grid-cols-6 gap-2">
+                    {detail.emojis.map((e) => (
+                      <div key={e.id} className="group relative">
+                        <img
+                          src={detail.urls[e.id]}
+                          alt={e.name}
+                          className="w-10 h-10 object-contain rounded"
+                        />
+                        {editingId === e.id ? (
+                          <Input fullWidth
+                            autoFocus
+                            value={editName}
+                            onChange={(ev) => setEditName(ev.target.value)}
+                            onBlur={() => {
+                              if (editName.trim() && editName.trim() !== e.name) onRenameEmoji(e.id, editName.trim())
+                              setEditingId(null)
+                            }}
+                            onKeyDown={(ev) => {
+                              if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur()
+                              if (ev.key === 'Escape') setEditingId(null)
+                            }}
+                            className="w-full h-auto text-xs text-center bg-transparent border-0 border-b border-default rounded-none px-0 py-0 mt-0.5 focus-visible:ring-0"
+                          />
+                        ) : (
+                          <p
+                            className="text-xs text-muted text-center truncate mt-0.5 cursor-pointer hover:text-foreground"
+                            onClick={() => { setEditingId(e.id); setEditName(e.name) }}
+                            title={t('settings.emoji.clickToRename')}
+                          >
+                            {e.name}
+                          </p>
+                        )}
+                        {detail.pack.is_builtin === 0 && (
+                          <Button
+                            variant="ghost"
+                            isIconOnly
+                            aria-label={t('settings.emoji.deleteEmoji')}
+                            className="absolute -top-1.5 -right-1.5 !size-5 rounded-full bg-danger text-danger-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => onDeleteEmoji(e.id)}
+                          >
+                            <TrashBin className="!size-3" />
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
 
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={onImport}>
-              <Upload className="w-3.5 h-3.5" />
-              {t('settings.emoji.import')}
-            </Button>
-            {onDelete && detail.pack.is_builtin === 0 && (
-              <Button
-                variant="ghost"
-                className="ml-auto text-destructive hover:text-destructive"
-                onClick={onDelete}
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                {t('common.delete')}
-              </Button>
-            )}
-          </div>
-        </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" onClick={onImport}>
+                      <ArrowUpFromLine className="w-3.5 h-3.5" />
+                      {t('settings.emoji.import')}
+                    </Button>
+                    {onDelete && detail.pack.is_builtin === 0 && (
+                      <Button
+                        variant="ghost"
+                        className="ml-auto text-danger hover:text-danger"
+                        onClick={onDelete}
+                      >
+                        <TrashBin className="w-3.5 h-3.5" />
+                        {t('common.delete')}
+                      </Button>
+                    )}
+                  </div>
+                </>
+              )}
+            </Disclosure.Body>
+          </Disclosure.Content>
+        </>
       )}
-    </div>
+    </Disclosure>
   )
 }
 
@@ -187,25 +203,25 @@ export function EmojiSettings() {
   }, [refresh])
 
   if (loading) {
-    return <div className="text-muted-foreground text-sm">{t('common.loading')}</div>
+    return <div className="text-muted text-sm">{t('common.loading')}</div>
   }
 
   return (
     <div className="max-w-lg space-y-6">
       <div>
         <h2 className="text-lg font-medium">{t('settings.emoji.title')}</h2>
-        <p className="text-xs text-muted-foreground mt-1">{t('settings.emoji.subtitle')}</p>
+        <p className="text-xs text-muted mt-1">{t('settings.emoji.subtitle')}</p>
       </div>
 
       <div className="flex gap-2">
-        <Input
+        <Input fullWidth
           value={newPackName}
           onChange={(e) => setNewPackName(e.target.value)}
           placeholder={t('settings.emoji.packName')}
           className="flex-1"
           onKeyDown={(e) => { if (e.key === 'Enter') handleCreate() }}
         />
-        <Button variant="outline" onClick={handleCreate} disabled={!newPackName.trim()}>
+        <Button variant="outline" onClick={handleCreate} isDisabled={!newPackName.trim()}>
           <Plus className="w-3.5 h-3.5" />
           {t('settings.emoji.newPack')}
         </Button>
@@ -223,7 +239,7 @@ export function EmojiSettings() {
           />
         ))}
         {details.length === 0 && (
-          <p className="text-sm text-muted-foreground text-center py-6">
+          <p className="text-sm text-muted text-center py-6">
             {t('settings.emoji.noPacks')}
           </p>
         )}

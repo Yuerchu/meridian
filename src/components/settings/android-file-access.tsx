@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FolderOpen, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
+import { FolderOpen, Xmark } from '@gravity-ui/icons'
+import { Button, Checkbox } from '@heroui/react'
 import { api } from '@/api'
 import type { SafRootEntry } from '@/types'
 
@@ -79,17 +78,17 @@ export function AndroidFileAccess() {
     <div className="space-y-4">
       <div>
         <h3 className="text-sm font-medium">{t('settings.fileAccess.title')}</h3>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           {t('settings.fileAccess.description')}
         </p>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.fileAccess.safDirs')}
         </label>
         {safRoots.length === 0 ? (
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted">
             {t('settings.fileAccess.safEmpty')}
           </p>
         ) : (
@@ -101,45 +100,46 @@ export function AndroidFileAccess() {
               >
                 <div className="min-w-0">
                   <div className="truncate font-medium">{root.display_name}</div>
-                  <div className="truncate text-xs text-muted-foreground">
+                  <div className="truncate text-xs text-muted">
                     {root.virtual_prefix}
                   </div>
                 </div>
                 <Button
                   variant="ghost"
-                  size="icon"
+                  isIconOnly
                   className="shrink-0"
                   onClick={() => handleRemove(root.uri)}
                   aria-label={t('settings.fileAccess.removeDir')}
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <Xmark className="h-3.5 w-3.5" />
                 </Button>
               </li>
             ))}
           </ul>
         )}
-        <Button variant="outline" onClick={handleAddDirectory} disabled={picking}>
+        <Button variant="outline" onClick={handleAddDirectory} isDisabled={picking}>
           <FolderOpen className="mr-1.5 h-3.5 w-3.5" />
           {t('settings.fileAccess.addDir')}
         </Button>
       </div>
 
       <div className="space-y-1.5">
-        <label className="flex items-center gap-2 text-sm">
-          <Checkbox
-            checked={manageEnabled}
-            onCheckedChange={(checked) => handleManageToggle(!!checked)}
-          />
-          {t('settings.fileAccess.manageToggle')}
-        </label>
-        <p className="text-xs text-muted-foreground">
+        <Checkbox className="text-sm" isSelected={manageEnabled} onChange={handleManageToggle}>
+          <Checkbox.Content>
+            <Checkbox.Control>
+              <Checkbox.Indicator />
+            </Checkbox.Control>
+            {t('settings.fileAccess.manageToggle')}
+          </Checkbox.Content>
+        </Checkbox>
+        <p className="text-xs text-muted">
           {manageEnabled && !manageGranted
             ? t('settings.fileAccess.manageNotGranted')
             : t('settings.fileAccess.manageHint')}
         </p>
       </div>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-muted">
         {t('settings.fileAccess.approvalNote')}
       </p>
     </div>

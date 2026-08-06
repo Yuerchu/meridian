@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AnimatePresence, motion } from 'motion/react'
-import { Bot, ChevronRight, ChevronsRight, Compass, Cpu, Hammer, Lightbulb, Paperclip, Plus, Zap } from 'lucide-react'
+import { Bulb, ChevronRight, ChevronsRight, Compass, Cpu, FaceRobot, Hammer, Paperclip, Plus, Thunderbolt } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
-import { Spinner } from '@/components/ui/spinner'
-import { Switch } from '@/components/ui/switch'
-import { Button } from '@/components/ui/button'
+
+import { Button, Popover, Spinner, Switch, Tooltip } from '@heroui/react'
+
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
@@ -186,7 +184,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
 
   entries.push({
     key: 'assistant',
-    icon: Bot,
+    icon: FaceRobot,
     label: t('toolbar.assistant'),
     value: currentAssistant?.name ?? t('toolbar.noAssistant'),
     options: props.assistants.map((a) => ({
@@ -218,7 +216,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
   if (props.capabilities?.supports_thinking !== false) {
     entries.push({
       key: 'thinking',
-      icon: Lightbulb,
+      icon: Bulb,
       label: t('toolbar.thinking'),
       value: t(`toolbar.thinking.${props.thinkingLevel}`),
       tone: props.thinkingLevel === 'default' ? 'muted' : 'info',
@@ -237,7 +235,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
   if (props.capabilities?.supports_fast === true) {
     entries.push({
       key: 'fast',
-      icon: Zap,
+      icon: Thunderbolt,
       label: t('toolbar.fast'),
       checked: props.fastMode,
       tone: props.fastMode ? 'warning' : 'muted',
@@ -255,45 +253,42 @@ export function ComposerMenu(props: ComposerMenuProps) {
 
   return (
     <Popover
-      open={open}
+      isOpen={open}
       onOpenChange={(o) => {
         setOpen(o)
         if (!o) setHovered(null)
       }}
     >
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <PopoverTrigger
-              render={
-                <Button
-                  data-slot="composer-menu-trigger"
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    'relative text-muted-foreground hover:text-foreground',
-                    open && 'bg-accent text-foreground',
-                  )}
-                />
-              }
-            >
-              <Plus className="size-4" />
-              {alert && (
-                <span
-                  data-slot="composer-menu-alert"
-                  className={cn(
-                    'absolute right-1 top-1 size-1.5 rounded-full',
-                    alert === 'warning' ? 'bg-warning' : 'bg-info',
-                  )}
-                />
+      {/* Tooltip wraps the trigger rather than the other way round: React Aria
+          passes press and focus down through context, so the Button at the
+          bottom of this stack receives both the popover's and the tooltip's
+          behaviour without either needing to know about the other. */}
+      <Tooltip delay={0}>
+        <Button
+          isIconOnly
+          aria-label={t('composer.menu')}
+          data-slot="composer-menu-trigger"
+          variant="ghost"
+          className={cn(
+            'relative text-muted hover:text-foreground',
+            open && 'bg-default text-foreground',
+          )}
+        >
+          <Plus className="size-4" />
+          {alert && (
+            <span
+              data-slot="composer-menu-alert"
+              className={cn(
+                'absolute right-1 top-1 size-1.5 rounded-full',
+                alert === 'warning' ? 'bg-warning' : 'bg-info',
               )}
-            </PopoverTrigger>
-          }
-        />
-        <TooltipContent side="top">{t('composer.menu')}</TooltipContent>
+            />
+          )}
+        </Button>
+        <Tooltip.Content placement="top">{t('composer.menu')}</Tooltip.Content>
       </Tooltip>
 
-      <PopoverContent side="top" align="start" className="w-auto p-0 gap-0 overflow-hidden">
+      <Popover.Content placement="top start" className="w-auto overflow-hidden p-0">
         {/* Fixed height, each column scrolling on its own.
             The popup opens upwards, so its bottom edge is pinned to the trigger
             and any growth pushes the top up — a right column taller than the
@@ -314,10 +309,16 @@ export function ComposerMenu(props: ComposerMenuProps) {
               const expandable = Boolean(entry.options || entry.loading)
               const isToggle = entry.checked !== undefined
               return (
-                <Button
+                // A plain button rather than the component: these rows are
+                // menu items and say so with `role="switch"`, which React Aria's
+                // Button will not surrender — it owns `role` and fixes it to
+                // "button". The visual weight was coming from the className
+                // below in any case.
+                // eslint-disable-next-line no-restricted-syntax -- role="switch" is unreachable through a React Aria Button
+                <button
                   key={entry.key}
+                  type="button"
                   data-slot="composer-menu-item"
-                  variant="ghost"
                   onMouseEnter={() => setHovered(entry.key)}
                   onFocus={() => setHovered(entry.key)}
                   role={isToggle ? "switch" : undefined}
@@ -336,17 +337,22 @@ export function ComposerMenu(props: ComposerMenuProps) {
                     setHovered((prev) => (prev === entry.key ? null : entry.key))
                   }}
                   className={cn(
-                    'w-full h-auto justify-start gap-2 rounded-md px-1.5 py-1 text-sm font-normal',
+                    // `rounded-2xl` is what `.menu-item` uses for a row sitting
+                    // in a `p-1` list inside the 24px popover: at `rounded-md`
+                    // the popover's own curve cuts into the first and last row's
+                    // hover fill.
+                    'flex w-full items-center justify-start gap-2 rounded-2xl px-1.5 py-1 text-left text-sm font-normal outline-none',
+                    'focus-visible:ring-3 focus-visible:ring-focus/50',
                     isHovered
-                      ? 'bg-accent text-accent-foreground'
-                      : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                      ? 'bg-default text-default-foreground'
+                      : 'text-muted hover:bg-default/50 hover:text-foreground',
                   )}
                 >
                   <Icon
                     className={cn(
                       'size-4 shrink-0',
-                      entry.tone === 'warning' && 'text-warning',
-                      entry.tone === 'info' && 'text-info',
+                      entry.tone === 'warning' && 'text-warning-soft-foreground',
+                      entry.tone === 'info' && 'text-info-soft-foreground',
                     )}
                   />
                   <span data-slot="composer-menu-item-label" className="flex-1 text-left truncate">
@@ -358,10 +364,10 @@ export function ComposerMenu(props: ComposerMenuProps) {
                       className={cn(
                         'text-xs truncate max-w-[88px]',
                         entry.tone === 'warning'
-                          ? 'text-warning'
+                          ? 'text-warning-soft-foreground'
                           : entry.tone === 'info'
-                            ? 'text-info'
-                            : 'text-muted-foreground/60',
+                            ? 'text-info-soft-foreground'
+                            : 'text-muted',
                       )}
                     >
                       {entry.value}
@@ -371,24 +377,29 @@ export function ComposerMenu(props: ComposerMenuProps) {
                     // The row owns the interaction, so the switch is decoration
                     // with a state: letting it take pointer events too would
                     // fire the handler twice on the switch and once elsewhere.
-                    //
-                    // `after:hidden` drops the switch's own hit-area pseudo
-                    // element. It reaches 12px past the control on every side,
-                    // which is useless on something that ignores the pointer,
-                    // and sitting at the right edge of the row that was enough
-                    // to overflow the column — `overflow-y-auto` promotes
-                    // `overflow-x` from visible to auto, so it showed up as a
-                    // scrollbar under the whole list.
+                    // `inert` says all of that at once — not focusable, not
+                    // clickable, not in the accessibility tree — which a switch
+                    // nested inside a button has to be anyway.
+                    // `data-selected` only ever lands on the Switch root, so the
+                    // track is coloured through the custom property the
+                    // component publishes for it rather than a class on the
+                    // control, which would match nothing.
                     <Switch
+                      inert
+                      isReadOnly
                       size="sm"
-                      checked={entry.checked}
-                      tabIndex={-1}
-                      aria-hidden
-                      className="pointer-events-none after:hidden data-checked:bg-warning"
-                    />
+                      isSelected={entry.checked}
+                      className="[--switch-control-bg-checked:var(--warning)]"
+                    >
+                      <Switch.Content>
+                        <Switch.Control>
+                          <Switch.Thumb />
+                        </Switch.Control>
+                      </Switch.Content>
+                    </Switch>
                   )}
-                  {expandable && <ChevronRight className="size-4 shrink-0 text-muted-foreground" />}
-                </Button>
+                  {expandable && <ChevronRight className="size-4 shrink-0 text-muted" />}
+                </button>
               )
             })}
           </div>
@@ -419,7 +430,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                           {heading && (
                             <div
                               data-slot="composer-menu-detail-heading"
-                              className="px-1.5 pt-2 pb-1 text-xs text-muted-foreground"
+                              className="px-1.5 pt-2 pb-1 text-xs text-muted"
                             >
                               {heading}
                             </div>
@@ -432,17 +443,17 @@ export function ComposerMenu(props: ComposerMenuProps) {
                               close()
                             }}
                             className={cn(
-                              'w-full h-auto justify-start gap-2 rounded-md px-1.5 py-1 text-sm font-normal',
+                              'w-full h-auto justify-start gap-2 rounded-2xl px-1.5 py-1 text-sm font-normal',
                               opt.selected
-                                ? 'bg-accent text-accent-foreground'
-                                : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                                ? 'bg-default text-default-foreground'
+                                : 'text-muted hover:bg-default/50 hover:text-foreground',
                             )}
                           >
                             {opt.icon && <span className="shrink-0">{opt.icon}</span>}
                             <span className="flex-1 min-w-0 text-left">
                               <span className="block truncate">{opt.label}</span>
                               {opt.description && (
-                                <span className="block truncate text-xs text-muted-foreground/60">
+                                <span className="block truncate text-xs text-muted">
                                   {opt.description}
                                 </span>
                               )}
@@ -457,7 +468,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
             )}
           </AnimatePresence>
         </div>
-      </PopoverContent>
+      </Popover.Content>
     </Popover>
   )
 }

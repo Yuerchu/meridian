@@ -41,7 +41,7 @@ export function TurnSteps({ steps, isOneBot, emojiMap, className }: TurnStepsPro
           return (
             <ChainOfThought key={key}>
               <ChainOfThoughtTrigger>{t('chat.thinking')}</ChainOfThoughtTrigger>
-              <ChainOfThoughtContent className="text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
+              <ChainOfThoughtContent className="text-xs text-muted leading-relaxed whitespace-pre-wrap">
                 {step.text}
               </ChainOfThoughtContent>
             </ChainOfThought>
@@ -50,7 +50,7 @@ export function TurnSteps({ steps, isOneBot, emojiMap, className }: TurnStepsPro
         if (step.kind === 'text') {
           if (!step.text.trim()) return null
           return (
-            <div key={key} data-slot="turn-step-text" className="text-xs text-muted-foreground">
+            <div key={key} data-slot="turn-step-text" className="text-xs text-muted">
               <MarkdownContent content={step.text} oneBot={isOneBot} emojiMap={emojiMap} />
             </div>
           )

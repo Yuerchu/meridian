@@ -1,10 +1,9 @@
 // Dev-only component playground. Reachable at #playground from a plain browser
 // (vite dev without the Tauri backend); never included in production builds.
 import { useState } from 'react'
-import { Moon, Sun } from 'lucide-react'
+import { Moon, Sun } from '@gravity-ui/icons'
 
-import { Button } from '@/components/ui/button'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Button, Tooltip } from '@heroui/react'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -37,6 +36,7 @@ import {
   TurnTrigger,
   type TurnStatus,
 } from '@/components/ui/turn'
+import HeroUiLab from './heroui-lab'
 import ScrollLab from './scroll-lab'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { TurnItem } from '@/components/chat/turn-item'
@@ -45,12 +45,13 @@ import { TodoBarView } from '@/components/chat/todo-bar'
 import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
 import { buildTurns, formatDuration, type TurnStep } from '@/lib/turns'
+import { useAppTheme } from '@/lib/theme'
 import type { ChatMode, ContentBlock, Message, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-3">
-      <h2 className="text-sm font-semibold text-muted-foreground">{title}</h2>
+      <h2 className="text-sm font-semibold text-muted">{title}</h2>
       {children}
     </section>
   )
@@ -159,7 +160,7 @@ function TurnItemCase({ label, blocks, streaming = false }: {
   ], { streaming })
   return (
     <div className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
-      <div className="text-xs text-muted-foreground/60">{label}</div>
+      <div className="text-xs text-muted">{label}</div>
       {turns.map((turn) => (
         <TurnItem key={turn.id} turn={turn} conversationId="pg" isLastTurn={streaming} streaming={streaming} onRegenerate={noop} onRate={noop} onDelete={noop} />
       ))}
@@ -206,8 +207,8 @@ function TurnCase({
 
   return (
     <div className="group/turn w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
-      <div className="text-xs text-muted-foreground/60">{label}</div>
-      <Turn status={status} open={open} onOpenChange={setOpen}>
+      <div className="text-xs text-muted">{label}</div>
+      <Turn status={status} isExpanded={open} onExpandedChange={setOpen}>
         <TurnTrigger>
           <span className="inline-flex items-center gap-1.5">
             <TurnStatusIcon />
@@ -238,7 +239,7 @@ function TurnCase({
               nextLabel="下一个版本"
             />
           )}
-          <span className="text-muted-foreground/50">1,204 + 318 tokens</span>
+          <span className="text-muted">1,204 + 318 tokens</span>
           <TurnActions>
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">复制</Button>
             <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">重新生成</Button>
@@ -270,7 +271,7 @@ function ComposerMenuCase({
   const [fast, setFast] = useState(false)
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs text-muted">{label}</span>
       <div className="flex items-center rounded-lg border border-border px-2 py-1">
         <ComposerMenu
           assistants={[]}
@@ -292,7 +293,7 @@ function ComposerMenuCase({
           onPickFile={() => {}}
         />
       </div>
-      <span className="text-xs text-muted-foreground/60">
+      <span className="text-xs text-muted">
         {mode} · {acceptEdits ? 'accept-edits' : 'ask'}
       </span>
     </div>
@@ -441,34 +442,36 @@ export default function Playground() {
   // scroll harness needs the full viewport height, which a page that scrolls as
   // a whole cannot give it.
   if (window.location.hash === '#playground/scroll') return <ScrollLab />
+  if (window.location.hash === '#playground/heroui') return <HeroUiLab />
   return <Gallery />
 }
 
 function Gallery() {
+  // Through `setTheme` rather than toggling the class directly: the hook keeps
+  // its own record of what it wrote, and a class it did not write is a class it
+  // will not remove.
+  const { resolvedTheme, setTheme } = useAppTheme()
   return (
     <div className="h-full overflow-y-auto bg-background text-foreground">
       <div className="mx-auto max-w-2xl space-y-10 px-6 py-10">
         <header className="flex items-center justify-between">
           <h1 className="text-lg font-semibold">组件预览</h1>
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => document.documentElement.classList.toggle('dark')}
-                >
-                  <Sun className="hidden size-4 dark:block" />
-                  <Moon className="size-4 dark:hidden" />
-                </Button>
-              }
-            />
-            <TooltipContent side="top">切换主题</TooltipContent>
+          <Tooltip delay={0}>
+            <Button
+              isIconOnly
+              aria-label="切换主题"
+              variant="outline"
+              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+            >
+              <Sun className="hidden size-4 dark:block" />
+              <Moon className="size-4 dark:hidden" />
+            </Button>
+            <Tooltip.Content placement="top">切换主题</Tooltip.Content>
           </Tooltip>
         </header>
 
         <Section title="ChainOfThought / 基础 + Steps">
-          <ChainOfThought defaultOpen>
+          <ChainOfThought defaultExpanded>
             <ChainOfThoughtTrigger>Thought for 4 seconds</ChainOfThoughtTrigger>
             <ChainOfThoughtContent>
               <ChainOfThoughtSteps>
@@ -484,9 +487,9 @@ function Gallery() {
         </Section>
 
         <Section title="ChainOfThought / 流式 (shimmer)">
-          <ChainOfThought defaultOpen isStreaming>
+          <ChainOfThought defaultExpanded isStreaming>
             <ChainOfThoughtTrigger>思考过程</ChainOfThoughtTrigger>
-            <ChainOfThoughtContent className="text-xs text-muted-foreground/70 leading-relaxed whitespace-pre-wrap">
+            <ChainOfThoughtContent className="text-xs text-muted leading-relaxed whitespace-pre-wrap">
               {'用户想要一个简单的登录页。这是一个直接的 UI 任务——我应该先生成一些设计灵感确保观感，然后再搭页面。'}
             </ChainOfThoughtContent>
           </ChainOfThought>
@@ -494,10 +497,10 @@ function Gallery() {
 
         <Section title="ChatTool / 预设五态">
           <div className="space-y-3">
-            <ChatTool state="output-available" defaultOpen>
+            <ChatTool state="output-available" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span className="text-muted-foreground">Used tool:</span>
+                <span className="text-muted">Used tool:</span>
                 <span className="font-medium text-foreground">getWeather</span>
               </ChatToolTrigger>
               <ChatToolContent>
@@ -506,10 +509,10 @@ function Gallery() {
               </ChatToolContent>
             </ChatTool>
 
-            <ChatTool state="input-streaming" defaultOpen>
+            <ChatTool state="input-streaming" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span className="text-muted-foreground">Running tool:</span>
+                <span className="text-muted">Running tool:</span>
                 <span className="font-medium text-foreground">searchDocs</span>
               </ChatToolTrigger>
               <ChatToolContent>
@@ -517,10 +520,10 @@ function Gallery() {
               </ChatToolContent>
             </ChatTool>
 
-            <ChatTool state="output-error" defaultOpen>
+            <ChatTool state="output-error" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span className="text-muted-foreground">Failed tool:</span>
+                <span className="text-muted">Failed tool:</span>
                 <span className="font-medium text-foreground">fetchPage</span>
               </ChatToolTrigger>
               <ChatToolContent>
@@ -529,28 +532,28 @@ function Gallery() {
               </ChatToolContent>
             </ChatTool>
 
-            <ChatTool state="requires-action" defaultOpen>
+            <ChatTool state="requires-action" defaultExpanded>
               <ChatToolTrigger>
                 <ChatToolStatusIcon />
-                <span className="text-muted-foreground">Approval needed:</span>
+                <span className="text-muted">Approval needed:</span>
                 <span className="font-medium text-foreground">sendEmail</span>
               </ChatToolTrigger>
               <ChatToolContent>
                 <ChatToolArgs value={{ to: 'team@acme.com', subject: 'Launch update' }} />
                 <ChatToolApproval>
                   <Button variant="outline">Reject</Button>
-                  <Button variant="default">Approve</Button>
+                  <Button>Approve</Button>
                 </ChatToolApproval>
               </ChatToolContent>
             </ChatTool>
 
-            <ChatToolGroup defaultOpen>
+            <ChatToolGroup defaultExpanded>
               <ChatToolGroupTrigger>2 tool calls</ChatToolGroupTrigger>
               <ChatToolGroupContent>
                 <ChatTool state="output-available">
                   <ChatToolTrigger>
                     <ChatToolStatusIcon />
-                    <span className="text-muted-foreground">Used tool:</span>
+                    <span className="text-muted">Used tool:</span>
                     <span className="font-medium text-foreground">searchDocs</span>
                   </ChatToolTrigger>
                   <ChatToolContent>
@@ -560,7 +563,7 @@ function Gallery() {
                 <ChatTool state="output-available">
                   <ChatToolTrigger>
                     <ChatToolStatusIcon />
-                    <span className="text-muted-foreground">Used tool:</span>
+                    <span className="text-muted">Used tool:</span>
                     <span className="font-medium text-foreground">fetchPage</span>
                   </ChatToolTrigger>
                   <ChatToolContent>
@@ -802,8 +805,8 @@ function Gallery() {
           <div className="flex flex-wrap items-center gap-6">
             {(['idle', 'recording-hold', 'recording-toggle', 'transcribing'] as VoiceButtonState[]).map((s) => (
               <div key={s} className="flex flex-col items-center gap-1">
-                <VoiceButton state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
-                <span className="text-xs text-muted-foreground">{s}</span>
+                <VoiceButton aria-label="语音输入" state={s} elapsed={s.startsWith('recording') ? 12.4 : 0} />
+                <span className="text-xs text-muted">{s}</span>
               </div>
             ))}
           </div>

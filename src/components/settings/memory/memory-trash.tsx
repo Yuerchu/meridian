@@ -1,15 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Trash2, Undo2 } from 'lucide-react'
+import { TrashBin, ArrowUturnCcwLeft } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button } from '@/components/ui/button'
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet'
+import { Button, Card, Drawer } from '@heroui/react'
 import { MemoryBadge } from './memory-badge'
 import type { Memory } from '@/types'
 
@@ -26,6 +19,9 @@ interface MemoryTrashProps {
 export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps) {
   const { t } = useTranslation()
   const [rows, setRows] = useState<Memory[]>([])
+  // `Drawer.Heading` is wired up for us, the hint under it is not — without this
+  // the drawer announces its title and nothing else.
+  const hintId = useId()
 
   const load = useCallback(() => {
     api.listMemoryTrash(200).then(setRows).catch(() => setRows([]))
@@ -47,59 +43,67 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-[28rem]" data-slot="memory-trash">
-        <SheetHeader>
-          <SheetTitle>{t('settings.memory.trash.title')}</SheetTitle>
-          <SheetDescription>{t('settings.memory.trash.retentionHint')}</SheetDescription>
-        </SheetHeader>
-
-        <div className="space-y-2 overflow-y-auto p-4">
-          {rows.length === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              {t('settings.memory.trash.empty')}
+    <Drawer.Backdrop isOpen={open} onOpenChange={onOpenChange}>
+      <Drawer.Content placement="right">
+        <Drawer.Dialog
+          aria-describedby={hintId}
+          className="w-[28rem] max-w-[85vw]"
+          data-slot="memory-trash"
+        >
+          <Drawer.CloseTrigger />
+          <Drawer.Header className="gap-1">
+            <Drawer.Heading>{t('settings.memory.trash.title')}</Drawer.Heading>
+            <p id={hintId} className="text-sm text-muted">
+              {t('settings.memory.trash.retentionHint')}
             </p>
-          )}
-          {rows.map((m) => (
-            <div
-              key={m.id}
-              data-slot="memory-trash-row"
-              className="space-y-1.5 rounded-lg border border-border p-3"
-            >
-              <div className="flex items-center gap-2">
-                <span className="font-mono text-sm">{m.key}</span>
-                <MemoryBadge tone="info">{deletedByLabel(m.deleted_by)}</MemoryBadge>
-                <div className="flex-1" />
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={async () => {
-                    await api.restoreMemories([m.id])
-                    load()
-                    onChanged()
-                  }}
-                  data-slot="memory-trash-restore"
-                >
-                  <Undo2 />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={async () => {
-                    await api.purgeMemories([m.id])
-                    load()
-                    onChanged()
-                  }}
-                  data-slot="memory-trash-purge"
-                >
-                  <Trash2 className="text-destructive" />
-                </Button>
-              </div>
-              <p className="whitespace-pre-wrap text-sm text-muted-foreground">{m.content}</p>
-            </div>
-          ))}
-        </div>
-      </SheetContent>
-    </Sheet>
+          </Drawer.Header>
+
+          <Drawer.Body className="space-y-2">
+            {rows.length === 0 && (
+              <p className="py-6 text-center text-sm text-muted">
+                {t('settings.memory.trash.empty')}
+              </p>
+            )}
+            {/* Secondary, not the default surface: the drawer itself is
+                `--overlay`, which is the same colour as `--surface`, so only the
+                sunken step reads as a row against it. */}
+            {rows.map((m) => (
+              <Card key={m.id} data-slot="memory-trash-row" variant="secondary">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-sm">{m.key}</span>
+                  <MemoryBadge tone="info">{deletedByLabel(m.deleted_by)}</MemoryBadge>
+                  <div className="flex-1" />
+                  <Button
+                    variant="ghost"
+                    isIconOnly
+                    onClick={async () => {
+                      await api.restoreMemories([m.id])
+                      load()
+                      onChanged()
+                    }}
+                    data-slot="memory-trash-restore"
+                  >
+                    <ArrowUturnCcwLeft />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    isIconOnly
+                    onClick={async () => {
+                      await api.purgeMemories([m.id])
+                      load()
+                      onChanged()
+                    }}
+                    data-slot="memory-trash-purge"
+                  >
+                    <TrashBin className="text-danger" />
+                  </Button>
+                </div>
+                <Card.Description className="whitespace-pre-wrap">{m.content}</Card.Description>
+              </Card>
+            ))}
+          </Drawer.Body>
+        </Drawer.Dialog>
+      </Drawer.Content>
+    </Drawer.Backdrop>
   )
 }

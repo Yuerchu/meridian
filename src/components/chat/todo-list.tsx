@@ -1,4 +1,4 @@
-import { Square, SquareCheck, SquareDot } from 'lucide-react'
+import { Square, SquareCheck, SquareMinus } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'
 import type { TodoItem, TodoItemStatus } from '@/types'
@@ -54,7 +54,7 @@ export function todoProgress(todos: TodoDraft[]) {
 }
 
 export function TodoStatusIcon({ status, className }: { status: TodoItemStatus; className?: string }) {
-  const Icon = status === 'completed' ? SquareCheck : status === 'in_progress' ? SquareDot : Square
+  const Icon = status === 'completed' ? SquareCheck : status === 'in_progress' ? SquareMinus : Square
   return (
     <Icon
       aria-hidden
@@ -62,9 +62,9 @@ export function TodoStatusIcon({ status, className }: { status: TodoItemStatus; 
       data-status={status}
       className={cn(
         'size-3.5 shrink-0',
-        status === 'completed' && 'text-success',
-        status === 'in_progress' && 'text-info',
-        status === 'pending' && 'text-muted-foreground',
+        status === 'completed' && 'text-success-soft-foreground',
+        status === 'in_progress' && 'text-info-soft-foreground',
+        status === 'pending' && 'text-muted',
         className,
       )}
     />
@@ -83,9 +83,9 @@ export function TodoItemRow({ item, className }: { item: TodoDraft; className?: 
         data-slot="todo-item-content"
         className={cn(
           'min-w-0 flex-1',
-          item.status === 'completed' && 'text-muted-foreground line-through',
+          item.status === 'completed' && 'text-muted line-through',
           item.status === 'in_progress' && 'font-medium text-foreground',
-          item.status === 'pending' && 'text-muted-foreground',
+          item.status === 'pending' && 'text-muted',
         )}
       >
         {item.content}

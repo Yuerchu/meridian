@@ -1,9 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Trash2, ChevronDown, ChevronRight, Wrench, Terminal, Check } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Plus, TrashBin, Wrench, Terminal, Check } from '@gravity-ui/icons'
+import { Button, Card, Disclosure, DisclosureGroup, Input, ListBox, Select } from '@heroui/react'
 import { api } from '@/api'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
 
@@ -57,54 +55,64 @@ function CustomToolEditor({
     { value: 'never', label: t('settings.tools.permNever') },
   ]
 
+  // No chrome of its own: the caller decides whether this is a card floating on
+  // the page or the body of an already-bounded disclosure row.
   return (
-    <div className="space-y-3 p-3 border border-border rounded-lg">
+    <div data-slot="custom-tool-editor" className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">{t('settings.tools.name')}</label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="my_tool" className="font-mono text-xs" />
+          <label className="text-xs text-muted">{t('settings.tools.name')}</label>
+          <Input fullWidth value={name} onChange={(e) => setName(e.target.value)} placeholder="my_tool" className="font-mono text-xs" />
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-muted-foreground">{t('settings.tools.permission')}</label>
-          <Select value={permission} onValueChange={(v) => { if (v) setPermission(v) }} items={permissionOptions}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {permissionOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
+          <label className="text-xs text-muted">{t('settings.tools.permission')}</label>
+          <Select value={permission} onChange={(v) => { if (v) setPermission(String(v)) }}>
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {permissionOptions.map((o) => (
+                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                    {o.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         </div>
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">{t('settings.tools.description')}</label>
-        <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+        <label className="text-xs text-muted">{t('settings.tools.description')}</label>
+        <Input fullWidth value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">{t('settings.tools.command')}</label>
-        <Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="python script.py" className="font-mono text-xs" />
+        <label className="text-xs text-muted">{t('settings.tools.command')}</label>
+        <Input fullWidth value={command} onChange={(e) => setCommand(e.target.value)} placeholder="python script.py" className="font-mono text-xs" />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">{t('settings.tools.argsTemplate')}</label>
-        <Input value={argsTemplate} onChange={(e) => setArgsTemplate(e.target.value)} placeholder="--input {{input}} --output {{output}}" className="font-mono text-xs" />
-        <p className="text-xs text-muted-foreground/60">{t('settings.tools.argsTemplateHint')}</p>
+        <label className="text-xs text-muted">{t('settings.tools.argsTemplate')}</label>
+        <Input fullWidth value={argsTemplate} onChange={(e) => setArgsTemplate(e.target.value)} placeholder="--input {{input}} --output {{output}}" className="font-mono text-xs" />
+        <p className="text-xs text-muted">{t('settings.tools.argsTemplateHint')}</p>
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted-foreground">{t('settings.tools.timeout')}</label>
-        <Input type="number" value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} className="w-32" />
+        <label className="text-xs text-muted">{t('settings.tools.timeout')}</label>
+        <Input fullWidth type="number" value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} className="w-32" />
       </div>
       <div className="flex items-center gap-2">
-        <Button onClick={handleSave} disabled={!name.trim() || !command.trim()}>
+        <Button onClick={handleSave} isDisabled={!name.trim() || !command.trim()}>
           {t('common.save')}
         </Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success">
-            <Check className="w-3 h-3" /> {t('common.saved')}
+          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
+            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
           </span>
         )}
         {onDelete && (
-          <Button variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={onDelete}>
-            <Trash2 className="w-3.5 h-3.5" />
+          <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
+            <TrashBin className="w-3.5 h-3.5" />
           </Button>
         )}
       </div>
@@ -139,14 +147,14 @@ export function ToolMarketplace() {
   }, [refresh])
 
   if (loading) {
-    return <div className="text-muted-foreground text-sm">{t('common.loading')}</div>
+    return <div className="text-muted text-sm">{t('common.loading')}</div>
   }
 
   return (
     <div className="max-w-lg space-y-6">
       <div>
         <h2 className="text-lg font-medium">{t('settings.tools.title')}</h2>
-        <p className="text-xs text-muted-foreground mt-1">{t('settings.tools.subtitle')}</p>
+        <p className="text-xs text-muted mt-1">{t('settings.tools.subtitle')}</p>
       </div>
 
       <div>
@@ -154,9 +162,9 @@ export function ToolMarketplace() {
         <div className="grid grid-cols-1 gap-1">
           {builtinTools.filter((t) => t.source === 'builtin').map((tool) => (
             <div key={tool.name} className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg">
-              <Wrench className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+              <Wrench className="w-3.5 h-3.5 text-muted flex-shrink-0" />
               <span className="font-mono flex-1">{tool.name}</span>
-              <span className="text-muted-foreground/60 truncate max-w-[200px]">{tool.description}</span>
+              <span className="text-muted truncate max-w-[200px]">{tool.description}</span>
             </div>
           ))}
         </div>
@@ -165,26 +173,26 @@ export function ToolMarketplace() {
       {builtinTools.some((tool) => tool.source === 'onebot') && (
         <div>
           <h3 className="text-sm font-medium mb-1">{t('settings.tools.onebotSection')}</h3>
-          <p className="text-xs text-muted-foreground mb-2">{t('settings.tools.onebotHint')}</p>
+          <p className="text-xs text-muted mb-2">{t('settings.tools.onebotHint')}</p>
           <div className="grid grid-cols-1 gap-1">
             {builtinTools.filter((tool) => tool.source === 'onebot').map((tool) => (
               <div key={tool.name} className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg">
-                <Wrench className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                <Wrench className="w-3.5 h-3.5 text-muted flex-shrink-0" />
                 <span className="font-mono flex-1">{tool.name}</span>
-                <span className="text-muted-foreground/60 truncate max-w-[160px]">
+                <span className="text-muted truncate max-w-[160px]">
                   {t(`settings.tools.qq.${tool.name}`)}
                 </span>
                 {tool.scope === 'group' && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqGroupOnly')}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.tools.qqGroupOnly')}</span>
                 )}
                 {tool.scope === 'private' && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqPrivateOnly')}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.tools.qqPrivateOnly')}</span>
                 )}
                 {tool.admin_only === true && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqAdminOnly')}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.tools.qqAdminOnly')}</span>
                 )}
                 {tool.needs_approval === true && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.tools.qqApproval')}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.tools.qqApproval')}</span>
                 )}
               </div>
             ))}
@@ -202,51 +210,75 @@ export function ToolMarketplace() {
         </div>
 
         {showCreate && (
-          <div className="mb-3">
+          <Card className="mb-3">
             <CustomToolEditor
               onSave={() => { setShowCreate(false); refresh() }}
             />
-          </div>
+          </Card>
         )}
 
-        <div className="space-y-1">
+        {/* One open at a time is the group's own default
+            (`allowsMultipleExpanded` is off), so the single-open rule lives in
+            the primitive rather than in the click handler. */}
+        <DisclosureGroup
+          className="flex flex-col gap-1"
+          expandedKeys={expandedToolId ? [expandedToolId] : []}
+          onExpandedChange={(keys) => setExpandedToolId((([...keys][0] as string | undefined) ?? null))}
+        >
           {customTools.map((ct) => {
             const isExpanded = expandedToolId === ct.id
             return (
-              <div key={ct.id} className="border border-border rounded-lg overflow-hidden">
-                <Button
-                  variant="ghost"
-                  onClick={() => setExpandedToolId(isExpanded ? null : ct.id)}
-                  className="w-full justify-start h-auto px-3 py-2 text-xs"
-                >
-                  {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-                  <Terminal className="w-3.5 h-3.5 text-muted-foreground" />
-                  <span className="font-mono flex-1">{ct.name}</span>
-                  <span className="text-muted-foreground/60">{ct.command}</span>
-                  {ct.is_enabled === 0 && (
-                    <span className="text-xs text-muted-foreground bg-accent px-1 rounded">{t('settings.tools.disabled')}</span>
-                  )}
-                </Button>
-                {isExpanded && (
-                  <div className="px-3 pb-3">
-                    <CustomToolEditor
-                      tool={ct}
-                      onSave={refresh}
-                      onDelete={async () => {
-                        await api.deleteCustomTool(ct.id)
-                        setExpandedToolId(null)
-                        refresh()
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
+              <Disclosure
+                key={ct.id}
+                id={ct.id}
+                className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
+              >
+                <Disclosure.Heading>
+                  {/* `flex` is not optional: HeroUI styles the indicator with
+                      `ms-auto` and `shrink-0`, which only mean anything inside a
+                      flex container. `text-start` undoes the button element's
+                      centred UA default. */}
+                  <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2 text-start text-xs transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
+                    <Terminal className="w-3.5 h-3.5 shrink-0 text-muted" />
+                    <span className="font-mono min-w-0 flex-1 truncate">{ct.name}</span>
+                    <span className="text-muted truncate">{ct.command}</span>
+                    {ct.is_enabled === 0 && (
+                      <span className="text-xs text-muted bg-default px-1 rounded shrink-0">{t('settings.tools.disabled')}</span>
+                    )}
+                    <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
+                  </Disclosure.Trigger>
+                </Disclosure.Heading>
+                {/* `min-h-0` is load-bearing: the card is a flex column, and a
+                    flex item's default `min-height: auto` floors it at its
+                    content height. */}
+                <Disclosure.Content className="min-h-0 w-full">
+                  {/* Body, not a plain wrapper: it is what keeps the panel
+                      measurable, so without it the editor never collapses. The
+                      padding is the editor's own former `p-3`, moved out here
+                      now that the row is the only box around it. */}
+                  <Disclosure.Body className="p-3">
+                    {/* A collapsed panel is only hidden, not unmounted, so the
+                        editor is still gated on the open row. */}
+                    {isExpanded && (
+                      <CustomToolEditor
+                        tool={ct}
+                        onSave={refresh}
+                        onDelete={async () => {
+                          await api.deleteCustomTool(ct.id)
+                          setExpandedToolId(null)
+                          refresh()
+                        }}
+                      />
+                    )}
+                  </Disclosure.Body>
+                </Disclosure.Content>
+              </Disclosure>
             )
           })}
           {customTools.length === 0 && !showCreate && (
-            <p className="text-xs text-muted-foreground text-center py-4">{t('settings.tools.noCustom')}</p>
+            <p className="text-xs text-muted text-center py-4">{t('settings.tools.noCustom')}</p>
           )}
-        </div>
+        </DisclosureGroup>
       </div>
 
       <div>
@@ -257,9 +289,9 @@ export function ToolMarketplace() {
             return (
               <div key={preset.id} className="flex items-center gap-2 px-3 py-2 text-xs border border-border rounded-lg">
                 <span className="font-medium flex-1">{preset.name}</span>
-                <span className="text-muted-foreground/60">{toolNames.length} tools</span>
+                <span className="text-muted">{toolNames.length} tools</span>
                 {preset.is_builtin === 1 && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-accent text-muted-foreground">{t('settings.template.builtin')}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.template.builtin')}</span>
                 )}
               </div>
             )

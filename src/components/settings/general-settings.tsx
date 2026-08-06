@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Input } from '@/components/ui/input'
-import { Button } from '@/components/ui/button'
-import { Check } from 'lucide-react'
+import { Button, Input, ListBox, Select } from '@heroui/react'
+import { Check } from '@gravity-ui/icons'
 import { LANGUAGES, setLocale } from '@/i18n'
+import { useAppTheme, type ThemePreference } from '@/lib/theme'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { AndroidFileAccess } from './android-file-access'
@@ -25,6 +24,7 @@ const SEARCH_PROVIDERS = [
 export function GeneralSettings() {
   const { t, i18n } = useTranslation()
   const platform = usePlatform()
+  const { theme, setTheme } = useAppTheme()
   const [shell, setShell] = useState('bash')
   const [sandboxEnabled, setSandboxEnabled] = useState(true)
   const [searchProvider, setSearchProvider] = useState('tavily')
@@ -59,6 +59,15 @@ export function GeneralSettings() {
     api.setPreference('shell', value)
   }
 
+  // Unlike the settings below, the theme is not a Tauri preference: it has to be
+  // readable before the first paint, so it lives in localStorage — see
+  // `src/lib/theme.tsx`.
+  const themeOptions: { value: ThemePreference; label: string }[] = [
+    { value: 'system', label: t('settings.general.themeSystem') },
+    { value: 'light', label: t('settings.general.themeLight') },
+    { value: 'dark', label: t('settings.general.themeDark') },
+  ]
+
   const sandboxOptions = [
     { value: 'on', label: t('settings.general.sandboxOn') },
     { value: 'off', label: t('settings.general.sandboxOff') },
@@ -92,41 +101,71 @@ export function GeneralSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.general.language')}
         </label>
-        <Select value={i18n.language} onValueChange={(v) => v && setLocale(v)} items={LANGUAGE_OPTIONS}>
-          <SelectTrigger className="w-full max-w-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {LANGUAGE_OPTIONS.map((lang) => (
-              <SelectItem key={lang.value} value={lang.value}>
-                {lang.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
+        <Select fullWidth value={i18n.language} onChange={(v) => v && setLocale(String(v))}>
+          <Select.Trigger className="max-w-xs">
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {LANGUAGE_OPTIONS.map((lang) => (
+                <ListBox.Item key={lang.value} id={lang.value} textValue={lang.label}>
+                  {lang.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
+        </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="block text-xs font-medium text-muted">
+          {t('settings.general.theme')}
+        </label>
+        <Select fullWidth value={theme} onChange={(v) => v && setTheme(String(v) as ThemePreference)}>
+          <Select.Trigger className="max-w-xs">
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {themeOptions.map((o) => (
+                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                  {o.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
       </div>
 
       {platform !== null && platform !== 'android' && (
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-muted-foreground">
+          <label className="block text-xs font-medium text-muted">
             {t('settings.general.shell')}
           </label>
-          <Select value={shell} onValueChange={(v) => v && handleShellChange(v)} items={SHELLS}>
-            <SelectTrigger className="w-full max-w-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SHELLS.map((s) => (
-                <SelectItem key={s.value} value={s.value}>
-                  {s.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
+          <Select fullWidth value={shell} onChange={(v) => v && handleShellChange(String(v))}>
+            <Select.Trigger className="max-w-xs">
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {SHELLS.map((s) => (
+                  <ListBox.Item key={s.value} id={s.value} textValue={s.label}>
+                    {s.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted">
             {t('settings.general.shellHint')}
           </p>
         </div>
@@ -134,45 +173,53 @@ export function GeneralSettings() {
 
       {platform === 'windows' && (
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-muted-foreground">
+          <label className="block text-xs font-medium text-muted">
             {t('settings.general.sandbox')}
           </label>
-          <Select value={sandboxEnabled ? 'on' : 'off'} onValueChange={(v) => v && handleSandboxChange(v)} items={sandboxOptions}>
-            <SelectTrigger className="w-full max-w-xs">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {sandboxOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>
-                  {o.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
+          <Select fullWidth value={sandboxEnabled ? 'on' : 'off'} onChange={(v) => v && handleSandboxChange(String(v))}>
+            <Select.Trigger className="max-w-xs">
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {sandboxOptions.map((o) => (
+                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                    {o.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted">
             {t('settings.general.sandboxHint')}
           </p>
         </div>
       )}
 
       <div className="space-y-3">
-        <label className="block text-xs font-medium text-muted-foreground">
+        <label className="block text-xs font-medium text-muted">
           {t('settings.general.webSearch')}
         </label>
-        <Select value={searchProvider} onValueChange={(v) => v && handleSearchProviderChange(v)} items={SEARCH_PROVIDERS}>
-          <SelectTrigger className="w-full max-w-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SEARCH_PROVIDERS.map((p) => (
-              <SelectItem key={p.value} value={p.value}>
-                {p.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
+        <Select fullWidth value={searchProvider} onChange={(v) => v && handleSearchProviderChange(String(v))}>
+          <Select.Trigger className="max-w-xs">
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {SEARCH_PROVIDERS.map((p) => (
+                <ListBox.Item key={p.value} id={p.value} textValue={p.label}>
+                  {p.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
         </Select>
         <div className="flex items-center gap-2">
-          <Input
+          <Input fullWidth
             type="password"
             value={searchApiKey}
             onChange={(e) => setSearchApiKey(e.target.value)}
@@ -181,14 +228,14 @@ export function GeneralSettings() {
             className="max-w-xs"
           />
           <Button
-            variant={searchKeySaved ? 'default' : 'outline'}
+            variant={searchKeySaved ? 'primary' : 'outline'}
             onClick={handleSaveSearchKey}
-            disabled={!searchApiKey.trim()}
+            isDisabled={!searchApiKey.trim()}
           >
             {searchKeySaved ? <Check className="w-4 h-4" /> : t('settings.general.save')}
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           {t('settings.general.searchHint')}
         </p>
       </div>

@@ -1,19 +1,19 @@
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useId, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import {
-  MessageSquare, MessageCircle, Plus, Settings, Trash2, FolderOpen, FolderPlus,
-  Users, Archive, Download, ArrowLeft, Pin, PinOff, Pencil,
-  Cloud, Bot, Smile, Wrench, Sparkles, Plug, Brain, Mic, Radio, Settings2, Info,
-} from 'lucide-react'
+  Comment, Person, Plus, Gear, TrashBin, FolderOpen, FolderPlus,
+  Persons, Archive, ArrowDownToLine, ArrowLeft, Pin, PinSlash, Pencil,
+  Cloud, FaceRobot, FaceSmile, Wrench, Sparkles, LogoMcp, Bulb, Microphone,
+  BroadcastSignal, Sliders, CircleInfo,
+} from '@gravity-ui/icons'
 import SpotlightCard from '@/components/SpotlightCard'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { Conversation, Project } from '@/types'
 import type { SettingsTab } from '@/components/settings'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
+import { AlertDialog, Button, Input } from '@heroui/react'
 import {
   Sidebar,
   SidebarContent,
@@ -33,14 +33,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import {
-  AlertDialog,
-  AlertDialogPopup,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogClose,
-  AlertDialogFooter,
-} from '@/components/ui/alert-dialog'
 
 interface AppSidebarProps {
   conversations: Conversation[]
@@ -81,7 +73,7 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
 
   return (
     <div className="px-2 py-1.5 space-y-1.5">
-      <Input
+      <Input fullWidth
         type="text"
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -99,8 +91,8 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
         onClick={handleBrowse}
         className="w-full justify-start text-xs"
       >
-        <FolderOpen className="text-muted-foreground" />
-        <span className={path ? 'text-foreground truncate' : 'text-muted-foreground'}>
+        <FolderOpen className="text-muted" />
+        <span className={path ? 'text-foreground truncate' : 'text-muted'}>
           {path || t('sidebar.browsePath')}
         </span>
       </Button>
@@ -108,7 +100,7 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
         <Button
           variant="secondary"
           onClick={() => name.trim() && path.trim() && onSubmit(name.trim(), path.trim())}
-          disabled={!name.trim() || !path.trim()}
+          isDisabled={!name.trim() || !path.trim()}
           className="flex-1"
         >
           {t('common.save')}
@@ -123,24 +115,24 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
 
 function ProjectIcon({ sourceType }: { sourceType: string }) {
   switch (sourceType) {
-    case 'onebot_private': return <MessageCircle />
-    case 'onebot_group': return <Users />
+    case 'onebot_private': return <Person />
+    case 'onebot_group': return <Persons />
     default: return <FolderOpen />
   }
 }
 
 const settingsTabs: Array<{ id: SettingsTab; labelKey: string; icon: React.ElementType }> = [
   { id: 'provider', labelKey: 'settings.provider', icon: Cloud },
-  { id: 'assistants', labelKey: 'settings.assistants', icon: Bot },
-  { id: 'emoji', labelKey: 'settings.emoji', icon: Smile },
+  { id: 'assistants', labelKey: 'settings.assistants', icon: FaceRobot },
+  { id: 'emoji', labelKey: 'settings.emoji', icon: FaceSmile },
   { id: 'tools', labelKey: 'settings.toolsTab', icon: Wrench },
   { id: 'skills', labelKey: 'settings.skillsTab', icon: Sparkles },
-  { id: 'mcp', labelKey: 'settings.mcp', icon: Plug },
-  { id: 'memories', labelKey: 'settings.memories', icon: Brain },
-  { id: 'voice', labelKey: 'settings.voice', icon: Mic },
-  { id: 'onebot', labelKey: 'settings.onebot', icon: Radio },
-  { id: 'general', labelKey: 'settings.general', icon: Settings2 },
-  { id: 'about', labelKey: 'settings.about', icon: Info },
+  { id: 'mcp', labelKey: 'settings.mcp', icon: LogoMcp },
+  { id: 'memories', labelKey: 'settings.memories', icon: Bulb },
+  { id: 'voice', labelKey: 'settings.voice', icon: Microphone },
+  { id: 'onebot', labelKey: 'settings.onebot', icon: BroadcastSignal },
+  { id: 'general', labelKey: 'settings.general', icon: Sliders },
+  { id: 'about', labelKey: 'settings.about', icon: CircleInfo },
 ]
 
 function ConversationIndicator({ conversationId, activeId }: { conversationId: string; activeId: string | null }) {
@@ -172,7 +164,7 @@ function InlineRenameInput({ value, onSubmit, onCancel }: { value: string; onSub
   }, [])
 
   return (
-    <Input
+    <Input fullWidth
       ref={inputRef}
       type="text"
       value={text}
@@ -216,6 +208,9 @@ export function AppSidebar({
   const [renamingConvId, setRenamingConvId] = useState<string | null>(null)
   const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'conversation' | 'project'; id: string } | null>(null)
+  // `AlertDialog.Body` is a plain div — only a `Heading slot="title"` is wired
+  // up for us, so without this the dialog announces its title and nothing else.
+  const deleteDescId = useId()
 
   if (page === 'settings') {
     return (
@@ -274,10 +269,11 @@ export function AppSidebar({
           <SidebarGroupLabel>
             <span>{t('sidebar.projects')}</span>
             <Button
+              isIconOnly
+              size="sm"
               variant="ghost"
-              size="icon"
               onClick={() => setShowNewProject(true)}
-              className="ml-auto text-muted-foreground"
+              className="ml-auto size-8 text-muted"
             >
               <FolderPlus />
             </Button>
@@ -319,7 +315,7 @@ export function AppSidebar({
                     </ContextMenuItem>
                     <ContextMenuSeparator />
                     <ContextMenuItem variant="destructive" onClick={() => setDeleteTarget({ type: 'project', id: project.id })}>
-                      <Trash2 />
+                      <TrashBin />
                       {t('sidebar.delete')}
                     </ContextMenuItem>
                   </ContextMenuContent>
@@ -361,7 +357,7 @@ export function AppSidebar({
                           onClick={() => onSelect(conv.id)}
                           className={conv.is_archived ? 'opacity-50' : undefined}
                         >
-                          {conv.is_archived ? <Archive /> : <MessageSquare />}
+                          {conv.is_archived ? <Archive /> : <Comment />}
                           {renamingConvId === conv.id ? (
                             <InlineRenameInput
                               value={conv.title ?? ''}
@@ -377,7 +373,7 @@ export function AppSidebar({
                     </ContextMenuTrigger>
                     <ContextMenuContent>
                       <ContextMenuItem onClick={() => onTogglePin(conv.id)}>
-                        {conv.is_pinned ? <PinOff /> : <Pin />}
+                        {conv.is_pinned ? <PinSlash /> : <Pin />}
                         {conv.is_pinned ? t('contextMenu.unpin') : t('contextMenu.pin')}
                       </ContextMenuItem>
                       <ContextMenuItem onClick={() => setRenamingConvId(conv.id)}>
@@ -386,16 +382,16 @@ export function AppSidebar({
                       </ContextMenuItem>
                       <ContextMenuSeparator />
                       <ContextMenuItem onClick={exportSft}>
-                        <Download />
+                        <ArrowDownToLine />
                         {t('sidebar.exportSft')}
                       </ContextMenuItem>
                       <ContextMenuItem onClick={exportDpo}>
-                        <Download />
+                        <ArrowDownToLine />
                         {t('sidebar.exportDpo')}
                       </ContextMenuItem>
                       <ContextMenuSeparator />
                       <ContextMenuItem variant="destructive" onClick={() => setDeleteTarget({ type: 'conversation', id: conv.id })}>
-                        <Trash2 />
+                        <TrashBin />
                         {t('sidebar.delete')}
                       </ContextMenuItem>
                     </ContextMenuContent>
@@ -411,35 +407,43 @@ export function AppSidebar({
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton onClick={onOpenSettings}>
-              <Settings />
+              <Gear />
               <span>{t('sidebar.settings')}</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
 
-      <AlertDialog open={deleteTarget !== null} onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}>
-        <AlertDialogPopup>
-          <AlertDialogTitle>{t('confirm.title')}</AlertDialogTitle>
-          <AlertDialogDescription>
-            {deleteTarget?.type === 'project' ? t('confirm.deleteProject') : t('confirm.deleteConversation')}
-          </AlertDialogDescription>
-          <AlertDialogFooter>
-            <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
-              {t('common.cancel')}
-            </AlertDialogClose>
-            <AlertDialogClose
-              className="bg-destructive text-white hover:bg-destructive/80"
-              onClick={() => {
-                if (deleteTarget?.type === 'conversation') onDelete(deleteTarget.id)
-                else if (deleteTarget?.type === 'project') onDeleteProject(deleteTarget.id)
-              }}
-            >
-              {t('common.confirm')}
-            </AlertDialogClose>
-          </AlertDialogFooter>
-        </AlertDialogPopup>
-      </AlertDialog>
+      <AlertDialog.Backdrop
+        isOpen={deleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
+      >
+        <AlertDialog.Container>
+          <AlertDialog.Dialog aria-describedby={deleteDescId}>
+            <AlertDialog.Header>
+              <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
+            </AlertDialog.Header>
+            <AlertDialog.Body id={deleteDescId}>
+              {deleteTarget?.type === 'project' ? t('confirm.deleteProject') : t('confirm.deleteConversation')}
+            </AlertDialog.Body>
+            <AlertDialog.Footer>
+              <Button slot="close" variant="tertiary">
+                {t('common.cancel')}
+              </Button>
+              <Button
+                slot="close"
+                variant="danger"
+                onClick={() => {
+                  if (deleteTarget?.type === 'conversation') onDelete(deleteTarget.id)
+                  else if (deleteTarget?.type === 'project') onDeleteProject(deleteTarget.id)
+                }}
+              >
+                {t('common.confirm')}
+              </Button>
+            </AlertDialog.Footer>
+          </AlertDialog.Dialog>
+        </AlertDialog.Container>
+      </AlertDialog.Backdrop>
     </Sidebar>
   )
 }

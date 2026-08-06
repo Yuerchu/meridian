@@ -1,13 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, ChevronDown, ChevronRight, Star, Check, BookTemplate } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Checkbox } from '@/components/ui/checkbox'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip'
+import { Plus, StarFill, Check, SquareDashedText } from '@gravity-ui/icons'
+import { Button, Checkbox, Disclosure, DisclosureGroup, Input, ListBox, Select, TextArea, Tooltip } from '@heroui/react'
 import { api } from '@/api'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
 
@@ -116,26 +110,29 @@ function AssistantEditor({
   ]
 
   return (
-    <div className="space-y-4 pl-7 pr-2 pb-4">
+    <div className="space-y-4 px-1 pb-4">
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted-foreground">{t('settings.assistant.name')}</label>
-        <Input value={name} onChange={(e) => setName(e.target.value)} />
+        <label className="block text-xs text-muted">{t('settings.assistant.name')}</label>
+        <Input fullWidth value={name} onChange={(e) => setName(e.target.value)} />
       </div>
 
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <label className="block text-xs text-muted-foreground">{t('settings.assistant.systemPrompt')}</label>
+          <label className="block text-xs text-muted">{t('settings.assistant.systemPrompt')}</label>
           <Button
             variant="ghost"
             className="text-xs gap-1"
             onClick={() => setShowTemplates(!showTemplates)}
           >
-            <BookTemplate className="w-3 h-3" />
+            <SquareDashedText className="w-3.5 h-3.5" />
             {t('settings.assistant.browseTemplates')}
           </Button>
         </div>
         {showTemplates && (
-          <ScrollArea className="border border-border rounded-lg p-2 space-y-1 max-h-48">
+          <div
+            data-slot="template-list"
+            className="border border-border rounded-lg p-2 space-y-1 max-h-48 overflow-y-auto overscroll-contain"
+          >
             {templates.map((tpl) => (
               <Button
                 key={tpl.id}
@@ -145,13 +142,13 @@ function AssistantEditor({
               >
                 <span className="font-medium">{tpl.name}</span>
                 {tpl.description && (
-                  <span className="text-muted-foreground ml-2">{tpl.description}</span>
+                  <span className="text-muted ml-2">{tpl.description}</span>
                 )}
               </Button>
             ))}
-          </ScrollArea>
+          </div>
         )}
-        <Textarea
+        <TextArea fullWidth
           value={systemPrompt}
           onChange={(e) => setSystemPrompt(e.target.value)}
           rows={6}
@@ -160,19 +157,15 @@ function AssistantEditor({
         {templateVars.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {templateVars.map((v) => (
-              <Tooltip key={v.name}>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="outline"
-                      className="text-xs px-1.5 py-0.5 bg-accent/50 text-muted-foreground hover:bg-accent font-mono"
-                      onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
-                    >
-                      {`{{${v.name}}}`}
-                    </Button>
-                  }
-                />
-                <TooltipContent side="top">{v.description_en}</TooltipContent>
+              <Tooltip key={v.name} delay={0}>
+                <Button
+                  variant="outline"
+                  className="text-xs px-1.5 py-0.5 bg-default/50 text-muted hover:bg-default font-mono"
+                  onClick={() => setSystemPrompt((prev) => prev + `{{${v.name}}}`)}
+                >
+                  {`{{${v.name}}}`}
+                </Button>
+                <Tooltip.Content placement="top">{v.description_en}</Tooltip.Content>
               </Tooltip>
             ))}
           </div>
@@ -181,41 +174,54 @@ function AssistantEditor({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.assistant.provider')}</label>
+          <label className="block text-xs text-muted">{t('settings.assistant.provider')}</label>
           <Select
+            fullWidth
             value={providerId || '_default'}
-            onValueChange={(v) => { setProviderId(!v || v === '_default' ? '' : v); setModelId('') }}
-            items={providerOptions}
+            onChange={(v) => { setProviderId(!v || v === '_default' ? '' : String(v)); setModelId('') }}
           >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {providerOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {providerOptions.map((o) => (
+                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                    {o.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         </div>
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.assistant.model')}</label>
+          <label className="block text-xs text-muted">{t('settings.assistant.model')}</label>
           {models.length > 0 ? (
             <Select
+              fullWidth
               value={modelId || '_none'}
-              onValueChange={(v) => setModelId(!v || v === '_none' ? '' : v)}
-              items={modelOptions}
+              onChange={(v) => setModelId(!v || v === '_none' ? '' : String(v))}
+              placeholder={t('settings.assistant.selectModel')}
             >
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder={t('settings.assistant.selectModel')} />
-              </SelectTrigger>
-              <SelectContent>
-                {modelOptions.map((o) => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                ))}
-              </SelectContent>
+              <Select.Trigger>
+                <Select.Value />
+                <Select.Indicator />
+              </Select.Trigger>
+              <Select.Popover>
+                <ListBox>
+                  {modelOptions.map((o) => (
+                    <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                      {o.label}
+                      <ListBox.ItemIndicator />
+                    </ListBox.Item>
+                  ))}
+                </ListBox>
+              </Select.Popover>
             </Select>
           ) : (
-            <Input
+            <Input fullWidth
               value={modelId}
               onChange={(e) => setModelId(e.target.value)}
               placeholder={t('settings.assistant.modelPlaceholder')}
@@ -226,8 +232,8 @@ function AssistantEditor({
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.assistant.temperature')}</label>
-          <Input
+          <label className="block text-xs text-muted">{t('settings.assistant.temperature')}</label>
+          <Input fullWidth
             type="number"
             value={temperature}
             onChange={(e) => setTemperature(e.target.value)}
@@ -238,8 +244,8 @@ function AssistantEditor({
           />
         </div>
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.assistant.contextLimit')}</label>
-          <Input
+          <label className="block text-xs text-muted">{t('settings.assistant.contextLimit')}</label>
+          <Input fullWidth
             type="number"
             value={contextLimit}
             onChange={(e) => setContextLimit(e.target.value)}
@@ -248,121 +254,144 @@ function AssistantEditor({
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted-foreground">{t('settings.assistant.autoCompact')}</label>
-        <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-          <Checkbox
-            checked={autoCompactEnabled}
-            onCheckedChange={(checked) => setAutoCompactEnabled(!!checked)}
-          />
-          <span>{t('settings.assistant.autoCompactHint')}</span>
-        </label>
+        <label className="block text-xs text-muted">{t('settings.assistant.autoCompact')}</label>
+        <Checkbox className="text-xs" isSelected={autoCompactEnabled} onChange={setAutoCompactEnabled}>
+          <Checkbox.Content>
+            <Checkbox.Control>
+              <Checkbox.Indicator />
+            </Checkbox.Control>
+            {t('settings.assistant.autoCompactHint')}
+          </Checkbox.Content>
+        </Checkbox>
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted-foreground">{t('settings.assistant.thinking')}</label>
+        <label className="block text-xs text-muted">{t('settings.assistant.thinking')}</label>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-1.5 text-xs cursor-pointer">
-            <Checkbox
-              checked={thinkingEnabled}
-              onCheckedChange={(checked) => setThinkingEnabled(!!checked)}
-            />
-            <span>{t('settings.assistant.thinkingEnabled')}</span>
-          </label>
+          <Checkbox className="text-xs" isSelected={thinkingEnabled} onChange={setThinkingEnabled}>
+            <Checkbox.Content>
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+              {t('settings.assistant.thinkingEnabled')}
+            </Checkbox.Content>
+          </Checkbox>
         </div>
         {thinkingEnabled && (
           <div className="space-y-1 mt-2">
-            <Input
+            <Input fullWidth
               type="number"
               value={thinkingBudget}
               onChange={(e) => setThinkingBudget(e.target.value)}
               placeholder={t('settings.assistant.thinkingBudget')}
             />
-            <p className="text-xs text-muted-foreground/60">{t('settings.assistant.thinkingBudgetHint')}</p>
+            <p className="text-xs text-muted">{t('settings.assistant.thinkingBudgetHint')}</p>
           </div>
         )}
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted-foreground">{t('settings.assistant.tools')}</label>
+        <label className="block text-xs text-muted">{t('settings.assistant.tools')}</label>
         <div className="flex gap-2 mb-2">
           <Button
-            variant={toolMode === 'all' ? 'default' : 'outline'}
+            variant={toolMode === 'all' ? 'primary' : 'outline'}
             onClick={() => setToolMode('all')}
           >{t('settings.assistant.toolsAll')}</Button>
           {toolPresets.length > 0 && (
             <Button
-              variant={toolMode === 'preset' ? 'default' : 'outline'}
+              variant={toolMode === 'preset' ? 'primary' : 'outline'}
               onClick={() => setToolMode('preset')}
             >{t('settings.tools.preset')}</Button>
           )}
           <Button
-            variant={toolMode === 'custom' ? 'default' : 'outline'}
+            variant={toolMode === 'custom' ? 'primary' : 'outline'}
             onClick={() => setToolMode('custom')}
           >{t('settings.assistant.toolsCustom')}</Button>
         </div>
         {toolMode === 'preset' && (
           <Select
+            fullWidth
             value={selectedPresetId || '_none'}
-            onValueChange={(v) => { if (v) setSelectedPresetId(v === '_none' ? '' : v) }}
-            items={presetOptions}
+            onChange={(v) => { if (v) setSelectedPresetId(v === '_none' ? '' : String(v)) }}
           >
-            <SelectTrigger className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {presetOptions.map((o) => (
-                <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-              ))}
-            </SelectContent>
+            <Select.Trigger>
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                {presetOptions.map((o) => (
+                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                    {o.label}
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
           </Select>
         )}
         {toolMode === 'custom' && (
-          <ScrollArea className="max-h-40 border border-border rounded-lg"><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
+          <div
+            data-slot="tool-list"
+            className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
+          ><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
             {allTools.map((tool) => (
-              <label key={tool.name} className="flex items-center gap-1.5 text-xs cursor-pointer py-0.5">
-                <Checkbox
-                  checked={selectedTools.has(tool.name)}
-                  onCheckedChange={(checked) => {
-                    const next = new Set(selectedTools)
-                    if (checked) next.add(tool.name)
-                    else next.delete(tool.name)
-                    setSelectedTools(next)
-                  }}
-                />
-                <span className="font-mono truncate">{tool.name}</span>
-                {tool.source === 'mcp' && (
-                  <span className="text-muted-foreground/50 text-xs">MCP</span>
-                )}
-              </label>
+              <Checkbox
+                key={tool.name}
+                className="py-0.5 text-xs"
+                isSelected={selectedTools.has(tool.name)}
+                onChange={(selected) => {
+                  const next = new Set(selectedTools)
+                  if (selected) next.add(tool.name)
+                  else next.delete(tool.name)
+                  setSelectedTools(next)
+                }}
+              >
+                <Checkbox.Content>
+                  <Checkbox.Control>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                  <span className="truncate font-mono">{tool.name}</span>
+                  {tool.source === 'mcp' && (
+                    <span className="text-xs text-muted">MCP</span>
+                  )}
+                </Checkbox.Content>
+              </Checkbox>
             ))}
-          </div></ScrollArea>
+          </div></div>
         )}
       </div>
 
       {allPacks.length > 0 && (
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.assistant.emojiPacks')}</label>
+          <label className="block text-xs text-muted">{t('settings.assistant.emojiPacks')}</label>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2 border border-border rounded-lg">
             {allPacks.map((pack) => (
-              <label key={pack.id} className="flex items-center gap-1.5 text-xs cursor-pointer py-0.5">
-                <Checkbox
-                  checked={assignedPackIds.has(pack.id)}
-                  onCheckedChange={async (checked) => {
-                    if (checked) {
-                      await api.assignEmojiPack(assistant.id, pack.id)
-                      setAssignedPackIds((prev) => new Set([...prev, pack.id]))
-                    } else {
-                      await api.unassignEmojiPack(assistant.id, pack.id)
-                      setAssignedPackIds((prev) => {
-                        const next = new Set(prev)
-                        next.delete(pack.id)
-                        return next
-                      })
-                    }
-                  }}
-                />
-                <span className="truncate">{pack.name}</span>
-              </label>
+              <Checkbox
+                key={pack.id}
+                className="py-0.5 text-xs"
+                isSelected={assignedPackIds.has(pack.id)}
+                onChange={async (selected) => {
+                  if (selected) {
+                    await api.assignEmojiPack(assistant.id, pack.id)
+                    setAssignedPackIds((prev) => new Set([...prev, pack.id]))
+                  } else {
+                    await api.unassignEmojiPack(assistant.id, pack.id)
+                    setAssignedPackIds((prev) => {
+                      const next = new Set(prev)
+                      next.delete(pack.id)
+                      return next
+                    })
+                  }
+                }}
+              >
+                <Checkbox.Content>
+                  <Checkbox.Control>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                  <span className="truncate">{pack.name}</span>
+                </Checkbox.Content>
+              </Checkbox>
             ))}
           </div>
         </div>
@@ -370,43 +399,52 @@ function AssistantEditor({
 
       {allSkills.length > 0 && (
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted-foreground">{t('settings.skills.assistantSection')}</label>
-          <p className="text-xs text-muted-foreground/60">{t('settings.skills.assistantHint')}</p>
-          <ScrollArea className="max-h-40 border border-border rounded-lg"><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
+          <label className="block text-xs text-muted">{t('settings.skills.assistantSection')}</label>
+          <p className="text-xs text-muted">{t('settings.skills.assistantHint')}</p>
+          <div
+            data-slot="skill-list"
+            className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
+          ><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
             {allSkills.map((skill) => (
-              <label key={skill.dir_name} className="flex items-center gap-1.5 text-xs cursor-pointer py-0.5">
-                <Checkbox
-                  checked={boundSkillDirs.has(skill.dir_name)}
-                  disabled={skill.is_enabled === 0}
-                  onCheckedChange={async (checked) => {
-                    setSkillError(null)
-                    try {
-                      // The cap on bindings per anchor lives in the backend, so
-                      // take the returned set rather than guessing locally.
-                      const next = await api.setSkillBinding('assistant', assistant.id, skill.dir_name, !!checked)
-                      setBoundSkillDirs(new Set(next))
-                    } catch (e) {
-                      setSkillError(String(e))
-                    }
-                  }}
-                />
-                <span className="truncate">{skill.display_name}</span>
-              </label>
+              <Checkbox
+                key={skill.dir_name}
+                className="py-0.5 text-xs"
+                isSelected={boundSkillDirs.has(skill.dir_name)}
+                isDisabled={skill.is_enabled === 0}
+                onChange={async (selected) => {
+                  setSkillError(null)
+                  try {
+                    // The cap on bindings per anchor lives in the backend, so
+                    // take the returned set rather than guessing locally.
+                    const next = await api.setSkillBinding('assistant', assistant.id, skill.dir_name, selected)
+                    setBoundSkillDirs(new Set(next))
+                  } catch (e) {
+                    setSkillError(String(e))
+                  }
+                }}
+              >
+                <Checkbox.Content>
+                  <Checkbox.Control>
+                    <Checkbox.Indicator />
+                  </Checkbox.Control>
+                  <span className="truncate">{skill.display_name}</span>
+                </Checkbox.Content>
+              </Checkbox>
             ))}
-          </div></ScrollArea>
-          {skillError && <p className="text-xs text-destructive">{skillError}</p>}
+          </div></div>
+          {skillError && <p className="text-xs text-danger">{skillError}</p>}
         </div>
       )}
 
       <div className="flex items-center gap-2 pt-1">
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success">
-            <Check className="w-3 h-3" /> {t('common.saved')}
+          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
+            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
           </span>
         )}
         {onDelete && (
-          <Button variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={() => onDelete(assistant.id)}>
+          <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={() => onDelete(assistant.id)}>
             {t('common.delete')}
           </Button>
         )}
@@ -459,7 +497,7 @@ export function AssistantSettings() {
   )
 
   if (loading) {
-    return <div className="text-muted-foreground text-sm">{t('common.loading')}</div>
+    return <div className="text-muted text-sm">{t('common.loading')}</div>
   }
 
   return (
@@ -467,7 +505,7 @@ export function AssistantSettings() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-lg font-medium">{t('settings.assistant.title')}</h2>
-          <p className="text-xs text-muted-foreground mt-1">{t('settings.assistant.subtitle')}</p>
+          <p className="text-xs text-muted mt-1">{t('settings.assistant.subtitle')}</p>
         </div>
         <Button variant="outline" onClick={handleCreate}>
           <Plus className="w-3.5 h-3.5" />
@@ -475,46 +513,66 @@ export function AssistantSettings() {
         </Button>
       </div>
 
-      <div className="space-y-1">
+      {/* One open at a time is the group's own default (`allowsMultipleExpanded`
+          is off), so the single-open rule lives in the primitive rather than in
+          the click handler. */}
+      <DisclosureGroup
+        className="flex flex-col gap-1"
+        expandedKeys={expandedId ? [expandedId] : []}
+        onExpandedChange={(keys) => setExpandedId((([...keys][0] as string | undefined) ?? null))}
+      >
         {assistants.map((a) => {
           const isExpanded = expandedId === a.id
           const isDefault = a.is_default === 1
           const providerName = providers.find((p) => p.id === a.provider_id)?.name
 
           return (
-            <div key={a.id} className="border border-border rounded-lg overflow-hidden">
-              <Button
-                variant="ghost"
-                onClick={() => setExpandedId(isExpanded ? null : a.id)}
-                className="w-full justify-start h-auto px-3 py-2.5 text-sm"
-              >
-                {isExpanded ? (
-                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                ) : (
-                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                )}
-                <span className="flex-1 truncate">{a.name}</span>
-                {/* eslint-disable-next-line no-restricted-syntax -- gold-star semantics: default-assistant marker is intentionally amber (CLAUDE.md whitelist) */}
-                {isDefault && <Star className="w-3.5 h-3.5 text-amber-500" fill="currentColor" />}
-                {providerName && (
-                  <span className="text-xs text-muted-foreground">{providerName}</span>
-                )}
-                {a.model_id && (
-                  <span className="text-xs text-muted-foreground/60">{a.model_id}</span>
-                )}
-              </Button>
-              {isExpanded && (
-                <AssistantEditor
-                  assistant={a}
-                  providers={providers}
-                  onSave={handleSave}
-                  onDelete={isDefault ? undefined : handleDelete}
-                />
-              )}
-            </div>
+            <Disclosure
+              key={a.id}
+              id={a.id}
+              className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
+            >
+              <Disclosure.Heading>
+                {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`
+                    and `shrink-0`, which only mean anything inside a flex container.
+                    `text-start` undoes the button element's centred UA default. */}
+                <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
+                  <span className="flex-1 truncate">{a.name}</span>
+                  {/* eslint-disable-next-line no-restricted-syntax -- gold-star semantics: default-assistant marker is intentionally amber (CLAUDE.md whitelist) */}
+                  {isDefault && <StarFill className="w-3.5 h-3.5 text-amber-500" />}
+                  {providerName && (
+                    <span className="text-xs text-muted">{providerName}</span>
+                  )}
+                  {a.model_id && (
+                    <span className="text-xs text-muted">{a.model_id}</span>
+                  )}
+                  <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
+                </Disclosure.Trigger>
+              </Disclosure.Heading>
+              {/* `min-h-0` is load-bearing: the card is a flex column, and a flex
+                  item's default `min-height: auto` floors it at its content height. */}
+              <Disclosure.Content className="min-h-0 w-full">
+                {/* Body, not a plain wrapper: it is what keeps the panel
+                    measurable, so without it the editor never collapses. */}
+                <Disclosure.Body>
+                  {/* A collapsed panel is only hidden, not unmounted, so the
+                      editor still has to be gated: mounting one per row would
+                      fire its provider/model/tool/skill fetches for the whole
+                      list on every visit to this page. */}
+                  {isExpanded && (
+                    <AssistantEditor
+                      assistant={a}
+                      providers={providers}
+                      onSave={handleSave}
+                      onDelete={isDefault ? undefined : handleDelete}
+                    />
+                  )}
+                </Disclosure.Body>
+              </Disclosure.Content>
+            </Disclosure>
           )
         })}
-      </div>
+      </DisclosureGroup>
     </div>
   )
 }

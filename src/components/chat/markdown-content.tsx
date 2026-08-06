@@ -3,13 +3,13 @@ import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import rehypeHighlight from 'rehype-highlight'
-import { Check, Copy } from 'lucide-react'
+import { Check, Copy } from '@gravity-ui/icons'
 
 import { ActionButton } from '@/components/ui/action-button'
 import { cn } from '@/lib/utils'
 import type { EmojiMap } from './emoji-renderer'
 
-export function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text, className }: { text: string; className?: string }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
   const handleCopy = useCallback(() => {
@@ -22,7 +22,7 @@ export function CopyButton({ text }: { text: string }) {
     <ActionButton
       label={t('chat.copy')}
       onClick={handleCopy}
-      className="text-muted-foreground hover:text-foreground"
+      className={cn('text-muted hover:text-foreground', className)}
     >
       {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
     </ActionButton>
@@ -47,14 +47,17 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
   // Fenced blocks without a language get no className; they still contain a
   // trailing newline, while inline code never contains one.
   if (!className && !rawCode.includes('\n')) {
-    return <code className="px-1.5 py-0.5 bg-muted rounded text-xs" {...props}>{children}</code>
+    return <code className="px-1.5 py-0.5 bg-default rounded text-xs" {...props}>{children}</code>
   }
 
   return (
-    <div className="group relative my-3 rounded-lg overflow-hidden bg-card border border-border">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-muted/50 text-xs text-muted-foreground">
+    <div className="group relative my-3 rounded-lg overflow-hidden bg-surface border border-border">
+      {/* The copy button is sized down from the default 36px: at full size it
+          sets the height of this strip, and its 24px radius reads as a pill
+          inside an 8px-cornered block. */}
+      <div className="flex items-center justify-between px-3 py-1.5 bg-default/50 text-xs text-muted">
         <span>{lang ?? 'code'}</span>
-        <CopyButton text={code} />
+        <CopyButton text={code} className="size-6 rounded-md" />
       </div>
       <div className="w-full overflow-x-auto">
         <pre className="p-3 text-xs leading-relaxed !bg-transparent !m-0 w-fit min-w-full">
@@ -66,7 +69,7 @@ function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLE
 }
 
 export const proseClasses = cn(
-  "text-sm leading-relaxed prose prose-invert prose-sm max-w-none",
+  "text-sm leading-relaxed prose dark:prose-invert prose-sm max-w-none",
   "prose-p:my-1.5 prose-headings:mt-4 prose-headings:mb-2",
   // Typography's own first/last reset loses to the heading rules above, so an
   // answer opening on a heading pushes itself away from whatever introduced it.
@@ -75,7 +78,7 @@ export const proseClasses = cn(
   "prose-code:before:content-none prose-code:after:content-none",
   "prose-table:text-sm prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5",
   "prose-table:border prose-table:border-border",
-  "prose-th:border prose-th:border-border prose-th:bg-muted/50",
+  "prose-th:border prose-th:border-border prose-th:bg-default/50",
   "prose-td:border prose-td:border-border",
 )
 
@@ -123,7 +126,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, is
         {processed}
       </ReactMarkdown>
       {isStreaming && (
-        <span className="inline-block w-2 h-4 ml-0.5 bg-muted-foreground animate-pulse" />
+        <span className="inline-block w-2 h-4 ml-0.5 bg-muted animate-pulse" />
       )}
     </div>
   )

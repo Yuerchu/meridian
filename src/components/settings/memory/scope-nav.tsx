@@ -1,16 +1,8 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Pin, UserX } from 'lucide-react'
+import { Pin, PersonXmark } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button } from '@/components/ui/button'
-import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogPopup,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+import { AlertDialog, Button, Card } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import type { MemorySubject, Project } from '@/types'
 import type { ScopeFilter } from './use-memory-browser'
@@ -47,6 +39,9 @@ export function ScopeNav({
 }: ScopeNavProps) {
   const { t } = useTranslation()
   const [confirmForget, setConfirmForget] = useState(false)
+  // `AlertDialog.Body` is a plain div — only a `Heading slot="title"` is wired
+  // up for us, so without this the dialog announces its title and nothing else.
+  const forgetDescId = useId()
 
   const selectedPerson =
     filter.kind === 'person' ? subjects.find((s) => s.scope_id === filter.scopeId) : undefined
@@ -60,13 +55,13 @@ export function ScopeNav({
       data-slot="memory-scope-row"
     >
       <span className="truncate">{label}</span>
-      {count !== null && <span className="text-xs text-muted-foreground">{count}</span>}
+      {count !== null && <span className="text-xs text-muted">{count}</span>}
     </Button>
   )
 
   return (
     <div data-slot="memory-scope-nav" className="flex w-56 shrink-0 flex-col gap-0.5">
-      <div className="px-2 pb-1 text-xs font-medium text-muted-foreground">
+      <div className="px-2 pb-1 text-xs font-medium text-muted">
         {t('settings.memory.nav.scope')}
       </div>
 
@@ -108,20 +103,17 @@ export function ScopeNav({
       )}
 
       {selectedPerson && (
-        <div
-          data-slot="memory-person-card"
-          className="mt-3 space-y-2 rounded-lg border border-border p-3"
-        >
-          <div className="text-sm font-medium">
-            {selectedPerson.display_name ?? selectedPerson.scope_id}
-          </div>
-          <div className="text-xs text-muted-foreground">
-            {t('settings.memory.person.lastSeen', {
-              when: relativeTime(selectedPerson.last_seen_at),
-            })}
-          </div>
+        <Card data-slot="memory-person-card" className="mt-3">
+          <Card.Header>
+            <Card.Title>{selectedPerson.display_name ?? selectedPerson.scope_id}</Card.Title>
+            <Card.Description>
+              {t('settings.memory.person.lastSeen', {
+                when: relativeTime(selectedPerson.last_seen_at),
+              })}
+            </Card.Description>
+          </Card.Header>
           {selectedPerson.opted_out !== 0 && (
-            <div className="text-xs text-warning">{t('settings.memory.person.optedOut')}</div>
+            <div className="text-xs text-warning-soft-foreground">{t('settings.memory.person.optedOut')}</div>
           )}
 
           <Button
@@ -137,7 +129,7 @@ export function ScopeNav({
             }}
             data-slot="memory-pin-toggle"
           >
-            <Pin className={selectedPerson.is_pinned !== 0 ? 'text-foreground' : 'text-muted-foreground'} />
+            <Pin className={selectedPerson.is_pinned !== 0 ? 'text-foreground' : 'text-muted'} />
             {selectedPerson.is_pinned !== 0
               ? t('settings.memory.unpin')
               : t('settings.memory.pin')}
@@ -148,37 +140,39 @@ export function ScopeNav({
             className="w-full justify-start font-normal"
             onClick={() => setConfirmForget(true)}
           >
-            <UserX className="text-destructive" />
+            <PersonXmark className="text-danger" />
             {t('settings.memory.person.forget')}
           </Button>
-          <AlertDialog
-            open={confirmForget}
-            onOpenChange={(open) => { if (!open) setConfirmForget(false) }}
-          >
-            <AlertDialogPopup>
-              <AlertDialogTitle>
-                {t('settings.memory.person.forgetConfirmTitle')}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {t('settings.memory.person.forgetConfirmBody')}
-              </AlertDialogDescription>
-              <AlertDialogFooter>
-                <AlertDialogClose className="bg-accent text-accent-foreground hover:bg-accent/80">
-                  {t('common.cancel')}
-                </AlertDialogClose>
-                <AlertDialogClose
-                  className="bg-destructive text-white hover:bg-destructive/80"
-                  onClick={async () => {
-                    await api.forgetMemorySubject(selectedPerson.scope_id)
-                    onChanged()
-                  }}
-                >
-                  {t('common.confirm')}
-                </AlertDialogClose>
-              </AlertDialogFooter>
-            </AlertDialogPopup>
-          </AlertDialog>
-        </div>
+          <AlertDialog.Backdrop isOpen={confirmForget} onOpenChange={setConfirmForget}>
+            <AlertDialog.Container>
+              <AlertDialog.Dialog aria-describedby={forgetDescId}>
+                <AlertDialog.Header>
+                  <AlertDialog.Heading>
+                    {t('settings.memory.person.forgetConfirmTitle')}
+                  </AlertDialog.Heading>
+                </AlertDialog.Header>
+                <AlertDialog.Body id={forgetDescId}>
+                  {t('settings.memory.person.forgetConfirmBody')}
+                </AlertDialog.Body>
+                <AlertDialog.Footer>
+                  <Button slot="close" variant="tertiary">
+                    {t('common.cancel')}
+                  </Button>
+                  <Button
+                    slot="close"
+                    variant="danger"
+                    onClick={async () => {
+                      await api.forgetMemorySubject(selectedPerson.scope_id)
+                      onChanged()
+                    }}
+                  >
+                    {t('common.confirm')}
+                  </Button>
+                </AlertDialog.Footer>
+              </AlertDialog.Dialog>
+            </AlertDialog.Container>
+          </AlertDialog.Backdrop>
+        </Card>
       )}
     </div>
   )
