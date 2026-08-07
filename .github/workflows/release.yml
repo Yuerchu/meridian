@@ -175,19 +175,18 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # linuxdeploy and its appimage plugin are themselves AppImages, and an
-          # AppImage mounts itself with FUSE 2 — which ubuntu-24.04 stopped
-          # shipping. This tells the runtime to unpack to a temp directory and
-          # run from there instead, which is what AppImage recommends for CI and
-          # does not depend on a package whose name changed in that same release
-          # (`libfuse2` became `libfuse2t64`). Ignored everywhere else.
-          APPIMAGE_EXTRACT_AND_RUN: 1
         with:
           tagName: ${{ inputs.tag || github.ref_name }}
           releaseName: Meridian ${{ inputs.tag || github.ref_name }}
           releaseDraft: true
           prerelease: false
-          args: --target ${{ matrix.target }}
+          # `--verbose` on Linux only, and not for the extra logging: the
+          # bundler runs linuxdeploy with `.output()` and discards what it
+          # captured whenever the log level is Error, which is the default. A
+          # failure there arrives as the bare string "failed to run
+          # linuxdeploy" with the reason thrown away. Any other level takes the
+          # branch that reports it (`linuxdeploy.rs`, `run_appimage_bundler`).
+          args: --target ${{ matrix.target }}${{ matrix.os == 'ubuntu-latest' && ' --verbose' || '' }}
           tauriScript: pnpm tauri
 
   build-android:
