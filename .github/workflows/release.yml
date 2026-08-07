@@ -3,29 +3,82 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # For finishing a release the tag push left incomplete. A macOS minute bills
+  # at ten and a Windows one at two, so rebuilding three platforms to recover
+  # one is most of an hour of quota for a few files.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build and upload into
+        required: true
+      only:
+        description: Restrict the desktop build to one platform
+        type: choice
+        default: all
+        options: [all, linux-x64, windows-x64, macos-arm64, none]
+      android:
+        description: Build the Android APK
+        type: boolean
+        default: true
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 jobs:
+  plan:
+    runs-on: ubuntu-latest
+    name: Plan
+    outputs:
+      desktop: ${{ steps.pick.outputs.desktop }}
+      any-desktop: ${{ steps.pick.outputs.any-desktop }}
+    steps:
+      - id: pick
+        shell: bash
+        env:
+          # Empty on a tag push, where every platform is wanted.
+          ONLY: ${{ inputs.only }}
+        run: |
+          set -euo pipefail
+          win='{"os":"windows-latest","target":"x86_64-pc-windows-msvc","label":"windows-x64"}'
+          mac='{"os":"macos-latest","target":"aarch64-apple-darwin","label":"macos-arm64"}'
+          lin='{"os":"ubuntu-latest","target":"x86_64-unknown-linux-gnu","label":"linux-x64"}'
+          # Spelled out rather than filtered with jq: the whole point of this
+          # job is to not spend a build finding out that a one-line expression
+          # was wrong, and the choice input already bounds the input.
+          case "${ONLY:-all}" in
+            ''|all)      picked="[$win,$mac,$lin]" ;;
+            windows-x64) picked="[$win]" ;;
+            macos-arm64) picked="[$mac]" ;;
+            linux-x64)   picked="[$lin]" ;;
+            none)        picked='[]' ;;
+            *) echo "unknown platform: $ONLY" >&2; exit 1 ;;
+          esac
+          echo "desktop=$picked" >> "$GITHUB_OUTPUT"
+          # An empty matrix is an error rather than an empty set, so the jobs
+          # that would consume one are gated on this instead.
+          if [ "$picked" = '[]' ]; then
+            echo "any-desktop=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "any-desktop=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "building: $picked"
+
   test:
+    needs: plan
+    if: needs.plan.outputs.any-desktop == 'true'
     strategy:
       fail-fast: true
       matrix:
-        include:
-          - os: windows-latest
-            label: windows-x64
-          - os: macos-latest
-            label: macos-arm64
-          - os: ubuntu-latest
-            label: linux-x64
+        include: ${{ fromJSON(needs.plan.outputs.desktop) }}
 
     runs-on: ${{ matrix.os }}
     name: Test (${{ matrix.label }})
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: pnpm/action-setup@v4
 
@@ -70,20 +123,11 @@ jobs:
         run: cargo test
 
   build:
-    needs: test
+    needs: [plan, test]
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            label: windows-x64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            label: macos-arm64
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            label: linux-x64
+        include: ${{ fromJSON(needs.plan.outputs.desktop) }}
 
     runs-on: ${{ matrix.os }}
     name: Build (${{ matrix.label }})
@@ -93,6 +137,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: pnpm/action-setup@v4
 
@@ -137,8 +183,8 @@ jobs:
           # (`libfuse2` became `libfuse2t64`). Ignored everywhere else.
           APPIMAGE_EXTRACT_AND_RUN: 1
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Meridian ${{ github.ref_name }}
+          tagName: ${{ inputs.tag || github.ref_name }}
+          releaseName: Meridian ${{ inputs.tag || github.ref_name }}
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.target }}
@@ -146,8 +192,15 @@ jobs:
 
   build-android:
     # needs `build` too: the desktop job creates the GitHub release this job
-    # uploads into; running in parallel raced against its creation.
-    needs: [test, build]
+    # uploads into; running in parallel raced against its creation. `always()`
+    # keeps that ordering without inheriting the skip when there is no desktop
+    # build to wait for — the release already exists in that case.
+    needs: [plan, test, build]
+    if: |
+      always()
+      && inputs.android != false
+      && needs.test.result != 'failure'
+      && needs.build.result != 'failure'
     runs-on: ubuntu-latest
     name: Build (android-aarch64)
 
@@ -156,6 +209,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
 
       - uses: pnpm/action-setup@v4
 
@@ -210,5 +265,5 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           APK=$(find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -type f | head -1)
-          VERSION=${{ github.ref_name }}
+          VERSION=${{ inputs.tag || github.ref_name }}
           gh release upload "$VERSION" "$APK#Meridian_${VERSION#v}_aarch64.apk" --clobber
