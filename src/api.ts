@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ChatMode, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, LogFileInfo, LogPage, LogQuery, LogSettings, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, MessageTree, ModelConfig, ModelConfigInput, ModelInfo, PendingApprovalInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, VoiceModelStatus, VoiceTranscript } from './types'
+import type { Assistant, ChatMode, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, LogFileInfo, LogPage, LogQuery, LogSettings, McpConnectionStatus, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, MessageTree, ModelConfig, ModelConfigInput, ModelInfo, PendingApprovalInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, VoiceModelStatus, VoiceTranscript } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -435,6 +435,11 @@ export const api = {
 
   listMcpTools: (serverId?: string) =>
     invoke<McpToolDef[]>('list_mcp_tools', { serverId: serverId ?? null }),
+
+  // Only servers with a live entry come back. Anything absent is disconnected —
+  // the caller already has the full list from the database.
+  listMcpConnectionStatuses: () =>
+    invoke<McpConnectionStatus[]>('list_mcp_connection_statuses'),
 
   listAllToolNames: () =>
     invoke<ToolInfo[]>('list_all_tool_names'),

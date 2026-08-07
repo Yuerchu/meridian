@@ -4,7 +4,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter};
 use tokio::process::{Child, ChildStdin, ChildStdout};
 
 use super::protocol::{JsonRpcRequest, JsonRpcResponse};
-use super::McpTransport;
+use super::{McpTransport, TransportError};
 
 /// Lines of the server's stderr kept for the failure report.
 ///
@@ -16,6 +16,7 @@ use super::McpTransport;
 /// kept.
 const STDERR_TAIL_LINES: usize = 5;
 const STDERR_LINE_CHARS: usize = 400;
+
 
 pub struct StdioTransport {
     child: Child,
@@ -40,17 +41,23 @@ impl StdioTransport {
             // Was Stdio::null(), which discarded the only explanation a failing
             // server ever gives.
             .stderr(std::process::Stdio::piped())
+            // Backstop for every path that drops a transport without going
+            // through shutdown: a superseded connect, an actor that stopped on
+            // a dead transport, a panic. Not a replacement for the shutdown on
+            // exit — `std::process::exit` runs no destructors — but it covers
+            // the cases that shutdown never hears about.
+            .kill_on_drop(true)
             .envs(env);
 
         if let Some(dir) = cwd {
             cmd.current_dir(dir);
         }
 
+        // CREATE_NO_WINDOW: without it every stdio server flashes a console.
+        // `tokio::process::Command` carries this itself on Windows, so the
+        // std extension trait is not needed.
         #[cfg(target_os = "windows")]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000);
-        }
+        cmd.creation_flags(0x08000000);
 
         let mut child = cmd.spawn().map_err(|e| {
             // env is deliberately absent: MCP server environments routinely hold
@@ -113,6 +120,12 @@ impl StdioTransport {
 
     // MCP stdio transport (2024-11-05) frames messages as newline-delimited
     // JSON-RPC — not LSP-style Content-Length headers.
+    //
+    // No timeout of its own. A write that is abandoned part way leaves half a
+    // frame in the pipe, and there is no way to find the boundary again — so
+    // the only safe thing to interrupt this is something that is also going to
+    // destroy the transport. That is the actor's deadline, and it does exactly
+    // that.
     async fn send_raw(&mut self, body: &str) -> Result<(), String> {
         self.writer.write_all(body.as_bytes()).await.map_err(|e| format!("write body: {e}"))?;
         self.writer.write_all(b"\n").await.map_err(|e| format!("write newline: {e}"))?;
@@ -120,7 +133,10 @@ impl StdioTransport {
         Ok(())
     }
 
-    async fn read_response(&mut self, expected_id: u64) -> Result<serde_json::Value, String> {
+    /// `Err` here is always fatal: every path out of it means the stream can no
+    /// longer be read in step. A JSON-RPC error *response* is a success as far
+    /// as framing goes and is reported separately.
+    async fn read_response(&mut self, expected_id: u64) -> Result<Result<serde_json::Value, String>, String> {
         loop {
             let mut line = String::new();
             let n = self.reader
@@ -157,11 +173,12 @@ impl StdioTransport {
             let resp: JsonRpcResponse = serde_json::from_value(value)
                 .map_err(|e| format!("parse response: {e}"))?;
 
+            // Framing held; the server simply said no.
             if let Some(err) = resp.error {
-                return Err(format!("MCP error {}: {}", err.code, err.message));
+                return Ok(Err(format!("MCP error {}: {}", err.code, err.message)));
             }
 
-            return resp.result.ok_or_else(|| "empty result".to_string());
+            return Ok(resp.result.ok_or_else(|| "empty result".to_string()).map_err(|e| e));
         }
     }
 }
@@ -172,25 +189,37 @@ impl McpTransport for StdioTransport {
         &mut self,
         method: &str,
         params: Option<serde_json::Value>,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<serde_json::Value, TransportError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let req = JsonRpcRequest::new(id, method, params);
-        let body = serde_json::to_string(&req).map_err(|e| e.to_string())?;
-        self.send_raw(&body).await?;
+        // Serialising our own request cannot fail for any reason the server is
+        // responsible for, but nothing has been written yet either — the pipe
+        // is still in step.
+        let body = serde_json::to_string(&req)
+            .map_err(|e| TransportError::Rpc(e.to_string()))?;
 
-        tokio::time::timeout(std::time::Duration::from_secs(30), self.read_response(id))
-            .await
-            .map_err(|_| {
-                // A server that started but never answers looks identical to one
-                // that never started, unless this says otherwise.
-                tracing::warn!(
-                    method,
-                    timeout_secs = 30,
-                    stderr_tail = %self.stderr_tail(),
-                    "MCP request timed out"
-                );
-                format!("MCP request '{}' timed out after 30s", method)
-            })?
+        // From here on every failure is fatal: a write that got part way, a
+        // read that stopped mid-frame, a closed pipe. There is no way to find
+        // the boundary again, so the transport does not get to be reused.
+        //
+        // No timeout of its own any more. The one that used to be here wrapped
+        // `read_response`, and `read_line` is not cancel-safe: expiring it threw
+        // away however much of a line had already been consumed, and every
+        // later response was read against the wrong request. Bounding this is
+        // the actor's job, because the actor also destroys the transport when
+        // its deadline expires.
+        self.send_raw(&body).await.map_err(|e| {
+            tracing::warn!(method, stderr_tail = %self.stderr_tail(), error = %e, "MCP write failed");
+            TransportError::Broken(e)
+        })?;
+
+        match self.read_response(id).await {
+            Ok(answer) => answer.map_err(TransportError::Rpc),
+            Err(e) => {
+                tracing::warn!(method, stderr_tail = %self.stderr_tail(), error = %e, "MCP read failed");
+                Err(TransportError::Broken(e))
+            }
+        }
     }
 
     async fn notify(

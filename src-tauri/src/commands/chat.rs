@@ -498,11 +498,10 @@ async fn chat_inner(
     // one travels as a user-role message, because it is partly learned from
     // what other people said and the system prompt is for our own rules.
     let tool_registry = app.state::<AppTools>();
-    let mcp_defs = {
-        let mcp = app.state::<AppMcp>();
-        let mgr = mcp.0.lock().await;
-        mgr.all_tool_definitions()
-    };
+    // Off the published snapshot. Reading it never waits on a server that is
+    // mid-call — which is exactly what used to stop every other conversation
+    // from starting a turn.
+    let mcp_defs = app.state::<AppMcp>().0.tool_definitions().as_ref().clone();
     let mut mode = crate::agent::modes::resolve(
         mode.as_deref().or(conv_mode.as_deref()),
     );
@@ -998,11 +997,8 @@ async fn chat_inner(
                         let rebuilt = match switched {
                             Err(e) => Err(e),
                             Ok(()) => {
-                                let mcp_defs = {
-                                    let mcp = app.state::<AppMcp>();
-                                    let mgr = mcp.0.lock().await;
-                                    mgr.all_tool_definitions()
-                                };
+                                let mcp_defs = app.state::<AppMcp>().0
+                                    .tool_definitions().as_ref().clone();
                                 let pool2 = pool.clone();
                                 let registry = tool_registry.0.clone();
                                 let input = crate::agent::turn_config::TurnConfigInput {
@@ -1120,11 +1116,8 @@ async fn chat_inner(
                                     let rebuilt = match switched {
                                         Err(e) => Err(e),
                                         Ok(()) => {
-                                            let mcp_defs = {
-                                                let mcp = app.state::<AppMcp>();
-                                                let mgr = mcp.0.lock().await;
-                                                mgr.all_tool_definitions()
-                                            };
+                                            let mcp_defs = app.state::<AppMcp>().0
+                                                .tool_definitions().as_ref().clone();
                                             let pool2 = pool.clone();
                                             let registry = tool_registry.0.clone();
                                             let input = crate::agent::turn_config::TurnConfigInput {
@@ -1211,9 +1204,10 @@ async fn chat_inner(
                     Some(ApprovalDecision::Approved) => {
                         let args: serde_json::Value = serde_json::from_str(&tc.arguments)
                             .unwrap_or_else(|_| serde_json::json!({}));
-                        let mcp = app.state::<AppMcp>();
-                        let mut mgr = mcp.0.lock().await;
-                        match mgr.call_tool(&tc.name, args).await {
+                        // Awaited with nothing locked: the registry hands back a
+                        // handle and the request itself runs outside it.
+                        let mcp = app.state::<AppMcp>().0.clone();
+                        match mcp.call_tool(&tc.name, args).await {
                             Ok(output) => (output, "success"),
                             Err(e) => (format!("MCP error: {e}"), "error"),
                         }

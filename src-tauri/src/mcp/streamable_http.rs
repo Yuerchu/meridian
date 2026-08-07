@@ -5,7 +5,7 @@ use eventsource_stream::Eventsource;
 use futures::StreamExt;
 
 use super::protocol::{JsonRpcRequest, JsonRpcResponse};
-use super::McpTransport;
+use super::{McpTransport, TransportError};
 
 pub struct StreamableHttpTransport {
     client: reqwest::Client,
@@ -59,13 +59,16 @@ impl StreamableHttpTransport {
         }
     }
 
-    async fn parse_sse_response(&self, resp: reqwest::Response) -> Result<serde_json::Value, String> {
+    async fn parse_sse_response(&self, resp: reqwest::Response) -> Result<serde_json::Value, TransportError> {
         let mut event_stream = resp.bytes_stream()
             .map(|r| r.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e)))
             .eventsource();
 
         while let Some(event) = event_stream.next().await {
-            let event = event.map_err(|e| format!("SSE parse error: {e}"))?;
+            // The stream broke apart mid-response. Unlike stdio this costs no
+            // more than the one request — each is its own connection — but the
+            // caller still did not get an answer.
+            let event = event.map_err(|e| TransportError::Broken(format!("SSE parse error: {e}")))?;
             if event.event == "message" || event.event.is_empty() {
                 let data = event.data.trim();
                 if data.is_empty() {
@@ -73,7 +76,9 @@ impl StreamableHttpTransport {
                 }
                 if let Ok(rpc_resp) = serde_json::from_str::<JsonRpcResponse>(data) {
                     if let Some(err) = rpc_resp.error {
-                        return Err(format!("MCP error {}: {}", err.code, err.message));
+                        return Err(TransportError::Rpc(
+                            format!("MCP error {}: {}", err.code, err.message),
+                        ));
                     }
                     if let Some(result) = rpc_resp.result {
                         return Ok(result);
@@ -82,7 +87,7 @@ impl StreamableHttpTransport {
             }
         }
 
-        Err("SSE stream ended without a response".to_string())
+        Err(TransportError::Broken("SSE stream ended without a response".to_string()))
     }
 }
 
@@ -92,11 +97,17 @@ impl McpTransport for StreamableHttpTransport {
         &mut self,
         method: &str,
         params: Option<serde_json::Value>,
-    ) -> Result<serde_json::Value, String> {
+    ) -> Result<serde_json::Value, TransportError> {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let req = JsonRpcRequest::new(id, method, params);
-        let body = serde_json::to_string(&req).map_err(|e| e.to_string())?;
+        let body = serde_json::to_string(&req)
+            .map_err(|e| TransportError::Rpc(e.to_string()))?;
 
+        // Each request is its own HTTP exchange, so unlike stdio a failure here
+        // costs only this call — there is no shared stream to fall out of step.
+        // It is still reported as broken: something between here and the server
+        // is not working, and the registry is better off rebuilding than
+        // retrying into it.
         let resp = self.client
             .post(&self.url)
             .headers(self.build_headers())
@@ -104,12 +115,14 @@ impl McpTransport for StreamableHttpTransport {
             .timeout(std::time::Duration::from_secs(30))
             .send()
             .await
-            .map_err(|e| format!("HTTP request failed: {e}"))?;
+            .map_err(|e| TransportError::Broken(format!("HTTP request failed: {e}")))?;
 
+        // A status the server chose to send is an answer, not a transport
+        // failure — the connection did its job.
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(format!("HTTP {}: {}", status, text));
+            return Err(TransportError::Rpc(format!("HTTP {}: {}", status, text)));
         }
 
         self.extract_session_id(resp.headers());
@@ -123,13 +136,16 @@ impl McpTransport for StreamableHttpTransport {
         if content_type.contains("text/event-stream") {
             self.parse_sse_response(resp).await
         } else {
-            let text = resp.text().await.map_err(|e| format!("read body: {e}"))?;
+            let text = resp.text().await
+                .map_err(|e| TransportError::Broken(format!("read body: {e}")))?;
             let rpc_resp: JsonRpcResponse = serde_json::from_str(&text)
-                .map_err(|e| format!("parse JSON-RPC response: {e}"))?;
+                .map_err(|e| TransportError::Rpc(format!("parse JSON-RPC response: {e}")))?;
             if let Some(err) = rpc_resp.error {
-                return Err(format!("MCP error {}: {}", err.code, err.message));
+                return Err(TransportError::Rpc(
+                    format!("MCP error {}: {}", err.code, err.message),
+                ));
             }
-            rpc_resp.result.ok_or_else(|| "empty result".to_string())
+            rpc_resp.result.ok_or_else(|| TransportError::Rpc("empty result".to_string()))
         }
     }
 

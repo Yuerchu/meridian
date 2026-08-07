@@ -286,11 +286,9 @@ async fn assemble_system_prompt(
     context_limit: usize,
     active_path: &[db::models::message::Message],
 ) -> (String, String) {
-    let mcp_defs = {
-        let mcp = app.state::<AppMcp>();
-        let mgr = mcp.0.lock().await;
-        mgr.all_tool_definitions()
-    };
+    // Off the published snapshot, so the context estimator cannot be blocked by
+    // a server that is busy answering something else.
+    let mcp_defs = app.state::<AppMcp>().0.tool_definitions().as_ref().clone();
     let registry = app.state::<AppTools>().0.clone();
     let instruction_block = {
         let budget = instruction_budget(context_limit);

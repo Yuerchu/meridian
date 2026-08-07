@@ -14,7 +14,10 @@ use crate::tools;
 pub(crate) struct AppSecrets(pub(crate) Arc<SecretsManager>);
 pub(crate) struct AppDb(pub(crate) DbPool);
 pub(crate) struct AppTools(pub(crate) Arc<tools::ToolRegistry>);
-pub(crate) struct AppMcp(pub(crate) Arc<Mutex<mcp::McpManager>>);
+/// No outer mutex: the registry locks internally and never across I/O. Holding
+/// one here is what let a single slow MCP call stop every conversation in the
+/// app from assembling its tool set.
+pub(crate) struct AppMcp(pub(crate) Arc<mcp::McpRegistry>);
 
 pub(crate) static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 

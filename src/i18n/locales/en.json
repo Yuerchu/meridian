@@ -298,6 +298,7 @@
   "settings.mcp.disconnect": "Disconnect",
   "settings.mcp.connected": "Connected",
   "settings.mcp.disconnected": "Disconnected",
+  "settings.mcp.autoConnect": "Connect at startup",
   "settings.mcp.tools": "Tools",
   "settings.mcp.noServers": "No MCP servers. Click + to add one.",
   "settings.mcp.selectServer": "Select a server to configure.",

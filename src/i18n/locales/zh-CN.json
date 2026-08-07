@@ -298,6 +298,7 @@
   "settings.mcp.disconnect": "断开",
   "settings.mcp.connected": "已连接",
   "settings.mcp.disconnected": "未连接",
+  "settings.mcp.autoConnect": "启动时连接",
   "settings.mcp.tools": "工具",
   "settings.mcp.noServers": "暂无 MCP 服务器，点击 + 添加。",
   "settings.mcp.selectServer": "选择一个服务器进行配置。",

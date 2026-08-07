@@ -17,7 +17,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{mpsc, oneshot, watch, Mutex};
 
 use crate::db::DbPool;
-use crate::mcp::McpManager;
+use crate::mcp::McpRegistry;
 use crate::secrets::SecretsManager;
 use crate::tools::ToolRegistry;
 use crate::util::{get_conn, now_ms};
@@ -30,7 +30,7 @@ pub struct SharedState {
     pub pool: DbPool,
     pub secrets: Arc<SecretsManager>,
     pub tools: Arc<ToolRegistry>,
-    pub mcp: Arc<Mutex<McpManager>>,
+    pub mcp: Arc<McpRegistry>,
     pub sessions: Mutex<SessionManager>,
     /// Session key → (initiator user_id, responder). Only the user who
     /// triggered the tool call may answer the approval prompt.
@@ -475,7 +475,7 @@ impl OneBotServer {
         pool: DbPool,
         secrets: Arc<SecretsManager>,
         tools: Arc<ToolRegistry>,
-        mcp: Arc<Mutex<McpManager>>,
+        mcp: Arc<McpRegistry>,
         config: OneBotConfig,
         app_handle: Option<tauri::AppHandle>,
     ) -> Self {

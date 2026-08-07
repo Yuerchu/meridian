@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::db::DbPool;
 use crate::db::models::message::NewMessage;
-use crate::mcp::McpManager;
+use crate::mcp::McpRegistry;
 use crate::provider::{self, ChatMessage, ChatParams, ChatStream, StreamEvent, ToolCall};
 use crate::secrets::SecretsManager;
 use crate::tools::{self, ToolRegistry};
@@ -279,7 +279,7 @@ pub async fn headless_chat(
     // `spawn_blocking`, which needs an owned handle.
     secrets: &Arc<SecretsManager>,
     tool_registry: &Arc<ToolRegistry>,
-    mcp_manager: &Arc<Mutex<McpManager>>,
+    mcp_registry: &Arc<McpRegistry>,
     conversation_id: &str,
     project_id: Option<&str>,
     // This turn's inbound messages, each keeping its own speaker. Several
@@ -352,9 +352,10 @@ pub async fn headless_chat(
     // Collaboration modes stay off: a headless turn has no way to switch them,
     // and a QQ session already cannot touch the filesystem (its file access is
     // an empty root set), so plan mode would guard nothing.
+    // Read off the published snapshot rather than through the connection lock,
+    // so a server that is mid-call cannot hold up this turn from starting.
     let mcp_defs = if is_admin {
-        let mgr = mcp_manager.lock().await;
-        mgr.all_tool_definitions()
+        mcp_registry.tool_definitions().as_ref().clone()
     } else {
         Vec::new()
     };
@@ -786,8 +787,7 @@ pub async fn headless_chat(
                 if (approval_fn)(tc.clone(), None).await {
                     let args: serde_json::Value = serde_json::from_str(&tc.arguments)
                         .unwrap_or_else(|_| serde_json::json!({}));
-                    let mut mgr = mcp_manager.lock().await;
-                    match mgr.call_tool(&tc.name, args).await {
+                    match mcp_registry.call_tool(&tc.name, args).await {
                         Ok(output) => (output, "success"),
                         Err(e) => (format!("MCP error: {e}"), "error"),
                     }

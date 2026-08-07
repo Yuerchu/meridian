@@ -26,13 +26,14 @@ mod commands;
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use db::models::assistant::{AssistantUpdate, NewAssistant};
 use db::models::tool_category::NewToolCategory;
 use db::models::tool_preset::NewToolPreset;
 use db::models::provider::NewProvider;
 use secrets::{SecretName, SecretScope, SecretsManager};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 #[cfg(desktop)]
 use tauri::image::Image;
 #[cfg(desktop)]
@@ -308,7 +309,7 @@ pub fn run() {
             app.manage(ActiveChats(Mutex::new(HashMap::new())));
             app.manage(EditSessions(Mutex::new(HashMap::new())));
             app.manage(state::CompactBreakers(Mutex::new(HashMap::new())));
-            app.manage(AppMcp(Arc::new(Mutex::new(mcp::McpManager::new()))));
+            app.manage(AppMcp(mcp::McpRegistry::new()));
             app.manage(sleep_inhibitor::AppSleepInhibitor::new());
             #[cfg(not(target_os = "android"))]
             app.manage(state::VoiceState::new());
@@ -323,6 +324,45 @@ pub fn run() {
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     onebot::maybe_start(handle).await;
+                });
+            }
+
+            // Reconnect whatever the user marked for auto-connect. Detached, so
+            // a server that takes ten seconds to start does not hold up the
+            // window, and concurrent, so the slowest one does not decide when
+            // the rest come up. Going through the same entry point as the
+            // settings page matters: its idempotence is what stops this and a
+            // hand-clicked Connect from starting two processes for one server.
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    let pool = handle.state::<AppDb>().0.clone();
+                    let servers = tokio::task::spawn_blocking(move || {
+                        let mut conn = pool.get().ok()?;
+                        db::ops::mcp_server::list_enabled_mcp_servers(&mut conn).ok()
+                    }).await.ok().flatten().unwrap_or_default();
+                    if servers.is_empty() {
+                        return;
+                    }
+                    let registry = handle.state::<AppMcp>().0.clone();
+                    let attempts = servers.into_iter().map(|server| {
+                        let registry = registry.clone();
+                        async move {
+                            // Logged rather than surfaced: nobody is looking at
+                            // the settings page yet, and one broken server must
+                            // not stop the others from coming up.
+                            if let Err(e) = registry.connect(&server).await {
+                                tracing::warn!(
+                                    server_id = %server.id,
+                                    server_name = %server.name,
+                                    error = %e,
+                                    "MCP server failed to auto-connect at startup"
+                                );
+                            }
+                        }
+                    });
+                    futures::future::join_all(attempts).await;
+                    let _ = handle.emit("mcp-connections-changed", ());
                 });
             }
 
@@ -457,6 +497,7 @@ pub fn run() {
             commands::mcp::connect_mcp_server,
             commands::mcp::disconnect_mcp_server,
             commands::mcp::list_mcp_tools,
+            commands::mcp::list_mcp_connection_statuses,
             commands::mcp::list_all_tool_names,
             commands::edit_session::list_staged_edits,
             commands::edit_session::approve_staged_edit,
@@ -548,9 +589,41 @@ pub fn run() {
             commands::tool_system::set_service_key,
             commands::tool_system::get_service_key_exists,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|handle, event| {
+            // The only place in the app that has to finish async work before the
+            // process goes away. MCP servers are child processes: without this
+            // they outlive every quit and pile up across restarts.
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = &event {
+                // RESTART_EXIT_CODE cannot be prevented, and a second pass would
+                // be re-entering a shutdown already under way.
+                if *code == Some(RESTART_EXIT_CODE) || SHUTTING_DOWN.swap(true, Ordering::SeqCst) {
+                    return;
+                }
+                api.prevent_exit();
+                let handle = handle.clone();
+                let code = code.unwrap_or(0);
+                tauri::async_runtime::spawn(async move {
+                    handle.state::<AppMcp>().0.shutdown_all(MCP_SHUTDOWN_BUDGET).await;
+                    handle.exit(code);
+                });
+            }
+        });
 }
+
+/// Tauri's own restart code. Preventing that exit would turn a restart into a
+/// hang.
+const RESTART_EXIT_CODE: i32 = tauri::RESTART_EXIT_CODE;
+
+/// How long the whole MCP shutdown gets. Each HTTP transport is allowed a five
+/// second DELETE of its own, so without a ceiling a handful of them would hold
+/// the window open long after the user asked it to close.
+const MCP_SHUTDOWN_BUDGET: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Guards against re-entering shutdown: `handle.exit` raises `ExitRequested`
+/// again, and without this the second pass would prevent its own exit.
+static SHUTTING_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// Called from MainActivity.onCreate to initialize ndk-context and
 /// android-keyring before any Rust code touches the Android keystore.

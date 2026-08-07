@@ -276,6 +276,15 @@ export interface McpToolDef {
   description: string
 }
 
+/** Reported for servers the backend currently has an entry for. A server that
+ *  is connected but exposes no tools is still connected — which is exactly what
+ *  guessing from the tool list got wrong. */
+export interface McpConnectionStatus {
+  server_id: string
+  state: 'disconnected' | 'connecting' | 'connected'
+  tool_count: number
+}
+
 export interface ToolInfo {
   name: string
   description: string
