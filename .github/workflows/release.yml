@@ -46,8 +46,13 @@ jobs:
           # Spelled out rather than filtered with jq: the whole point of this
           # job is to not spend a build finding out that a one-line expression
           # was wrong, and the choice input already bounds the input.
+          #
+          # `all` leaves macOS out. Its bundle links sherpa-onnx dynamically
+          # and ships none of it, so it builds cleanly into something that
+          # cannot start — see the Packaging section in CLAUDE.md. Still
+          # selectable by name, for working on exactly that.
           case "${ONLY:-all}" in
-            ''|all)      picked="[$win,$mac,$lin]" ;;
+            ''|all)      picked="[$win,$lin]" ;;
             windows-x64) picked="[$win]" ;;
             macos-arm64) picked="[$mac]" ;;
             linux-x64)   picked="[$lin]" ;;

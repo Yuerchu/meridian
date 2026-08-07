@@ -62,6 +62,28 @@ Prefer HeroUI's answer over ours. Accepting a different radius or spacing is che
 - **base-ui is down to `ui/context-menu.tsx`** — HeroUI's menus are click-triggered and have no right-click equivalent. Don't reach for base-ui anywhere else.
 - **Dev playground:** `http://localhost:5173/#playground` in any dev build (tree-shaken from release). `#playground/scroll` is the scroll regression harness, `#playground/heroui` probes CSS support against the WebView. Add new component states there.
 
+## Packaging
+
+**Only Windows and the AppImage ship sherpa-onnx.** `sherpa-onnx-sys` links its
+library dynamically and emits an rpath of `$ORIGIN` (Linux) or `@loader_path`
+(macOS), which resolves against whatever sits beside the binary — true in the
+target directory, false in an installed package. Windows is covered because
+`build.rs` stages the DLLs and `tauri.windows.conf.json` declares them as
+resources; the AppImage is covered because linuxdeploy copies dependencies into
+the image, given `LD_LIBRARY_PATH` in the release workflow.
+
+Nothing does this for the deb, the rpm or the macOS bundle. A build of those
+*succeeds* and produces something that cannot start: the loader fails on
+`libsherpa-onnx-c-api` before any code runs, so it reads as the app not
+opening rather than as a missing feature. Verified against the v0.2.0 macOS
+bundle — the binary asks for two dylibs and the `.app` contains none.
+
+So `tauri.linux.conf.json` limits Linux to the AppImage, and macOS is not
+built. Lifting either means staging the libraries for that platform *and*
+giving the binary an rpath that reaches wherever the bundler puts them —
+Tauri's resources land in `/usr/lib/<product>` for a deb and
+`Contents/Resources` for a `.app`, neither of which is beside the executable.
+
 ## Android
 
 - **File access model**: tools resolve paths through `ToolContext::resolve_and_validate` (`src-tauri/src/tools/mod.rs`). Desktop = `FileAccess::Unrestricted` (legacy working_directory check). Android = `FileAccess::Roots` whitelist built in `build_file_access` (lib.rs) from preferences `android.manage_storage_enabled` / `android.saf_roots` + the system grant. SAF I/O goes through `src/android_bridge.rs` (JNI) → `FileBridge.kt`.
