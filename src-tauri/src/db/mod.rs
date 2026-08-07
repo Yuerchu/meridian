@@ -19,6 +19,14 @@ pub type PooledConn = PooledConnection<ConnectionManager<SqliteConnection>>;
 /// holds the write lock indefinitely.
 const BUSY_TIMEOUT_MS: u32 = 5_000;
 
+/// How long `pool.get()` waits for a free connection.
+///
+/// r2d2 defaults this to 30 seconds, which is long enough that an exhausted
+/// pool reads as the app having frozen rather than as an error. Every caller
+/// here either reports the failure or falls back within a request, so failing
+/// fast is strictly better than waiting.
+const POOL_ACQUIRE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// SQLite pragmas are per-connection, so they must run on every connection the
 /// pool hands out — running them once on a single connection leaves the other
 /// pooled connections without foreign key enforcement.
@@ -49,8 +57,13 @@ impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> fo
 
 pub fn init_db(db_path: &str) -> DbPool {
     let manager = ConnectionManager::<SqliteConnection>::new(db_path);
+    // max_size is deliberately left where it was: it is a capacity figure with
+    // no measurement behind it, and the acquire timeout above is what turns
+    // exhaustion from a hang into a visible, logged failure. Raise it once the
+    // logs say how often the pool actually runs dry.
     let pool = Pool::builder()
         .max_size(5)
+        .connection_timeout(POOL_ACQUIRE_TIMEOUT)
         .connection_customizer(Box::new(ConnectionCustomizer))
         .build(manager)
         .expect("failed to create db pool");

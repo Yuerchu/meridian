@@ -370,20 +370,32 @@ pub async fn get_context_info(
 
     let auto_compact_enabled = assistant.as_ref().map(|a| a.auto_compact_enabled != 0).unwrap_or(false);
 
-    let (provider_type, _, _, model, api_format) =
-        resolve_provider_config(&secrets.0, &pool, assistant.as_ref())?;
-
+    // Both take a pooled connection, and the first also reads the OS credential
+    // store. Run off the async thread: the UI polls this command every time the
+    // transcript grows, so a blocking call here occupies a worker repeatedly
+    // rather than once.
+    //
     // Resolved exactly as the chat path does, so the threshold the UI reports is
     // the one the compaction check actually compares against.
-    let turn = resolve_turn_params(&pool, TurnParamsInput {
-        assistant: assistant.as_ref(),
-        provider_id: assistant.as_ref().and_then(|a| a.provider_id.as_deref()),
-        provider_type: &provider_type,
-        api_format: &api_format,
-        model: &model,
-        thinking_level: None,
-        fast: false,
-    })?;
+    let (provider_type, model, turn) = {
+        let pool2 = pool.clone();
+        let secrets2 = secrets.0.clone();
+        let assistant2 = assistant.clone();
+        tokio::task::spawn_blocking(move || {
+            let (provider_type, _, _, model, api_format) =
+                resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
+            let turn = resolve_turn_params(&pool2, TurnParamsInput {
+                assistant: assistant2.as_ref(),
+                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                provider_type: &provider_type,
+                api_format: &api_format,
+                model: &model,
+                thinking_level: None,
+                fast: false,
+            })?;
+            Ok::<_, String>((provider_type, model, turn))
+        }).await.map_err(|e| e.to_string())??
+    };
     let context_limit = turn.context_limit;
     let budget = TokenBudget::new(&provider_type, &model, context_limit, turn.max_output, turn.compact_threshold);
 

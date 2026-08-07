@@ -138,10 +138,19 @@ pub(crate) fn resolve_turn_params(
         assistant, provider_id, provider_type, api_format, model, thinking_level, fast,
     } = input;
 
-    let model_config = provider_id.and_then(|pid| {
-        let mut conn = get_conn(pool).ok()?;
-        db::ops::model_config::get_by_provider_and_model(&mut conn, pid, model).ok()?
-    });
+    // Not a silent fallback. A pool timeout here used to be indistinguishable
+    // from "this model has no config row": the turn would drop through to the
+    // catalog defaults and run with a different context limit, output ceiling
+    // and capability set than the user configured. Failing visibly beats
+    // quietly changing the parameters of the request.
+    let model_config = match provider_id {
+        Some(pid) => {
+            let mut conn = get_conn(pool)?;
+            db::ops::model_config::get_by_provider_and_model(&mut conn, pid, model)
+                .map_err(|e| format!("could not read the stored config for '{model}': {e}"))?
+        }
+        None => None,
+    };
 
     let mut caps = provider::capabilities::resolve(provider_type, Some(api_format), model);
     provider::capabilities::apply_overrides(

@@ -212,15 +212,39 @@ pub(super) async fn oneshot_completion(
         .map_err(|e| e.to_string())??
     };
 
-    let (provider_type, base_url, api_key, model, api_format) =
-        resolve_provider_config(&state.secrets, &state.pool, assistant.as_ref())?;
+    // Both resolutions take a pooled connection, and the first also reads the OS
+    // credential store, so they run off the async thread.
+    //
+    // The turn parameters are resolved like any other turn: an extraction
+    // request that invents its own temperature is rejected by models the chat
+    // path already talks to.
+    let (provider_type, base_url, api_key, api_format, turn) = {
+        let pool2 = state.pool.clone();
+        let secrets2 = state.secrets.clone();
+        let assistant2 = assistant.clone();
+        tokio::task::spawn_blocking(move || {
+            let (provider_type, base_url, api_key, model, api_format) =
+                resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
+            let effective_model = assistant2
+                .as_ref()
+                .and_then(|a| a.model_id.clone())
+                .unwrap_or(model);
+            let turn = crate::agent::resolve_turn_params(&pool2, crate::agent::TurnParamsInput {
+                assistant: assistant2.as_ref(),
+                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                provider_type: &provider_type,
+                api_format: &api_format,
+                model: &effective_model,
+                thinking_level: None,
+                fast: false,
+            })?;
+            Ok::<_, String>((provider_type, base_url, api_key, api_format, turn))
+        })
+        .await
+        .map_err(|e| e.to_string())??
+    };
     let provider =
         provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
-
-    let effective_model = assistant
-        .as_ref()
-        .and_then(|a| a.model_id.as_deref())
-        .unwrap_or(&model);
 
     let messages = vec![
         ChatMessage {
@@ -237,18 +261,6 @@ pub(super) async fn oneshot_completion(
         ChatMessage::system_context(user_prompt),
     ];
 
-    // Resolved like any other turn: an extraction request that invents its own
-    // temperature is rejected by models the chat path already talks to.
-    let turn = crate::agent::resolve_turn_params(&state.pool, crate::agent::TurnParamsInput {
-        assistant: assistant.as_ref(),
-        provider_id: assistant.as_ref().and_then(|a| a.provider_id.as_deref()),
-        provider_type: &provider_type,
-        api_format: &api_format,
-        model: effective_model,
-        thinking_level: None,
-        fast: false,
-    })?;
-
     provider
         .chat(messages, crate::agent::without_thinking(turn.params))
         .await
@@ -263,7 +275,9 @@ pub(super) async fn oneshot_completion(
 #[allow(clippy::too_many_arguments)]
 pub async fn headless_chat(
     pool: &DbPool,
-    secrets: &SecretsManager,
+    // The `Arc` rather than a plain reference: provider resolution is handed to
+    // `spawn_blocking`, which needs an owned handle.
+    secrets: &Arc<SecretsManager>,
     tool_registry: &Arc<ToolRegistry>,
     mcp_manager: &Arc<Mutex<McpManager>>,
     conversation_id: &str,
@@ -317,9 +331,17 @@ pub async fn headless_chat(
         .map_err(|e| e.to_string())??
     };
 
-    // Resolve provider
-    let (provider_type, base_url, api_key, model, api_format) =
-        resolve_provider_config(secrets, pool, assistant.as_ref())?;
+    // Resolve provider off the async thread: it takes a pooled connection and
+    // reads the OS credential store, either of which can block for as long as
+    // the pool's acquire timeout.
+    let (provider_type, base_url, api_key, model, api_format) = {
+        let pool2 = pool.clone();
+        let secrets2 = secrets.clone();
+        let assistant2 = assistant.clone();
+        tokio::task::spawn_blocking(move || {
+            resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())
+        }).await.map_err(|e| e.to_string())??
+    };
     let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
 
     // The same resolver the desktop loop uses. Sharing it is what keeps a QQ
@@ -361,19 +383,30 @@ pub async fn headless_chat(
     let system_prompt = turn.system_prompt;
     let effective_model = model_override
         .or(assistant.as_ref().and_then(|a| a.model_id.as_deref()))
-        .unwrap_or(&model);
+        .unwrap_or(&model)
+        .to_string();
     // Same resolution as the desktop chat command, so a per-model config the
     // user wrote applies here too. No per-request tier: OneBot turns run off
-    // the assistant's stored defaults.
-    let turn_params = crate::agent::resolve_turn_params(pool, crate::agent::TurnParamsInput {
-        assistant: assistant.as_ref(),
-        provider_id: assistant.as_ref().and_then(|a| a.provider_id.as_deref()),
-        provider_type: &provider_type,
-        api_format: &api_format,
-        model: effective_model,
-        thinking_level: None,
-        fast: false,
-    })?;
+    // the assistant's stored defaults. Off the async thread because it takes a
+    // pooled connection.
+    let turn_params = {
+        let pool2 = pool.clone();
+        let assistant2 = assistant.clone();
+        let pt = provider_type.clone();
+        let af = api_format.clone();
+        let em = effective_model.clone();
+        tokio::task::spawn_blocking(move || {
+            crate::agent::resolve_turn_params(&pool2, crate::agent::TurnParamsInput {
+                assistant: assistant2.as_ref(),
+                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                provider_type: &pt,
+                api_format: &af,
+                model: &em,
+                thinking_level: None,
+                fast: false,
+            })
+        }).await.map_err(|e| e.to_string())??
+    };
     let context_limit = turn_params.context_limit;
 
     // Who this turn may recall. A private chat is about the one person on the
@@ -406,7 +439,7 @@ pub async fn headless_chat(
 
     let mut budget = TokenBudget::new(
         &provider_type,
-        effective_model,
+        &effective_model,
         context_limit,
         turn_params.max_output,
         turn_params.compact_threshold,

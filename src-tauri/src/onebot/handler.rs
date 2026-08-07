@@ -1442,7 +1442,7 @@ async fn dispatch_compact(
         }
     };
 
-    match crate::agent::do_compact(pool, secrets.as_ref(), &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await {
+    match crate::agent::do_compact(pool, secrets, &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await {
         Ok(_) => build_reply(event, "对话上下文已压缩。", reply_to),
         Err(e) => build_reply(event, &format!("Compact 失败: {e}"), reply_to),
     }

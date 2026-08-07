@@ -367,9 +367,17 @@ async fn chat_inner(
         }).await.map_err(|e| e.to_string())??
     };
 
-    // Resolve provider config (with optional overrides)
-    let (mut provider_type, mut base_url, mut api_key, model, mut api_format) =
-        resolve_provider_config(&secrets.0, &pool, assistant.as_ref())?;
+    // Resolve provider config (with optional overrides). Off the async thread:
+    // it takes a pooled connection and reads the OS credential store, either of
+    // which can block for as long as the pool's acquire timeout.
+    let (mut provider_type, mut base_url, mut api_key, model, mut api_format) = {
+        let pool2 = pool.clone();
+        let secrets2 = secrets.0.clone();
+        let assistant2 = assistant.clone();
+        tokio::task::spawn_blocking(move || {
+            resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())
+        }).await.map_err(|e| e.to_string())??
+    };
 
     let model = model_override.unwrap_or(model);
     // Filled in now rather than declared at entry: which model a turn actually
@@ -402,10 +410,19 @@ async fn chat_inner(
     // Build messages with history (resolve template variables in system prompt)
     let file_access = build_file_access(&pool).await;
     let raw_prompt = assistant.as_ref().map(|a| a.system_prompt.as_str()).unwrap_or("");
+    // Decorative: an unreadable preference costs the assistant the user's name,
+    // nothing more. Logged rather than swallowed so a pool timeout is still
+    // traceable.
     let user_name = {
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool2).ok()?;
+            let mut conn = match get_conn(&pool2) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!(error = %e, "could not read user_name; the assistant will not know it");
+                    return None;
+                }
+            };
             db::ops::preference::get_preference(&mut conn, "user_name").ok().flatten()
         }).await.ok().flatten()
     };
@@ -416,8 +433,16 @@ async fn chat_inner(
     if let Some(ref a) = assistant {
         let pool2 = pool.clone();
         let aid = a.id.clone();
+        // Decorative, same as the name above: without it the assistant simply
+        // has no emoji to reach for.
         let emoji_names: Option<String> = tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool2).ok()?;
+            let mut conn = match get_conn(&pool2) {
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::warn!(error = %e, "could not read the emoji list; it is omitted from this turn");
+                    return None;
+                }
+            };
             db::ops::emoji::format_emoji_list_block(&mut conn, &aid)
         }).await.ok().flatten();
         if let Some(names) = emoji_names {
@@ -589,12 +614,19 @@ async fn chat_inner(
     let ctx = if compacted {
         let pool2 = pool.clone();
         let conv_id = conversation_id.clone();
+        // Not a fallback to the pre-compaction context. Compaction has already
+        // written the summary and moved the head, so carrying on with the old
+        // path would send the very history that just overflowed — and do it
+        // while reporting the turn as compacted.
         tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool2).ok()?;
-            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).ok()?;
-            let history = db::ops::message::list_messages(&mut conn, &conv_id).ok()?;
-            Some(db::ops::message::active_context(&history, conv.head_message_id.as_deref()))
-        }).await.ok().flatten().unwrap_or(ctx)
+            let mut conn = get_conn(&pool2)?;
+            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id)
+                .map_err(|e| e.to_string())?;
+            let history = db::ops::message::list_messages(&mut conn, &conv_id)
+                .map_err(|e| e.to_string())?;
+            Ok::<_, String>(db::ops::message::active_context(&history, conv.head_message_id.as_deref()))
+        }).await.map_err(|e| e.to_string())?
+            .map_err(|e| format!("compaction finished but its result could not be read back: {e}"))?
     } else {
         ctx
     };
@@ -662,7 +694,21 @@ async fn chat_inner(
     let (shell_type, sandbox_pref, sleep_pref) = {
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
-            let mut conn = pool2.get().ok()?;
+            let mut conn = match pool2.get() {
+                Ok(c) => c,
+                Err(e) => {
+                    // The sandbox and sleep fallbacks are fail-safe — absent
+                    // means enabled. The shell is not: the turn would run
+                    // commands through the platform default instead of the one
+                    // the user picked, with nothing on screen to say so.
+                    tracing::warn!(
+                        error = %e,
+                        shell = ?tools::ShellType::default_for_platform(),
+                        "could not read shell/sandbox preferences; using the platform default shell with the sandbox on"
+                    );
+                    return None;
+                }
+            };
             let shell = db::ops::preference::get_preference(&mut conn, "shell").ok().flatten();
             let sandbox = db::ops::preference::get_preference(&mut conn, "sandbox.enabled").ok().flatten();
             let sleep = db::ops::preference::get_preference(&mut conn, "sleep_inhibitor.enabled").ok().flatten();

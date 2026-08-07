@@ -1,4 +1,5 @@
 use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
+use std::sync::Arc;
 
 use crate::db::{self, DbPool};
 use crate::db::models::assistant::Assistant;
@@ -83,9 +84,11 @@ fn prepare_compact_input(messages: &[&crate::db::models::message::Message]) -> S
     text
 }
 
+// Takes the `Arc` rather than a plain reference so the provider resolution below
+// can be handed to `spawn_blocking`, which needs an owned handle.
 pub(crate) async fn do_compact(
     pool: &DbPool,
-    secrets: &SecretsManager,
+    secrets: &Arc<SecretsManager>,
     conversation_id: &str,
     assistant: Option<&Assistant>,
     keep_recent: usize,
@@ -125,23 +128,33 @@ pub(crate) async fn do_compact(
         compact_system.push_str(&format!("\n\nAdditional instructions: {instructions}"));
     }
 
-    let (provider_type, base_url, api_key, model, api_format) =
-        resolve_provider_config(secrets, pool, assistant)?;
+    // Both resolutions take a pooled connection, and the first also reads the OS
+    // credential store, so they run off the async thread.
+    //
+    // The turn parameters use the same resolution as a normal turn: a
+    // summarisation request that invents its own temperature or output ceiling
+    // is rejected by models the chat path already knows how to talk to.
+    let (provider_type, base_url, api_key, model, api_format, turn) = {
+        let pool2 = pool.clone();
+        let secrets2 = secrets.clone();
+        let assistant2 = assistant.cloned();
+        tokio::task::spawn_blocking(move || {
+            let (provider_type, base_url, api_key, model, api_format) =
+                resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
+            let turn = resolve_turn_params(&pool2, TurnParamsInput {
+                assistant: assistant2.as_ref(),
+                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                provider_type: &provider_type,
+                api_format: &api_format,
+                model: &model,
+                thinking_level: None,
+                // Summarising is background work; it does not take the priority tier.
+                fast: false,
+            })?;
+            Ok::<_, String>((provider_type, base_url, api_key, model, api_format, turn))
+        }).await.map_err(|e| e.to_string())??
+    };
     let prov = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
-
-    // Same resolution as a normal turn: a summarisation request that invents its
-    // own temperature or output ceiling is rejected by models the chat path
-    // already knows how to talk to.
-    let turn = resolve_turn_params(pool, TurnParamsInput {
-        assistant,
-        provider_id: assistant.and_then(|a| a.provider_id.as_deref()),
-        provider_type: &provider_type,
-        api_format: &api_format,
-        model: &model,
-        thinking_level: None,
-        // Summarising is background work; it does not take the priority tier.
-        fast: false,
-    })?;
     let params = without_thinking(turn.params);
 
     let summary = compact_with_retry(&*prov, &compact_system, &conversation_text, &params).await?;
