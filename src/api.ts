@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ChatMode, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, LogFileInfo, LogPage, LogQuery, LogSettings, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, MessageTree, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, VoiceModelStatus, VoiceTranscript } from './types'
+import type { Assistant, ChatMode, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, LogFileInfo, LogPage, LogQuery, LogSettings, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, MessageTree, ModelConfig, ModelConfigInput, ModelInfo, PendingApprovalInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, VoiceModelStatus, VoiceTranscript } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -204,14 +204,20 @@ export const api = {
   getProviderCapabilities: (providerId: string, modelId: string) =>
     invoke<ProviderCapabilities>('get_provider_capabilities', { providerId, modelId }),
 
-  approveToolCall: (callId: string) =>
-    invoke<void>('approve_tool_call', { callId }),
+  // All three address an `approval_id` the backend minted, not the provider's
+  // tool call id, and all three reject when nothing is waiting on it any more —
+  // the caller turns that into an `orphaned` card rather than spinning.
+  approveToolCall: (approvalId: string) =>
+    invoke<void>('approve_tool_call', { approvalId }),
 
-  denyToolCall: (callId: string, reason?: string) =>
-    invoke<void>('deny_tool_call', { callId, reason: reason ?? null }),
+  denyToolCall: (approvalId: string, reason?: string) =>
+    invoke<void>('deny_tool_call', { approvalId, reason: reason ?? null }),
 
-  respondToAsk: (callId: string, response: string) =>
-    invoke<void>('respond_to_ask', { callId, response }),
+  respondToAsk: (approvalId: string, response: string) =>
+    invoke<void>('respond_to_ask', { approvalId, response }),
+
+  listPendingApprovals: (conversationId: string) =>
+    invoke<PendingApprovalInfo[]>('list_pending_approvals', { conversationId }),
 
   listStagedEdits: (conversationId: string) =>
     invoke<Array<{ path: string; diff: string; tool_name: string }>>('list_staged_edits', { conversationId }),

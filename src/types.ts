@@ -125,11 +125,30 @@ export interface ToolCallDisplay {
   call_id: string
   tool_name: string
   arguments: string
-  status: 'pending' | 'approved' | 'denied' | 'running' | 'completed' | 'error'
+  /** `orphaned` is a call the transcript shows as unanswered while nothing is
+   *  waiting for a decision on it — its turn died. In the database it looks
+   *  exactly like a pending call, so only the live registry tells them apart,
+   *  and only a pending one gets buttons. */
+  status: 'pending' | 'approved' | 'denied' | 'running' | 'completed' | 'error' | 'orphaned'
   result?: string
-  // Set while a sandbox-blocked call waits for "retry without sandbox"
-  // approval; the approval channel uses this synthetic "<id>:retry" id.
-  escalation_call_id?: string
+  /** What the buttons answer with while this call is `pending`. Minted by the
+   *  backend per approval rather than taken from the provider's call id, which
+   *  some OpenAI-compatible gateways reuse. A pending call without one cannot
+   *  be answered, and is shown as `orphaned` rather than falling back to
+   *  `call_id`. */
+  approval_id?: string
+  /** Present exactly when this is a sandbox-blocked call asking to be retried
+   *  without the sandbox. The retry reuses the original call id. */
+  retry_reason?: string
+}
+
+/** A tool call the backend is still holding a turn open for. Recovered on load,
+ *  since the streamed event that first announced it is gone by then. */
+export interface PendingApprovalInfo {
+  approval_id: string
+  assistant_message_id: string
+  provider_call_id: string
+  tool_name: string
   retry_reason?: string
 }
 
@@ -504,8 +523,10 @@ export interface StreamChunk {
   arguments?: string
   result?: string
   outcome?: string
-  escalation?: boolean
-  origin_call_id?: string
+  /** Only on `tool_approval_req`. What the answer must be addressed to. */
+  approval_id?: string
+  /** Set only when this approval is a sandbox-blocked call asking to run
+   *  again without the sandbox. Its presence is what marks the escalation. */
   retry_reason?: string
   input_tokens?: number
   output_tokens?: number

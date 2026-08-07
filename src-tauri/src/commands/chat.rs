@@ -172,52 +172,68 @@ impl Drop for ErrorStopGuard<'_> {
     }
 }
 
-/// A sandbox-blocked command asking for an approved retry without sandbox.
-struct EscalationReq<'a> {
-    origin_call_id: &'a str,
-    reason: &'a str,
-}
-
-/// Emit a tool approval request and wait for the user's decision. Returns
+/// Put a tool call in front of the user and wait for their answer. Returns
 /// `None` when the chat is cancelled (stop button) before a decision arrives,
-/// so approval/tool waits can't outlive the conversation.
+/// so approval waits cannot outlive the conversation.
+///
+/// `retry_reason` is set when a sandbox-blocked command is asking to be run
+/// again without the sandbox. It retries the same call under the same id — the
+/// approval is what is new, and that gets its own `approval_id`.
 async fn wait_for_approval(
     app: &tauri::AppHandle,
     cancel: &CancellationToken,
     tc: &provider::ToolCall,
+    turn_id: &str,
     message_id: &str,
     conversation_id: &str,
-    escalation: Option<EscalationReq<'_>>,
+    retry_reason: Option<&str>,
 ) -> Result<Option<ApprovalDecision>, String> {
+    // Ours, not the provider's. See `PendingApproval` for what reusing the tool
+    // call id used to cost.
+    let approval_id = uuid::Uuid::new_v4().to_string();
     let (tx, rx) = oneshot::channel();
+    // Registered before the event goes out, so a decision can never arrive
+    // before there is somewhere to put it.
     {
         let waiters = app.state::<ApprovalWaiters>();
-        let mut map = waiters.0.lock().await;
-        map.insert(tc.id.clone(), tx);
+        waiters.lock().insert(approval_id.clone(), crate::state::PendingApproval {
+            conversation_id: conversation_id.to_string(),
+            turn_id: turn_id.to_string(),
+            assistant_message_id: message_id.to_string(),
+            provider_call_id: tc.id.clone(),
+            tool_name: tc.name.clone(),
+            retry_reason: retry_reason.map(str::to_string),
+            sender: tx,
+        });
     }
     let mut payload = serde_json::json!({
         "type": "tool_approval_req",
+        "approval_id": approval_id,
         "call_id": tc.id,
         "tool_name": tc.name,
         "arguments": tc.arguments,
         "message_id": message_id,
         "conversation_id": conversation_id,
     });
-    if let Some(ref esc) = escalation {
-        payload["escalation"] = serde_json::json!(true);
-        payload["origin_call_id"] = serde_json::json!(esc.origin_call_id);
-        payload["retry_reason"] = serde_json::json!(esc.reason);
+    // The reason's presence is the flag; a separate boolean beside it could
+    // only ever disagree with it.
+    if let Some(reason) = retry_reason {
+        payload["retry_reason"] = serde_json::json!(reason);
     }
-    app.emit("chat-stream", payload).map_err(|e| e.to_string())?;
+    if let Err(e) = app.emit("chat-stream", payload) {
+        // Nobody will ever answer a card that was never drawn; don't leave the
+        // entry behind for the turn guard to find.
+        app.state::<ApprovalWaiters>().lock().remove(&approval_id);
+        return Err(e.to_string());
+    }
     let decision = tokio::select! {
         _ = cancel.cancelled() => None,
         r = rx => r.ok(),
     };
     if decision.is_none() {
-        // Cancelled or sender dropped: remove the stale waiter so a later
-        // response for a reused call_id can't hit it.
-        let waiters = app.state::<ApprovalWaiters>();
-        waiters.0.lock().await.remove(&tc.id);
+        // Cancelled, or the sender was dropped. Take the entry out so a late
+        // answer cannot land on a turn that has already moved on.
+        app.state::<ApprovalWaiters>().lock().remove(&approval_id);
     }
     Ok(decision)
 }
@@ -298,6 +314,12 @@ async fn chat_inner(
 ) -> Result<(), String> {
     let secrets = app.state::<AppSecrets>();
     let pool = app.state::<AppDb>().0.clone();
+
+    // Names this run of the turn, as opposed to the conversation it belongs to
+    // or the assistant row it is currently writing (which changes every
+    // iteration). Only the approval registry uses it so far; the turn
+    // coordinator will key off it too.
+    let turn_id = uuid::Uuid::new_v4().to_string();
 
     let cancel = CancellationToken::new();
     {
@@ -950,7 +972,7 @@ async fn chat_inner(
                     "error",
                 )
             } else if tc.name == "ask_user" {
-                match wait_for_approval(&app, &cancel, tc, &assistant_msg_id, &conversation_id, None).await? {
+                match wait_for_approval(&app, &cancel, tc, &turn_id, &assistant_msg_id, &conversation_id, None).await? {
                     Some(ApprovalDecision::Response(text)) => (text, "success"),
                     _ => ("User did not respond.".to_string(), "denied"),
                 }
@@ -958,7 +980,7 @@ async fn chat_inner(
                 // The mirror of the exit path, minus the artifact: entering a
                 // mode produces nothing to record, it only narrows what the rest
                 // of the turn may do.
-                match wait_for_approval(&app, &cancel, tc, &assistant_msg_id, &conversation_id, None).await? {
+                match wait_for_approval(&app, &cancel, tc, &turn_id, &assistant_msg_id, &conversation_id, None).await? {
                     Some(ApprovalDecision::Approved) => {
                         let switched = {
                             let pool2 = pool.clone();
@@ -1068,7 +1090,7 @@ async fn chat_inner(
                         Err(e) => (format!("Could not record the plan: {e}"), "error"),
                         Ok(row) => {
                             let decision = wait_for_approval(
-                                &app, &cancel, tc, &assistant_msg_id, &conversation_id, None,
+                                &app, &cancel, tc, &turn_id, &assistant_msg_id, &conversation_id, None,
                             ).await?;
                             match decision {
                                 Some(ApprovalDecision::Approved) => {
@@ -1182,7 +1204,7 @@ async fn chat_inner(
             } else if is_mcp {
                 // External MCP tools require explicit user approval, same as
                 // built-in Ask tools — they must not bypass the authorizer.
-                match wait_for_approval(&app, &cancel, tc, &assistant_msg_id, &conversation_id, None).await? {
+                match wait_for_approval(&app, &cancel, tc, &turn_id, &assistant_msg_id, &conversation_id, None).await? {
                     Some(ApprovalDecision::Approved) => {
                         let args: serde_json::Value = serde_json::from_str(&tc.arguments)
                             .unwrap_or_else(|_| serde_json::json!({}));
@@ -1214,7 +1236,7 @@ async fn chat_inner(
                 } else if !tools::reach::needs_approval(permission, reach, accept_edits) {
                     (true, None)
                 } else {
-                    match wait_for_approval(&app, &cancel, tc, &assistant_msg_id, &conversation_id, None).await? {
+                    match wait_for_approval(&app, &cancel, tc, &turn_id, &assistant_msg_id, &conversation_id, None).await? {
                         Some(ApprovalDecision::Approved) => (true, None),
                         Some(ApprovalDecision::Denied(reason)) => (false, reason),
                         _ => (false, None),
@@ -1227,22 +1249,13 @@ async fn chat_inner(
                             Some(blocked) => {
                                 // Sandbox blocked the command — offer a
                                 // user-approved retry without sandbox
-                                // (Codex-style escalation). The synthetic
-                                // ":retry" id exists only in the approval
-                                // channel; results keep the original id.
-                                let retry_tc = provider::ToolCall {
-                                    id: format!("{}:retry", tc.id),
-                                    name: tc.name.clone(),
-                                    arguments: tc.arguments.clone(),
-                                };
-                                let escalation = EscalationReq {
-                                    origin_call_id: &tc.id,
-                                    reason: blocked,
-                                };
+                                // (Codex-style escalation). Same call, same id:
+                                // it is the approval that is new, and that has
+                                // an id of its own.
                                 match wait_for_approval(
-                                    &app, &cancel, &retry_tc,
+                                    &app, &cancel, tc, &turn_id,
                                     &assistant_msg_id, &conversation_id,
-                                    Some(escalation),
+                                    Some(blocked),
                                 ).await? {
                                     Some(ApprovalDecision::Approved) => {
                                         let escalated_ctx = tool_context.without_sandbox();

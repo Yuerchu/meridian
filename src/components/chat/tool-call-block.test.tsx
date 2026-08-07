@@ -4,11 +4,13 @@ import { expectExpanded } from '@/test/disclosure'
 import i18n from '@/i18n'
 import type { ToolCallDisplay } from '@/types'
 
+// Resolved rather than bare: the cards attach a `.catch` to turn a rejected
+// decision into an orphaned card, and `undefined.catch` would throw.
 vi.mock('@/api', () => ({
   api: {
-    approveToolCall: vi.fn(),
-    denyToolCall: vi.fn(),
-    respondToAsk: vi.fn(),
+    approveToolCall: vi.fn().mockResolvedValue(undefined),
+    denyToolCall: vi.fn().mockResolvedValue(undefined),
+    respondToAsk: vi.fn().mockResolvedValue(undefined),
   },
 }))
 
@@ -22,6 +24,9 @@ function toolCall(
     tool_name: toolName,
     arguments: typeof args === 'string' ? args : JSON.stringify(args),
     status,
+    // A pending call without one renders as orphaned — there would be nothing
+    // for its buttons to answer. Only pending needs it.
+    ...(status === 'pending' ? { approval_id: 'appr-1' } : {}),
   }
 }
 

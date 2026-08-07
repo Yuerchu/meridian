@@ -61,6 +61,10 @@ function tool(over: Partial<ToolCallDisplay> & Pick<ToolCallDisplay, 'tool_name'
   return {
     call_id: `pg-${over.tool_name}-${over.status}`,
     arguments: '{}',
+    // A pending card has to carry something to answer with or it renders as
+    // orphaned. Supplied only for pending: the settled states have nothing left
+    // to send, and a stray id there would just be noise.
+    ...(over.status === 'pending' ? { approval_id: `pg-approval-${over.tool_name}` } : {}),
     ...over,
   }
 }
@@ -630,9 +634,14 @@ function Gallery() {
               tool_name: 'run_command',
               status: 'pending',
               call_id: 'pg-escalation',
-              escalation_call_id: 'pg-escalation:retry',
               retry_reason: 'sandbox denied',
               arguments: JSON.stringify({ command: 'netsh advfirewall show allprofiles' }),
+            })} />
+            {/* Asked for, never answered: the turn died while it was on screen. */}
+            <ToolCallBlock data={tool({
+              tool_name: 'run_command',
+              status: 'orphaned',
+              arguments: JSON.stringify({ command: 'git push --force' }),
             })} />
             <ToolCallBlock data={tool({
               tool_name: 'delete_file',

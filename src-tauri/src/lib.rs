@@ -304,7 +304,7 @@ pub fn run() {
 
             app.manage(AppDb(pool));
             app.manage(AppTools(Arc::new(registry)));
-            app.manage(ApprovalWaiters(Mutex::new(HashMap::new())));
+            app.manage(ApprovalWaiters::new());
             app.manage(ActiveChats(Mutex::new(HashMap::new())));
             app.manage(EditSessions(Mutex::new(HashMap::new())));
             app.manage(state::CompactBreakers(Mutex::new(HashMap::new())));
@@ -465,6 +465,7 @@ pub fn run() {
             commands::approval::approve_tool_call,
             commands::approval::deny_tool_call,
             commands::approval::respond_to_ask,
+            commands::approval::list_pending_approvals,
             platform::get_platform,
             platform::get_window_insets,
             platform::get_manage_storage_status,

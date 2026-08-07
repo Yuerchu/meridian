@@ -113,14 +113,12 @@ export function useGlobalEventListener() {
         return
       }
 
-      if (p.type === 'tool_approval_req' && p.call_id) {
-        const escalation = p.escalation
-          ? {
-              originCallId: p.origin_call_id ?? p.call_id.replace(/:retry$/, ''),
-              retryReason: p.retry_reason,
-            }
-          : undefined
-        store.handleToolApproval(convId, p.message_id!, p.call_id, p.tool_name!, p.arguments ?? '{}', escalation)
+      // Without an approval_id there is nothing the buttons could answer with,
+      // so the card would be decorative. Drop the event rather than draw one.
+      if (p.type === 'tool_approval_req' && p.call_id && p.approval_id) {
+        store.handleToolApproval(
+          convId, p.message_id!, p.approval_id, p.call_id, p.tool_name!, p.retry_reason,
+        )
         if (shouldNotify(convId)) {
           const toolName = p.tool_name === 'ask_user' ? 'Question' : p.tool_name!
           trySendNotification(getConversationTitle(convId), `Action required: ${toolName}`)
@@ -128,8 +126,10 @@ export function useGlobalEventListener() {
         return
       }
 
+      // message_id as well as call_id: provider call ids repeat, so the pair is
+      // what identifies a card.
       if (p.type === 'tool_result' && p.call_id) {
-        store.handleToolResult(convId, p.call_id, p.result ?? '', p.outcome)
+        store.handleToolResult(convId, p.message_id!, p.call_id, p.result ?? '', p.outcome)
         return
       }
     })

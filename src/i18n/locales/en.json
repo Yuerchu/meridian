@@ -92,6 +92,7 @@
   "chat.tool.webSearch.noResults": "No results found",
   "chat.tool.sandboxRetryPrompt": "The sandbox blocked this command. Retry without sandbox?",
   "chat.tool.retryWithoutSandbox": "Retry without sandbox",
+  "chat.tool.orphaned": "This was never answered — the turn that asked has ended. Send the message again if you still want it done.",
   "chat.tool.webSearch.failed": "Search failed",
   "chat.tool.diff.newFile": "New file",
   "chat.tool.diff.deletedFile": "Deleted",

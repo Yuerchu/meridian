@@ -139,7 +139,9 @@ function ConversationIndicator({ conversationId, activeId }: { conversationId: s
   const session = useConversationStore((s) => s.sessions[conversationId])
   if (!session || conversationId === activeId) return null
 
-  if (session.pendingApproval || session.pendingAskUser) {
+  // Key counts, not truthiness: these are records now, and an empty one is
+  // still an object.
+  if (Object.keys(session.pendingApprovals).length > 0 || Object.keys(session.pendingAsks).length > 0) {
     return <span className="size-2 shrink-0 rounded-full bg-warning animate-pulse" />
   }
   if (session.streaming) {

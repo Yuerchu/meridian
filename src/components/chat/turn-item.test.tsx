@@ -8,11 +8,13 @@ import { useConversationStore } from '@/stores/conversation-store'
 import i18n from '@/i18n'
 import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
 
+// Resolved rather than bare: the cards attach a `.catch` to turn a rejected
+// decision into an orphaned card, and `undefined.catch` would throw.
 vi.mock('@/api', () => ({
   api: {
-    approveToolCall: vi.fn(),
-    denyToolCall: vi.fn(),
-    respondToAsk: vi.fn(),
+    approveToolCall: vi.fn().mockResolvedValue(undefined),
+    denyToolCall: vi.fn().mockResolvedValue(undefined),
+    respondToAsk: vi.fn().mockResolvedValue(undefined),
   },
 }))
 
@@ -44,7 +46,18 @@ function msg(role: Message['role'], over: Partial<Message> = {}): Message {
 
 const text = (t: string): ContentBlock => ({ type: 'text', text: t })
 const toolBlock = (name: string, status: ToolCallDisplay['status'] = 'completed'): ContentBlock =>
-  ({ type: 'tool_call', data: { call_id: `${name}-1`, tool_name: name, arguments: '{}', status } })
+  ({
+    type: 'tool_call',
+    data: {
+      call_id: `${name}-1`,
+      tool_name: name,
+      arguments: '{}',
+      status,
+      // A pending call needs something for its buttons to answer, or it is
+      // rendered as orphaned instead.
+      ...(status === 'pending' ? { approval_id: `${name}-appr-1` } : {}),
+    },
+  })
 
 /** A turn with tool calls, which is what gets the collapse treatment. */
 function toolTurn(over: { status?: ToolCallDisplay['status']; conclusion?: boolean } = {}) {

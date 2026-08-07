@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { reconcileMessages, useConversationStore } from '@/stores/conversation-store'
+import { hydrateBlocks, reconcileMessages, useConversationStore } from '@/stores/conversation-store'
 import { api } from '@/api'
-import type { Message } from '@/types'
+import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
 
 vi.mock('@tauri-apps/api/core')
 vi.mock('@/api', () => ({
@@ -9,6 +9,9 @@ vi.mock('@/api', () => ({
     loadMessageTree: vi.fn(),
     getConversation: vi.fn(),
     switchBranch: vi.fn(),
+    // Fetched alongside every transcript load: without it a tool call with no
+    // result row cannot be told apart from one still waiting on the user.
+    listPendingApprovals: vi.fn().mockResolvedValue([]),
   },
 }))
 
@@ -33,6 +36,105 @@ function msg(id: string, over: Partial<Message> = {}): Message {
     ...over,
   }
 }
+
+describe('hydrateBlocks', () => {
+  /** An assistant row that made one tool call. */
+  function caller(id: string, callId: string, name = 'read_file'): Message {
+    return msg(id, {
+      tool_calls: JSON.stringify([
+        { id: callId, type: 'function', function: { name, arguments: '{}' } },
+      ]),
+    })
+  }
+
+  /** The tool row that answered one. */
+  function answer(id: string, callId: string, content = 'done'): Message {
+    return msg(id, { role: 'tool', tool_call_id: callId, content })
+  }
+
+  function callBlocks(out: Message[], messageId: string): ToolCallDisplay[] {
+    const row = out.find((m) => m.id === messageId)
+    return (row?._blocks ?? [])
+      .filter((b): b is Extract<ContentBlock, { type: 'tool_call' }> => b.type === 'tool_call')
+      .map((b) => b.data)
+  }
+
+  it('reads a call with a matching tool row as completed', () => {
+    const out = hydrateBlocks([caller('a', 'c1'), answer('t', 'c1', 'the result')])
+    expect(callBlocks(out, 'a')[0]).toMatchObject({ status: 'completed', result: 'the result' })
+  })
+
+  it('reads an unanswered call the backend is still holding as pending', () => {
+    const out = hydrateBlocks([caller('a', 'c1')], [{
+      approval_id: 'appr-1',
+      assistant_message_id: 'a',
+      provider_call_id: 'c1',
+      tool_name: 'read_file',
+    }])
+    expect(callBlocks(out, 'a')[0]).toMatchObject({ status: 'pending', approval_id: 'appr-1' })
+  })
+
+  // The whole point of the three-way split: this used to be reported as
+  // completed, which erased the buttons and stranded the turn.
+  it('reads an unanswered call nobody is waiting on as orphaned', () => {
+    const out = hydrateBlocks([caller('a', 'c1')])
+    expect(callBlocks(out, 'a')[0]).toMatchObject({ status: 'orphaned' })
+    expect(callBlocks(out, 'a')[0].approval_id).toBeUndefined()
+  })
+
+  it('carries the escalation reason onto the card it belongs to', () => {
+    const out = hydrateBlocks([caller('a', 'c1', 'run_command')], [{
+      approval_id: 'appr-1',
+      assistant_message_id: 'a',
+      provider_call_id: 'c1',
+      tool_name: 'run_command',
+      retry_reason: 'sandbox denied',
+    }])
+    expect(callBlocks(out, 'a')[0]).toMatchObject({
+      status: 'pending',
+      retry_reason: 'sandbox denied',
+    })
+  })
+
+  // Gateways that number their tool calls from zero every request make this the
+  // normal case, not a corner one. A transcript-wide lookup would hand the
+  // second round's pending call the first round's result.
+  it('does not let a later call claim an earlier round\'s result when ids repeat', () => {
+    const out = hydrateBlocks([
+      caller('a1', '0'),
+      answer('t1', '0', 'first round'),
+      caller('a2', '0'),
+    ])
+    expect(callBlocks(out, 'a1')[0]).toMatchObject({ status: 'completed', result: 'first round' })
+    expect(callBlocks(out, 'a2')[0]).toMatchObject({ status: 'orphaned' })
+    expect(callBlocks(out, 'a2')[0].result).toBeUndefined()
+  })
+
+  it('gives two calls sharing an id their own approvals', () => {
+    const both = msg('a', {
+      tool_calls: JSON.stringify([
+        { id: '0', type: 'function', function: { name: 'read_file', arguments: '{}' } },
+        { id: '0', type: 'function', function: { name: 'read_file', arguments: '{}' } },
+      ]),
+    })
+    const out = hydrateBlocks([both], [
+      { approval_id: 'appr-1', assistant_message_id: 'a', provider_call_id: '0', tool_name: 'read_file' },
+      { approval_id: 'appr-2', assistant_message_id: 'a', provider_call_id: '0', tool_name: 'read_file' },
+    ])
+    expect(callBlocks(out, 'a').map((b) => b.approval_id)).toEqual(['appr-1', 'appr-2'])
+  })
+
+  it('keeps an approval from another assistant row off this one', () => {
+    const out = hydrateBlocks([caller('a1', 'c1'), caller('a2', 'c1')], [{
+      approval_id: 'appr-1',
+      assistant_message_id: 'a2',
+      provider_call_id: 'c1',
+      tool_name: 'read_file',
+    }])
+    expect(callBlocks(out, 'a1')[0]).toMatchObject({ status: 'orphaned' })
+    expect(callBlocks(out, 'a2')[0]).toMatchObject({ status: 'pending', approval_id: 'appr-1' })
+  })
+})
 
 describe('reconcileMessages', () => {
   it('returns the snapshot when there is nothing to reconcile against', () => {

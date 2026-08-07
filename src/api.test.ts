@@ -226,22 +226,30 @@ describe('api', () => {
   })
 
   describe('tool calls', () => {
-    it('approveToolCall sends callId', async () => {
+    // The approval id, never the provider's call id: gateways reuse those, and
+    // answering by one would land on whichever call happened to share it.
+    it('approveToolCall sends approvalId', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
-      await api.approveToolCall('call-1')
-      expect(mockInvoke).toHaveBeenCalledWith('approve_tool_call', { callId: 'call-1' })
+      await api.approveToolCall('appr-1')
+      expect(mockInvoke).toHaveBeenCalledWith('approve_tool_call', { approvalId: 'appr-1' })
     })
 
-    it('denyToolCall sends callId', async () => {
+    it('denyToolCall sends approvalId', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
-      await api.denyToolCall('call-2')
-      expect(mockInvoke).toHaveBeenCalledWith('deny_tool_call', { callId: 'call-2', reason: null })
+      await api.denyToolCall('appr-2')
+      expect(mockInvoke).toHaveBeenCalledWith('deny_tool_call', { approvalId: 'appr-2', reason: null })
     })
 
-    it('respondToAsk sends callId and response', async () => {
+    it('respondToAsk sends approvalId and response', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
-      await api.respondToAsk('ask-1', 'my answer')
-      expect(mockInvoke).toHaveBeenCalledWith('respond_to_ask', { callId: 'ask-1', response: 'my answer' })
+      await api.respondToAsk('appr-3', 'my answer')
+      expect(mockInvoke).toHaveBeenCalledWith('respond_to_ask', { approvalId: 'appr-3', response: 'my answer' })
+    })
+
+    it('listPendingApprovals is scoped to one conversation', async () => {
+      mockInvoke.mockResolvedValueOnce([])
+      await api.listPendingApprovals('conv-1')
+      expect(mockInvoke).toHaveBeenCalledWith('list_pending_approvals', { conversationId: 'conv-1' })
     })
   })
 
