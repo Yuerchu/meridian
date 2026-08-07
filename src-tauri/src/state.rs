@@ -47,10 +47,14 @@ pub(crate) struct PendingApproval {
     /// What the model called it, and what the tool result must be sent back
     /// under. Never used to look an approval up.
     pub(crate) provider_call_id: String,
+    /// The call this one is a second attempt at. Set only for sandbox
+    /// escalations. It currently equals `provider_call_id` — the retry reuses
+    /// the id — but the two mean different things, and recording it keeps the
+    /// front end from having to know that they coincide.
+    pub(crate) origin_call_id: Option<String>,
     pub(crate) tool_name: String,
     /// Why a sandbox-blocked command is asking to run again without the
-    /// sandbox. Present exactly when this approval is such a retry — the retry
-    /// reuses the original call id, so there is no second id to record.
+    /// sandbox. Present exactly when this approval is such a retry.
     pub(crate) retry_reason: Option<String>,
     pub(crate) sender: oneshot::Sender<ApprovalDecision>,
 }
@@ -119,6 +123,7 @@ mod tests {
             turn_id: "turn-1".into(),
             assistant_message_id: "msg-1".into(),
             provider_call_id: call_id.into(),
+            origin_call_id: None,
             tool_name: "read_file".into(),
             retry_reason: None,
             sender: tx,

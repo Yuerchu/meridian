@@ -205,6 +205,75 @@ describe('reconcileMessages', () => {
   })
 })
 
+describe('live approval events', () => {
+  const CONV = 'conv-1'
+  const store = () => useConversationStore.getState()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useConversationStore.setState({ sessions: {} })
+    store().ensureSession(CONV)
+    store().handleMessageStart(CONV, 'a1')
+  })
+
+  function cards(): ToolCallDisplay[] {
+    const row = store().sessions[CONV]!.messages.find((m) => m.id === 'a1')
+    return (row?._blocks ?? [])
+      .filter((b): b is Extract<ContentBlock, { type: 'tool_call' }> => b.type === 'tool_call')
+      .map((b) => b.data)
+  }
+
+  // Hydration claims each approval once; the streaming path has to do the same
+  // or the first request lights up every card that happens to share the id.
+  it('lights up one card at a time when a row reuses a call id', () => {
+    store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
+    store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
+
+    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'read_file')
+    expect(cards().map((c) => c.status)).toEqual(['pending', 'running'])
+    expect(cards().map((c) => c.approval_id)).toEqual(['appr-1', undefined])
+
+    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'read_file')
+    expect(cards().map((c) => c.approval_id)).toEqual(['appr-1', 'appr-2'])
+  })
+
+  it('completes one card at a time when a row reuses a call id', () => {
+    store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
+    store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
+
+    store().handleToolResult(CONV, 'a1', '0', 'first result')
+    expect(cards().map((c) => c.status)).toEqual(['completed', 'running'])
+    expect(cards().map((c) => c.result)).toEqual(['first result', undefined])
+
+    store().handleToolResult(CONV, 'a1', '0', 'second result')
+    expect(cards().map((c) => c.result)).toEqual(['first result', 'second result'])
+  })
+
+  it('retires only the approval the answered card was holding', () => {
+    store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
+    store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'read_file')
+    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'read_file')
+
+    store().handleToolResult(CONV, 'a1', '0', 'done')
+
+    expect(Object.keys(store().sessions[CONV]!.pendingApprovals)).toEqual(['appr-2'])
+  })
+
+  it('carries the escalation details onto the card', () => {
+    store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(
+      CONV, 'a1', 'appr-1', 'c1', 'run_command', 'sandbox denied', 'c1',
+    )
+
+    expect(cards()[0]).toMatchObject({ status: 'pending', retry_reason: 'sandbox denied' })
+    expect(store().sessions[CONV]!.pendingApprovals['appr-1']).toMatchObject({
+      originCallId: 'c1',
+      retryReason: 'sandbox denied',
+    })
+  })
+})
+
 describe('branch state', () => {
   const CONV = 'conv-1'
 

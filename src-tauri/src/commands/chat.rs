@@ -201,6 +201,8 @@ async fn wait_for_approval(
             turn_id: turn_id.to_string(),
             assistant_message_id: message_id.to_string(),
             provider_call_id: tc.id.clone(),
+            // A retry is an attempt at the same call, under the same id.
+            origin_call_id: retry_reason.map(|_| tc.id.clone()),
             tool_name: tc.name.clone(),
             retry_reason: retry_reason.map(str::to_string),
             sender: tx,
@@ -219,6 +221,7 @@ async fn wait_for_approval(
     // only ever disagree with it.
     if let Some(reason) = retry_reason {
         payload["retry_reason"] = serde_json::json!(reason);
+        payload["origin_call_id"] = serde_json::json!(tc.id);
     }
     if let Err(e) = app.emit("chat-stream", payload) {
         // Nobody will ever answer a card that was never drawn; don't leave the

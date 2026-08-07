@@ -117,7 +117,8 @@ export function useGlobalEventListener() {
       // so the card would be decorative. Drop the event rather than draw one.
       if (p.type === 'tool_approval_req' && p.call_id && p.approval_id) {
         store.handleToolApproval(
-          convId, p.message_id!, p.approval_id, p.call_id, p.tool_name!, p.retry_reason,
+          convId, p.message_id!, p.approval_id, p.call_id, p.tool_name!,
+          p.retry_reason, p.origin_call_id,
         )
         if (shouldNotify(convId)) {
           const toolName = p.tool_name === 'ask_user' ? 'Question' : p.tool_name!

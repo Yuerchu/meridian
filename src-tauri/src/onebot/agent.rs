@@ -817,12 +817,10 @@ pub async fn headless_chat(
                             Some(blocked) => {
                                 // Sandbox blocked the command — ask the admin
                                 // (Y/N) whether to retry without sandbox.
-                                let retry_tc = ToolCall {
-                                    id: format!("{}:retry", tc.id),
-                                    name: tc.name.clone(),
-                                    arguments: tc.arguments.clone(),
-                                };
-                                if (approval_fn)(retry_tc, Some(blocked.to_string())).await {
+                                // The same call under the same id: this side
+                                // keys approvals by session, and the reason
+                                // below is what marks it as a retry.
+                                if (approval_fn)(tc.clone(), Some(blocked.to_string())).await {
                                     match tool.execute(args, &tool_context.without_sandbox()).await {
                                         Ok(o) => (o, "success"),
                                         Err(e2) => (format!("Error: {e2}"), "error"),

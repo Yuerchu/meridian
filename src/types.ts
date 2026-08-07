@@ -148,6 +148,9 @@ export interface PendingApprovalInfo {
   approval_id: string
   assistant_message_id: string
   provider_call_id: string
+  /** The call this one retries. Set only for sandbox escalations, where it
+   *  currently equals `provider_call_id` — a retry reuses the id. */
+  origin_call_id?: string
   tool_name: string
   retry_reason?: string
 }
@@ -528,6 +531,8 @@ export interface StreamChunk {
   /** Set only when this approval is a sandbox-blocked call asking to run
    *  again without the sandbox. Its presence is what marks the escalation. */
   retry_reason?: string
+  /** The call being retried, alongside `retry_reason`. */
+  origin_call_id?: string
   input_tokens?: number
   output_tokens?: number
 }

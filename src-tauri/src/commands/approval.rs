@@ -63,6 +63,8 @@ pub struct PendingApprovalInfo {
     pub approval_id: String,
     pub assistant_message_id: String,
     pub provider_call_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub origin_call_id: Option<String>,
     pub tool_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_reason: Option<String>,
@@ -90,6 +92,7 @@ pub async fn list_pending_approvals(
                 approval_id: id.clone(),
                 assistant_message_id: p.assistant_message_id.clone(),
                 provider_call_id: p.provider_call_id.clone(),
+                origin_call_id: p.origin_call_id.clone(),
                 tool_name: p.tool_name.clone(),
                 retry_reason: p.retry_reason.clone(),
             })
