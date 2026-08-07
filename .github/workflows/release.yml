@@ -175,6 +175,16 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # linuxdeploy resolves the binary's dependencies against the copy it
+          # has already placed in the AppDir, where `$ORIGIN` — the rpath
+          # sherpa-onnx-sys emits — points at a directory holding only the
+          # binary. It therefore cannot see `libsherpa-onnx-c-api.so`, which
+          # sits beside the *original* binary, and refuses to build the image.
+          # Naming that directory lets it find the library and copy it in, which
+          # is what makes the AppImage self-contained. Cargo writes there long
+          # before the bundling step, and a path that does not exist yet is
+          # simply skipped.
+          LD_LIBRARY_PATH: ${{ github.workspace }}/src-tauri/target/${{ matrix.target }}/release
         with:
           tagName: ${{ inputs.tag || github.ref_name }}
           releaseName: Meridian ${{ inputs.tag || github.ref_name }}
