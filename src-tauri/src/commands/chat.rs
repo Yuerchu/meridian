@@ -14,7 +14,8 @@ use crate::provider;
 use crate::provider::{ChatMessage, ChatParams};
 use crate::template;
 use crate::tools;
-use crate::state::{AppDb, AppSecrets, AppTools, AppMcp, ApprovalDecision, ApprovalWaiters, ActiveChats, EditSessions, CompactBreakers};
+use crate::state::{AppDb, AppSecrets, AppTools, AppMcp, ApprovalDecision, ApprovalWaiters, AppTurns, EditSessions, CompactBreakers};
+use crate::turn::{TurnLease, TurnOrigin};
 use crate::agent::{build_messages_with_senders, trailing_with_memory, build_file_access, file_access_prompt, estimate_tokens, microcompact, resolve_file_uris_in_messages, trim_to_context_limit, extract_tool_calls_from_blocks, parse_openai_tool_calls, serialize_tool_calls_openai, provider_secret_name, get_provider_api_key, resolve_provider_config, do_compact, mid_turn_compact, CompactCircuitBreaker, COMPACT_PROMPT, StreamResult, MAX_STREAM_RETRIES, STREAM_RETRY_BASE, is_context_window_error, is_retryable_stream_error, instruction_budget, load_project_instructions, TokenBudget};
 use crate::util::{get_conn, now_ms, take_bytes_at_char_boundary};
 
@@ -151,21 +152,67 @@ async fn consume_stream(
     Ok(StreamResult { text, reasoning, signature, tool_calls, usage, finish_reason })
 }
 
-/// Emits a terminal `stop` event if the turn exits via an early error return, so
-/// the UI never stays stuck streaming (mirrors the OneBot headless guard). Armed
-/// per iteration; disarmed once the normal stop event has been sent.
-struct ErrorStopGuard<'a> {
+/// Everything a turn owes back, whichever way it leaves.
+///
+/// A turn has around thirty exits: seven early returns before the loop, twenty
+/// or so inside it, cancellation, and panics. `Drop` is the only one of those
+/// that every path takes, so all three obligations hang off it — release the
+/// conversation, retire the approvals nobody is waiting on any more, and tell
+/// the front end the turn is over.
+///
+/// The lease is held in an `Option` so it can be dropped by hand, in order. A
+/// struct field is destroyed only once `Drop::drop` has returned, so leaving it
+/// to that order would send the stop event while the conversation still read as
+/// occupied — and the front end treats a stop as permission to send again.
+struct TurnGuard<'a> {
     app: &'a tauri::AppHandle,
     conversation_id: &'a str,
+    turn_id: String,
+    /// The row being written. Absent until the first iteration creates one —
+    /// the early returns before that still owe a terminal stop, they just have
+    /// no message to attach it to, and the front end would otherwise sit on the
+    /// `streaming` flag its optimistic send set.
     message_id: Option<String>,
+    /// Cleared once the turn's own stop event has gone out.
+    armed: bool,
+    lease: Option<TurnLease>,
 }
 
-impl Drop for ErrorStopGuard<'_> {
+impl TurnGuard<'_> {
+    /// Hand the conversation back. Called just before the turn's own stop event
+    /// goes out, so "the stream ended" and "you may send again" become true at
+    /// the same moment. What still runs after it — generating a title — is a
+    /// whole model call, and holding the conversation across that would refuse
+    /// every follow-up message for as long as it took.
+    ///
+    /// The title write itself is safe to race: it touches `title` and nothing
+    /// the transcript is read through.
+    fn release(&mut self) {
+        self.lease.take();
+    }
+
+    fn disarm(&mut self) {
+        self.armed = false;
+    }
+}
+
+impl Drop for TurnGuard<'_> {
     fn drop(&mut self) {
-        if let Some(message_id) = self.message_id.take() {
+        // Nobody is left to answer these. Left behind, they would show the user
+        // a card whose buttons reach a receiver that has already gone, and the
+        // registry would grow one entry per abandoned turn.
+        self.app
+            .state::<ApprovalWaiters>()
+            .lock()
+            .retain(|_, pending| pending.turn_id != self.turn_id);
+        // Before the event, not after: a user who sends again the instant the
+        // stream ends must not be told the conversation is busy.
+        self.lease.take();
+        if self.armed {
             let _ = self.app.emit("chat-stream", serde_json::json!({
                 "type": "stop", "reason": "error", "done": true,
-                "message_id": message_id,
+                "message_id": self.message_id,
+                "turn_id": self.turn_id,
                 "conversation_id": self.conversation_id,
             }));
         }
@@ -241,11 +288,29 @@ async fn wait_for_approval(
     Ok(decision)
 }
 
+/// Ask the turn running for this conversation to stop.
+///
+/// `turn_id` names which run the caller meant to stop. Without it "stop, then
+/// send again" could cancel the new turn instead of the old one: the two are
+/// only told apart by id, and a stop takes effect asynchronously. `None` still
+/// means "whatever is running here" — a reload loses the id, and the button has
+/// to keep working.
+///
+/// Succeeds either way. A stop aimed at a turn that already ended is not a
+/// failure the user needs to see; the front end clears its own state regardless.
 #[tauri::command]
-pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String) -> Result<(), String> {
-    let chats = app.state::<ActiveChats>();
-    if let Some(token) = chats.0.lock().await.get(&conversation_id) {
-        token.cancel();
+pub async fn stop_chat(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    turn_id: Option<String>,
+) -> Result<(), String> {
+    let cancelled = app.state::<AppTurns>().0.cancel(&conversation_id, turn_id.as_deref());
+    if !cancelled {
+        tracing::debug!(
+            conversation_id = %conversation_id,
+            turn_id = ?turn_id,
+            "stop asked for a turn that is no longer running"
+        );
     }
     Ok(())
 }
@@ -276,10 +341,14 @@ pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String) -> Result
 /// The named message is never modified or removed; it stays reachable as a
 /// sibling of what this turn writes.
 #[allow(clippy::too_many_arguments)]
+///
+/// `turn_id` is the front end's, minted before it sent. See
+/// `TurnCoordinator::try_acquire_turn_as` for why it is not minted here.
 pub async fn chat(
     app: tauri::AppHandle,
     conversation_id: String,
     message: Option<String>,
+    turn_id: Option<String>,
     replaces: Option<String>,
     model_override: Option<String>,
     provider_override: Option<String>,
@@ -294,7 +363,7 @@ pub async fn chat(
     // rather than at each `?` also keeps a single failure from being reported
     // twice.
     chat_inner(
-        app, conversation_id, message, replaces, model_override, provider_override,
+        app, conversation_id, message, turn_id, replaces, model_override, provider_override,
         thinking_level, assistant_id, fast, mode, voice,
     )
     .await
@@ -306,6 +375,7 @@ async fn chat_inner(
     app: tauri::AppHandle,
     conversation_id: String,
     message: Option<String>,
+    turn_id: Option<String>,
     replaces: Option<String>,
     model_override: Option<String>,
     provider_override: Option<String>,
@@ -318,17 +388,38 @@ async fn chat_inner(
     let secrets = app.state::<AppSecrets>();
     let pool = app.state::<AppDb>().0.clone();
 
+    // Taken before anything is read, let alone written. A conversation someone
+    // else is already answering is refused here rather than silently becoming a
+    // second writer: two turns on one conversation do not end up as two
+    // branches, they fight over the head, and whichever finishes first has its
+    // whole answer fall off the active path.
+    //
+    // Under the id the front end minted before it sent, when it sent one. Its
+    // composer has been locked against that id since before this command was
+    // dispatched, and everything arriving in the meantime — the previous turn's
+    // stop above all — has to be measurable against it.
+    let lease = app.state::<AppTurns>().0.clone()
+        .try_acquire_turn_as(
+            &conversation_id,
+            TurnOrigin::Desktop,
+            turn_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        )
+        .map_err(|busy| busy.to_string())?;
     // Names this run of the turn, as opposed to the conversation it belongs to
     // or the assistant row it is currently writing (which changes every
-    // iteration). Only the approval registry uses it so far; the turn
-    // coordinator will key off it too.
-    let turn_id = uuid::Uuid::new_v4().to_string();
-
-    let cancel = CancellationToken::new();
-    {
-        let chats = app.state::<ActiveChats>();
-        chats.0.lock().await.insert(conversation_id.clone(), cancel.clone());
-    }
+    // iteration).
+    let turn_id = lease.turn_id().to_string();
+    let cancel = lease.cancel_token().clone();
+    // From here on every exit goes through this: the lease, the approvals and
+    // the terminal stop event are all released by its `Drop`.
+    let mut stop_guard = TurnGuard {
+        app: &app,
+        conversation_id: &conversation_id,
+        turn_id: turn_id.clone(),
+        message_id: None,
+        armed: true,
+        lease: Some(lease),
+    };
 
     // Load conversation + assistant + active path + project path
     let (assistant, ctx, conv_title, project_path, project_id, conv_prefs, branch_parent) = {
@@ -776,7 +867,6 @@ async fn chat_inner(
     let mut last_assistant_text = String::new();
     let mut loop_guard = crate::agent::ToolLoopGuard::default();
     let mut turn_aborted = false;
-    let mut stop_guard = ErrorStopGuard { app: &app, conversation_id: &conversation_id, message_id: None };
 
     // Unified streaming agent loop: each iteration creates a new assistant message
     loop {
@@ -806,7 +896,8 @@ async fn chat_inner(
         parent_cursor = Some(assistant_msg_id.clone());
 
         app.emit("chat-stream", serde_json::json!({
-            "type": "message_start", "message_id": &assistant_msg_id, "conversation_id": &conversation_id,
+            "type": "message_start", "message_id": &assistant_msg_id,
+            "turn_id": &turn_id, "conversation_id": &conversation_id,
         })).map_err(|e| e.to_string())?;
         stop_guard.message_id = Some(assistant_msg_id.clone());
 
@@ -1380,12 +1471,6 @@ async fn chat_inner(
         }
     }
 
-    // Clean up cancel token
-    {
-        let chats = app.state::<ActiveChats>();
-        chats.0.lock().await.remove(&conversation_id);
-    }
-
     let cost_info = model_config.as_ref()
         .filter(|mc| crate::agent::pricing::has_pricing(mc))
         .map(|mc| {
@@ -1403,6 +1488,7 @@ async fn chat_inner(
     let mut stop_payload = serde_json::json!({
         "type": "stop", "reason": stop_reason, "done": true,
         "message_id": &assistant_msg_id,
+        "turn_id": &turn_id,
         "conversation_id": &conversation_id,
         "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
     });
@@ -1414,8 +1500,10 @@ async fn chat_inner(
             "cache": cost.cache_cost,
         });
     }
+    // Released ahead of the event it announces, not after it.
+    stop_guard.release();
     app.emit("chat-stream", stop_payload).map_err(|e| e.to_string())?;
-    stop_guard.message_id = None;
+    stop_guard.disarm();
 
     // Auto-generate title if first message
     if conv_title.is_none() {

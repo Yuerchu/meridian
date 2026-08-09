@@ -27,22 +27,68 @@ pub type TextNotifyFn = Box<dyn Fn(String) -> Pin<Box<dyn Future<Output = ()> + 
 
 const STREAM_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
-struct ErrorStopGuard<'a> {
-    app: Option<&'a tauri::AppHandle>,
-    conversation_id: &'a str,
-    message_id: Option<String>,
+/// What one round of a headless turn left behind, for the caller to report.
+///
+/// The terminal `stop` event is deliberately *not* emitted from in here. A QQ
+/// conversation can be open in the desktop UI, where a stop is read as
+/// permission to send again — so it has to go out after the conversation has
+/// actually been handed back, and only once the turn is really over. Whether it
+/// is over is the caller's question: a `TurnEnd::Continue` round is the same
+/// turn going round again, and announcing a stop between rounds would invite a
+/// desktop message the coordinator would then refuse.
+#[derive(Default)]
+pub struct TurnProgress {
+    /// The assistant row this round was writing, once it had one. `None` means
+    /// the round failed before creating one — the stop still has to go out, it
+    /// just has no message to hang off.
+    pub message_id: Option<String>,
+    pub input_tokens: i32,
+    pub output_tokens: i32,
+    /// The loop guard cut the round short.
+    pub aborted: bool,
 }
 
-impl Drop for ErrorStopGuard<'_> {
-    fn drop(&mut self) {
-        if let (Some(app), Some(message_id)) = (self.app, self.message_id.as_ref()) {
-            let _ = app.emit("chat-stream", serde_json::json!({
-                "type": "stop", "reason": "error", "done": true,
-                "message_id": message_id,
-                "conversation_id": self.conversation_id,
-            }));
+/// A headless round's reply, plus what the caller needs to close it out.
+pub struct HeadlessOutcome {
+    pub reply: Result<String, String>,
+    pub progress: TurnProgress,
+}
+
+impl HeadlessOutcome {
+    /// What to tell the front end this turn ended as.
+    pub fn stop_reason(&self) -> &'static str {
+        if self.reply.is_err() {
+            "error"
+        } else if self.progress.aborted {
+            "loop_detected"
+        } else {
+            "end_turn"
         }
     }
+}
+
+/// The terminal `chat-stream` event for a turn that has ended.
+///
+/// Built even when the round never got as far as writing an assistant row — a
+/// provider that refuses the very first request produces exactly that. The
+/// front end is sitting on the `streaming` flag its optimistic send set, and
+/// with no stop to clear it, it sits there until the window is reloaded. So
+/// `message_id` may be null; the event still goes out.
+pub fn turn_stop_payload(
+    conversation_id: &str,
+    turn_id: &str,
+    message_id: Option<&str>,
+    reason: &str,
+    input_tokens: i32,
+    output_tokens: i32,
+) -> serde_json::Value {
+    serde_json::json!({
+        "type": "stop", "reason": reason, "done": true,
+        "message_id": message_id,
+        "turn_id": turn_id,
+        "conversation_id": conversation_id,
+        "input_tokens": input_tokens, "output_tokens": output_tokens,
+    })
 }
 
 async fn consume_stream_headless(
@@ -272,8 +318,43 @@ pub(super) async fn oneshot_completion(
 /// - `is_admin`: controls whether tools are available at all
 /// - `approval_fn`: called for Ask-permission tools (admin only); returns true to approve
 /// - `app`: when `Some`, emits `chat-stream` events for real-time UI updates
+///
+/// Every event except the terminal `stop` goes out from in here. That one is
+/// handed back in `TurnProgress` instead — see it for why.
 #[allow(clippy::too_many_arguments)]
 pub async fn headless_chat(
+    pool: &DbPool,
+    secrets: &Arc<SecretsManager>,
+    tool_registry: &Arc<ToolRegistry>,
+    mcp_registry: &Arc<McpRegistry>,
+    conversation_id: &str,
+    turn_id: &str,
+    project_id: Option<&str>,
+    incoming: &[super::IncomingMessage],
+    assistant_id: Option<&str>,
+    model_override: Option<&str>,
+    is_admin: bool,
+    approval_fn: &ApprovalFn,
+    interim_text_fn: Option<&TextNotifyFn>,
+    cancel: &CancellationToken,
+    app: Option<&tauri::AppHandle>,
+    qq_tools: Option<&super::qq_tools::QqToolExecutor>,
+    session_inbox: Option<&super::InboxHandle>,
+) -> HeadlessOutcome {
+    // Written into as the round goes, so the `?`-heavy body below can bail out
+    // anywhere and still leave the caller enough to close the turn out.
+    let mut progress = TurnProgress::default();
+    let reply = headless_chat_inner(
+        pool, secrets, tool_registry, mcp_registry, conversation_id, turn_id, project_id,
+        incoming, assistant_id, model_override, is_admin, approval_fn, interim_text_fn,
+        cancel, app, qq_tools, session_inbox, &mut progress,
+    )
+    .await;
+    HeadlessOutcome { reply, progress }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn headless_chat_inner(
     pool: &DbPool,
     // The `Arc` rather than a plain reference: provider resolution is handed to
     // `spawn_blocking`, which needs an owned handle.
@@ -281,6 +362,12 @@ pub async fn headless_chat(
     tool_registry: &Arc<ToolRegistry>,
     mcp_registry: &Arc<McpRegistry>,
     conversation_id: &str,
+    // Which run of the turn this is. A QQ conversation can be opened in the
+    // desktop UI, and these events go down the same `chat-stream` channel, so
+    // without the id the front end cannot tell this turn's stop from anyone
+    // else's — and a QQ session left in the UI would stream forever.
+    // Unchanged across `TurnEnd::Continue` rounds: they are one turn.
+    turn_id: &str,
     project_id: Option<&str>,
     // This turn's inbound messages, each keeping its own speaker. Several
     // arrive at once when messages queued up while a previous turn was running.
@@ -294,6 +381,7 @@ pub async fn headless_chat(
     app: Option<&tauri::AppHandle>,
     qq_tools: Option<&super::qq_tools::QqToolExecutor>,
     session_inbox: Option<&super::InboxHandle>,
+    progress: &mut TurnProgress,
 ) -> Result<String, String> {
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
     let _sleep_guard = {
@@ -520,7 +608,6 @@ pub async fn headless_chat(
     // now_ms() so relative times differ and the turn's elapsed time is derivable.
     let now = now_ms();
     let user_msg_id = uuid::Uuid::new_v4().to_string();
-    let mut assistant_msg_id = String::new();
     // Walks down the branch as the turn writes. A group turn can open with
     // several user rows, and steering can add more mid-flight, so this has to be
     // a cursor rather than one precomputed parent.
@@ -597,18 +684,17 @@ pub async fn headless_chat(
     };
 
     // Agent loop: each iteration creates a new assistant message
-    let mut total_input_tokens = 0i32;
-    let mut total_output_tokens = 0i32;
     let mut last_assistant_text = String::new();
-    let mut stop_guard = ErrorStopGuard { app, conversation_id, message_id: None };
     let mut loop_guard = crate::agent::ToolLoopGuard::default();
     let mut turn_aborted = false;
 
     loop {
         if cancel.is_cancelled() { break; }
 
-        // Create a new assistant message for this iteration
-        assistant_msg_id = uuid::Uuid::new_v4().to_string();
+        // Create a new assistant message for this iteration. Scoped to the
+        // iteration now that nothing after the loop reads it — the terminal
+        // stop event, which used to, is the caller's to send.
+        let assistant_msg_id = uuid::Uuid::new_v4().to_string();
         {
             let pool = pool.clone();
             let conv_id = conversation_id.to_string();
@@ -630,12 +716,15 @@ pub async fn headless_chat(
         }
         parent_cursor = Some(assistant_msg_id.clone());
 
+        // Recorded whether or not anyone is watching: the caller decides what to
+        // do with it, and it must not depend on `app` having been passed.
+        progress.message_id = Some(assistant_msg_id.clone());
         if let Some(app) = app {
             let _ = app.emit("chat-stream", serde_json::json!({
                 "type": "message_start", "message_id": &assistant_msg_id,
+                "turn_id": turn_id,
                 "conversation_id": conversation_id,
             }));
-            stop_guard.message_id = Some(assistant_msg_id.clone());
         }
 
         let result = {
@@ -690,8 +779,8 @@ pub async fn headless_chat(
         };
 
         if let Some(ref u) = result.usage {
-            total_input_tokens += u.prompt_tokens.unwrap_or(0);
-            total_output_tokens += u.completion_tokens.unwrap_or(0);
+            progress.input_tokens += u.prompt_tokens.unwrap_or(0);
+            progress.output_tokens += u.completion_tokens.unwrap_or(0);
             budget.calibrate_from_usage(u);
         }
 
@@ -896,7 +985,7 @@ pub async fn headless_chat(
         // Injecting only appends, so history and its prompt-cache prefix stay
         // intact.
         if let Some(inbox) = session_inbox {
-            let items = inbox.drain().await;
+            let items = inbox.drain();
             let injected_any = !items.is_empty();
             for item in items {
                 let inject_msg_id = uuid::Uuid::new_v4().to_string();
@@ -957,16 +1046,66 @@ pub async fn headless_chat(
         }
     }
 
-    stop_guard.message_id = None;
-    if let Some(app) = app {
-        let stop_reason = if turn_aborted { "loop_detected" } else { "end_turn" };
-        let _ = app.emit("chat-stream", serde_json::json!({
-            "type": "stop", "reason": stop_reason, "done": true,
-            "message_id": &assistant_msg_id,
-            "conversation_id": conversation_id,
-            "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
-        }));
+    progress.aborted = turn_aborted;
+    // No stop event here. The caller emits it, after handing the conversation
+    // back and only once the turn is genuinely over.
+    Ok(last_assistant_text)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn outcome(reply: Result<String, String>, aborted: bool) -> HeadlessOutcome {
+        HeadlessOutcome {
+            reply,
+            progress: TurnProgress { aborted, ..Default::default() },
+        }
     }
 
-    Ok(last_assistant_text)
+    #[test]
+    fn a_round_that_failed_ends_as_an_error() {
+        assert_eq!(outcome(Err("no api key".into()), false).stop_reason(), "error");
+    }
+
+    #[test]
+    fn a_round_the_loop_guard_cut_short_says_so() {
+        assert_eq!(outcome(Ok(String::new()), true).stop_reason(), "loop_detected");
+        assert_eq!(outcome(Ok("hi".into()), false).stop_reason(), "end_turn");
+    }
+
+    /// The path that strands the front end if it is missed: a provider that
+    /// refuses the very first request means no assistant row was ever created,
+    /// so there is no message to hang the event off — but the composer is
+    /// already disabled by the optimistic send, and only a stop re-enables it.
+    #[test]
+    fn a_turn_that_never_wrote_a_message_still_gets_a_terminal_event() {
+        let failed = outcome(Err("no api key".into()), false);
+        assert!(failed.progress.message_id.is_none());
+
+        let payload = turn_stop_payload(
+            "conv-1", "turn-1", failed.progress.message_id.as_deref(),
+            failed.stop_reason(), 0, 0,
+        );
+
+        assert_eq!(payload["type"], "stop");
+        assert_eq!(payload["done"], true);
+        assert_eq!(payload["reason"], "error");
+        assert_eq!(payload["turn_id"], "turn-1");
+        assert_eq!(payload["conversation_id"], "conv-1");
+        // Null, not absent: the front end reads a stop it cannot place as
+        // "whatever is running here", which is exactly right for this one.
+        assert!(payload["message_id"].is_null());
+    }
+
+    /// A QQ conversation open in the desktop has to be able to tell this turn's
+    /// end from anyone else's, or it streams for good.
+    #[test]
+    fn a_terminal_event_names_its_turn_and_its_message() {
+        let payload = turn_stop_payload("conv-1", "turn-1", Some("msg-9"), "end_turn", 12, 34);
+        assert_eq!(payload["message_id"], "msg-9");
+        assert_eq!(payload["turn_id"], "turn-1");
+        assert_eq!(payload["input_tokens"], 12);
+        assert_eq!(payload["output_tokens"], 34);
+    }
 }

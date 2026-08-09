@@ -58,7 +58,7 @@ async fn handle_poke(
     // can't both pass.
     {
         let now = now_ms();
-        let mut states = state.session_states.lock().await;
+        let mut states = state.session_states.lock();
         let s = states.entry(session_key.to_string()).or_default();
         if now - s.last_poke_reply_ms < POKE_COOLDOWN_MS {
             return vec![];
@@ -109,7 +109,7 @@ async fn handle_recall(event: &OneBotEvent, state: &Arc<SharedState>) {
 
     // Only report recalls of messages the model actually saw; anything else
     // would be noise (and would hand the model content its author retracted).
-    if !was_seen_message(state, &session_key, message_id).await {
+    if !was_seen_message(&state.session_states, &session_key, message_id) {
         return;
     }
 
@@ -127,7 +127,7 @@ async fn handle_recall(event: &OneBotEvent, state: &Arc<SharedState>) {
         Some(s) => format!("[系统提示] {who} 撤回了消息{by_operator}:\"{s}\""),
         None => format!("[系统提示] {who} 撤回了一条消息{by_operator}"),
     };
-    push_notice_note(state, &session_key, text).await;
+    push_notice_note(&state.session_states, &session_key, text);
 }
 
 async fn handle_membership(event: &OneBotEvent, state: &Arc<SharedState>) {
@@ -147,7 +147,7 @@ async fn handle_membership(event: &OneBotEvent, state: &Arc<SharedState>) {
         },
         _ => return,
     };
-    push_notice_note(state, &SessionKey::group(group_id), text).await;
+    push_notice_note(&state.session_states, &SessionKey::group(group_id), text);
 }
 
 /// Best-effort nickname lookup; falls back to `None` (caller shows the QQ id).

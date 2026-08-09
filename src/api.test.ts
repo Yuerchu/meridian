@@ -76,6 +76,7 @@ describe('api', () => {
       expect(mockInvoke).toHaveBeenCalledWith('chat', {
         conversationId: 'conv-1',
         message: 'Hello',
+        turnId: null,
         replaces: null,
         modelOverride: null,
         providerOverride: null,
@@ -99,6 +100,7 @@ describe('api', () => {
       expect(mockInvoke).toHaveBeenCalledWith('chat', {
         conversationId: 'conv-1',
         message: 'Hi',
+        turnId: null,
         replaces: null,
         modelOverride: 'gpt-4',
         providerOverride: 'openai',

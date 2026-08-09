@@ -28,7 +28,8 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const storeEnsureSession = useConversationStore((s) => s.ensureSession)
   const storeLoadMessages = useConversationStore((s) => s.loadMessages)
   const storeLoadActiveTodos = useConversationStore((s) => s.loadActiveTodos)
-  const storeSetStreaming = useConversationStore((s) => s.setStreaming)
+  const storeBeginTurn = useConversationStore((s) => s.beginTurn)
+  const storeAbortTurn = useConversationStore((s) => s.abortTurn)
   const storeSetError = useConversationStore((s) => s.setError)
   const storeSetCompacting = useConversationStore((s) => s.setCompacting)
   const isOneBot = useConversationStore((s) => {
@@ -219,8 +220,12 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     setAcceptEdits(conversationAcceptEdits)
   }, [conversationAcceptEdits])
 
+  // Read at click time rather than closed over, so the button always aims at
+  // whatever is running now. Null falls back to "stop this conversation's
+  // current turn", which is all a reloaded window knows.
   const handleStop = useCallback(() => {
-    api.stopChat(conversationId)
+    const turnId = useConversationStore.getState().sessions[conversationId]?.activeTurnId
+    api.stopChat(conversationId, turnId)
   }, [conversationId])
 
   const handleDelete = useCallback((id: string) => {
@@ -255,8 +260,13 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     // A null message means "regenerate", which needs no text of its own.
     if ((text === null ? !replaces : !text) || streaming || submittingRef.current) return
     submittingRef.current = true
-    storeSetStreaming(conversationId, true)
-    storeSetError(conversationId, null)
+    // Minted here, not by the backend, and handed to it. The composer locks on
+    // this line; the backend's first event is several awaits away. Anything
+    // arriving in between — most of all the previous turn's stop, which can be
+    // delivered after its rejection has already unlocked the composer — has to
+    // be measurable against an id that already exists.
+    const turnId = crypto.randomUUID()
+    storeBeginTurn(conversationId, turnId)
     const now = Date.now()
 
     let messageContent = text
@@ -269,8 +279,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         }
         messageContent = JSON.stringify(parts)
       } catch (err) {
-        storeSetError(conversationId, String(err))
-        storeSetStreaming(conversationId, false)
+        storeAbortTurn(conversationId, turnId, String(err))
         submittingRef.current = false
         return
       }
@@ -335,6 +344,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
 
     api
       .chat(conversationId, messageContent, {
+        turnId,
         replaces,
         modelOverride: selectedModelId ?? undefined,
         providerOverride: selectedProviderId ?? undefined,
@@ -345,12 +355,14 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         voice: voice || undefined,
       })
       .catch((err) => {
-        storeSetError(conversationId, String(err))
-        storeSetStreaming(conversationId, false)
+        // Message and all, by id: a rejection can land after the user has given
+        // up and resent, and it must neither unlock the composer on the turn
+        // that replaced it nor report its failure against it.
+        storeAbortTurn(conversationId, turnId, String(err))
         submittingRef.current = false
         storeLoadMessages(conversationId)
       })
-  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, fastMode, mode, selectedAssistantId, storeSetStreaming, storeSetError, storeLoadMessages])
+  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, fastMode, mode, selectedAssistantId, storeBeginTurn, storeAbortTurn, storeLoadMessages])
 
   // Reset submittingRef when streaming ends
   useEffect(() => {

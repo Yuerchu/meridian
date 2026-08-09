@@ -529,6 +529,11 @@ export interface StreamChunk {
   done?: boolean
   reason?: string
   message_id?: string
+  /** Which run of a turn this belongs to, on `message_start` and `stop`. One
+   *  conversation can have events from more than one run reaching it — a QQ
+   *  session opened in the desktop UI is the same conversation — and without
+   *  this a stop cannot be told apart from any other stop. */
+  turn_id?: string
   conversation_id?: string
   call_id?: string
   tool_name?: string

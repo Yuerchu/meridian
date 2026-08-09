@@ -194,6 +194,22 @@ export interface PendingApprovalEntry {
 export interface ConversationSession {
   messages: Message[]
   streaming: boolean
+  /** Which run of a turn is streaming here, so a stop event can be told from
+   *  someone else's. Null when nothing is running, and also for a turn that
+   *  died before it wrote its first message — those send a stop with no id and
+   *  are accepted on that basis. */
+  activeTurnId: string | null
+  /** A turn belonging to somebody else — a QQ session answering the same
+   *  conversation — that announced itself while this window still had an
+   *  optimistic turn of its own outstanding.
+   *
+   *  Held rather than acted on, because at that moment it is genuinely unknown
+   *  which of the two owns the conversation: the local id was minted before the
+   *  request was sent, and the backend has not answered yet. If the local
+   *  request comes back refused, this is what was running all along and it
+   *  takes over; if the local turn writes its own first message, the local one
+   *  won and this is discarded. */
+  candidateTurnId: string | null
   compacting: boolean
   error: string | null
   fulfilledUnseen: boolean
@@ -223,6 +239,8 @@ function defaultSession(): ConversationSession {
   return {
     messages: [],
     streaming: false,
+    activeTurnId: null,
+    candidateTurnId: null,
     compacting: false,
     error: null,
     fulfilledUnseen: false,
@@ -302,7 +320,19 @@ export interface ConversationStore {
   loadMessages: (convId: string) => Promise<void>
   switchBranch: (convId: string, messageId: string) => Promise<void>
 
-  handleMessageStart: (convId: string, messageId: string) => void
+  /** Lock the composer and name the turn in one step, before the request goes
+   *  out. Naming it only when the first message arrives would leave a stretch —
+   *  lease, assistant, provider config, possibly a whole compaction — where the
+   *  session is streaming under no id at all, and any stop landing there, the
+   *  previous turn's included, would be taken for this one's. */
+  beginTurn: (convId: string, turnId: string) => void
+  /** The request never got off the ground. Identity-checked like a stop: a
+   *  rejection that lands after the user has already resent must not unlock the
+   *  composer on the turn that replaced it — nor report its failure against it,
+   *  which is why the message is written here rather than by a separate
+   *  `setError` the caller makes first. */
+  abortTurn: (convId: string, turnId: string, error?: string) => void
+  handleMessageStart: (convId: string, messageId: string, turnId?: string) => void
   handleText: (convId: string, messageId: string, content: string) => void
   handleReasoning: (convId: string, messageId: string, content: string) => void
   handleToolCall: (convId: string, messageId: string, callId: string, toolName: string, args: string) => void
@@ -322,7 +352,10 @@ export interface ConversationStore {
    *  which conversation it is being rendered in. */
   markApprovalOrphaned: (approvalId: string) => void
   handleStreamReset: (convId: string, messageId: string) => void
-  handleStop: (convId: string) => void
+  /** `turnId` names the run that stopped. A stop for a run this session is not
+   *  showing still reloads — the transcript changed either way — but must not
+   *  clear the streaming flag or the approvals of the turn that is showing. */
+  handleStop: (convId: string, turnId?: string) => void
   handleCompactStart: (convId: string) => void
   handleCompactDone: (convId: string) => void
 
@@ -439,14 +472,81 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }
   },
 
-  handleMessageStart: (convId, messageId) => {
+  beginTurn: (convId, turnId) => {
     set(produce((state: ConversationStore) => {
       if (!state.sessions[convId]) {
         state.sessions[convId] = defaultSession()
       }
       const session = state.sessions[convId]
       session.streaming = true
+      session.activeTurnId = turnId
+      // The guard means "a turn started while your request was in flight", and
+      // this is where a turn starts. Leaving it to the first `message_start`
+      // would let a reload fetched before the user sent — the one the previous
+      // turn's stop kicked off, say — pass the check and land on top of the
+      // bubble they have just added.
       session.generation += 1
+      session.error = null
+    }))
+  },
+
+  abortTurn: (convId, turnId, error) => {
+    set(produce((state: ConversationStore) => {
+      const session = state.sessions[convId]
+      if (!session) return
+      // Somebody else's failure. The turn on screen is not the one that just
+      // rejected: unlocking the composer would invite a send the backend would
+      // only refuse, and writing the message would report a dead turn's error
+      // against a live one.
+      if (session.activeTurnId !== null && session.activeTurnId !== turnId) return
+      if (error !== undefined) session.error = error
+      // Refused because somebody else had the conversation, and that somebody
+      // has already announced itself. The composer stays locked and the session
+      // follows the turn that actually owns it — this is the answer the user is
+      // about to see arriving.
+      if (session.candidateTurnId) {
+        session.activeTurnId = session.candidateTurnId
+        session.candidateTurnId = null
+        return
+      }
+      session.streaming = false
+      session.activeTurnId = null
+    }))
+  },
+
+  handleMessageStart: (convId, messageId, turnId) => {
+    set(produce((state: ConversationStore) => {
+      if (!state.sessions[convId]) {
+        state.sessions[convId] = defaultSession()
+      }
+      const session = state.sessions[convId]
+      // A message_start naming a turn this session is not showing does not get
+      // to take the session: the id on screen may belong to a turn that is
+      // still streaming, and letting this one in would hand the stop that
+      // follows it the power to end that turn.
+      //
+      // But it is not necessarily stale either. The local id is minted before
+      // the request goes out, so it may name a turn the backend has not
+      // accepted — and this event may be the turn that actually holds the
+      // conversation. So it is remembered, and `abortTurn` promotes it if the
+      // local request comes back refused.
+      //
+      // The row is recorded either way: text for it may be behind it in the
+      // queue, and with no row to find, `findAssistantMsg` would append that
+      // text to whatever row happens to be last.
+      const foreign = turnId && session.activeTurnId && session.activeTurnId !== turnId
+      if (foreign) {
+        session.candidateTurnId = turnId
+      } else {
+        session.streaming = true
+        // Left alone when the event carries no id, rather than cleared: an
+        // unnamed turn is not evidence that the named one ended.
+        if (turnId) session.activeTurnId = turnId
+        // Our own turn wrote a message, so it did get the conversation and
+        // whatever was being held cannot have had it.
+        session.candidateTurnId = null
+        session.generation += 1
+      }
       session.messages.push({
         id: messageId,
         conversation_id: convId,
@@ -668,12 +768,36 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }))
   },
 
-  handleStop: (convId) => {
-    const generation = get().sessions[convId]?.generation ?? 0
+  handleStop: (convId, turnId) => {
+    const session0 = get().sessions[convId]
+    const generation = session0?.generation ?? 0
+    // A stop for a run this session never started, or started and moved past.
+    // The transcript still changed, so the reload below runs — but the turn on
+    // screen is somebody else's and its streaming state is not ours to clear.
+    // An id-less stop is always ours: the backend sends one when a turn dies
+    // before writing anything, and refusing it would leave the composer
+    // disabled for good.
+    const mine = !turnId || !session0?.activeTurnId || session0.activeTurnId === turnId
     set(produce((state: ConversationStore) => {
       const session = state.sessions[convId]
       if (!session) return
+      if (!mine) {
+        // A turn that was being held in case the local one turned out not to
+        // own the conversation. It has ended, so there is nothing to hand over
+        // to; the reload below still runs, because the transcript changed.
+        if (turnId && session.candidateTurnId === turnId) session.candidateTurnId = null
+        return
+      }
+      // The local turn ended before it ever wrote a message, and another turn
+      // announced itself while it was in flight. Same handover as a refusal:
+      // that one has the conversation and the composer stays locked.
+      if (session.candidateTurnId) {
+        session.activeTurnId = session.candidateTurnId
+        session.candidateTurnId = null
+        return
+      }
       session.streaming = false
+      session.activeTurnId = null
       // The turn is over, so nothing is listening for these answers any more.
       // Clearing the entries without touching the cards used to leave a pair of
       // buttons that looked live and did nothing when pressed.
@@ -752,6 +876,13 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         state.sessions[convId] = defaultSession()
       }
       state.sessions[convId].streaming = value
+      // Turning streaming off by hand — a request that failed before the turn
+      // ever started — must not leave an id behind, or the next stop would be
+      // measured against a run that no longer exists.
+      if (!value) {
+        state.sessions[convId].activeTurnId = null
+        state.sessions[convId].candidateTurnId = null
+      }
     }))
   },
 

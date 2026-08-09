@@ -39,10 +39,8 @@ pub enum ApprovalDecision {
 /// that could no longer reach it.
 pub(crate) struct PendingApproval {
     pub(crate) conversation_id: String,
-    /// Which run of the turn asked. Nothing reads it yet — it is here so the
-    /// turn guard can drop a dead turn's approvals in one pass without the
-    /// struct having to change again.
-    #[allow(dead_code)]
+    /// Which run of the turn asked. What the turn guard sweeps by when a turn
+    /// ends: an approval whose turn is gone has nobody left to answer it.
     pub(crate) turn_id: String,
     /// The assistant row this call hangs off. Needed to place the card: the
     /// provider call id alone does not name one once it repeats within a turn.
@@ -109,7 +107,10 @@ impl VoiceState {
         }
     }
 }
-pub(crate) struct ActiveChats(pub(crate) Mutex<HashMap<String, CancellationToken>>);
+/// Who currently holds each conversation. Shared with the OneBot server, which
+/// is handed this same `Arc` rather than keeping a table of its own.
+pub(crate) struct AppTurns(pub(crate) Arc<crate::turn::TurnCoordinator>);
+
 pub(crate) struct EditSessions(pub(crate) Mutex<HashMap<String, Arc<tokio::sync::Mutex<edit_session::EditSession>>>>);
 pub(crate) struct CompactBreakers(pub(crate) Mutex<HashMap<String, Arc<CompactCircuitBreaker>>>);
 

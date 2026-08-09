@@ -2,7 +2,7 @@ use tauri::Manager;
 
 use crate::db;
 use crate::db::models::message::Message;
-use crate::state::AppDb;
+use crate::state::{AppDb, AppTurns};
 use crate::agent::extract_tool_calls_from_blocks;
 
 /// The active path, the summary that applies to it, and where it can be paged.
@@ -52,12 +52,19 @@ pub async fn load_message_tree(app: tauri::AppHandle, conversation_id: String) -
 }
 
 /// Make `message_id`'s branch the active one, landing on its most recent tip.
+///
+/// Refused while a turn is running: the head this moves is the same one the
+/// turn's next `append_message` sets, so the switch would be silently undone a
+/// moment later.
 #[tauri::command]
 pub async fn switch_branch(
     app: tauri::AppHandle,
     conversation_id: String,
     message_id: String,
 ) -> Result<MessageTree, String> {
+    let _lease = app.state::<AppTurns>().0.clone()
+        .try_acquire_mutation(&conversation_id, "a branch switch")
+        .map_err(|busy| busy.to_string())?;
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
@@ -67,14 +74,12 @@ pub async fn switch_branch(
     }).await.map_err(|e| e.to_string())?
 }
 
-#[tauri::command]
-pub async fn update_message_content(app: tauri::AppHandle, id: String, content: String) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::message::update_content(&mut conn, &id, &content).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
-}
+// `update_message_content` was here. It took only a message id, so it could not
+// name the conversation it was about to rewrite — and therefore could not take
+// a mutation lease before doing it. That made it the one write path left that
+// could edit a row out from under a running turn. Nothing called it, so it is
+// gone rather than fixed; anything that needs it back has to arrive with a
+// conversation id and take a lease like every other writer.
 
 /// Delete a message together with everything that followed from it.
 ///
@@ -82,12 +87,22 @@ pub async fn update_message_content(app: tauri::AppHandle, id: String, content: 
 /// assistant row left its tool results behind, and dropping a question left the
 /// model reading an answer to nothing. Returns the head the conversation landed
 /// on so the caller can reload without a second round trip.
+///
+/// Refused while a turn is running, and this is the dangerous one. The row it
+/// removes may be the very one the turn's `parent_cursor` points at; `parent_id`
+/// carries no foreign key (migration 21), so the next append succeeds and hangs
+/// the rest of the turn off a node that no longer exists. `path_to_head` stops
+/// at the missing id, and the turn's entire output — still in the table —
+/// becomes unreachable.
 #[tauri::command]
 pub async fn delete_message(
     app: tauri::AppHandle,
     conversation_id: String,
     id: String,
 ) -> Result<MessageTree, String> {
+    let _lease = app.state::<AppTurns>().0.clone()
+        .try_acquire_mutation(&conversation_id, "a delete")
+        .map_err(|busy| busy.to_string())?;
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;

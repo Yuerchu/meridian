@@ -46,6 +46,10 @@ pub async fn start_onebot(app: tauri::AppHandle) -> Result<(), String> {
         app.state::<AppSecrets>().0.clone(),
         app.state::<AppTools>().0.clone(),
         app.state::<AppMcp>().0.clone(),
+        // The one the desktop uses. Restarting OneBot rebuilds everything else
+        // in its shared state; a coordinator rebuilt with it would forget the
+        // conversations desktop turns are holding.
+        app.state::<crate::state::AppTurns>().0.clone(),
         config,
         Some(app.clone()),
     );

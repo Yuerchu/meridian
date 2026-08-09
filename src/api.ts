@@ -69,9 +69,6 @@ export const api = {
   switchBranch: (conversationId: string, messageId: string) =>
     invoke<MessageTree>('switch_branch', { conversationId, messageId }),
 
-  updateMessageContent: (id: string, content: string) =>
-    invoke<void>('update_message_content', { id, content }),
-
   /** Deletes the message and everything descended from it. */
   deleteMessage: (conversationId: string, id: string) =>
     invoke<MessageTree>('delete_message', { conversationId, id }),
@@ -86,8 +83,12 @@ export const api = {
   uploadFile: (conversationId: string, filePath: string) =>
     invoke<unknown>('upload_file', { conversationId, filePath }),
 
-  stopChat: (conversationId: string) =>
-    invoke<void>('stop_chat', { conversationId }),
+  // `turnId` says which run to stop. Without it the backend stops whatever is
+  // running, which is what a reloaded window has to fall back on — but sending
+  // it means "stop, then send again" can no longer cancel the new turn instead
+  // of the old one.
+  stopChat: (conversationId: string, turnId?: string | null) =>
+    invoke<void>('stop_chat', { conversationId, turnId: turnId ?? null }),
 
   // `mode` is passed per-request as well as being stored on the conversation:
   // the setter is async, and a message sent right after flipping the switch
@@ -99,10 +100,18 @@ export const api = {
   //   both          — edit: another version of that question, answered afresh
   // `replaces` names the message being offered an alternative; it is left in
   // place, reachable as a sibling of whatever the turn writes.
+  //
+  // `turnId` is minted here rather than by the backend, and it is the reason
+  // the composer can be locked and the turn identified at the same instant.
+  // A backend-minted id does not exist until the command has been dispatched,
+  // acquired the conversation, read the assistant and resolved the provider —
+  // and a stop belonging to the *previous* turn, arriving in that gap, would
+  // find no id to be measured against and be taken for this one's.
   chat: (
     conversationId: string,
     message: string | null,
     opts: {
+      turnId?: string
       replaces?: string
       modelOverride?: string
       providerOverride?: string
@@ -116,6 +125,7 @@ export const api = {
     invoke<void>('chat', {
       conversationId,
       message,
+      turnId: opts.turnId ?? null,
       replaces: opts.replaces ?? null,
       modelOverride: opts.modelOverride ?? null,
       providerOverride: opts.providerOverride ?? null,

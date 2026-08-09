@@ -16,6 +16,23 @@ import { useConversationStore } from '@/stores/conversation-store'
 
 type Page = 'chat' | 'settings'
 
+/** How long to wait for a stopped turn to let go of its conversation before
+ *  giving up and surfacing the refusal. */
+const RELEASE_POLL_MS = 100
+const RELEASE_ATTEMPTS = 20
+
+async function deleteWhenFree(id: string) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      await api.deleteConversation(id)
+      return
+    } catch (err) {
+      if (attempt >= RELEASE_ATTEMPTS) throw err
+      await new Promise((resolve) => setTimeout(resolve, RELEASE_POLL_MS))
+    }
+  }
+}
+
 function App() {
   const { t } = useTranslation()
   useContextMenuGuard()
@@ -62,9 +79,18 @@ function App() {
     async (id: string) => {
       const session = useConversationStore.getState().sessions[id]
       if (session?.streaming) {
-        await api.stopChat(id)
+        await api.stopChat(id, session.activeTurnId)
+        // A stop is a signal, not a join. The turn keeps writing until it
+        // reaches its next await, and the backend refuses to delete a
+        // conversation someone is still writing to — so wait for it to let go
+        // rather than reporting a refusal the user can do nothing about. The
+        // turn notices at its next await, which is immediate on every path
+        // that matters; failing after that beats deleting the rows out from
+        // under a runner that is still appending to them.
+        await deleteWhenFree(id)
+      } else {
+        await api.deleteConversation(id)
       }
-      await api.deleteConversation(id)
       await refreshConversations()
       if (activeId === id) {
         storeSetActiveId(null)

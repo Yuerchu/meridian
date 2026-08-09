@@ -4,6 +4,9 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 import { useConversationStore } from '@/stores/conversation-store'
 import type { StreamChunk } from '@/types'
 
+// Keyed by turn, not by conversation. Keyed by conversation, a second turn's
+// stop deleted the first one's start time and the "this took a while" notice
+// went to whichever turn happened to finish first.
 const streamStartTimes = new Map<string, number>()
 const LONG_STREAM_THRESHOLD_MS = 30_000
 
@@ -86,10 +89,14 @@ export function useGlobalEventListener() {
       const store = useConversationStore.getState()
 
       if (p.type === 'message_start' && p.message_id) {
-        if (!streamStartTimes.has(convId)) {
-          streamStartTimes.set(convId, Date.now())
+        // A turn writes one of these per iteration; only the first starts the
+        // clock. Turns that predate the id all share one key, which is the old
+        // per-conversation behaviour.
+        const streamKey = p.turn_id ?? convId
+        if (!streamStartTimes.has(streamKey)) {
+          streamStartTimes.set(streamKey, Date.now())
         }
-        store.handleMessageStart(convId, p.message_id)
+        store.handleMessageStart(convId, p.message_id, p.turn_id)
         return
       }
 
@@ -99,12 +106,13 @@ export function useGlobalEventListener() {
       }
 
       if (p.type === 'stop' || p.done) {
-        const startTime = streamStartTimes.get(convId)
-        streamStartTimes.delete(convId)
+        const streamKey = p.turn_id ?? convId
+        const startTime = streamStartTimes.get(streamKey)
+        streamStartTimes.delete(streamKey)
         if (startTime && Date.now() - startTime > LONG_STREAM_THRESHOLD_MS && shouldNotify(convId)) {
           trySendNotification(getConversationTitle(convId), 'Response completed')
         }
-        store.handleStop(convId)
+        store.handleStop(convId, p.turn_id)
         return
       }
 

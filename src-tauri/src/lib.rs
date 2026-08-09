@@ -18,6 +18,7 @@ mod secrets;
 mod sleep_inhibitor;
 mod template;
 mod tools;
+mod turn;
 mod util;
 mod voice;
 mod state;
@@ -42,7 +43,7 @@ use tauri::menu::{MenuBuilder, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tokio::sync::Mutex;
 use util::now_ms;
-use state::{AppSecrets, AppDb, AppTools, AppMcp, APP_HANDLE, ApprovalWaiters, ActiveChats, EditSessions};
+use state::{AppSecrets, AppDb, AppTools, AppMcp, APP_HANDLE, ApprovalWaiters, EditSessions};
 use agent::provider_secret_name;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -306,7 +307,12 @@ pub fn run() {
             app.manage(AppDb(pool));
             app.manage(AppTools(Arc::new(registry)));
             app.manage(ApprovalWaiters::new());
-            app.manage(ActiveChats(Mutex::new(HashMap::new())));
+            // One table for every writer of a conversation, desktop and OneBot
+            // alike. It lives on the app rather than inside either runner
+            // because `start_onebot` rebuilds the OneBot server's whole shared
+            // state, and an occupancy table that resets when QQ restarts would
+            // hand out a conversation a desktop turn is still writing.
+            app.manage(state::AppTurns(Arc::new(turn::TurnCoordinator::new())));
             app.manage(EditSessions(Mutex::new(HashMap::new())));
             app.manage(state::CompactBreakers(Mutex::new(HashMap::new())));
             app.manage(AppMcp(mcp::McpRegistry::new()));
@@ -445,7 +451,6 @@ pub fn run() {
             commands::message::load_messages,
             commands::message::load_message_tree,
             commands::message::switch_branch,
-            commands::message::update_message_content,
             commands::message::delete_message,
             commands::message::rate_message,
             commands::message::export_conversation,

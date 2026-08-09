@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { hydrateBlocks, reconcileMessages, useConversationStore } from '@/stores/conversation-store'
 import { api } from '@/api'
-import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
+import type { ContentBlock, Message, MessageTree, ToolCallDisplay } from '@/types'
 
 vi.mock('@tauri-apps/api/core')
 vi.mock('@/api', () => ({
@@ -271,6 +271,283 @@ describe('live approval events', () => {
       originCallId: 'c1',
       retryReason: 'sandbox denied',
     })
+  })
+})
+
+describe('stops are scoped to a turn', () => {
+  const CONV = 'conv-1'
+  const store = () => useConversationStore.getState()
+  const session = () => store().sessions[CONV]!
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(api.loadMessageTree).mockResolvedValue({
+      messages: [], head_message_id: null, branches: [],
+    })
+    useConversationStore.setState({ sessions: {} })
+    store().ensureSession(CONV)
+  })
+
+  it('records which run is streaming', () => {
+    store().handleMessageStart(CONV, 'a1', 'turn-1')
+    expect(session().streaming).toBe(true)
+    expect(session().activeTurnId).toBe('turn-1')
+  })
+
+  it('names the turn from the moment the composer locks', () => {
+    store().beginTurn(CONV, 'turn-1')
+    expect(session().streaming).toBe(true)
+    expect(session().activeTurnId).toBe('turn-1')
+  })
+
+  /// The generation guard means "a turn started while your request was in
+  /// flight", and this is where a turn starts. Advancing it only at the first
+  /// `message_start` leaves the whole start-up stretch uncovered: a reload
+  /// fetched before the user sent — the one the previous turn's stop kicks off
+  /// — still passes the check and lands on top of the bubble they just added.
+  it('discards a reload that was already in flight when the turn started', async () => {
+    let land: (tree: MessageTree) => void = () => {}
+    vi.mocked(api.loadMessageTree).mockReturnValueOnce(
+      new Promise<MessageTree>((resolve) => { land = resolve }),
+    )
+
+    const reloading = store().loadMessages(CONV)
+    store().beginTurn(CONV, 'turn-1')
+    land({ messages: [msg('stale')], head_message_id: 'stale', branches: [] })
+    await reloading
+
+    expect(session().messages.map((m) => m.id)).not.toContain('stale')
+  })
+
+  /// The window a front-end-minted id exists to close. A turn's failure comes
+  /// back down two channels — the command's rejection and its stop event — and
+  /// they race. If the rejection wins, the composer unlocks, the user resends,
+  /// and the stop then arrives for a turn that is already over. Between the
+  /// resend and its first `message_start` the new turn still has a lease to
+  /// take, an assistant to load, a provider to resolve and possibly a whole
+  /// compaction to run, so the gap is not a narrow one — and with the id minted
+  /// backend-side there would be nothing to measure the stale stop against.
+  it("ignores the previous run's stop while the new one is still starting up", () => {
+    store().handleMessageStart(CONV, 'a1', 'turn-1')
+    // The old turn's rejection lands first and unlocks the composer.
+    store().abortTurn(CONV, 'turn-1')
+    expect(session().streaming).toBe(false)
+
+    // The user resends. No assistant row exists yet — only the id.
+    store().beginTurn(CONV, 'turn-2')
+
+    // And now the old turn's stop finally arrives.
+    store().handleStop(CONV, 'turn-1')
+
+    expect(session().streaming).toBe(true)
+    expect(session().activeTurnId).toBe('turn-2')
+  })
+
+  /// The same race one event earlier, and the mirror of the stale stop above.
+  /// A late `message_start` used to take the session back, and the stop
+  /// following it then cleared the turn that was really running.
+  it("does not let a late message start take the session from the run that replaced it", () => {
+    store().handleMessageStart(CONV, 'a1', 'turn-1')
+    store().abortTurn(CONV, 'turn-1')
+    store().beginTurn(CONV, 'turn-2')
+
+    // Queued behind the rejection, delivered now.
+    store().handleMessageStart(CONV, 'a2', 'turn-1')
+
+    expect(session().activeTurnId).toBe('turn-2')
+    // The row is still recorded: text for it may be behind it in the queue,
+    // and with nowhere to land it would be appended to another turn's row.
+    expect(session().messages.map((m) => m.id)).toContain('a2')
+
+    // Which is the whole point — the stop that follows must not land either.
+    store().handleStop(CONV, 'turn-1')
+    expect(session().streaming).toBe(true)
+    expect(session().activeTurnId).toBe('turn-2')
+  })
+
+  /// The other half. The new turn's own failure also arrives before it has
+  /// written anything, and that one must still unlock the composer — refusing
+  /// every stop that cannot be matched to a message would strand it instead.
+  it("accepts the new run's own stop before it has written a message", () => {
+    store().beginTurn(CONV, 'turn-2')
+    store().handleStop(CONV, 'turn-2')
+
+    expect(session().streaming).toBe(false)
+    expect(session().activeTurnId).toBeNull()
+  })
+
+  /// Same discipline on the rejection path, which is how a Busy refusal comes
+  /// back.
+  it('ignores a rejection belonging to a run that has been replaced', () => {
+    store().beginTurn(CONV, 'turn-1')
+    store().abortTurn(CONV, 'turn-1')
+    store().beginTurn(CONV, 'turn-2')
+
+    store().abortTurn(CONV, 'turn-1')
+
+    expect(session().streaming).toBe(true)
+    expect(session().activeTurnId).toBe('turn-2')
+  })
+
+  /// The assumption that a different id must be a *stale* one does not hold
+  /// while the local turn is still optimistic. A QQ session can have taken the
+  /// conversation before this window ever sent: its first message arrives with
+  /// the local request still unanswered, and only the refusal that comes back
+  /// says which of the two owns it. Dropping the foreign start on the floor
+  /// left the window idle with the composer open while an answer streamed in.
+  it('follows the foreign turn when the local one is refused', () => {
+    store().beginTurn(CONV, 'turn-local')
+    store().handleMessageStart(CONV, 'a1', 'turn-foreign')
+    // Still unresolved: the local request may yet turn out to be the live one.
+    expect(session().activeTurnId).toBe('turn-local')
+
+    store().abortTurn(CONV, 'turn-local', 'This conversation is already answering.')
+
+    expect(session().streaming).toBe(true)
+    expect(session().activeTurnId).toBe('turn-foreign')
+    // The refusal is still reported — the user's message did not go anywhere.
+    expect(session().error).toBe('This conversation is already answering.')
+  })
+
+  /// The same handover when the local turn dies before writing anything, which
+  /// arrives as a stop rather than a rejection.
+  it('follows the foreign turn when the local one stops without ever starting', () => {
+    store().beginTurn(CONV, 'turn-local')
+    store().handleMessageStart(CONV, 'a1', 'turn-foreign')
+
+    store().handleStop(CONV, 'turn-local')
+
+    expect(session().streaming).toBe(true)
+    expect(session().activeTurnId).toBe('turn-foreign')
+  })
+
+  it('releases the session when the foreign turn it followed ends', () => {
+    store().beginTurn(CONV, 'turn-local')
+    store().handleMessageStart(CONV, 'a1', 'turn-foreign')
+    store().abortTurn(CONV, 'turn-local', 'busy')
+
+    store().handleStop(CONV, 'turn-foreign')
+
+    expect(session().streaming).toBe(false)
+    expect(session().activeTurnId).toBeNull()
+  })
+
+  /// The foreign turn ended before the local request came back, so there is
+  /// nothing left to hand over to.
+  it('has nothing to hand over to when the foreign turn ended first', () => {
+    store().beginTurn(CONV, 'turn-local')
+    store().handleMessageStart(CONV, 'a1', 'turn-foreign')
+    store().handleStop(CONV, 'turn-foreign')
+
+    store().abortTurn(CONV, 'turn-local', 'no api key')
+
+    expect(session().streaming).toBe(false)
+    expect(session().activeTurnId).toBeNull()
+  })
+
+  /// The local turn was the real one after all. Its own first message says so,
+  /// and whatever was being held was stale.
+  it('discards what it was holding once the local turn writes its first message', () => {
+    store().beginTurn(CONV, 'turn-local')
+    store().handleMessageStart(CONV, 'a1', 'turn-stale')
+    store().handleMessageStart(CONV, 'a2', 'turn-local')
+
+    store().handleStop(CONV, 'turn-local')
+
+    expect(session().streaming).toBe(false)
+    expect(session().activeTurnId).toBeNull()
+  })
+
+  /// The message travels with the abort rather than being written first,
+  /// because a rejection that has lost its turn has lost the right to report
+  /// anything: the red bubble would sit under a reply that is still arriving.
+  it("does not report a stale run's failure against the turn that replaced it", () => {
+    store().beginTurn(CONV, 'turn-1')
+    store().abortTurn(CONV, 'turn-1', 'the first failure')
+    expect(session().error).toBe('the first failure')
+
+    // Sending again clears the slate.
+    store().beginTurn(CONV, 'turn-2')
+    expect(session().error).toBeNull()
+
+    store().abortTurn(CONV, 'turn-1', 'a late failure')
+
+    expect(session().error).toBeNull()
+    expect(session().streaming).toBe(true)
+    expect(session().activeTurnId).toBe('turn-2')
+  })
+
+  /// The regression: stop then immediately send again. The old turn's stop
+  /// arrives after the new one has started, and used to clear the new turn's
+  /// streaming flag — the answer then streamed into a UI that thought it was
+  /// idle, with the composer enabled and the stop button gone.
+  it('ignores a stop belonging to a run that has already been replaced', () => {
+    store().handleMessageStart(CONV, 'a1', 'turn-1')
+    // A replacement registers before it sends, so by the time its own first
+    // message arrives the session is already showing it. (A turn arriving with
+    // a different id and no `beginTurn` behind it is a late event — see below.)
+    store().beginTurn(CONV, 'turn-2')
+    store().handleMessageStart(CONV, 'a2', 'turn-2')
+
+    store().handleStop(CONV, 'turn-1')
+
+    expect(session().streaming).toBe(true)
+    expect(session().activeTurnId).toBe('turn-2')
+  })
+
+  it('clears the session when the stop is for the run it is showing', () => {
+    store().handleMessageStart(CONV, 'a1', 'turn-1')
+    store().handleStop(CONV, 'turn-1')
+
+    expect(session().streaming).toBe(false)
+    expect(session().activeTurnId).toBeNull()
+  })
+
+  /// A turn that fails before writing its first message never sends a
+  /// `message_start`, so there is no id to match — and the front end is
+  /// already sitting on the `streaming` flag its optimistic send set. Refusing
+  /// this stop would leave the composer disabled until a reload.
+  it('accepts a stop with no id at all', () => {
+    store().setStreaming(CONV, true)
+    store().handleStop(CONV)
+
+    expect(session().streaming).toBe(false)
+  })
+
+  /// Same situation from the other side: the session has no id to compare
+  /// against, so whatever arrives is the only candidate.
+  it('accepts an identified stop when the session never saw a message start', () => {
+    store().setStreaming(CONV, true)
+    store().handleStop(CONV, 'turn-1')
+
+    expect(session().streaming).toBe(false)
+  })
+
+  /// Somebody else's turn still changed the transcript — a QQ session open in
+  /// this window, say. The reload has to happen; the streaming state must not.
+  it('still reloads for a stop it decided was not its own', async () => {
+    store().handleMessageStart(CONV, 'a1', 'turn-2')
+    store().handleStop(CONV, 'turn-1')
+
+    await vi.waitFor(() => {
+      expect(api.loadMessageTree).toHaveBeenCalledWith(CONV)
+    })
+    expect(session().streaming).toBe(true)
+  })
+
+  /// Stopping is what strands an approval: the turn is gone, so nothing is
+  /// left to answer the card. It must not do that to a turn that is still
+  /// running.
+  it('leaves another run\'s approvals alone', () => {
+    store().handleMessageStart(CONV, 'a1', 'turn-2')
+    store().handleToolCall(CONV, 'a1', 'c1', 'read_file', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'read_file')
+
+    store().handleStop(CONV, 'turn-1')
+    expect(Object.keys(session().pendingApprovals)).toEqual(['appr-1'])
+
+    store().handleStop(CONV, 'turn-2')
+    expect(session().pendingApprovals).toEqual({})
   })
 })
 
