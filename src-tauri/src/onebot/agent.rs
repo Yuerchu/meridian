@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::db::DbPool;
 use crate::db::models::message::NewMessage;
+use crate::db::models::turn::TurnPhase;
 use crate::mcp::McpRegistry;
 use crate::provider::{self, ChatMessage, ChatParams, ChatStream, StreamEvent, ToolCall};
 use crate::secrets::SecretsManager;
@@ -65,6 +66,44 @@ impl HeadlessOutcome {
             "end_turn"
         }
     }
+}
+
+/// Ask, with the turn's recorded phase bracketing the wait.
+///
+/// A QQ approval is a message in a chat and can sit there for the full minute,
+/// so this is a window the process can easily be killed in — and dying here
+/// means nothing ran, which is worth being able to say.
+async fn ask_bracketed(
+    approval_fn: &ApprovalFn,
+    pool: &DbPool,
+    turn_id: &str,
+    tc: &ToolCall,
+    reason: Option<String>,
+) -> bool {
+    crate::agent::turn_record::note_phase(
+        pool, turn_id, TurnPhase::AwaitingApproval, Some(&tc.name),
+    ).await;
+    let approved = (approval_fn)(tc.clone(), reason).await;
+    crate::agent::turn_record::note_phase(pool, turn_id, TurnPhase::Streaming, None).await;
+    approved
+}
+
+/// Run something with the turn recorded as being inside a tool.
+///
+/// The one phase that describes the world outside the database: a turn found
+/// dead in it may already have written the file or sent the message.
+async fn run_bracketed<T>(
+    pool: &DbPool,
+    turn_id: &str,
+    tool_name: &str,
+    work: impl std::future::Future<Output = T>,
+) -> T {
+    crate::agent::turn_record::note_phase(
+        pool, turn_id, TurnPhase::RunningTool, Some(tool_name),
+    ).await;
+    let out = work.await;
+    crate::agent::turn_record::note_phase(pool, turn_id, TurnPhase::Streaming, None).await;
+    out
 }
 
 /// The terminal `chat-stream` event for a turn that has ended.
@@ -626,6 +665,7 @@ async fn headless_chat_inner(
             .collect();
         let mut parent = parent_cursor.clone();
         parent_cursor = rows.last().map(|(id, _, _)| id.clone()).or(parent_cursor);
+        let turn = turn_id.to_string();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
             for (msg_id, msg, sender_id) in &rows {
@@ -636,6 +676,7 @@ async fn headless_chat_inner(
                     reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
                     sender_id: *sender_id,
                     parent_id: None, compact_anchor_id: None, source: None,
+                    turn_id: Some(&turn), tool_outcome: None,
                 }, parent.as_deref()).map_err(|e| e.to_string())?;
                 // Queued messages chain to each other, not all to the same parent.
                 parent = Some(msg_id.clone());
@@ -701,6 +742,7 @@ async fn headless_chat_inner(
             let msg_id = assistant_msg_id.clone();
             let model_clone = params.model.clone();
             let parent = parent_cursor.clone();
+            let turn = turn_id.to_string();
             tokio::task::spawn_blocking(move || {
                 let mut conn = get_conn(&pool)?;
                 crate::db::ops::message::append_message(&mut conn, &NewMessage {
@@ -710,6 +752,7 @@ async fn headless_chat_inner(
                     created_at: now_ms(), reasoning_content: None, rating: None, schema_version: 2,
                     is_compact_summary: 0, sender_id: None,
                     parent_id: None, compact_anchor_id: None, source: None,
+                    turn_id: Some(&turn), tool_outcome: None,
                 }, parent.as_deref()).map_err(|e| e.to_string())?;
                 Ok::<_, String>(())
             }).await.map_err(|e| e.to_string())??;
@@ -862,9 +905,10 @@ async fn headless_chat_inner(
             } else if let Some(qq) = qq_tools.filter(|q| q.owns(&tc.name)) {
                 // Query tools are scope-locked and read-only; action tools
                 // (recall/ban/kick/…) go through the chat approval flow.
-                let approved = !qq.requires_approval(&tc.name) || (approval_fn)(tc.clone(), None).await;
+                let approved = !qq.requires_approval(&tc.name)
+                    || ask_bracketed(approval_fn, pool, turn_id, tc, None).await;
                 if approved {
-                    match qq.execute(&tc.name, &tc.arguments).await {
+                    match run_bracketed(pool, turn_id, &tc.name, qq.execute(&tc.name, &tc.arguments)).await {
                         Ok(output) => (output, "success"),
                         Err(e) => (format!("Error: {e}"), "error"),
                     }
@@ -873,10 +917,10 @@ async fn headless_chat_inner(
                 }
             } else if is_mcp {
                 // External MCP tools require approval, same as Ask tools.
-                if (approval_fn)(tc.clone(), None).await {
+                if ask_bracketed(approval_fn, pool, turn_id, tc, None).await {
                     let args: serde_json::Value = serde_json::from_str(&tc.arguments)
                         .unwrap_or_else(|_| serde_json::json!({}));
-                    match mcp_registry.call_tool(&tc.name, args).await {
+                    match run_bracketed(pool, turn_id, &tc.name, mcp_registry.call_tool(&tc.name, args)).await {
                         Ok(output) => (output, "success"),
                         Err(e) => (format!("MCP error: {e}"), "error"),
                     }
@@ -884,7 +928,7 @@ async fn headless_chat_inner(
                     ("Tool call denied by user.".to_string(), "denied")
                 }
             } else if tc.name == "ask_user" {
-                let approved = (approval_fn)(tc.clone(), None).await;
+                let approved = ask_bracketed(approval_fn, pool, turn_id, tc, None).await;
                 if approved {
                     ("User approved.".to_string(), "success")
                 } else {
@@ -895,12 +939,12 @@ async fn headless_chat_inner(
                 let approved = match permission {
                     tools::Permission::Always => true,
                     tools::Permission::Never => false,
-                    tools::Permission::Ask => (approval_fn)(tc.clone(), None).await,
+                    tools::Permission::Ask => ask_bracketed(approval_fn, pool, turn_id, tc, None).await,
                 };
                 if approved {
                     let args: serde_json::Value = serde_json::from_str(&tc.arguments)
                         .unwrap_or_else(|_| serde_json::json!({}));
-                    match tool.execute(args.clone(), &tool_context).await {
+                    match run_bracketed(pool, turn_id, &tc.name, tool.execute(args.clone(), &tool_context)).await {
                         Ok(output) => (output, "success"),
                         Err(e) => match crate::tools::decode_sandbox_denied(&e) {
                             Some(blocked) => {
@@ -909,8 +953,13 @@ async fn headless_chat_inner(
                                 // The same call under the same id: this side
                                 // keys approvals by session, and the reason
                                 // below is what marks it as a retry.
-                                if (approval_fn)(tc.clone(), Some(blocked.to_string())).await {
-                                    match tool.execute(args, &tool_context.without_sandbox()).await {
+                                if ask_bracketed(
+                                    approval_fn, pool, turn_id, tc, Some(blocked.to_string()),
+                                ).await {
+                                    match run_bracketed(
+                                        pool, turn_id, &tc.name,
+                                        tool.execute(args, &tool_context.without_sandbox()),
+                                    ).await {
                                         Ok(o) => (o, "success"),
                                         Err(e2) => (format!("Error: {e2}"), "error"),
                                     }
@@ -949,6 +998,7 @@ async fn headless_chat_inner(
                 let call_id = tc.id.clone();
                 let result_clone = tool_result.clone();
                 let parent = parent_cursor.clone();
+                let turn = turn_id.to_string();
                 let written = tokio::task::spawn_blocking(move || {
                     let mut conn = pool.get().map_err(|e| e.to_string())?;
                     crate::db::ops::message::append_message(&mut conn, &NewMessage {
@@ -960,6 +1010,7 @@ async fn headless_chat_inner(
                         reasoning_content: None, rating: None, schema_version: 2,
                         is_compact_summary: 0, sender_id: None,
                         parent_id: None, compact_anchor_id: None, source: None,
+                        turn_id: Some(&turn), tool_outcome: Some(outcome),
                     }, parent.as_deref()).map(|_| tool_msg_id).map_err(|e| e.to_string())
                 }).await;
 
@@ -996,6 +1047,7 @@ async fn headless_chat_inner(
                     let msg_id = inject_msg_id.clone();
                     let sender_id = item.sender.as_ref().map(|s| s.user_id);
                     let parent = parent_cursor.clone();
+                    let turn = turn_id.to_string();
                     let written = tokio::task::spawn_blocking(move || {
                         let mut conn = pool.get().map_err(|e| e.to_string())?;
                         crate::db::ops::message::append_message(&mut conn, &NewMessage {
@@ -1006,6 +1058,9 @@ async fn headless_chat_inner(
                                 created_at: now_ms(), reasoning_content: None, rating: None,
                                 schema_version: 2, is_compact_summary: 0, sender_id,
                                 parent_id: None, compact_anchor_id: None, source: None,
+                                // Steering arrives mid-turn, so it belongs to the
+                                // turn it is steering.
+                                turn_id: Some(&turn), tool_outcome: None,
                             }, parent.as_deref()).map(|_| msg_id).map_err(|e| e.to_string())
                     }).await;
 

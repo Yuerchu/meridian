@@ -384,7 +384,12 @@ impl Drop for SessionTurn {
 
 /// Where a turn's terminal event goes. Injected rather than reached for through
 /// an `AppHandle` so the ordering below can be watched from a test.
-pub type StopSink = Box<dyn Fn(serde_json::Value) + Send>;
+///
+/// `Sync` as well as `Send` so that a `&RunningTurn` can be held across an
+/// await. Without it the guard could only ever be used by value, which rules
+/// out doing anything asynchronous through it — including opening the turn's
+/// record, which has to happen *after* the guard exists.
+pub type StopSink = Box<dyn Fn(serde_json::Value) + Send + Sync>;
 
 /// A turn while it is running, and the announcement it owes when it stops.
 ///
@@ -453,6 +458,20 @@ impl RunningTurn {
             .as_ref()
             .map(|t| t.cancel_token().clone())
             .unwrap_or_default()
+    }
+
+    /// Open this turn's durable record.
+    ///
+    /// A method on the guard rather than a free call, so it cannot be made
+    /// before the guard exists. Recording first would leave a window — one
+    /// `await` on a pooled connection — in which a dropped task handed both
+    /// claims back and announced nothing, which is the state this value was
+    /// written to make unreachable.
+    pub async fn open_record(&self, pool: &crate::db::DbPool) -> Result<(), String> {
+        crate::agent::turn_record::begin(
+            pool, &self.turn_id, &self.conversation_id, TurnOrigin::OneBot,
+        )
+        .await
     }
 
     /// Fold a finished round's numbers in. Follow-up rounds are the same turn,

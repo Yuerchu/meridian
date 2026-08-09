@@ -14,6 +14,7 @@ pub(crate) mod memory_context;
 pub(crate) mod modes;
 pub(crate) mod tool_defs;
 pub(crate) mod turn_config;
+pub(crate) mod turn_record;
 mod stream;
 mod tool_calls;
 pub(crate) mod tokenizer;

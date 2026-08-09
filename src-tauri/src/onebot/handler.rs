@@ -4,6 +4,7 @@ use tauri::Emitter;
 use tokio::sync::oneshot;
 
 use super::agent::{self, ApprovalFn, TextNotifyFn};
+use crate::db::models::turn::{TurnStatus, ERROR_LOOP_DETECTED};
 use super::command::{self, SlashCommand};
 use super::format;
 use super::protocol::{MessageSegment, OneBotAction, OneBotEvent};
@@ -406,12 +407,15 @@ pub(super) async fn run_agent_turn(
         .await;
     }
 
-    let approval_fn = make_approval_fn(state, session_key, initiator_user_id, turn.turn_id());
-    let interim_text_fn = make_interim_text_fn(state, session_key);
     // Everything the turn owes back, in one value that is dropped on every
     // exit — including the ones with no code after them. This task is detached:
     // drop it mid-await at runtime shutdown, or let a tool panic, and nothing
     // below this line runs.
+    //
+    // Built before anything else is awaited. Recording the turn first would
+    // leave a gap where a dropped task released the session and the
+    // conversation but announced nothing, which is the hole this value exists
+    // to close.
     let mut running = super::RunningTurn::new(
         state.session_states.clone(),
         state.pending_approvals.clone(),
@@ -429,6 +433,22 @@ pub(super) async fn run_agent_turn(
     // registered, which made that button a no-op.
     let cancel = running.cancel_token();
     let turn_id = running.turn_id().to_string();
+
+    // The durable half. From here the row says `running`; a QQ turn killed by
+    // the process going away leaves it that way, and the next launch reads it
+    // as interrupted.
+    //
+    // These ids are minted by the coordinator rather than arriving from
+    // outside, so the duplicate case is unreachable here — but it is worth
+    // hearing about if it ever stops being. Returning drops `running`, which
+    // announces the end and hands both claims back.
+    if let Err(e) = running.open_record(&state.pool).await {
+        tracing::error!(turn_id = %turn_id, error = %e, "OneBot turn id collided");
+        return build_session_reply(session_key, "内部错误,请重试。", reply_to);
+    }
+
+    let approval_fn = make_approval_fn(state, session_key, initiator_user_id, &turn_id);
+    let interim_text_fn = make_interim_text_fn(state, session_key);
     let qq_tools = super::qq_tools::QqToolExecutor::new(state.clone(), session_key.clone(), is_admin);
     let inbox = super::InboxHandle::new(state.session_states.clone(), session_key.clone());
 
@@ -462,6 +482,9 @@ pub(super) async fn run_agent_turn(
         }
 
         let stop_reason = outcome.stop_reason();
+        // Kept before the reply is consumed into a chat message: the turn's
+        // record is the only place this survives, and it was being dropped.
+        let failure = outcome.reply.as_ref().err().cloned();
         running.record(outcome.progress);
 
         let actions: Vec<OneBotAction> = match outcome.reply {
@@ -495,7 +518,24 @@ pub(super) async fn run_agent_turn(
         // watching this conversation would take a stop as its cue to send —
         // into a turn that still holds it.
         match running.end_round(stop_reason) {
-            None => return actions,
+            None => {
+                // Reached an ending, so say which. Anything that does not get
+                // here leaves the row at `running` for the next launch to read
+                // as interrupted, which is exactly right for a killed process.
+                // The same three endings the desktop distinguishes. The loop
+                // guard cutting a repeating model short is not a completed
+                // turn, whatever the reply looked like.
+                let (status, error) = match stop_reason {
+                    "error" => (TurnStatus::Failed, failure.as_deref()),
+                    "loop_detected" => (TurnStatus::Failed, Some(ERROR_LOOP_DETECTED)),
+                    // A desktop Stop on a QQ conversation reaches this token;
+                    // the turn was decided against, not lost.
+                    _ if cancel.is_cancelled() => (TurnStatus::Cancelled, None),
+                    _ => (TurnStatus::Done, None),
+                };
+                crate::agent::turn_record::finish(&state.pool, &turn_id, status, error).await;
+                return actions;
+            }
             Some(items) => {
                 // Send this turn's reply before starting the follow-up so the
                 // chat reads in order.

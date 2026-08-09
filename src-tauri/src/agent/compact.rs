@@ -194,6 +194,11 @@ pub(crate) async fn do_compact(
                 // A summary is not a node in the tree; it sits beside it and
                 // names the message it stands in front of.
                 parent_id: None, compact_anchor_id: Some(&anchor), source: None,
+                // Nor by any one turn. A summary outlives the turns whose
+                // history it replaced, and attributing it to whichever turn
+                // happened to trigger the compaction would make it disappear
+                // with that turn's record.
+                turn_id: None, tool_outcome: None,
             }).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
@@ -534,6 +539,8 @@ mod tests {
             parent_id: None,
             compact_anchor_id: None,
             source: None,
+            turn_id: None,
+            tool_outcome: None,
         };
         let result = prepare_compact_input(&[&msg]);
         assert!(result.contains("truncated"));

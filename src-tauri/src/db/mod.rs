@@ -111,6 +111,17 @@ pub fn init_db(db_path: &str) -> DbPool {
         );
     }
 
+    // Turns only ever run inside the process that recorded them, so anything
+    // still marked running was killed rather than finished. This is the only
+    // moment that fact is knowable — after this the row would just look like a
+    // turn that has been going for a very long time.
+    match ops::turn::reconcile_interrupted(&mut conn, now) {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(turns = n, "turns left running by the previous session"),
+        // Not fatal: it costs the diagnosis, not the conversation.
+        Err(e) => tracing::error!(error = %e, "could not reconcile interrupted turns"),
+    }
+
     pool
 }
 
@@ -466,6 +477,58 @@ mod migration_tests {
             .unwrap()
             .id;
         assert_eq!(head.as_deref(), Some("a4"));
+    }
+
+    /// Migration 25 adds two nullable columns to `messages` rather than
+    /// rebuilding the table, so rows written before it keep working untouched.
+    /// `tool_outcome` reading as NULL is what makes that safe: NULL means
+    /// success, which is what the transcript claimed for every one of them
+    /// anyway.
+    #[test]
+    fn existing_messages_survive_the_turn_columns() {
+        let mut conn = conn_before("00000000000025");
+        conn.batch_execute(
+            "INSERT INTO conversations (id, title, is_pinned, is_archived, message_count,
+                                        created_at, updated_at, fast_mode)
+             VALUES ('c1', 'A', 0, 0, 2, 1, 1, 0);
+             INSERT INTO messages (id, conversation_id, role, content, sort_order,
+                                   created_at, schema_version, is_compact_summary)
+             VALUES ('m1', 'c1', 'user', 'hi', 1, 1, 2, 0),
+                    ('m2', 'c1', 'tool', 'refused', 2, 2, 2, 0);",
+        )
+        .unwrap();
+
+        run_migration(&mut conn, "00000000000025");
+
+        #[derive(QueryableByName)]
+        struct Cols {
+            #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+            turn_id: Option<String>,
+            #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+            tool_outcome: Option<String>,
+        }
+        let rows = diesel::sql_query(
+            "SELECT turn_id, tool_outcome FROM messages ORDER BY sort_order",
+        )
+        .get_results::<Cols>(&mut conn)
+        .unwrap();
+
+        assert_eq!(rows.len(), 2, "no row is lost or duplicated");
+        assert!(rows.iter().all(|r| r.turn_id.is_none()));
+        assert!(
+            rows.iter().all(|r| r.tool_outcome.is_none()),
+            "nothing is backfilled: NULL already means what these rows meant",
+        );
+    }
+
+    /// The `turns` table is new, so upgrading finds it empty — and startup
+    /// reconciliation over an empty table must not report anything.
+    #[test]
+    fn upgrading_starts_with_no_turn_history() {
+        let mut conn = conn_before("00000000000025");
+        run_migration(&mut conn, "00000000000025");
+
+        assert_eq!(ops::turn::reconcile_interrupted(&mut conn, 1000).unwrap(), 0);
     }
 }
 

@@ -36,6 +36,27 @@ pub enum TurnOrigin {
     OneBot,
 }
 
+impl TurnOrigin {
+    /// How it is stored. Also what a crash report says the turn was, so it
+    /// outlives the process that decided it.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TurnOrigin::Desktop => "desktop",
+            TurnOrigin::OneBot => "onebot",
+        }
+    }
+
+    /// Read side, for whoever reports on a stored turn.
+    #[allow(dead_code)]
+    pub fn parse(value: &str) -> Result<Self, String> {
+        match value {
+            "desktop" => Ok(TurnOrigin::Desktop),
+            "onebot" => Ok(TurnOrigin::OneBot),
+            other => Err(format!("unknown turn origin '{other}'")),
+        }
+    }
+}
+
 struct ActiveTurn {
     turn_id: String,
     cancel: CancellationToken,

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -14,6 +15,9 @@ use crate::provider;
 use crate::provider::{ChatMessage, ChatParams};
 use crate::template;
 use crate::tools;
+use crate::agent::turn_record;
+use crate::db::models::turn::{TurnPhase, TurnStatus, ERROR_LOOP_DETECTED};
+use crate::db::DbPool;
 use crate::state::{AppDb, AppSecrets, AppTools, AppMcp, ApprovalDecision, ApprovalWaiters, AppTurns, EditSessions, CompactBreakers};
 use crate::turn::{TurnLease, TurnOrigin};
 use crate::agent::{build_messages_with_senders, trailing_with_memory, build_file_access, file_access_prompt, estimate_tokens, microcompact, resolve_file_uris_in_messages, trim_to_context_limit, extract_tool_calls_from_blocks, parse_openai_tool_calls, serialize_tool_calls_openai, provider_secret_name, get_provider_api_key, resolve_provider_config, do_compact, mid_turn_compact, CompactCircuitBreaker, COMPACT_PROMPT, StreamResult, MAX_STREAM_RETRIES, STREAM_RETRY_BASE, is_context_window_error, is_retryable_stream_error, instruction_budget, load_project_instructions, TokenBudget};
@@ -179,6 +183,20 @@ struct TurnGuard<'a> {
 }
 
 impl TurnGuard<'_> {
+    /// Open this turn's durable record.
+    ///
+    /// A method on the guard rather than a free call, so it cannot be made
+    /// before the guard exists. Recording first would leave a window — one
+    /// `await` on a pooled connection — in which a dropped task released the
+    /// conversation and told the front end nothing, which is the state this
+    /// guard was written to make unreachable.
+    ///
+    /// `Err` means the id is already on record, and the caller must not go on
+    /// to close that turn out.
+    async fn open_record(&self, pool: &DbPool) -> Result<(), String> {
+        turn_record::begin(pool, &self.turn_id, self.conversation_id, TurnOrigin::Desktop).await
+    }
+
     /// Hand the conversation back. Called just before the turn's own stop event
     /// goes out, so "the stream ended" and "you may send again" become true at
     /// the same moment. What still runs after it — generating a title — is a
@@ -222,6 +240,10 @@ impl Drop for TurnGuard<'_> {
 /// Put a tool call in front of the user and wait for their answer. Returns
 /// `None` when the chat is cancelled (stop button) before a decision arrives,
 /// so approval waits cannot outlive the conversation.
+///
+/// Brackets the wait with the turn's phase, so a process killed while the card
+/// is on screen is diagnosed as "stopped waiting for you" rather than as
+/// something that might have run.
 ///
 /// `retry_reason` is set when a sandbox-blocked command is asking to be run
 /// again without the sandbox. It retries the same call under the same id — the
@@ -276,6 +298,10 @@ async fn wait_for_approval(
         app.state::<ApprovalWaiters>().lock().remove(&approval_id);
         return Err(e.to_string());
     }
+    // After the card is on screen, so the recorded phase is never ahead of what
+    // the user can actually see.
+    let pool = app.state::<AppDb>().0.clone();
+    turn_record::note_phase(&pool, turn_id, TurnPhase::AwaitingApproval, Some(&tc.name)).await;
     let decision = tokio::select! {
         _ = cancel.cancelled() => None,
         r = rx => r.ok(),
@@ -285,6 +311,10 @@ async fn wait_for_approval(
         // answer cannot land on a turn that has already moved on.
         app.state::<ApprovalWaiters>().lock().remove(&approval_id);
     }
+    // The wait is over however it ended. Whatever the turn does next records
+    // its own phase; leaving this one behind would have a crash a minute later
+    // report a card that is no longer on screen.
+    turn_record::note_phase(&pool, turn_id, TurnPhase::Streaming, None).await;
     Ok(decision)
 }
 
@@ -358,16 +388,56 @@ pub async fn chat(
     mode: Option<String>,
     voice: Option<bool>,
 ) -> Result<(), String> {
+    // Decided here rather than inside, so the failure path below can name the
+    // turn it is closing without depending on how far the run got.
+    //
+    // Parsed rather than taken as given: this ends up as a primary key, and the
+    // canonical form is what stops the same id in two spellings from opening
+    // two records. A value that is not a uuid at all is a bug on the other side
+    // and is refused outright.
+    let turn_id = match turn_id {
+        Some(raw) => uuid::Uuid::parse_str(&raw)
+            .map_err(|_| "turn id must be a uuid".to_string())?
+            .to_string(),
+        None => uuid::Uuid::new_v4().to_string(),
+    };
+    let pool = app.state::<AppDb>().0.clone();
+
+    // Nothing is awaited between taking this and handing it to the guard that
+    // gives it back, so there is no point at which the task can be dropped
+    // holding it.
+    let lease = app.state::<AppTurns>().0.clone()
+        .try_acquire_turn_as(&conversation_id, TurnOrigin::Desktop, turn_id.clone())
+        .map_err(|busy| busy.to_string())?;
+
+    // Set once the turn's row exists, and read below to decide whether closing
+    // it out is this call's business. A duplicate id is refused *after* the
+    // guard is up — closing it out anyway would rewrite the ending of whichever
+    // turn that id really belongs to, which is the corruption the refusal is
+    // for.
+    let recorded = Arc::new(AtomicBool::new(false));
+
     // Every way a turn can end early funnels through here, so the red bubble the
     // user sees always has a matching record in the log. Doing it at one point
     // rather than at each `?` also keeps a single failure from being reported
     // twice.
-    chat_inner(
-        app, conversation_id, message, turn_id, replaces, model_override, provider_override,
-        thinking_level, assistant_id, fast, mode, voice,
+    let result = chat_inner(
+        app, conversation_id, message, lease, Arc::clone(&recorded), replaces,
+        model_override, provider_override, thinking_level, assistant_id, fast, mode, voice,
     )
     .await
-    .inspect_err(|e| tracing::error!(error = %e, "turn failed"))
+    .inspect_err(|e| tracing::error!(error = %e, "turn failed"));
+
+    // A turn that stopped because something went wrong is not a turn that was
+    // killed, and the record has to say which. Without this the row would be
+    // left at `running` and the next launch would report a bad API key as a
+    // crash.
+    if let Err(ref e) = result {
+        if recorded.load(Ordering::Relaxed) {
+            turn_record::finish(&pool, &turn_id, TurnStatus::Failed, Some(e)).await;
+        }
+    }
+    result
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -375,7 +445,14 @@ async fn chat_inner(
     app: tauri::AppHandle,
     conversation_id: String,
     message: Option<String>,
-    turn_id: Option<String>,
+    // Already taken by the caller, but not yet recorded: the guard that gives
+    // it back has to exist before anything is awaited, or a task dropped in
+    // that gap would release the conversation and leave the front end
+    // streaming forever with nothing to tell it otherwise.
+    lease: TurnLease,
+    // Set once the turn's row exists. The caller reads it to decide whether the
+    // record is its to close.
+    recorded: Arc<AtomicBool>,
     replaces: Option<String>,
     model_override: Option<String>,
     provider_override: Option<String>,
@@ -388,23 +465,6 @@ async fn chat_inner(
     let secrets = app.state::<AppSecrets>();
     let pool = app.state::<AppDb>().0.clone();
 
-    // Taken before anything is read, let alone written. A conversation someone
-    // else is already answering is refused here rather than silently becoming a
-    // second writer: two turns on one conversation do not end up as two
-    // branches, they fight over the head, and whichever finishes first has its
-    // whole answer fall off the active path.
-    //
-    // Under the id the front end minted before it sent, when it sent one. Its
-    // composer has been locked against that id since before this command was
-    // dispatched, and everything arriving in the meantime — the previous turn's
-    // stop above all — has to be measurable against it.
-    let lease = app.state::<AppTurns>().0.clone()
-        .try_acquire_turn_as(
-            &conversation_id,
-            TurnOrigin::Desktop,
-            turn_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
-        )
-        .map_err(|busy| busy.to_string())?;
     // Names this run of the turn, as opposed to the conversation it belongs to
     // or the assistant row it is currently writing (which changes every
     // iteration).
@@ -420,6 +480,18 @@ async fn chat_inner(
         armed: true,
         lease: Some(lease),
     };
+
+    // Only now, with the guard up. From here the row says `running`; every exit
+    // that reaches an ending overwrites that, and every exit that does not — a
+    // kill, a power cut — leaves it as the record that this turn never
+    // finished. Deliberately never written from the guard's `Drop`: destructors
+    // do not run for the case this is all for.
+    //
+    // Refused, not logged, if the id is already on record: these are minted by
+    // the front end, and a replayed one would rewrite the finished turn it
+    // names and file this turn's messages under it.
+    stop_guard.open_record(&pool).await?;
+    recorded.store(true, Ordering::Relaxed);
 
     // Load conversation + assistant + active path + project path
     let (assistant, ctx, conv_title, project_path, project_id, conv_prefs, branch_parent) = {
@@ -699,6 +771,10 @@ async fn chat_inner(
                 "mid_turn": false,
                 "trigger": "threshold",
             })).ok();
+            // Compaction deletes the old summary before writing the new one and
+            // the two are not one transaction, so dying in here is its own kind
+            // of half-finished.
+            turn_record::note_phase(&pool, &turn_id, TurnPhase::Compacting, None).await;
             match do_compact(&pool, &secrets.0, &conversation_id, assistant.as_ref(), keep_recent, None).await {
                 Ok(_anchor) => {
                     compacted = true;
@@ -721,6 +797,12 @@ async fn chat_inner(
                     })).ok();
                 }
             }
+            // Back to streaming however it went. Every phase restores the one
+            // it interrupted; leaving this one set would have a crash in the
+            // answer that follows reported as a compaction that never finished,
+            // and tell the model its history might be half-rewritten when it is
+            // not.
+            turn_record::note_phase(&pool, &turn_id, TurnPhase::Streaming, None).await;
         }
     }
 
@@ -788,6 +870,7 @@ async fn chat_inner(
         let msg = text.clone();
         let msg_id = user_msg_id.clone();
         let parent = parent_cursor.clone();
+        let turn = turn_id.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
             db::ops::message::append_message(&mut conn, &NewMessage {
@@ -799,6 +882,7 @@ async fn chat_inner(
                 sender_id: None,
                 parent_id: None, compact_anchor_id: None,
                 source: if voice == Some(true) { Some("voice") } else { None },
+                turn_id: Some(&turn), tool_outcome: None,
             }, parent.as_deref()).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
@@ -880,6 +964,7 @@ async fn chat_inner(
             let msg_id = assistant_msg_id.clone();
             let model_clone = model.clone();
             let parent = parent_cursor.clone();
+            let turn = turn_id.clone();
             tokio::task::spawn_blocking(move || {
                 let mut conn = get_conn(&pool)?;
                 db::ops::message::append_message(&mut conn, &NewMessage {
@@ -889,6 +974,7 @@ async fn chat_inner(
                     created_at: now_ms(), reasoning_content: None, rating: None, schema_version: 2,
                     is_compact_summary: 0, sender_id: None,
                     parent_id: None, compact_anchor_id: None, source: None,
+                    turn_id: Some(&turn), tool_outcome: None,
                 }, parent.as_deref()).map_err(|e| e.to_string())?;
                 Ok::<_, String>(())
             }).await.map_err(|e| e.to_string())??;
@@ -1298,7 +1384,10 @@ async fn chat_inner(
                         // Awaited with nothing locked: the registry hands back a
                         // handle and the request itself runs outside it.
                         let mcp = app.state::<AppMcp>().0.clone();
-                        match mcp.call_tool(&tc.name, args).await {
+                        turn_record::note_phase(&pool, &turn_id, TurnPhase::RunningTool, Some(&tc.name)).await;
+                        let called = mcp.call_tool(&tc.name, args).await;
+                        turn_record::note_phase(&pool, &turn_id, TurnPhase::Streaming, None).await;
+                        match called {
                             Ok(output) => (output, "success"),
                             Err(e) => (format!("MCP error: {e}"), "error"),
                         }
@@ -1331,7 +1420,13 @@ async fn chat_inner(
                     }
                 };
                 if approved {
-                    match tool.execute(args.clone(), &tool_context).await {
+                    // The one phase that describes something outside the
+                    // database. A turn found dead here may have written the
+                    // file or run the command already.
+                    turn_record::note_phase(&pool, &turn_id, TurnPhase::RunningTool, Some(&tc.name)).await;
+                    let executed = tool.execute(args.clone(), &tool_context).await;
+                    turn_record::note_phase(&pool, &turn_id, TurnPhase::Streaming, None).await;
+                    match executed {
                         Ok(output) => (output, "success"),
                         Err(e) => match tools::decode_sandbox_denied(&e) {
                             Some(blocked) => {
@@ -1347,7 +1442,10 @@ async fn chat_inner(
                                 ).await? {
                                     Some(ApprovalDecision::Approved) => {
                                         let escalated_ctx = tool_context.without_sandbox();
-                                        match tool.execute(args, &escalated_ctx).await {
+                                        turn_record::note_phase(&pool, &turn_id, TurnPhase::RunningTool, Some(&tc.name)).await;
+                                        let retried = tool.execute(args, &escalated_ctx).await;
+                                        turn_record::note_phase(&pool, &turn_id, TurnPhase::Streaming, None).await;
+                                        match retried {
                                             Ok(o) => (o, "success"),
                                             Err(e2) => (format!("Error: {e2}"), "error"),
                                         }
@@ -1387,6 +1485,7 @@ async fn chat_inner(
                 let call_id = tc.id.clone();
                 let tool_result = result.clone();
                 let parent = parent_cursor.clone();
+                let turn = turn_id.clone();
                 let written = tokio::task::spawn_blocking(move || {
                     let mut conn = pool.get().map_err(|e| e.to_string())?;
                     db::ops::message::append_message(&mut conn, &NewMessage {
@@ -1398,6 +1497,11 @@ async fn chat_inner(
                         reasoning_content: None, rating: None, schema_version: 2,
                         is_compact_summary: 0, sender_id: None,
                         parent_id: None, compact_anchor_id: None, source: None,
+                        turn_id: Some(&turn),
+                        // The same word the event carries. Stored so a reload
+                        // does not turn a refusal into a green tick with the
+                        // refusal text sitting in it as the result.
+                        tool_outcome: Some(outcome),
                     }, parent.as_deref()).map(|_| tool_msg_id).map_err(|e| e.to_string())
                 }).await;
 
@@ -1483,6 +1587,21 @@ async fn chat_inner(
             };
             crate::agent::pricing::compute_cost(&usage, mc)
         });
+
+    // This is the only place that knows how the loop was left, and the three
+    // ways out are genuinely different: the loop guard cutting a repeating
+    // model short is a turn that did not finish, cancellation is a decision,
+    // and neither is a clean ending. Recording the first as `done` would have
+    // the row claim a completed turn while its own stop event says it was
+    // aborted.
+    let (status, error) = if turn_aborted {
+        (TurnStatus::Failed, Some(ERROR_LOOP_DETECTED))
+    } else if cancel.is_cancelled() {
+        (TurnStatus::Cancelled, None)
+    } else {
+        (TurnStatus::Done, None)
+    };
+    turn_record::finish(&pool, &turn_id, status, error).await;
 
     let stop_reason = if turn_aborted { "loop_detected" } else { "end_turn" };
     let mut stop_payload = serde_json::json!({

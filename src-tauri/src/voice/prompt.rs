@@ -69,6 +69,8 @@ mod tests {
             parent_id: None,
             compact_anchor_id: None,
             source: source.map(String::from),
+            turn_id: None,
+            tool_outcome: None,
         }
     }
 

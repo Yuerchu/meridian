@@ -43,6 +43,15 @@ pub struct Message {
     /// How this message was produced. `None` means typed; `"voice"` marks
     /// offline speech-to-text, whose transcripts may carry homophone errors.
     pub source: Option<String>,
+    /// The run of the turn that wrote this row. `None` on compaction summaries,
+    /// which stand in for history rather than being something a turn produced,
+    /// and on everything written before turns were recorded.
+    pub turn_id: Option<String>,
+    /// How the call this row answers ended: `success`, `denied` or `error`.
+    /// Only set on `tool` rows. `None` reads as success — that is what every
+    /// row written before this column existed means, and it is the answer the
+    /// transcript gave for all of them anyway.
+    pub tool_outcome: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
@@ -68,4 +77,6 @@ pub struct NewMessage<'a> {
     pub parent_id: Option<&'a str>,
     pub compact_anchor_id: Option<&'a str>,
     pub source: Option<&'a str>,
+    pub turn_id: Option<&'a str>,
+    pub tool_outcome: Option<&'a str>,
 }

@@ -347,6 +347,8 @@ mod tests {
             parent_id: None,
             compact_anchor_id: None,
             source: None,
+            turn_id: None,
+            tool_outcome: None,
         }
     }
 
@@ -618,6 +620,8 @@ mod injected_context_tests {
             parent_id: None,
             compact_anchor_id: None,
             source: None,
+            turn_id: None,
+            tool_outcome: None,
         }];
         let context = crate::db::ops::message::ActiveContext {
             path: Vec::new(),

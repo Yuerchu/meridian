@@ -181,6 +181,8 @@ fn copy_of<'a>(n: &NewMessage<'a>) -> NewMessage<'a> {
         parent_id: n.parent_id,
         source: n.source,
         compact_anchor_id: n.compact_anchor_id,
+        turn_id: n.turn_id,
+        tool_outcome: n.tool_outcome,
     }
 }
 
@@ -492,6 +494,8 @@ mod tests {
             parent_id: None,
             compact_anchor_id: None,
             source: None,
+            turn_id: None,
+            tool_outcome: None,
         }
     }
 
