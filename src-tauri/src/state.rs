@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::{oneshot, Mutex};
 use tokio_util::sync::CancellationToken;
 
+use crate::agent::engine::ApprovalDecision;
 use crate::agent::CompactCircuitBreaker;
 use crate::db::DbPool;
 use crate::edit_session;
@@ -20,13 +21,6 @@ pub(crate) struct AppTools(pub(crate) Arc<tools::ToolRegistry>);
 pub(crate) struct AppMcp(pub(crate) Arc<mcp::McpRegistry>);
 
 pub(crate) static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub enum ApprovalDecision {
-    Approved,
-    Denied(Option<String>),
-    Response(String),
-}
 
 /// A tool call sitting in front of the user, waiting to be allowed or refused.
 ///

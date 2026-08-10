@@ -1,6 +1,7 @@
 use tauri::Manager;
 
-use crate::state::{ApprovalDecision, ApprovalWaiters};
+use crate::agent::engine::ApprovalDecision;
+use crate::state::ApprovalWaiters;
 
 /// Hand a decision to the turn waiting on it.
 ///

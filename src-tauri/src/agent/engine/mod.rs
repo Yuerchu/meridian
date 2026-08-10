@@ -9,12 +9,24 @@
 //! Nothing in here knows about Tauri. That is deliberate and worth keeping: it
 //! is what lets the loop be tested without an app handle, and what will let a
 //! sub-agent run one without owning a window.
+//!
+//! The rule is about the import graph, not about the text. A file with no
+//! `tauri::` in it can still pull the whole framework in through one type — this
+//! module imported `ApprovalDecision` from `state.rs`, two declarations below an
+//! `AppHandle`, and read as clean. So what has to hold is that every `use
+//! crate::` in here names `agent`, `db`, `provider`, `turn` or `util`, and that
+//! those five are themselves free of it. Adding a sixth is the moment to check
+//! rather than assume.
 
+pub(crate) mod approval;
 pub(crate) mod stream;
 pub(crate) mod transcript;
+pub(crate) mod transitions;
 
+pub(crate) use approval::ApprovalDecision;
 pub(crate) use stream::consume_stream;
 pub(crate) use transcript::{append_tool_result, begin_assistant, complete_assistant, in_phase};
+pub(crate) use transitions::Transitions;
 
 /// Where a turn's progress goes while it is still happening.
 ///

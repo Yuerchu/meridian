@@ -18,7 +18,8 @@ use crate::tools;
 use crate::agent::turn_record;
 use crate::db::models::turn::{TurnPhase, TurnStatus, ERROR_LOOP_DETECTED};
 use crate::db::DbPool;
-use crate::state::{AppDb, AppSecrets, AppTools, AppMcp, ApprovalDecision, ApprovalWaiters, AppTurns, EditSessions, CompactBreakers};
+use crate::state::{AppDb, AppSecrets, AppTools, AppMcp, ApprovalWaiters, AppTurns, EditSessions, CompactBreakers};
+use crate::agent::engine::ApprovalDecision;
 use crate::turn::{TurnLease, TurnOrigin};
 use crate::agent::{build_messages_with_senders, trailing_with_memory, build_file_access, file_access_prompt, estimate_tokens, microcompact, resolve_file_uris_in_messages, trim_to_context_limit, extract_tool_calls_from_blocks, parse_openai_tool_calls, serialize_tool_calls_openai, provider_secret_name, get_provider_api_key, resolve_provider_config, do_compact, mid_turn_compact, CompactCircuitBreaker, COMPACT_PROMPT, MAX_STREAM_RETRIES, STREAM_RETRY_BASE, is_context_window_error, is_retryable_stream_error, instruction_budget, load_project_instructions, TokenBudget};
 use crate::util::{get_conn, now_ms, take_bytes_at_char_boundary};
@@ -32,6 +33,54 @@ struct WindowEmit(tauri::AppHandle);
 impl crate::agent::engine::Emit for WindowEmit {
     fn emit(&self, channel: &str, payload: serde_json::Value) -> Result<(), String> {
         self.0.emit(channel, payload).map_err(|e| e.to_string())
+    }
+}
+
+/// Everything a mid-turn mode switch needs that the loop does not carry.
+///
+/// Held for the whole turn rather than assembled at the switch, because by then
+/// the ingredients are two hundred lines behind: the assistant row and its
+/// resolved persona are read before the first request, and threading four more
+/// values through the loop to reach one branch is what the port exists to avoid.
+struct PlanTransitions {
+    app: tauri::AppHandle,
+    pool: DbPool,
+    registry: Arc<tools::ToolRegistry>,
+    assistant: Option<Assistant>,
+    conversation_id: String,
+    project_id: Option<String>,
+    persona: String,
+    context_blocks: Vec<String>,
+}
+
+#[async_trait::async_trait]
+impl crate::agent::engine::Transitions for PlanTransitions {
+    async fn rebuild(
+        &self,
+        mode: &'static crate::agent::modes::ModeSpec,
+    ) -> Result<Result<crate::agent::turn_config::TurnConfig, String>, String> {
+        // Read here rather than reused from the top of the turn: a server that
+        // finished connecting since then belongs in the tool set the user just
+        // agreed to.
+        let mcp_defs = self.app.state::<AppMcp>().0.tool_definitions().as_ref().clone();
+        let pool = self.pool.clone();
+        let registry = self.registry.clone();
+        let input = crate::agent::turn_config::TurnConfigInput {
+            assistant: self.assistant.clone(),
+            conversation_id: self.conversation_id.clone(),
+            project_id: self.project_id.clone(),
+            mode,
+            mcp_defs,
+            include_tools: true,
+            persona: self.persona.clone(),
+            context_blocks: self.context_blocks.clone(),
+        };
+        tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            Ok::<_, String>(crate::agent::turn_config::resolve(&mut conn, &registry, input))
+        })
+        .await
+        .map_err(|e| e.to_string())
     }
 }
 
@@ -847,6 +896,17 @@ async fn chat_inner(
         cancel: cancel.clone(),
     };
 
+    let transitions = PlanTransitions {
+        app: app.clone(),
+        pool: pool.clone(),
+        registry: tool_registry.0.clone(),
+        assistant,
+        conversation_id: conversation_id.clone(),
+        project_id: project_id.clone(),
+        persona,
+        context_blocks,
+    };
+
     let mut total_input_tokens = 0i32;
     let mut total_output_tokens = 0i32;
     let mut last_assistant_text = String::new();
@@ -1062,224 +1122,24 @@ async fn chat_inner(
                     _ => ("User did not respond.".to_string(), "denied"),
                 }
             } else if let Some(target) = crate::agent::modes::by_enter_tool(&tc.name) {
-                // The mirror of the exit path, minus the artifact: entering a
-                // mode produces nothing to record, it only narrows what the rest
-                // of the turn may do.
-                match wait_for_approval(&app, &cancel, tc, &turn_id, &assistant_msg_id, &conversation_id, None).await? {
-                    Some(ApprovalDecision::Approved) => {
-                        let switched = {
-                            let pool2 = pool.clone();
-                            let conv_id = conversation_id.clone();
-                            let target_id = target.id;
-                            tokio::task::spawn_blocking(move || {
-                                let mut conn = get_conn(&pool2)?;
-                                db::ops::conversation::update_mode(&mut conn, &conv_id, Some(target_id), now_ms())
-                                    .map_err(|e| e.to_string())
-                            }).await.map_err(|e| e.to_string())?
-                        };
-                        let rebuilt = match switched {
-                            Err(e) => Err(e),
-                            Ok(()) => {
-                                let mcp_defs = app.state::<AppMcp>().0
-                                    .tool_definitions().as_ref().clone();
-                                let pool2 = pool.clone();
-                                let registry = tool_registry.0.clone();
-                                let input = crate::agent::turn_config::TurnConfigInput {
-                                    assistant: assistant.clone(),
-                                    conversation_id: conversation_id.clone(),
-                                    project_id: project_id.clone(),
-                                    mode: target,
-                                    mcp_defs,
-                                    include_tools: true,
-                                    persona: persona.clone(),
-                                    context_blocks: context_blocks.clone(),
-                                };
-                                tokio::task::spawn_blocking(move || {
-                                    let mut conn = get_conn(&pool2)?;
-                                    Ok::<_, String>(crate::agent::turn_config::resolve(&mut conn, &registry, input))
-                                }).await.map_err(|e| e.to_string())?
-                            }
-                        };
-                        match rebuilt {
-                            Ok(next) => {
-                                mode = target;
-                                tool_defs = next.tool_defs;
-                                offered = next.offered;
-                                if let Some(first) = chat_messages.first_mut() {
-                                    if first.role == "system" {
-                                        first.content = next.system_prompt.trim().to_string();
-                                    }
-                                }
-                                let _ = app.emit("conversation-updated", serde_json::json!({
-                                    "id": &conversation_id,
-                                }));
-                                (
-                                    "The user agreed. You are in plan mode from here: the tools that \
-                                     change anything are gone for the rest of this conversation until \
-                                     the plan is approved. Explore and design — do not describe edits \
-                                     as though you had made them."
-                                        .to_string(),
-                                    "success",
-                                )
-                            }
-                            Err(e) => (
-                                format!(
-                                    "The user agreed, but switching into plan mode failed: {e}. You \
-                                     are still in the previous mode — tell the user rather than \
-                                     pretending to plan."
-                                ),
-                                "error",
-                            ),
-                        }
-                    }
-                    Some(ApprovalDecision::Denied(Some(reason))) => (
-                        format!("The user would rather not plan first: {reason}\n\nCarry on as you were."),
-                        "denied",
-                    ),
-                    _ => (
-                        "The user declined to switch to plan mode. Carry on as you were."
-                            .to_string(),
-                        "denied",
-                    ),
-                }
+                let decision = wait_for_approval(
+                    &app, &cancel, tc, &turn_id, &assistant_msg_id, &conversation_id, None,
+                ).await?;
+                engine::transitions::enter(
+                    &pool, &transitions, Some(&emitter), &conversation_id, target, decision,
+                )
+                .await?
+                .apply(&mut mode, &mut chat_messages, &mut tool_defs, &mut offered)
             } else if mode.exit_tool == Some(tc.name.as_str()) {
-                let plan_text = serde_json::from_str::<serde_json::Value>(&tc.arguments)
-                    .ok()
-                    .and_then(|v| v.get("plan").and_then(|p| p.as_str()).map(str::to_string))
-                    .unwrap_or_default();
-                if plan_text.trim().is_empty() {
-                    ("exit_plan needs a `plan`: pass the whole plan as markdown.".to_string(), "error")
-                } else {
-                    // Recorded before the user decides, so a plan they reject is
-                    // still on file and the approved one can be re-injected into
-                    // later turns without depending on the transcript surviving.
-                    //
-                    // Sequenced ahead of the approval rather than matched
-                    // alongside it: a tuple match would evaluate both, so a
-                    // failed write would still put the card in front of the user
-                    // and then throw their answer away.
-                    let recorded = {
-                        let pool2 = pool.clone();
-                        let conv_id = conversation_id.clone();
-                        let text = plan_text.clone();
-                        tokio::task::spawn_blocking(move || {
-                            let mut conn = get_conn(&pool2)?;
-                            db::ops::plan::record_plan(&mut conn, &conv_id, &text, now_ms())
-                                .map_err(|e| e.to_string())
-                        }).await.map_err(|e| e.to_string())?
-                    };
-                    match recorded {
-                        Err(e) => (format!("Could not record the plan: {e}"), "error"),
-                        Ok(row) => {
-                            let decision = wait_for_approval(
-                                &app, &cancel, tc, &turn_id, &assistant_msg_id, &conversation_id, None,
-                            ).await?;
-                            match decision {
-                                Some(ApprovalDecision::Approved) => {
-                                    let next_mode = mode.exit_to;
-                                    let switched = {
-                                        let pool2 = pool.clone();
-                                        let conv_id = conversation_id.clone();
-                                        let plan_id = row.id.clone();
-                                        tokio::task::spawn_blocking(move || {
-                                            let mut conn = get_conn(&pool2)?;
-                                            let now = now_ms();
-                                            db::ops::plan::approve(&mut conn, &plan_id, now)
-                                                .map_err(|e| e.to_string())?;
-                                            db::ops::conversation::update_mode(&mut conn, &conv_id, next_mode, now)
-                                                .map_err(|e| e.to_string())
-                                        }).await.map_err(|e| e.to_string())?
-                                    };
-                                    // Re-resolve the turn so the same reply can
-                                    // start implementing. Both this and the write
-                                    // above have to succeed before the model is
-                                    // told the tools are back — otherwise it acts
-                                    // on a promise the tool set does not keep and
-                                    // burns the turn on "unknown tool" retries.
-                                    let rebuilt = match switched {
-                                        Err(e) => Err(e),
-                                        Ok(()) => {
-                                            let mcp_defs = app.state::<AppMcp>().0
-                                                .tool_definitions().as_ref().clone();
-                                            let pool2 = pool.clone();
-                                            let registry = tool_registry.0.clone();
-                                            let input = crate::agent::turn_config::TurnConfigInput {
-                                                assistant: assistant.clone(),
-                                                conversation_id: conversation_id.clone(),
-                                                project_id: project_id.clone(),
-                                                mode: crate::agent::modes::resolve(next_mode),
-                                                mcp_defs,
-                                                include_tools: true,
-                                                persona: persona.clone(),
-                                                context_blocks: context_blocks.clone(),
-                                            };
-                                            tokio::task::spawn_blocking(move || {
-                                                let mut conn = get_conn(&pool2)?;
-                                                Ok::<_, String>(crate::agent::turn_config::resolve(&mut conn, &registry, input))
-                                            }).await.map_err(|e| e.to_string())?
-                                        }
-                                    };
-                                    match rebuilt {
-                                        Ok(next) => {
-                                            mode = crate::agent::modes::resolve(next_mode);
-                                            tool_defs = next.tool_defs;
-                                            offered = next.offered;
-                                            if let Some(first) = chat_messages.first_mut() {
-                                                if first.role == "system" {
-                                                    first.content = next.system_prompt.trim().to_string();
-                                                }
-                                            }
-                                            // The toolbar reads the mode off the
-                                            // conversation row, which just changed.
-                                            let _ = app.emit("conversation-updated", serde_json::json!({
-                                                "id": &conversation_id,
-                                            }));
-                                            (
-                                                "The user approved the plan. You are out of plan mode and the \
-                                                 editing tools are available again — start implementing now, in \
-                                                 this reply. The approved plan is in your system prompt."
-                                                    .to_string(),
-                                                "success",
-                                            )
-                                        }
-                                        Err(e) => (
-                                            format!(
-                                                "The user approved the plan, but switching out of plan mode \
-                                                 failed: {e}. You are still in plan mode and the editing tools \
-                                                 are still unavailable. Tell the user, and do not try to \
-                                                 implement anything this turn."
-                                            ),
-                                            "error",
-                                        ),
-                                    }
-                                }
-                                decision => {
-                                    let pool2 = pool.clone();
-                                    let plan_id = row.id.clone();
-                                    let _ = tokio::task::spawn_blocking(move || {
-                                        let mut conn = get_conn(&pool2)?;
-                                        db::ops::plan::reject(&mut conn, &plan_id, now_ms())
-                                            .map_err(|e| e.to_string())
-                                    }).await.map_err(|e| e.to_string())?;
-                                    match decision {
-                                        Some(ApprovalDecision::Denied(Some(reason))) => (
-                                            format!(
-                                                "The user sent the plan back: {reason}\n\nYou are still in \
-                                                 plan mode. Revise the plan and call exit_plan again."
-                                            ),
-                                            "denied",
-                                        ),
-                                        _ => (
-                                            "The user did not approve the plan. You are still in plan mode."
-                                                .to_string(),
-                                            "denied",
-                                        ),
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                let asked = wait_for_approval(
+                    &app, &cancel, tc, &turn_id, &assistant_msg_id, &conversation_id, None,
+                );
+                engine::transitions::exit(
+                    &pool, &transitions, Some(&emitter), &conversation_id, mode, &tc.arguments,
+                    asked,
+                )
+                .await?
+                .apply(&mut mode, &mut chat_messages, &mut tool_defs, &mut offered)
             } else if is_mcp {
                 // External MCP tools require explicit user approval, same as
                 // built-in Ask tools — they must not bypass the authorizer.
