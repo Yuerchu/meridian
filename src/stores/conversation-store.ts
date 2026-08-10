@@ -323,6 +323,45 @@ function indexBranches(points: BranchPoint[]): Record<string, BranchPoint> {
   return Object.fromEntries(points.map((p) => [p.message_id, p]))
 }
 
+/**
+ * Follow a turn this session never saw start.
+ *
+ * `streaming` is set when this window sends and cleared when the stop for that
+ * turn arrives, which covers the whole life of a turn — but only for the window
+ * that sent it. A session built after the fact knows nothing: a reload during a
+ * long answer, or opening a conversation another window (or a QQ session) is
+ * already answering. The composer would be unlocked, the turn would render as a
+ * finished empty answer, and the send it invites is one the backend refuses with
+ * "this conversation is already answering".
+ *
+ * `running` in a snapshot is exactly the signal needed, and is stronger than the
+ * stored column: the backend replaces it with `interrupted` for any turn its
+ * coordinator is not currently holding, so a row left behind by a killed process
+ * never reads this way. A `running` turn is one somebody is running now.
+ *
+ * Adopts, never releases: a snapshot fetched between `beginTurn` and the backend
+ * writing the turn record shows nothing running, and unlocking on that would
+ * undo the lock the send just took. Ending a turn stays the stop event's job.
+ *
+ * And it keeps out of the way of a session that is already following one. A
+ * window with its own turn outstanding may well see somebody else's named here —
+ * that is the same ambiguity `handleMessageStart` refuses to resolve, because at
+ * that moment the local id was minted before the request went out and nobody
+ * knows which of the two holds the conversation. Overwriting from a snapshot
+ * would resolve it by guessing, and hand the wrong turn's stop the power to
+ * unlock the composer.
+ */
+function adoptLiveTurn(session: ConversationSession, turns: TurnRecord[]): void {
+  if (session.streaming) return
+  // The most recent, on the off chance there is more than one. The coordinator
+  // allows a conversation only one live turn, so this is belt and braces.
+  const running = turns.filter((t) => t.status === 'running')
+  const live = running[running.length - 1]
+  if (!live) return
+  session.streaming = true
+  session.activeTurnId = live.id
+}
+
 // A DB snapshot can be stale while a stream is in flight: the streaming assistant
 // row still has empty content in the DB, and a just-sent user bubble may not be
 // persisted yet. Keep the local versions of those instead of overwriting them.
@@ -503,6 +542,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       session.compactCursor = snap.conversation.compact_cursor
       session.branches = indexBranches(snap.tree.branches)
       session.turns = snap.turns
+      adoptLiveTurn(session, snap.turns)
     }))
   },
 
@@ -543,6 +583,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         session.messages = snapshot
         session.branches = indexBranches(snap.tree.branches)
         session.turns = snap.turns
+        adoptLiveTurn(session, snap.turns)
         session.expandedTurns = {}
       }))
     } finally {

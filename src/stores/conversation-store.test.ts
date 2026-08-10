@@ -401,6 +401,88 @@ describe('stops are scoped to a turn', () => {
     expect(session().activeTurnId).toBe('turn-1')
   })
 
+  /// A session built while somebody is already answering — a reload mid-answer,
+  /// or opening a conversation a QQ session has. Without this the composer is
+  /// unlocked, the turn renders as a finished empty answer, and the send it
+  /// invites comes back "this conversation is already answering".
+  it('follows a turn that was already running when the snapshot was read', async () => {
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf(
+        { messages: [msg('a1', { turn_id: 'turn-live' })], head_message_id: 'a1', branches: [] },
+        { turns: [turnRecord('turn-done', 'done'), turnRecord('turn-live', 'running')] },
+      ),
+    )
+
+    await store().loadMessages(CONV)
+
+    expect(session().streaming).toBe(true)
+    expect(session().activeTurnId).toBe('turn-live')
+    // And the stop for it is accepted, which is the point of naming it.
+    store().handleStop(CONV, 'turn-live')
+    expect(session().streaming).toBe(false)
+  })
+
+  /// `running` is not the stored column: the backend rewrites it to
+  /// `interrupted` for any turn its coordinator is not holding. So nothing a
+  /// dead process left behind reaches this code — but a turn that ended
+  /// normally must not lock the composer either.
+  it('does not follow a turn that has already ended', async () => {
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf(
+        { messages: [], head_message_id: null, branches: [] },
+        {
+          turns: [
+            turnRecord('turn-1', 'interrupted'),
+            turnRecord('turn-2', 'crashed'),
+            turnRecord('turn-3', 'done'),
+          ],
+        },
+      ),
+    )
+
+    await store().loadMessages(CONV)
+
+    expect(session().streaming).toBe(false)
+    expect(session().activeTurnId).toBeNull()
+  })
+
+  /// Adopting has to be one-way. Between `beginTurn` and the backend writing
+  /// the turn record there is a window where a snapshot shows nothing running,
+  /// and releasing on that would undo the lock the send had just taken — and
+  /// hand the user a composer the backend is about to refuse.
+  it('never unlocks a composer that a send had already locked', async () => {
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf({ messages: [], head_message_id: null, branches: [] }),
+    )
+
+    store().beginTurn(CONV, 'turn-1')
+    await store().loadMessages(CONV)
+
+    expect(session().streaming).toBe(true)
+    expect(session().activeTurnId).toBe('turn-1')
+  })
+
+  /// The same ambiguity `handleMessageStart` refuses to resolve: this window's
+  /// id was minted before its request went out, so a snapshot naming somebody
+  /// else's turn is not evidence that the local one lost. Taking it would hand
+  /// that turn's stop the power to unlock a composer this one still owns.
+  it('does not hand the session to another turn a snapshot happens to name', async () => {
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf(
+        { messages: [], head_message_id: null, branches: [] },
+        { turns: [turnRecord('turn-theirs', 'running')] },
+      ),
+    )
+
+    store().beginTurn(CONV, 'turn-mine')
+    await store().loadMessages(CONV)
+
+    expect(session().activeTurnId).toBe('turn-mine')
+    // And the other one's stop does not end this session.
+    store().handleStop(CONV, 'turn-theirs')
+    expect(session().streaming).toBe(true)
+  })
+
   /// The generation guard means "a turn started while your request was in
   /// flight", and this is where a turn starts. Advancing it only at the first
   /// `message_start` leaves the whole start-up stretch uncovered: a reload
