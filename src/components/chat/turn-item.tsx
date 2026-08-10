@@ -211,8 +211,14 @@ export const TurnItem = React.memo(function TurnItem({
     setTurnExpanded(conversationId, turn.id, next)
   }, [beginCollapse, isFullyVisible, setTurnExpanded, conversationId, turn.id])
 
+  // Only the streaming turn can be the one being retried, and it is the last
+  // one — the same turn `buildTurns` gave the streaming status to.
+  const retry = useConversationStore((s) => s.sessions[conversationId]?.retry ?? null)
+
   const headline = isTurnStreaming
-    ? t('chat.turn.processing')
+    ? retry
+      ? t('chat.turn.retrying', { attempt: retry.attempt, max: retry.max })
+      : t('chat.turn.processing')
     : turn.status === 'awaiting-input'
       ? t('chat.turn.awaitingInput')
       // Distinct wording from `interrupted`, which is what the user gets when

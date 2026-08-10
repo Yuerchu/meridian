@@ -937,6 +937,22 @@ async fn chat_inner(
                 if attempt > 0 {
                     let delay = retry_delay.take()
                         .unwrap_or_else(|| crate::client::backoff(STREAM_RETRY_BASE, attempt as u64));
+                    // Before the wait, not after. The backoff is the part the
+                    // user actually sits through — announcing the retry once it
+                    // is over leaves them watching an idle turn for as long as
+                    // the delay lasts, which is the whole complaint.
+                    //
+                    // Says how many and how long, and not what went wrong: a
+                    // provider's error body can echo the request back, and this
+                    // travels to a window that may be screen-shared.
+                    app.emit("chat-stream", serde_json::json!({
+                        "type": "retry",
+                        "attempt": attempt,
+                        "max_attempts": MAX_STREAM_RETRIES,
+                        "delay_ms": delay.as_millis() as u64,
+                        "message_id": &assistant_msg_id,
+                        "conversation_id": &conversation_id,
+                    })).ok();
                     tokio::time::sleep(delay).await;
                     // Retrying replays the whole stream under the same message id;
                     // tell the UI to drop the partial content it already appended.

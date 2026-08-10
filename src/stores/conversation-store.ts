@@ -266,6 +266,18 @@ export interface ConversationSession {
    *  takes over; if the local turn writes its own first message, the local one
    *  won and this is discarded. */
   candidateTurnId: string | null
+  /** The request is being sent again after a failure, and this is which go.
+   *
+   *  Set before the backoff rather than after it, because the wait is the part
+   *  anyone is actually sitting through: a turn that says nothing for it is
+   *  indistinguishable from one that has hung, which is what a fixed "working…"
+   *  made it look like.
+   *
+   *  Cleared by the first sign the new attempt is alive — text, reasoning or a
+   *  tool call — and at every turn boundary. Not by the `reset` that follows it:
+   *  that one only marks the end of the wait, and the request it precedes can
+   *  itself take a while. */
+  retry: { attempt: number; max: number; delayMs: number } | null
   compacting: boolean
   error: string | null
   fulfilledUnseen: boolean
@@ -304,6 +316,7 @@ function defaultSession(): ConversationSession {
     streaming: false,
     activeTurnId: null,
     candidateTurnId: null,
+    retry: null,
     compacting: false,
     error: null,
     fulfilledUnseen: false,
@@ -454,6 +467,9 @@ export interface ConversationStore {
    *  conversation id: the approval id is a UUID, and a tool card does not know
    *  which conversation it is being rendered in. */
   markApprovalOrphaned: (approvalId: string) => void
+  /** The request failed and is going again. Arrives before the backoff, so what
+   *  it describes is the wait as well as the attempt. */
+  handleRetry: (convId: string, attempt: number, max: number, delayMs: number) => void
   handleStreamReset: (convId: string, messageId: string) => void
   /** `turnId` names the run that stopped. A stop for a run this session is not
    *  showing still reloads — the transcript changed either way — but must not
@@ -607,6 +623,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       const session = state.sessions[convId]
       session.streaming = true
       session.activeTurnId = turnId
+      session.retry = null
       // The guard means "a turn started while your request was in flight", and
       // this is where a turn starts. Leaving it to the first `message_start`
       // would let a reload fetched before the user sent — the one the previous
@@ -638,6 +655,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       }
       session.streaming = false
       session.activeTurnId = null
+      session.retry = null
     }))
   },
 
@@ -711,6 +729,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       }
       target._blocks = blocks
       target.content += content
+      session.retry = null
     }))
   },
 
@@ -729,6 +748,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         blocks.push({ type: 'thinking', text: content })
       }
       target._blocks = blocks
+      session.retry = null
     }))
   },
 
@@ -750,6 +770,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         },
       })
       target._blocks = blocks
+      session.retry = null
     }))
   },
 
@@ -883,6 +904,16 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
+  handleRetry: (convId, attempt, max, delayMs) => {
+    set(produce((state: ConversationStore) => {
+      const session = state.sessions[convId]
+      // Not scoped to a turn: the event names the assistant row, and a session
+      // that is not showing that row is not showing the header this appears in
+      // either. The next thing to happen on any turn clears it.
+      if (session) session.retry = { attempt, max, delayMs }
+    }))
+  },
+
   handleStreamReset: (convId, messageId) => {
     set(produce((state: ConversationStore) => {
       const session = state.sessions[convId]
@@ -925,6 +956,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       }
       session.streaming = false
       session.activeTurnId = null
+      session.retry = null
       // The turn is over, so nothing is listening for these answers any more.
       // Clearing the entries without touching the cards used to leave a pair of
       // buttons that looked live and did nothing when pressed.

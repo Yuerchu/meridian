@@ -401,6 +401,35 @@ describe('stops are scoped to a turn', () => {
     expect(session().activeTurnId).toBe('turn-1')
   })
 
+  /// The backoff is announced before it is waited out, so the header has
+  /// something to say for its whole length. It stays up through the request
+  /// that follows — that one can take a while too — and goes as soon as the new
+  /// attempt produces anything.
+  it('shows which retry is in flight until the new attempt says something', () => {
+    store().beginTurn(CONV, 'turn-1')
+    store().handleMessageStart(CONV, 'a1', 'turn-1')
+
+    store().handleRetry(CONV, 2, 3, 4000)
+    expect(session().retry).toEqual({ attempt: 2, max: 3, delayMs: 4000 })
+
+    // The reset only marks the end of the wait; the request is still out.
+    store().handleStreamReset(CONV, 'a1')
+    expect(session().retry).not.toBeNull()
+
+    store().handleText(CONV, 'a1', 'here we go')
+    expect(session().retry).toBeNull()
+  })
+
+  it('does not leave a retry showing on a turn that ended', () => {
+    store().beginTurn(CONV, 'turn-1')
+    store().handleMessageStart(CONV, 'a1', 'turn-1')
+    store().handleRetry(CONV, 3, 3, 8000)
+
+    store().handleStop(CONV, 'turn-1')
+
+    expect(session().retry).toBeNull()
+  })
+
   /// A session built while somebody is already answering — a reload mid-answer,
   /// or opening a conversation a QQ session has. Without this the composer is
   /// unlocked, the turn renders as a finished empty answer, and the send it

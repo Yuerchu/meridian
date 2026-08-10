@@ -354,6 +354,7 @@
   "chat.thinking": "Thinking",
   "chat.turn.processed": "Worked for {{duration}}",
   "chat.turn.processing": "Working…",
+  "chat.turn.retrying": "Retrying ({{attempt}} of {{max}})…",
   "chat.turn.steps": "{{count}} steps",
   "chat.turn.interrupted": "Stopped",
   "chat.turn.crashed": "Cut off before it finished",

@@ -100,6 +100,15 @@ export function useGlobalEventListener() {
         return
       }
 
+      // Ahead of the backoff it describes, so the turn header can say what it is
+      // waiting for rather than looking hung for the length of the wait. The
+      // `reset` that follows marks the end of that wait and drops the partial
+      // text; it is not what clears this.
+      if (p.type === 'retry') {
+        store.handleRetry(convId, p.attempt ?? 1, p.max_attempts ?? 0, p.delay_ms ?? 0)
+        return
+      }
+
       if (p.type === 'reset' && p.message_id) {
         store.handleStreamReset(convId, p.message_id)
         return

@@ -354,6 +354,7 @@
   "chat.thinking": "思考过程",
   "chat.turn.processed": "已处理 {{duration}}",
   "chat.turn.processing": "处理中…",
+  "chat.turn.retrying": "重试中（第 {{attempt}} / {{max}} 次）…",
   "chat.turn.steps": "{{count}} 个步骤",
   "chat.turn.interrupted": "已中断",
   "chat.turn.crashed": "还没结束就中断了",

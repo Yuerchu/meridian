@@ -591,6 +591,16 @@ export interface StreamChunk {
   retry_reason?: string
   /** The call being retried, alongside `retry_reason`. */
   origin_call_id?: string
+  /** On `retry`: which attempt is about to be waited out, and out of how many.
+   *  1-based, so the first retry reads as 1 of 3. `delay_ms` is how long the
+   *  backoff holds before the request goes again — the event arrives *before*
+   *  that wait rather than after it, so a turn is never silent through it.
+   *
+   *  Deliberately carries no error text. A provider's message can quote the
+   *  request back, and this ends up on a screen. */
+  attempt?: number
+  max_attempts?: number
+  delay_ms?: number
   input_tokens?: number
   output_tokens?: number
 }
