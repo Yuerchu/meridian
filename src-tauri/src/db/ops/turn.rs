@@ -166,7 +166,6 @@ fn insertion_order() -> diesel::expression::SqlLiteral<diesel::sql_types::BigInt
 
 /// Every turn of a conversation, oldest first. For the transcript snapshot,
 /// which is what lets the UI say which turn was cut off rather than guessing.
-#[allow(dead_code)]
 pub fn list_for_conversation(
     conn: &mut SqliteConnection,
     conversation_id: &str,

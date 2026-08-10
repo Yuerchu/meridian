@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { produce } from 'immer'
 import { api } from '@/api'
 import { parseTodoArgs, toDrafts, type TodoArgs } from '@/components/chat/todo-list'
-import type { BranchPoint, Conversation, Message, PendingApprovalInfo, Project, ContentBlock, OpenAIToolCall, TodoListView, ToolCallDisplay } from '@/types'
+import type { BranchPoint, Conversation, Message, PendingApprovalInfo, Project, ContentBlock, OpenAIToolCall, TodoListView, ToolCallDisplay, TurnRecord } from '@/types'
 
 /**
  * Read a checklist out of an `update_todos` call. A list whose steps are all
@@ -73,6 +73,48 @@ function indexApprovals(pending: PendingApprovalInfo[]): ApprovalIndex {
   return out
 }
 
+/** How a tool row says it went. Null is every row written before the column
+ *  existed, and every one of those claimed success. */
+function outcomeOf(toolMsg: Message): ToolCallDisplay['status'] {
+  switch (toolMsg.tool_outcome) {
+    case 'denied':
+      return 'denied'
+    case 'error':
+      return 'error'
+    default:
+      return 'completed'
+  }
+}
+
+/** The ways a turn can have reached an ending. Anything outside this set —
+ *  including a status written by a later build — is not evidence that one did. */
+const ENDED = new Set(['done', 'cancelled', 'failed', 'interrupted'])
+
+/**
+ * What a call with no tool row and nothing waiting on it actually is.
+ *
+ * Not necessarily abandoned. The registry entry is removed the moment the user
+ * decides, and the tool then runs and writes its row some time later — so there
+ * is a window, as long as the tool takes, in which a perfectly live call has
+ * neither an approval nor a result. Calling that `orphaned` puts a dead-looking
+ * card on a tool that is at that moment editing a file.
+ *
+ * The turn is what tells them apart, and only a turn that positively says it
+ * ended earns `orphaned`. Everything else — a record this build cannot find,
+ * a status a later one invented — is treated as still going. The two mistakes
+ * are not the same size: reading a live call as dead is a wrong answer sitting
+ * on screen with no buttons, while reading a dead one as live corrects itself
+ * the moment anything reloads.
+ *
+ * A row with no `turn_id` predates the record entirely and keeps the reading it
+ * has always had.
+ */
+function unansweredStatus(turnId: string | null | undefined, turns: Map<string, TurnRecord>) {
+  if (!turnId) return 'orphaned' as const
+  const status = turns.get(turnId)?.status
+  return status !== undefined && ENDED.has(status) ? ('orphaned' as const) : ('running' as const)
+}
+
 /**
  * Rebuild the display blocks of every assistant row from its stored columns.
  *
@@ -80,12 +122,22 @@ function indexApprovals(pending: PendingApprovalInfo[]): ApprovalIndex {
  * call with no tool row is indistinguishable from one that is waiting on the
  * user, and guessing `completed` — which is what this used to do — erases the
  * approval buttons and strands the turn forever.
+ *
+ * `turns` covers the other half of the same question: `pending` being read
+ * after the transcript means a newly registered approval is never missed, but
+ * nothing can close the window on the other side, where the approval is already
+ * gone and the tool row has not landed yet.
  */
-export function hydrateBlocks(msgs: Message[], pending: PendingApprovalInfo[] = []): Message[] {
+export function hydrateBlocks(
+  msgs: Message[],
+  pending: PendingApprovalInfo[] = [],
+  turns: TurnRecord[] = [],
+): Message[] {
   const answers = toolRowsByAssistant(msgs)
   // Consumed as they match, so two calls sharing an id cannot both claim the
   // same approval.
   const waiting = indexApprovals(pending)
+  const byTurn = new Map(turns.map((t) => [t.id, t]))
 
   return msgs.map((m) => {
     if (m.role !== 'assistant') return m
@@ -113,9 +165,13 @@ export function hydrateBlocks(msgs: Message[], pending: PendingApprovalInfo[] = 
                 call_id: tc.id,
                 tool_name: tc.function.name,
                 arguments: tc.function.arguments,
-                // Answered, waiting, or abandoned — the three cases the
-                // transcript alone cannot tell apart.
-                status: toolMsg ? 'completed' : stillWaiting ? 'pending' : 'orphaned',
+                // Answered, waiting, still going, or abandoned — none of which
+                // the transcript alone can tell apart.
+                status: toolMsg
+                  ? outcomeOf(toolMsg)
+                  : stillWaiting
+                    ? 'pending'
+                    : unansweredStatus(m.turn_id, byTurn),
                 result: toolMsg?.content,
                 approval_id: stillWaiting?.approval_id,
                 retry_reason: stillWaiting?.retry_reason,
@@ -233,6 +289,13 @@ export interface ConversationSession {
   /** True while a switch is in flight, so the pager cannot be clicked again
    *  before the new path lands. */
   switchingBranch: boolean
+  /** How each run of the agent loop ended, as the backend judged it.
+   *
+   *  Not derivable here. A turn that stopped without recording an ending leaves
+   *  rows that look exactly like a turn that ended on a tool call, and only the
+   *  backend's live register of what is running can say which. Empty until the
+   *  first snapshot lands, which reads as "no opinion" everywhere. */
+  turns: TurnRecord[]
 }
 
 function defaultSession(): ConversationSession {
@@ -252,6 +315,7 @@ function defaultSession(): ConversationSession {
     expandedTurns: {},
     branches: {},
     switchingBranch: false,
+    turns: [],
   }
 }
 
@@ -415,29 +479,30 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
   loadMessages: async (convId) => {
     const generation = get().sessions[convId]?.generation ?? 0
-    // Fetched alongside the transcript, not from it: a tool call with no result
-    // row is either waiting on the user or was abandoned when its turn died,
-    // and those two are identical in the database.
-    const [tree, conv, approvals] = await Promise.all([
-      api.loadMessageTree(convId),
-      api.getConversation(convId),
-      api.listPendingApprovals(convId),
-    ])
+    // One request, because these four things only mean anything together. A
+    // tool call with no result row is either waiting on the user, still running,
+    // or was abandoned when its turn died — identical in the database, and told
+    // apart only by the approvals and the turn records that came back with it.
+    const snap = await api.conversationSnapshot(convId)
     // Reconciled outside produce: comparing against immer drafts would pit proxy
     // references against plain ones.
-    const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(tree.messages, approvals))
+    const snapshot = reconcileMessages(
+      get().sessions[convId]?.messages ?? [],
+      hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns),
+    )
     set(produce((state: ConversationStore) => {
       if (!state.sessions[convId]) {
         state.sessions[convId] = defaultSession()
       }
       const session = state.sessions[convId]
-      // A turn started while these three requests were in flight. Its own
-      // events describe the conversation better than this snapshot does, and
-      // the approvals it just registered are not in there.
+      // A turn started while the request was in flight. Its own events describe
+      // the conversation better than this snapshot does, and the approvals it
+      // just registered are not in there.
       if (session.generation !== generation) return
       session.messages = mergeSnapshot(session, snapshot)
-      session.compactCursor = conv.compact_cursor
-      session.branches = indexBranches(tree.branches)
+      session.compactCursor = snap.conversation.compact_cursor
+      session.branches = indexBranches(snap.tree.branches)
+      session.turns = snap.turns
     }))
   },
 
@@ -445,23 +510,39 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
    *  there is never a frame where the pagers describe messages that are no
    *  longer on screen. */
   switchBranch: async (convId, messageId) => {
+    const generation = get().sessions[convId]?.generation ?? 0
     set(produce((state: ConversationStore) => {
       const session = state.sessions[convId]
       if (session) session.switchingBranch = true
     }))
+    let superseded = false
     try {
-      const [tree, approvals] = await Promise.all([
-        api.switchBranch(convId, messageId),
-        api.listPendingApprovals(convId),
-      ])
-      const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(tree.messages, approvals))
+      // The switch moves the head; the snapshot afterwards is what the new path
+      // actually is. Sequential rather than parallel because the second reads
+      // what the first wrote — which is also what makes the window here wider
+      // than anywhere else, hence the guard below.
+      await api.switchBranch(convId, messageId)
+      const snap = await api.conversationSnapshot(convId)
+      const snapshot = reconcileMessages(
+        get().sessions[convId]?.messages ?? [],
+        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns),
+      )
       set(produce((state: ConversationStore) => {
         const session = state.sessions[convId]
         if (!session) return
+        // A turn started across two round trips. This snapshot predates it, and
+        // this path assigns outright rather than merging — so applying it would
+        // not just be stale, it would delete the rows that turn has already
+        // streamed in.
+        if (session.generation !== generation) {
+          superseded = true
+          return
+        }
         // Replaced outright, not merged: what is local belongs to the branch
         // being left, and splicing it in would carry messages across.
         session.messages = snapshot
-        session.branches = indexBranches(tree.branches)
+        session.branches = indexBranches(snap.tree.branches)
+        session.turns = snap.turns
         session.expandedTurns = {}
       }))
     } finally {
@@ -470,6 +551,11 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         if (session) session.switchingBranch = false
       }))
     }
+    // The head really did move, so what is on screen is a path the server no
+    // longer agrees with. Read it again under whatever generation is current
+    // now — `loadMessages` merges, which is what a live turn needs, and takes
+    // its own generation so this cannot loop.
+    if (superseded) await get().loadMessages(convId)
   },
 
   beginTurn: (convId, turnId) => {
@@ -819,11 +905,17 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         session.fulfilledUnseen = true
       }
     }))
-    // The whole tree, not just the messages: a turn that regenerated an answer
-    // has just created a branch point, and the pager for it has to appear now
-    // rather than the next time the conversation is opened.
-    api.loadMessageTree(convId).then((tree) => {
-      const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(tree.messages))
+    // The whole snapshot, not just the messages: a turn that regenerated an
+    // answer has just created a branch point, and the pager for it has to
+    // appear now rather than the next time the conversation is opened. The turn
+    // records matter here more than anywhere — this is the moment a turn ends,
+    // and how it ended is what says whether the calls above are abandoned or
+    // were simply never going to be answered by anyone.
+    api.conversationSnapshot(convId).then((snap) => {
+      const snapshot = reconcileMessages(
+        get().sessions[convId]?.messages ?? [],
+        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns),
+      )
       set(produce((state: ConversationStore) => {
         const session = state.sessions[convId]
         if (!session) return
@@ -831,7 +923,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // handler will reload, so applying the stale snapshot would clobber it.
         if (session.generation !== generation) return
         session.messages = mergeSnapshot(session, snapshot)
-        session.branches = indexBranches(tree.branches)
+        session.branches = indexBranches(snap.tree.branches)
+        session.turns = snap.turns
       }))
     })
   },
@@ -845,12 +938,11 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
   handleCompactDone: (convId) => {
     const generation = get().sessions[convId]?.generation ?? 0
-    Promise.all([
-      api.loadMessageTree(convId),
-      api.getConversation(convId),
-      api.listPendingApprovals(convId),
-    ]).then(([tree, conv, approvals]) => {
-      const snapshot = reconcileMessages(get().sessions[convId]?.messages ?? [], hydrateBlocks(tree.messages, approvals))
+    api.conversationSnapshot(convId).then((snap) => {
+      const snapshot = reconcileMessages(
+        get().sessions[convId]?.messages ?? [],
+        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns),
+      )
       set(produce((state: ConversationStore) => {
         const session = state.sessions[convId]
         if (!session) return
@@ -859,8 +951,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // instead of clobbering, and skip entirely if a newer turn superseded it.
         if (session.generation !== generation) return
         session.messages = mergeSnapshot(session, snapshot)
-        session.branches = indexBranches(tree.branches)
-        session.compactCursor = conv.compact_cursor
+        session.branches = indexBranches(snap.tree.branches)
+        session.compactCursor = snap.conversation.compact_cursor
+        session.turns = snap.turns
       }))
     }).catch(() => {
       set(produce((state: ConversationStore) => {

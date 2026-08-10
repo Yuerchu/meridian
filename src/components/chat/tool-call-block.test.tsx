@@ -154,3 +154,86 @@ describe('ToolCallBlock file-edit diff rendering', () => {
     expect(args!.textContent).toContain(partial)
   })
 })
+
+/// The three cards that draw their own body used to handle exactly two states:
+/// waiting on the user, and answered. Everything else fell through to a header
+/// with nothing under it.
+///
+/// They meet those states routinely now that a tool row records how its call
+/// went — a refusal survives a reload instead of quietly becoming a green tick,
+/// and an unanswered call on a live turn reads as running rather than being
+/// written off. An empty card would leave the user reading a question with no
+/// form, no answer, and no reason given.
+describe('the interactive cards say what became of them', () => {
+  const CARDS = [
+    { name: 'ask_user', args: { questions: [{ id: 'q1', question: 'Which one?' }] } },
+    { name: 'enter_plan', args: { reason: 'this is a big change' } },
+    { name: 'exit_plan', args: { plan: '# Do the thing' } },
+  ]
+  // Every status that is neither "waiting on the user" nor "answered", which
+  // are the two each card draws for itself.
+  const UNANSWERED: Array<[ToolCallDisplay['status'], string]> = [
+    ['denied', 'chat.tool.wasDenied'],
+    ['error', 'chat.tool.wasError'],
+    ['orphaned', 'chat.tool.orphaned'],
+    ['running', 'chat.tool.running'],
+    ['approved', 'chat.tool.running'],
+  ]
+
+  for (const card of CARDS) {
+    for (const [status, key] of UNANSWERED) {
+      it(`${card.name} · ${status}`, () => {
+        render(<ToolCallBlock data={toolCall(card.name, card.args, status)} />)
+        expect(screen.getByText(i18n.t(key))).toBeVisible()
+      })
+    }
+  }
+
+  /// "Something went wrong" on its own is not much use when the thing that went
+  /// wrong said what it was. The general line stays — it is what makes the state
+  /// readable at a glance — and the tool's own words go under it.
+  it.each(['enter_plan', 'exit_plan'])('%s shows what the tool actually said', (name) => {
+    const args = name === 'enter_plan' ? { reason: 'r' } : { plan: '# p' }
+    for (const [status, key] of [
+      ['error', 'chat.tool.wasError'],
+      ['denied', 'chat.tool.wasDenied'],
+    ] as const) {
+      const { unmount } = render(
+        <ToolCallBlock data={{ ...toolCall(name, args, status), result: 'ENOENT: no such file' }} />,
+      )
+      expect(screen.getByText(i18n.t(key))).toBeVisible()
+      expect(screen.getByText('ENOENT: no such file')).toBeVisible()
+      unmount()
+    }
+  })
+
+  /// The ring means "this one is waiting on you". Keyed off "not denied" it was
+  /// drawn around an errored call, an abandoned one and an already-approved one
+  /// alike — each of them asking for a decision that had been made, or could
+  /// not be.
+  it.each(['enter_plan', 'exit_plan'])('%s only rings while it is waiting', (name) => {
+    const args = name === 'enter_plan' ? { reason: 'r' } : { plan: '# p' }
+    const slot = name === 'enter_plan' ? 'enter-plan' : 'exit-plan'
+    const ringed = (status: ToolCallDisplay['status']) => {
+      const { container, unmount } = render(<ToolCallBlock data={toolCall(name, args, status)} />)
+      const on = container.querySelector(`[data-slot="${slot}"]`)!.className.includes('ring-info')
+      unmount()
+      return on
+    }
+
+    expect(ringed('pending')).toBe(true)
+    for (const decided of ['completed', 'denied', 'error', 'orphaned', 'running'] as const) {
+      expect(ringed(decided), decided).toBe(false)
+    }
+  })
+
+  /// Two spinners side by side read as two things happening at once.
+  it('does not spin twice over one running question', () => {
+    const { container } = render(
+      <ToolCallBlock
+        data={toolCall('ask_user', { questions: [{ id: 'q', question: 'Q?' }] }, 'running')}
+      />,
+    )
+    expect(container.querySelectorAll('.animate-spin')).toHaveLength(1)
+  })
+})

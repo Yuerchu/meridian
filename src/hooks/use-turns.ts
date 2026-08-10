@@ -1,6 +1,21 @@
 import { useMemo, useRef } from 'react'
 import { buildTurns, type Turn } from '@/lib/turns'
-import type { Message } from '@/types'
+import type { Message, TurnRecord } from '@/types'
+
+/** The turns the backend says never reached an ending.
+ *
+ *  A `Set` rather than the records themselves so `buildTurns` never has to know
+ *  the backend's vocabulary — `interrupted` there means a turn that stopped
+ *  without recording how, while the same word here means something milder, and
+ *  translating it in one place keeps the two from being confused for each
+ *  other. */
+function crashedIds(turns: TurnRecord[]): ReadonlySet<string> {
+  return new Set(turns.filter((t) => t.status === 'interrupted').map((t) => t.id))
+}
+
+/** One shared empty array, because a default parameter would mint a new one on
+ *  every render and take the whole memo chain below it with it. */
+const NO_TURNS: TurnRecord[] = []
 
 /**
  * Groups messages into turns while keeping object identity across renders.
@@ -11,8 +26,16 @@ import type { Message } from '@/types'
  * level; this preserves it one layer up, so only the turn actually being written
  * to changes reference.
  */
-export function useTurns(messages: Message[], streaming: boolean): Turn[] {
-  const built = useMemo(() => buildTurns(messages, { streaming }), [messages, streaming])
+export function useTurns(
+  messages: Message[],
+  streaming: boolean,
+  turns: TurnRecord[] = NO_TURNS,
+): Turn[] {
+  const crashed = useMemo(() => crashedIds(turns), [turns])
+  const built = useMemo(
+    () => buildTurns(messages, { streaming, crashedTurnIds: crashed }),
+    [messages, streaming, crashed],
+  )
   const prevRef = useRef<Turn[]>(built)
   const stable = reconcileTurns(prevRef.current, built)
   prevRef.current = stable

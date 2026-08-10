@@ -1,19 +1,41 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { hydrateBlocks, reconcileMessages, useConversationStore } from '@/stores/conversation-store'
 import { api } from '@/api'
-import type { ContentBlock, Message, MessageTree, ToolCallDisplay } from '@/types'
+import type { ContentBlock, ConversationSnapshot, Message, MessageTree, ToolCallDisplay, TurnRecord } from '@/types'
 
 vi.mock('@tauri-apps/api/core')
 vi.mock('@/api', () => ({
   api: {
-    loadMessageTree: vi.fn(),
-    getConversation: vi.fn(),
+    // One request per load. The transcript, the approvals still outstanding and
+    // the turn records only mean anything together: a tool call with no result
+    // row is waiting, running, or abandoned, and the row alone says none of it.
+    conversationSnapshot: vi.fn(),
     switchBranch: vi.fn(),
-    // Fetched alongside every transcript load: without it a tool call with no
-    // result row cannot be told apart from one still waiting on the user.
-    listPendingApprovals: vi.fn().mockResolvedValue([]),
   },
 }))
+
+/** A snapshot with nothing outstanding, which is what most tests want. */
+function snapshotOf(tree: MessageTree, over: Partial<ConversationSnapshot> = {}): ConversationSnapshot {
+  return {
+    conversation: { compact_cursor: null } as ConversationSnapshot['conversation'],
+    tree,
+    turns: [],
+    pending_approvals: [],
+    ...over,
+  }
+}
+
+function turnRecord(id: string, status: string): TurnRecord {
+  return {
+    id,
+    status,
+    phase: null,
+    phase_tool: null,
+    error: null,
+    started_at: 0,
+    ended_at: null,
+  }
+}
 
 function msg(id: string, over: Partial<Message> = {}): Message {
   return {
@@ -80,6 +102,85 @@ describe('hydrateBlocks', () => {
     const out = hydrateBlocks([caller('a', 'c1')])
     expect(callBlocks(out, 'a')[0]).toMatchObject({ status: 'orphaned' })
     expect(callBlocks(out, 'a')[0].approval_id).toBeUndefined()
+  })
+
+  /// The window reading the approvals last cannot close. A decision removes the
+  /// registry entry immediately, and the tool then runs — for as long as it
+  /// takes — before its row exists. Neither an approval nor a result, on a call
+  /// that is at that moment editing a file.
+  it('does not call a live turn\'s unanswered call orphaned', () => {
+    const out = hydrateBlocks(
+      [caller('a', 'c1', 'edit_file')],
+      [],
+      [turnRecord('t1', 'running')],
+      // The row has to name its turn for any of this to apply.
+    )
+    expect(callBlocks(out, 'a')[0]).toMatchObject({ status: 'orphaned' })
+
+    const owned = hydrateBlocks(
+      [msg('a', {
+        turn_id: 't1',
+        tool_calls: JSON.stringify([
+          { id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } },
+        ]),
+      })],
+      [],
+      [turnRecord('t1', 'running')],
+    )
+    expect(callBlocks(owned, 'a')[0]).toMatchObject({ status: 'running' })
+  })
+
+  /// And the other side of it: once the turn has an ending, an unanswered call
+  /// means nobody is coming back for it.
+  it('calls an unanswered call orphaned once its turn has ended', () => {
+    for (const ended of ['done', 'cancelled', 'failed', 'interrupted']) {
+      const out = hydrateBlocks(
+        [msg('a', {
+          turn_id: 't1',
+          tool_calls: JSON.stringify([
+            { id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } },
+          ]),
+        })],
+        [],
+        [turnRecord('t1', ended)],
+      )
+      expect(callBlocks(out, 'a')[0], ended).toMatchObject({ status: 'orphaned' })
+    }
+  })
+
+  /// Only a turn that positively says it ended earns `orphaned`. A record this
+  /// build cannot find, or a status a later one invented, is not evidence of
+  /// anything — and the two mistakes are not the same size: a live call drawn
+  /// as dead sits there with no buttons, while a dead one drawn as live is
+  /// corrected by the next reload.
+  it('does not read a missing or unrecognised turn record as an ending', () => {
+    const row = msg('a', {
+      turn_id: 't1',
+      tool_calls: JSON.stringify([
+        { id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } },
+      ]),
+    })
+    expect(callBlocks(hydrateBlocks([row], [], []), 'a')[0]).toMatchObject({ status: 'running' })
+    expect(
+      callBlocks(hydrateBlocks([row], [], [turnRecord('t1', 'from_the_future')]), 'a')[0],
+    ).toMatchObject({ status: 'running' })
+  })
+
+  /// Reloading used to turn every refusal into a green tick, with the refusal
+  /// itself displayed as the tool's output.
+  it('reads how the tool went off the row rather than assuming it went well', () => {
+    for (const [outcome, status] of [
+      ['denied', 'denied'],
+      ['error', 'error'],
+      ['success', 'completed'],
+      [null, 'completed'],
+    ] as const) {
+      const out = hydrateBlocks([
+        caller('a', 'c1'),
+        msg('t', { role: 'tool', tool_call_id: 'c1', content: 'x', tool_outcome: outcome }),
+      ])
+      expect(callBlocks(out, 'a')[0], String(outcome)).toMatchObject({ status })
+    }
   })
 
   it('carries the escalation reason onto the card it belongs to', () => {
@@ -281,9 +382,9 @@ describe('stops are scoped to a turn', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    vi.mocked(api.loadMessageTree).mockResolvedValue({
-      messages: [], head_message_id: null, branches: [],
-    })
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf({ messages: [], head_message_id: null, branches: [] }),
+    )
     useConversationStore.setState({ sessions: {} })
     store().ensureSession(CONV)
   })
@@ -306,14 +407,14 @@ describe('stops are scoped to a turn', () => {
   /// fetched before the user sent — the one the previous turn's stop kicks off
   /// — still passes the check and lands on top of the bubble they just added.
   it('discards a reload that was already in flight when the turn started', async () => {
-    let land: (tree: MessageTree) => void = () => {}
-    vi.mocked(api.loadMessageTree).mockReturnValueOnce(
-      new Promise<MessageTree>((resolve) => { land = resolve }),
+    let land: (snap: ConversationSnapshot) => void = () => {}
+    vi.mocked(api.conversationSnapshot).mockReturnValueOnce(
+      new Promise<ConversationSnapshot>((resolve) => { land = resolve }),
     )
 
     const reloading = store().loadMessages(CONV)
     store().beginTurn(CONV, 'turn-1')
-    land({ messages: [msg('stale')], head_message_id: 'stale', branches: [] })
+    land(snapshotOf({ messages: [msg('stale')], head_message_id: 'stale', branches: [] }))
     await reloading
 
     expect(session().messages.map((m) => m.id)).not.toContain('stale')
@@ -530,7 +631,7 @@ describe('stops are scoped to a turn', () => {
     store().handleStop(CONV, 'turn-1')
 
     await vi.waitFor(() => {
-      expect(api.loadMessageTree).toHaveBeenCalledWith(CONV)
+      expect(api.conversationSnapshot).toHaveBeenCalledWith(CONV)
     })
     expect(session().streaming).toBe(true)
   })
@@ -563,11 +664,11 @@ describe('branch state', () => {
   /// Without this the pager only shows up the next time the conversation is
   /// opened, since the turn that created the branch point ends with this reload.
   it('picks up a new branch point when a turn ends', async () => {
-    vi.mocked(api.loadMessageTree).mockResolvedValue({
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(snapshotOf({
       messages: [msg('q'), msg('a2')],
       head_message_id: 'a2',
       branches: [{ message_id: 'a2', index: 1, total: 2, sibling_ids: ['a1', 'a2'] }],
-    })
+    }))
 
     useConversationStore.getState().handleStop(CONV)
     await vi.waitFor(() => {
@@ -583,11 +684,14 @@ describe('branch state', () => {
         [CONV]: { ...s.sessions[CONV], messages: [msg('q'), msg('a1', { content: 'first' })] },
       },
     }))
-    vi.mocked(api.switchBranch).mockResolvedValue({
+    // The switch moves the head and says nothing; the snapshot after it is
+    // where the new path comes from.
+    vi.mocked(api.switchBranch).mockResolvedValue(undefined)
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(snapshotOf({
       messages: [msg('q'), msg('a2', { content: 'second' })],
       head_message_id: 'a2',
       branches: [{ message_id: 'a2', index: 1, total: 2, sibling_ids: ['a1', 'a2'] }],
-    })
+    }))
 
     await useConversationStore.getState().switchBranch(CONV, 'a2')
 
@@ -602,5 +706,55 @@ describe('branch state', () => {
 
     await expect(useConversationStore.getState().switchBranch(CONV, 'a2')).rejects.toThrow()
     expect(useConversationStore.getState().sessions[CONV]?.switchingBranch).toBe(false)
+  })
+
+  /// Two round trips, and this path assigns the message list outright instead
+  /// of merging into it. A turn that starts in between has already streamed
+  /// rows in, and applying a snapshot taken before it existed would not merely
+  /// be stale — it would delete them.
+  ///
+  /// The whole sequence, because each half is wrong on its own: refusing the
+  /// stale snapshot leaves the screen showing a path the backend has moved off,
+  /// and reading again without refusing it first loses the turn.
+  it('does not let a switch started before a turn overwrite that turn', async () => {
+    const store = () => useConversationStore.getState()
+    const session = () => store().sessions[CONV]!
+    vi.mocked(api.switchBranch).mockResolvedValue(undefined)
+
+    let land: (snap: ConversationSnapshot) => void = () => {}
+    vi.mocked(api.conversationSnapshot)
+      .mockReturnValueOnce(new Promise<ConversationSnapshot>((resolve) => { land = resolve }))
+      // The re-read this is expected to trigger afterwards: the switch really
+      // did move the head, so the new path has to be picked up under whatever
+      // generation is current by then.
+      .mockResolvedValue(snapshotOf({
+        messages: [msg('q'), msg('a2', { content: 'the other version' })],
+        head_message_id: 'a2',
+        branches: [{ message_id: 'a2', index: 1, total: 2, sibling_ids: ['a1', 'a2'] }],
+      }))
+
+    const switching = store().switchBranch(CONV, 'a2')
+    expect(session().switchingBranch).toBe(true)
+
+    // A turn starts while the switch is still in the air, and writes.
+    store().beginTurn(CONV, 'turn-1')
+    store().handleMessageStart(CONV, 'live', 'turn-1')
+    store().handleText(CONV, 'live', 'half a sentence')
+
+    land(snapshotOf({ messages: [msg('stale')], head_message_id: 'stale', branches: [] }))
+    await switching
+
+    const ids = session().messages.map((m) => m.id)
+    // The stale snapshot never lands...
+    expect(ids).not.toContain('stale')
+    // ...but the conversation is read again rather than left as it was.
+    expect(api.conversationSnapshot).toHaveBeenCalledTimes(2)
+    expect(ids).toEqual(['q', 'a2', 'live'])
+    // The branch that was switched to is the one on screen.
+    expect(session().branches.a2?.total).toBe(2)
+    // And the turn that started mid-switch still has everything it streamed.
+    const live = session().messages.find((m) => m.id === 'live')!
+    expect(live._blocks).toEqual([{ type: 'text', text: 'half a sentence' }])
+    expect(session().switchingBranch).toBe(false)
   })
 })

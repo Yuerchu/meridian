@@ -16,6 +16,23 @@ export type TurnStatus =
   | 'complete'
   /** Stopped without one — cancelled, or the model ended on a tool call. */
   | 'interrupted'
+  /** Stopped unexpectedly, without ever reaching an ending.
+   *
+   *  Kept apart from `interrupted`, which is a turn that stopped for a reason
+   *  somebody knows — the user pressed Stop, the model quit on a tool call.
+   *  This one may have left a file half-written, and the reader has no way to
+   *  tell from the transcript.
+   *
+   *  Says nothing about *why*, because nothing knows: the rule that produces it
+   *  is "the backend has no record of this turn ending and is not running it",
+   *  which the application being killed satisfies, and so does a task that
+   *  panicked or was dropped while the application carried on. Do not build
+   *  anything on top of one of those readings.
+   *
+   *  Read off the backend's record rather than inferred, and decided before
+   *  anything else: one that happened to stop after some trailing text would
+   *  otherwise render as a clean answer. */
+  | 'crashed'
   /** Blocked on the user: an approval, a question, a plan to review. */
   | 'awaiting-input'
   /** Produced no text at all. */
@@ -86,6 +103,13 @@ export interface BuildTurnsContext {
   /** Whether the conversation has a stream in flight; only the last turn can be
    *  the one streaming. */
   streaming?: boolean
+  /** Turns the backend says stopped without ever reaching an ending.
+   *
+   *  Nothing here could work this out. A turn cut off mid-answer leaves rows
+   *  indistinguishable from one that simply ended on a tool call, and the
+   *  difference — whether a file may be half-written — is only knowable from
+   *  the backend's own record of what was running. */
+  crashedTurnIds?: ReadonlySet<string>
 }
 
 /** Tools that block the turn while they wait for a response. `update_todos` is
@@ -178,10 +202,38 @@ export function buildTurns(messages: Message[], ctx: BuildTurnsContext = {}): Tu
     }
   }
 
-  return groups.map((g, i) => finalize(g, i === groups.length - 1 && ctx.streaming === true))
+  const crashed = ctx.crashedTurnIds
+  return groups.map((g, i) => {
+    const turnId = crashed === undefined ? null : pathTurnId(g)
+    return finalize(
+      g,
+      i === groups.length - 1 && ctx.streaming === true,
+      turnId !== null && crashed!.has(turnId),
+    )
+  })
 }
 
-function finalize(group: OpenTurn, isStreaming: boolean): Turn {
+/** Which run of the agent loop produced the answer currently on this path.
+ *
+ *  The answer's own rows, not the question's. Regenerating writes a new
+ *  assistant row under the *same* user row, so after a crashed answer is
+ *  regenerated the group holds a question belonging to the turn that died and
+ *  an answer belonging to the one that succeeded. Asking whether any row of the
+ *  group crashed marks the good answer as crashed and never stops doing so.
+ *
+ *  The last assistant row with an id, because a turn's rows are written in
+ *  order and the last is the one that owns how it ended. Only when there is no
+ *  answer at all — a turn cut off before the model said anything — does the
+ *  question have to speak for it. */
+function pathTurnId(group: OpenTurn): string | null {
+  for (let i = group.assistantMessages.length - 1; i >= 0; i--) {
+    const id = group.assistantMessages[i].turn_id
+    if (id) return id
+  }
+  return group.assistantMessages.length > 0 ? null : (group.userMessage?.turn_id ?? null)
+}
+
+function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean): Turn {
   const { userMessage, assistantMessages } = group
 
   const flat: TurnStep[] = []
@@ -224,7 +276,17 @@ function finalize(group: OpenTurn, isStreaming: boolean): Turn {
 
   let status: TurnStatus
   if (pinned.length > 0) status = 'awaiting-input'
+  // Ahead of `result`, which is the whole point of having it: a turn cut off
+  // just after writing a paragraph has text sitting past its last tool call,
+  // and read from the transcript alone that is indistinguishable from an
+  // answer. It would collapse itself with a tick beside it and say nothing
+  // about the tool that may have run.
+  //
+  // Behind `isStreaming`, which is the fresher signal. Turn records are read
+  // when a conversation is opened or a turn ends; a live stream is being
+  // watched right now.
   else if (isStreaming) status = 'streaming'
+  else if (didCrash) status = 'crashed'
   else if (result) status = 'complete'
   else if (summary.toolCount > 0) status = 'interrupted'
   else status = 'empty'
@@ -286,7 +348,12 @@ export function formatDuration(ms: number): string {
  *  first place — the agent loop only writes another assistant row when the last
  *  one called tools. Pinned calls count too: they are excluded from `steps`, so
  *  a turn whose only tool is still awaiting approval would otherwise look bare.
- *  Reasoning alone does not count; it already collapses itself. */
+ *  Reasoning alone does not count; it already collapses itself.
+ *
+ *  A turn that crashed always counts, tools or no tools. The header is the only
+ *  place that says so — without it a turn cut off part way through a sentence
+ *  renders as a sentence that simply stops, which is exactly the reading this
+ *  status exists to prevent. */
 export function hasCollapsibleProcess(turn: Turn): boolean {
-  return turn.summary.toolCount > 0 || turn.pinned.length > 0
+  return turn.summary.toolCount > 0 || turn.pinned.length > 0 || turn.status === 'crashed'
 }

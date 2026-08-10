@@ -422,7 +422,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     () => messages.filter((m) => (m.role === 'user' || m.role === 'assistant') && m.is_compact_summary !== 1),
     [messages],
   )
-  const allTurns = useTurns(visibleMessages, streaming)
+  const allTurns = useTurns(visibleMessages, streaming, session?.turns)
   const compactSummary = messages.find((m) => m.is_compact_summary === 1)
   // The boundary comes from the summary's anchor rather than a stored cursor:
   // once a conversation can branch, one sort_order threshold cannot describe

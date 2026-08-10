@@ -5,7 +5,7 @@ import hljs from 'highlight.js/lib/common'
 import { fileIconUrl } from '@/lib/file-icon'
 import { AnimatePresence, motion } from 'motion/react'
 import {
-  ArrowUturnCcwLeft, Check, ChevronUp, Circle, CircleCheck, CircleDashed,
+  ArrowUturnCcwLeft, Ban, Check, ChevronUp, Circle, CircleCheck, CircleDashed,
   CircleQuestion, Compass, FileText, ForwardStep, Globe, ListCheck,
   PaperPlane, Square, SquareCheck, SquareListUl, TriangleExclamation, Xmark,
 } from '@gravity-ui/icons'
@@ -243,7 +243,8 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
       <div className="flex items-center gap-2 bg-default px-4 py-3">
         <CircleQuestion className="w-3.5 h-3.5 text-muted" />
         <span className="font-medium text-foreground">{t('chat.tool.askUser')}</span>
-        {data.status === 'running' && <CircleDashed className="w-3.5 h-3.5 animate-spin text-muted ml-auto" />}
+        {/* No spinner here for `running`: the body below says so in words, and
+            two of them side by side read as two things happening. */}
         {data.status === 'completed' && <Check className="w-3.5 h-3.5 text-success-soft-foreground ml-auto" />}
       </div>
 
@@ -273,10 +274,11 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
       )}
 
       {/* The questions are left on screen — they are still worth reading — but
-          the form goes, since there is no longer anyone to send it to. */}
-      {data.status === 'orphaned' && (
+          the form goes, since there is no longer anyone to send it to, and
+          whatever did become of it is said here instead. */}
+      {data.status !== 'pending' && data.status !== 'completed' && (
         <div className="px-4 py-3">
-          <OrphanedNotice />
+          <CardOutcome status={data.status} />
         </div>
       )}
 
@@ -1027,14 +1029,17 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
   }, [approvalId, markOrphaned])
 
   // Same status ring as `ChatTool`: a HeroUI card carries no edge, so an edge
-  // is left to mean "this one is waiting on you". A decided plan is just a card.
+  // is left to mean "this one is waiting on you". Which is `pending` and only
+  // `pending` — keyed off "not denied" it was drawn around every other state
+  // too, so a call that had errored, been abandoned or already been approved
+  // all sat there asking for a decision that had been made or could not be.
   return (
     <div
       data-slot="enter-plan"
       data-status={data.status}
       className={cn(
         'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface',
-        !declined && 'ring-1 ring-info/40 ring-inset',
+        data.status === 'pending' && 'ring-1 ring-info/40 ring-inset',
       )}
     >
       <div data-slot="enter-plan-header" className="flex items-center gap-2 bg-default px-4 py-3">
@@ -1075,9 +1080,9 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
         </div>
       )}
 
-      {data.status === 'orphaned' && (
-        <div data-slot="enter-plan-orphaned" className="border-t border-separator px-4 py-3">
-          <OrphanedNotice />
+      {data.status !== 'pending' && data.status !== 'completed' && (
+        <div data-slot="enter-plan-outcome" className="border-t border-separator px-4 py-3">
+          <CardOutcome status={data.status} detail={data.result} />
         </div>
       )}
     </div>
@@ -1118,7 +1123,8 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       data-status={data.status}
       className={cn(
         'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface',
-        !wasRejected && 'ring-1 ring-info/40 ring-inset',
+        // Only while it is actually waiting on a decision — see `EnterPlanBlock`.
+        data.status === 'pending' && 'ring-1 ring-info/40 ring-inset',
       )}
     >
       <div data-slot="exit-plan-header" className="flex items-center gap-2 bg-default px-4 py-3">
@@ -1184,9 +1190,9 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
         </div>
       )}
 
-      {data.status === 'orphaned' && (
-        <div data-slot="exit-plan-orphaned" className="border-t border-separator px-4 py-3">
-          <OrphanedNotice />
+      {data.status !== 'pending' && data.status !== 'completed' && (
+        <div data-slot="exit-plan-outcome" className="border-t border-separator px-4 py-3">
+          <CardOutcome status={data.status} detail={data.result} />
         </div>
       )}
     </div>
@@ -1282,6 +1288,75 @@ function OrphanedNotice() {
       <span>{t('chat.tool.orphaned')}</span>
     </div>
   )
+}
+
+/**
+ * How an interactive card ended, whenever that was not "the user answered".
+ *
+ * The three cards that draw their own body — the question, and the two plan
+ * cards — each handled only the states they were written against: waiting, and
+ * answered. Everything else fell through to a header with nothing under it, or
+ * worse, to a refusal printed in the same place an answer would go.
+ *
+ * They meet those states routinely now. `tool_outcome` records how a call went,
+ * so `denied` and `error` survive a reload instead of quietly becoming
+ * `completed`, and an unanswered call on a turn that is still running reads as
+ * `running` rather than being written off as abandoned.
+ *
+ * Returns null for the two the cards do draw themselves, and for nothing else.
+ * The `never` binding at the end is what makes that true rather than merely
+ * intended: a status added to the union and not handled here fails to compile,
+ * where without it the switch would simply fall off the end and React would
+ * render an empty card that nobody notices.
+ *
+ * `detail` is what the tool actually said — a refusal's reason, an error's
+ * message. Shown under the general line rather than in place of it, because
+ * "this failed" and "here is what it said" answer different questions and the
+ * second is often a stack trace.
+ */
+function CardOutcome({ status, detail }: { status: ToolCallDisplay['status']; detail?: string }) {
+  const { t } = useTranslation()
+  const notice = (icon: React.ReactNode, text: string, withDetail = false) => (
+    <div className="space-y-1.5">
+      <div className="flex items-start gap-1.5 px-0.5 text-xs text-muted">
+        {icon}
+        <span>{text}</span>
+      </div>
+      {withDetail && detail?.trim() && (
+        <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap px-0.5 text-xs text-foreground">
+          {detail}
+        </pre>
+      )}
+    </div>
+  )
+
+  switch (status) {
+    case 'pending':
+    case 'completed':
+      return null
+    case 'orphaned':
+      return <OrphanedNotice />
+    case 'denied':
+      return notice(<Ban className="w-3.5 h-3.5 shrink-0" />, t('chat.tool.wasDenied'), true)
+    case 'error':
+      return notice(
+        <TriangleExclamation className="w-3.5 h-3.5 text-danger shrink-0" />,
+        t('chat.tool.wasError'),
+        true,
+      )
+    // `approved` alongside `running` because it means the same thing to a card:
+    // decided, not yet finished. Neither has a result to show yet.
+    case 'approved':
+    case 'running':
+      return notice(
+        <CircleDashed className="w-3.5 h-3.5 animate-spin shrink-0" />,
+        t('chat.tool.running'),
+      )
+    default: {
+      const unhandled: never = status
+      throw new Error(`unhandled tool call status: ${String(unhandled)}`)
+    }
+  }
 }
 
 export function ToolCallBlock({ data: raw, className }: { data: ToolCallDisplay; className?: string }) {

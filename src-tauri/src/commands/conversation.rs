@@ -70,14 +70,10 @@ pub async fn compact(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn get_conversation(app: tauri::AppHandle, id: String) -> Result<Conversation, String> {
-    let pool = app.state::<AppDb>().0.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::get_conversation(&mut conn, &id).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
-}
+// `get_conversation` was here, and `load_message_tree` and
+// `list_pending_approvals` in their own files. All three answered one third of
+// the same question, and the caller had to ask all three and hope nothing moved
+// in between. `conversation_snapshot` answers it once.
 
 #[tauri::command]
 pub async fn list_conversations(app: tauri::AppHandle, archived: bool) -> Result<Vec<Conversation>, String> {

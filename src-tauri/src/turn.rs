@@ -109,9 +109,71 @@ impl std::fmt::Display for Busy {
     }
 }
 
+/// The occupancy table, and how often each conversation's entry has changed.
+///
+/// The counts live inside the same lock as the table because they are only
+/// useful if the two cannot be read a moment apart — a reader that saw the
+/// table at one instant and a count at another has learned nothing.
+///
+/// Counted per conversation rather than once for everything. A single counter
+/// is simpler and was what this had, but it makes every conversation's snapshot
+/// sensitive to every other one's turns: with a few sessions busy, four
+/// consecutive reads can all be invalidated by activity that has nothing to do
+/// with the conversation being read, and the fallback that follows refuses to
+/// call anything interrupted. The result is that the busier the application
+/// gets, the less able it becomes to report a turn that really did crash —
+/// exactly backwards.
+#[derive(Default)]
+struct Table {
+    by_conversation: HashMap<String, Occupant>,
+    /// Kept for conversations nothing is holding, which is the whole point: the
+    /// sequence that has to be detectable is a turn that started and finished
+    /// while a reader was away, and it leaves no occupant behind to count.
+    ///
+    /// Never pruned. An entry is a short string and a `u64`, and the number of
+    /// them is the number of conversations that have been active in this
+    /// process. Removing one on delete would reset its count, which is safe —
+    /// ids are uuids, so a later count cannot collide with a remembered one —
+    /// but it buys nothing worth the code.
+    revisions: HashMap<String, u64>,
+}
+
+impl Table {
+    /// Every insert and every removal goes through here. A change that forgets
+    /// to bump is a change a snapshot will not notice.
+    fn bump(&mut self, conversation_id: &str) {
+        let counter = self.revisions.entry(conversation_id.to_string()).or_insert(0);
+        *counter = counter.wrapping_add(1);
+    }
+
+    fn revision(&self, conversation_id: &str) -> u64 {
+        self.revisions.get(conversation_id).copied().unwrap_or(0)
+    }
+}
+
 #[derive(Default)]
 pub struct TurnCoordinator {
-    occupied: Mutex<HashMap<String, Occupant>>,
+    occupied: Mutex<Table>,
+}
+
+/// The coordinator as it was at one instant, for a reader that then goes and
+/// reads something else and needs to know whether it moved in between.
+///
+/// The revision is what makes it a snapshot. Comparing the held turn id alone
+/// would miss `None` → a turn that started and finished → `None`, which is
+/// exactly the sequence that leaves a `running` row behind for a turn that is
+/// genuinely over — or, read the other way round, has a live turn's row judged
+/// against a moment before it existed.
+pub struct Observed {
+    conversation_id: String,
+    held: Option<String>,
+    revision: u64,
+}
+
+impl Observed {
+    pub fn held(&self) -> Option<&str> {
+        self.held.as_deref()
+    }
 }
 
 impl TurnCoordinator {
@@ -119,7 +181,7 @@ impl TurnCoordinator {
         Self::default()
     }
 
-    fn lock(&self) -> MutexGuard<'_, HashMap<String, Occupant>> {
+    fn lock(&self) -> MutexGuard<'_, Table> {
         self.occupied.lock().unwrap_or_else(|e| e.into_inner())
     }
 
@@ -154,10 +216,10 @@ impl TurnCoordinator {
         let cancel = CancellationToken::new();
         {
             let mut map = self.lock();
-            if let Some(occupant) = map.get(conversation_id) {
+            if let Some(occupant) = map.by_conversation.get(conversation_id) {
                 return Err(occupant.busy());
             }
-            map.insert(
+            map.by_conversation.insert(
                 conversation_id.to_string(),
                 Occupant::Turn(ActiveTurn {
                     turn_id: turn_id.clone(),
@@ -165,6 +227,7 @@ impl TurnCoordinator {
                     origin,
                 }),
             );
+            map.bump(conversation_id);
         }
         Ok(TurnLease {
             coordinator: Arc::clone(self),
@@ -186,13 +249,14 @@ impl TurnCoordinator {
         let operation_id = uuid::Uuid::new_v4().to_string();
         {
             let mut map = self.lock();
-            if let Some(occupant) = map.get(conversation_id) {
+            if let Some(occupant) = map.by_conversation.get(conversation_id) {
                 return Err(occupant.busy());
             }
-            map.insert(
+            map.by_conversation.insert(
                 conversation_id.to_string(),
                 Occupant::Mutation { operation_id: operation_id.clone(), kind },
             );
+            map.bump(conversation_id);
         }
         Ok(MutationLease {
             coordinator: Arc::clone(self),
@@ -210,7 +274,7 @@ impl TurnCoordinator {
     /// Returns whether a matching turn was found.
     pub fn cancel(&self, conversation_id: &str, turn_id: Option<&str>) -> bool {
         let map = self.lock();
-        match map.get(conversation_id) {
+        match map.by_conversation.get(conversation_id) {
             Some(Occupant::Turn(t)) if turn_id.is_none_or(|id| id == t.turn_id) => {
                 t.cancel.cancel();
                 true
@@ -219,22 +283,51 @@ impl TurnCoordinator {
         }
     }
 
-    /// Whether this exact turn is the one running on that conversation.
+    /// Which turn is running on that conversation, if any.
     ///
-    /// The live answer to a question the database cannot give. A turn's row
-    /// says `running` from the moment it starts until it reaches an ending, so
+    /// The live answer to a question the database cannot give. A turn's row says
+    /// `running` from the moment it starts until it reaches an ending, so
     /// anything that never reaches one — a kill, a panic, a task dropped at
     /// shutdown — leaves the row saying `running` for good. This says whether
-    /// that is still true, and a `running` row nobody holds is a turn that
+    /// that is still true, and a `running` row this does not name is a turn that
     /// stopped without saying so.
     ///
-    /// Checks the turn and not just the conversation: a later turn running on
-    /// the same conversation must not vouch for the one that died before it.
-    pub fn holds(&self, conversation_id: &str, turn_id: &str) -> bool {
-        matches!(
-            self.lock().get(conversation_id),
-            Some(Occupant::Turn(t)) if t.turn_id == turn_id,
-        )
+    /// Answers with the turn rather than a yes or no about one, so however many
+    /// rows are being judged are judged against a single read. Asking per row
+    /// would let a list come back measured against a table that moved between
+    /// the questions.
+    ///
+    /// A mutation lease is not a turn: it occupies the conversation, but nothing
+    /// is running under it and nothing in `turns` belongs to it.
+    pub fn held_turn(&self, conversation_id: &str) -> Option<String> {
+        self.observe(conversation_id).held
+    }
+
+    /// The held turn together with the revision it was read at.
+    ///
+    /// For a reader that will go away and read something slower — the database —
+    /// and then has to decide whether what it read can be judged against this.
+    /// Pair it with `unchanged_since`.
+    pub fn observe(&self, conversation_id: &str) -> Observed {
+        let map = self.lock();
+        let held = match map.by_conversation.get(conversation_id) {
+            Some(Occupant::Turn(t)) => Some(t.turn_id.clone()),
+            _ => None,
+        };
+        Observed {
+            conversation_id: conversation_id.to_string(),
+            held,
+            revision: map.revision(conversation_id),
+        }
+    }
+
+    /// Whether the observed conversation has stood still since `seen` was taken.
+    ///
+    /// Only that conversation. Answering for the whole table would make every
+    /// snapshot fail whenever anything else was busy, and the reader that asks
+    /// this gives up after a few tries and stops reporting crashes at all.
+    pub fn unchanged_since(&self, seen: &Observed) -> bool {
+        self.lock().revision(&seen.conversation_id) == seen.revision
     }
 
     /// Release, but only if the entry is still the one the lease took.
@@ -245,8 +338,9 @@ impl TurnCoordinator {
     /// stop that turn afterwards.
     fn release(&self, conversation_id: &str, id: &str) {
         let mut map = self.lock();
-        if map.get(conversation_id).is_some_and(|o| o.id() == id) {
-            map.remove(conversation_id);
+        if map.by_conversation.get(conversation_id).is_some_and(|o| o.id() == id) {
+            map.by_conversation.remove(conversation_id);
+            map.bump(conversation_id);
         }
     }
 }
@@ -425,6 +519,92 @@ mod tests {
         let c = coordinator();
         let _lease = c.try_acquire_mutation("conv-1", "delete").expect("free");
         assert!(!c.cancel("conv-1", None));
+    }
+
+    /// The sequence that defeats comparing held ids: nobody, then a turn that
+    /// starts and finishes, then nobody again. Both ends look identical, and
+    /// in between a `running` row appeared that a reader holding the first
+    /// observation would judge as a turn nobody is running.
+    #[test]
+    fn a_turn_that_came_and_went_is_still_a_change() {
+        let c = coordinator();
+        let before = c.observe("conv-1");
+        assert!(before.held().is_none());
+
+        drop(c.try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "t1".into()).expect("free"));
+
+        let after = c.observe("conv-1");
+        assert_eq!(after.held(), before.held(), "the ids agree, which is the trap");
+        assert!(!c.unchanged_since(&before), "and the revision does not");
+    }
+
+    /// The other half: a reader that saw nothing must not be allowed to judge
+    /// a turn that started while it was away.
+    #[test]
+    fn a_turn_starting_after_the_observation_invalidates_it() {
+        let c = coordinator();
+        let before = c.observe("conv-1");
+
+        let _lease = c.try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "t1".into()).unwrap();
+
+        assert!(!c.unchanged_since(&before));
+        // A fresh observation is good again, and names the turn.
+        let now = c.observe("conv-1");
+        assert_eq!(now.held(), Some("t1"));
+        assert!(c.unchanged_since(&now));
+    }
+
+    /// Every occupant counts, turns and writes alike — a delete taking the
+    /// conversation is as much a change of state as a turn taking it.
+    #[test]
+    fn a_mutation_moves_the_revision_too() {
+        let c = coordinator();
+        let before = c.observe("conv-1");
+
+        let lease = c.try_acquire_mutation("conv-1", "a delete").unwrap();
+        assert!(!c.unchanged_since(&before));
+        // ...and it is not mistaken for a turn.
+        assert!(c.observe("conv-1").held().is_none());
+
+        let mid = c.observe("conv-1");
+        drop(lease);
+        assert!(!c.unchanged_since(&mid));
+    }
+
+    /// The reason the count is per conversation. Answered for the whole table,
+    /// a snapshot of one conversation is invalidated by every turn running
+    /// anywhere else — and the reader that asks this gives up after a few tries
+    /// and stops reporting crashes at all, so the busier the application gets
+    /// the less able it becomes to report one. Exactly backwards.
+    #[test]
+    fn another_conversations_turns_do_not_disturb_this_one() {
+        let c = coordinator();
+        let seen = c.observe("conv-1");
+
+        // A whole turn and a whole write, elsewhere.
+        drop(c.try_acquire_turn_as("conv-2", TurnOrigin::Desktop, "t".into()).unwrap());
+        drop(c.try_acquire_mutation("conv-2", "a delete").unwrap());
+        let _busy = c.try_acquire_turn_as("conv-3", TurnOrigin::OneBot, "u".into()).unwrap();
+
+        assert!(c.unchanged_since(&seen), "none of that was about conv-1");
+
+        // And conv-1's own comings and goings still are.
+        drop(c.try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "mine".into()).unwrap());
+        assert!(!c.unchanged_since(&seen));
+    }
+
+    /// A refused acquisition changed nothing, and must not say it did — every
+    /// spurious change is a snapshot re-read.
+    #[test]
+    fn being_turned_away_is_not_a_change() {
+        let c = coordinator();
+        let _held = c.try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "t1".into()).unwrap();
+        let before = c.observe("conv-1");
+
+        assert!(c.try_acquire_turn("conv-1", TurnOrigin::OneBot).is_err());
+        assert!(c.try_acquire_mutation("conv-1", "a delete").is_err());
+
+        assert!(c.unchanged_since(&before));
     }
 
     /// One turn panicking while holding the lock must not take the rest of the

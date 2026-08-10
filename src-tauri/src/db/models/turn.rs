@@ -12,10 +12,16 @@ use crate::db::schema::turns;
 /// what lets nothing be written from a destructor: destructors do not run for a
 /// kill, and leaving the row alone is already the truthful record.
 ///
-/// `Cancelled` is the user pressing Stop. `Interrupted` is the process dying.
-/// The transcript has always shown these as the same thing, and they are not:
-/// one is a decision, the other is an accident that may have left work half
-/// done.
+/// `Cancelled` is the user pressing Stop. `Interrupted` is a turn that never
+/// reached an ending. The transcript has always shown these as the same thing,
+/// and they are not: one is a decision, the other is an accident that may have
+/// left work half done.
+///
+/// Stored, `Interrupted` is only ever written by startup reconciliation, so it
+/// does mean the process died. Reported — `conversation_snapshot` substitutes
+/// it for a `running` row the coordinator is not holding — it means less than
+/// that: a task that panicked or was dropped while the application carried on
+/// looks identical. Nothing may read a cause into either.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TurnStatus {

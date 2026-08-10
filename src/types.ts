@@ -142,6 +142,43 @@ export interface ToolCallDisplay {
   retry_reason?: string
 }
 
+/** One run of the agent loop, as the backend recorded it.
+ *
+ *  `status` is not a raw column. A turn that stopped without recording an
+ *  ending leaves `running` behind, and only startup reconciliation rewrites
+ *  that, so the stored value alone would have a turn that ended an hour ago
+ *  read as one still going. The backend decides against its live register of
+ *  what is running and sends the answer; there is nothing here that could
+ *  ask — which is also why nothing here should read a cause into it. */
+export interface TurnRecord {
+  id: string
+  /** `running` | `done` | `cancelled` | `failed` | `interrupted`. A value from a
+   *  later build travels through as written rather than being flattened into
+   *  one of these, so treat anything unrecognised as "no opinion". */
+  status: string
+  /** What it was doing when it last said anything: `streaming` |
+   *  `awaiting_approval` | `running_tool` | `compacting`. Written before the
+   *  thing it names, so on an interrupted turn this is where it died. */
+  phase: string | null
+  /** The call `phase` refers to, when it refers to one. */
+  phase_tool: string | null
+  error: string | null
+  started_at: number
+  ended_at: number | null
+}
+
+/** A conversation as of one instant.
+ *
+ *  Replaces three parallel requests. Those could interleave with a running turn
+ *  — the tree fetched before a tool result landed, the turns after — and the
+ *  result was a conversation that was never true at any moment. */
+export interface ConversationSnapshot {
+  conversation: Conversation
+  tree: MessageTree
+  turns: TurnRecord[]
+  pending_approvals: PendingApprovalInfo[]
+}
+
 /** A tool call the backend is still holding a turn open for. Recovered on load,
  *  since the streamed event that first announced it is gone by then. */
 export interface PendingApprovalInfo {
@@ -204,6 +241,13 @@ export interface Message {
   /** Only on compaction summaries: the first message the summary stands in
    *  front of. */
   compact_anchor_id?: string | null
+  /** Which run of the agent loop wrote this row. Null on rows written before
+   *  turns were recorded, and on compaction summaries, which belong to no one
+   *  turn's output. */
+  turn_id?: string | null
+  /** Only on `role: 'tool'` rows: `success` | `denied` | `error`. Null reads as
+   *  success — rows written before the column existed all claimed as much. */
+  tool_outcome?: string | null
   _blocks?: ContentBlock[]
 }
 

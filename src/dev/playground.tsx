@@ -201,13 +201,15 @@ function TurnCase({
   const [index, setIndex] = useState(branch?.index ?? 1)
   const headline = status === 'streaming'
     ? '处理中…'
-    : status === 'interrupted'
-      ? '已中断'
-      : status === 'awaiting-input'
-        ? '等待你的响应'
-        : durationMs != null
-          ? `已处理 ${formatDuration(durationMs)}`
-          : `${steps.length} 个步骤`
+    : status === 'crashed'
+      ? '还没结束就中断了'
+      : status === 'interrupted'
+        ? '已中断'
+        : status === 'awaiting-input'
+          ? '等待你的响应'
+          : durationMs != null
+            ? `已处理 ${formatDuration(durationMs)}`
+            : `${steps.length} 个步骤`
 
   return (
     <div className="group/turn w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
@@ -664,6 +666,17 @@ function Gallery() {
               status: 'pending',
               arguments: ASK_USER_ARGS,
             })} />
+            {/* 问题留在屏幕上，表单没了——发不出去了，取而代之的是它的下场。 */}
+            <ToolCallBlock data={tool({
+              tool_name: 'ask_user',
+              status: 'orphaned',
+              arguments: ASK_USER_ARGS,
+            })} />
+            <ToolCallBlock data={tool({
+              tool_name: 'ask_user',
+              status: 'error',
+              arguments: ASK_USER_ARGS,
+            })} />
             <ToolCallBlock data={tool({
               tool_name: 'web_search',
               status: 'pending',
@@ -750,6 +763,24 @@ function Gallery() {
               arguments: PLAN_ARGS,
               result: 'The user sent the plan back: 先别动 handler.rs，只加测试。',
             })} />
+            {/* 重载后才见得到的那几种：tool_outcome 落库以后，拒绝和失败不再
+                退化成绿勾；未答复但 turn 仍在跑的调用也不再被写成"已失效"。
+                在这之前它们都只会渲染出一个空壳。 */}
+            <ToolCallBlock data={tool({
+              tool_name: 'exit_plan',
+              status: 'error',
+              arguments: PLAN_ARGS,
+            })} />
+            <ToolCallBlock data={tool({
+              tool_name: 'enter_plan',
+              status: 'running',
+              arguments: JSON.stringify({ reason: '还在等这次调用跑完。' }),
+            })} />
+            <ToolCallBlock data={tool({
+              tool_name: 'enter_plan',
+              status: 'orphaned',
+              arguments: JSON.stringify({ reason: '问这个的那一轮已经没了。' }),
+            })} />
           </div>
         </Section>
 
@@ -794,6 +825,22 @@ function Gallery() {
               result={null}
             />
             <TurnCase label="interrupted · 无结论" status="interrupted" result={null} />
+            {/* 崩溃时最后一个工具后面还有文字：正是会被读成"已完成"的那种。
+                默认展开，因为断在哪才是这个状态唯一要说的事。 */}
+            <TurnCase
+              label="crashed · 尾部有文字也不算完成"
+              status="crashed"
+              defaultOpen
+              result="改完了，文件已更新。"
+            />
+            <TurnCase
+              label="crashed · 工具跑到一半"
+              status="crashed"
+              defaultOpen
+              steps={[step({ kind: 'tool', data: tool({ tool_name: 'edit_file', status: 'orphaned' }) })]}
+              result={null}
+              durationMs={null}
+            />
             <TurnCase label="empty · 一条文本都没有" status="empty" steps={[]} result={null} durationMs={null} />
             <TurnCase label="无时长 · 退化显示步骤数" status="complete" durationMs={null} />
             <TurnCase label="40 个步骤" status="complete" steps={MANY_STEPS} />

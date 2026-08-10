@@ -35,10 +35,14 @@ use crate::turn::TurnCoordinator;
 /// whatever the row says. Startup reconciliation is then just the degenerate
 /// case of the same rule — an empty coordinator — persisted so the conclusion
 /// does not have to be re-derived forever.
-fn was_cut_off(turn: &Turn, coordinator: &TurnCoordinator) -> bool {
+///
+/// `held` is the turn the coordinator has on this conversation, read once for
+/// however many rows are being judged. Asking it per row would let a list be
+/// answered against two different moments.
+pub(crate) fn was_cut_off(turn: &Turn, held: Option<&str>) -> bool {
     match turn.status() {
         Some(TurnStatus::Interrupted) => true,
-        Some(TurnStatus::Running) => !coordinator.holds(&turn.conversation_id, &turn.id),
+        Some(TurnStatus::Running) => held != Some(turn.id.as_str()),
         // Done, cancelled and failed all reached an ending. A status this build
         // does not recognise is not one to invent an interruption from.
         _ => false,
@@ -95,8 +99,10 @@ pub(crate) fn block(
     let candidates =
         crate::db::ops::turn::unreported_for_conversation(conn, conversation_id, asking, WINDOW)
             .ok()?;
+    let held = coordinator.held_turn(conversation_id);
     // Newest first, the order the query returns.
-    let cut_off: Vec<&Turn> = candidates.iter().filter(|t| was_cut_off(t, coordinator)).collect();
+    let cut_off: Vec<&Turn> =
+        candidates.iter().filter(|t| was_cut_off(t, held.as_deref())).collect();
     let picked = choose(&cut_off);
     if picked.is_empty() {
         return None;

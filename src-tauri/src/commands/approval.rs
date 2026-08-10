@@ -75,28 +75,29 @@ pub struct PendingApprovalInfo {
 /// The transcript alone cannot answer that. A call with no matching tool row is
 /// either waiting, or was abandoned when its turn died — and those look
 /// identical in the database. This is the live half of the answer.
-#[tauri::command]
-pub async fn list_pending_approvals(
-    app: tauri::AppHandle,
-    conversation_id: String,
-) -> Result<Vec<PendingApprovalInfo>, String> {
+/// Synchronous on purpose. The guard is a `std::sync::MutexGuard` and must not
+/// be held across an await; a function that cannot await cannot hold it across
+/// one.
+///
+/// Not a command any more. It was one, and the caller had to pair it with two
+/// separate reads of the database and hope nothing moved between the three —
+/// `conversation_snapshot` asks for all of it at once and calls this last, so
+/// every approval belonging to a row it read is in the answer.
+pub(crate) fn pending_for(
+    app: &tauri::AppHandle,
+    conversation_id: &str,
+) -> Vec<PendingApprovalInfo> {
     let waiters = app.state::<ApprovalWaiters>();
-    // Scoped so the guard is dropped before the function returns; a
-    // `std::sync::MutexGuard` must not be held across an await point, and
-    // keeping it out of the tail makes that impossible by construction.
-    let out = {
-        let map = waiters.lock();
-        map.iter()
-            .filter(|(_, p)| p.conversation_id == conversation_id)
-            .map(|(id, p)| PendingApprovalInfo {
-                approval_id: id.clone(),
-                assistant_message_id: p.assistant_message_id.clone(),
-                provider_call_id: p.provider_call_id.clone(),
-                origin_call_id: p.origin_call_id.clone(),
-                tool_name: p.tool_name.clone(),
-                retry_reason: p.retry_reason.clone(),
-            })
-            .collect()
-    };
-    Ok(out)
+    let map = waiters.lock();
+    map.iter()
+        .filter(|(_, p)| p.conversation_id == conversation_id)
+        .map(|(id, p)| PendingApprovalInfo {
+            approval_id: id.clone(),
+            assistant_message_id: p.assistant_message_id.clone(),
+            provider_call_id: p.provider_call_id.clone(),
+            origin_call_id: p.origin_call_id.clone(),
+            tool_name: p.tool_name.clone(),
+            retry_reason: p.retry_reason.clone(),
+        })
+        .collect()
 }

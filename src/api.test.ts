@@ -55,10 +55,30 @@ describe('api', () => {
   })
 
   describe('messages', () => {
-    it('loadMessages sends conversationId', async () => {
-      mockInvoke.mockResolvedValueOnce([])
-      await api.loadMessages('conv-1')
-      expect(mockInvoke).toHaveBeenCalledWith('load_messages', { conversationId: 'conv-1' })
+    // The only way in. The three requests it replaced could interleave with a
+    // running turn, and what came back described no moment that ever existed.
+    it('conversationSnapshot reads the whole conversation at once', async () => {
+      mockInvoke.mockResolvedValueOnce({
+        conversation: {},
+        tree: { messages: [], head_message_id: null, branches: [] },
+        turns: [],
+        pending_approvals: [],
+      })
+      const snap = await api.conversationSnapshot('conv-1')
+      expect(mockInvoke).toHaveBeenCalledWith('conversation_snapshot', { conversationId: 'conv-1' })
+      // Four things, or it is not a snapshot of anything.
+      expect(Object.keys(snap).sort()).toEqual([
+        'conversation', 'pending_approvals', 'tree', 'turns',
+      ])
+    })
+
+    it('switchBranch moves the head and reports nothing back', async () => {
+      mockInvoke.mockResolvedValueOnce(undefined)
+      await api.switchBranch('conv-1', 'msg-1')
+      expect(mockInvoke).toHaveBeenCalledWith('switch_branch', {
+        conversationId: 'conv-1',
+        messageId: 'msg-1',
+      })
     })
 
     it('deleteMessage names the conversation the subtree belongs to', async () => {
@@ -248,11 +268,6 @@ describe('api', () => {
       expect(mockInvoke).toHaveBeenCalledWith('respond_to_ask', { approvalId: 'appr-3', response: 'my answer' })
     })
 
-    it('listPendingApprovals is scoped to one conversation', async () => {
-      mockInvoke.mockResolvedValueOnce([])
-      await api.listPendingApprovals('conv-1')
-      expect(mockInvoke).toHaveBeenCalledWith('list_pending_approvals', { conversationId: 'conv-1' })
-    })
   })
 
   describe('logs', () => {

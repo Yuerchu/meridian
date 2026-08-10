@@ -280,3 +280,69 @@ describe('reconcileTurns', () => {
     expect(settled[0].status).toBe('complete')
   })
 })
+
+describe('buildTurns — turns that never finished', () => {
+  const crashed = (...ids: string[]) => ({ crashedTurnIds: new Set(ids) })
+
+  /// The reading this status exists to prevent. A turn killed a moment after
+  /// writing a paragraph leaves text sitting past its last tool call, which is
+  /// indistinguishable from an answer — so it would collapse itself with a tick
+  /// beside it and say nothing about the tool that may have run.
+  it('outranks the trailing text that would otherwise read as an answer', () => {
+    const u = msg('user', { content: 'q', turn_id: 't1' })
+    const a = msg('assistant', {
+      turn_id: 't1',
+      _blocks: [tool('edit_file'), text('Done — I updated the file.')],
+    })
+
+    expect(buildTurns([u, a]).at(-1)!.status).toBe('complete')
+    expect(buildTurns([u, a], crashed('t1')).at(-1)!.status).toBe('crashed')
+  })
+
+  /// Regenerating writes a new answer under the *same* question row, so the
+  /// group ends up holding a question belonging to the turn that died and an
+  /// answer belonging to the one that worked. Judging the group by any row that
+  /// crashed marks the good answer as crashed, permanently.
+  it('does not inherit a crash from the answer that was regenerated away', () => {
+    const u = msg('user', { content: 'q', turn_id: 'dead' })
+    const fresh = msg('assistant', { turn_id: 'good', _blocks: [text('this one worked')] })
+
+    const turns = buildTurns([u, fresh], crashed('dead'))
+    expect(turns.at(-1)!.status).toBe('complete')
+  })
+
+  /// And the case the question really does have to speak for: killed before the
+  /// model said anything at all, so there is no answer row to ask.
+  it('falls back to the question when the turn died before answering', () => {
+    const u = msg('user', { content: 'q', turn_id: 'dead' })
+    expect(buildTurns([u], crashed('dead')).at(-1)!.status).toBe('crashed')
+  })
+
+  /// A live stream is being watched right now; turn records are read when a
+  /// conversation is opened or a turn ends. The fresher signal wins.
+  it('yields to a stream that is actually in flight', () => {
+    const u = msg('user', { content: 'q', turn_id: 't1' })
+    const a = msg('assistant', { turn_id: 't1', _blocks: [text('...')] })
+    const ctx = { streaming: true, ...crashed('t1') }
+    expect(buildTurns([u, a], ctx).at(-1)!.status).toBe('streaming')
+  })
+
+  /// Without a header there is nowhere to say it. A turn cut off part way
+  /// through a sentence has no tool calls, so the ordinary rule would render it
+  /// as a sentence that simply stops.
+  it('is always worth collapsing, even with nothing in it', () => {
+    const u = msg('user', { content: 'q', turn_id: 't1' })
+    const a = msg('assistant', { turn_id: 't1', _blocks: [text('half a sen')] })
+
+    expect(hasCollapsibleProcess(buildTurns([u, a]).at(-1)!)).toBe(false)
+    expect(hasCollapsibleProcess(buildTurns([u, a], crashed('t1')).at(-1)!)).toBe(true)
+  })
+
+  /// Rows written before turns were recorded carry no id, and inventing an
+  /// answer about them is exactly what this feature is meant to stop.
+  it('says nothing about rows that name no turn', () => {
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', { _blocks: [tool('read_file')] })
+    expect(buildTurns([u, a], crashed('t1')).at(-1)!.status).toBe('interrupted')
+  })
+})
