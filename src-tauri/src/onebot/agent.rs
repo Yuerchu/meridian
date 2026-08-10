@@ -10,11 +10,12 @@ use crate::db::DbPool;
 use crate::db::models::message::NewMessage;
 use crate::db::models::turn::TurnPhase;
 use crate::mcp::McpRegistry;
-use crate::provider::{self, ChatMessage, ChatParams, ChatStream, StreamEvent, ToolCall};
+use crate::provider::{self, ChatMessage, ChatParams, ToolCall};
 use crate::secrets::SecretsManager;
 use crate::tools::{self, ToolRegistry};
 use crate::util::{get_conn, now_ms};
-use crate::agent::{build_messages_with_senders, is_context_window_error, is_retryable_stream_error, microcompact, mid_turn_compact, resolve_provider_config, trim_to_context_limit, StreamResult, TokenBudget, MAX_STREAM_RETRIES, STREAM_RETRY_BASE};
+use crate::agent::engine::consume_stream;
+use crate::agent::{build_messages_with_senders, is_context_window_error, is_retryable_stream_error, microcompact, mid_turn_compact, resolve_provider_config, trim_to_context_limit, TokenBudget, MAX_STREAM_RETRIES, STREAM_RETRY_BASE};
 
 /// `(tool_call, sandbox_block_reason)` → approved. The reason is `Some` only
 /// for the retry-without-sandbox escalation ask, so the prompt can say why a
@@ -25,8 +26,6 @@ pub type ApprovalFn = Box<dyn Fn(ToolCall, Option<String>) -> Pin<Box<dyn Future
 /// execute, so headless frontends can deliver mid-turn commentary in order
 /// (the final iteration's text is the return value instead).
 pub type TextNotifyFn = Box<dyn Fn(String) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
-
-const STREAM_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// What one round of a headless turn left behind, for the caller to report.
 ///
@@ -130,147 +129,17 @@ pub fn turn_stop_payload(
     })
 }
 
-async fn consume_stream_headless(
-    mut stream: ChatStream,
-    cancel: &CancellationToken,
-    app: Option<&tauri::AppHandle>,
-    message_id: &str,
-    conversation_id: &str,
-) -> Result<StreamResult, String> {
-    use futures::StreamExt;
+/// A QQ turn answer travels over the chat transport; these events are a
+/// courtesy to a desktop window that may not even be open. So a send that
+/// fails is not the turn failing -- see the Emit trait for the desktop
+/// opposite reading.
+struct BestEffortEmit(tauri::AppHandle);
 
-    let mut text = String::new();
-    let mut reasoning = String::new();
-    let mut signature = String::new();
-    let mut tool_acc: Vec<(String, String, String)> = Vec::new();
-    let mut usage = None;
-    let mut finish_reason = None;
-    // Some OpenAI-compatible providers inline reasoning as <think> tags in the
-    // text stream instead of a separate reasoning field; route it accordingly.
-    let mut think_parser = crate::agent::InlineHiddenTagParser::new_streaming(vec![
-        crate::agent::InlineTagSpec { tag: (), open: "<think>", close: "</think>" },
-    ]);
-    // See the desktop consumer: only the stream running out means the model
-    // reached the end of its answer.
-    let mut ran_to_completion = false;
-
-    loop {
-        tokio::select! {
-            _ = cancel.cancelled() => { break; }
-            chunk = tokio::time::timeout(STREAM_IDLE_TIMEOUT, stream.next()) => {
-                match chunk {
-                    Err(_) => {
-                        return Err("Stream idle timeout".to_string());
-                    }
-                    Ok(Some(Ok(StreamEvent::Text { content: ref s }))) => {
-                        let chunk = think_parser.push_str(s);
-                        if !chunk.visible_text.is_empty() {
-                            text.push_str(&chunk.visible_text);
-                            if let Some(app) = app {
-                                let _ = app.emit("chat-stream", serde_json::json!({
-                                    "type": "text", "content": &chunk.visible_text, "message_id": message_id,
-                                    "conversation_id": conversation_id,
-                                }));
-                            }
-                        }
-                        for tag in &chunk.extracted {
-                            reasoning.push_str(&tag.content);
-                            if let Some(app) = app {
-                                let _ = app.emit("chat-stream", serde_json::json!({
-                                    "type": "reasoning", "content": &tag.content, "message_id": message_id,
-                                    "conversation_id": conversation_id,
-                                }));
-                            }
-                        }
-                    }
-                    Ok(Some(Ok(StreamEvent::Reasoning { content: ref s }))) => {
-                        reasoning.push_str(s);
-                        if let Some(app) = app {
-                            let _ = app.emit("chat-stream", serde_json::json!({
-                                "type": "reasoning", "content": s, "message_id": message_id,
-                                "conversation_id": conversation_id,
-                            }));
-                        }
-                    }
-                    Ok(Some(Ok(StreamEvent::ReasoningSignature { signature: ref s }))) => {
-                        signature.push_str(s);
-                    }
-                    Ok(Some(Ok(StreamEvent::ToolCallStart { index, ref id, ref name }))) => {
-                        // Guard against a malformed/hostile endpoint sending a huge
-                        // index that would balloon the Vec allocation.
-                        if index >= 256 {
-                            return Err(format!("tool call index {index} out of range"));
-                        }
-                        while tool_acc.len() <= index {
-                            tool_acc.push((String::new(), String::new(), String::new()));
-                        }
-                        tool_acc[index] = (id.clone(), name.clone(), String::new());
-                    }
-                    Ok(Some(Ok(StreamEvent::ToolCallDelta { index, ref arguments }))) => {
-                        if let Some(entry) = tool_acc.get_mut(index) {
-                            entry.2.push_str(arguments);
-                        }
-                    }
-                    Ok(Some(Ok(StreamEvent::ToolCallDone { index, ref arguments }))) => {
-                        if let Some(entry) = tool_acc.get_mut(index) {
-                            entry.2 = arguments.clone();
-                        }
-                    }
-                    Ok(Some(Ok(StreamEvent::UsageUpdate { usage: ref u }))) => {
-                        usage = Some(u.clone());
-                    }
-                    Ok(Some(Ok(StreamEvent::Stop { ref reason, usage: ref u }))) => {
-                        if let Some(u) = u {
-                            usage = Some(u.clone());
-                        }
-                        finish_reason = Some(reason.clone());
-                    }
-                    Ok(Some(Ok(StreamEvent::Error { ref message }))) => {
-                        return Err(message.clone());
-                    }
-                    Ok(Some(Ok(StreamEvent::MessageStart { .. }))) => {}
-                    Ok(Some(Err(e))) => {
-                        return Err(e.to_string());
-                    }
-                    Ok(None) => { ran_to_completion = true; break; }
-                }
-            }
-        }
+impl crate::agent::engine::Emit for BestEffortEmit {
+    fn emit(&self, channel: &str, payload: serde_json::Value) -> Result<(), String> {
+        let _ = self.0.emit(channel, payload);
+        Ok(())
     }
-
-    let tail = think_parser.finish();
-    if !cancel.is_cancelled() {
-        if let Some(app) = app {
-            if !tail.visible_text.is_empty() {
-                let _ = app.emit("chat-stream", serde_json::json!({
-                    "type": "text", "content": &tail.visible_text, "message_id": message_id,
-                    "conversation_id": conversation_id,
-                }));
-            }
-            for tag in &tail.extracted {
-                let _ = app.emit("chat-stream", serde_json::json!({
-                    "type": "reasoning", "content": &tag.content, "message_id": message_id,
-                    "conversation_id": conversation_id,
-                }));
-            }
-        }
-    }
-    text.push_str(&tail.visible_text);
-    for tag in tail.extracted {
-        reasoning.push_str(&tag.content);
-    }
-
-    let tool_calls: Vec<provider::ToolCall> = if cancel.is_cancelled() {
-        vec![]
-    } else {
-        tool_acc
-            .into_iter()
-            .filter(|(id, _, _)| !id.is_empty())
-            .map(|(id, name, args)| provider::ToolCall { id, name, arguments: args })
-            .collect()
-    };
-
-    Ok(StreamResult { text, reasoning, signature, tool_calls, usage, finish_reason, ran_to_completion })
 }
 
 /// One model call with no tools, no history and no persistence — used by the
@@ -429,6 +298,11 @@ async fn headless_chat_inner(
     coordinator: Option<&Arc<crate::turn::TurnCoordinator>>,
     progress: &mut TurnProgress,
 ) -> Result<String, String> {
+    // Every stream event this round sends goes through here. `None` when no
+    // window is attached, which for a QQ turn is the ordinary case.
+    let emitter = app.map(|a| BestEffortEmit(a.clone()));
+    let emit = emitter.as_ref().map(|e| e as &dyn crate::agent::engine::Emit);
+
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
     let _sleep_guard = {
         let sleep_pref = {
@@ -813,7 +687,7 @@ async fn headless_chat_inner(
                     chat_messages.clone(), tool_defs.clone(), params.clone()
                 ).await;
                 let try_result = match stream_result {
-                    Ok(stream) => consume_stream_headless(stream, cancel, app, &assistant_msg_id, conversation_id).await,
+                    Ok(stream) => consume_stream(stream, cancel, emit, &assistant_msg_id, conversation_id).await,
                     Err(e) => Err(e.to_string()),
                 };
                 match try_result {
@@ -841,7 +715,7 @@ async fn headless_chat_inner(
                         let stream = provider.stream_chat_with_tools(
                             chat_messages.clone(), tool_defs.clone(), params.clone()
                         ).await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
-                        let recovered = consume_stream_headless(stream, cancel, app, &assistant_msg_id, conversation_id)
+                        let recovered = consume_stream(stream, cancel, emit, &assistant_msg_id, conversation_id)
                             .await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
                         if recovered.ran_to_completion {
                             if let Some(report) = interrupted.take() {
@@ -1151,73 +1025,8 @@ async fn headless_chat_inner(
 mod tests {
     use super::*;
 
-    /// A stream of events that then ends, as a provider's would.
-    fn events(items: Vec<StreamEvent>) -> ChatStream {
-        Box::pin(futures::stream::iter(items.into_iter().map(Ok)))
-    }
-
-    /// A stream that never yields, so only cancellation ends the read.
-    fn never() -> ChatStream {
-        Box::pin(futures::stream::pending())
-    }
-
-    /// `Ok` from a stream read is not "the model answered". The read also
-    /// returns `Ok` when the user pressed Stop, because the half of the answer
-    /// that did arrive is worth keeping — which is exactly why the one caller
-    /// that needs "did the model get to the end" cannot use `Ok` for it.
-    ///
-    /// The caller is the interrupted-turn notice. Retiring it on a cancelled
-    /// read would mean a user who stops a turn a moment after starting it never
-    /// hears that a tool may have been left half-run.
-    #[tokio::test]
-    async fn a_cancelled_read_did_not_run_to_completion() {
-        let cancel = CancellationToken::new();
-        cancel.cancel();
-
-        let r = consume_stream_headless(never(), &cancel, None, "m1", "c1").await.unwrap();
-
-        assert!(!r.ran_to_completion, "stopped is not finished");
-    }
-
-    #[tokio::test]
-    async fn a_stream_that_ran_out_did_run_to_completion() {
-        let cancel = CancellationToken::new();
-
-        let r = consume_stream_headless(
-            events(vec![StreamEvent::Text { content: "hi".into() }]),
-            &cancel,
-            None,
-            "m1",
-            "c1",
-        )
-        .await
-        .unwrap();
-
-        assert!(r.ran_to_completion);
-        assert_eq!(r.text, "hi");
-        // And it says so without a stop event, which plenty of providers never
-        // send — so `finish_reason` could not have stood in for this.
-        assert!(r.finish_reason.is_none());
-    }
-
-    /// A provider that answers 200 and then refuses over SSE processed nothing.
-    /// That is an error rather than a completion, and the retry and
-    /// context-overflow branches upstream depend on it being one.
-    #[tokio::test]
-    async fn an_error_inside_the_stream_is_not_a_completion() {
-        let cancel = CancellationToken::new();
-
-        let r = consume_stream_headless(
-            events(vec![StreamEvent::Error { message: "context_length_exceeded".into() }]),
-            &cancel,
-            None,
-            "m1",
-            "c1",
-        )
-        .await;
-
-        assert!(matches!(r, Err(ref e) if e == "context_length_exceeded"));
-    }
+    // The stream-reading tests moved with the reader itself, to
+    // `agent::engine::stream`. They were never about OneBot.
 
     fn outcome(reply: Result<String, String>, aborted: bool) -> HeadlessOutcome {
         HeadlessOutcome {

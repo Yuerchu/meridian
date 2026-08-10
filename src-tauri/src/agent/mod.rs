@@ -2,6 +2,7 @@ mod base_prompt;
 mod compact;
 mod context;
 pub(crate) mod diagnostics;
+pub(crate) mod engine;
 mod file_access;
 pub(crate) mod interrupted;
 mod inline_tag;
