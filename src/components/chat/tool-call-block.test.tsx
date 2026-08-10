@@ -227,6 +227,38 @@ describe('the interactive cards say what became of them', () => {
     }
   })
 
+  /// A call waiting its turn arrives here as `running` — that is what an
+  /// unanswered call hydrates as — and gets corrected from its position. The
+  /// spinner is the only thing on screen claiming work is happening, so a card
+  /// that has not started must not have one.
+  it.each(['ask_user', 'enter_plan', 'exit_plan', 'run_command'])(
+    '%s says it is waiting its turn rather than spinning',
+    (name) => {
+      const args = {
+        ask_user: { questions: [{ id: 'q', question: 'Q?' }] },
+        enter_plan: { reason: 'r' },
+        exit_plan: { plan: '# p' },
+        run_command: { command: 'ls' },
+      }[name]!
+      const { container } = render(<ToolCallBlock data={toolCall(name, args, 'running')} queued />)
+      expect(screen.getByText(i18n.t('chat.tool.queued'))).toBeVisible()
+      expect(container.querySelectorAll('.animate-spin')).toHaveLength(0)
+    },
+  )
+
+  /// Only the one that has not started. Correcting a call that already has an
+  /// outcome would rewrite history, and correcting the one being asked about
+  /// would take its buttons away.
+  it('leaves anything but a running call as it was', () => {
+    for (const status of ['pending', 'completed', 'denied', 'error', 'orphaned'] as const) {
+      const { unmount } = render(
+        <ToolCallBlock data={toolCall('run_command', { command: 'ls' }, status)} queued />,
+      )
+      expect(screen.queryByText(i18n.t('chat.tool.queued')), status).toBeNull()
+      unmount()
+    }
+  })
+
   /// Two spinners side by side read as two things happening at once.
   it('does not spin twice over one running question', () => {
     const { container } = render(

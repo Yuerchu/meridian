@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTurns, formatDuration, hasCollapsibleProcess } from '@/lib/turns'
+import { buildTurns, formatDuration, hasCollapsibleProcess, markQueued } from '@/lib/turns'
 import { reconcileTurns } from '@/hooks/use-turns'
 import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
 
@@ -34,6 +34,50 @@ function tool(name: string, status: ToolCallDisplay['status'] = 'completed'): Co
 
 const text = (t: string): ContentBlock => ({ type: 'text', text: t })
 const thinking = (t: string): ContentBlock => ({ type: 'thinking', text: t })
+
+describe('markQueued', () => {
+  /// The whole reason it exists. All of a reply's calls are written into the
+  /// assistant row before any of them runs, so a snapshot taken partway through
+  /// hydrates every unanswered one as `running` — identical spinners, only one
+  /// of them true.
+  it('leaves the first unanswered call alone and queues the rest', () => {
+    expect(markQueued(['running', 'running', 'running'])).toEqual([false, true, true])
+  })
+
+  it('does not count a call that already has an outcome', () => {
+    expect(markQueued(['completed', 'error', 'denied', 'running', 'running']))
+      .toEqual([false, false, false, false, true])
+  })
+
+  /// A call sitting in front of the user is the one holding everything up, so it
+  /// is not queued — and it keeps its buttons, which a queued card has no use
+  /// for.
+  it('treats a call waiting on the user as the one in flight', () => {
+    expect(markQueued(['pending', 'running'])).toEqual([false, true])
+    expect(markQueued(['approved', 'running'])).toEqual([false, true])
+  })
+
+  /// Indexes have to line up with what the caller is rendering, which is a mix
+  /// of text, thinking and tool steps.
+  it('keeps its place past everything that is not a tool call', () => {
+    expect(markQueued([null, 'running', null, 'running', null]))
+      .toEqual([false, false, false, true, false])
+  })
+
+  /// Nothing outstanding means nothing waiting, however many calls ran.
+  it('queues nothing when every call has finished', () => {
+    expect(markQueued(['completed', 'completed'])).toEqual([false, false])
+    expect(markQueued([])).toEqual([])
+  })
+
+  /// A tool row that failed to write leaves its call unanswered while a later
+  /// one has a result. Reading the earlier one as the live one is wrong — it
+  /// already ran — but it is what the transcript says, and inventing a better
+  /// answer here would mean guessing which of two unanswered calls is real.
+  it('follows the transcript when a result went missing', () => {
+    expect(markQueued(['running', 'completed', 'running'])).toEqual([false, false, true])
+  })
+})
 
 describe('buildTurns — grouping', () => {
   it('returns nothing for an empty conversation', () => {

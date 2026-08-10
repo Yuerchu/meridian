@@ -40,6 +40,7 @@ import {
 } from '@/components/ui/context-menu'
 import { convertFileSrc } from '@tauri-apps/api/core'
 import { isSubmitKey } from '@/hooks/use-coarse-pointer'
+import { markQueued } from '@/lib/turns'
 import { ToolCallBlock } from './tool-call-block'
 import { renderEmojisInText } from './emoji-renderer'
 import type { ContentBlock, Message as MessageData } from '@/types'
@@ -193,7 +194,7 @@ function TextBubbles({ content, isStreaming, oneBot, emojiMap }: { content: stri
   )
 }
 
-function AssistantBlock({ block, isLast, isStreaming, isLastMessage, oneBot, emojiMap }: { block: ContentBlock; isLast: boolean; isStreaming?: boolean; isLastMessage?: boolean; oneBot?: boolean; emojiMap?: EmojiMap }) {
+function AssistantBlock({ block, isLast, queued, isStreaming, isLastMessage, oneBot, emojiMap }: { block: ContentBlock; isLast: boolean; queued?: boolean; isStreaming?: boolean; isLastMessage?: boolean; oneBot?: boolean; emojiMap?: EmojiMap }) {
   if (block.type === 'thinking') {
     return <ThinkingBlock text={block.text} isStreaming={isLast && isStreaming} defaultExpanded={!!isLastMessage && isLast} />
   }
@@ -201,7 +202,7 @@ function AssistantBlock({ block, isLast, isStreaming, isLastMessage, oneBot, emo
     return <TextBubbles content={block.text} isStreaming={isLast && isStreaming} oneBot={oneBot} emojiMap={emojiMap} />
   }
   if (block.type === 'tool_call') {
-    return <MemoToolCallBlock data={block.data} />
+    return <MemoToolCallBlock data={block.data} queued={queued} />
   }
   return null
 }
@@ -249,17 +250,21 @@ function groupBlocks(blocks: ContentBlock[]): BlockUnit[] {
   return units
 }
 
-function ToolCallGroup({ items }: { items: ToolCallBlockItem[] }) {
+function ToolCallGroup({ items, queued }: { items: ToolCallBlockItem[]; queued: boolean[] }) {
   const { t } = useTranslation()
-  const hasActive = items.some(({ block }) =>
-    block.data.status === 'pending' || block.data.status === 'approved' || block.data.status === 'running',
+  // One that has not started is not a reason to open the group: the reader would
+  // find a card with nothing in it. What opens it is something happening or
+  // something being asked.
+  const hasActive = items.some(({ block, index }) =>
+    !queued[index]
+    && (block.data.status === 'pending' || block.data.status === 'approved' || block.data.status === 'running'),
   )
   return (
     <ChatToolGroup defaultExpanded={hasActive} className="my-3">
       <ChatToolGroupTrigger>{t('chat.tool.groupCount', { count: items.length })}</ChatToolGroupTrigger>
       <ChatToolGroupContent>
         {items.map(({ block, index }) => (
-          <MemoToolCallBlock key={index} data={block.data} className="my-0" />
+          <MemoToolCallBlock key={index} data={block.data} queued={queued[index]} className="my-0" />
         ))}
       </ChatToolGroupContent>
     </ChatToolGroup>
@@ -272,17 +277,22 @@ function AssistantBlocks({ blocks, isStreaming, isLastMessage, oneBot, emojiMap 
   const hasText = blocks.some((b) => b.type === 'text' && b.text.trim())
   const filtered = hasWebSearch && !hasText ? blocks.filter((b) => b.type !== 'thinking') : blocks
   const units = groupBlocks(filtered)
+  // Indexed against `filtered`, which is what every unit's `index` refers to.
+  const queued = markQueued(
+    filtered.map((b) => (b.type === 'tool_call' ? b.data.status : null)),
+  )
 
   return (
     <>
       {units.map((unit) =>
         unit.kind === 'tool-group' ? (
-          <ToolCallGroup key={`g${unit.items[0].index}`} items={unit.items} />
+          <ToolCallGroup key={`g${unit.items[0].index}`} items={unit.items} queued={queued} />
         ) : (
           <AssistantBlock
             key={unit.index}
             block={unit.block}
             isLast={unit.index === filtered.length - 1}
+            queued={queued[unit.index]}
             isStreaming={isStreaming}
             isLastMessage={isLastMessage}
             oneBot={oneBot}

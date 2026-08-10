@@ -6,7 +6,7 @@ import { fileIconUrl } from '@/lib/file-icon'
 import { AnimatePresence, motion } from 'motion/react'
 import {
   ArrowUturnCcwLeft, Ban, Check, ChevronUp, Circle, CircleCheck, CircleDashed,
-  CircleQuestion, Compass, FileText, ForwardStep, Globe, ListCheck,
+  CircleQuestion, Clock, Compass, FileText, ForwardStep, Globe, ListCheck,
   PaperPlane, Square, SquareCheck, SquareListUl, TriangleExclamation, Xmark,
 } from '@gravity-ui/icons'
 import { Button, Input } from '@heroui/react'
@@ -1266,6 +1266,8 @@ function mapChatToolState(status: ToolCallDisplay['status']): ChatToolState {
     case 'approved':
     case 'running':
       return 'input-available'
+    case 'queued':
+      return 'queued'
     case 'completed':
       return 'output-available'
     // Explicit rather than left to the default: an orphaned call really did
@@ -1352,6 +1354,10 @@ function CardOutcome({ status, detail }: { status: ToolCallDisplay['status']; de
         <CircleDashed className="w-3.5 h-3.5 animate-spin shrink-0" />,
         t('chat.tool.running'),
       )
+    // Still, because it is still. The spinner above is what claims work is
+    // happening, and for this one nothing is.
+    case 'queued':
+      return notice(<Clock className="w-3.5 h-3.5 shrink-0" />, t('chat.tool.queued'))
     default: {
       const unhandled: never = status
       throw new Error(`unhandled tool call status: ${String(unhandled)}`)
@@ -1359,18 +1365,25 @@ function CardOutcome({ status, detail }: { status: ToolCallDisplay['status']; de
   }
 }
 
-export function ToolCallBlock({ data: raw, className }: { data: ToolCallDisplay; className?: string }) {
+export function ToolCallBlock(
+  { data: raw, queued, className }: { data: ToolCallDisplay; queued?: boolean; className?: string },
+) {
   const { t } = useTranslation()
-  // A call cannot be pending without an id to answer it with. Normalised once
-  // here, at the point every card is dispatched from, so none of them has to
-  // remember the special case — and so none of them can draw a button that
-  // would address nothing.
-  const data: ToolCallDisplay = useMemo(
-    () => (raw.status === 'pending' && !raw.approval_id ? { ...raw, status: 'orphaned' } : raw),
-    [raw],
-  )
+  // Two corrections, both made once here where every card is dispatched from,
+  // so no individual card has to remember either.
+  //
+  // A call cannot be pending without an id to answer it with, or it draws a
+  // button that addresses nothing. And a call whose predecessor has not finished
+  // is not running, whatever the transcript says — that one is decided by
+  // position, which only the caller can see.
+  const data: ToolCallDisplay = useMemo(() => {
+    if (raw.status === 'pending' && !raw.approval_id) return { ...raw, status: 'orphaned' }
+    if (queued && raw.status === 'running') return { ...raw, status: 'queued' }
+    return raw
+  }, [raw, queued])
+  // Nothing to look at until it starts, so a queued call keeps itself shut.
   const isCompleted = data.status === 'completed' || data.status === 'denied'
-    || data.status === 'error' || data.status === 'orphaned'
+    || data.status === 'error' || data.status === 'orphaned' || data.status === 'queued'
 
   const parsedArgs: Record<string, unknown> = useMemo(() => {
     try {
@@ -1435,6 +1448,13 @@ export function ToolCallBlock({ data: raw, className }: { data: ToolCallDisplay;
         <ChatToolStatusIcon />
         <span className="font-medium text-foreground shrink-0">{toolLabel}</span>
         <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} />
+        {/* In the trigger, not the body: a queued card is collapsed, and a
+            standing clock beside a spinning one is too fine a distinction to
+            rest the whole answer on. The summary stays — with three commands
+            queued, which one this is matters as much as that it is waiting. */}
+        {data.status === 'queued' && (
+          <span className="ml-auto shrink-0 text-xs text-muted">{t('chat.tool.queued')}</span>
+        )}
       </ChatToolTrigger>
       <ChatToolContent>
         {fileDiffs

@@ -8,7 +8,7 @@ import {
   ChainOfThoughtContent,
   ChainOfThoughtTrigger,
 } from '@/components/ui/chain-of-thought'
-import type { TurnStep } from '@/lib/turns'
+import { markQueued, type TurnStep } from '@/lib/turns'
 import type { EmojiMap } from './emoji-renderer'
 
 const MemoToolCallBlock = React.memo(ToolCallBlock)
@@ -29,6 +29,13 @@ export interface TurnStepsProps {
  */
 export function TurnSteps({ steps, isOneBot, emojiMap, className }: TurnStepsProps) {
   const { t } = useTranslation()
+
+  // A turn's steps are already in dispatch order, across every iteration of the
+  // loop, so position is all this needs.
+  const queued = React.useMemo(
+    () => markQueued(steps.map((s) => (s.kind === 'tool' ? s.data.status : null))),
+    [steps],
+  )
 
   // Spacing comes from gap, not space-y: the tool cards are handed `my-0` to
   // drop their own margins, and Tailwind v4's space-y wraps its selector in
@@ -55,7 +62,9 @@ export function TurnSteps({ steps, isOneBot, emojiMap, className }: TurnStepsPro
             </div>
           )
         }
-        return <MemoToolCallBlock key={key} data={step.data} className="my-0" />
+        return (
+          <MemoToolCallBlock key={key} data={step.data} queued={queued[i]} className="my-0" />
+        )
       })}
     </div>
   )

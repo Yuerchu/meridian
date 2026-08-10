@@ -34,6 +34,7 @@
   "chat.tool.denyReasonPlaceholder": "告诉助手为什么拒绝…",
   "chat.tool.cancel": "取消",
   "chat.tool.running": "执行中…",
+  "chat.tool.queued": "排队中，等前一个跑完",
   "chat.tool.groupCount": "{{count}} 次工具调用",
   "chat.tool.askUser": "提问",
   "chat.tool.askUserPlaceholder": "输入你的回答…",

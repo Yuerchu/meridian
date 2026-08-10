@@ -612,6 +612,20 @@ function Gallery() {
               status: 'running',
               arguments: JSON.stringify({ path: 'src/lib/format.ts', content: WRITE_FILE_CONTENT }),
             })} />
+            {/* The pair worth looking at together: the transcript calls both of
+                these running, and only the first one is. Everything a reply asks
+                for is written down before any of it runs, so the difference has
+                to come from position. */}
+            <ToolCallBlock data={tool({
+              tool_name: 'run_command',
+              status: 'running',
+              arguments: JSON.stringify({ command: 'cargo test --lib' }),
+            })} />
+            <ToolCallBlock queued data={tool({
+              tool_name: 'run_command',
+              status: 'running',
+              arguments: JSON.stringify({ command: 'pnpm vitest run' }),
+            })} />
             <ToolCallBlock data={tool({
               tool_name: 'edit_file',
               status: 'pending',

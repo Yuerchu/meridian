@@ -128,8 +128,15 @@ export interface ToolCallDisplay {
   /** `orphaned` is a call the transcript shows as unanswered while nothing is
    *  waiting for a decision on it — its turn died. In the database it looks
    *  exactly like a pending call, so only the live registry tells them apart,
-   *  and only a pending one gets buttons. */
-  status: 'pending' | 'approved' | 'denied' | 'running' | 'completed' | 'error' | 'orphaned'
+   *  and only a pending one gets buttons.
+   *
+   *  `queued` is never stored and never arrives in an event. A reply's calls run
+   *  one at a time in the order the model wrote them, so only the first
+   *  unanswered one is doing anything; the rest read as `running` from the
+   *  transcript and are corrected at render from their position. Keeping it out
+   *  of the store is the point — a stored copy would have to be promoted every
+   *  time a result landed, and would be wrong in between. */
+  status: 'pending' | 'approved' | 'denied' | 'running' | 'queued' | 'completed' | 'error' | 'orphaned'
   result?: string
   /** What the buttons answer with while this call is `pending`. Minted by the
    *  backend per approval rather than taken from the provider's call id, which

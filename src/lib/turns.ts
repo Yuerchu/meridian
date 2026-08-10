@@ -99,6 +99,41 @@ export function answerAnchorId(turnId: string): string {
   return `${turnId}:answer`
 }
 
+/**
+ * Which of a reply's tool calls are only waiting their turn.
+ *
+ * The loop dispatches calls one at a time, in the order the model wrote them,
+ * and does not start the next until the last has returned. So the first call
+ * without a result is the one doing the work — whether it is running or sitting
+ * in front of the user — and everything after it has not begun.
+ *
+ * The transcript cannot say this on its own. All of a reply's calls are written
+ * into the assistant row before any of them runs, so a snapshot taken partway
+ * through hydrates every unanswered one as `running`: identical spinners, only
+ * one of them true.
+ *
+ * Derived here rather than stored. The answer changes every time a result lands,
+ * and a copy living in the blocks would need promoting on each `tool_result` —
+ * one more invariant to keep, wrong between the event and the next snapshot.
+ * Position is already in the data; this just reads it.
+ *
+ * Pass `null` for anything in the sequence that is not a tool call, so indexes
+ * line up with what the caller is rendering.
+ */
+export function markQueued(
+  statuses: readonly (ToolCallDisplay['status'] | null)[],
+): boolean[] {
+  let busy = false
+  return statuses.map((status) => {
+    // Everything else has an outcome, and an outcome means it ran.
+    const unfinished = status === 'pending' || status === 'approved' || status === 'running'
+    if (!unfinished) return false
+    if (busy) return true
+    busy = true
+    return false
+  })
+}
+
 export interface BuildTurnsContext {
   /** Whether the conversation has a stream in flight; only the last turn can be
    *  the one streaming. */
