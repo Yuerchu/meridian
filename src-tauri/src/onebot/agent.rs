@@ -14,7 +14,7 @@ use crate::provider::{self, ChatMessage, ChatParams, ToolCall};
 use crate::secrets::SecretsManager;
 use crate::tools::{self, ToolRegistry};
 use crate::util::{get_conn, now_ms};
-use crate::agent::engine::consume_stream;
+use crate::agent::engine::{self, consume_stream};
 use crate::agent::{build_messages_with_senders, is_context_window_error, is_retryable_stream_error, microcompact, mid_turn_compact, resolve_provider_config, trim_to_context_limit, TokenBudget, MAX_STREAM_RETRIES, STREAM_RETRY_BASE};
 
 /// `(tool_call, sandbox_block_reason)` → approved. The reason is `Some` only
@@ -79,12 +79,10 @@ async fn ask_bracketed(
     tc: &ToolCall,
     reason: Option<String>,
 ) -> bool {
-    crate::agent::turn_record::note_phase(
+    engine::in_phase(
         pool, turn_id, TurnPhase::AwaitingApproval, Some(&tc.name),
-    ).await;
-    let approved = (approval_fn)(tc.clone(), reason).await;
-    crate::agent::turn_record::note_phase(pool, turn_id, TurnPhase::Streaming, None).await;
-    approved
+        (approval_fn)(tc.clone(), reason),
+    ).await
 }
 
 /// Run something with the turn recorded as being inside a tool.
@@ -97,12 +95,7 @@ async fn run_bracketed<T>(
     tool_name: &str,
     work: impl std::future::Future<Output = T>,
 ) -> T {
-    crate::agent::turn_record::note_phase(
-        pool, turn_id, TurnPhase::RunningTool, Some(tool_name),
-    ).await;
-    let out = work.await;
-    crate::agent::turn_record::note_phase(pool, turn_id, TurnPhase::Streaming, None).await;
-    out
+    engine::in_phase(pool, turn_id, TurnPhase::RunningTool, Some(tool_name), work).await
 }
 
 /// The terminal `chat-stream` event for a turn that has ended.
@@ -631,28 +624,9 @@ async fn headless_chat_inner(
         // Create a new assistant message for this iteration. Scoped to the
         // iteration now that nothing after the loop reads it — the terminal
         // stop event, which used to, is the caller's to send.
-        let assistant_msg_id = uuid::Uuid::new_v4().to_string();
-        {
-            let pool = pool.clone();
-            let conv_id = conversation_id.to_string();
-            let msg_id = assistant_msg_id.clone();
-            let model_clone = params.model.clone();
-            let parent = parent_cursor.clone();
-            let turn = turn_id.to_string();
-            tokio::task::spawn_blocking(move || {
-                let mut conn = get_conn(&pool)?;
-                crate::db::ops::message::append_message(&mut conn, &NewMessage {
-                    id: &msg_id, conversation_id: &conv_id, role: "assistant", content: "",
-                    provider_id: None, model_id: Some(&model_clone), input_tokens: None,
-                    output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
-                    created_at: now_ms(), reasoning_content: None, rating: None, schema_version: 2,
-                    is_compact_summary: 0, sender_id: None,
-                    parent_id: None, compact_anchor_id: None, source: None,
-                    turn_id: Some(&turn), tool_outcome: None,
-                }, parent.as_deref()).map_err(|e| e.to_string())?;
-                Ok::<_, String>(())
-            }).await.map_err(|e| e.to_string())??;
-        }
+        let assistant_msg_id = engine::begin_assistant(
+            pool, conversation_id, turn_id, &params.model, parent_cursor.as_deref(),
+        ).await?;
         parent_cursor = Some(assistant_msg_id.clone());
 
         // Recorded whether or not anyone is watching: the caller decides what to
@@ -750,23 +724,15 @@ async fn headless_chat_inner(
         } else {
             None
         };
-        {
-            let pool = pool.clone();
-            let msg_id = assistant_msg_id.clone();
-            let content = result.text.clone();
-            let reasoning = if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) };
-            let tc_json = tool_calls_json.clone();
-            let inp = result.usage.as_ref().and_then(|u| u.prompt_tokens);
-            let out = result.usage.as_ref().and_then(|u| u.completion_tokens);
-            tokio::task::spawn_blocking(move || {
-                if let Ok(mut conn) = pool.get() {
-                    let _ = crate::db::ops::message::update_assistant_message(
-                        &mut conn, &msg_id, &content,
-                        reasoning.as_deref(), tc_json.as_deref(), inp, out,
-                    );
-                }
-            }).await.map_err(|e| e.to_string())?;
-        }
+        engine::complete_assistant(
+            pool,
+            &assistant_msg_id,
+            &result.text,
+            if result.reasoning.is_empty() { None } else { Some(result.reasoning.as_str()) },
+            tool_calls_json.as_deref(),
+            result.usage.as_ref().and_then(|u| u.prompt_tokens),
+            result.usage.as_ref().and_then(|u| u.completion_tokens),
+        ).await?;
 
         last_assistant_text = result.text.clone();
 
@@ -905,36 +871,13 @@ async fn headless_chat_inner(
                 }));
             }
 
-            {
-                let pool = pool.clone();
-                let conv_id = conversation_id.to_string();
-                let tool_msg_id = uuid::Uuid::new_v4().to_string();
-                let call_id = tc.id.clone();
-                let result_clone = tool_result.clone();
-                let parent = parent_cursor.clone();
-                let turn = turn_id.to_string();
-                let written = tokio::task::spawn_blocking(move || {
-                    let mut conn = pool.get().map_err(|e| e.to_string())?;
-                    crate::db::ops::message::append_message(&mut conn, &NewMessage {
-                        id: &tool_msg_id, conversation_id: &conv_id, role: "tool",
-                        content: &result_clone, provider_id: None, model_id: None,
-                        input_tokens: None, output_tokens: None,
-                        tool_calls: None, tool_call_id: Some(&call_id),
-                        sort_order: 0, created_at: now_ms(),
-                        reasoning_content: None, rating: None, schema_version: 2,
-                        is_compact_summary: 0, sender_id: None,
-                        parent_id: None, compact_anchor_id: None, source: None,
-                        turn_id: Some(&turn), tool_outcome: Some(outcome),
-                    }, parent.as_deref()).map(|_| tool_msg_id).map_err(|e| e.to_string())
-                }).await;
-
-                // Same trade as the desktop loop: the tool already ran, so keep
-                // going and leave the cursor on the last row that landed.
-                match written {
-                    Ok(Ok(id)) => parent_cursor = Some(id),
-                    Ok(Err(e)) => tracing::error!("failed to persist tool result: {e}"),
-                    Err(e) => tracing::error!("tool result write panicked: {e}"),
-                }
+            // `None` leaves the cursor where it is: the tool already ran, so
+            // the row is worth less than the turn.
+            if let Some(id) = engine::append_tool_result(
+                pool, conversation_id, turn_id, &tc.id, &tool_result, outcome,
+                parent_cursor.as_deref(),
+            ).await {
+                parent_cursor = Some(id);
             }
 
             chat_messages.push(ChatMessage::tool_result(&tc.id, &tool_result));

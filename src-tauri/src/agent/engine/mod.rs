@@ -11,8 +11,10 @@
 //! sub-agent run one without owning a window.
 
 pub(crate) mod stream;
+pub(crate) mod transcript;
 
 pub(crate) use stream::consume_stream;
+pub(crate) use transcript::{append_tool_result, begin_assistant, complete_assistant, in_phase};
 
 /// Where a turn's progress goes while it is still happening.
 ///

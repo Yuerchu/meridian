@@ -22,7 +22,7 @@ use crate::state::{AppDb, AppSecrets, AppTools, AppMcp, ApprovalDecision, Approv
 use crate::turn::{TurnLease, TurnOrigin};
 use crate::agent::{build_messages_with_senders, trailing_with_memory, build_file_access, file_access_prompt, estimate_tokens, microcompact, resolve_file_uris_in_messages, trim_to_context_limit, extract_tool_calls_from_blocks, parse_openai_tool_calls, serialize_tool_calls_openai, provider_secret_name, get_provider_api_key, resolve_provider_config, do_compact, mid_turn_compact, CompactCircuitBreaker, COMPACT_PROMPT, MAX_STREAM_RETRIES, STREAM_RETRY_BASE, is_context_window_error, is_retryable_stream_error, instruction_budget, load_project_instructions, TokenBudget};
 use crate::util::{get_conn, now_ms, take_bytes_at_char_boundary};
-use crate::agent::engine::consume_stream;
+use crate::agent::engine::{self, consume_stream};
 
 /// The desktop events are the answer. A window that missed one is showing a
 /// transcript that never catches up, so a send that fails ends the turn and the
@@ -180,20 +180,24 @@ async fn wait_for_approval(
     // After the card is on screen, so the recorded phase is never ahead of what
     // the user can actually see.
     let pool = app.state::<AppDb>().0.clone();
-    turn_record::note_phase(&pool, turn_id, TurnPhase::AwaitingApproval, Some(&tc.name)).await;
-    let decision = tokio::select! {
-        _ = cancel.cancelled() => None,
-        r = rx => r.ok(),
-    };
-    if decision.is_none() {
-        // Cancelled, or the sender was dropped. Take the entry out so a late
-        // answer cannot land on a turn that has already moved on.
-        app.state::<ApprovalWaiters>().lock().remove(&approval_id);
-    }
-    // The wait is over however it ended. Whatever the turn does next records
-    // its own phase; leaving this one behind would have a crash a minute later
-    // report a card that is no longer on screen.
-    turn_record::note_phase(&pool, turn_id, TurnPhase::Streaming, None).await;
+    // The bracket restores `Streaming` however the wait ends — leaving the
+    // phase behind would have a crash a minute later report a card that is no
+    // longer on screen.
+    let decision = engine::in_phase(
+        &pool, turn_id, TurnPhase::AwaitingApproval, Some(&tc.name),
+        async {
+            let decision = tokio::select! {
+                _ = cancel.cancelled() => None,
+                r = rx => r.ok(),
+            };
+            if decision.is_none() {
+                // Cancelled, or the sender was dropped. Take the entry out so a
+                // late answer cannot land on a turn that has already moved on.
+                app.state::<ApprovalWaiters>().lock().remove(&approval_id);
+            }
+            decision
+        },
+    ).await;
     Ok(decision)
 }
 
@@ -670,9 +674,15 @@ async fn chat_inner(
             })).ok();
             // Compaction deletes the old summary before writing the new one and
             // the two are not one transaction, so dying in here is its own kind
-            // of half-finished.
-            turn_record::note_phase(&pool, &turn_id, TurnPhase::Compacting, None).await;
-            match do_compact(&pool, &secrets.0, &conversation_id, assistant.as_ref(), keep_recent, None).await {
+            // of half-finished. The bracket also restores `Streaming` however it
+            // goes — leaving this phase set would have a crash in the answer
+            // that follows reported as a compaction that never finished, and
+            // tell the model its history might be half-rewritten when it is not.
+            let compaction = engine::in_phase(
+                &pool, &turn_id, TurnPhase::Compacting, None,
+                do_compact(&pool, &secrets.0, &conversation_id, assistant.as_ref(), keep_recent, None),
+            ).await;
+            match compaction {
                 Ok(_anchor) => {
                     compacted = true;
                     circuit_breaker.record_success();
@@ -694,12 +704,6 @@ async fn chat_inner(
                     })).ok();
                 }
             }
-            // Back to streaming however it went. Every phase restores the one
-            // it interrupted; leaving this one set would have a crash in the
-            // answer that follows reported as a compaction that never finished,
-            // and tell the model its history might be half-rewritten when it is
-            // not.
-            turn_record::note_phase(&pool, &turn_id, TurnPhase::Streaming, None).await;
         }
     }
 
@@ -854,28 +858,9 @@ async fn chat_inner(
         if cancel.is_cancelled() { break; }
 
         // Create a new assistant message for this iteration
-        assistant_msg_id = uuid::Uuid::new_v4().to_string();
-        {
-            let pool = pool.clone();
-            let conv_id = conversation_id.clone();
-            let msg_id = assistant_msg_id.clone();
-            let model_clone = model.clone();
-            let parent = parent_cursor.clone();
-            let turn = turn_id.clone();
-            tokio::task::spawn_blocking(move || {
-                let mut conn = get_conn(&pool)?;
-                db::ops::message::append_message(&mut conn, &NewMessage {
-                    id: &msg_id, conversation_id: &conv_id, role: "assistant", content: "",
-                    provider_id: None, model_id: Some(&model_clone), input_tokens: None,
-                    output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
-                    created_at: now_ms(), reasoning_content: None, rating: None, schema_version: 2,
-                    is_compact_summary: 0, sender_id: None,
-                    parent_id: None, compact_anchor_id: None, source: None,
-                    turn_id: Some(&turn), tool_outcome: None,
-                }, parent.as_deref()).map_err(|e| e.to_string())?;
-                Ok::<_, String>(())
-            }).await.map_err(|e| e.to_string())??;
-        }
+        assistant_msg_id = engine::begin_assistant(
+            &pool, &conversation_id, &turn_id, &model, parent_cursor.as_deref(),
+        ).await?;
         parent_cursor = Some(assistant_msg_id.clone());
 
         app.emit("chat-stream", serde_json::json!({
@@ -1008,23 +993,15 @@ async fn chat_inner(
         } else {
             None
         };
-        {
-            let pool = pool.clone();
-            let msg_id = assistant_msg_id.clone();
-            let content = result.text.clone();
-            let reasoning = if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) };
-            let tc_json = tool_calls_json.clone();
-            let inp = result.usage.as_ref().and_then(|u| u.prompt_tokens);
-            let out = result.usage.as_ref().and_then(|u| u.completion_tokens);
-            tokio::task::spawn_blocking(move || {
-                if let Ok(mut conn) = pool.get() {
-                    let _ = db::ops::message::update_assistant_message(
-                        &mut conn, &msg_id, &content,
-                        reasoning.as_deref(), tc_json.as_deref(), inp, out,
-                    );
-                }
-            }).await.map_err(|e| e.to_string())?;
-        }
+        engine::complete_assistant(
+            &pool,
+            &assistant_msg_id,
+            &result.text,
+            if result.reasoning.is_empty() { None } else { Some(result.reasoning.as_str()) },
+            tool_calls_json.as_deref(),
+            result.usage.as_ref().and_then(|u| u.prompt_tokens),
+            result.usage.as_ref().and_then(|u| u.completion_tokens),
+        ).await?;
 
         last_assistant_text = result.text.clone();
 
@@ -1313,9 +1290,10 @@ async fn chat_inner(
                         // Awaited with nothing locked: the registry hands back a
                         // handle and the request itself runs outside it.
                         let mcp = app.state::<AppMcp>().0.clone();
-                        turn_record::note_phase(&pool, &turn_id, TurnPhase::RunningTool, Some(&tc.name)).await;
-                        let called = mcp.call_tool(&tc.name, args).await;
-                        turn_record::note_phase(&pool, &turn_id, TurnPhase::Streaming, None).await;
+                        let called = engine::in_phase(
+                            &pool, &turn_id, TurnPhase::RunningTool, Some(&tc.name),
+                            mcp.call_tool(&tc.name, args),
+                        ).await;
                         match called {
                             Ok(output) => (output, "success"),
                             Err(e) => (format!("MCP error: {e}"), "error"),
@@ -1352,9 +1330,10 @@ async fn chat_inner(
                     // The one phase that describes something outside the
                     // database. A turn found dead here may have written the
                     // file or run the command already.
-                    turn_record::note_phase(&pool, &turn_id, TurnPhase::RunningTool, Some(&tc.name)).await;
-                    let executed = tool.execute(args.clone(), &tool_context).await;
-                    turn_record::note_phase(&pool, &turn_id, TurnPhase::Streaming, None).await;
+                    let executed = engine::in_phase(
+                        &pool, &turn_id, TurnPhase::RunningTool, Some(&tc.name),
+                        tool.execute(args.clone(), &tool_context),
+                    ).await;
                     match executed {
                         Ok(output) => (output, "success"),
                         Err(e) => match tools::decode_sandbox_denied(&e) {
@@ -1371,9 +1350,10 @@ async fn chat_inner(
                                 ).await? {
                                     Some(ApprovalDecision::Approved) => {
                                         let escalated_ctx = tool_context.without_sandbox();
-                                        turn_record::note_phase(&pool, &turn_id, TurnPhase::RunningTool, Some(&tc.name)).await;
-                                        let retried = tool.execute(args, &escalated_ctx).await;
-                                        turn_record::note_phase(&pool, &turn_id, TurnPhase::Streaming, None).await;
+                                        let retried = engine::in_phase(
+                                            &pool, &turn_id, TurnPhase::RunningTool, Some(&tc.name),
+                                            tool.execute(args, &escalated_ctx),
+                                        ).await;
                                         match retried {
                                             Ok(o) => (o, "success"),
                                             Err(e2) => (format!("Error: {e2}"), "error"),
@@ -1407,43 +1387,14 @@ async fn chat_inner(
                 "conversation_id": &conversation_id,
             })).map_err(|e| e.to_string())?;
 
-            {
-                let pool = pool.clone();
-                let conv_id = conversation_id.clone();
-                let tool_msg_id = uuid::Uuid::new_v4().to_string();
-                let call_id = tc.id.clone();
-                let tool_result = result.clone();
-                let parent = parent_cursor.clone();
-                let turn = turn_id.clone();
-                let written = tokio::task::spawn_blocking(move || {
-                    let mut conn = pool.get().map_err(|e| e.to_string())?;
-                    db::ops::message::append_message(&mut conn, &NewMessage {
-                        id: &tool_msg_id, conversation_id: &conv_id, role: "tool",
-                        content: &tool_result, provider_id: None, model_id: None,
-                        input_tokens: None, output_tokens: None,
-                        tool_calls: None, tool_call_id: Some(&call_id),
-                        sort_order: 0, created_at: now_ms(),
-                        reasoning_content: None, rating: None, schema_version: 2,
-                        is_compact_summary: 0, sender_id: None,
-                        parent_id: None, compact_anchor_id: None, source: None,
-                        turn_id: Some(&turn),
-                        // The same word the event carries. Stored so a reload
-                        // does not turn a refusal into a green tick with the
-                        // refusal text sitting in it as the result.
-                        tool_outcome: Some(outcome),
-                    }, parent.as_deref()).map(|_| tool_msg_id).map_err(|e| e.to_string())
-                }).await;
-
-                // The tool already ran, so aborting the turn now would be worse
-                // than losing the transcript row. Leave the cursor where it is
-                // instead: the next row hangs off the last message that did get
-                // written, keeping the chain intact. The unanswered tool_call is
-                // stripped from the payload by remove_orphan_tool_messages.
-                match written {
-                    Ok(Ok(id)) => parent_cursor = Some(id),
-                    Ok(Err(e)) => tracing::error!("failed to persist tool result: {e}"),
-                    Err(e) => tracing::error!("tool result write panicked: {e}"),
-                }
+            // `None` leaves the cursor where it is: the tool already ran, so the
+            // row is worth less than the turn, and the next write hangs off the
+            // last message that did land.
+            if let Some(id) = engine::append_tool_result(
+                &pool, &conversation_id, &turn_id, &tc.id, &result, outcome,
+                parent_cursor.as_deref(),
+            ).await {
+                parent_cursor = Some(id);
             }
 
             chat_messages.push(ChatMessage::tool_result(&tc.id, &result));
