@@ -219,6 +219,24 @@ impl TurnCoordinator {
         }
     }
 
+    /// Whether this exact turn is the one running on that conversation.
+    ///
+    /// The live answer to a question the database cannot give. A turn's row
+    /// says `running` from the moment it starts until it reaches an ending, so
+    /// anything that never reaches one — a kill, a panic, a task dropped at
+    /// shutdown — leaves the row saying `running` for good. This says whether
+    /// that is still true, and a `running` row nobody holds is a turn that
+    /// stopped without saying so.
+    ///
+    /// Checks the turn and not just the conversation: a later turn running on
+    /// the same conversation must not vouch for the one that died before it.
+    pub fn holds(&self, conversation_id: &str, turn_id: &str) -> bool {
+        matches!(
+            self.lock().get(conversation_id),
+            Some(Occupant::Turn(t)) if t.turn_id == turn_id,
+        )
+    }
+
     /// Release, but only if the entry is still the one the lease took.
     ///
     /// A guard can outlive its own release — a task cancelled mid-drop, an old

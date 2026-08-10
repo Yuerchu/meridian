@@ -399,6 +399,7 @@ diesel::table! {
         started_at -> BigInt,
         updated_at -> BigInt,
         ended_at -> Nullable<BigInt>,
+        reported_at -> Nullable<BigInt>,
     }
 }
 

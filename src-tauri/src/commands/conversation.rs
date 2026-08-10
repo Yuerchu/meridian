@@ -429,12 +429,28 @@ pub async fn get_context_info(
         &ctx.path,
     ).await;
 
-    // Mirrors the chat path exactly, memory block included, so the figure the
-    // UI shows covers what a turn actually sends.
+    // What the next turn would carry, if it started now: no turn is running, so
+    // nothing is excluded, and an interrupted turn before this one would be
+    // reported to it. Reading costs nothing — only a request that reaches a
+    // provider marks anything as told, and an estimate sends none.
+    let interrupted_block = crate::agent::interrupted::load_block(
+        &pool,
+        &app.state::<crate::state::AppTurns>().0,
+        &conversation_id,
+        "",
+    )
+    .await;
+
+    // Mirrors the chat path exactly, background blocks included, so the figure
+    // the UI shows covers what a turn actually sends.
     let msgs = crate::agent::build_messages_with_senders(
         system_prompt.trim(),
         &ctx,
-        crate::agent::trailing_with_memory(Some(&memory_block), ""),
+        crate::agent::trailing_with_memory(
+            Some(&memory_block),
+            interrupted_block.as_ref().map(|r| r.text()),
+            "",
+        ),
         &Default::default(),
     );
     // What the next turn would carry: the tail past the summary, plus the
@@ -649,7 +665,7 @@ mod tests {
         let with_prompt = budget.counter.count_messages(&crate::agent::build_messages_with_senders(
             system_prompt.trim(),
             &empty,
-            crate::agent::trailing_with_memory(Some(&memory), ""),
+            crate::agent::trailing_with_memory(Some(&memory), None, ""),
             &Default::default(),
         ));
         let history_only = budget.counter.count_messages(&build_messages("", &empty, ""));

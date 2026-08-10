@@ -11,6 +11,18 @@ pub(crate) struct StreamResult {
     pub(crate) tool_calls: Vec<provider::ToolCall>,
     pub(crate) usage: Option<provider::TokenUsage>,
     pub(crate) finish_reason: Option<String>,
+    /// Whether the stream ran out on its own rather than being abandoned.
+    ///
+    /// `Ok` is not the same as finished. A cancelled read stops mid-answer and
+    /// still returns everything it had, because that partial answer is worth
+    /// keeping — so the one caller that needs to know the model actually got to
+    /// the end of what it was given cannot tell from the result alone.
+    ///
+    /// That caller is the interrupted-turn notice: it is retired only by a
+    /// reply the model finished producing, and a user pressing Stop two hundred
+    /// milliseconds in is not one. `finish_reason` will not do instead — plenty
+    /// of providers close the stream without ever sending a stop event.
+    pub(crate) ran_to_completion: bool,
 }
 
 pub(crate) const MAX_STREAM_RETRIES: u32 = 5;

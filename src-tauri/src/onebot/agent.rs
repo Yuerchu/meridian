@@ -150,6 +150,9 @@ async fn consume_stream_headless(
     let mut think_parser = crate::agent::InlineHiddenTagParser::new_streaming(vec![
         crate::agent::InlineTagSpec { tag: (), open: "<think>", close: "</think>" },
     ]);
+    // See the desktop consumer: only the stream running out means the model
+    // reached the end of its answer.
+    let mut ran_to_completion = false;
 
     loop {
         tokio::select! {
@@ -229,7 +232,7 @@ async fn consume_stream_headless(
                     Ok(Some(Err(e))) => {
                         return Err(e.to_string());
                     }
-                    Ok(None) => { break; }
+                    Ok(None) => { ran_to_completion = true; break; }
                 }
             }
         }
@@ -267,7 +270,7 @@ async fn consume_stream_headless(
             .collect()
     };
 
-    Ok(StreamResult { text, reasoning, signature, tool_calls, usage, finish_reason })
+    Ok(StreamResult { text, reasoning, signature, tool_calls, usage, finish_reason, ran_to_completion })
 }
 
 /// One model call with no tools, no history and no persistence — used by the
@@ -379,6 +382,9 @@ pub async fn headless_chat(
     app: Option<&tauri::AppHandle>,
     qq_tools: Option<&super::qq_tools::QqToolExecutor>,
     session_inbox: Option<&super::InboxHandle>,
+    // Needed to tell a turn that really is running from one whose row still
+    // says so because it was killed. `None` in tests that do not care.
+    coordinator: Option<&Arc<crate::turn::TurnCoordinator>>,
 ) -> HeadlessOutcome {
     // Written into as the round goes, so the `?`-heavy body below can bail out
     // anywhere and still leave the caller enough to close the turn out.
@@ -386,7 +392,7 @@ pub async fn headless_chat(
     let reply = headless_chat_inner(
         pool, secrets, tool_registry, mcp_registry, conversation_id, turn_id, project_id,
         incoming, assistant_id, model_override, is_admin, approval_fn, interim_text_fn,
-        cancel, app, qq_tools, session_inbox, &mut progress,
+        cancel, app, qq_tools, session_inbox, coordinator, &mut progress,
     )
     .await;
     HeadlessOutcome { reply, progress }
@@ -420,6 +426,7 @@ async fn headless_chat_inner(
     app: Option<&tauri::AppHandle>,
     qq_tools: Option<&super::qq_tools::QqToolExecutor>,
     session_inbox: Option<&super::InboxHandle>,
+    coordinator: Option<&Arc<crate::turn::TurnCoordinator>>,
     progress: &mut TurnProgress,
 ) -> Result<String, String> {
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
@@ -596,11 +603,26 @@ async fn headless_chat_inner(
         .unwrap_or_default()
     };
 
-    // Memory first, then what was just said: the block is background for
-    // reading the message, not a reply to it.
+    // How the previous turns stopped, for any that did not stop cleanly. Same
+    // block the desktop gets: a QQ turn is just as capable of dying with a tool
+    // half run, and the model is the one that has to decide what to do about it.
+    // Emptied by the first reply read to the end, not by reading the record and
+    // not by getting a request away.
+    let mut interrupted = match coordinator {
+        Some(c) => crate::agent::interrupted::load_block(pool, c, conversation_id, turn_id).await,
+        None => None,
+    };
+
+    // Background first, then what was just said: these are context for reading
+    // the message, not a reply to it.
     let mut trailing: Vec<provider::ChatMessage> = Vec::new();
-    if let Some(block) = memory_block.as_deref().filter(|b| !b.trim().is_empty()) {
-        trailing.push(provider::ChatMessage::system_context(block.trim_start()));
+    for block in [memory_block.as_deref(), interrupted.as_ref().map(|r| r.text())]
+        .into_iter()
+        .flatten()
+    {
+        if !block.trim().is_empty() {
+            trailing.push(provider::ChatMessage::system_context(block.trim_start()));
+        }
     }
     trailing.extend(incoming.iter().map(|m| match m.sender.as_ref() {
         Some(s) => provider::ChatMessage::user_from(&m.text, s.into()),
@@ -795,7 +817,19 @@ async fn headless_chat_inner(
                     Err(e) => Err(e.to_string()),
                 };
                 match try_result {
-                    Ok(r) => break r,
+                    Ok(r) => {
+                        // Same rule as the desktop: a reply the model finished
+                        // producing is the proof, not a stream that opened and
+                        // not one that was abandoned. A 200 followed by an SSE
+                        // refusal processed nothing, and neither did a turn
+                        // stopped from the UI a moment after it began.
+                        if r.ran_to_completion {
+                            if let Some(report) = interrupted.take() {
+                                crate::agent::interrupted::confirm_delivered(pool, report).await;
+                            }
+                        }
+                        break r;
+                    }
                     Err(e) if is_context_window_error(&e) => {
                         let aggressive_keep = (keep_recent / 2).max(2);
                         trim_to_context_limit(&mut chat_messages, context_limit / 2, aggressive_keep);
@@ -807,8 +841,14 @@ async fn headless_chat_inner(
                         let stream = provider.stream_chat_with_tools(
                             chat_messages.clone(), tool_defs.clone(), params.clone()
                         ).await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
-                        break consume_stream_headless(stream, cancel, app, &assistant_msg_id, conversation_id)
+                        let recovered = consume_stream_headless(stream, cancel, app, &assistant_msg_id, conversation_id)
                             .await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
+                        if recovered.ran_to_completion {
+                            if let Some(report) = interrupted.take() {
+                                crate::agent::interrupted::confirm_delivered(pool, report).await;
+                            }
+                        }
+                        break recovered;
                     }
                     Err(e) if is_retryable_stream_error(&e) && attempt < MAX_STREAM_RETRIES => {
                         retry_delay = crate::agent::parse_retry_after(&e);
@@ -1110,6 +1150,74 @@ async fn headless_chat_inner(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A stream of events that then ends, as a provider's would.
+    fn events(items: Vec<StreamEvent>) -> ChatStream {
+        Box::pin(futures::stream::iter(items.into_iter().map(Ok)))
+    }
+
+    /// A stream that never yields, so only cancellation ends the read.
+    fn never() -> ChatStream {
+        Box::pin(futures::stream::pending())
+    }
+
+    /// `Ok` from a stream read is not "the model answered". The read also
+    /// returns `Ok` when the user pressed Stop, because the half of the answer
+    /// that did arrive is worth keeping — which is exactly why the one caller
+    /// that needs "did the model get to the end" cannot use `Ok` for it.
+    ///
+    /// The caller is the interrupted-turn notice. Retiring it on a cancelled
+    /// read would mean a user who stops a turn a moment after starting it never
+    /// hears that a tool may have been left half-run.
+    #[tokio::test]
+    async fn a_cancelled_read_did_not_run_to_completion() {
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        let r = consume_stream_headless(never(), &cancel, None, "m1", "c1").await.unwrap();
+
+        assert!(!r.ran_to_completion, "stopped is not finished");
+    }
+
+    #[tokio::test]
+    async fn a_stream_that_ran_out_did_run_to_completion() {
+        let cancel = CancellationToken::new();
+
+        let r = consume_stream_headless(
+            events(vec![StreamEvent::Text { content: "hi".into() }]),
+            &cancel,
+            None,
+            "m1",
+            "c1",
+        )
+        .await
+        .unwrap();
+
+        assert!(r.ran_to_completion);
+        assert_eq!(r.text, "hi");
+        // And it says so without a stop event, which plenty of providers never
+        // send — so `finish_reason` could not have stood in for this.
+        assert!(r.finish_reason.is_none());
+    }
+
+    /// A provider that answers 200 and then refuses over SSE processed nothing.
+    /// That is an error rather than a completion, and the retry and
+    /// context-overflow branches upstream depend on it being one.
+    #[tokio::test]
+    async fn an_error_inside_the_stream_is_not_a_completion() {
+        let cancel = CancellationToken::new();
+
+        let r = consume_stream_headless(
+            events(vec![StreamEvent::Error { message: "context_length_exceeded".into() }]),
+            &cancel,
+            None,
+            "m1",
+            "c1",
+        )
+        .await;
+
+        assert!(matches!(r, Err(ref e) if e == "context_length_exceeded"));
+    }
 
     fn outcome(reply: Result<String, String>, aborted: bool) -> HeadlessOutcome {
         HeadlessOutcome {

@@ -37,9 +37,6 @@ impl TurnStatus {
         }
     }
 
-    /// Read side. Nothing consults a stored status yet — that arrives with the
-    /// block that tells the model its last turn was cut off.
-    #[allow(dead_code)]
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "running" => Ok(TurnStatus::Running),
@@ -89,7 +86,6 @@ impl TurnPhase {
         }
     }
 
-    #[allow(dead_code)]
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "streaming" => Ok(TurnPhase::Streaming),
@@ -101,10 +97,7 @@ impl TurnPhase {
     }
 }
 
-/// A turn as stored. Only the tests and the reconciliation query read one so
-/// far; the block that tells the model about an interrupted turn, and the
-/// snapshot the transcript is drawn from, are what these are for.
-#[allow(dead_code)]
+/// A turn as stored.
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = turns)]
 pub struct Turn {
@@ -118,9 +111,13 @@ pub struct Turn {
     pub started_at: i64,
     pub updated_at: i64,
     pub ended_at: Option<i64>,
+    /// When a later turn actually delivered this turn's interruption to the
+    /// model. `None` means it still owes the telling — which is not the same as
+    /// "this turn is the most recent one", because a turn that dies before
+    /// reaching a provider carries nothing and therefore consumes nothing.
+    pub reported_at: Option<i64>,
 }
 
-#[allow(dead_code)]
 impl Turn {
     /// The stored status, or `None` for a value this build does not know. An
     /// unknown status is treated as "no opinion" everywhere it is read, so a

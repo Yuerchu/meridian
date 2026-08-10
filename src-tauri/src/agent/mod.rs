@@ -3,6 +3,7 @@ mod compact;
 mod context;
 pub(crate) mod diagnostics;
 mod file_access;
+pub(crate) mod interrupted;
 mod inline_tag;
 mod loop_guard;
 pub(crate) mod manual;

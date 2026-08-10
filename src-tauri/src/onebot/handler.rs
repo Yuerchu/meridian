@@ -474,6 +474,7 @@ pub(super) async fn run_agent_turn(
             state.app_handle.as_ref(),
             Some(&qq_tools),
             Some(&inbox),
+            Some(&state.coordinator),
         )
         .await;
 

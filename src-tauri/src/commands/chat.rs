@@ -46,6 +46,11 @@ async fn consume_stream(
         crate::agent::InlineTagSpec { tag: (), open: "<think>", close: "</think>" },
     ]);
 
+    // Set by the one exit that means the model reached the end of its answer:
+    // the stream running out. Cancellation leaves it false, and so does every
+    // error return, none of which get this far.
+    let mut ran_to_completion = false;
+
     loop {
         tokio::select! {
             _ = cancel.cancelled() => { break; }
@@ -118,7 +123,7 @@ async fn consume_stream(
                     Ok(Some(Err(e))) => {
                         return Err(e.to_string());
                     }
-                    Ok(None) => { break; }
+                    Ok(None) => { ran_to_completion = true; break; }
                 }
             }
         }
@@ -153,7 +158,7 @@ async fn consume_stream(
             .collect()
     };
 
-    Ok(StreamResult { text, reasoning, signature, tool_calls, usage, finish_reason })
+    Ok(StreamResult { text, reasoning, signature, tool_calls, usage, finish_reason, ran_to_completion })
 }
 
 /// Everything a turn owes back, whichever way it leaves.
@@ -647,6 +652,21 @@ async fn chat_inner(
         ),
     )
     .await;
+    // How the previous turns stopped, for any that did not stop cleanly. Read
+    // here rather than at the top because it is background about the
+    // conversation, like the memory block, and travels the same way.
+    //
+    // Held in an Option that is emptied by the first reply this turn reads to
+    // the end: reading the record settles nothing, and neither does sending a
+    // request, since this turn may die on the way out or be refused over SSE
+    // by a provider that already answered 200.
+    let mut interrupted = crate::agent::interrupted::load_block(
+        &pool,
+        &app.state::<AppTurns>().0,
+        &conversation_id,
+        &turn_id,
+    )
+    .await;
     let instruction_block = {
         let budget = instruction_budget(context_limit);
         if budget > 0 {
@@ -761,7 +781,7 @@ async fn chat_inner(
         let pre_msgs = build_messages_with_senders(
             system_prompt.trim(),
             &ctx,
-            trailing_with_memory(memory_block.as_deref(), payload_message.as_deref().unwrap_or("")),
+            trailing_with_memory(memory_block.as_deref(), interrupted.as_ref().map(|r| r.text()), payload_message.as_deref().unwrap_or("")),
             &Default::default(),
         );
         budget.update_estimate(&pre_msgs);
@@ -831,7 +851,7 @@ async fn chat_inner(
     let mut chat_messages = build_messages_with_senders(
         system_prompt.trim(),
         &ctx,
-        trailing_with_memory(memory_block.as_deref(), payload_message.as_deref().unwrap_or("")),
+        trailing_with_memory(memory_block.as_deref(), interrupted.as_ref().map(|r| r.text()), payload_message.as_deref().unwrap_or("")),
         &Default::default(),
     );
     let files_root = app.path().app_data_dir().ok().map(|d| crate::files::files_dir(&d));
@@ -1010,7 +1030,29 @@ async fn chat_inner(
                     Err(e) => Err(e.to_string()),
                 };
                 match try_result {
-                    Ok(r) => break r,
+                    Ok(r) => {
+                        // A reply the model finished producing is the only
+                        // proof it received what this request carried, and `Ok`
+                        // alone does not say that twice over: the branches
+                        // below exist because a provider will answer 200 and
+                        // then refuse over SSE, and `Ok` also covers a stream
+                        // the user cancelled two hundred milliseconds in. Both
+                        // would retire the warning that a tool may be half-run
+                        // in favour of a request nothing ever read. Repeating
+                        // it costs a paragraph; losing it costs the safety of
+                        // whatever the model does next.
+                        //
+                        // Taken rather than read so it is recorded once, on the
+                        // attempt that got through — the block itself is baked
+                        // into `chat_messages` and rides along with every later
+                        // iteration of the tool loop.
+                        if r.ran_to_completion {
+                            if let Some(report) = interrupted.take() {
+                                crate::agent::interrupted::confirm_delivered(&pool, report).await;
+                            }
+                        }
+                        break r;
+                    }
                     Err(e) if is_context_window_error(&e) => {
                         tracing::warn!("Context window error, attempting reactive compact");
                         microcompact(&mut chat_messages, &budget, keep_recent);
@@ -1047,8 +1089,18 @@ async fn chat_inner(
                         let stream = provider.stream_chat_with_tools(
                             chat_messages.clone(), tool_defs.clone(), params.clone()
                         ).await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
-                        break consume_stream(stream, &app, &cancel, &assistant_msg_id, &conversation_id)
+                        let recovered = consume_stream(stream, &app, &cancel, &assistant_msg_id, &conversation_id)
                             .await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
+                        // Same rule, and reachable without the branch above ever
+                        // succeeding: a provider that refuses an oversized
+                        // request outright makes this the first stream anyone
+                        // reads to the end.
+                        if recovered.ran_to_completion {
+                            if let Some(report) = interrupted.take() {
+                                crate::agent::interrupted::confirm_delivered(&pool, report).await;
+                            }
+                        }
+                        break recovered;
                     }
                     Err(e) if is_retryable_stream_error(&e) && attempt < MAX_STREAM_RETRIES => {
                         tracing::warn!(error = %e, attempt, "request failed, retrying");

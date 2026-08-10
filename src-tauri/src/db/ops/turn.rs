@@ -95,21 +95,60 @@ fn running(id: &str) -> diesel::helper_types::Filter<
     turns::table.find(id).filter(turns::status.eq(TurnStatus::Running.as_str()))
 }
 
-/// The most recent turn of a conversation. What decides whether the next
-/// request has to tell the model that the last one was cut off.
+/// Turns of a conversation that may still owe the model an explanation, newest
+/// first, capped at `limit`.
 ///
-/// Written here with the rest of the table's vocabulary; the caller that reads
-/// it arrives with that block.
-#[allow(dead_code)]
-pub fn latest_for_conversation(
+/// `excluding` is the turn asking. By the time a turn wants to know how the
+/// previous ones ended it has already opened its own record, so without this it
+/// would find itself — running, held by the coordinator, and therefore
+/// perfectly fine.
+///
+/// "May" because `running` is only half an answer here: the coordinator decides
+/// whether such a row is a live turn or a dead one. The two statuses selected
+/// are the only ones that can be a dead turn at all; `done`, `cancelled` and
+/// `failed` each reached an ending and said so in the transcript.
+///
+/// Deliberately *not* "the most recent turn". The previous design read only the
+/// latest row and so treated any later turn as having consumed the notice,
+/// including one that failed before sending a single request. `reported_at` is
+/// the consumption record instead, and it is only written by a turn that got a
+/// reply back and read it to the end.
+pub fn unreported_for_conversation(
     conn: &mut SqliteConnection,
     conversation_id: &str,
-) -> QueryResult<Option<Turn>> {
+    excluding: Option<&str>,
+    limit: i64,
+) -> QueryResult<Vec<Turn>> {
     turns::table
         .filter(turns::conversation_id.eq(conversation_id))
+        .filter(turns::id.ne(excluding.unwrap_or("")))
+        .filter(turns::reported_at.is_null())
+        .filter(turns::status.eq_any([
+            TurnStatus::Running.as_str(),
+            TurnStatus::Interrupted.as_str(),
+        ]))
         .order((turns::started_at.desc(), insertion_order().desc()))
-        .first::<Turn>(conn)
-        .optional()
+        .limit(limit)
+        .load::<Turn>(conn)
+}
+
+/// Record that these turns have now been described to the model.
+///
+/// `updated_at` is left alone on purpose: it says when the turn itself last did
+/// something, and the turn is dead. Being talked about is not doing something.
+///
+/// The `reported_at IS NULL` filter keeps the first telling as the recorded one,
+/// which matters because two runners can read the same unreported turn before
+/// either of them dispatches.
+pub fn mark_reported(conn: &mut SqliteConnection, ids: &[String], now: i64) -> QueryResult<usize> {
+    if ids.is_empty() {
+        return Ok(0);
+    }
+    diesel::update(
+        turns::table.filter(turns::id.eq_any(ids)).filter(turns::reported_at.is_null()),
+    )
+    .set(turns::reported_at.eq(Some(now)))
+    .execute(conn)
 }
 
 /// Tie-break for turns that started in the same millisecond.
@@ -118,9 +157,9 @@ pub fn latest_for_conversation(
 /// that — but a turn refused by its provider can begin and end inside a
 /// millisecond, so two of them sharing a `started_at` is reachable. `id` cannot
 /// break the tie: it is a uuid, and its ordering has nothing to do with when
-/// the row was written. SQLite's rowid does, being assigned on insert, and
-/// "which turn was really last" is the whole question `latest_for_conversation`
-/// is asked.
+/// the row was written. SQLite's rowid does, being assigned on insert — and
+/// both readers here care which turn came first: one caps its answer by
+/// recency, the other narrates the interruptions in the order they happened.
 fn insertion_order() -> diesel::expression::SqlLiteral<diesel::sql_types::BigInt> {
     diesel::dsl::sql::<diesel::sql_types::BigInt>("rowid")
 }
@@ -276,8 +315,12 @@ mod tests {
         assert_eq!(t.error.as_deref(), Some("API Key not set"));
     }
 
+    fn ids(turns: Vec<Turn>) -> Vec<String> {
+        turns.into_iter().map(|t| t.id).collect()
+    }
+
     #[test]
-    fn the_latest_turn_is_the_one_that_started_last() {
+    fn unreported_turns_come_back_newest_first_within_their_conversation() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
@@ -286,9 +329,17 @@ mod tests {
         begin(&mut conn, "new", "c1", TurnOrigin::Desktop, 2000).unwrap();
         begin(&mut conn, "other", "c2", TurnOrigin::Desktop, 3000).unwrap();
 
-        assert_eq!(latest_for_conversation(&mut conn, "c1").unwrap().unwrap().id, "new");
-        assert_eq!(latest_for_conversation(&mut conn, "c2").unwrap().unwrap().id, "other");
-        assert!(latest_for_conversation(&mut conn, "nope").unwrap().is_none());
+        assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()), [
+            "new", "old"
+        ]);
+        assert_eq!(ids(unreported_for_conversation(&mut conn, "c2", None, 10).unwrap()), ["other"]);
+        assert!(unreported_for_conversation(&mut conn, "nope", None, 10).unwrap().is_empty());
+        // The turn asking is never one of the answers.
+        assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", Some("new"), 10).unwrap()), [
+            "old"
+        ]);
+        // And the limit keeps the newest, which is where the useful detail is.
+        assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", None, 1).unwrap()), ["new"]);
 
         let all: Vec<String> = list_for_conversation(&mut conn, "c1")
             .unwrap()
@@ -296,6 +347,58 @@ mod tests {
             .map(|t| t.id)
             .collect();
         assert_eq!(all, vec!["old", "new"]);
+    }
+
+    /// Only a turn that never reached an ending can owe an explanation. The
+    /// other three said how they ended, in the transcript, where the model can
+    /// already see it.
+    #[test]
+    fn a_turn_that_reached_an_ending_owes_nothing() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conv(&mut conn, "c1");
+        for (id, status) in [
+            ("done", TurnStatus::Done),
+            ("cancelled", TurnStatus::Cancelled),
+            ("failed", TurnStatus::Failed),
+        ] {
+            begin(&mut conn, id, "c1", TurnOrigin::Desktop, 1000).unwrap();
+            finish(&mut conn, id, status, None, 1500).unwrap();
+        }
+        begin(&mut conn, "cut-off", "c1", TurnOrigin::Desktop, 2000).unwrap();
+        begin(&mut conn, "reconciled", "c1", TurnOrigin::Desktop, 3000).unwrap();
+        reconcile_interrupted(&mut conn, 3500).unwrap();
+
+        assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()), [
+            "reconciled",
+            "cut-off"
+        ]);
+    }
+
+    /// The record of having been told, which is what stops the same warning
+    /// from being repeated forever — and what stops it from being lost when the
+    /// turn that read it dies on the way to the provider.
+    #[test]
+    fn a_reported_turn_leaves_the_queue_and_keeps_its_first_telling() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conv(&mut conn, "c1");
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        begin(&mut conn, "t2", "c1", TurnOrigin::Desktop, 2000).unwrap();
+
+        assert_eq!(mark_reported(&mut conn, &["t1".to_string()], 5000).unwrap(), 1);
+        assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()), ["t2"]);
+
+        // Told once. A second telling finds nothing to record, and the first
+        // timestamp stands.
+        assert_eq!(mark_reported(&mut conn, &["t1".to_string()], 9000).unwrap(), 0);
+        assert_eq!(get(&mut conn, "t1").reported_at, Some(5000));
+        assert_eq!(mark_reported(&mut conn, &[], 9000).unwrap(), 0);
+
+        // Reconciliation is about how a turn ended, and does not un-tell it.
+        reconcile_interrupted(&mut conn, 9500).unwrap();
+        assert_eq!(get(&mut conn, "t1").reported_at, Some(5000));
+        assert_eq!(get(&mut conn, "t1").status(), Some(TurnStatus::Interrupted));
     }
 
     /// Turns belong to their conversation and go with it.
@@ -396,8 +499,8 @@ mod tests {
         begin(&mut conn, "aaa-second", "c1", TurnOrigin::Desktop, 1000).unwrap();
 
         assert_eq!(
-            latest_for_conversation(&mut conn, "c1").unwrap().unwrap().id,
-            "aaa-second",
+            ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()),
+            ["aaa-second", "zzz-first"],
             "the latest turn is the one written last, not the one sorting last",
         );
         let all: Vec<String> = list_for_conversation(&mut conn, "c1")

@@ -530,6 +530,47 @@ mod migration_tests {
 
         assert_eq!(ops::turn::reconcile_interrupted(&mut conn, 1000).unwrap(), 0);
     }
+
+    /// Migration 26 adds one nullable column to a table 25 had already written
+    /// rows into, so there is real data to preserve. NULL is the right value for
+    /// every one of them: nothing had been told to any model, because there was
+    /// no mechanism to tell it. Backfilling a timestamp would silence exactly
+    /// the warnings this whole record exists to keep.
+    #[test]
+    fn existing_turns_survive_the_reported_column_still_owing_their_explanation() {
+        let mut conn = conn_before("00000000000026");
+        conn.batch_execute(
+            "INSERT INTO conversations (id, title, is_pinned, is_archived, message_count,
+                                        created_at, updated_at, fast_mode)
+             VALUES ('c1', 'A', 0, 0, 0, 1, 1, 0);
+             INSERT INTO turns (id, conversation_id, origin, status, phase, phase_tool,
+                                started_at, updated_at, ended_at)
+             VALUES ('t-cut', 'c1', 'desktop', 'interrupted', 'running_tool', 'edit_file',
+                     1000, 1001, 1500),
+                    ('t-done', 'c1', 'desktop', 'done', 'streaming', NULL, 2000, 2001, 2500);",
+        )
+        .unwrap();
+
+        run_migration(&mut conn, "00000000000026");
+
+        let turns = ops::turn::list_for_conversation(&mut conn, "c1").unwrap();
+        assert_eq!(turns.len(), 2, "no row is lost or duplicated");
+        assert!(turns.iter().all(|t| t.reported_at.is_none()), "nothing is backfilled");
+        // The one that was cut off is still owed its explanation, and the one
+        // that finished never was.
+        let cut = &turns[0];
+        assert_eq!(cut.id, "t-cut");
+        assert_eq!(cut.phase_tool.as_deref(), Some("edit_file"));
+        assert_eq!(cut.ended_at, Some(1500));
+        assert_eq!(
+            ids_of(ops::turn::unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()),
+            ["t-cut"],
+        );
+    }
+
+    fn ids_of(turns: Vec<crate::db::models::turn::Turn>) -> Vec<String> {
+        turns.into_iter().map(|t| t.id).collect()
+    }
 }
 
 #[cfg(test)]
