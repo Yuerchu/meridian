@@ -19,14 +19,25 @@
 //! rather than assume.
 
 pub(crate) mod approval;
+pub(crate) mod compaction;
+pub(crate) mod ports;
 pub(crate) mod stream;
 pub(crate) mod transcript;
 pub(crate) mod transitions;
+pub(crate) mod turn;
 
 pub(crate) use approval::ApprovalDecision;
 pub(crate) use stream::consume_stream;
-pub(crate) use transcript::{append_tool_result, begin_assistant, complete_assistant, in_phase};
+pub(crate) use transcript::{
+    append_steering, append_tool_result, begin_assistant, complete_assistant, in_phase,
+};
 pub(crate) use transitions::Transitions;
+
+// `turn`, `ports` and `compaction` are reached through their own modules until
+// a runner calls them. Re-exporting ahead of that would be a list of names
+// nothing imports, and the compiler would be right to say so — the loop having
+// no caller for one batch is the point of building it before moving anyone
+// into it, not something to paper over.
 
 /// Where a turn's progress goes while it is still happening.
 ///

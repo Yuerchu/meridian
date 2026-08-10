@@ -183,6 +183,65 @@ pub(crate) async fn append_tool_result(
     }
 }
 
+/// Record something a person said while the turn was already running.
+///
+/// A user row, not an assistant one, and it belongs to the turn it is steering
+/// rather than to the next one — the model reads it in this turn's next request,
+/// so a reader who saw it filed elsewhere would be looking at a different
+/// conversation than the model was.
+///
+/// Fails the same way a tool result does, and for a weaker version of the same
+/// reason: the message has already been said, and refusing to carry on would
+/// throw away the turn it was said to.
+pub(crate) async fn append_steering(
+    pool: &DbPool,
+    conversation_id: &str,
+    turn_id: &str,
+    content: &str,
+    sender_id: Option<i64>,
+    parent: Option<&str>,
+) -> Option<String> {
+    let pool = pool.clone();
+    let conv_id = conversation_id.to_string();
+    let message_id = uuid::Uuid::new_v4().to_string();
+    let msg_id = message_id.clone();
+    let content = content.to_string();
+    let turn = turn_id.to_string();
+    let parent = parent.map(str::to_string);
+    let written = tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        crate::db::ops::message::append_message(
+            &mut conn,
+            &NewMessage {
+                id: &msg_id, conversation_id: &conv_id, role: "user",
+                content: &content, provider_id: None, model_id: None,
+                input_tokens: None, output_tokens: None,
+                tool_calls: None, tool_call_id: None, sort_order: 0,
+                created_at: now_ms(), reasoning_content: None, rating: None,
+                schema_version: 2, is_compact_summary: 0, sender_id,
+                parent_id: None, compact_anchor_id: None, source: None,
+                turn_id: Some(&turn), tool_outcome: None,
+            },
+            parent.as_deref(),
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    match written {
+        Ok(Ok(())) => Some(message_id),
+        Ok(Err(e)) => {
+            tracing::error!("failed to persist steered message: {e}");
+            None
+        }
+        Err(e) => {
+            tracing::error!("steered message write panicked: {e}");
+            None
+        }
+    }
+}
+
 /// Run something with the turn recorded as being in a phase, and back to
 /// streaming when it returns.
 ///
