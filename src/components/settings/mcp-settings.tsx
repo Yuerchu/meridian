@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowLeft, ArrowDownToSquare } from '@gravity-ui/icons'
-import { Button, Input, TextArea, Tooltip } from '@heroui/react'
+import { Button, Input, Switch, TextArea, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
@@ -93,6 +93,8 @@ function McpServerEditor({
   const [saved, setSaved] = useState(false)
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
+  /** Whether this one comes up on its own at launch — `is_enabled` in the row. */
+  const [autoConnect, setAutoConnect] = useState(server.is_enabled === 1)
   const [tools, setTools] = useState<McpToolDef[]>([])
   const [error, setError] = useState<string | null>(null)
 
@@ -104,11 +106,17 @@ function McpServerEditor({
     setEnv(server.env ?? '{}')
     setUrl(server.url ?? '')
     setHeaders(server.headers ?? '{}')
+    setAutoConnect(server.is_enabled === 1)
     setError(null)
-    api.listMcpTools(server.id).then((t) => {
-      setTools(t)
-      setConnected(t.length > 0)
-    })
+    // Asked, not inferred. Reading this off the tool list showed a server that
+    // connects and exposes nothing as disconnected, while its process was
+    // running quite happily.
+    Promise.all([api.listMcpTools(server.id), api.listMcpConnectionStatuses()])
+      .then(([t, statuses]) => {
+        setTools(t)
+        setConnected(statuses.some((s) => s.server_id === server.id && s.state === 'connected'))
+      })
+      .catch(() => { /* the card still renders; the buttons say what to try */ })
   }, [server.id])
 
   const handleSave = useCallback(async () => {
@@ -155,6 +163,21 @@ function McpServerEditor({
     setTools([])
     setConnected(false)
   }, [server.id])
+
+  const handleToggleAutoConnect = useCallback(async (next: boolean) => {
+    const previous = autoConnect
+    setAutoConnect(next)
+    try {
+      await api.updateMcpServer(server.id, { isEnabled: next ? 1 : 0 })
+      onUpdate()
+    } catch (e) {
+      // Rolled back rather than kept locally: a switch that says a server will
+      // come back on its own, when nothing recorded that, is worse than an
+      // error — the user finds out at the next launch.
+      setAutoConnect(previous)
+      setError(String(e))
+    }
+  }, [server.id, autoConnect, onUpdate])
 
   const isHttp = transportType === 'streamablehttp'
 
@@ -223,6 +246,9 @@ function McpServerEditor({
         </>
       )}
 
+      {/* Two different things, deliberately side by side: connecting is
+          something you do now, auto-connect is something you mean for next
+          time. Disconnecting does not turn the switch off. */}
       <div className="flex items-center gap-2">
         <Button onClick={handleSave}>
           {saved ? t('common.saved') : t('common.save')}
@@ -238,6 +264,13 @@ function McpServerEditor({
             {connecting ? t('common.loading') : t('settings.mcp.connect')}
           </Button>
         )}
+        <Switch
+          className="ml-auto"
+          isSelected={autoConnect}
+          onChange={handleToggleAutoConnect}
+        >
+          {t('settings.mcp.autoConnect')}
+        </Switch>
       </div>
 
       {error && (

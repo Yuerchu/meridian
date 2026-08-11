@@ -8,17 +8,26 @@ use crate::db::DbPool;
 use crate::db::models::assistant::Assistant;
 use crate::db::models::conversation::Conversation;
 use crate::provider;
-use crate::state::{AppDb, AppMcp, AppSecrets, AppTools, CompactBreakers};
+use crate::state::{AppDb, AppMcp, AppSecrets, AppTools, AppTurns, CompactBreakers};
 use crate::template;
 use crate::util::now_ms;
 use crate::agent::{do_compact, resolve_provider_config, resolve_turn_params, base_prompt, build_file_access, build_messages, estimate_tokens, file_access_prompt, instruction_budget, load_project_instructions, CompactCircuitBreaker, TokenBudget, TurnParamsInput};
 
+/// Summarise the conversation's history down to a summary row.
+///
+/// Refused while a turn is running: the turn does its own compaction from a
+/// path it read at the top, so the two would delete each other's summaries and
+/// anchor the survivor to ids that are no longer on the path. The OneBot side
+/// has refused this since it was written; the desktop side never did.
 #[tauri::command]
 pub async fn compact(
     app: tauri::AppHandle,
     conversation_id: String,
     custom_instructions: Option<String>,
 ) -> Result<(), String> {
+    let _lease = app.state::<AppTurns>().0.clone()
+        .try_acquire_mutation(&conversation_id, "compaction")
+        .map_err(|busy| busy.to_string())?;
     let pool = app.state::<AppDb>().0.clone();
     let secrets = app.state::<AppSecrets>();
 
@@ -61,14 +70,10 @@ pub async fn compact(
     Ok(())
 }
 
-#[tauri::command]
-pub async fn get_conversation(app: tauri::AppHandle, id: String) -> Result<Conversation, String> {
-    let pool = app.state::<AppDb>().0.clone();
-    tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::get_conversation(&mut conn, &id).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
-}
+// `get_conversation` was here, and `load_message_tree` and
+// `list_pending_approvals` in their own files. All three answered one third of
+// the same question, and the caller had to ask all three and hope nothing moved
+// in between. `conversation_snapshot` answers it once.
 
 #[tauri::command]
 pub async fn list_conversations(app: tauri::AppHandle, archived: bool) -> Result<Vec<Conversation>, String> {
@@ -184,8 +189,19 @@ pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Resul
     }).await.map_err(|e| e.to_string())?
 }
 
+/// Delete a conversation and everything in it.
+///
+/// Refused while a turn is running. The front end sends a stop first, but a
+/// stop is only a signal — the turn goes on appending messages, moving the head
+/// and writing todos and plans for as long as it takes to notice, all of it
+/// against a conversation that is no longer there. Waiting for the turn to
+/// actually exit needs a turn that can be waited on, which is phase 1's job;
+/// until then this refuses rather than races.
 #[tauri::command]
 pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<(), String> {
+    let _lease = app.state::<AppTurns>().0.clone()
+        .try_acquire_mutation(&id, "a delete")
+        .map_err(|busy| busy.to_string())?;
     let pool = app.state::<AppDb>().0.clone();
     let attachments_dir = app.path().app_data_dir().ok()
         .map(|d| crate::files::conversation_files_dir(&d, &id));
@@ -286,11 +302,9 @@ async fn assemble_system_prompt(
     context_limit: usize,
     active_path: &[db::models::message::Message],
 ) -> (String, String) {
-    let mcp_defs = {
-        let mcp = app.state::<AppMcp>();
-        let mgr = mcp.0.lock().await;
-        mgr.all_tool_definitions()
-    };
+    // Off the published snapshot, so the context estimator cannot be blocked by
+    // a server that is busy answering something else.
+    let mcp_defs = app.state::<AppMcp>().0.tool_definitions().as_ref().clone();
     let registry = app.state::<AppTools>().0.clone();
     let instruction_block = {
         let budget = instruction_budget(context_limit);
@@ -327,7 +341,9 @@ async fn assemble_system_prompt(
                 assistant,
                 conversation_id: conv_id,
                 project_id: pid,
-                mode,
+                // The estimate has to count the prompt the chat loop will
+                // actually send, transitions included.
+                mode: crate::agent::modes::Modes::Switchable(mode),
                 mcp_defs,
                 include_tools: true,
                 persona,
@@ -370,20 +386,32 @@ pub async fn get_context_info(
 
     let auto_compact_enabled = assistant.as_ref().map(|a| a.auto_compact_enabled != 0).unwrap_or(false);
 
-    let (provider_type, _, _, model, api_format) =
-        resolve_provider_config(&secrets.0, &pool, assistant.as_ref())?;
-
+    // Both take a pooled connection, and the first also reads the OS credential
+    // store. Run off the async thread: the UI polls this command every time the
+    // transcript grows, so a blocking call here occupies a worker repeatedly
+    // rather than once.
+    //
     // Resolved exactly as the chat path does, so the threshold the UI reports is
     // the one the compaction check actually compares against.
-    let turn = resolve_turn_params(&pool, TurnParamsInput {
-        assistant: assistant.as_ref(),
-        provider_id: assistant.as_ref().and_then(|a| a.provider_id.as_deref()),
-        provider_type: &provider_type,
-        api_format: &api_format,
-        model: &model,
-        thinking_level: None,
-        fast: false,
-    })?;
+    let (provider_type, model, turn) = {
+        let pool2 = pool.clone();
+        let secrets2 = secrets.0.clone();
+        let assistant2 = assistant.clone();
+        tokio::task::spawn_blocking(move || {
+            let (provider_type, _, _, model, api_format) =
+                resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
+            let turn = resolve_turn_params(&pool2, TurnParamsInput {
+                assistant: assistant2.as_ref(),
+                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                provider_type: &provider_type,
+                api_format: &api_format,
+                model: &model,
+                thinking_level: None,
+                fast: false,
+            })?;
+            Ok::<_, String>((provider_type, model, turn))
+        }).await.map_err(|e| e.to_string())??
+    };
     let context_limit = turn.context_limit;
     let budget = TokenBudget::new(&provider_type, &model, context_limit, turn.max_output, turn.compact_threshold);
 
@@ -399,12 +427,28 @@ pub async fn get_context_info(
         &ctx.path,
     ).await;
 
-    // Mirrors the chat path exactly, memory block included, so the figure the
-    // UI shows covers what a turn actually sends.
+    // What the next turn would carry, if it started now: no turn is running, so
+    // nothing is excluded, and an interrupted turn before this one would be
+    // reported to it. Reading costs nothing — only a request that reaches a
+    // provider marks anything as told, and an estimate sends none.
+    let interrupted_block = crate::agent::interrupted::load_block(
+        &pool,
+        &app.state::<crate::state::AppTurns>().0,
+        &conversation_id,
+        "",
+    )
+    .await;
+
+    // Mirrors the chat path exactly, background blocks included, so the figure
+    // the UI shows covers what a turn actually sends.
     let msgs = crate::agent::build_messages_with_senders(
         system_prompt.trim(),
         &ctx,
-        crate::agent::trailing_with_memory(Some(&memory_block), ""),
+        crate::agent::trailing_with_memory(
+            Some(&memory_block),
+            interrupted_block.as_ref().map(|r| r.text()),
+            "",
+        ),
         &Default::default(),
     );
     // What the next turn would carry: the tail past the summary, plus the
@@ -619,7 +663,7 @@ mod tests {
         let with_prompt = budget.counter.count_messages(&crate::agent::build_messages_with_senders(
             system_prompt.trim(),
             &empty,
-            crate::agent::trailing_with_memory(Some(&memory), ""),
+            crate::agent::trailing_with_memory(Some(&memory), None, ""),
             &Default::default(),
         ));
         let history_only = budget.counter.count_messages(&build_messages("", &empty, ""));

@@ -182,12 +182,25 @@ impl SessionManager {
         }
     }
 
-    /// Archive the current conversation and create a new one under the same project.
+    /// Archive `current` and start the session on a fresh conversation under
+    /// the same project.
+    ///
+    /// Takes the conversation to archive rather than looking it up, because the
+    /// caller has to lease it first and passing the same id is what makes the
+    /// thing leased and the thing archived provably one and the same.
+    ///
+    /// It used to archive every active conversation under the project. A QQ
+    /// project is an ordinary project: the user can create a conversation in it
+    /// from the desktop and be running a turn there, and `/new` would archive
+    /// that one too — without ever having claimed it. Leasing the whole project
+    /// atomically would be the alternative, and it is a great deal more than
+    /// this command needs.
     pub fn reset_conversation(
         &mut self,
         key: &SessionKey,
         title: &str,
         assistant_id: Option<&str>,
+        current: &str,
     ) -> Result<String, String> {
         let cache_key = key.pref_key();
         let source_type = key.source_type();
@@ -201,15 +214,8 @@ impl SessionManager {
         .map_err(|e| format!("DB error: {e}"))?
         .ok_or("No project found for this session")?;
 
-        // Archive all active conversations under this project
-        let active = crate::db::ops::conversation::list_conversations_by_project(
-            &mut conn, &project.id, false,
-        ).map_err(|e| format!("DB error: {e}"))?;
-
         let now = now_ms();
-        for conv in &active {
-            let _ = crate::db::ops::conversation::archive_conversation(&mut conn, &conv.id, now);
-        }
+        let _ = crate::db::ops::conversation::archive_conversation(&mut conn, current, now);
 
         // Create new conversation
         let conv_id = uuid::Uuid::new_v4().to_string();
@@ -228,5 +234,52 @@ impl SessionManager {
             model_override: None,
         });
         Ok(conv_id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::test_db;
+
+    /// A QQ project is an ordinary project, and the user can make a
+    /// conversation in it from the desktop and run a turn there. `/new` used to
+    /// archive every active conversation under the project, so that one went
+    /// with it — archived by a command that had never claimed it and could not
+    /// have, since the lease it takes names one conversation.
+    #[test]
+    fn a_reset_archives_only_the_conversation_it_was_given() {
+        let pool = test_db();
+        let mut sessions = SessionManager::new(pool.clone());
+        let key = SessionKey::group(1);
+        let (project_id, current) = sessions
+            .get_or_create(&key, "[QQ] 群1", None)
+            .expect("a fresh session gets a project and a conversation");
+
+        // Somebody's own conversation, in the same project, from the desktop.
+        // Scoped: the pool is small and `reset_conversation` needs one of its
+        // own.
+        let theirs = "desktop-conv";
+        {
+            let mut conn = pool.get().unwrap();
+            crate::db::ops::conversation::create_conversation(
+                &mut conn, theirs, Some("mine"), None, Some(&project_id), now_ms(),
+            ).unwrap();
+        }
+
+        let fresh = sessions
+            .reset_conversation(&key, "[QQ] 群1", None, &current)
+            .expect("reset");
+
+        let mut conn = pool.get().unwrap();
+        let mut archived = |id: &str| {
+            crate::db::ops::conversation::get_conversation(&mut conn, id)
+                .unwrap()
+                .is_archived
+        };
+        assert_ne!(fresh, current, "the session moved to a new conversation");
+        assert_eq!(archived(&current), 1, "the session's own conversation is archived");
+        assert_eq!(archived(theirs), 0, "one the command never claimed is left alone");
+        assert_eq!(archived(&fresh), 0);
     }
 }

@@ -5,6 +5,7 @@ import {
   CircleDashed,
   CircleExclamation,
   CircleXmark,
+  Clock,
 } from "@gravity-ui/icons"
 import hljs from "highlight.js/lib/core"
 import jsonLang from "highlight.js/lib/languages/json"
@@ -13,9 +14,17 @@ import { cn } from "@/lib/utils"
 
 hljs.registerLanguage("json", jsonLang)
 
+/**
+ * The first four mirror the states an assistant-UI tool part goes through.
+ * `queued` is ours: a call the model asked for that has not started, because the
+ * one before it in the same reply has not finished. Nothing upstream models it,
+ * and without it a call that is waiting its turn is drawn exactly like the one
+ * doing the work.
+ */
 type ChatToolState =
   | "input-streaming"
   | "input-available"
+  | "queued"
   | "output-available"
   | "output-error"
   | "requires-action"
@@ -83,6 +92,7 @@ const chatToolVariants = tv({
     state: {
       "input-streaming": {},
       "input-available": {},
+      "queued": {},
       "output-available": {},
       "output-error": { base: "ring-1 ring-danger/40 ring-inset" },
       "requires-action": { base: "ring-1 ring-warning/40 ring-inset" },
@@ -158,6 +168,16 @@ function ChatToolStatusIcon({ className }: { className?: string }) {
         <CircleDashed
           aria-hidden
           className={cn("size-3.5 shrink-0 animate-spin text-muted", className)}
+        />
+      )
+    // The same mark, standing still. Spinning is the claim that something is
+    // happening, and for a call that has not started it is the only thing on
+    // screen making that claim.
+    case "queued":
+      return (
+        <Clock
+          aria-hidden
+          className={cn("size-3.5 shrink-0 text-muted", className)}
         />
       )
     case "output-available":

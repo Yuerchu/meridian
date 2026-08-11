@@ -161,8 +161,13 @@ export const TurnItem = React.memo(function TurnItem({
   const setTurnExpanded = useConversationStore((s) => s.setTurnExpanded)
 
   // A turn holds itself open while it runs, and while it is blocked on the user
-  // — an approval buried behind a collapsed header cannot be answered.
-  const forcedOpen = isTurnStreaming || turn.status === 'awaiting-input'
+  // — an approval buried behind a collapsed header cannot be answered. A turn
+  // that stopped without ever reaching an ending holds itself open for the same
+  // reason in reverse: what it was doing when it stopped is the only thing worth
+  // reading about it, and collapsed it looks like nothing more than a short
+  // answer.
+  const forcedOpen =
+    isTurnStreaming || turn.status === 'awaiting-input' || turn.status === 'crashed'
   const [autoOpen, setAutoOpen] = useState(forcedOpen)
   const open = userChoice ?? (forcedOpen || autoOpen)
 
@@ -206,15 +211,28 @@ export const TurnItem = React.memo(function TurnItem({
     setTurnExpanded(conversationId, turn.id, next)
   }, [beginCollapse, isFullyVisible, setTurnExpanded, conversationId, turn.id])
 
+  // Only the streaming turn can be the one being retried, and it is the last
+  // one — the same turn `buildTurns` gave the streaming status to.
+  const retry = useConversationStore((s) => s.sessions[conversationId]?.retry ?? null)
+
   const headline = isTurnStreaming
-    ? t('chat.turn.processing')
+    ? retry
+      ? t('chat.turn.retrying', { attempt: retry.attempt, max: retry.max })
+      : t('chat.turn.processing')
     : turn.status === 'awaiting-input'
       ? t('chat.turn.awaitingInput')
-      : turn.status === 'interrupted'
-        ? t('chat.turn.interrupted')
-        : turn.durationMs != null
-          ? t('chat.turn.processed', { duration: formatDuration(turn.durationMs) })
-          : t('chat.turn.steps', { count: turn.steps.length })
+      // Distinct wording from `interrupted`, which is what the user gets when
+      // they pressed Stop. Saying "stopped" about a turn nobody stopped is how
+      // a half-written file goes unnoticed — and naming a cause would be worse
+      // still, because there is no cause on record: everything that leaves a
+      // turn without an ending arrives here looking the same.
+      : turn.status === 'crashed'
+        ? t('chat.turn.crashed')
+        : turn.status === 'interrupted'
+          ? t('chat.turn.interrupted')
+          : turn.durationMs != null
+            ? t('chat.turn.processed', { duration: formatDuration(turn.durationMs) })
+            : t('chat.turn.steps', { count: turn.steps.length })
 
   const question = turn.userMessage && (
     <ErrorBoundary fallback={renderError}>

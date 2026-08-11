@@ -7,16 +7,15 @@ import {
   CircleCheck,
   CircleDashed,
   CircleExclamation,
+  TriangleExclamation,
 } from "@gravity-ui/icons"
 
 import { cn } from "@/lib/utils"
 
-type TurnStatus =
-  | "streaming"
-  | "complete"
-  | "interrupted"
-  | "awaiting-input"
-  | "empty"
+// Imported rather than restated. This used to be a copy of the union in
+// `lib/turns`, structurally identical by luck, which meant a new status had to
+// be added in two places and nothing failed if it was added in one.
+import type { TurnStatus } from "@/lib/turns"
 
 const TurnStatusContext = React.createContext<TurnStatus>("complete")
 
@@ -94,6 +93,11 @@ function TurnStatusIcon({ className }: { className?: string }) {
       return <CircleDashed aria-hidden className={cn(shared, "animate-spin text-muted")} />
     case "awaiting-input":
       return <CircleExclamation aria-hidden className={cn(shared, "text-warning-soft-foreground")} />
+    // Warning-coloured, unlike `interrupted`, which is grey. A turn the user
+    // stopped needs no attention; one that stopped unexpectedly, part way
+    // through whatever it was doing, may have left something half-done.
+    case "crashed":
+      return <TriangleExclamation aria-hidden className={cn(shared, "text-warning-soft-foreground")} />
     case "interrupted":
       return <Ban aria-hidden className={cn(shared, "text-muted")} />
     case "empty":

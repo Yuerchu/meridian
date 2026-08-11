@@ -11,9 +11,15 @@ use crate::db::schema::{conversations, messages};
 /// row can never exist without being reachable from the head.
 ///
 /// `parent` is the caller's own cursor for the turn rather than a re-read of the
-/// head: two turns writing the same conversation concurrently should end up as
-/// two branches, not interleaved into one nonsensical thread. Whichever finishes
-/// last owns the head, and the other stays reachable as a sibling.
+/// head, so a turn that is deliberately branching — regenerating an answer, or
+/// answering an edited question — writes a sibling instead of a continuation.
+///
+/// It is not a defence against two turns running at once. That reads as though
+/// they would come out as two branches, and the rows do; but the head belongs to
+/// whichever finishes last, and the other turn's entire output stops being on
+/// the active path — which the user sees as their answer vanishing. Exclusion is
+/// `turn::TurnCoordinator`'s job, one turn per conversation, and it is taken
+/// before anything here is called.
 pub fn append_message(
     conn: &mut SqliteConnection,
     new: &NewMessage,
@@ -175,6 +181,8 @@ fn copy_of<'a>(n: &NewMessage<'a>) -> NewMessage<'a> {
         parent_id: n.parent_id,
         source: n.source,
         compact_anchor_id: n.compact_anchor_id,
+        turn_id: n.turn_id,
+        tool_outcome: n.tool_outcome,
     }
 }
 
@@ -198,16 +206,10 @@ pub fn insert_message(
     messages::table.find(new.id).first::<Message>(conn)
 }
 
-pub fn update_content(
-    conn: &mut SqliteConnection,
-    id: &str,
-    content: &str,
-) -> QueryResult<()> {
-    diesel::update(messages::table.find(id))
-        .set(messages::content.eq(content))
-        .execute(conn)?;
-    Ok(())
-}
+// `update_content` was here, and went with the `update_message_content`
+// command that was its only caller. Rewriting one row's text in place has no
+// safe entry point: it names a message, not a conversation, so it cannot take
+// the lease that keeps a running turn from having the ground moved under it.
 
 pub fn update_content_and_tool_calls(
     conn: &mut SqliteConnection,
@@ -492,6 +494,8 @@ mod tests {
             parent_id: None,
             compact_anchor_id: None,
             source: None,
+            turn_id: None,
+            tool_outcome: None,
         }
     }
 

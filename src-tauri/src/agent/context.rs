@@ -347,6 +347,8 @@ mod tests {
             parent_id: None,
             compact_anchor_id: None,
             source: None,
+            turn_id: None,
+            tool_outcome: None,
         }
     }
 
@@ -592,6 +594,30 @@ mod injected_context_tests {
         assert!(!msgs.iter().any(|m| m.origin.is_system_context()));
     }
 
+    /// The interrupted-turn block is the one piece of context whose whole point
+    /// is to be read *this* turn, and a long tool loop is exactly the shape of
+    /// turn that would otherwise push it out of the window. It rides the same
+    /// injected-context channel as memory, so trimming lifts it out and puts it
+    /// back rather than dropping it.
+    #[test]
+    fn an_interrupted_turn_survives_trimming() {
+        let mut msgs = vec![ChatMessage::system_context(
+            "<interrupted_turn>\nedit_file may have taken effect.\n</interrupted_turn>",
+        )];
+        for i in 0..80 {
+            msgs.push(ChatMessage::user(&format!("question {i} {}", "x".repeat(400))));
+            msgs.push(ChatMessage::assistant(&format!("answer {i} {}", "y".repeat(400))));
+        }
+
+        trim_to_context_limit(&mut msgs, 2_000, 4);
+
+        let block = msgs.iter().find(|m| m.origin.is_system_context());
+        assert!(
+            block.is_some_and(|m| m.content.starts_with("<interrupted_turn>")),
+            "the block a turn exists to read must not be the thing trimming drops",
+        );
+    }
+
     /// A compaction summary replaces history, so it must remain compactable —
     /// tagging it as injected background would make it immortal and it would
     /// accumulate one copy per compaction.
@@ -618,6 +644,8 @@ mod injected_context_tests {
             parent_id: None,
             compact_anchor_id: None,
             source: None,
+            turn_id: None,
+            tool_outcome: None,
         }];
         let context = crate::db::ops::message::ActiveContext {
             path: Vec::new(),

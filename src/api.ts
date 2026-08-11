@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ChatMode, ContextInfo, Conversation, CustomTool, Emoji, EmojiPack, LogFileInfo, LogPage, LogQuery, LogSettings, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, Message, MessageTree, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, VoiceModelStatus, VoiceTranscript } from './types'
+import type { Assistant, ChatMode, ContextInfo, Conversation, ConversationSnapshot, CustomTool, Emoji, EmojiPack, LogFileInfo, LogPage, LogQuery, LogSettings, McpConnectionStatus, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, VoiceModelStatus, VoiceTranscript } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -34,9 +34,6 @@ export const api = {
   deleteConversation: (id: string) =>
     invoke<void>('delete_conversation', { id }),
 
-  getConversation: (id: string) =>
-    invoke<Conversation>('get_conversation', { id }),
-
   compact: (conversationId: string, customInstructions?: string) =>
     invoke<void>('compact', {
       conversationId,
@@ -58,24 +55,24 @@ export const api = {
   deleteModelConfig: (id: string) =>
     invoke<void>('delete_model_config', { id }),
 
-  loadMessages: (conversationId: string) =>
-    invoke<Message[]>('load_messages', { conversationId }),
+  /** Everything needed to draw a conversation, read as one state.
+   *
+   *  The only way to read a transcript. Fetching the tree, the row, the turns
+   *  and the approvals separately is what this replaced: a running turn writes
+   *  between such requests, and what came back described no moment that ever
+   *  existed. */
+  conversationSnapshot: (conversationId: string) =>
+    invoke<ConversationSnapshot>('conversation_snapshot', { conversationId }),
 
-  /** The active path plus its branch points, as one snapshot. */
-  loadMessageTree: (conversationId: string) =>
-    invoke<MessageTree>('load_message_tree', { conversationId }),
-
-  /** Makes that message's branch active, landing on its most recent tip. */
+  /** Makes that message's branch active, landing on its most recent tip. Read
+   *  the result back with `conversationSnapshot`. */
   switchBranch: (conversationId: string, messageId: string) =>
-    invoke<MessageTree>('switch_branch', { conversationId, messageId }),
+    invoke<void>('switch_branch', { conversationId, messageId }),
 
-  updateMessageContent: (id: string, content: string) =>
-    invoke<void>('update_message_content', { id, content }),
-
-  /** Deletes the message and everything descended from it. */
+  /** Deletes the message and everything descended from it. Read the result back
+   *  with `conversationSnapshot`, same as a branch switch. */
   deleteMessage: (conversationId: string, id: string) =>
-    invoke<MessageTree>('delete_message', { conversationId, id }),
-
+    invoke<void>('delete_message', { conversationId, id }),
 
   rateMessage: (id: string, rating: number | null) =>
     invoke<void>('rate_message', { id, rating }),
@@ -86,8 +83,12 @@ export const api = {
   uploadFile: (conversationId: string, filePath: string) =>
     invoke<unknown>('upload_file', { conversationId, filePath }),
 
-  stopChat: (conversationId: string) =>
-    invoke<void>('stop_chat', { conversationId }),
+  // `turnId` says which run to stop. Without it the backend stops whatever is
+  // running, which is what a reloaded window has to fall back on — but sending
+  // it means "stop, then send again" can no longer cancel the new turn instead
+  // of the old one.
+  stopChat: (conversationId: string, turnId?: string | null) =>
+    invoke<void>('stop_chat', { conversationId, turnId: turnId ?? null }),
 
   // `mode` is passed per-request as well as being stored on the conversation:
   // the setter is async, and a message sent right after flipping the switch
@@ -99,10 +100,18 @@ export const api = {
   //   both          — edit: another version of that question, answered afresh
   // `replaces` names the message being offered an alternative; it is left in
   // place, reachable as a sibling of whatever the turn writes.
+  //
+  // `turnId` is minted here rather than by the backend, and it is the reason
+  // the composer can be locked and the turn identified at the same instant.
+  // A backend-minted id does not exist until the command has been dispatched,
+  // acquired the conversation, read the assistant and resolved the provider —
+  // and a stop belonging to the *previous* turn, arriving in that gap, would
+  // find no id to be measured against and be taken for this one's.
   chat: (
     conversationId: string,
     message: string | null,
     opts: {
+      turnId?: string
       replaces?: string
       modelOverride?: string
       providerOverride?: string
@@ -116,6 +125,7 @@ export const api = {
     invoke<void>('chat', {
       conversationId,
       message,
+      turnId: opts.turnId ?? null,
       replaces: opts.replaces ?? null,
       modelOverride: opts.modelOverride ?? null,
       providerOverride: opts.providerOverride ?? null,
@@ -204,14 +214,17 @@ export const api = {
   getProviderCapabilities: (providerId: string, modelId: string) =>
     invoke<ProviderCapabilities>('get_provider_capabilities', { providerId, modelId }),
 
-  approveToolCall: (callId: string) =>
-    invoke<void>('approve_tool_call', { callId }),
+  // All three address an `approval_id` the backend minted, not the provider's
+  // tool call id, and all three reject when nothing is waiting on it any more —
+  // the caller turns that into an `orphaned` card rather than spinning.
+  approveToolCall: (approvalId: string) =>
+    invoke<void>('approve_tool_call', { approvalId }),
 
-  denyToolCall: (callId: string, reason?: string) =>
-    invoke<void>('deny_tool_call', { callId, reason: reason ?? null }),
+  denyToolCall: (approvalId: string, reason?: string) =>
+    invoke<void>('deny_tool_call', { approvalId, reason: reason ?? null }),
 
-  respondToAsk: (callId: string, response: string) =>
-    invoke<void>('respond_to_ask', { callId, response }),
+  respondToAsk: (approvalId: string, response: string) =>
+    invoke<void>('respond_to_ask', { approvalId, response }),
 
   listStagedEdits: (conversationId: string) =>
     invoke<Array<{ path: string; diff: string; tool_name: string }>>('list_staged_edits', { conversationId }),
@@ -429,6 +442,11 @@ export const api = {
 
   listMcpTools: (serverId?: string) =>
     invoke<McpToolDef[]>('list_mcp_tools', { serverId: serverId ?? null }),
+
+  // Only servers with a live entry come back. Anything absent is disconnected —
+  // the caller already has the full list from the database.
+  listMcpConnectionStatuses: () =>
+    invoke<McpConnectionStatus[]>('list_mcp_connection_statuses'),
 
   listAllToolNames: () =>
     invoke<ToolInfo[]>('list_all_tool_names'),

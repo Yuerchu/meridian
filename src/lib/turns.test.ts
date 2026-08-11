@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildTurns, formatDuration, hasCollapsibleProcess } from '@/lib/turns'
+import { buildTurns, formatDuration, hasCollapsibleProcess, markQueued } from '@/lib/turns'
 import { reconcileTurns } from '@/hooks/use-turns'
 import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
 
@@ -34,6 +34,50 @@ function tool(name: string, status: ToolCallDisplay['status'] = 'completed'): Co
 
 const text = (t: string): ContentBlock => ({ type: 'text', text: t })
 const thinking = (t: string): ContentBlock => ({ type: 'thinking', text: t })
+
+describe('markQueued', () => {
+  /// The whole reason it exists. All of a reply's calls are written into the
+  /// assistant row before any of them runs, so a snapshot taken partway through
+  /// hydrates every unanswered one as `running` — identical spinners, only one
+  /// of them true.
+  it('leaves the first unanswered call alone and queues the rest', () => {
+    expect(markQueued(['running', 'running', 'running'])).toEqual([false, true, true])
+  })
+
+  it('does not count a call that already has an outcome', () => {
+    expect(markQueued(['completed', 'error', 'denied', 'running', 'running']))
+      .toEqual([false, false, false, false, true])
+  })
+
+  /// A call sitting in front of the user is the one holding everything up, so it
+  /// is not queued — and it keeps its buttons, which a queued card has no use
+  /// for.
+  it('treats a call waiting on the user as the one in flight', () => {
+    expect(markQueued(['pending', 'running'])).toEqual([false, true])
+    expect(markQueued(['approved', 'running'])).toEqual([false, true])
+  })
+
+  /// Indexes have to line up with what the caller is rendering, which is a mix
+  /// of text, thinking and tool steps.
+  it('keeps its place past everything that is not a tool call', () => {
+    expect(markQueued([null, 'running', null, 'running', null]))
+      .toEqual([false, false, false, true, false])
+  })
+
+  /// Nothing outstanding means nothing waiting, however many calls ran.
+  it('queues nothing when every call has finished', () => {
+    expect(markQueued(['completed', 'completed'])).toEqual([false, false])
+    expect(markQueued([])).toEqual([])
+  })
+
+  /// A tool row that failed to write leaves its call unanswered while a later
+  /// one has a result. Reading the earlier one as the live one is wrong — it
+  /// already ran — but it is what the transcript says, and inventing a better
+  /// answer here would mean guessing which of two unanswered calls is real.
+  it('follows the transcript when a result went missing', () => {
+    expect(markQueued(['running', 'completed', 'running'])).toEqual([false, false, true])
+  })
+})
 
 describe('buildTurns — grouping', () => {
   it('returns nothing for an empty conversation', () => {
@@ -278,5 +322,71 @@ describe('reconcileTurns', () => {
     const settled = reconcileTurns(streaming, buildTurns([u, a]))
     expect(settled[0]).not.toBe(streaming[0])
     expect(settled[0].status).toBe('complete')
+  })
+})
+
+describe('buildTurns — turns that never finished', () => {
+  const crashed = (...ids: string[]) => ({ crashedTurnIds: new Set(ids) })
+
+  /// The reading this status exists to prevent. A turn killed a moment after
+  /// writing a paragraph leaves text sitting past its last tool call, which is
+  /// indistinguishable from an answer — so it would collapse itself with a tick
+  /// beside it and say nothing about the tool that may have run.
+  it('outranks the trailing text that would otherwise read as an answer', () => {
+    const u = msg('user', { content: 'q', turn_id: 't1' })
+    const a = msg('assistant', {
+      turn_id: 't1',
+      _blocks: [tool('edit_file'), text('Done — I updated the file.')],
+    })
+
+    expect(buildTurns([u, a]).at(-1)!.status).toBe('complete')
+    expect(buildTurns([u, a], crashed('t1')).at(-1)!.status).toBe('crashed')
+  })
+
+  /// Regenerating writes a new answer under the *same* question row, so the
+  /// group ends up holding a question belonging to the turn that died and an
+  /// answer belonging to the one that worked. Judging the group by any row that
+  /// crashed marks the good answer as crashed, permanently.
+  it('does not inherit a crash from the answer that was regenerated away', () => {
+    const u = msg('user', { content: 'q', turn_id: 'dead' })
+    const fresh = msg('assistant', { turn_id: 'good', _blocks: [text('this one worked')] })
+
+    const turns = buildTurns([u, fresh], crashed('dead'))
+    expect(turns.at(-1)!.status).toBe('complete')
+  })
+
+  /// And the case the question really does have to speak for: killed before the
+  /// model said anything at all, so there is no answer row to ask.
+  it('falls back to the question when the turn died before answering', () => {
+    const u = msg('user', { content: 'q', turn_id: 'dead' })
+    expect(buildTurns([u], crashed('dead')).at(-1)!.status).toBe('crashed')
+  })
+
+  /// A live stream is being watched right now; turn records are read when a
+  /// conversation is opened or a turn ends. The fresher signal wins.
+  it('yields to a stream that is actually in flight', () => {
+    const u = msg('user', { content: 'q', turn_id: 't1' })
+    const a = msg('assistant', { turn_id: 't1', _blocks: [text('...')] })
+    const ctx = { streaming: true, ...crashed('t1') }
+    expect(buildTurns([u, a], ctx).at(-1)!.status).toBe('streaming')
+  })
+
+  /// Without a header there is nowhere to say it. A turn cut off part way
+  /// through a sentence has no tool calls, so the ordinary rule would render it
+  /// as a sentence that simply stops.
+  it('is always worth collapsing, even with nothing in it', () => {
+    const u = msg('user', { content: 'q', turn_id: 't1' })
+    const a = msg('assistant', { turn_id: 't1', _blocks: [text('half a sen')] })
+
+    expect(hasCollapsibleProcess(buildTurns([u, a]).at(-1)!)).toBe(false)
+    expect(hasCollapsibleProcess(buildTurns([u, a], crashed('t1')).at(-1)!)).toBe(true)
+  })
+
+  /// Rows written before turns were recorded carry no id, and inventing an
+  /// answer about them is exactly what this feature is meant to stop.
+  it('says nothing about rows that name no turn', () => {
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', { _blocks: [tool('read_file')] })
+    expect(buildTurns([u, a], crashed('t1')).at(-1)!.status).toBe('interrupted')
   })
 })

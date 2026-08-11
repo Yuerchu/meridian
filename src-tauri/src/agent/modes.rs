@@ -106,6 +106,40 @@ pub fn transition_tools() -> impl Iterator<Item = &'static str> {
     MODES.iter().flat_map(|m| [m.enter_tool, m.exit_tool]).flatten()
 }
 
+/// Where the conversation is, and whether this turn can move it.
+///
+/// One value rather than a mode beside a flag, because it is the pairing that
+/// would otherwise only be a comment that is dangerous: a narrowed mode with no
+/// way between modes leaves the conversation holding an exit tool that reaches
+/// the registry and answers with an error the model then has to read. A bool
+/// lets that be written down; this does not.
+///
+/// Whether a turn can move modes is not a preference. It is whether the runner
+/// has anywhere to put the question — the desktop shows a card and waits, and a
+/// runner with no `Transitions` port has no equivalent.
+#[derive(Clone, Copy)]
+pub enum Modes {
+    /// The runner has a transitions port. This is the mode it is in, and it may
+    /// be offered the way out of it or into another.
+    Switchable(&'static ModeSpec),
+    /// The runner has no way between modes — OneBot today, a sub-agent later.
+    /// Work mode, and no transition tool at all.
+    Fixed,
+}
+
+impl Modes {
+    pub fn spec(&self) -> &'static ModeSpec {
+        match self {
+            Self::Switchable(mode) => mode,
+            Self::Fixed => &WORK,
+        }
+    }
+
+    pub(crate) fn switchable(&self) -> bool {
+        matches!(self, Self::Switchable(_))
+    }
+}
+
 impl ModeSpec {
     /// Whether entering this mode from the given tool set would actually take
     /// anything away.
@@ -201,6 +235,16 @@ mod tests {
     #[test]
     fn an_assistant_with_no_tools_at_all_is_not_offered_planning() {
         assert!(resolve(None).offered_transitions(&[]).is_empty());
+    }
+
+    /// The pairing a bool would have allowed: a narrowed mode with no way out
+    /// of it. `Fixed` cannot name a mode, so a runner that cannot switch is
+    /// always in the one that narrows nothing.
+    #[test]
+    fn a_runner_that_cannot_switch_is_in_the_mode_that_narrows_nothing() {
+        assert_eq!(Modes::Fixed.spec().id, WORK_MODE);
+        assert!(Modes::Fixed.spec().tools.is_none());
+        assert!(!Modes::Fixed.switchable());
     }
 
     #[test]

@@ -219,6 +219,8 @@ diesel::table! {
         parent_id -> Nullable<Text>,
         compact_anchor_id -> Nullable<Text>,
         source -> Nullable<Text>,
+        turn_id -> Nullable<Text>,
+        tool_outcome -> Nullable<Text>,
     }
 }
 
@@ -385,6 +387,22 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    turns (id) {
+        id -> Text,
+        conversation_id -> Text,
+        origin -> Text,
+        status -> Text,
+        phase -> Nullable<Text>,
+        phase_tool -> Nullable<Text>,
+        error -> Nullable<Text>,
+        started_at -> BigInt,
+        updated_at -> BigInt,
+        ended_at -> Nullable<BigInt>,
+        reported_at -> Nullable<BigInt>,
+    }
+}
+
 diesel::joinable!(assistant_emoji_packs -> assistants (assistant_id));
 diesel::joinable!(assistant_emoji_packs -> emoji_packs (pack_id));
 diesel::joinable!(assistants -> providers (provider_id));
@@ -408,6 +426,7 @@ diesel::joinable!(skill_bindings_assistant -> skills (dir_name));
 diesel::joinable!(mode_artifacts -> conversations (conversation_id));
 diesel::joinable!(todo_lists -> conversations (conversation_id));
 diesel::joinable!(todo_items -> todo_lists (list_id));
+diesel::joinable!(turns -> conversations (conversation_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,memory_proposals,memory_subjects,messages,mode_artifacts,model_configs,preferences,projects,prompt_templates,providers,skill_bindings_assistant,skill_bindings_global,skill_bindings_project,skills,todo_items,todo_lists,tool_categories,tool_permissions,tool_presets,);
+    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,memory_proposals,memory_subjects,messages,mode_artifacts,model_configs,preferences,projects,prompt_templates,providers,skill_bindings_assistant,skill_bindings_global,skill_bindings_project,skills,todo_items,todo_lists,tool_categories,tool_permissions,tool_presets,turns,);

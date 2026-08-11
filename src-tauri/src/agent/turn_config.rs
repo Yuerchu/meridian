@@ -15,13 +15,16 @@ use crate::db::models::assistant::Assistant;
 use crate::provider::ToolDefinition;
 use crate::tools::ToolRegistry;
 
-use super::modes::ModeSpec;
+use super::modes::Modes;
 
 pub(crate) struct TurnConfigInput {
     pub assistant: Option<Assistant>,
     pub conversation_id: String,
     pub project_id: Option<String>,
-    pub mode: &'static ModeSpec,
+    /// Where the conversation is, and whether this runner can move it. The
+    /// second half is not a preference — it is whether there is anywhere to put
+    /// the question a transition asks.
+    pub mode: Modes,
     /// Fetched by the caller: the MCP manager sits behind an async lock.
     pub mcp_defs: Vec<ToolDefinition>,
     /// False for OneBot's non-admin sessions, which get no tools at all.
@@ -89,7 +92,7 @@ pub(crate) fn resolve(
     // The mode goes first: it is the strongest constraint in force, and in plan
     // mode the file-editing baseline below is absent anyway because those tools
     // were removed.
-    if let Some(instructions) = mode.instructions {
+    if let Some(instructions) = mode.spec().instructions {
         prompt.push_str(instructions);
         prompt.push_str("\n\n");
     }
@@ -253,7 +256,13 @@ mod tests {
         .unwrap();
     }
 
-    fn input(mode: &'static ModeSpec, assistant: Option<Assistant>) -> TurnConfigInput {
+    /// A desktop-shaped runner: it has a transitions port, so it is offered the
+    /// way between modes.
+    fn switchable(id: Option<&str>) -> Modes {
+        Modes::Switchable(super::super::modes::resolve(id))
+    }
+
+    fn input(mode: Modes, assistant: Option<Assistant>) -> TurnConfigInput {
         TurnConfigInput {
             assistant,
             conversation_id: "c1".into(),
@@ -279,7 +288,7 @@ mod tests {
     fn no_assistant_means_every_tool() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
-        let cfg = resolve(&mut conn, &reg, input(super::super::modes::resolve(None), None));
+        let cfg = resolve(&mut conn, &reg, input(switchable(None), None));
 
         assert!(cfg.offered.contains("read_file"));
         assert!(cfg.offered.contains("write_file"));
@@ -296,7 +305,7 @@ mod tests {
         seed_preset(&mut conn, "p1", r#"["read_file","glob"]"#);
 
         let assistant = assistant_with(Some("p1"), Some(r#"["write_file","run_command"]"#));
-        let cfg = resolve(&mut conn, &reg, input(super::super::modes::resolve(None), Some(assistant)));
+        let cfg = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)));
 
         assert!(cfg.offered.contains("read_file"));
         assert!(cfg.offered.contains("glob"));
@@ -313,7 +322,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         // Names a preset that was deleted, leaving a dangling reference.
         let assistant = assistant_with(Some("gone"), None);
-        let cfg = resolve(&mut conn, &reg, input(super::super::modes::resolve(None), Some(assistant)));
+        let cfg = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)));
 
         assert!(!cfg.offered.contains("write_file"), "fails closed, not open");
         assert!(!cfg.offered.contains("read_file"));
@@ -326,7 +335,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         seed_preset(&mut conn, "broken", "not json at all");
         let assistant = assistant_with(Some("broken"), None);
-        let cfg = resolve(&mut conn, &reg, input(super::super::modes::resolve(None), Some(assistant)));
+        let cfg = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)));
 
         assert!(!cfg.offered.contains("write_file"));
         assert!(!cfg.offered.contains("read_file"));
@@ -341,7 +350,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         let assistant = assistant_with(Some("gone"), None);
         let cfg =
-            resolve(&mut conn, &reg, input(super::super::modes::resolve(Some("plan")), Some(assistant)));
+            resolve(&mut conn, &reg, input(switchable(Some("plan")), Some(assistant)));
 
         assert!(cfg.offered.contains("exit_plan"), "must never be stranded");
         assert!(!cfg.offered.contains("read_file"), "but gains nothing else");
@@ -352,7 +361,7 @@ mod tests {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
         let assistant = assistant_with(None, Some(r#"["read_file"]"#));
-        let cfg = resolve(&mut conn, &reg, input(super::super::modes::resolve(None), Some(assistant)));
+        let cfg = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)));
 
         assert!(cfg.offered.contains("read_file"));
         assert!(!cfg.offered.contains("write_file"));
@@ -366,7 +375,7 @@ mod tests {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
         let assistant = assistant_with(None, Some(r#"["read_file","write_file"]"#));
-        let cfg = resolve(&mut conn, &reg, input(super::super::modes::resolve(None), Some(assistant)));
+        let cfg = resolve(&mut conn, &reg, input(switchable(None), Some(assistant)));
 
         assert!(cfg.offered.contains("enter_plan"));
     }
@@ -378,7 +387,7 @@ mod tests {
     fn work_mode_never_authorises_the_exit_tool() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
-        let cfg = resolve(&mut conn, &reg, input(super::super::modes::resolve(None), None));
+        let cfg = resolve(&mut conn, &reg, input(switchable(None), None));
 
         assert!(!cfg.offered.contains("exit_plan"));
         assert!(!cfg.tool_defs.iter().any(|d| d.name == "exit_plan"), "not even visible");
@@ -388,7 +397,7 @@ mod tests {
     fn plan_mode_narrows_and_adds_its_exit_tool() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
-        let cfg = resolve(&mut conn, &reg, input(super::super::modes::resolve(Some("plan")), None));
+        let cfg = resolve(&mut conn, &reg, input(switchable(Some("plan")), None));
 
         assert!(cfg.offered.contains("read_file"));
         assert!(cfg.offered.contains("exit_plan"));
@@ -397,13 +406,42 @@ mod tests {
         assert!(cfg.system_prompt.starts_with("# Plan mode"));
     }
 
+    /// A model that cannot take a tools field is offered nothing, transitions
+    /// included. Asserted rather than left to the short-circuit above it,
+    /// because that is one restructuring away from letting the mode add
+    /// `enter_plan` back to an otherwise empty set.
+    #[test]
+    fn a_turn_with_no_tools_is_not_offered_a_way_into_plan() {
+        let (pool, reg) = setup();
+        let mut conn = pool.get().unwrap();
+        let mut i = input(switchable(None), None);
+        i.include_tools = false;
+        let cfg = resolve(&mut conn, &reg, i);
+
+        assert!(cfg.offered.is_empty(), "got: {:?}", cfg.offered);
+        assert!(cfg.tool_defs.is_empty());
+    }
+
+    /// The headless side, end to end. It has every write tool an admin session
+    /// gets, which is exactly the condition that used to earn it `enter_plan`.
+    #[test]
+    fn a_headless_turn_is_not_offered_the_way_into_plan() {
+        let (pool, reg) = setup();
+        let mut conn = pool.get().unwrap();
+        let cfg = resolve(&mut conn, &reg, input(Modes::Fixed, None));
+
+        assert!(cfg.offered.contains("write_file"), "it still gets its tools");
+        assert!(!cfg.offered.contains("enter_plan"));
+        assert!(!cfg.tool_defs.iter().any(|d| d.name == "enter_plan"));
+    }
+
     #[test]
     fn a_mode_cannot_hand_back_what_the_assistant_withheld() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
         let assistant = assistant_with(None, Some(r#"["read_file"]"#));
         let cfg =
-            resolve(&mut conn, &reg, input(super::super::modes::resolve(Some("plan")), Some(assistant)));
+            resolve(&mut conn, &reg, input(switchable(Some("plan")), Some(assistant)));
 
         assert!(cfg.offered.contains("read_file"));
         assert!(cfg.offered.contains("exit_plan"), "the exit tool is the one exception");
@@ -414,7 +452,7 @@ mod tests {
     fn a_session_without_tools_still_gets_a_prompt() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
-        let mut i = input(super::super::modes::resolve(None), None);
+        let mut i = input(switchable(None), None);
         i.include_tools = false;
         let cfg = resolve(&mut conn, &reg, i);
 
@@ -442,7 +480,7 @@ mod tests {
         let plan = crate::db::ops::plan::record_plan(&mut conn, "c1", "the plan", 10).unwrap();
         crate::db::ops::plan::approve(&mut conn, &plan.id, 20).unwrap();
 
-        let mut i = input(super::super::modes::resolve(None), None);
+        let mut i = input(switchable(None), None);
         i.context_blocks = vec!["\n\n# Project instructions\nBe brief.".into()];
         let cfg = resolve(&mut conn, &reg, i);
 
@@ -474,8 +512,8 @@ mod tests {
         )
         .unwrap();
 
-        let a = resolve(&mut conn, &reg, input(super::super::modes::resolve(None), None));
-        let b = resolve(&mut conn, &reg, input(super::super::modes::resolve(None), None));
+        let a = resolve(&mut conn, &reg, input(switchable(None), None));
+        let b = resolve(&mut conn, &reg, input(switchable(None), None));
         assert_eq!(a.system_prompt, b.system_prompt);
         assert!(a.system_prompt.contains("<todo_list>"));
     }
@@ -489,7 +527,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
 
         let block = crate::voice::prompt::voice_context_block(&[], true).unwrap();
-        let mut i = input(super::super::modes::resolve(None), None);
+        let mut i = input(switchable(None), None);
         i.context_blocks = vec![block];
         let cfg = resolve(&mut conn, &reg, i);
         assert!(cfg.system_prompt.contains("<voice_input>"));

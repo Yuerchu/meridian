@@ -138,10 +138,19 @@ pub(crate) fn resolve_turn_params(
         assistant, provider_id, provider_type, api_format, model, thinking_level, fast,
     } = input;
 
-    let model_config = provider_id.and_then(|pid| {
-        let mut conn = get_conn(pool).ok()?;
-        db::ops::model_config::get_by_provider_and_model(&mut conn, pid, model).ok()?
-    });
+    // Not a silent fallback. A pool timeout here used to be indistinguishable
+    // from "this model has no config row": the turn would drop through to the
+    // catalog defaults and run with a different context limit, output ceiling
+    // and capability set than the user configured. Failing visibly beats
+    // quietly changing the parameters of the request.
+    let model_config = match provider_id {
+        Some(pid) => {
+            let mut conn = get_conn(pool)?;
+            db::ops::model_config::get_by_provider_and_model(&mut conn, pid, model)
+                .map_err(|e| format!("could not read the stored config for '{model}': {e}"))?
+        }
+        None => None,
+    };
 
     let mut caps = provider::capabilities::resolve(provider_type, Some(api_format), model);
     provider::capabilities::apply_overrides(
@@ -269,6 +278,63 @@ mod tests {
         assert!(!summarising.thinking_enabled);
         assert_eq!(summarising.thinking_budget, None);
         assert_eq!(summarising.thinking_effort, None);
+    }
+
+    /// What decides whether this turn offers tools at all. The headless side
+    /// used to answer it from `capabilities::resolve` directly, which does not
+    /// apply overrides — so a model the user had told us takes no tools was
+    /// still sent them, while every other parameter of the same request came
+    /// from here and did honour the override.
+    #[test]
+    fn a_capability_override_reaches_the_turns_capabilities() {
+        let pool = crate::db::test_db();
+        {
+            let mut conn = pool.get().unwrap();
+            db::ops::provider::create_provider(&mut conn, &db::models::provider::NewProvider {
+                id: "p1",
+                name: "P",
+                provider_type: "openai",
+                base_url: "https://example.invalid",
+                is_enabled: 1,
+                sort_order: 0,
+                created_at: 0,
+                updated_at: 0,
+                api_format: "chat",
+            })
+            .unwrap();
+            db::ops::model_config::upsert(&mut conn, &db::models::model_config::NewModelConfig {
+                id: "mc1",
+                provider_id: "p1",
+                model_id: "gpt-4o",
+                display_name: None,
+                context_window: 128_000,
+                compact_threshold: 0,
+                max_output_tokens: Some(16_384),
+                input_price: 0.0,
+                output_price: 0.0,
+                cache_price: None,
+                created_at: 0,
+                updated_at: 0,
+                capability_overrides: Some(r#"{"supports_tools": false}"#),
+            })
+            .unwrap();
+        }
+        let assistant = assistant_with(None);
+
+        let with_provider = resolve_turn_params(&pool, TurnParamsInput {
+            assistant: Some(&assistant),
+            provider_id: Some("p1"),
+            provider_type: "openai",
+            api_format: "chat",
+            model: "gpt-4o",
+            thinking_level: None,
+            fast: false,
+        })
+        .unwrap();
+        assert!(!with_provider.caps.supports_tools);
+
+        // And it is the row that says so, not the catalog.
+        assert!(resolve_for(&pool, "gpt-4o", &assistant).caps.supports_tools);
     }
 
     #[test]

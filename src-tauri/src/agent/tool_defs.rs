@@ -9,7 +9,7 @@ use crate::db::models::skill::Skill;
 use crate::provider::ToolDefinition;
 use crate::tools::ToolRegistry;
 
-use super::modes::ModeSpec;
+use super::modes::Modes;
 use super::skills::{is_valid_slug, MAX_AVAILABLE_SKILLS};
 
 pub const LOAD_SKILL_TOOL: &str = "load_skill";
@@ -25,7 +25,8 @@ pub const LOAD_SKILL_TOOL: &str = "load_skill";
 /// Doing this here, while the payload is being assembled, is the whole point.
 /// A tool the model cannot see needs no instructions telling it not to call
 /// that tool.
-pub(crate) fn apply_mode(defs: &mut Vec<ToolDefinition>, mode: &ModeSpec, registry: &ToolRegistry) {
+pub(crate) fn apply_mode(defs: &mut Vec<ToolDefinition>, modes: Modes, registry: &ToolRegistry) {
+    let mode = modes.spec();
     // Transition tools belong to the mode that declares them, and which ones
     // apply depends entirely on where the conversation currently is. Stripping
     // all of them first means the answer comes from `offered_transitions` alone
@@ -38,7 +39,14 @@ pub(crate) fn apply_mode(defs: &mut Vec<ToolDefinition>, mode: &ModeSpec, regist
         .map(|d| d.name.clone())
         .filter(|n| !super::modes::transition_tools().any(|t| t == n))
         .collect();
-    let offered = mode.offered_transitions(&working);
+    // A runner that cannot switch modes is offered neither way. Left in, the
+    // model calls one and gets back the registry tool's refusal to be called
+    // outside the loop -- as a tool result, in its own transcript.
+    let offered = if modes.switchable() {
+        mode.offered_transitions(&working)
+    } else {
+        Vec::new()
+    };
     defs.retain(|d| {
         let name = d.name.as_str();
         !super::modes::transition_tools().any(|t| t == name) || offered.contains(&name)
@@ -172,7 +180,7 @@ mod tests {
     #[test]
     fn work_mode_narrows_nothing_and_offers_the_way_into_plan() {
         let mut defs = named(&["read_file", "write_file", "run_command"]);
-        apply_mode(&mut defs, super::super::modes::resolve(None), &registry());
+        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(None)), &registry());
         assert_eq!(
             names_of(&defs),
             ["read_file", "write_file", "run_command", "enter_plan"],
@@ -182,7 +190,7 @@ mod tests {
     #[test]
     fn plan_mode_keeps_readers_and_drops_writers() {
         let mut defs = named(&["read_file", "write_file", "apply_patch", "run_command", "save_memory"]);
-        apply_mode(&mut defs, super::super::modes::resolve(Some("plan")), &registry());
+        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(Some("plan"))), &registry());
 
         let names = names_of(&defs);
         assert!(names.contains(&"read_file".to_string()));
@@ -195,7 +203,7 @@ mod tests {
     #[test]
     fn plan_mode_injects_its_exit_tool() {
         let mut defs = named(&["read_file"]);
-        apply_mode(&mut defs, super::super::modes::resolve(Some("plan")), &registry());
+        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(Some("plan"))), &registry());
         let exit = defs.iter().find(|d| d.name == "exit_plan").expect("exit tool injected");
         // Pulled from the registry, so the schema the model sees is the real one.
         assert!(!exit.description.is_empty());
@@ -207,27 +215,38 @@ mod tests {
         // It lives in the registry, so an assistant with no tool filter would
         // otherwise be offered it in every ordinary conversation.
         let mut defs = named(&["read_file", "exit_plan"]);
-        apply_mode(&mut defs, super::super::modes::resolve(None), &registry());
+        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(None)), &registry());
         // No `enter_plan` either: read_file alone is already read-only, so
         // planning would take nothing away.
         assert_eq!(names_of(&defs), ["read_file"]);
     }
 
+    /// A runner with no transitions port. Left switchable it would be handed
+    /// `enter_plan` — a write tool in the set is the whole condition — and
+    /// calling it reaches the registry tool, whose refusal to be called outside
+    /// the loop lands in the transcript as that turn's tool result.
+    #[test]
+    fn a_runner_that_cannot_switch_modes_is_offered_neither_way() {
+        let mut defs = named(&["read_file", "write_file", "exit_plan"]);
+        apply_mode(&mut defs, Modes::Fixed, &registry());
+        assert_eq!(names_of(&defs), ["read_file", "write_file"]);
+    }
+
     #[test]
     fn the_way_into_plan_appears_only_when_it_would_restrict_something() {
         let mut read_only = named(&["read_file", "web_search"]);
-        apply_mode(&mut read_only, super::super::modes::resolve(None), &registry());
+        apply_mode(&mut read_only, Modes::Switchable(super::super::modes::resolve(None)), &registry());
         assert_eq!(names_of(&read_only), ["read_file", "web_search"]);
 
         let mut can_edit = named(&["read_file", "write_file"]);
-        apply_mode(&mut can_edit, super::super::modes::resolve(None), &registry());
+        apply_mode(&mut can_edit, Modes::Switchable(super::super::modes::resolve(None)), &registry());
         assert!(names_of(&can_edit).contains(&"enter_plan".to_string()));
     }
 
     #[test]
     fn you_cannot_re_enter_the_mode_you_are_already_in() {
         let mut defs = named(&["read_file", "enter_plan"]);
-        apply_mode(&mut defs, super::super::modes::resolve(Some("plan")), &registry());
+        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(Some("plan"))), &registry());
         let names = names_of(&defs);
         assert!(!names.contains(&"enter_plan".to_string()), "already there");
         assert!(names.contains(&"exit_plan".to_string()), "but can leave");
@@ -238,7 +257,7 @@ mod tests {
         // The assistant allows two tools; plan mode's whitelist is much wider,
         // but must not hand back anything the assistant had already excluded.
         let mut defs = named(&["read_file", "glob"]);
-        apply_mode(&mut defs, super::super::modes::resolve(Some("plan")), &registry());
+        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(Some("plan"))), &registry());
 
         let names = names_of(&defs);
         assert!(!names.contains(&"list_directory".to_string()), "not enabled by the assistant");
@@ -249,7 +268,7 @@ mod tests {
     #[test]
     fn injection_does_not_duplicate_an_existing_definition() {
         let mut defs = named(&["read_file", "exit_plan"]);
-        apply_mode(&mut defs, super::super::modes::resolve(Some("plan")), &registry());
+        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(Some("plan"))), &registry());
         assert_eq!(defs.iter().filter(|d| d.name == "exit_plan").count(), 1);
     }
 

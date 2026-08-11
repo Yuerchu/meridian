@@ -376,17 +376,25 @@ pub(crate) fn load_memory_block_sync(
     Some(out)
 }
 
-/// The tail of a request: history, then the memory block, then what was just
-/// said. Shared so every surface places the block identically — it must sit
+/// The tail of a request: history, then the background blocks, then what was
+/// just said. Shared so every surface places them identically — they must sit
 /// before the current message, or the model reads its own background as the
 /// thing it was asked about.
+///
+/// `interrupted` says how the previous turn stopped, when it did not stop
+/// cleanly. It travels the same way the memory block does — as injected
+/// context, which trimming and compaction lift out and re-append rather than
+/// drop — and sits second of the two, closest to the message it bears on.
 pub(crate) fn trailing_with_memory(
     memory_block: Option<&str>,
+    interrupted: Option<&str>,
     user_message: &str,
 ) -> Vec<crate::provider::ChatMessage> {
     let mut out = Vec::new();
-    if let Some(block) = memory_block.filter(|b| !b.trim().is_empty()) {
-        out.push(crate::provider::ChatMessage::system_context(block.trim_start()));
+    for block in [memory_block, interrupted].into_iter().flatten() {
+        if !block.trim().is_empty() {
+            out.push(crate::provider::ChatMessage::system_context(block.trim_start()));
+        }
     }
     out.push(crate::provider::ChatMessage::user(user_message));
     out
@@ -761,7 +769,11 @@ mod placement_tests {
     /// must not be attributed to anyone: it is not something a user said.
     #[test]
     fn memory_precedes_the_current_message_and_has_no_speaker() {
-        let msgs = trailing_with_memory(Some("\n\n<bot_memories>\n- x\n</bot_memories>"), "hi");
+        let msgs = trailing_with_memory(
+            Some("\n\n<bot_memories>\n- x\n</bot_memories>"),
+            None,
+            "hi",
+        );
 
         assert_eq!(msgs.len(), 2);
         assert!(matches!(msgs[0].origin, MessageOrigin::SystemContext));
@@ -772,7 +784,37 @@ mod placement_tests {
 
     #[test]
     fn no_memory_means_no_extra_message() {
-        assert_eq!(trailing_with_memory(None, "hi").len(), 1);
-        assert_eq!(trailing_with_memory(Some("   "), "hi").len(), 1);
+        assert_eq!(trailing_with_memory(None, None, "hi").len(), 1);
+        assert_eq!(trailing_with_memory(Some("   "), None, "hi").len(), 1);
+    }
+
+    /// The interrupted block travels the same way the memory block does, and
+    /// sits after it — closest to the message it bears on.
+    #[test]
+    fn an_interrupted_turn_is_reported_as_background_too() {
+        let msgs = trailing_with_memory(
+            Some("<bot_memories>\n- x\n</bot_memories>"),
+            Some("<interrupted_turn>\ncut off\n</interrupted_turn>"),
+            "hi",
+        );
+
+        assert_eq!(msgs.len(), 3);
+        assert!(msgs[0].content.starts_with("<bot_memories>"));
+        assert!(msgs[1].content.starts_with("<interrupted_turn>"));
+        assert!(
+            matches!(msgs[1].origin, MessageOrigin::SystemContext),
+            "it is background, not something anyone said — and injected context \
+             is what survives trimming",
+        );
+        assert_eq!(msgs[2].content, "hi");
+    }
+
+    /// With no memory it still lands, and still ahead of the message.
+    #[test]
+    fn an_interrupted_turn_does_not_need_memory_to_come_with_it() {
+        let msgs = trailing_with_memory(None, Some("<interrupted_turn>x</interrupted_turn>"), "hi");
+        assert_eq!(msgs.len(), 2);
+        assert!(msgs[0].content.starts_with("<interrupted_turn>"));
+        assert_eq!(msgs[1].content, "hi");
     }
 }

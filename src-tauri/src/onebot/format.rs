@@ -26,13 +26,25 @@ pub struct MediaRef {
 #[derive(Debug, Clone, Default)]
 pub struct ParsedMessage {
     pub text: String,
+    /// What the person actually typed, with everything we stood in for them
+    /// left out — no sentinels, no `[图片]`, no `[表情]`.
+    ///
+    /// `text` cannot answer this. By the time it exists a picture has become
+    /// either a private-use codepoint or the literal characters `[图片]`, and
+    /// neither is distinguishable from something the user wrote. That does not
+    /// matter where the whole message is context, which is most places; it
+    /// matters wherever the message is being read as an answer, because a
+    /// sticker sent while a tool waits is not a yes, not a reason, and not a
+    /// reply to a question.
+    pub typed: String,
     pub images: Vec<MediaRef>,
     pub has_record: bool,
 }
 
 impl ParsedMessage {
+    /// A message that arrived as text and nothing else, so all of it was typed.
     pub fn from_text(text: &str) -> Self {
-        Self { text: text.to_string(), ..Default::default() }
+        Self { text: text.to_string(), typed: text.to_string(), ..Default::default() }
     }
 
     pub fn has_media(&self) -> bool {
@@ -67,6 +79,10 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
 
     let mut parsed = ParsedMessage::default();
     let mut text = String::new();
+    // Built alongside rather than filtered out of `text` afterwards: once a
+    // placeholder is in there it is just characters, and `[图片]` is a string a
+    // person can type.
+    let mut typed = String::new();
     for seg in segments {
         let seg_type = seg.get("type").and_then(|v| v.as_str()).unwrap_or("");
         let data = seg.get("data");
@@ -74,6 +90,7 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
             "text" => {
                 if let Some(t) = data.and_then(|d| d.get("text")).and_then(|v| v.as_str()) {
                     text.push_str(t);
+                    typed.push_str(t);
                 }
             }
             "at" => {
@@ -126,6 +143,9 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
         }
     }
     parsed.text = text.trim().to_string();
+    // Mentions are deliberately absent. Addressing the bot is how a message
+    // gets here at all, not something said in it.
+    parsed.typed = typed.trim().to_string();
     parsed
 }
 
@@ -258,6 +278,54 @@ fn find_split_point(text: &str, max_len: usize) -> usize {
     end
 }
 
+/// `ask_user`'s arguments, as a question rather than as a permission request.
+///
+/// The chat surface has one prompt shape for everything a tool wants, and for
+/// this tool that is wrong twice over: the model is not asking to be allowed to
+/// do something, and what it is actually asking never appeared — the person saw
+/// the tool's name and its raw JSON and was invited to reply `Y`.
+///
+/// Arguments that will not parse still produce a prompt. They come from a model
+/// and are the only thing anyone has to go on, so a truncated dump beats
+/// silence: the alternative is a question the user is given no way to answer,
+/// waiting out its minute.
+pub fn ask_user_prompt(arguments: &str) -> String {
+    const FOOTER: &str = "\n引用本条消息作答（60秒超时）";
+    let questions = serde_json::from_str::<serde_json::Value>(arguments)
+        .ok()
+        .and_then(|v| v.get("questions").and_then(|q| q.as_array()).cloned())
+        .unwrap_or_default();
+
+    let mut out = String::from("❓ 助手有个问题:\n");
+    let mut asked = 0;
+    for q in &questions {
+        let Some(text) = q.get("question").and_then(|t| t.as_str()) else { continue };
+        asked += 1;
+        out.push_str(&format!("\n{text}\n"));
+        for (i, opt) in q
+            .get("options")
+            .and_then(|o| o.as_array())
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .enumerate()
+        {
+            let Some(label) = opt.get("label").and_then(|l| l.as_str()) else { continue };
+            match opt.get("description").and_then(|d| d.as_str()) {
+                Some(desc) if !desc.is_empty() => {
+                    out.push_str(&format!("  {}. {label} — {desc}\n", i + 1))
+                }
+                _ => out.push_str(&format!("  {}. {label}\n", i + 1)),
+            }
+        }
+    }
+    if asked == 0 {
+        out.push_str(&format!("\n{}\n", crate::util::take_bytes_at_char_boundary(arguments, 500)));
+    }
+    out.push_str(FOOTER);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -327,6 +395,80 @@ mod tests {
             format!("看这个 {IMAGE_SENTINEL}{RECORD_SENTINEL}")
         );
         assert_eq!(segments_to_text(&msg, None), "看这个 [图片][语音]");
+    }
+
+    /// Everything we stood in for the user, in one message. None of it was
+    /// typed, and `text` cannot say so — by then a picture is either a
+    /// private-use codepoint or the five characters `[图片]`, and a person can
+    /// type the second one.
+    #[test]
+    fn what_the_user_typed_leaves_out_what_we_wrote_for_them() {
+        let msg = serde_json::json!([
+            {"type": "image", "data": {"file": "a.jpg"}},
+            {"type": "record", "data": {"file": "b.amr"}},
+            {"type": "face", "data": {"id": "1"}},
+            {"type": "video", "data": {"file": "c.mp4"}},
+            {"type": "file", "data": {"file": "d.zip"}},
+        ]);
+        let parsed = parse_segments(&msg, None);
+
+        assert!(parsed.typed.is_empty(), "got: {:?}", parsed.typed);
+        assert!(!parsed.text.is_empty(), "the message itself is not empty");
+    }
+
+    /// And when there are words among it, they are what survives — the ones the
+    /// person wrote, without the placeholders wrapped around them.
+    #[test]
+    fn words_sent_alongside_media_are_kept_and_the_media_is_not() {
+        let msg = serde_json::json!([
+            {"type": "at", "data": {"qq": "12345"}},
+            {"type": "image", "data": {"file": "a.jpg"}},
+            {"type": "text", "data": {"text": " 用第二个方案"}},
+            {"type": "face", "data": {"id": "1"}},
+        ]);
+        let parsed = parse_segments(&msg, Some(12345));
+
+        assert_eq!(parsed.typed, "用第二个方案");
+        assert!(!parsed.typed.contains(IMAGE_SENTINEL));
+        assert!(!parsed.typed.contains("[表情]"));
+    }
+
+    /// A message that arrived as nothing but text is all of it typed. This is
+    /// the fallback for clients that only send `raw_message`, and it must not
+    /// quietly answer nothing.
+    #[test]
+    fn a_message_that_was_only_ever_text_is_all_typed() {
+        assert_eq!(ParsedMessage::from_text("y").typed, "y");
+    }
+
+    /// What the QQ user used to be shown for this was the tool's name and its
+    /// raw JSON, under "回复 Y 批准" — a permission prompt for something that
+    /// was not asking permission, and which never showed the question.
+    #[test]
+    fn a_question_is_shown_as_a_question() {
+        let prompt = ask_user_prompt(
+            r#"{"questions":[{"id":"q1","question":"先修哪个?","options":[
+                {"label":"压缩","description":"上下文爆了"},
+                {"label":"审批"}
+            ]}]}"#,
+        );
+
+        assert!(prompt.contains("先修哪个?"), "{prompt}");
+        assert!(prompt.contains("1. 压缩 — 上下文爆了"), "{prompt}");
+        assert!(prompt.contains("2. 审批"), "{prompt}");
+        assert!(!prompt.contains("批准"), "still worded as a permission: {prompt}");
+        assert!(prompt.contains("引用本条消息作答"), "{prompt}");
+    }
+
+    /// The arguments come from a model. A prompt that refused to render would
+    /// leave a question nobody can answer, waiting out its minute in silence.
+    #[test]
+    fn a_malformed_question_still_produces_a_prompt() {
+        for args in ["", "{", r#"{"questions":[]}"#, r#"{"questions":"soon"}"#] {
+            let prompt = ask_user_prompt(args);
+            assert!(prompt.contains("引用本条消息作答"), "{args:?} -> {prompt}");
+            assert!(prompt.len() > "❓ 助手有个问题:".len(), "{args:?} -> {prompt}");
+        }
     }
 
     #[test]

@@ -125,11 +125,77 @@ export interface ToolCallDisplay {
   call_id: string
   tool_name: string
   arguments: string
-  status: 'pending' | 'approved' | 'denied' | 'running' | 'completed' | 'error'
+  /** `orphaned` is a call the transcript shows as unanswered while nothing is
+   *  waiting for a decision on it — its turn died. In the database it looks
+   *  exactly like a pending call, so only the live registry tells them apart,
+   *  and only a pending one gets buttons.
+   *
+   *  `queued` is never stored and never arrives in an event. A reply's calls run
+   *  one at a time in the order the model wrote them, so only the first
+   *  unanswered one is doing anything; the rest read as `running` from the
+   *  transcript and are corrected at render from their position. Keeping it out
+   *  of the store is the point — a stored copy would have to be promoted every
+   *  time a result landed, and would be wrong in between. */
+  status: 'pending' | 'approved' | 'denied' | 'running' | 'queued' | 'completed' | 'error' | 'orphaned'
   result?: string
-  // Set while a sandbox-blocked call waits for "retry without sandbox"
-  // approval; the approval channel uses this synthetic "<id>:retry" id.
-  escalation_call_id?: string
+  /** What the buttons answer with while this call is `pending`. Minted by the
+   *  backend per approval rather than taken from the provider's call id, which
+   *  some OpenAI-compatible gateways reuse. A pending call without one cannot
+   *  be answered, and is shown as `orphaned` rather than falling back to
+   *  `call_id`. */
+  approval_id?: string
+  /** Present exactly when this is a sandbox-blocked call asking to be retried
+   *  without the sandbox. The retry reuses the original call id. */
+  retry_reason?: string
+}
+
+/** One run of the agent loop, as the backend recorded it.
+ *
+ *  `status` is not a raw column. A turn that stopped without recording an
+ *  ending leaves `running` behind, and only startup reconciliation rewrites
+ *  that, so the stored value alone would have a turn that ended an hour ago
+ *  read as one still going. The backend decides against its live register of
+ *  what is running and sends the answer; there is nothing here that could
+ *  ask — which is also why nothing here should read a cause into it. */
+export interface TurnRecord {
+  id: string
+  /** `running` | `done` | `cancelled` | `failed` | `interrupted`. A value from a
+   *  later build travels through as written rather than being flattened into
+   *  one of these, so treat anything unrecognised as "no opinion". */
+  status: string
+  /** What it was doing when it last said anything: `streaming` |
+   *  `awaiting_approval` | `running_tool` | `compacting`. Written before the
+   *  thing it names, so on an interrupted turn this is where it died. */
+  phase: string | null
+  /** The call `phase` refers to, when it refers to one. */
+  phase_tool: string | null
+  error: string | null
+  started_at: number
+  ended_at: number | null
+}
+
+/** A conversation as of one instant.
+ *
+ *  Replaces three parallel requests. Those could interleave with a running turn
+ *  — the tree fetched before a tool result landed, the turns after — and the
+ *  result was a conversation that was never true at any moment. */
+export interface ConversationSnapshot {
+  conversation: Conversation
+  tree: MessageTree
+  turns: TurnRecord[]
+  pending_approvals: PendingApprovalInfo[]
+}
+
+/** A tool call the backend is still holding a turn open for. Recovered on load,
+ *  since the streamed event that first announced it is gone by then. */
+export interface PendingApprovalInfo {
+  approval_id: string
+  assistant_message_id: string
+  provider_call_id: string
+  /** The call this one retries. Set only for sandbox escalations, where it
+   *  currently equals `provider_call_id` — a retry reuses the id. */
+  origin_call_id?: string
+  tool_name: string
   retry_reason?: string
 }
 
@@ -182,6 +248,13 @@ export interface Message {
   /** Only on compaction summaries: the first message the summary stands in
    *  front of. */
   compact_anchor_id?: string | null
+  /** Which run of the agent loop wrote this row. Null on rows written before
+   *  turns were recorded, and on compaction summaries, which belong to no one
+   *  turn's output. */
+  turn_id?: string | null
+  /** Only on `role: 'tool'` rows: `success` | `denied` | `error`. Null reads as
+   *  success — rows written before the column existed all claimed as much. */
+  tool_outcome?: string | null
   _blocks?: ContentBlock[]
 }
 
@@ -252,6 +325,15 @@ export interface McpToolDef {
   qualified_name: string
   name: string
   description: string
+}
+
+/** Reported for servers the backend currently has an entry for. A server that
+ *  is connected but exposes no tools is still connected — which is exactly what
+ *  guessing from the tool list got wrong. */
+export interface McpConnectionStatus {
+  server_id: string
+  state: 'disconnected' | 'connecting' | 'connected'
+  tool_count: number
 }
 
 export interface ToolInfo {
@@ -498,15 +580,34 @@ export interface StreamChunk {
   done?: boolean
   reason?: string
   message_id?: string
+  /** Which run of a turn this belongs to, on `message_start` and `stop`. One
+   *  conversation can have events from more than one run reaching it — a QQ
+   *  session opened in the desktop UI is the same conversation — and without
+   *  this a stop cannot be told apart from any other stop. */
+  turn_id?: string
   conversation_id?: string
   call_id?: string
   tool_name?: string
   arguments?: string
   result?: string
   outcome?: string
-  escalation?: boolean
-  origin_call_id?: string
+  /** Only on `tool_approval_req`. What the answer must be addressed to. */
+  approval_id?: string
+  /** Set only when this approval is a sandbox-blocked call asking to run
+   *  again without the sandbox. Its presence is what marks the escalation. */
   retry_reason?: string
+  /** The call being retried, alongside `retry_reason`. */
+  origin_call_id?: string
+  /** On `retry`: which attempt is about to be waited out, and out of how many.
+   *  1-based, so the first retry reads as 1 of 3. `delay_ms` is how long the
+   *  backoff holds before the request goes again — the event arrives *before*
+   *  that wait rather than after it, so a turn is never silent through it.
+   *
+   *  Deliberately carries no error text. A provider's message can quote the
+   *  request back, and this ends up on a screen. */
+  attempt?: number
+  max_attempts?: number
+  delay_ms?: number
   input_tokens?: number
   output_tokens?: number
 }

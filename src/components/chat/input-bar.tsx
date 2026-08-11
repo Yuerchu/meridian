@@ -35,6 +35,10 @@ interface ContextInfo {
   contextLimit: number
   autoCompactEnabled: boolean
   autoCompactThreshold: number
+  /** `closed` while compaction is being attempted. Anything else means enough
+   *  summarisations failed in a row that it has stopped trying — the setting is
+   *  still on, and the count will only keep climbing, so it has to be said. */
+  compactBreaker: string
 }
 
 export interface AttachedFile {
@@ -392,7 +396,13 @@ export function InputBar({
                         <>
                           <span>{t('chat.context.messages', { count: contextInfo.messageCount })}</span>
                           <span>{t('chat.context.tokens', { used: contextInfo.estimatedTokens.toLocaleString(), limit: contextInfo.contextLimit.toLocaleString() })}</span>
-                          {contextInfo.autoCompactEnabled && contextInfo.autoCompactThreshold > 0 && (
+                          {contextInfo.autoCompactEnabled && contextInfo.compactBreaker !== 'closed' ? (
+                            // Before the countdown, and instead of it: "0% until
+                            // auto-compact" next to a number that never moves
+                            // reads as a bug in the indicator rather than as
+                            // compaction having given up.
+                            <span className="text-warning">{t('chat.compact.circuitBreakerOpen')}</span>
+                          ) : contextInfo.autoCompactEnabled && contextInfo.autoCompactThreshold > 0 && (
                             <span>{Math.max(0, Math.round((1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100))}% {t('chat.compact.untilAutoCompact')}</span>
                           )}
                           {onCompact && !streaming && (

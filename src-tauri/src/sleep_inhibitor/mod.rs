@@ -80,8 +80,9 @@ impl SleepInhibitor {
     }
 }
 
-/// Refcounted wrapper shared as Tauri managed state: Meridian can run several
-/// chat turns concurrently (ActiveChats + OneBot), so the OS assertion is held
+/// Refcounted wrapper shared as Tauri managed state: Meridian runs turns in
+/// several conversations at once — the `TurnCoordinator` only makes them
+/// exclusive per conversation, not across the app — so the OS assertion is held
 /// until the last turn's guard drops.
 ///
 /// Send/Sync note: Tauri's `manage()` enforces `Send + Sync` at compile time.

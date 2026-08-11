@@ -11,6 +11,18 @@ pub(crate) struct StreamResult {
     pub(crate) tool_calls: Vec<provider::ToolCall>,
     pub(crate) usage: Option<provider::TokenUsage>,
     pub(crate) finish_reason: Option<String>,
+    /// Whether the stream ran out on its own rather than being abandoned.
+    ///
+    /// `Ok` is not the same as finished. A cancelled read stops mid-answer and
+    /// still returns everything it had, because that partial answer is worth
+    /// keeping — so the one caller that needs to know the model actually got to
+    /// the end of what it was given cannot tell from the result alone.
+    ///
+    /// That caller is the interrupted-turn notice: it is retired only by a
+    /// reply the model finished producing, and a user pressing Stop two hundred
+    /// milliseconds in is not one. `finish_reason` will not do instead — plenty
+    /// of providers close the stream without ever sending a stop event.
+    pub(crate) ran_to_completion: bool,
 }
 
 pub(crate) const MAX_STREAM_RETRIES: u32 = 5;
@@ -33,6 +45,14 @@ pub(crate) fn is_retryable_stream_error(err: &str) -> bool {
         || e.contains("http 429") || e.contains("http 5")
         || e.contains("api error 429") || e.contains("api error 5")
         || e.contains("idle timeout")
+        // A stream that stopped before it finished, said in the words the
+        // gateway happens to use. Ours reaches this as a network error, but a
+        // compatible provider can hand back the status and the sentence
+        // directly -- and 408 read literally is a timeout that the word
+        // "timeout" above only catches when the reason phrase comes with it.
+        || e.contains("status: 408") || e.contains("http 408")
+        || e.contains("api error 408")
+        || e.contains("disconnected")
 }
 
 /// Extract a server-suggested retry delay ("try again in 20s") from a rate
@@ -107,5 +127,21 @@ mod tests {
         assert!(is_context_window_error("transport: http 413: Some(\"payload too large\")"));
         assert!(!is_retryable_stream_error("transport: http 413: Some(\"payload too large\")"));
         assert!(!is_retryable_stream_error("http 400: bad request"));
+    }
+
+    /// A stream cut short. Our own transport reports it as a network error and
+    /// was covered already; a compatible gateway hands back the status and the
+    /// sentence, and "408" on its own carries no word this used to look for.
+    #[test]
+    fn a_stream_that_stopped_early_is_retryable_however_it_is_worded() {
+        assert!(is_retryable_stream_error("http 408 stream disconnected"));
+        assert!(is_retryable_stream_error("api error 408: {\"message\":\"gateway gave up\"}"));
+        assert!(is_retryable_stream_error("status: 408"));
+        assert!(is_retryable_stream_error(
+            "stream error: stream disconnected before completion"
+        ));
+        // And still not the answers that would say the same thing every time.
+        assert!(!is_retryable_stream_error("http 401: invalid api key"));
+        assert!(!is_retryable_stream_error("http 404: no such model"));
     }
 }

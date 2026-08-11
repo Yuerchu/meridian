@@ -28,7 +28,8 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const storeEnsureSession = useConversationStore((s) => s.ensureSession)
   const storeLoadMessages = useConversationStore((s) => s.loadMessages)
   const storeLoadActiveTodos = useConversationStore((s) => s.loadActiveTodos)
-  const storeSetStreaming = useConversationStore((s) => s.setStreaming)
+  const storeBeginTurn = useConversationStore((s) => s.beginTurn)
+  const storeAbortTurn = useConversationStore((s) => s.abortTurn)
   const storeSetError = useConversationStore((s) => s.setError)
   const storeSetCompacting = useConversationStore((s) => s.setCompacting)
   const isOneBot = useConversationStore((s) => {
@@ -219,8 +220,12 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     setAcceptEdits(conversationAcceptEdits)
   }, [conversationAcceptEdits])
 
+  // Read at click time rather than closed over, so the button always aims at
+  // whatever is running now. Null falls back to "stop this conversation's
+  // current turn", which is all a reloaded window knows.
   const handleStop = useCallback(() => {
-    api.stopChat(conversationId)
+    const turnId = useConversationStore.getState().sessions[conversationId]?.activeTurnId
+    api.stopChat(conversationId, turnId)
   }, [conversationId])
 
   const handleDelete = useCallback((id: string) => {
@@ -255,8 +260,13 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     // A null message means "regenerate", which needs no text of its own.
     if ((text === null ? !replaces : !text) || streaming || submittingRef.current) return
     submittingRef.current = true
-    storeSetStreaming(conversationId, true)
-    storeSetError(conversationId, null)
+    // Minted here, not by the backend, and handed to it. The composer locks on
+    // this line; the backend's first event is several awaits away. Anything
+    // arriving in between — most of all the previous turn's stop, which can be
+    // delivered after its rejection has already unlocked the composer — has to
+    // be measurable against an id that already exists.
+    const turnId = crypto.randomUUID()
+    storeBeginTurn(conversationId, turnId)
     const now = Date.now()
 
     let messageContent = text
@@ -269,8 +279,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         }
         messageContent = JSON.stringify(parts)
       } catch (err) {
-        storeSetError(conversationId, String(err))
-        storeSetStreaming(conversationId, false)
+        storeAbortTurn(conversationId, turnId, String(err))
         submittingRef.current = false
         return
       }
@@ -335,6 +344,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
 
     api
       .chat(conversationId, messageContent, {
+        turnId,
         replaces,
         modelOverride: selectedModelId ?? undefined,
         providerOverride: selectedProviderId ?? undefined,
@@ -345,12 +355,14 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         voice: voice || undefined,
       })
       .catch((err) => {
-        storeSetError(conversationId, String(err))
-        storeSetStreaming(conversationId, false)
+        // Message and all, by id: a rejection can land after the user has given
+        // up and resent, and it must neither unlock the composer on the turn
+        // that replaced it nor report its failure against it.
+        storeAbortTurn(conversationId, turnId, String(err))
         submittingRef.current = false
         storeLoadMessages(conversationId)
       })
-  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, fastMode, mode, selectedAssistantId, storeSetStreaming, storeSetError, storeLoadMessages])
+  }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, fastMode, mode, selectedAssistantId, storeBeginTurn, storeAbortTurn, storeLoadMessages])
 
   // Reset submittingRef when streaming ends
   useEffect(() => {
@@ -410,7 +422,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     () => messages.filter((m) => (m.role === 'user' || m.role === 'assistant') && m.is_compact_summary !== 1),
     [messages],
   )
-  const allTurns = useTurns(visibleMessages, streaming)
+  const allTurns = useTurns(visibleMessages, streaming, session?.turns)
   const compactSummary = messages.find((m) => m.is_compact_summary === 1)
   // The boundary comes from the summary's anchor rather than a stored cursor:
   // once a conversation can branch, one sort_order threshold cannot describe
@@ -439,12 +451,14 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     contextLimit: number
     autoCompactEnabled: boolean
     autoCompactThreshold: number
+    compactBreaker: string
   }>({
     messageCount: 0,
     estimatedTokens: 0,
     contextLimit: selectedAssistant?.context_limit ?? 128000,
     autoCompactEnabled: selectedAssistant?.auto_compact_enabled === 1,
     autoCompactThreshold: 0,
+    compactBreaker: 'closed',
   })
 
   useEffect(() => {
@@ -458,11 +472,17 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
           contextLimit: info.context_limit,
           autoCompactEnabled: info.auto_compact_enabled,
           autoCompactThreshold: info.compact_threshold,
+          compactBreaker: info.circuit_breaker_state,
         })
       }).catch(() => {})
     }, 100)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [conversationId, messages.length, compactBoundary])
+    // `compacting` is in here for its falling edge. A pass that ran mid-turn
+    // changes nothing on disk, so nothing else in this list moves — but it is
+    // also where the circuit breaker opens, and a breaker that opened without
+    // the indicator noticing leaves "0% until auto-compact" next to a number
+    // that will now never come down.
+  }, [conversationId, messages.length, compactBoundary, compacting])
 
   const leading = (
     <>

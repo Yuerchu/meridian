@@ -2,9 +2,9 @@ use std::sync::Arc;
 
 use tauri::Emitter;
 use tokio::sync::oneshot;
-use tokio_util::sync::CancellationToken;
 
 use super::agent::{self, ApprovalFn, TextNotifyFn};
+use crate::db::models::turn::{TurnStatus, ERROR_LOOP_DETECTED};
 use super::command::{self, SlashCommand};
 use super::format;
 use super::protocol::{MessageSegment, OneBotAction, OneBotEvent};
@@ -43,24 +43,35 @@ pub async fn handle_message(
     let self_id = event.self_id.unwrap_or(0);
     let is_group = event.message_type.as_deref() == Some("group");
 
+    let reply_message_id = format::extract_reply_message_id(message);
+
     if is_group && !format::is_at_bot(message, self_id) {
         let session_key = SessionKey::group(event.group_id.unwrap_or(0));
         // Only the user who triggered a pending approval may answer it without
         // @mentioning the bot; everyone else's un-addressed messages are ignored.
-        let is_initiator = state.pending_approvals.lock().await
+        let is_initiator = state.pending_approvals.lock()
             .get(&session_key.to_string())
-            .is_some_and(|(uid, _)| *uid == user_id);
+            .is_some_and(|p| p.initiator == user_id);
         if is_initiator {
+            let segments = format::parse_segments(message, Some(self_id));
             let text = format::segments_to_text(message, Some(self_id));
             if !text.is_empty() {
-                let parsed = format::ParsedMessage::from_text(&text);
-                return handle_text_message(event, state, user_id, parsed, None, conn_id).await;
+                // Readable text, as before, but carrying what was typed rather
+                // than losing it: this is the path an answer normally arrives
+                // by, and the media placeholders in `text` are ours.
+                let parsed = format::ParsedMessage {
+                    typed: segments.typed,
+                    ..format::ParsedMessage::from_text(&text)
+                };
+                // What it quoted travels with it too, for the same reason.
+                return handle_text_message(
+                    event, state, user_id, parsed, reply_message_id, conn_id,
+                ).await;
             }
         }
         return vec![];
     }
 
-    let reply_message_id = format::extract_reply_message_id(message);
     let parsed = format::parse_segments(message, Some(self_id));
     if parsed.text.is_empty() && !parsed.has_media() {
         return vec![];
@@ -97,7 +108,29 @@ async fn handle_text_message(
     // Allowed in groups too: reaching this point already required an @mention,
     // which is intent enough, and it lets the operator confirm without leaving
     // the conversation the proposal came from.
-    if is_admin {
+    // A message that quotes the prompt is answering it, and nothing else gets
+    // to read it first. Only the initiator's, and only when it quotes: in a
+    // group the initiator spends most of their time talking to other people,
+    // and a bare "y" among that used to approve whatever was waiting.
+    let answering_approval = {
+        let approvals = state.pending_approvals.lock();
+        approvals.get(&session_key.to_string()).is_some_and(|p| {
+            p.initiator == user_id && p.answered_by(reply_to_message_id)
+        })
+    };
+
+    // Admin decision on anything numbered ("同意 N" / "拒绝 N [理由]"): friend and
+    // group requests, and bot-wide memory proposals.
+    //
+    // Behind the approval check, not in front of it: a parked question is a
+    // narrower and more recent commitment than a standing queue, and an answer
+    // that quotes it says which it is. Ahead of the Y/N read that follows, so a
+    // decision typed at the queue is never taken for a tool denial.
+    //
+    // Allowed in groups too: reaching this point already required an @mention,
+    // which is intent enough, and it lets the operator confirm without leaving
+    // the conversation the proposal came from.
+    if is_admin && !answering_approval {
         if let Some(decision) = command::parse_request_decision(text) {
             if let Some(actions) = dispatch_decision(event, state, decision, user_id).await {
                 return actions;
@@ -106,17 +139,34 @@ async fn handle_text_message(
         }
     }
 
-    // Check for pending tool approval
-    {
-        let mut approvals = state.pending_approvals.lock().await;
-        let is_initiator = approvals.get(&session_key.to_string())
-            .is_some_and(|(uid, _)| *uid == user_id);
-        if is_initiator {
-            let (_, tx) = approvals.remove(&session_key.to_string()).unwrap();
-            let approved = text.trim().eq_ignore_ascii_case("y")
-                || text.trim().eq_ignore_ascii_case("yes");
-            let _ = tx.send(approved);
-            let reply = if approved { "已批准执行。" } else { "已拒绝。" };
+    if answering_approval {
+        let pending = state.pending_approvals.lock().remove(&session_key.to_string());
+        // Gone between the two locks: the turn ended, or the 60 seconds ran out.
+        // Whatever they typed is then an ordinary message, which is what it
+        // would have been a moment later anyway.
+        if let Some(pending) = pending {
+            let kind = pending.kind;
+            // What they *typed*, not what the message contained. A picture
+            // reaches here as `[图片]` or as a private-use codepoint, and
+            // neither is a yes, a reason, or an answer to a question -- but both
+            // survive a trim, so reading `text` here made a sticker sent while a
+            // tool waited into all three.
+            //
+            // Unread, and passed on as words: which tool asked is what decides
+            // whether they authorise anything, and only the adapter knows that.
+            let said = parsed.typed.as_str();
+            let _ = pending.responder.send(said.to_string());
+            let trimmed = said.trim();
+            let reply = match kind {
+                _ if trimmed.is_empty() => "没看到文字，当作未回答。",
+                super::agent::AskKind::Question => "已转达。",
+                super::agent::AskKind::Permission
+                    if trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes") =>
+                {
+                    "已批准执行。"
+                }
+                super::agent::AskKind::Permission => "已拒绝，你写的理由会一并转达。",
+            };
             return build_reply(event, reply, None);
         }
     }
@@ -170,7 +220,7 @@ async fn handle_text_message(
     // Remember this message entered the AI context so a later recall of it is
     // worth reporting (recalls of never-seen messages stay silent).
     if let Some(mid) = event_message_id {
-        super::record_seen_message(state, &session_key, mid).await;
+        super::record_seen_message(&state.session_states, &session_key, mid);
     }
 
     // Identity travels structurally from here on, not as a body prefix a user
@@ -220,33 +270,48 @@ async fn handle_text_message(
 
 /// Build the Y/N chat approval closure for tool calls in `session_key`,
 /// addressed to `initiator_user_id` (the only user allowed to answer).
+/// `turn_id` is stamped on every waiter this turn registers, so that when the
+/// turn ends — however it ends — its guard can sweep them out in one pass. The
+/// wait below is a 60-second timeout, and a task dropped mid-`await` never
+/// reaches the timeout branch, so nothing else would ever take the entry out.
 fn make_approval_fn(
     state: &Arc<SharedState>,
     session_key: &SessionKey,
     initiator_user_id: i64,
+    turn_id: &str,
 ) -> ApprovalFn {
     let state = state.clone();
     let session_str = session_key.to_string();
+    let turn_id = turn_id.to_string();
     let is_group = session_key.kind == SessionKind::Group;
     let group_id = session_key.id;
 
     Box::new(move |tc: crate::provider::ToolCall, sandbox_reason: Option<String>| {
         let state = state.clone();
         let session_str = session_str.clone();
+        let turn_id = turn_id.clone();
 
         Box::pin(async move {
             // A sandbox reason means this is the second ask for the same call
             // (escalation to run without sandbox); say so, or it reads as a
             // duplicate of the prompt just answered.
-            let prompt = match sandbox_reason {
-                Some(reason) => format!(
-                    "⚠️ 命令被沙箱拦截:\n工具: {}\n参数: {}\n拦截输出: {}\n\n回复 Y 在沙箱外重试，其他内容拒绝（60秒超时）",
+            let kind = super::agent::AskKind::of(&tc.name);
+            let prompt = match (sandbox_reason, kind) {
+                // A sandbox reason means this is the second ask for the same
+                // call (escalation to run without sandbox); say so, or it reads
+                // as a duplicate of the prompt just answered. It is a permission
+                // by construction — `ask_user` never runs a command.
+                (Some(reason), _) => format!(
+                    "⚠️ 命令被沙箱拦截:\n工具: {}\n参数: {}\n拦截输出: {}\n\n引用本条消息回复 Y 在沙箱外重试，其他内容拒绝并作为理由转达（60秒超时）",
                     tc.name,
                     truncate_args(&tc.arguments, 500),
                     truncate_args(&reason, 300),
                 ),
-                None => format!(
-                    "🔧 工具调用请求:\n工具: {}\n参数: {}\n\n回复 Y 批准，其他内容拒绝（60秒超时）",
+                (None, super::agent::AskKind::Question) => {
+                    super::format::ask_user_prompt(&tc.arguments)
+                }
+                (None, super::agent::AskKind::Permission) => format!(
+                    "🔧 工具调用请求:\n工具: {}\n参数: {}\n\n引用本条消息回复 Y 批准，其他内容拒绝并作为理由转达（60秒超时）",
                     tc.name,
                     truncate_args(&tc.arguments, 500),
                 ),
@@ -264,20 +329,50 @@ fn make_approval_fn(
                 OneBotAction::send_private_msg(initiator_user_id, vec![MessageSegment::text(&prompt)])
             };
 
-            super::send_action_nowait(&state, &approval_msg).await;
-
-            let (tx, rx) = oneshot::channel();
-            {
-                let mut approvals = state.pending_approvals.lock().await;
-                approvals.insert(session_str.clone(), (initiator_user_id, tx));
+            // Sent with an echo and waited on, unlike every other message this
+            // file sends: the response carries the id of the message that just
+            // went out, and that id is what an answer has to quote. A send that
+            // fails or answers nothing leaves it unknown, and the approval falls
+            // back to accepting anything from the initiator -- worse, but
+            // answerable.
+            let prompt_message_id = super::call_api(
+                &state,
+                approval_msg.with_echo(uuid::Uuid::new_v4().to_string()),
+            )
+            .await
+            .ok()
+            .and_then(|d| d.get("message_id").and_then(|v| v.as_i64()));
+            if prompt_message_id.is_none() {
+                tracing::warn!(
+                    tool = %tc.name,
+                    "the approval prompt did not come back with a message id; any reply from the initiator will answer it"
+                );
             }
 
+            let (tx, rx) = oneshot::channel();
+            state.pending_approvals.lock().insert(
+                session_str.clone(),
+                super::PendingApproval {
+                    initiator: initiator_user_id,
+                    turn_id: turn_id.clone(),
+                    prompt_message_id,
+                    kind,
+                    responder: tx,
+                },
+            );
+
             match tokio::time::timeout(std::time::Duration::from_secs(60), rx).await {
-                Ok(Ok(approved)) => approved,
+                Ok(Ok(said)) => Some(said),
                 _ => {
-                    let mut approvals = state.pending_approvals.lock().await;
-                    approvals.remove(&session_str);
-                    false
+                    // Timed out, or the sender was dropped — which is what the
+                    // turn guard does on its way out. Either way the entry is
+                    // ours to remove, and only if it is still ours: a later
+                    // call for this session may have replaced it.
+                    let mut approvals = state.pending_approvals.lock();
+                    if approvals.get(&session_str).is_some_and(|p| p.turn_id == turn_id) {
+                        approvals.remove(&session_str);
+                    }
+                    None
                 }
             }
         })
@@ -321,16 +416,56 @@ pub(super) async fn run_agent_turn(
     let is_admin = sender.is_admin;
     let initiator_user_id = sender.user_id;
 
-    let started = super::try_begin_turn(state, session_key, super::InboxItem {
-        text: user_content.clone(),
-        kind: super::InboxKind::UserMessage,
-        created_at: crate::util::now_ms(),
-        sender: Some(sender.clone()),
-    }).await;
-    if !started {
+    // Resolved before the turn is claimed, because what gets claimed is the
+    // conversation, not the session key. The message path already did this a
+    // moment ago (media processing needs it) and the manager caches, so for an
+    // ordinary message this costs nothing; the poke path pays one lookup.
+    let (project_id, conversation_id, model_override) = {
+        let mut sessions = state.sessions.lock().await;
+        match sessions.get_or_create(session_key, title, state.config.assistant_id.as_deref()) {
+            Ok((pid, cid)) => {
+                let ovr = sessions.get_model_override(session_key);
+                (pid, cid, ovr)
+            }
+            Err(e) => {
+                tracing::error!("Session error: {e}");
+                return build_session_reply(session_key, &format!("内部错误: {e}"), reply_to);
+            }
+        }
+    };
+
+    let turn = match super::try_begin_turn(
+        &state.session_states,
+        &state.coordinator,
+        session_key,
+        &conversation_id,
+        super::InboxItem {
+            text: user_content.clone(),
+            kind: super::InboxKind::UserMessage,
+            created_at: crate::util::now_ms(),
+            sender: Some(sender.clone()),
+        },
+    ) {
+        super::TurnStart::Started(turn) => turn,
         // Queued into the running turn; its reply arrives with that turn.
-        return vec![];
-    }
+        super::TurnStart::Queued => return vec![],
+        // Held from the desktop. Saying so beats silence: the inbox is drained
+        // only by this runner, so a message put there now would wait for the
+        // next QQ message rather than for the desktop turn to end.
+        super::TurnStart::Elsewhere(busy) => {
+            tracing::info!(
+                session = %session_key,
+                conversation_id = %conversation_id,
+                reason = %busy,
+                "OneBot turn refused: the conversation is held elsewhere"
+            );
+            return build_session_reply(
+                session_key,
+                "这个对话正在电脑端处理,请等它结束后再发。",
+                reply_to,
+            );
+        }
+    };
 
     // Refresh this person's interaction clock. Its own short transaction: the
     // extraction pass that may write memories about them happens later, well
@@ -350,37 +485,62 @@ pub(super) async fn run_agent_turn(
         .await;
     }
 
-    let (project_id, conversation_id, model_override) = {
-        let mut sessions = state.sessions.lock().await;
-        match sessions.get_or_create(session_key, title, state.config.assistant_id.as_deref()) {
-            Ok((pid, cid)) => {
-                let ovr = sessions.get_model_override(session_key);
-                (pid, cid, ovr)
-            }
-            Err(e) => {
-                tracing::error!("Session error: {e}");
-                super::release_turn(state, session_key).await;
-                return build_session_reply(session_key, &format!("内部错误: {e}"), reply_to);
-            }
-        }
-    };
+    // Everything the turn owes back, in one value that is dropped on every
+    // exit — including the ones with no code after them. This task is detached:
+    // drop it mid-await at runtime shutdown, or let a tool panic, and nothing
+    // below this line runs.
+    //
+    // Built before anything else is awaited. Recording the turn first would
+    // leave a gap where a dropped task released the session and the
+    // conversation but announced nothing, which is the hole this value exists
+    // to close.
+    let mut running = super::RunningTurn::new(
+        state.session_states.clone(),
+        state.pending_approvals.clone(),
+        session_key.clone(),
+        turn,
+        conversation_id.clone(),
+        state.app_handle.clone().map(|app| -> super::StopSink {
+            Box::new(move |payload| {
+                let _ = app.emit("chat-stream", payload);
+            })
+        }),
+    );
+    // The coordinator's, not one of our own: this is what a desktop Stop on a
+    // QQ conversation now reaches. It used to be a token nobody had
+    // registered, which made that button a no-op.
+    let cancel = running.cancel_token();
+    let turn_id = running.turn_id().to_string();
 
-    let approval_fn = make_approval_fn(state, session_key, initiator_user_id);
+    // The durable half. From here the row says `running`; a QQ turn killed by
+    // the process going away leaves it that way, and the next launch reads it
+    // as interrupted.
+    //
+    // These ids are minted by the coordinator rather than arriving from
+    // outside, so the duplicate case is unreachable here — but it is worth
+    // hearing about if it ever stops being. Returning drops `running`, which
+    // announces the end and hands both claims back.
+    if let Err(e) = running.open_record(&state.pool).await {
+        tracing::error!(turn_id = %turn_id, error = %e, "OneBot turn id collided");
+        return build_session_reply(session_key, "内部错误,请重试。", reply_to);
+    }
+
+    let approval_fn = make_approval_fn(state, session_key, initiator_user_id, &turn_id);
     let interim_text_fn = make_interim_text_fn(state, session_key);
-    let cancel = CancellationToken::new();
     let qq_tools = super::qq_tools::QqToolExecutor::new(state.clone(), session_key.clone(), is_admin);
-    let inbox = super::InboxHandle::new(state.clone(), session_key.clone());
+    let inbox = super::InboxHandle::new(state.session_states.clone(), session_key.clone());
 
     let mut incoming = vec![super::IncomingMessage::new(user_content, Some(sender.clone()))];
     let mut reply_anchor = reply_to;
 
     loop {
-        let response = agent::headless_chat(
+        let outcome = agent::headless_chat(
             &state.pool,
             &state.secrets,
             &state.tools,
             &state.mcp,
             &conversation_id,
+            &turn_id,
             Some(project_id.as_str()),
             &incoming,
             state.config.assistant_id.as_deref(),
@@ -392,6 +552,7 @@ pub(super) async fn run_agent_turn(
             state.app_handle.as_ref(),
             Some(&qq_tools),
             Some(&inbox),
+            Some(&state.coordinator),
         )
         .await;
 
@@ -399,7 +560,13 @@ pub(super) async fn run_agent_turn(
             let _ = app.emit("conversation-updated", serde_json::json!({"id": conversation_id}));
         }
 
-        let actions: Vec<OneBotAction> = match response {
+        let stop_reason = outcome.stop_reason();
+        // Kept before the reply is consumed into a chat message: the turn's
+        // record is the only place this survives, and it was being dropped.
+        let failure = outcome.reply.as_ref().err().cloned();
+        running.record(outcome.progress);
+
+        let actions: Vec<OneBotAction> = match outcome.reply {
             Ok(reply_text) if reply_text.is_empty() => vec![],
             Ok(reply_text) => {
                 let chunks = format::split_long_message(&reply_text);
@@ -425,9 +592,30 @@ pub(super) async fn run_agent_turn(
             incoming.clone(),
         );
 
-        match super::end_turn(state, session_key).await {
-            super::TurnEnd::Done => return actions,
-            super::TurnEnd::Continue(items) => {
+        // Ends the turn if it is over, releasing both claims before it says so.
+        // A continuing round announces nothing: it has not ended, and a desktop
+        // watching this conversation would take a stop as its cue to send —
+        // into a turn that still holds it.
+        match running.end_round(stop_reason) {
+            None => {
+                // Reached an ending, so say which. Anything that does not get
+                // here leaves the row at `running` for the next launch to read
+                // as interrupted, which is exactly right for a killed process.
+                // The same three endings the desktop distinguishes. The loop
+                // guard cutting a repeating model short is not a completed
+                // turn, whatever the reply looked like.
+                let (status, error) = match stop_reason {
+                    "error" => (TurnStatus::Failed, failure.as_deref()),
+                    "loop_detected" => (TurnStatus::Failed, Some(ERROR_LOOP_DETECTED)),
+                    // A desktop Stop on a QQ conversation reaches this token;
+                    // the turn was decided against, not lost.
+                    _ if cancel.is_cancelled() => (TurnStatus::Cancelled, None),
+                    _ => (TurnStatus::Done, None),
+                };
+                crate::agent::turn_record::finish(&state.pool, &turn_id, status, error).await;
+                return actions;
+            }
+            Some(items) => {
                 // Send this turn's reply before starting the follow-up so the
                 // chat reads in order.
                 super::send_to_conn(state, conn_id, actions).await;
@@ -1370,7 +1558,7 @@ async fn dispatch_command(
     // Resetting or compacting the conversation while a turn is writing to it
     // would corrupt the running loop's view of history.
     if matches!(cmd, SlashCommand::New | SlashCommand::Compact) {
-        let busy = state.session_states.lock().await
+        let busy = state.session_states.lock()
             .get(&session_key.to_string())
             .is_some_and(|s| s.turn_active);
         if busy {
@@ -1385,13 +1573,7 @@ async fn dispatch_command(
         SlashCommand::Memory => {
             dispatch_memory(event, state, session_key, is_admin, args, reply_to).await
         }
-        SlashCommand::New => {
-            let mut sessions = state.sessions.lock().await;
-            match sessions.reset_conversation(session_key, title, state.config.assistant_id.as_deref()) {
-                Ok(_) => build_reply(event, "已重置对话。新的对话已创建。", reply_to),
-                Err(e) => build_reply(event, &format!("重置失败: {e}"), reply_to),
-            }
-        }
+        SlashCommand::New => dispatch_new(event, state, session_key, title, reply_to).await,
         SlashCommand::Compact => {
             dispatch_compact(event, state, session_key, title, args, reply_to).await
         }
@@ -1401,6 +1583,51 @@ async fn dispatch_command(
         SlashCommand::Status => {
             dispatch_status(event, state, session_key, title, is_admin, reply_to).await
         }
+    }
+}
+
+/// Archive what the session was on and start it somewhere fresh.
+///
+/// The check in `dispatch_command` only knows about this session's own turns;
+/// the desktop can have the same conversation open and be answering in it, and
+/// archiving it mid-answer takes it out of the sidebar while the reply is still
+/// arriving. So it is leased first, like every other write — and the id that
+/// was leased is the id handed to `reset_conversation`, which archives that one
+/// and nothing else.
+async fn dispatch_new(
+    event: &OneBotEvent,
+    state: &Arc<SharedState>,
+    session_key: &SessionKey,
+    title: &str,
+    reply_to: Option<i64>,
+) -> Vec<OneBotAction> {
+    let conversation_id = {
+        let mut sessions = state.sessions.lock().await;
+        match sessions.get_or_create(session_key, title, state.config.assistant_id.as_deref()) {
+            Ok((_, cid)) => cid,
+            Err(e) => return build_reply(event, &format!("内部错误: {e}"), reply_to),
+        }
+    };
+
+    let _lease = match state.coordinator.try_acquire_mutation(&conversation_id, "a reset") {
+        Ok(lease) => lease,
+        Err(busy) => {
+            tracing::info!(
+                conversation_id = %conversation_id,
+                reason = %busy,
+                "OneBot /new refused: the conversation is held elsewhere"
+            );
+            return build_reply(event, "这个对话正在电脑端处理,请稍后再试。", reply_to);
+        }
+    };
+
+    let mut sessions = state.sessions.lock().await;
+    let reset = sessions.reset_conversation(
+        session_key, title, state.config.assistant_id.as_deref(), &conversation_id,
+    );
+    match reset {
+        Ok(_) => build_reply(event, "已重置对话。新的对话已创建。", reply_to),
+        Err(e) => build_reply(event, &format!("重置失败: {e}"), reply_to),
     }
 }
 
@@ -1419,6 +1646,20 @@ async fn dispatch_compact(
         match sessions.get_or_create(session_key, title, state.config.assistant_id.as_deref()) {
             Ok(ids) => ids,
             Err(e) => return build_reply(event, &format!("内部错误: {e}"), reply_to),
+        }
+    };
+
+    // The check above only knows about this session's own turns. The desktop
+    // can have the same conversation open and be compacting or answering in it.
+    let _lease = match state.coordinator.try_acquire_mutation(&conversation_id, "compaction") {
+        Ok(lease) => lease,
+        Err(busy) => {
+            tracing::info!(
+                conversation_id = %conversation_id,
+                reason = %busy,
+                "OneBot /compact refused: the conversation is held elsewhere"
+            );
+            return build_reply(event, "这个对话正在电脑端处理,请稍后再试。", reply_to);
         }
     };
 
@@ -1442,7 +1683,7 @@ async fn dispatch_compact(
         }
     };
 
-    match crate::agent::do_compact(pool, secrets.as_ref(), &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await {
+    match crate::agent::do_compact(pool, secrets, &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await {
         Ok(_) => build_reply(event, "对话上下文已压缩。", reply_to),
         Err(e) => build_reply(event, &format!("Compact 失败: {e}"), reply_to),
     }

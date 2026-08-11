@@ -4,6 +4,9 @@ import { isPermissionGranted, requestPermission, sendNotification } from '@tauri
 import { useConversationStore } from '@/stores/conversation-store'
 import type { StreamChunk } from '@/types'
 
+// Keyed by turn, not by conversation. Keyed by conversation, a second turn's
+// stop deleted the first one's start time and the "this took a while" notice
+// went to whichever turn happened to finish first.
 const streamStartTimes = new Map<string, number>()
 const LONG_STREAM_THRESHOLD_MS = 30_000
 
@@ -86,10 +89,23 @@ export function useGlobalEventListener() {
       const store = useConversationStore.getState()
 
       if (p.type === 'message_start' && p.message_id) {
-        if (!streamStartTimes.has(convId)) {
-          streamStartTimes.set(convId, Date.now())
+        // A turn writes one of these per iteration; only the first starts the
+        // clock. Turns that predate the id all share one key, which is the old
+        // per-conversation behaviour.
+        const streamKey = p.turn_id ?? convId
+        if (!streamStartTimes.has(streamKey)) {
+          streamStartTimes.set(streamKey, Date.now())
         }
-        store.handleMessageStart(convId, p.message_id)
+        store.handleMessageStart(convId, p.message_id, p.turn_id)
+        return
+      }
+
+      // Ahead of the backoff it describes, so the turn header can say what it is
+      // waiting for rather than looking hung for the length of the wait. The
+      // `reset` that follows marks the end of that wait and drops the partial
+      // text; it is not what clears this.
+      if (p.type === 'retry') {
+        store.handleRetry(convId, p.attempt ?? 1, p.max_attempts ?? 0, p.delay_ms ?? 0)
         return
       }
 
@@ -99,12 +115,13 @@ export function useGlobalEventListener() {
       }
 
       if (p.type === 'stop' || p.done) {
-        const startTime = streamStartTimes.get(convId)
-        streamStartTimes.delete(convId)
+        const streamKey = p.turn_id ?? convId
+        const startTime = streamStartTimes.get(streamKey)
+        streamStartTimes.delete(streamKey)
         if (startTime && Date.now() - startTime > LONG_STREAM_THRESHOLD_MS && shouldNotify(convId)) {
           trySendNotification(getConversationTitle(convId), 'Response completed')
         }
-        store.handleStop(convId)
+        store.handleStop(convId, p.turn_id)
         return
       }
 
@@ -113,14 +130,13 @@ export function useGlobalEventListener() {
         return
       }
 
-      if (p.type === 'tool_approval_req' && p.call_id) {
-        const escalation = p.escalation
-          ? {
-              originCallId: p.origin_call_id ?? p.call_id.replace(/:retry$/, ''),
-              retryReason: p.retry_reason,
-            }
-          : undefined
-        store.handleToolApproval(convId, p.message_id!, p.call_id, p.tool_name!, p.arguments ?? '{}', escalation)
+      // Without an approval_id there is nothing the buttons could answer with,
+      // so the card would be decorative. Drop the event rather than draw one.
+      if (p.type === 'tool_approval_req' && p.call_id && p.approval_id) {
+        store.handleToolApproval(
+          convId, p.message_id!, p.approval_id, p.call_id, p.tool_name!,
+          p.retry_reason, p.origin_call_id,
+        )
         if (shouldNotify(convId)) {
           const toolName = p.tool_name === 'ask_user' ? 'Question' : p.tool_name!
           trySendNotification(getConversationTitle(convId), `Action required: ${toolName}`)
@@ -128,8 +144,10 @@ export function useGlobalEventListener() {
         return
       }
 
+      // message_id as well as call_id: provider call ids repeat, so the pair is
+      // what identifies a card.
       if (p.type === 'tool_result' && p.call_id) {
-        store.handleToolResult(convId, p.call_id, p.result ?? '', p.outcome)
+        store.handleToolResult(convId, p.message_id!, p.call_id, p.result ?? '', p.outcome)
         return
       }
     })
@@ -142,12 +160,12 @@ export function useGlobalEventListener() {
       useConversationStore.getState().handleCompactStart(event.payload.conversation_id)
     })
 
-    const compactDoneUnlisten = listen<{ conversation_id: string; error?: string }>('compact-done', (event) => {
-      const { conversation_id, error } = event.payload
+    const compactDoneUnlisten = listen<{ conversation_id: string; error?: string; mid_turn?: boolean }>('compact-done', (event) => {
+      const { conversation_id, error, mid_turn } = event.payload
       // A compaction that fails silently is indistinguishable from one that was
       // never attempted, while the context indicator stays pinned at its limit.
       if (error) useConversationStore.getState().setError(conversation_id, error)
-      useConversationStore.getState().handleCompactDone(conversation_id)
+      useConversationStore.getState().handleCompactDone(conversation_id, mid_turn)
     })
 
     return () => {

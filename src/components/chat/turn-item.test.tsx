@@ -8,11 +8,13 @@ import { useConversationStore } from '@/stores/conversation-store'
 import i18n from '@/i18n'
 import type { ContentBlock, Message, ToolCallDisplay } from '@/types'
 
+// Resolved rather than bare: the cards attach a `.catch` to turn a rejected
+// decision into an orphaned card, and `undefined.catch` would throw.
 vi.mock('@/api', () => ({
   api: {
-    approveToolCall: vi.fn(),
-    denyToolCall: vi.fn(),
-    respondToAsk: vi.fn(),
+    approveToolCall: vi.fn().mockResolvedValue(undefined),
+    denyToolCall: vi.fn().mockResolvedValue(undefined),
+    respondToAsk: vi.fn().mockResolvedValue(undefined),
   },
 }))
 
@@ -44,7 +46,18 @@ function msg(role: Message['role'], over: Partial<Message> = {}): Message {
 
 const text = (t: string): ContentBlock => ({ type: 'text', text: t })
 const toolBlock = (name: string, status: ToolCallDisplay['status'] = 'completed'): ContentBlock =>
-  ({ type: 'tool_call', data: { call_id: `${name}-1`, tool_name: name, arguments: '{}', status } })
+  ({
+    type: 'tool_call',
+    data: {
+      call_id: `${name}-1`,
+      tool_name: name,
+      arguments: '{}',
+      status,
+      // A pending call needs something for its buttons to answer, or it is
+      // rendered as orphaned instead.
+      ...(status === 'pending' ? { approval_id: `${name}-appr-1` } : {}),
+    },
+  })
 
 /** A turn with tool calls, which is what gets the collapse treatment. */
 function toolTurn(over: { status?: ToolCallDisplay['status']; conclusion?: boolean } = {}) {
@@ -409,6 +422,44 @@ describe('TurnItem', () => {
       expectCollapsed(trigger)
       expect(screen.getByText('Allow')).toBeVisible()
       expect(screen.getByText('Deny')).toBeVisible()
+    })
+
+    /// A turn that stopped without ever reaching an ending. Collapsed it looks
+    /// like a short answer, and what it was doing when it stopped — which may be
+    /// a half-written file — is exactly what is inside the panel.
+    it('holds a crashed turn open, and says so in words of its own', () => {
+      const u = msg('user', { content: 'q', created_at: 1000 })
+      const a = msg('assistant', {
+        turn_id: 't-dead',
+        _blocks: [text('editing the file'), toolBlock('edit_file', 'orphaned')],
+        created_at: 5000,
+      })
+      const turn = buildTurns([u, a], { crashedTurnIds: new Set(['t-dead']) })[0]
+      expect(turn.status).toBe('crashed')
+
+      render(<TurnItem turn={turn} conversationId={CONV} />)
+
+      // Its own headline, not the one a turn the user stopped gets: nobody
+      // stopped this, and saying "stopped" about it is how a half-written file
+      // goes unnoticed.
+      const trigger = screen.getByRole('button', { name: /Cut off before it finished/ })
+      expectExpanded(trigger)
+      expect(screen.getByText('editing the file')).toBeVisible()
+    })
+
+    /// The same turn without the record behind it. The transcript alone cannot
+    /// tell this apart from a turn that simply ended on a tool call, which is
+    /// why the record has to reach the front end for the case above to work.
+    it('cannot tell a crashed turn from an ordinary one without the record', () => {
+      const u = msg('user', { content: 'q', created_at: 1000 })
+      const a = msg('assistant', {
+        turn_id: 't-dead',
+        _blocks: [text('editing the file'), toolBlock('edit_file', 'orphaned')],
+        created_at: 5000,
+      })
+      const turn = buildTurns([u, a])[0]
+
+      expect(turn.status).toBe('interrupted')
     })
 
     it('remembers a turn the user opened by hand', async () => {

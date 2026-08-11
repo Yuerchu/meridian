@@ -55,10 +55,30 @@ describe('api', () => {
   })
 
   describe('messages', () => {
-    it('loadMessages sends conversationId', async () => {
-      mockInvoke.mockResolvedValueOnce([])
-      await api.loadMessages('conv-1')
-      expect(mockInvoke).toHaveBeenCalledWith('load_messages', { conversationId: 'conv-1' })
+    // The only way in. The three requests it replaced could interleave with a
+    // running turn, and what came back described no moment that ever existed.
+    it('conversationSnapshot reads the whole conversation at once', async () => {
+      mockInvoke.mockResolvedValueOnce({
+        conversation: {},
+        tree: { messages: [], head_message_id: null, branches: [] },
+        turns: [],
+        pending_approvals: [],
+      })
+      const snap = await api.conversationSnapshot('conv-1')
+      expect(mockInvoke).toHaveBeenCalledWith('conversation_snapshot', { conversationId: 'conv-1' })
+      // Four things, or it is not a snapshot of anything.
+      expect(Object.keys(snap).sort()).toEqual([
+        'conversation', 'pending_approvals', 'tree', 'turns',
+      ])
+    })
+
+    it('switchBranch moves the head and reports nothing back', async () => {
+      mockInvoke.mockResolvedValueOnce(undefined)
+      await api.switchBranch('conv-1', 'msg-1')
+      expect(mockInvoke).toHaveBeenCalledWith('switch_branch', {
+        conversationId: 'conv-1',
+        messageId: 'msg-1',
+      })
     })
 
     it('deleteMessage names the conversation the subtree belongs to', async () => {
@@ -76,6 +96,7 @@ describe('api', () => {
       expect(mockInvoke).toHaveBeenCalledWith('chat', {
         conversationId: 'conv-1',
         message: 'Hello',
+        turnId: null,
         replaces: null,
         modelOverride: null,
         providerOverride: null,
@@ -99,6 +120,7 @@ describe('api', () => {
       expect(mockInvoke).toHaveBeenCalledWith('chat', {
         conversationId: 'conv-1',
         message: 'Hi',
+        turnId: null,
         replaces: null,
         modelOverride: 'gpt-4',
         providerOverride: 'openai',
@@ -226,23 +248,26 @@ describe('api', () => {
   })
 
   describe('tool calls', () => {
-    it('approveToolCall sends callId', async () => {
+    // The approval id, never the provider's call id: gateways reuse those, and
+    // answering by one would land on whichever call happened to share it.
+    it('approveToolCall sends approvalId', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
-      await api.approveToolCall('call-1')
-      expect(mockInvoke).toHaveBeenCalledWith('approve_tool_call', { callId: 'call-1' })
+      await api.approveToolCall('appr-1')
+      expect(mockInvoke).toHaveBeenCalledWith('approve_tool_call', { approvalId: 'appr-1' })
     })
 
-    it('denyToolCall sends callId', async () => {
+    it('denyToolCall sends approvalId', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
-      await api.denyToolCall('call-2')
-      expect(mockInvoke).toHaveBeenCalledWith('deny_tool_call', { callId: 'call-2', reason: null })
+      await api.denyToolCall('appr-2')
+      expect(mockInvoke).toHaveBeenCalledWith('deny_tool_call', { approvalId: 'appr-2', reason: null })
     })
 
-    it('respondToAsk sends callId and response', async () => {
+    it('respondToAsk sends approvalId and response', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
-      await api.respondToAsk('ask-1', 'my answer')
-      expect(mockInvoke).toHaveBeenCalledWith('respond_to_ask', { callId: 'ask-1', response: 'my answer' })
+      await api.respondToAsk('appr-3', 'my answer')
+      expect(mockInvoke).toHaveBeenCalledWith('respond_to_ask', { approvalId: 'appr-3', response: 'my answer' })
     })
+
   })
 
   describe('logs', () => {

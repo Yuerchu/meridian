@@ -19,6 +19,14 @@ pub type PooledConn = PooledConnection<ConnectionManager<SqliteConnection>>;
 /// holds the write lock indefinitely.
 const BUSY_TIMEOUT_MS: u32 = 5_000;
 
+/// How long `pool.get()` waits for a free connection.
+///
+/// r2d2 defaults this to 30 seconds, which is long enough that an exhausted
+/// pool reads as the app having frozen rather than as an error. Every caller
+/// here either reports the failure or falls back within a request, so failing
+/// fast is strictly better than waiting.
+const POOL_ACQUIRE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
 /// SQLite pragmas are per-connection, so they must run on every connection the
 /// pool hands out — running them once on a single connection leaves the other
 /// pooled connections without foreign key enforcement.
@@ -49,8 +57,13 @@ impl diesel::r2d2::CustomizeConnection<SqliteConnection, diesel::r2d2::Error> fo
 
 pub fn init_db(db_path: &str) -> DbPool {
     let manager = ConnectionManager::<SqliteConnection>::new(db_path);
+    // max_size is deliberately left where it was: it is a capacity figure with
+    // no measurement behind it, and the acquire timeout above is what turns
+    // exhaustion from a hang into a visible, logged failure. Raise it once the
+    // logs say how often the pool actually runs dry.
     let pool = Pool::builder()
         .max_size(5)
+        .connection_timeout(POOL_ACQUIRE_TIMEOUT)
         .connection_customizer(Box::new(ConnectionCustomizer))
         .build(manager)
         .expect("failed to create db pool");
@@ -96,6 +109,17 @@ pub fn init_db(db_path: &str) -> DbPool {
             subjects_swept = swept,
             "startup housekeeping removed rows"
         );
+    }
+
+    // Turns only ever run inside the process that recorded them, so anything
+    // still marked running was killed rather than finished. This is the only
+    // moment that fact is knowable — after this the row would just look like a
+    // turn that has been going for a very long time.
+    match ops::turn::reconcile_interrupted(&mut conn, now) {
+        Ok(0) => {}
+        Ok(n) => tracing::info!(turns = n, "turns left running by the previous session"),
+        // Not fatal: it costs the diagnosis, not the conversation.
+        Err(e) => tracing::error!(error = %e, "could not reconcile interrupted turns"),
     }
 
     pool
@@ -453,6 +477,99 @@ mod migration_tests {
             .unwrap()
             .id;
         assert_eq!(head.as_deref(), Some("a4"));
+    }
+
+    /// Migration 25 adds two nullable columns to `messages` rather than
+    /// rebuilding the table, so rows written before it keep working untouched.
+    /// `tool_outcome` reading as NULL is what makes that safe: NULL means
+    /// success, which is what the transcript claimed for every one of them
+    /// anyway.
+    #[test]
+    fn existing_messages_survive_the_turn_columns() {
+        let mut conn = conn_before("00000000000025");
+        conn.batch_execute(
+            "INSERT INTO conversations (id, title, is_pinned, is_archived, message_count,
+                                        created_at, updated_at, fast_mode)
+             VALUES ('c1', 'A', 0, 0, 2, 1, 1, 0);
+             INSERT INTO messages (id, conversation_id, role, content, sort_order,
+                                   created_at, schema_version, is_compact_summary)
+             VALUES ('m1', 'c1', 'user', 'hi', 1, 1, 2, 0),
+                    ('m2', 'c1', 'tool', 'refused', 2, 2, 2, 0);",
+        )
+        .unwrap();
+
+        run_migration(&mut conn, "00000000000025");
+
+        #[derive(QueryableByName)]
+        struct Cols {
+            #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+            turn_id: Option<String>,
+            #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+            tool_outcome: Option<String>,
+        }
+        let rows = diesel::sql_query(
+            "SELECT turn_id, tool_outcome FROM messages ORDER BY sort_order",
+        )
+        .get_results::<Cols>(&mut conn)
+        .unwrap();
+
+        assert_eq!(rows.len(), 2, "no row is lost or duplicated");
+        assert!(rows.iter().all(|r| r.turn_id.is_none()));
+        assert!(
+            rows.iter().all(|r| r.tool_outcome.is_none()),
+            "nothing is backfilled: NULL already means what these rows meant",
+        );
+    }
+
+    /// The `turns` table is new, so upgrading finds it empty — and startup
+    /// reconciliation over an empty table must not report anything.
+    #[test]
+    fn upgrading_starts_with_no_turn_history() {
+        let mut conn = conn_before("00000000000025");
+        run_migration(&mut conn, "00000000000025");
+
+        assert_eq!(ops::turn::reconcile_interrupted(&mut conn, 1000).unwrap(), 0);
+    }
+
+    /// Migration 26 adds one nullable column to a table 25 had already written
+    /// rows into, so there is real data to preserve. NULL is the right value for
+    /// every one of them: nothing had been told to any model, because there was
+    /// no mechanism to tell it. Backfilling a timestamp would silence exactly
+    /// the warnings this whole record exists to keep.
+    #[test]
+    fn existing_turns_survive_the_reported_column_still_owing_their_explanation() {
+        let mut conn = conn_before("00000000000026");
+        conn.batch_execute(
+            "INSERT INTO conversations (id, title, is_pinned, is_archived, message_count,
+                                        created_at, updated_at, fast_mode)
+             VALUES ('c1', 'A', 0, 0, 0, 1, 1, 0);
+             INSERT INTO turns (id, conversation_id, origin, status, phase, phase_tool,
+                                started_at, updated_at, ended_at)
+             VALUES ('t-cut', 'c1', 'desktop', 'interrupted', 'running_tool', 'edit_file',
+                     1000, 1001, 1500),
+                    ('t-done', 'c1', 'desktop', 'done', 'streaming', NULL, 2000, 2001, 2500);",
+        )
+        .unwrap();
+
+        run_migration(&mut conn, "00000000000026");
+
+        let turns = ops::turn::list_for_conversation(&mut conn, "c1").unwrap();
+        assert_eq!(turns.len(), 2, "no row is lost or duplicated");
+        assert!(turns.iter().all(|t| t.reported_at.is_none()), "nothing is backfilled");
+        // The one that was cut off is still owed its explanation, and the one
+        // that finished never was.
+        let cut = &turns[0];
+        assert_eq!(cut.id, "t-cut");
+        assert_eq!(cut.phase_tool.as_deref(), Some("edit_file"));
+        assert_eq!(cut.ended_at, Some(1500));
+        assert_eq!(
+            ids_of(ops::turn::unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()),
+            ["t-cut"],
+        );
+    }
+
+    fn ids_of(turns: Vec<crate::db::models::turn::Turn>) -> Vec<String> {
+        turns.into_iter().map(|t| t.id).collect()
     }
 }
 

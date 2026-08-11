@@ -3,186 +3,219 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use tauri::{Emitter, Manager};
-use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::db::DbPool;
 use crate::db::models::message::NewMessage;
-use crate::mcp::McpManager;
-use crate::provider::{self, ChatMessage, ChatParams, ChatStream, StreamEvent, ToolCall};
+use crate::db::models::turn::TurnPhase;
+use crate::mcp::McpRegistry;
+use crate::provider::{self, ChatMessage, ToolCall};
 use crate::secrets::SecretsManager;
 use crate::tools::{self, ToolRegistry};
 use crate::util::{get_conn, now_ms};
-use crate::agent::{build_messages_with_senders, is_context_window_error, is_retryable_stream_error, microcompact, mid_turn_compact, resolve_provider_config, trim_to_context_limit, StreamResult, TokenBudget, MAX_STREAM_RETRIES, STREAM_RETRY_BASE};
+use crate::agent::engine::{self};
+use crate::agent::{
+    build_messages_with_senders, microcompact, resolve_provider_config, trim_to_context_limit,
+    TokenBudget,
+};
 
-/// `(tool_call, sandbox_block_reason)` → approved. The reason is `Some` only
-/// for the retry-without-sandbox escalation ask, so the prompt can say why a
-/// second approval for the same call is being requested.
-pub type ApprovalFn = Box<dyn Fn(ToolCall, Option<String>) -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
+/// `(tool_call, sandbox_block_reason)` → what the user typed, or `None` if
+/// nobody answered. The reason is `Some` only for the retry-without-sandbox
+/// escalation ask, so the prompt can say why a second approval for the same
+/// call is being requested.
+///
+/// Words rather than a verdict: what a reply means depends on what was asked,
+/// and only the adapter that knows the tool can say. A transport that decided
+/// would be able to hand a permission prompt somebody's sentence as if it were
+/// an answer, which is the one mapping the ports forbid.
+pub type ApprovalFn =
+    Box<dyn Fn(ToolCall, Option<String>) -> Pin<Box<dyn Future<Output = Option<String>> + Send>> + Send + Sync>;
+
+/// What the user is being asked for. Decides how the prompt is worded, what the
+/// acknowledgement says, and what their words become.
+#[derive(Clone, Copy, PartialEq)]
+pub enum AskKind {
+    /// A tool wants to run. `Y` authorises it; anything else refuses it, and
+    /// what they typed travels back as the reason.
+    Permission,
+    /// `ask_user` asked a question. There is nothing to authorise: whatever
+    /// they type is the answer, verbatim.
+    Question,
+}
+
+impl AskKind {
+    pub fn of(tool: &str) -> Self {
+        if tool == "ask_user" { Self::Question } else { Self::Permission }
+    }
+
+    /// The per-tool mapping the ports describe, in the one place it happens.
+    fn decide(self, said: &str) -> crate::agent::engine::ApprovalDecision {
+        use crate::agent::engine::ApprovalDecision;
+        let said = said.trim();
+        match (self, said) {
+            // A reply with no words in it — an image, a sticker — answered
+            // nothing and authorised nothing.
+            (_, "") => ApprovalDecision::Denied(None),
+            (Self::Question, _) => ApprovalDecision::Response(said.to_string()),
+            (Self::Permission, s) if s.eq_ignore_ascii_case("y") || s.eq_ignore_ascii_case("yes") => {
+                ApprovalDecision::Approved
+            }
+            (Self::Permission, s) => ApprovalDecision::Denied(Some(s.to_string())),
+        }
+    }
+}
 
 /// Called with each tool-calling iteration's assistant text before the tools
 /// execute, so headless frontends can deliver mid-turn commentary in order
 /// (the final iteration's text is the return value instead).
 pub type TextNotifyFn = Box<dyn Fn(String) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>;
 
-const STREAM_IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(300);
+/// What one round of a headless turn left behind, for the caller to report.
+///
+/// The engine's, under this side's names. There were two of these — identical
+/// field for field, because the engine's was transcribed from this one — and one
+/// copy is exactly as much as a value that only travels between the loop and its
+/// caller needs.
+///
+/// The terminal `stop` event is deliberately *not* emitted from inside the loop.
+/// A QQ conversation can be open in the desktop UI, where a stop is read as
+/// permission to send again — so it has to go out after the conversation has
+/// actually been handed back, and only once the turn is really over. Whether it
+/// is over is the caller's question: a `TurnEnd::Continue` round is the same
+/// turn going round again, and announcing a stop between rounds would invite a
+/// desktop message the coordinator would then refuse.
+pub type TurnProgress = engine::TurnProgress;
 
-struct ErrorStopGuard<'a> {
-    app: Option<&'a tauri::AppHandle>,
-    conversation_id: &'a str,
-    message_id: Option<String>,
-}
+/// A headless round's reply, plus what the caller needs to close it out.
+pub type HeadlessOutcome = engine::TurnOutcome;
 
-impl Drop for ErrorStopGuard<'_> {
-    fn drop(&mut self) {
-        if let (Some(app), Some(message_id)) = (self.app, self.message_id.as_ref()) {
-            let _ = app.emit("chat-stream", serde_json::json!({
-                "type": "stop", "reason": "error", "done": true,
-                "message_id": message_id,
-                "conversation_id": self.conversation_id,
-            }));
-        }
-    }
-}
-
-async fn consume_stream_headless(
-    mut stream: ChatStream,
-    cancel: &CancellationToken,
-    app: Option<&tauri::AppHandle>,
-    message_id: &str,
+/// The terminal `chat-stream` event for a turn that has ended.
+///
+/// Built even when the round never got as far as writing an assistant row — a
+/// provider that refuses the very first request produces exactly that. The
+/// front end is sitting on the `streaming` flag its optimistic send set, and
+/// with no stop to clear it, it sits there until the window is reloaded. So
+/// `message_id` may be null; the event still goes out.
+pub fn turn_stop_payload(
     conversation_id: &str,
-) -> Result<StreamResult, String> {
-    use futures::StreamExt;
+    turn_id: &str,
+    message_id: Option<&str>,
+    reason: &str,
+    input_tokens: i32,
+    output_tokens: i32,
+) -> serde_json::Value {
+    serde_json::json!({
+        "type": "stop", "reason": reason, "done": true,
+        "message_id": message_id,
+        "turn_id": turn_id,
+        "conversation_id": conversation_id,
+        "input_tokens": input_tokens, "output_tokens": output_tokens,
+    })
+}
 
-    let mut text = String::new();
-    let mut reasoning = String::new();
-    let mut signature = String::new();
-    let mut tool_acc: Vec<(String, String, String)> = Vec::new();
-    let mut usage = None;
-    let mut finish_reason = None;
-    // Some OpenAI-compatible providers inline reasoning as <think> tags in the
-    // text stream instead of a separate reasoning field; route it accordingly.
-    let mut think_parser = crate::agent::InlineHiddenTagParser::new_streaming(vec![
-        crate::agent::InlineTagSpec { tag: (), open: "<think>", close: "</think>" },
-    ]);
+/// A QQ turn answer travels over the chat transport; these events are a
+/// courtesy to a desktop window that may not even be open. So a send that
+/// fails is not the turn failing -- see the Emit trait for the desktop
+/// opposite reading.
+struct BestEffortEmit(tauri::AppHandle);
 
-    loop {
-        tokio::select! {
-            _ = cancel.cancelled() => { break; }
-            chunk = tokio::time::timeout(STREAM_IDLE_TIMEOUT, stream.next()) => {
-                match chunk {
-                    Err(_) => {
-                        return Err("Stream idle timeout".to_string());
-                    }
-                    Ok(Some(Ok(StreamEvent::Text { content: ref s }))) => {
-                        let chunk = think_parser.push_str(s);
-                        if !chunk.visible_text.is_empty() {
-                            text.push_str(&chunk.visible_text);
-                            if let Some(app) = app {
-                                let _ = app.emit("chat-stream", serde_json::json!({
-                                    "type": "text", "content": &chunk.visible_text, "message_id": message_id,
-                                    "conversation_id": conversation_id,
-                                }));
-                            }
-                        }
-                        for tag in &chunk.extracted {
-                            reasoning.push_str(&tag.content);
-                            if let Some(app) = app {
-                                let _ = app.emit("chat-stream", serde_json::json!({
-                                    "type": "reasoning", "content": &tag.content, "message_id": message_id,
-                                    "conversation_id": conversation_id,
-                                }));
-                            }
-                        }
-                    }
-                    Ok(Some(Ok(StreamEvent::Reasoning { content: ref s }))) => {
-                        reasoning.push_str(s);
-                        if let Some(app) = app {
-                            let _ = app.emit("chat-stream", serde_json::json!({
-                                "type": "reasoning", "content": s, "message_id": message_id,
-                                "conversation_id": conversation_id,
-                            }));
-                        }
-                    }
-                    Ok(Some(Ok(StreamEvent::ReasoningSignature { signature: ref s }))) => {
-                        signature.push_str(s);
-                    }
-                    Ok(Some(Ok(StreamEvent::ToolCallStart { index, ref id, ref name }))) => {
-                        // Guard against a malformed/hostile endpoint sending a huge
-                        // index that would balloon the Vec allocation.
-                        if index >= 256 {
-                            return Err(format!("tool call index {index} out of range"));
-                        }
-                        while tool_acc.len() <= index {
-                            tool_acc.push((String::new(), String::new(), String::new()));
-                        }
-                        tool_acc[index] = (id.clone(), name.clone(), String::new());
-                    }
-                    Ok(Some(Ok(StreamEvent::ToolCallDelta { index, ref arguments }))) => {
-                        if let Some(entry) = tool_acc.get_mut(index) {
-                            entry.2.push_str(arguments);
-                        }
-                    }
-                    Ok(Some(Ok(StreamEvent::ToolCallDone { index, ref arguments }))) => {
-                        if let Some(entry) = tool_acc.get_mut(index) {
-                            entry.2 = arguments.clone();
-                        }
-                    }
-                    Ok(Some(Ok(StreamEvent::UsageUpdate { usage: ref u }))) => {
-                        usage = Some(u.clone());
-                    }
-                    Ok(Some(Ok(StreamEvent::Stop { ref reason, usage: ref u }))) => {
-                        if let Some(u) = u {
-                            usage = Some(u.clone());
-                        }
-                        finish_reason = Some(reason.clone());
-                    }
-                    Ok(Some(Ok(StreamEvent::Error { ref message }))) => {
-                        return Err(message.clone());
-                    }
-                    Ok(Some(Ok(StreamEvent::MessageStart { .. }))) => {}
-                    Ok(Some(Err(e))) => {
-                        return Err(e.to_string());
-                    }
-                    Ok(None) => { break; }
-                }
-            }
-        }
+impl crate::agent::engine::Emit for BestEffortEmit {
+    fn emit(&self, channel: &str, payload: serde_json::Value) -> Result<(), String> {
+        let _ = self.0.emit(channel, payload);
+        Ok(())
     }
+}
 
-    let tail = think_parser.finish();
-    if !cancel.is_cancelled() {
-        if let Some(app) = app {
-            if !tail.visible_text.is_empty() {
-                let _ = app.emit("chat-stream", serde_json::json!({
-                    "type": "text", "content": &tail.visible_text, "message_id": message_id,
-                    "conversation_id": conversation_id,
-                }));
-            }
-            for tag in &tail.extracted {
-                let _ = app.emit("chat-stream", serde_json::json!({
-                    "type": "reasoning", "content": &tag.content, "message_id": message_id,
-                    "conversation_id": conversation_id,
-                }));
-            }
-        }
-    }
-    text.push_str(&tail.visible_text);
-    for tag in tail.extracted {
-        reasoning.push_str(&tag.content);
-    }
+/// Asking in a chat, where the answer arrives as whatever the person typed.
+///
+/// The mapping to a decision is per tool and cannot be otherwise. `ask_user`
+/// asks a *question*, and the loop reads its answer as the thing to hand back to
+/// the model. Everything else is a permission, where a yes is `Approved` and
+/// nothing else will do: reading somebody's sentence as a `Response` there would
+/// turn typing into authorisation to run a command.
+struct ChatApprovals<'a> {
+    approval_fn: &'a ApprovalFn,
+    pool: DbPool,
+    turn_id: String,
+}
 
-    let tool_calls: Vec<provider::ToolCall> = if cancel.is_cancelled() {
-        vec![]
-    } else {
-        tool_acc
+#[async_trait::async_trait]
+impl crate::agent::engine::Approvals for ChatApprovals<'_> {
+    async fn ask(
+        &self,
+        _assistant_message_id: &str,
+        call: &ToolCall,
+        retry_reason: Option<&str>,
+    ) -> Result<Option<crate::agent::engine::ApprovalDecision>, String> {
+        // A QQ approval is a message in a chat and can sit there for the full
+        // minute, so this is a window the process can easily be killed in — and
+        // dying here means nothing ran, which is worth being able to say.
+        let said = engine::in_phase(
+            &self.pool,
+            &self.turn_id,
+            TurnPhase::AwaitingApproval,
+            Some(&call.name),
+            (self.approval_fn)(call.clone(), retry_reason.map(str::to_string)),
+        )
+        .await;
+        // Never `Err`: this side's answer goes out over the chat transport, so
+        // there is no send here that can fail the way drawing a card can.
+        //
+        // `None` is nobody answering — the minute ran out, or the turn was swept
+        // out from under the question. Distinct from a refusal for the first
+        // time, and the loop already words the two differently.
+        Ok(said.map(|text| AskKind::of(&call.name).decide(&text)))
+    }
+}
+
+/// Mid-turn commentary, sent as its own chat message.
+///
+/// Only the final iteration's text is returned to the caller, so without this
+/// everything the model says on the way to a tool call would exist solely in
+/// the database. The desktop needs no equivalent: it has already streamed every
+/// one of those characters to the window.
+struct ChatCommentary<'a>(&'a TextNotifyFn);
+
+#[async_trait::async_trait]
+impl crate::agent::engine::Commentary for ChatCommentary<'_> {
+    async fn say(&self, text: String) {
+        (self.0)(text).await;
+    }
+}
+
+/// The tools that belong to the chat rather than to the machine.
+struct QqSurface<'a>(&'a super::qq_tools::QqToolExecutor);
+
+#[async_trait::async_trait]
+impl crate::agent::engine::SurfaceTools for QqSurface<'_> {
+    fn owns(&self, name: &str) -> bool {
+        self.0.owns(name)
+    }
+    fn requires_approval(&self, name: &str) -> bool {
+        self.0.requires_approval(name)
+    }
+    async fn execute(&self, name: &str, arguments: &str) -> Result<String, String> {
+        self.0.execute(name, arguments).await
+    }
+}
+
+/// What arrived while the turn was running.
+struct InboxSteering<'a>(&'a super::InboxHandle);
+
+impl crate::agent::engine::Steering for InboxSteering<'_> {
+    fn drain(&self) -> Vec<crate::agent::engine::Steered> {
+        self.0
+            .drain()
             .into_iter()
-            .filter(|(id, _, _)| !id.is_empty())
-            .map(|(id, name, args)| provider::ToolCall { id, name, arguments: args })
+            .map(|item| crate::agent::engine::Steered {
+                text: item.text,
+                // A notice is something the system generated rather than
+                // something a person said, and it travels as context instead of
+                // as a user message.
+                speaker: item.sender.as_ref().map(|s| s.into()),
+            })
             .collect()
-    };
-
-    Ok(StreamResult { text, reasoning, signature, tool_calls, usage, finish_reason })
+    }
 }
 
 /// One model call with no tools, no history and no persistence — used by the
@@ -212,15 +245,39 @@ pub(super) async fn oneshot_completion(
         .map_err(|e| e.to_string())??
     };
 
-    let (provider_type, base_url, api_key, model, api_format) =
-        resolve_provider_config(&state.secrets, &state.pool, assistant.as_ref())?;
+    // Both resolutions take a pooled connection, and the first also reads the OS
+    // credential store, so they run off the async thread.
+    //
+    // The turn parameters are resolved like any other turn: an extraction
+    // request that invents its own temperature is rejected by models the chat
+    // path already talks to.
+    let (provider_type, base_url, api_key, api_format, turn) = {
+        let pool2 = state.pool.clone();
+        let secrets2 = state.secrets.clone();
+        let assistant2 = assistant.clone();
+        tokio::task::spawn_blocking(move || {
+            let (provider_type, base_url, api_key, model, api_format) =
+                resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
+            let effective_model = assistant2
+                .as_ref()
+                .and_then(|a| a.model_id.clone())
+                .unwrap_or(model);
+            let turn = crate::agent::resolve_turn_params(&pool2, crate::agent::TurnParamsInput {
+                assistant: assistant2.as_ref(),
+                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                provider_type: &provider_type,
+                api_format: &api_format,
+                model: &effective_model,
+                thinking_level: None,
+                fast: false,
+            })?;
+            Ok::<_, String>((provider_type, base_url, api_key, api_format, turn))
+        })
+        .await
+        .map_err(|e| e.to_string())??
+    };
     let provider =
         provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
-
-    let effective_model = assistant
-        .as_ref()
-        .and_then(|a| a.model_id.as_deref())
-        .unwrap_or(&model);
 
     let messages = vec![
         ChatMessage {
@@ -237,18 +294,6 @@ pub(super) async fn oneshot_completion(
         ChatMessage::system_context(user_prompt),
     ];
 
-    // Resolved like any other turn: an extraction request that invents its own
-    // temperature is rejected by models the chat path already talks to.
-    let turn = crate::agent::resolve_turn_params(&state.pool, crate::agent::TurnParamsInput {
-        assistant: assistant.as_ref(),
-        provider_id: assistant.as_ref().and_then(|a| a.provider_id.as_deref()),
-        provider_type: &provider_type,
-        api_format: &api_format,
-        model: effective_model,
-        thinking_level: None,
-        fast: false,
-    })?;
-
     provider
         .chat(messages, crate::agent::without_thinking(turn.params))
         .await
@@ -260,13 +305,59 @@ pub(super) async fn oneshot_completion(
 /// - `is_admin`: controls whether tools are available at all
 /// - `approval_fn`: called for Ask-permission tools (admin only); returns true to approve
 /// - `app`: when `Some`, emits `chat-stream` events for real-time UI updates
+///
+/// Every event except the terminal `stop` goes out from in here. That one is
+/// handed back in `TurnProgress` instead — see it for why.
 #[allow(clippy::too_many_arguments)]
 pub async fn headless_chat(
     pool: &DbPool,
-    secrets: &SecretsManager,
+    secrets: &Arc<SecretsManager>,
     tool_registry: &Arc<ToolRegistry>,
-    mcp_manager: &Arc<Mutex<McpManager>>,
+    mcp_registry: &Arc<McpRegistry>,
     conversation_id: &str,
+    turn_id: &str,
+    project_id: Option<&str>,
+    incoming: &[super::IncomingMessage],
+    assistant_id: Option<&str>,
+    model_override: Option<&str>,
+    is_admin: bool,
+    approval_fn: &ApprovalFn,
+    interim_text_fn: Option<&TextNotifyFn>,
+    cancel: &CancellationToken,
+    app: Option<&tauri::AppHandle>,
+    qq_tools: Option<&super::qq_tools::QqToolExecutor>,
+    session_inbox: Option<&super::InboxHandle>,
+    // Needed to tell a turn that really is running from one whose row still
+    // says so because it was killed. `None` in tests that do not care.
+    coordinator: Option<&Arc<crate::turn::TurnCoordinator>>,
+) -> HeadlessOutcome {
+    // Written into as the round goes, so the `?`-heavy body below can bail out
+    // anywhere and still leave the caller enough to close the turn out.
+    let mut progress = TurnProgress::default();
+    let reply = headless_chat_inner(
+        pool, secrets, tool_registry, mcp_registry, conversation_id, turn_id, project_id,
+        incoming, assistant_id, model_override, is_admin, approval_fn, interim_text_fn,
+        cancel, app, qq_tools, session_inbox, coordinator, &mut progress,
+    )
+    .await;
+    HeadlessOutcome { reply, progress }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn headless_chat_inner(
+    pool: &DbPool,
+    // The `Arc` rather than a plain reference: provider resolution is handed to
+    // `spawn_blocking`, which needs an owned handle.
+    secrets: &Arc<SecretsManager>,
+    tool_registry: &Arc<ToolRegistry>,
+    mcp_registry: &Arc<McpRegistry>,
+    conversation_id: &str,
+    // Which run of the turn this is. A QQ conversation can be opened in the
+    // desktop UI, and these events go down the same `chat-stream` channel, so
+    // without the id the front end cannot tell this turn's stop from anyone
+    // else's — and a QQ session left in the UI would stream forever.
+    // Unchanged across `TurnEnd::Continue` rounds: they are one turn.
+    turn_id: &str,
     project_id: Option<&str>,
     // This turn's inbound messages, each keeping its own speaker. Several
     // arrive at once when messages queued up while a previous turn was running.
@@ -280,7 +371,14 @@ pub async fn headless_chat(
     app: Option<&tauri::AppHandle>,
     qq_tools: Option<&super::qq_tools::QqToolExecutor>,
     session_inbox: Option<&super::InboxHandle>,
+    coordinator: Option<&Arc<crate::turn::TurnCoordinator>>,
+    progress: &mut TurnProgress,
 ) -> Result<String, String> {
+    // Every stream event this round sends goes through here. `None` when no
+    // window is attached, which for a QQ turn is the ordinary case.
+    let emitter = app.map(|a| BestEffortEmit(a.clone()));
+    let emit = emitter.as_ref().map(|e| e as &dyn crate::agent::engine::Emit);
+
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
     let _sleep_guard = {
         let sleep_pref = {
@@ -317,9 +415,17 @@ pub async fn headless_chat(
         .map_err(|e| e.to_string())??
     };
 
-    // Resolve provider
-    let (provider_type, base_url, api_key, model, api_format) =
-        resolve_provider_config(secrets, pool, assistant.as_ref())?;
+    // Resolve provider off the async thread: it takes a pooled connection and
+    // reads the OS credential store, either of which can block for as long as
+    // the pool's acquire timeout.
+    let (provider_type, base_url, api_key, model, api_format) = {
+        let pool2 = pool.clone();
+        let secrets2 = secrets.clone();
+        let assistant2 = assistant.clone();
+        tokio::task::spawn_blocking(move || {
+            resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())
+        }).await.map_err(|e| e.to_string())??
+    };
     let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
 
     // The same resolver the desktop loop uses. Sharing it is what keeps a QQ
@@ -330,12 +436,52 @@ pub async fn headless_chat(
     // Collaboration modes stay off: a headless turn has no way to switch them,
     // and a QQ session already cannot touch the filesystem (its file access is
     // an empty root set), so plan mode would guard nothing.
+    // Read off the published snapshot rather than through the connection lock,
+    // so a server that is mid-call cannot hold up this turn from starting.
     let mcp_defs = if is_admin {
-        let mgr = mcp_manager.lock().await;
-        mgr.all_tool_definitions()
+        mcp_registry.tool_definitions().as_ref().clone()
     } else {
         Vec::new()
     };
+    let effective_model = model_override
+        .or(assistant.as_ref().and_then(|a| a.model_id.as_deref()))
+        .unwrap_or(&model)
+        .to_string();
+    // Same resolution as the desktop chat command, so a per-model config the
+    // user wrote applies here too. No per-request tier: OneBot turns run off
+    // the assistant's stored defaults. Off the async thread because it takes a
+    // pooled connection.
+    //
+    // Ahead of the tool set because what the model can be sent at all — whether
+    // it takes a tools field — decides what that set may contain.
+    let turn_params = {
+        let pool2 = pool.clone();
+        let assistant2 = assistant.clone();
+        let pt = provider_type.clone();
+        let af = api_format.clone();
+        let em = effective_model.clone();
+        tokio::task::spawn_blocking(move || {
+            crate::agent::resolve_turn_params(&pool2, crate::agent::TurnParamsInput {
+                assistant: assistant2.as_ref(),
+                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                provider_type: &pt,
+                api_format: &af,
+                model: &em,
+                thinking_level: None,
+                fast: false,
+            })
+        }).await.map_err(|e| e.to_string())??
+    };
+    let context_limit = turn_params.context_limit;
+    // Off `turn_params` rather than a second `get_capabilities` call. That one
+    // goes through `capabilities::resolve` without `apply_overrides`, so a
+    // per-model capability the user wrote was ignored here while every other
+    // parameter of the same request honoured it.
+    let supports_tools = turn_params.caps.supports_tools;
+    if !supports_tools {
+        tracing::info!(model = %effective_model, "the model cannot take tools; none are offered this turn");
+    }
+
     let turn = {
         let pool2 = pool.clone();
         let registry = tool_registry.clone();
@@ -343,11 +489,16 @@ pub async fn headless_chat(
             assistant: assistant.clone(),
             conversation_id: conversation_id.to_string(),
             project_id: project_id.map(|s| s.to_string()),
-            mode: crate::agent::modes::resolve(None),
+            // No transitions port on this side, so no transition tool. Left
+            // switchable, an admin session is always offered `enter_plan` --
+            // it only needs one write tool in the set -- and calling it reaches
+            // the registry, whose refusal to be called outside the loop lands
+            // in the transcript as this turn's tool result.
+            mode: crate::agent::modes::Modes::Fixed,
             mcp_defs,
             // Non-admin sessions get no registry or MCP tools at all; the
             // scope-locked QQ tools are appended further down.
-            include_tools: is_admin,
+            include_tools: is_admin && supports_tools,
             persona: assistant.as_ref().map(|a| a.system_prompt.clone()).unwrap_or_default(),
             // Memory is absent on purpose — it ships as a user-role message.
             context_blocks: Vec::new(),
@@ -359,22 +510,6 @@ pub async fn headless_chat(
     };
     let mut tool_defs = turn.tool_defs;
     let system_prompt = turn.system_prompt;
-    let effective_model = model_override
-        .or(assistant.as_ref().and_then(|a| a.model_id.as_deref()))
-        .unwrap_or(&model);
-    // Same resolution as the desktop chat command, so a per-model config the
-    // user wrote applies here too. No per-request tier: OneBot turns run off
-    // the assistant's stored defaults.
-    let turn_params = crate::agent::resolve_turn_params(pool, crate::agent::TurnParamsInput {
-        assistant: assistant.as_ref(),
-        provider_id: assistant.as_ref().and_then(|a| a.provider_id.as_deref()),
-        provider_type: &provider_type,
-        api_format: &api_format,
-        model: effective_model,
-        thinking_level: None,
-        fast: false,
-    })?;
-    let context_limit = turn_params.context_limit;
 
     // Who this turn may recall. A private chat is about the one person on the
     // other end; a group is about whoever actually spoke, filtered so nothing
@@ -404,9 +539,9 @@ pub async fn headless_chat(
     let memory_block = crate::agent::load_memory_block(pool, memory_request).await;
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
-    let mut budget = TokenBudget::new(
+    let budget = TokenBudget::new(
         &provider_type,
-        effective_model,
+        &effective_model,
         context_limit,
         turn_params.max_output,
         turn_params.compact_threshold,
@@ -435,11 +570,26 @@ pub async fn headless_chat(
         .unwrap_or_default()
     };
 
-    // Memory first, then what was just said: the block is background for
-    // reading the message, not a reply to it.
+    // How the previous turns stopped, for any that did not stop cleanly. Same
+    // block the desktop gets: a QQ turn is just as capable of dying with a tool
+    // half run, and the model is the one that has to decide what to do about it.
+    // Emptied by the first reply read to the end, not by reading the record and
+    // not by getting a request away.
+    let interrupted = match coordinator {
+        Some(c) => crate::agent::interrupted::load_block(pool, c, conversation_id, turn_id).await,
+        None => None,
+    };
+
+    // Background first, then what was just said: these are context for reading
+    // the message, not a reply to it.
     let mut trailing: Vec<provider::ChatMessage> = Vec::new();
-    if let Some(block) = memory_block.as_deref().filter(|b| !b.trim().is_empty()) {
-        trailing.push(provider::ChatMessage::system_context(block.trim_start()));
+    for block in [memory_block.as_deref(), interrupted.as_ref().map(|r| r.text())]
+        .into_iter()
+        .flatten()
+    {
+        if !block.trim().is_empty() {
+            trailing.push(provider::ChatMessage::system_context(block.trim_start()));
+        }
     }
     trailing.extend(incoming.iter().map(|m| match m.sender.as_ref() {
         Some(s) => provider::ChatMessage::user_from(&m.text, s.into()),
@@ -460,20 +610,14 @@ pub async fn headless_chat(
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
 
-    let mut params = turn_params.params;
+    let params = turn_params.params;
 
-    // Session-scoped QQ tools are available to everyone (read-only, scope-locked)
-    if let Some(qq) = qq_tools {
+    // Session-scoped QQ tools are available to everyone (read-only,
+    // scope-locked) -- but not to a model that cannot take a tools field at
+    // all. This used to be covered by the clear() that followed; with the check
+    // moved into the resolver, these are the one set it does not reach.
+    if let Some(qq) = qq_tools.filter(|_| supports_tools) {
         tool_defs.extend(qq.definitions());
-    }
-    // Drop every tool when the effective model can't use them, so the provider
-    // omits the tools field entirely (some models 400 on any tools param). Also
-    // guards admins who pick a non-tool model.
-    let caps = crate::provider::registry::get_capabilities(
-        &provider_type, Some(&api_format), &params.model,
-    );
-    if !caps.supports_tools {
-        tool_defs.clear();
     }
     // Only tools actually offered this turn may execute; blocks non-admin (and
     // enabled_tools-filtered) sessions from invoking registry/MCP tools by name.
@@ -486,7 +630,6 @@ pub async fn headless_chat(
     // now_ms() so relative times differ and the turn's elapsed time is derivable.
     let now = now_ms();
     let user_msg_id = uuid::Uuid::new_v4().to_string();
-    let mut assistant_msg_id = String::new();
     // Walks down the branch as the turn writes. A group turn can open with
     // several user rows, and steering can add more mid-flight, so this has to be
     // a cursor rather than one precomputed parent.
@@ -505,6 +648,7 @@ pub async fn headless_chat(
             .collect();
         let mut parent = parent_cursor.clone();
         parent_cursor = rows.last().map(|(id, _, _)| id.clone()).or(parent_cursor);
+        let turn = turn_id.to_string();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
             for (msg_id, msg, sender_id) in &rows {
@@ -515,6 +659,7 @@ pub async fn headless_chat(
                     reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
                     sender_id: *sender_id,
                     parent_id: None, compact_anchor_id: None, source: None,
+                    turn_id: Some(&turn), tool_outcome: None,
                 }, parent.as_deref()).map_err(|e| e.to_string())?;
                 // Queued messages chain to each other, not all to the same parent.
                 parent = Some(msg_id.clone());
@@ -562,380 +707,284 @@ pub async fn headless_chat(
         cancel: cancel.clone(),
     };
 
-    // Agent loop: each iteration creates a new assistant message
-    let mut total_input_tokens = 0i32;
-    let mut total_output_tokens = 0i32;
-    let mut last_assistant_text = String::new();
-    let mut stop_guard = ErrorStopGuard { app, conversation_id, message_id: None };
-    let mut loop_guard = crate::agent::ToolLoopGuard::default();
-    let mut turn_aborted = false;
+    // The loop is the desktop's too now. What stays here is what the two do not
+    // share: this session's own setup above, and the round's accounting below —
+    // the lease, the turn record and the terminal event all belong to the
+    // caller, because `TurnEnd::Continue` makes a round and a turn two different
+    // things and only the caller knows which one is ending.
+    let approvals = ChatApprovals {
+        approval_fn,
+        pool: pool.clone(),
+        turn_id: turn_id.to_string(),
+    };
+    let commentary = interim_text_fn.map(ChatCommentary);
+    let surface = qq_tools.map(QqSurface);
+    let steering = session_inbox.map(InboxSteering);
 
-    loop {
-        if cancel.is_cancelled() { break; }
+    let outcome = engine::run_turn(
+        &engine::TurnServices { pool, tools: tool_registry, mcp: mcp_registry },
+        engine::TurnSetup {
+            provider: &*provider,
+            params,
+            chat_messages,
+            tool_defs,
+            offered,
+            // Modes stay off. A headless turn has no way to switch them, and a
+            // QQ session already cannot touch the filesystem — its file access
+            // is an empty root set — so plan mode would guard nothing. The same
+            // `Modes::Fixed` above is what keeps the transition tools out of the
+            // set; this is where the mode itself lands.
+            mode: crate::agent::modes::Modes::Fixed.spec(),
+            tool_context,
+            budget,
+            turn_id: turn_id.to_string(),
+            conversation_id: conversation_id.to_string(),
+            parent_cursor,
+            cancel: cancel.clone(),
+            keep_recent,
+            context_limit,
+            // The declared permission and nothing else: no reach check, and no
+            // standing yes to project edits — there is no project. The desktop
+            // consults both. On the drift list.
+            approval_rule: engine::ApprovalRule::ByPermission,
+            withheld: engine::WithheldWording::Terse,
+            // Steering resolves image URIs against this, which is why it is here
+            // rather than only in the setup above.
+            files_root,
+            interrupted,
+            compaction: engine::CompactionPolicy::OneBot,
+        },
+        engine::TurnPorts {
+            emit,
+            approvals: &approvals,
+            interim: commentary.as_ref().map(|c| c as &dyn engine::Commentary),
+            surface_tools: surface.as_ref().map(|s| s as &dyn engine::SurfaceTools),
+            steering: steering.as_ref().map(|s| s as &dyn engine::Steering),
+            // No modes, so no way between them. Which is also why `enter_plan`
+            // still reaches the registry and answers with a sentence — see the
+            // drift list; this batch preserves it rather than deciding it.
+            transitions: None,
+        },
+    )
+    .await;
 
-        // Create a new assistant message for this iteration
-        assistant_msg_id = uuid::Uuid::new_v4().to_string();
-        {
-            let pool = pool.clone();
-            let conv_id = conversation_id.to_string();
-            let msg_id = assistant_msg_id.clone();
-            let model_clone = params.model.clone();
-            let parent = parent_cursor.clone();
-            tokio::task::spawn_blocking(move || {
-                let mut conn = get_conn(&pool)?;
-                crate::db::ops::message::append_message(&mut conn, &NewMessage {
-                    id: &msg_id, conversation_id: &conv_id, role: "assistant", content: "",
-                    provider_id: None, model_id: Some(&model_clone), input_tokens: None,
-                    output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
-                    created_at: now_ms(), reasoning_content: None, rating: None, schema_version: 2,
-                    is_compact_summary: 0, sender_id: None,
-                    parent_id: None, compact_anchor_id: None, source: None,
-                }, parent.as_deref()).map_err(|e| e.to_string())?;
-                Ok::<_, String>(())
-            }).await.map_err(|e| e.to_string())??;
+    // Handed over whole, and before the reply is unwrapped: this is what the
+    // caller closes the turn out with whatever became of the round, and a round
+    // that failed still has to name the row it was writing. Adding up across
+    // rounds is the caller's job — one of these is made per round, not per turn.
+    *progress = outcome.progress;
+
+    // No stop event here. The caller emits it, after handing the conversation
+    // back and only once the turn is genuinely over.
+    outcome.reply
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // The stream-reading tests moved with the reader itself, to
+    // `agent::engine::stream`. They were never about OneBot.
+
+    fn outcome(reply: Result<String, String>, aborted: bool) -> HeadlessOutcome {
+        HeadlessOutcome {
+            reply,
+            progress: TurnProgress { aborted, ..Default::default() },
         }
-        parent_cursor = Some(assistant_msg_id.clone());
+    }
 
-        if let Some(app) = app {
-            let _ = app.emit("chat-stream", serde_json::json!({
-                "type": "message_start", "message_id": &assistant_msg_id,
-                "conversation_id": conversation_id,
-            }));
-            stop_guard.message_id = Some(assistant_msg_id.clone());
-        }
+    #[test]
+    fn a_round_that_failed_ends_as_an_error() {
+        assert_eq!(outcome(Err("no api key".into()), false).stop_reason(), "error");
+    }
 
-        let result = {
-            let mut _last_err = String::new();
-            let mut attempt = 0u32;
-            let mut retry_delay: Option<std::time::Duration> = None;
-            loop {
-                if attempt > 0 {
-                    let delay = retry_delay.take()
-                        .unwrap_or_else(|| crate::client::backoff(STREAM_RETRY_BASE, attempt as u64));
-                    tokio::time::sleep(delay).await;
-                    // Retrying replays the whole stream under the same message id;
-                    // tell any attached UI to drop the partial content.
-                    if let Some(app) = app {
-                        let _ = app.emit("chat-stream", serde_json::json!({
-                            "type": "reset", "message_id": &assistant_msg_id, "conversation_id": conversation_id,
-                        }));
-                    }
-                }
-                let stream_result = provider.stream_chat_with_tools(
-                    chat_messages.clone(), tool_defs.clone(), params.clone()
-                ).await;
-                let try_result = match stream_result {
-                    Ok(stream) => consume_stream_headless(stream, cancel, app, &assistant_msg_id, conversation_id).await,
-                    Err(e) => Err(e.to_string()),
-                };
-                match try_result {
-                    Ok(r) => break r,
-                    Err(e) if is_context_window_error(&e) => {
-                        let aggressive_keep = (keep_recent / 2).max(2);
-                        trim_to_context_limit(&mut chat_messages, context_limit / 2, aggressive_keep);
-                        if let Some(app) = app {
-                            let _ = app.emit("chat-stream", serde_json::json!({
-                                "type": "reset", "message_id": &assistant_msg_id, "conversation_id": conversation_id,
-                            }));
-                        }
-                        let stream = provider.stream_chat_with_tools(
-                            chat_messages.clone(), tool_defs.clone(), params.clone()
-                        ).await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
-                        break consume_stream_headless(stream, cancel, app, &assistant_msg_id, conversation_id)
-                            .await.map_err(|e| format!("Context overflow recovery failed: {e}"))?;
-                    }
-                    Err(e) if is_retryable_stream_error(&e) && attempt < MAX_STREAM_RETRIES => {
-                        retry_delay = crate::agent::parse_retry_after(&e);
-                        _last_err = e;
-                        attempt += 1;
-                        continue;
-                    }
-                    Err(e) => return Err(e),
-                }
+    #[test]
+    fn a_round_the_loop_guard_cut_short_says_so() {
+        assert_eq!(outcome(Ok(String::new()), true).stop_reason(), "loop_detected");
+        assert_eq!(outcome(Ok("hi".into()), false).stop_reason(), "end_turn");
+    }
+
+    /// The path that strands the front end if it is missed: a provider that
+    /// refuses the very first request means no assistant row was ever created,
+    /// so there is no message to hang the event off — but the composer is
+    /// already disabled by the optimistic send, and only a stop re-enables it.
+    #[test]
+    fn a_turn_that_never_wrote_a_message_still_gets_a_terminal_event() {
+        let failed = outcome(Err("no api key".into()), false);
+        assert!(failed.progress.message_id.is_none());
+
+        let payload = turn_stop_payload(
+            "conv-1", "turn-1", failed.progress.message_id.as_deref(),
+            failed.stop_reason(), 0, 0,
+        );
+
+        assert_eq!(payload["type"], "stop");
+        assert_eq!(payload["done"], true);
+        assert_eq!(payload["reason"], "error");
+        assert_eq!(payload["turn_id"], "turn-1");
+        assert_eq!(payload["conversation_id"], "conv-1");
+        // Null, not absent: the front end reads a stop it cannot place as
+        // "whatever is running here", which is exactly right for this one.
+        assert!(payload["message_id"].is_null());
+    }
+
+    /// A QQ conversation open in the desktop has to be able to tell this turn's
+    /// end from anyone else's, or it streams for good.
+    #[test]
+    fn a_terminal_event_names_its_turn_and_its_message() {
+        let payload = turn_stop_payload("conv-1", "turn-1", Some("msg-9"), "end_turn", 12, 34);
+        assert_eq!(payload["message_id"], "msg-9");
+        assert_eq!(payload["turn_id"], "turn-1");
+        assert_eq!(payload["input_tokens"], 12);
+        assert_eq!(payload["output_tokens"], 34);
+    }
+
+    /// Turning a chat's yes or no into a decision, which is the one place this
+    /// side has to make a choice the desktop never faces.
+    mod approvals {
+        use super::*;
+        use crate::agent::engine::{ApprovalDecision, Approvals};
+        use crate::db::test_db;
+        use crate::turn::TurnOrigin;
+
+        /// `said` of `None` is nobody answering: the minute ran out, or the turn
+        /// was swept out from under the question.
+        fn asked(said: Option<&str>, tool: &str) -> Option<ApprovalDecision> {
+            let said = said.map(str::to_string);
+            let pool = test_db();
+            {
+                let mut conn = pool.get().unwrap();
+                crate::db::ops::conversation::create_conversation(
+                    &mut conn, "c1", Some("t"), None, None, 1,
+                )
+                .unwrap();
+                crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::OneBot, 1000)
+                    .unwrap();
             }
-        };
-
-        if let Some(ref u) = result.usage {
-            total_input_tokens += u.prompt_tokens.unwrap_or(0);
-            total_output_tokens += u.completion_tokens.unwrap_or(0);
-            budget.calibrate_from_usage(u);
+            let approval_fn: ApprovalFn = Box::new(move |_, _| {
+                let said = said.clone();
+                Box::pin(async move { said })
+            });
+            let adapter = ChatApprovals {
+                approval_fn: &approval_fn,
+                pool: pool.clone(),
+                turn_id: "t1".into(),
+            };
+            let call = ToolCall {
+                id: "call-1".into(),
+                name: tool.into(),
+                arguments: "{}".into(),
+            };
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .unwrap()
+                .block_on(adapter.ask("m1", &call, None))
+                .unwrap()
         }
 
-        let has_tool_calls = !result.tool_calls.is_empty()
-            && !matches!(result.finish_reason.as_deref(), Some("length") | Some("max_tokens"));
+        /// The distinction the whole mapping exists for. `ask_user` asked a
+        /// question, so what they typed *is* the answer and the loop hands it to
+        /// the model verbatim. It used to arrive as the words "User approved."
+        /// however they had replied.
+        #[test]
+        fn what_the_user_typed_is_what_the_question_gets() {
+            assert!(matches!(
+                asked(Some("用第二个方案，但先备份"), "ask_user"),
+                Some(ApprovalDecision::Response(ref s)) if s == "用第二个方案，但先备份",
+            ));
+        }
 
-        // Persist this iteration's assistant message in OpenAI format
-        let tool_calls_json = if has_tool_calls {
-            Some(crate::agent::serialize_tool_calls_openai(&result.tool_calls))
-        } else {
-            None
-        };
-        {
-            let pool = pool.clone();
-            let msg_id = assistant_msg_id.clone();
-            let content = result.text.clone();
-            let reasoning = if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) };
-            let tc_json = tool_calls_json.clone();
-            let inp = result.usage.as_ref().and_then(|u| u.prompt_tokens);
-            let out = result.usage.as_ref().and_then(|u| u.completion_tokens);
-            tokio::task::spawn_blocking(move || {
-                if let Ok(mut conn) = pool.get() {
-                    let _ = crate::db::ops::message::update_assistant_message(
-                        &mut conn, &msg_id, &content,
-                        reasoning.as_deref(), tc_json.as_deref(), inp, out,
+        /// And a yes to anything else is permission, which is the only thing
+        /// that authorises a call. Reading a sentence as a `Response` here would
+        /// turn somebody typing into authorisation to run a command.
+        #[test]
+        fn a_yes_to_a_tool_is_permission() {
+            for tool in ["run_command", "mcp__server__do", "qq_recall"] {
+                for said in ["y", "Y", "yes", "  Y  "] {
+                    assert!(
+                        matches!(asked(Some(said), tool), Some(ApprovalDecision::Approved)),
+                        "{tool} / {said:?}",
                     );
                 }
-            }).await.map_err(|e| e.to_string())?;
-        }
-
-        last_assistant_text = result.text.clone();
-
-        if !has_tool_calls { break; }
-
-        // Mid-turn commentary would otherwise never leave the DB: only the
-        // final iteration's text is returned to the caller.
-        if !result.text.is_empty() {
-            if let Some(notify) = interim_text_fn {
-                (notify)(result.text.clone()).await;
             }
         }
 
-        let mut assistant_msg = ChatMessage::assistant_with_tools(
-            &result.text,
-            if result.reasoning.is_empty() { None } else { Some(result.reasoning.clone()) },
-            result.tool_calls.clone(),
-        );
-        if !result.signature.is_empty() {
-            assistant_msg.signature = Some(result.signature.clone());
+        /// Anything else refuses it, and why travels with the refusal. The model
+        /// is about to decide what to do instead, and "no" on its own is most of
+        /// a reason short of one.
+        #[test]
+        fn a_refusal_carries_its_reason_back() {
+            assert!(matches!(
+                asked(Some("别动生产库"), "run_command"),
+                Some(ApprovalDecision::Denied(Some(ref s))) if s == "别动生产库",
+            ));
         }
-        chat_messages.push(assistant_msg);
 
-        for tc in &result.tool_calls {
-            if cancel.is_cancelled() { break; }
-
-            if let Some(app) = app {
-                let _ = app.emit("chat-stream", serde_json::json!({
-                    "type": "tool_call",
-                    "call_id": tc.id, "tool_name": tc.name,
-                    "arguments": tc.arguments,
-                    "message_id": &assistant_msg_id,
-                    "conversation_id": conversation_id,
-                }));
+        /// Nobody answered: the minute ran out, or the turn was swept out from
+        /// under the question. Not the same as a refusal, and reachable from this
+        /// side for the first time — the old transport could only say no.
+        #[test]
+        fn nobody_answering_is_not_a_refusal() {
+            for tool in ["ask_user", "run_command"] {
+                assert!(matches!(asked(None, tool), None), "{tool}");
             }
+        }
 
-            let is_mcp = tc.name.starts_with("mcp__");
-            let tool = if !is_mcp { tool_registry.get(&tc.name) } else { None };
+        /// A reply with no words in it — an image, a sticker — answered nothing
+        /// and authorised nothing.
+        #[test]
+        fn a_reply_with_no_words_in_it_answers_nothing() {
+            for tool in ["ask_user", "run_command"] {
+                assert!(
+                    matches!(asked(Some("   "), tool), Some(ApprovalDecision::Denied(None))),
+                    "{tool}",
+                );
+            }
+        }
 
-            // Loop detection runs before approval so a stuck model can't spam
-            // the admin with approval prompts.
-            let verdict = loop_guard.observe(&tc.name, &tc.arguments);
-            let (tool_result, outcome): (String, &'static str) = if let crate::agent::LoopVerdict::Warn(n) = verdict {
-                (crate::agent::loop_warning_message(&tc.name, n), "error")
-            } else if let crate::agent::LoopVerdict::Abort(n) = verdict {
-                turn_aborted = true;
-                (crate::agent::loop_abort_message(&tc.name, n), "error")
-            } else if !offered.contains(&tc.name) {
-                (format!("Unknown tool: {}", tc.name), "error")
-            } else if let Some(qq) = qq_tools.filter(|q| q.owns(&tc.name)) {
-                // Query tools are scope-locked and read-only; action tools
-                // (recall/ban/kick/…) go through the chat approval flow.
-                let approved = !qq.requires_approval(&tc.name) || (approval_fn)(tc.clone(), None).await;
-                if approved {
-                    match qq.execute(&tc.name, &tc.arguments).await {
-                        Ok(output) => (output, "success"),
-                        Err(e) => (format!("Error: {e}"), "error"),
-                    }
-                } else {
-                    ("Tool call denied by user.".to_string(), "denied")
-                }
-            } else if is_mcp {
-                // External MCP tools require approval, same as Ask tools.
-                if (approval_fn)(tc.clone(), None).await {
-                    let args: serde_json::Value = serde_json::from_str(&tc.arguments)
-                        .unwrap_or_else(|_| serde_json::json!({}));
-                    let mut mgr = mcp_manager.lock().await;
-                    match mgr.call_tool(&tc.name, args).await {
-                        Ok(output) => (output, "success"),
-                        Err(e) => (format!("MCP error: {e}"), "error"),
-                    }
-                } else {
-                    ("Tool call denied by user.".to_string(), "denied")
-                }
-            } else if tc.name == "ask_user" {
-                let approved = (approval_fn)(tc.clone(), None).await;
-                if approved {
-                    ("User approved.".to_string(), "success")
-                } else {
-                    ("User did not respond.".to_string(), "denied")
-                }
-            } else if let Some(tool) = tool {
-                let permission = tool.default_permission();
-                let approved = match permission {
-                    tools::Permission::Always => true,
-                    tools::Permission::Never => false,
-                    tools::Permission::Ask => (approval_fn)(tc.clone(), None).await,
-                };
-                if approved {
-                    let args: serde_json::Value = serde_json::from_str(&tc.arguments)
-                        .unwrap_or_else(|_| serde_json::json!({}));
-                    match tool.execute(args.clone(), &tool_context).await {
-                        Ok(output) => (output, "success"),
-                        Err(e) => match crate::tools::decode_sandbox_denied(&e) {
-                            Some(blocked) => {
-                                // Sandbox blocked the command — ask the admin
-                                // (Y/N) whether to retry without sandbox.
-                                let retry_tc = ToolCall {
-                                    id: format!("{}:retry", tc.id),
-                                    name: tc.name.clone(),
-                                    arguments: tc.arguments.clone(),
-                                };
-                                if (approval_fn)(retry_tc, Some(blocked.to_string())).await {
-                                    match tool.execute(args, &tool_context.without_sandbox()).await {
-                                        Ok(o) => (o, "success"),
-                                        Err(e2) => (format!("Error: {e2}"), "error"),
-                                    }
-                                } else {
-                                    (
-                                        format!("{blocked}\n[blocked by sandbox; user declined to retry without sandbox]"),
-                                        "denied",
-                                    )
-                                }
-                            }
-                            None => (format!("Error: {e}"), "error"),
-                        },
-                    }
-                } else {
-                    ("Tool call denied by user.".to_string(), "denied")
-                }
-            } else {
-                (format!("Unknown tool: {}", tc.name), "error")
+        /// The same claim against a real message rather than a hand-made string.
+        ///
+        /// This is where it was untrue: a picture survives parsing as a
+        /// private-use codepoint or as the characters `[图片]`, both of which
+        /// outlive a trim. Read as an answer, a sticker sent while a tool waited
+        /// used to become the refusal's stated reason — or, for a question, the
+        /// answer handed to the model, sentinel and all.
+        #[test]
+        fn media_sent_while_something_waits_is_not_an_answer() {
+            let media = serde_json::json!([
+                {"type": "image", "data": {"file": "a.jpg"}},
+                {"type": "face", "data": {"id": "1"}},
+            ]);
+            let typed = crate::onebot::format::parse_segments(&media, None).typed;
+
+            for kind in [AskKind::Permission, AskKind::Question] {
+                assert!(
+                    matches!(kind.decide(&typed), ApprovalDecision::Denied(None)),
+                    "media authorised or answered something",
+                );
+            }
+        }
+
+        /// And nothing of ours reaches the model when there are words to carry.
+        #[test]
+        fn an_answer_sent_with_a_picture_carries_only_the_words() {
+            let with_words = serde_json::json!([
+                {"type": "image", "data": {"file": "a.jpg"}},
+                {"type": "text", "data": {"text": " 用第二个方案"}},
+            ]);
+            let typed = crate::onebot::format::parse_segments(&with_words, None).typed;
+
+            let ApprovalDecision::Response(answer) = AskKind::Question.decide(&typed) else {
+                panic!("a question's answer is what they wrote");
             };
-            let tool_result = crate::agent::formatted_truncate_text(&tool_result, crate::agent::TOOL_OUTPUT_TRUNCATION);
+            assert_eq!(answer, "用第二个方案");
+            assert!(!answer.contains(crate::onebot::format::IMAGE_SENTINEL));
 
-            if let Some(app) = app {
-                let _ = app.emit("chat-stream", serde_json::json!({
-                    "type": "tool_result",
-                    "call_id": tc.id, "result": &tool_result,
-                    "outcome": outcome,
-                    "message_id": &assistant_msg_id,
-                    "conversation_id": conversation_id,
-                }));
-            }
-
-            {
-                let pool = pool.clone();
-                let conv_id = conversation_id.to_string();
-                let tool_msg_id = uuid::Uuid::new_v4().to_string();
-                let call_id = tc.id.clone();
-                let result_clone = tool_result.clone();
-                let parent = parent_cursor.clone();
-                let written = tokio::task::spawn_blocking(move || {
-                    let mut conn = pool.get().map_err(|e| e.to_string())?;
-                    crate::db::ops::message::append_message(&mut conn, &NewMessage {
-                        id: &tool_msg_id, conversation_id: &conv_id, role: "tool",
-                        content: &result_clone, provider_id: None, model_id: None,
-                        input_tokens: None, output_tokens: None,
-                        tool_calls: None, tool_call_id: Some(&call_id),
-                        sort_order: 0, created_at: now_ms(),
-                        reasoning_content: None, rating: None, schema_version: 2,
-                        is_compact_summary: 0, sender_id: None,
-                        parent_id: None, compact_anchor_id: None, source: None,
-                    }, parent.as_deref()).map(|_| tool_msg_id).map_err(|e| e.to_string())
-                }).await;
-
-                // Same trade as the desktop loop: the tool already ran, so keep
-                // going and leave the cursor on the last row that landed.
-                match written {
-                    Ok(Ok(id)) => parent_cursor = Some(id),
-                    Ok(Err(e)) => tracing::error!("failed to persist tool result: {e}"),
-                    Err(e) => tracing::error!("tool result write panicked: {e}"),
-                }
-            }
-
-            chat_messages.push(ChatMessage::tool_result(&tc.id, &tool_result));
-
-            if turn_aborted { break; }
-        }
-
-        if cancel.is_cancelled() || turn_aborted { break; }
-
-        // Steering: pull queued events (recalls, membership notes, user
-        // messages that arrived mid-turn) into the conversation now that this
-        // round's tool results are settled — the next request will see them.
-        // Injecting only appends, so history and its prompt-cache prefix stay
-        // intact.
-        if let Some(inbox) = session_inbox {
-            let items = inbox.drain().await;
-            let injected_any = !items.is_empty();
-            for item in items {
-                let inject_msg_id = uuid::Uuid::new_v4().to_string();
-                {
-                    let pool = pool.clone();
-                    let conv_id = conversation_id.to_string();
-                    let content = item.text.clone();
-                    let msg_id = inject_msg_id.clone();
-                    let sender_id = item.sender.as_ref().map(|s| s.user_id);
-                    let parent = parent_cursor.clone();
-                    let written = tokio::task::spawn_blocking(move || {
-                        let mut conn = pool.get().map_err(|e| e.to_string())?;
-                        crate::db::ops::message::append_message(&mut conn, &NewMessage {
-                                id: &msg_id, conversation_id: &conv_id, role: "user",
-                                content: &content, provider_id: None, model_id: None,
-                                input_tokens: None, output_tokens: None,
-                                tool_calls: None, tool_call_id: None, sort_order: 0,
-                                created_at: now_ms(), reasoning_content: None, rating: None,
-                                schema_version: 2, is_compact_summary: 0, sender_id,
-                                parent_id: None, compact_anchor_id: None, source: None,
-                            }, parent.as_deref()).map(|_| msg_id).map_err(|e| e.to_string())
-                    }).await;
-
-                    match written {
-                        Ok(Ok(id)) => parent_cursor = Some(id),
-                        Ok(Err(e)) => tracing::error!("failed to persist steered message: {e}"),
-                        Err(e) => tracing::error!("steered message write panicked: {e}"),
-                    }
-                }
-                // The initial resolve pass ran before this message existed;
-                // image parts inside it need their own file-URI resolution.
-                // Notices carry no sender; queued user messages keep theirs.
-                let mut injected = vec![match item.sender.as_ref() {
-                    Some(s) => ChatMessage::user_from(&item.text, s.into()),
-                    None => ChatMessage::system_context(&item.text),
-                }];
-                crate::agent::resolve_file_uris_in_messages(&mut injected, files_root.as_deref());
-                chat_messages.extend(injected);
-            }
-            if injected_any {
-                if let Some(app) = app {
-                    let _ = app.emit("conversation-updated", serde_json::json!({"id": conversation_id}));
-                }
-            }
-        }
-
-        budget.update_estimate(&chat_messages);
-        if budget.needs_compact() {
-            microcompact(&mut chat_messages, &budget, keep_recent);
-            budget.update_estimate(&chat_messages);
-            if budget.needs_compact() {
-                if let Err(e) = mid_turn_compact(&mut chat_messages, &budget, &*provider, &params, keep_recent).await {
-                    tracing::warn!("OneBot mid-turn compact failed: {e}");
-                    trim_to_context_limit(&mut chat_messages, context_limit / 2, (keep_recent / 2).max(2));
-                }
-                budget.update_estimate(&chat_messages);
-            }
+            let ApprovalDecision::Denied(Some(reason)) = AskKind::Permission.decide(&typed) else {
+                panic!("anything but a yes refuses, with a reason");
+            };
+            assert!(!reason.contains(crate::onebot::format::IMAGE_SENTINEL));
         }
     }
-
-    stop_guard.message_id = None;
-    if let Some(app) = app {
-        let stop_reason = if turn_aborted { "loop_detected" } else { "end_turn" };
-        let _ = app.emit("chat-stream", serde_json::json!({
-            "type": "stop", "reason": stop_reason, "done": true,
-            "message_id": &assistant_msg_id,
-            "conversation_id": conversation_id,
-            "input_tokens": total_input_tokens, "output_tokens": total_output_tokens,
-        }));
-    }
-
-    Ok(last_assistant_text)
 }

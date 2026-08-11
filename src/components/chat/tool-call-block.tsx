@@ -5,8 +5,8 @@ import hljs from 'highlight.js/lib/common'
 import { fileIconUrl } from '@/lib/file-icon'
 import { AnimatePresence, motion } from 'motion/react'
 import {
-  ArrowUturnCcwLeft, Check, ChevronUp, Circle, CircleCheck, CircleDashed,
-  CircleQuestion, Compass, FileText, ForwardStep, Globe, ListCheck,
+  ArrowUturnCcwLeft, Ban, Check, ChevronUp, Circle, CircleCheck, CircleDashed,
+  CircleQuestion, Clock, Compass, FileText, ForwardStep, Globe, ListCheck,
   PaperPlane, Square, SquareCheck, SquareListUl, TriangleExclamation, Xmark,
 } from '@gravity-ui/icons'
 import { Button, Input } from '@heroui/react'
@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { parseTodoArgs, todoProgress, TodoItemList, type TodoDraft } from './todo-list'
 import { MarkdownContent } from './markdown-content'
+import { useConversationStore } from '@/stores/conversation-store'
 import type { ToolCallDisplay } from '@/types'
 
 interface AskOption {
@@ -183,6 +184,8 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   const { t } = useTranslation()
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({})
   const [skippedSet, setSkippedSet] = useState<Set<string>>(new Set())
+  const [sending, setSending] = useState(false)
+  const markOrphaned = useConversationStore((s) => s.markApprovalOrphaned)
 
   let questions: AskQuestion[] = []
   try {
@@ -217,12 +220,19 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   }, [])
 
   const handleSubmit = useCallback(() => {
+    if (!data.approval_id) return
     const result: Record<string, string> = {}
     for (const q of questions) {
       result[q.id] = formatAnswer(answers[q.id], skippedSet.has(q.id))
     }
-    api.respondToAsk(data.call_id, JSON.stringify(result))
-  }, [answers, skippedSet, questions, data.call_id])
+    setSending(true)
+    // Nobody is listening any more: say so instead of leaving a form that
+    // silently discards what the user typed.
+    api.respondToAsk(data.approval_id, JSON.stringify(result)).catch(() => {
+      setSending(false)
+      markOrphaned(data.approval_id!)
+    })
+  }, [answers, skippedSet, questions, data.approval_id, markOrphaned])
 
   const canSubmit = questions.some((q) =>
     skippedSet.has(q.id) || hasContent(answers[q.id])
@@ -233,7 +243,8 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
       <div className="flex items-center gap-2 bg-default px-4 py-3">
         <CircleQuestion className="w-3.5 h-3.5 text-muted" />
         <span className="font-medium text-foreground">{t('chat.tool.askUser')}</span>
-        {data.status === 'running' && <CircleDashed className="w-3.5 h-3.5 animate-spin text-muted ml-auto" />}
+        {/* No spinner here for `running`: the body below says so in words, and
+            two of them side by side read as two things happening. */}
         {data.status === 'completed' && <Check className="w-3.5 h-3.5 text-success-soft-foreground ml-auto" />}
       </div>
 
@@ -253,12 +264,21 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
           <div className="pt-1">
             <Button
               onClick={handleSubmit}
-              isDisabled={!canSubmit}
+              isDisabled={!canSubmit || sending}
             >
               <PaperPlane className="w-3.5 h-3.5" />
               {t('chat.tool.askUserSubmit')}
             </Button>
           </div>
+        </div>
+      )}
+
+      {/* The questions are left on screen — they are still worth reading — but
+          the form goes, since there is no longer anyone to send it to, and
+          whatever did become of it is said here instead. */}
+      {data.status !== 'pending' && data.status !== 'completed' && (
+        <div className="px-4 py-3">
+          <CardOutcome status={data.status} />
         </div>
       )}
 
@@ -740,14 +760,28 @@ function ToolResult({ toolName, result, args }: { toolName: string; result: stri
   }
 }
 
-function PendingApproval({ callId, retryReason }: { callId: string; retryReason?: string }) {
+function PendingApproval({ approvalId, retryReason }: { approvalId: string; retryReason?: string }) {
   const { t } = useTranslation()
-  const [approved, setApproved] = useState(false)
-  const [showFeedback, setShowFeedback] = useState(false)
+  // One state, not two booleans: the pair had combinations that mean nothing
+  // ("sent" and "typing a reason" at once) and no way to express "sending
+  // failed, put the buttons back".
+  const [ui, setUi] = useState<'idle' | 'feedback' | 'sent'>('idle')
   const [feedback, setFeedback] = useState('')
+  const markOrphaned = useConversationStore((s) => s.markApprovalOrphaned)
   const isEscalation = retryReason !== undefined
 
-  if (approved) {
+  // Optimistic, with a way back. The backend rejects when it is no longer
+  // holding the turn open, and a card that swallowed that would spin forever.
+  const decide = (send: () => Promise<void>) => {
+    const previous = ui
+    setUi('sent')
+    send().catch(() => {
+      setUi(previous)
+      markOrphaned(approvalId)
+    })
+  }
+
+  if (ui === 'sent') {
     return (
       <div className="flex items-center gap-2 px-0.5 text-muted">
         <CircleDashed className="w-3.5 h-3.5 animate-spin" />
@@ -756,7 +790,7 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
     )
   }
 
-  if (!showFeedback) {
+  if (ui === 'idle') {
     return (
       <>
         {isEscalation && (
@@ -769,12 +803,12 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
           <Button
             variant="outline"
             className="text-danger hover:text-danger"
-            onClick={() => setShowFeedback(true)}
+            onClick={() => setUi('feedback')}
           >
             <Xmark className="w-3.5 h-3.5" />
             {t('chat.tool.deny')}
           </Button>
-          <Button onClick={() => { setApproved(true); api.approveToolCall(callId) }}>
+          <Button onClick={() => decide(() => api.approveToolCall(approvalId))}>
             <Check className="w-3.5 h-3.5" />
             {isEscalation ? t('chat.tool.retryWithoutSandbox') : t('chat.tool.allow')}
           </Button>
@@ -783,25 +817,27 @@ function PendingApproval({ callId, retryReason }: { callId: string; retryReason?
     )
   }
 
+  const deny = () => decide(() => api.denyToolCall(approvalId, feedback || undefined))
+
   return (
     <div className="space-y-2">
       <Input fullWidth
         type="text"
         value={feedback}
         onChange={(e) => setFeedback(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') api.denyToolCall(callId, feedback || undefined) }}
+        onKeyDown={(e) => { if (e.key === 'Enter') deny() }}
         placeholder={t('chat.tool.denyReasonPlaceholder')}
         className="text-xs"
         autoFocus
       />
       <ChatToolApproval className="pt-0">
-        <Button variant="ghost" onClick={() => setShowFeedback(false)}>
+        <Button variant="ghost" onClick={() => setUi('idle')}>
           {t('chat.tool.cancel')}
         </Button>
         <Button
           variant="outline"
           className="text-danger hover:text-danger"
-          onClick={() => api.denyToolCall(callId, feedback || undefined)}
+          onClick={deny}
         >
           <Xmark className="w-3.5 h-3.5" />
           {feedback.trim() ? t('chat.tool.denyWithReason') : t('chat.tool.deny')}
@@ -852,7 +888,36 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
           {query && <span className="text-muted truncate">{query}</span>}
         </ChatToolTrigger>
         <ChatToolContent>
-          <PendingApproval callId={data.call_id} />
+          {data.approval_id && (
+            <PendingApproval
+              // A new approval id is a new question, and the answer to the last
+              // one must not still be on screen. Without this the card keeps the
+              // "sent" it was left in — which is the spinner — so a sandbox
+              // escalation arrives behind a card that looks like it is already
+              // working, and the buttons only appear if the conversation is
+              // reopened and the component is rebuilt from scratch.
+              key={data.approval_id}
+              approvalId={data.approval_id}
+              retryReason={data.retry_reason}
+            />
+          )}
+        </ChatToolContent>
+      </ChatTool>
+    )
+  }
+
+  // Ahead of the loading state below, which would otherwise claim a dead call
+  // is still searching.
+  if (data.status === 'orphaned') {
+    return (
+      <ChatTool state="output-error" defaultExpanded={false} className="my-3">
+        <ChatToolTrigger>
+          <ChatToolStatusIcon />
+          <span className="font-medium text-foreground shrink-0">{t('chat.tool.name.web_search')}</span>
+          {query && <span className="text-muted truncate">{query}</span>}
+        </ChatToolTrigger>
+        <ChatToolContent>
+          <OrphanedNotice />
         </ChatToolContent>
       </ChatTool>
     )
@@ -961,22 +1026,30 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: string }) {
   const { t } = useTranslation()
   const [sent, setSent] = useState(false)
+  const markOrphaned = useConversationStore((s) => s.markApprovalOrphaned)
   const declined = data.status === 'denied'
+  const approvalId = data.approval_id
 
   const decide = useCallback((send: () => Promise<void>) => {
     setSent(true)
-    send().catch(() => setSent(false))
-  }, [])
+    send().catch(() => {
+      setSent(false)
+      if (approvalId) markOrphaned(approvalId)
+    })
+  }, [approvalId, markOrphaned])
 
   // Same status ring as `ChatTool`: a HeroUI card carries no edge, so an edge
-  // is left to mean "this one is waiting on you". A decided plan is just a card.
+  // is left to mean "this one is waiting on you". Which is `pending` and only
+  // `pending` — keyed off "not denied" it was drawn around every other state
+  // too, so a call that had errored, been abandoned or already been approved
+  // all sat there asking for a decision that had been made or could not be.
   return (
     <div
       data-slot="enter-plan"
       data-status={data.status}
       className={cn(
         'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface',
-        !declined && 'ring-1 ring-info/40 ring-inset',
+        data.status === 'pending' && 'ring-1 ring-info/40 ring-inset',
       )}
     >
       <div data-slot="enter-plan-header" className="flex items-center gap-2 bg-default px-4 py-3">
@@ -992,14 +1065,14 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
         {reason}
       </div>
 
-      {data.status === 'pending' && !sent && (
+      {data.status === 'pending' && approvalId && !sent && (
         <div data-slot="enter-plan-actions" className="border-t border-separator px-4 py-3">
           <ChatToolApproval>
-            <Button variant="outline" onClick={() => decide(() => api.denyToolCall(data.call_id))}>
+            <Button variant="outline" onClick={() => decide(() => api.denyToolCall(approvalId))}>
               <Xmark className="w-3.5 h-3.5" />
               {t('chat.plan.keepBuilding')}
             </Button>
-            <Button onClick={() => decide(() => api.approveToolCall(data.call_id))}>
+            <Button onClick={() => decide(() => api.approveToolCall(approvalId))}>
               <Compass className="w-3.5 h-3.5" />
               {t('chat.plan.startPlanning')}
             </Button>
@@ -1016,6 +1089,12 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
           <span>{t('chat.tool.running')}</span>
         </div>
       )}
+
+      {data.status !== 'pending' && data.status !== 'completed' && (
+        <div data-slot="enter-plan-outcome" className="border-t border-separator px-4 py-3">
+          <CardOutcome status={data.status} detail={data.result} />
+        </div>
+      )}
     </div>
   )
 }
@@ -1027,19 +1106,25 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
   // nothing.
   const [ui, setUi] = useState<'idle' | 'feedback' | 'sent'>('idle')
   const [feedback, setFeedback] = useState('')
+  const markOrphaned = useConversationStore((s) => s.markApprovalOrphaned)
   const wasRejected = data.status === 'denied'
+  const approvalId = data.approval_id
 
   // The waiter on the Rust side is gone once the turn is cancelled, so these
   // calls really can reject. Falling back to the buttons beats spinning forever
-  // on a decision nobody is waiting for.
+  // on a decision nobody is waiting for — and the card is retired outright,
+  // since the answer has nowhere left to go.
   const decide = useCallback((send: () => Promise<void>) => {
     setUi('sent')
-    send().catch(() => setUi('idle'))
-  }, [])
+    send().catch(() => {
+      setUi('idle')
+      if (approvalId) markOrphaned(approvalId)
+    })
+  }, [approvalId, markOrphaned])
 
   const sendBack = useCallback(
-    () => decide(() => api.denyToolCall(data.call_id, feedback.trim() || undefined)),
-    [decide, data.call_id, feedback],
+    () => { if (approvalId) decide(() => api.denyToolCall(approvalId, feedback.trim() || undefined)) },
+    [decide, approvalId, feedback],
   )
 
   return (
@@ -1048,7 +1133,8 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       data-status={data.status}
       className={cn(
         'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface',
-        !wasRejected && 'ring-1 ring-info/40 ring-inset',
+        // Only while it is actually waiting on a decision — see `EnterPlanBlock`.
+        data.status === 'pending' && 'ring-1 ring-info/40 ring-inset',
       )}
     >
       <div data-slot="exit-plan-header" className="flex items-center gap-2 bg-default px-4 py-3">
@@ -1064,7 +1150,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
         <MarkdownContent content={plan} />
       </div>
 
-      {data.status === 'pending' && ui !== 'sent' && (
+      {data.status === 'pending' && approvalId && ui !== 'sent' && (
         <div data-slot="exit-plan-actions" className="border-t border-separator px-4 py-3">
           {ui === 'feedback' ? (
             <div data-slot="exit-plan-feedback" className="space-y-2">
@@ -1094,7 +1180,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                 {t('chat.plan.revise')}
               </Button>
               <Button
-                onClick={() => decide(() => api.approveToolCall(data.call_id))}
+                onClick={() => decide(() => api.approveToolCall(approvalId))}
               >
                 <Check className="w-3.5 h-3.5" />
                 {t('chat.plan.approve')}
@@ -1111,6 +1197,12 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
         >
           <CircleDashed className="w-3.5 h-3.5 animate-spin" />
           <span>{t('chat.tool.running')}</span>
+        </div>
+      )}
+
+      {data.status !== 'pending' && data.status !== 'completed' && (
+        <div data-slot="exit-plan-outcome" className="border-t border-separator px-4 py-3">
+          <CardOutcome status={data.status} detail={data.result} />
         </div>
       )}
     </div>
@@ -1184,16 +1276,124 @@ function mapChatToolState(status: ToolCallDisplay['status']): ChatToolState {
     case 'approved':
     case 'running':
       return 'input-available'
+    case 'queued':
+      return 'queued'
     case 'completed':
       return 'output-available'
+    // Explicit rather than left to the default: an orphaned call really did
+    // fail to produce a result, so the error styling is right — but saying so
+    // here keeps the next person from reading it as an oversight.
+    case 'orphaned':
+      return 'output-error'
     default:
       return 'output-error'
   }
 }
 
-export function ToolCallBlock({ data, className }: { data: ToolCallDisplay; className?: string }) {
+/** The turn that asked this is gone, so there is no longer anything to answer.
+ *  Shown in place of the buttons, which would have nothing to address. */
+function OrphanedNotice() {
   const { t } = useTranslation()
-  const isCompleted = data.status === 'completed' || data.status === 'denied' || data.status === 'error'
+  return (
+    <div className="flex items-start gap-1.5 px-0.5 text-xs text-muted">
+      <TriangleExclamation className="w-3.5 h-3.5 text-warning-soft-foreground shrink-0" />
+      <span>{t('chat.tool.orphaned')}</span>
+    </div>
+  )
+}
+
+/**
+ * How an interactive card ended, whenever that was not "the user answered".
+ *
+ * The three cards that draw their own body — the question, and the two plan
+ * cards — each handled only the states they were written against: waiting, and
+ * answered. Everything else fell through to a header with nothing under it, or
+ * worse, to a refusal printed in the same place an answer would go.
+ *
+ * They meet those states routinely now. `tool_outcome` records how a call went,
+ * so `denied` and `error` survive a reload instead of quietly becoming
+ * `completed`, and an unanswered call on a turn that is still running reads as
+ * `running` rather than being written off as abandoned.
+ *
+ * Returns null for the two the cards do draw themselves, and for nothing else.
+ * The `never` binding at the end is what makes that true rather than merely
+ * intended: a status added to the union and not handled here fails to compile,
+ * where without it the switch would simply fall off the end and React would
+ * render an empty card that nobody notices.
+ *
+ * `detail` is what the tool actually said — a refusal's reason, an error's
+ * message. Shown under the general line rather than in place of it, because
+ * "this failed" and "here is what it said" answer different questions and the
+ * second is often a stack trace.
+ */
+function CardOutcome({ status, detail }: { status: ToolCallDisplay['status']; detail?: string }) {
+  const { t } = useTranslation()
+  const notice = (icon: React.ReactNode, text: string, withDetail = false) => (
+    <div className="space-y-1.5">
+      <div className="flex items-start gap-1.5 px-0.5 text-xs text-muted">
+        {icon}
+        <span>{text}</span>
+      </div>
+      {withDetail && detail?.trim() && (
+        <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap px-0.5 text-xs text-foreground">
+          {detail}
+        </pre>
+      )}
+    </div>
+  )
+
+  switch (status) {
+    case 'pending':
+    case 'completed':
+      return null
+    case 'orphaned':
+      return <OrphanedNotice />
+    case 'denied':
+      return notice(<Ban className="w-3.5 h-3.5 shrink-0" />, t('chat.tool.wasDenied'), true)
+    case 'error':
+      return notice(
+        <TriangleExclamation className="w-3.5 h-3.5 text-danger shrink-0" />,
+        t('chat.tool.wasError'),
+        true,
+      )
+    // `approved` alongside `running` because it means the same thing to a card:
+    // decided, not yet finished. Neither has a result to show yet.
+    case 'approved':
+    case 'running':
+      return notice(
+        <CircleDashed className="w-3.5 h-3.5 animate-spin shrink-0" />,
+        t('chat.tool.running'),
+      )
+    // Still, because it is still. The spinner above is what claims work is
+    // happening, and for this one nothing is.
+    case 'queued':
+      return notice(<Clock className="w-3.5 h-3.5 shrink-0" />, t('chat.tool.queued'))
+    default: {
+      const unhandled: never = status
+      throw new Error(`unhandled tool call status: ${String(unhandled)}`)
+    }
+  }
+}
+
+export function ToolCallBlock(
+  { data: raw, queued, className }: { data: ToolCallDisplay; queued?: boolean; className?: string },
+) {
+  const { t } = useTranslation()
+  // Two corrections, both made once here where every card is dispatched from,
+  // so no individual card has to remember either.
+  //
+  // A call cannot be pending without an id to answer it with, or it draws a
+  // button that addresses nothing. And a call whose predecessor has not finished
+  // is not running, whatever the transcript says — that one is decided by
+  // position, which only the caller can see.
+  const data: ToolCallDisplay = useMemo(() => {
+    if (raw.status === 'pending' && !raw.approval_id) return { ...raw, status: 'orphaned' }
+    if (queued && raw.status === 'running') return { ...raw, status: 'queued' }
+    return raw
+  }, [raw, queued])
+  // Nothing to look at until it starts, so a queued call keeps itself shut.
+  const isCompleted = data.status === 'completed' || data.status === 'denied'
+    || data.status === 'error' || data.status === 'orphaned' || data.status === 'queued'
 
   const parsedArgs: Record<string, unknown> = useMemo(() => {
     try {
@@ -1258,18 +1458,28 @@ export function ToolCallBlock({ data, className }: { data: ToolCallDisplay; clas
         <ChatToolStatusIcon />
         <span className="font-medium text-foreground shrink-0">{toolLabel}</span>
         <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} />
+        {/* In the trigger, not the body: a queued card is collapsed, and a
+            standing clock beside a spinning one is too fine a distinction to
+            rest the whole answer on. The summary stays — with three commands
+            queued, which one this is matters as much as that it is waiting. */}
+        {data.status === 'queued' && (
+          <span className="ml-auto shrink-0 text-xs text-muted">{t('chat.tool.queued')}</span>
+        )}
       </ChatToolTrigger>
       <ChatToolContent>
         {fileDiffs
           ? fileDiffs.map((d, i) => <FileDiffCard key={i} diff={d} />)
           : showArgs && <ChatToolArgs text={data.arguments} />}
 
-        {data.status === 'pending' && (
+        {data.status === 'pending' && data.approval_id && (
           <PendingApproval
-            callId={data.escalation_call_id ?? data.call_id}
-            retryReason={data.escalation_call_id ? (data.retry_reason ?? '') : undefined}
+            key={data.approval_id}
+            approvalId={data.approval_id}
+            retryReason={data.retry_reason}
           />
         )}
+
+        {data.status === 'orphaned' && <OrphanedNotice />}
 
         {data.result && (
           data.status === 'error' ? (
