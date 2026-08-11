@@ -1,29 +1,32 @@
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use tauri::{Emitter, Manager};
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-use crate::db;
-use crate::db::models::assistant::{Assistant, AssistantUpdate, NewAssistant};
-use crate::db::models::conversation::Conversation;
-use crate::db::models::message::{Message, NewMessage};
-use crate::provider;
-use crate::provider::{ChatMessage, ChatParams};
-use crate::template;
-use crate::tools;
+use crate::agent::engine::{self, ApprovalDecision};
 use crate::agent::turn_record;
+use crate::agent::{
+    build_file_access, build_messages_with_senders, do_compact, file_access_prompt,
+    get_provider_api_key, instruction_budget, load_project_instructions, microcompact,
+    resolve_file_uris_in_messages, resolve_provider_config, trailing_with_memory,
+    trim_to_context_limit, CompactCircuitBreaker, TokenBudget,
+};
+use crate::db;
+use crate::db::models::assistant::Assistant;
+use crate::db::models::message::NewMessage;
 use crate::db::models::turn::{TurnPhase, TurnStatus, ERROR_LOOP_DETECTED};
 use crate::db::DbPool;
-use crate::state::{AppDb, AppSecrets, AppTools, AppMcp, ApprovalWaiters, AppTurns, EditSessions, CompactBreakers};
-use crate::agent::engine::ApprovalDecision;
+use crate::provider;
+use crate::provider::{ChatMessage, ChatParams};
+use crate::state::{
+    AppDb, AppMcp, AppSecrets, AppTools, AppTurns, ApprovalWaiters, CompactBreakers,
+};
+use crate::template;
+use crate::tools;
 use crate::turn::{TurnLease, TurnOrigin};
-use crate::agent::{build_messages_with_senders, trailing_with_memory, build_file_access, file_access_prompt, estimate_tokens, microcompact, resolve_file_uris_in_messages, trim_to_context_limit, extract_tool_calls_from_blocks, parse_openai_tool_calls, provider_secret_name, get_provider_api_key, resolve_provider_config, do_compact, CompactCircuitBreaker, COMPACT_PROMPT, instruction_budget, load_project_instructions, TokenBudget};
 use crate::util::{get_conn, now_ms, take_bytes_at_char_boundary};
-use crate::agent::engine::{self};
 
 /// The desktop events are the answer. A window that missed one is showing a
 /// transcript that never catches up, so a send that fails ends the turn and the
