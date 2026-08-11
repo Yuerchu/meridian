@@ -26,13 +26,25 @@ pub struct MediaRef {
 #[derive(Debug, Clone, Default)]
 pub struct ParsedMessage {
     pub text: String,
+    /// What the person actually typed, with everything we stood in for them
+    /// left out — no sentinels, no `[图片]`, no `[表情]`.
+    ///
+    /// `text` cannot answer this. By the time it exists a picture has become
+    /// either a private-use codepoint or the literal characters `[图片]`, and
+    /// neither is distinguishable from something the user wrote. That does not
+    /// matter where the whole message is context, which is most places; it
+    /// matters wherever the message is being read as an answer, because a
+    /// sticker sent while a tool waits is not a yes, not a reason, and not a
+    /// reply to a question.
+    pub typed: String,
     pub images: Vec<MediaRef>,
     pub has_record: bool,
 }
 
 impl ParsedMessage {
+    /// A message that arrived as text and nothing else, so all of it was typed.
     pub fn from_text(text: &str) -> Self {
-        Self { text: text.to_string(), ..Default::default() }
+        Self { text: text.to_string(), typed: text.to_string(), ..Default::default() }
     }
 
     pub fn has_media(&self) -> bool {
@@ -67,6 +79,10 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
 
     let mut parsed = ParsedMessage::default();
     let mut text = String::new();
+    // Built alongside rather than filtered out of `text` afterwards: once a
+    // placeholder is in there it is just characters, and `[图片]` is a string a
+    // person can type.
+    let mut typed = String::new();
     for seg in segments {
         let seg_type = seg.get("type").and_then(|v| v.as_str()).unwrap_or("");
         let data = seg.get("data");
@@ -74,6 +90,7 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
             "text" => {
                 if let Some(t) = data.and_then(|d| d.get("text")).and_then(|v| v.as_str()) {
                     text.push_str(t);
+                    typed.push_str(t);
                 }
             }
             "at" => {
@@ -126,6 +143,9 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
         }
     }
     parsed.text = text.trim().to_string();
+    // Mentions are deliberately absent. Addressing the bot is how a message
+    // gets here at all, not something said in it.
+    parsed.typed = typed.trim().to_string();
     parsed
 }
 
@@ -375,6 +395,50 @@ mod tests {
             format!("看这个 {IMAGE_SENTINEL}{RECORD_SENTINEL}")
         );
         assert_eq!(segments_to_text(&msg, None), "看这个 [图片][语音]");
+    }
+
+    /// Everything we stood in for the user, in one message. None of it was
+    /// typed, and `text` cannot say so — by then a picture is either a
+    /// private-use codepoint or the five characters `[图片]`, and a person can
+    /// type the second one.
+    #[test]
+    fn what_the_user_typed_leaves_out_what_we_wrote_for_them() {
+        let msg = serde_json::json!([
+            {"type": "image", "data": {"file": "a.jpg"}},
+            {"type": "record", "data": {"file": "b.amr"}},
+            {"type": "face", "data": {"id": "1"}},
+            {"type": "video", "data": {"file": "c.mp4"}},
+            {"type": "file", "data": {"file": "d.zip"}},
+        ]);
+        let parsed = parse_segments(&msg, None);
+
+        assert!(parsed.typed.is_empty(), "got: {:?}", parsed.typed);
+        assert!(!parsed.text.is_empty(), "the message itself is not empty");
+    }
+
+    /// And when there are words among it, they are what survives — the ones the
+    /// person wrote, without the placeholders wrapped around them.
+    #[test]
+    fn words_sent_alongside_media_are_kept_and_the_media_is_not() {
+        let msg = serde_json::json!([
+            {"type": "at", "data": {"qq": "12345"}},
+            {"type": "image", "data": {"file": "a.jpg"}},
+            {"type": "text", "data": {"text": " 用第二个方案"}},
+            {"type": "face", "data": {"id": "1"}},
+        ]);
+        let parsed = parse_segments(&msg, Some(12345));
+
+        assert_eq!(parsed.typed, "用第二个方案");
+        assert!(!parsed.typed.contains(IMAGE_SENTINEL));
+        assert!(!parsed.typed.contains("[表情]"));
+    }
+
+    /// A message that arrived as nothing but text is all of it typed. This is
+    /// the fallback for clients that only send `raw_message`, and it must not
+    /// quietly answer nothing.
+    #[test]
+    fn a_message_that_was_only_ever_text_is_all_typed() {
+        assert_eq!(ParsedMessage::from_text("y").typed, "y");
     }
 
     /// What the QQ user used to be shown for this was the tool's name and its

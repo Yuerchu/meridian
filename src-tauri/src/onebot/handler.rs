@@ -53,13 +53,17 @@ pub async fn handle_message(
             .get(&session_key.to_string())
             .is_some_and(|p| p.initiator == user_id);
         if is_initiator {
+            let segments = format::parse_segments(message, Some(self_id));
             let text = format::segments_to_text(message, Some(self_id));
             if !text.is_empty() {
-                let parsed = format::ParsedMessage::from_text(&text);
-                // What it quoted travels with it. This is the path an answer
-                // normally arrives by -- quoting the prompt instead of
-                // @mentioning the bot -- and dropping it here left every such
-                // answer looking like it had quoted nothing.
+                // Readable text, as before, but carrying what was typed rather
+                // than losing it: this is the path an answer normally arrives
+                // by, and the media placeholders in `text` are ours.
+                let parsed = format::ParsedMessage {
+                    typed: segments.typed,
+                    ..format::ParsedMessage::from_text(&text)
+                };
+                // What it quoted travels with it too, for the same reason.
                 return handle_text_message(
                     event, state, user_id, parsed, reply_message_id, conn_id,
                 ).await;
@@ -142,11 +146,19 @@ async fn handle_text_message(
         // would have been a moment later anyway.
         if let Some(pending) = pending {
             let kind = pending.kind;
-            // What they wrote, unread. Which tool asked is what decides whether
-            // it authorises anything, and only the adapter knows that.
-            let _ = pending.responder.send(text.to_string());
-            let trimmed = text.trim();
+            // What they *typed*, not what the message contained. A picture
+            // reaches here as `[图片]` or as a private-use codepoint, and
+            // neither is a yes, a reason, or an answer to a question -- but both
+            // survive a trim, so reading `text` here made a sticker sent while a
+            // tool waited into all three.
+            //
+            // Unread, and passed on as words: which tool asked is what decides
+            // whether they authorise anything, and only the adapter knows that.
+            let said = parsed.typed.as_str();
+            let _ = pending.responder.send(said.to_string());
+            let trimmed = said.trim();
             let reply = match kind {
+                _ if trimmed.is_empty() => "没看到文字，当作未回答。",
                 super::agent::AskKind::Question => "已转达。",
                 super::agent::AskKind::Permission
                     if trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes") =>

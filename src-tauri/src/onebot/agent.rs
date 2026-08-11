@@ -942,5 +942,49 @@ mod tests {
                 );
             }
         }
+
+        /// The same claim against a real message rather than a hand-made string.
+        ///
+        /// This is where it was untrue: a picture survives parsing as a
+        /// private-use codepoint or as the characters `[图片]`, both of which
+        /// outlive a trim. Read as an answer, a sticker sent while a tool waited
+        /// used to become the refusal's stated reason — or, for a question, the
+        /// answer handed to the model, sentinel and all.
+        #[test]
+        fn media_sent_while_something_waits_is_not_an_answer() {
+            let media = serde_json::json!([
+                {"type": "image", "data": {"file": "a.jpg"}},
+                {"type": "face", "data": {"id": "1"}},
+            ]);
+            let typed = crate::onebot::format::parse_segments(&media, None).typed;
+
+            for kind in [AskKind::Permission, AskKind::Question] {
+                assert!(
+                    matches!(kind.decide(&typed), ApprovalDecision::Denied(None)),
+                    "media authorised or answered something",
+                );
+            }
+        }
+
+        /// And nothing of ours reaches the model when there are words to carry.
+        #[test]
+        fn an_answer_sent_with_a_picture_carries_only_the_words() {
+            let with_words = serde_json::json!([
+                {"type": "image", "data": {"file": "a.jpg"}},
+                {"type": "text", "data": {"text": " 用第二个方案"}},
+            ]);
+            let typed = crate::onebot::format::parse_segments(&with_words, None).typed;
+
+            let ApprovalDecision::Response(answer) = AskKind::Question.decide(&typed) else {
+                panic!("a question's answer is what they wrote");
+            };
+            assert_eq!(answer, "用第二个方案");
+            assert!(!answer.contains(crate::onebot::format::IMAGE_SENTINEL));
+
+            let ApprovalDecision::Denied(Some(reason)) = AskKind::Permission.decide(&typed) else {
+                panic!("anything but a yes refuses, with a reason");
+            };
+            assert!(!reason.contains(crate::onebot::format::IMAGE_SENTINEL));
+        }
     }
 }
