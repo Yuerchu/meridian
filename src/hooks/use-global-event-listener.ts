@@ -160,12 +160,12 @@ export function useGlobalEventListener() {
       useConversationStore.getState().handleCompactStart(event.payload.conversation_id)
     })
 
-    const compactDoneUnlisten = listen<{ conversation_id: string; error?: string }>('compact-done', (event) => {
-      const { conversation_id, error } = event.payload
+    const compactDoneUnlisten = listen<{ conversation_id: string; error?: string; mid_turn?: boolean }>('compact-done', (event) => {
+      const { conversation_id, error, mid_turn } = event.payload
       // A compaction that fails silently is indistinguishable from one that was
       // never attempted, while the context indicator stays pinned at its limit.
       if (error) useConversationStore.getState().setError(conversation_id, error)
-      useConversationStore.getState().handleCompactDone(conversation_id)
+      useConversationStore.getState().handleCompactDone(conversation_id, mid_turn)
     })
 
     return () => {

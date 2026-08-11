@@ -805,6 +805,43 @@ describe('stops are scoped to a turn', () => {
   })
 })
 
+describe('compaction state', () => {
+  const CONV = 'conv-1'
+  const store = () => useConversationStore.getState()
+  const session = () => store().sessions[CONV]!
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useConversationStore.setState({ sessions: {} })
+    store().ensureSession(CONV)
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(snapshotOf({ messages: [], branches: [] }))
+  })
+
+  /// A mid-turn pass rewrites the request the engine is holding and writes
+  /// nothing. Re-reading would return the transcript already on screen, and it
+  /// would do it in the middle of a stream, over a conversation large enough to
+  /// have needed compacting in the first place.
+  it('does not re-read the transcript for a compaction that wrote nothing', () => {
+    store().handleCompactStart(CONV)
+    store().handleCompactDone(CONV, true)
+
+    expect(session().compacting).toBe(false)
+    expect(api.conversationSnapshot).not.toHaveBeenCalled()
+  })
+
+  /// The pre-turn and manual passes do write: a summary row, and a head that
+  /// moved past it. Nothing on screen is true until it is read back.
+  it('re-reads the transcript for a compaction that moved the head', async () => {
+    store().handleCompactStart(CONV)
+    store().handleCompactDone(CONV)
+
+    await vi.waitFor(() => {
+      expect(api.conversationSnapshot).toHaveBeenCalledWith(CONV)
+    })
+    expect(session().compacting).toBe(false)
+  })
+})
+
 describe('branch state', () => {
   const CONV = 'conv-1'
 

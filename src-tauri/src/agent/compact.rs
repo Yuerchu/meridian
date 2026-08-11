@@ -35,6 +35,25 @@ CRITICAL RULES:
 - Write in the same language the user used in the conversation.";
 
 const MAX_COMPACT_RETRIES: usize = 3;
+/// What a summary is allowed to cost. The prompt above asks for a handful of
+/// sections about one conversation; anything approaching this is already the
+/// model misreading the task, and a ceiling that tracks the chat model's
+/// advertised output instead would be the whole window on some of them.
+///
+/// A cap, not the answer: what each request actually asks for is this against
+/// what its own input left. See `compact_with_retry`.
+const SUMMARY_OUTPUT_CAP: usize = 16_384;
+/// Under this there is no point sending the request. What comes back is a
+/// heading and a truncated sentence, and it replaces the history it summarised.
+const MIN_SUMMARY_TOKENS: usize = 512;
+const MAX_SUMMARY_TRANSIENT_RETRIES: u32 = 2;
+const SUMMARY_RETRY_BASE: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// The gap between our tokenizer and the provider's, which scales with the
+/// input. Same shape as the compaction threshold's own headroom.
+fn summary_headroom(context_limit: usize) -> usize {
+    (context_limit / 20).min(8_000)
+}
 const TOOL_RESULT_TRUNCATE_CHARS: usize = 3000;
 const TOOL_RESULT_HEAD_CHARS: usize = 500;
 const TOOL_RESULT_TAIL_CHARS: usize = 200;
@@ -156,8 +175,12 @@ pub(crate) async fn do_compact(
     };
     let prov = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
     let params = without_thinking(turn.params);
+    // The same window and the same tokenizer the turn would use. A summariser
+    // sized against a different one is sized against nothing.
+    let budget = TokenBudget::new(&provider_type, &model, turn.context_limit, turn.max_output, None);
 
-    let summary = compact_with_retry(&*prov, &compact_system, &conversation_text, &params).await?;
+    let summary =
+        compact_with_retry(&*prov, &compact_system, &conversation_text, &params, &budget).await?;
 
     let project_context = extract_recent_files_from_db_messages(&active_messages[boundary_idx..]);
 
@@ -212,9 +235,26 @@ async fn compact_with_retry(
     system: &str,
     conversation_text: &str,
     params: &provider::ChatParams,
+    budget: &TokenBudget,
 ) -> Result<String, String> {
+    // The turn's parameters come along because they already passed this model's
+    // capability filter, but its output ceiling must not. A turn's `max_tokens`
+    // is whatever the model is allowed to write at most -- 128k on the
+    // configuration this was found on -- while a summariser is asked for one
+    // bounded artefact. Providers count the prompt and `max_tokens` against one
+    // window, so carrying that ceiling over refuses the summariser in exactly
+    // the situation that called for it.
+    let configured = params
+        .max_tokens
+        .filter(|m| *m > 0)
+        .map_or(SUMMARY_OUTPUT_CAP, |m| m as usize);
     let lines: Vec<&str> = conversation_text.split("### ").collect();
     let total_sections = lines.len();
+    let headroom = summary_headroom(budget.context_limit);
+    // Kept so the last word is what actually went wrong. Running out of
+    // attempts because every one of them was too large is a different problem
+    // from running out of attempts after four provider errors.
+    let mut no_room: Option<String> = None;
 
     for attempt in 0..=MAX_COMPACT_RETRIES {
         let drop_fraction = match attempt {
@@ -236,7 +276,32 @@ async fn compact_with_retry(
             ChatMessage::user(&trimmed),
         ];
 
-        match provider.chat(msgs, params.clone()).await {
+        // Measured per attempt, because dropping sections is the only lever
+        // that moves it. A static cap cannot state the invariant this has to
+        // hold: input + ceiling + headroom fits the window. On the history that
+        // motivated this, 250k of input left no room for even a capped 16k
+        // summary, and the request would have been refused before any of the
+        // dropping below had a chance to help.
+        let input = budget.counter.count_messages(&msgs);
+        let room = budget.context_limit.saturating_sub(input + headroom);
+        let ceiling = configured.min(SUMMARY_OUTPUT_CAP).min(room);
+        if ceiling < MIN_SUMMARY_TOKENS {
+            no_room = Some(format!(
+                "{input} tokens of history left no room for a summary in a {limit} token window",
+                limit = budget.context_limit,
+            ));
+            tracing::warn!(
+                attempt,
+                input,
+                limit = budget.context_limit,
+                "compaction input leaves no room for the summary; dropping the oldest sections"
+            );
+            continue;
+        }
+        let attempt_params =
+            provider::ChatParams { max_tokens: Some(ceiling as i32), ..params.clone() };
+
+        match send_summary(provider, msgs, attempt_params).await {
             Ok(summary) => return Ok(summary),
             Err(e) => {
                 let err_str = e.to_string();
@@ -262,7 +327,41 @@ async fn compact_with_retry(
             }
         }
     }
-    Err("Compact failed after max retries".into())
+    Err(match no_room {
+        Some(why) => format!("Compact summarization failed: {why}"),
+        None => "Compact failed after max retries".into(),
+    })
+}
+
+/// One summarisation request, with the transient failures taken out of it.
+///
+/// Compaction gets one shot per pass and its failures open a circuit breaker,
+/// so a single 502 between the app and the gateway costs the whole pass and
+/// counts against the budget for trying again. The turn loop already retries
+/// its own stream this way; this path had nothing.
+async fn send_summary(
+    provider: &dyn ChatProvider,
+    msgs: Vec<ChatMessage>,
+    params: provider::ChatParams,
+) -> Result<String, provider::ProviderError> {
+    let mut attempt = 0u32;
+    loop {
+        let sent = provider.chat(msgs.clone(), params.clone()).await;
+        match sent {
+            Err(ref e)
+                if attempt < MAX_SUMMARY_TRANSIENT_RETRIES
+                    && super::is_retryable_stream_error(&e.to_string()) =>
+            {
+                attempt += 1;
+                let delay = crate::client::backoff(SUMMARY_RETRY_BASE, attempt as u64);
+                // No error body: a gateway's 502 page has been known to echo
+                // the request back, and this is a summary of a conversation.
+                tracing::warn!(attempt, "summarisation request failed; retrying");
+                tokio::time::sleep(delay).await;
+            }
+            other => return other,
+        }
+    }
 }
 
 pub(crate) async fn mid_turn_compact(
@@ -317,9 +416,10 @@ pub(crate) async fn mid_turn_compact(
     // filter for this model.
     let compact_params = without_thinking(params.clone());
 
-    let summary = compact_with_retry(provider, COMPACT_PROMPT, &conversation_text, &compact_params)
-        .await
-        .map_err(CompactError::Provider)?;
+    let summary =
+        compact_with_retry(provider, COMPACT_PROMPT, &conversation_text, &compact_params, budget)
+            .await
+            .map_err(CompactError::Provider)?;
 
     let file_context = extract_recent_files_from_chat(messages);
     let summary_with_context = if file_context.is_empty() {
@@ -494,6 +594,209 @@ impl CompactCircuitBreaker {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::{ChatStream, ProviderError, ToolDefinition};
+    use std::collections::VecDeque;
+    use std::sync::Mutex;
+
+    /// Records every request as the provider saw it: what it was asked to write
+    /// and how much history it was given to do it from. Together those are the
+    /// only thing these tests are about.
+    #[derive(Default)]
+    struct Summariser {
+        sent: Mutex<Vec<(usize, Option<i32>)>>,
+        /// Errors to answer with before finally succeeding, oldest first.
+        fails: Mutex<VecDeque<ProviderError>>,
+    }
+
+    impl Summariser {
+        fn failing(errs: Vec<ProviderError>) -> Self {
+            Self { fails: Mutex::new(errs.into()), ..Default::default() }
+        }
+        fn ceilings(&self) -> Vec<Option<i32>> {
+            self.sent.lock().unwrap().iter().map(|(_, c)| *c).collect()
+        }
+        fn requests(&self) -> Vec<(usize, Option<i32>)> {
+            self.sent.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ChatProvider for Summariser {
+        async fn stream_chat_with_tools(
+            &self,
+            _messages: Vec<ChatMessage>,
+            _tools: Vec<ToolDefinition>,
+            _params: provider::ChatParams,
+        ) -> Result<ChatStream, ProviderError> {
+            unreachable!("compaction does not stream")
+        }
+
+        async fn chat(
+            &self,
+            messages: Vec<ChatMessage>,
+            params: provider::ChatParams,
+        ) -> Result<String, ProviderError> {
+            let input = budget().counter.count_messages(&messages);
+            self.sent.lock().unwrap().push((input, params.max_tokens));
+            match self.fails.lock().unwrap().pop_front() {
+                Some(e) => Err(e),
+                None => Ok("a summary".into()),
+            }
+        }
+
+        async fn chat_with_tools(
+            &self,
+            _messages: Vec<ChatMessage>,
+            _tools: Vec<ToolDefinition>,
+            _params: provider::ChatParams,
+        ) -> Result<crate::provider::AgentResponse, ProviderError> {
+            unreachable!("compaction offers no tools")
+        }
+    }
+
+    fn budget() -> TokenBudget {
+        TokenBudget::new("openai", "gpt-4o", 32_000, 8_000, None)
+    }
+
+    /// A history of roughly `tokens` tokens, in sections the retry ladder can
+    /// drop a quarter of at a time.
+    fn history(tokens: usize) -> String {
+        (0..40)
+            .map(|_| format!("### User\n{}\n\n", "word ".repeat(tokens / 40)))
+            .collect()
+    }
+
+    /// The invariant, stated against the provider's own view of each request:
+    /// whatever this asked for, it fits behind what it sent.
+    fn every_request_fits(prov: &Summariser, limit: usize) {
+        for (input, ceiling) in prov.requests() {
+            let asked = ceiling.expect("a summariser always names its ceiling") as usize;
+            assert!(
+                input + asked + summary_headroom(limit) <= limit,
+                "input {input} + ceiling {asked} overruns a {limit} window",
+            );
+        }
+    }
+
+    /// The turn this runs inside may be allowed to write 128k. Asking for that
+    /// on top of a history large enough to need compacting is a request the
+    /// provider has to refuse -- and refuse every retry, since dropping
+    /// sections shrinks the input and not the ceiling.
+    #[tokio::test]
+    async fn a_summary_does_not_ask_for_the_whole_window() {
+        let prov = Summariser::default();
+        let params = provider::ChatParams { max_tokens: Some(128_000), ..Default::default() };
+
+        let out = compact_with_retry(&prov, "system", "### User\nhello\n\n", &params, &budget())
+            .await
+            .unwrap();
+
+        assert_eq!(out, "a summary");
+        assert_eq!(prov.ceilings(), [Some(SUMMARY_OUTPUT_CAP as i32)]);
+    }
+
+    /// Only a ceiling, never a floor: a model configured to write less than a
+    /// summary's worth is still only asked for what it can write.
+    #[tokio::test]
+    async fn a_smaller_configured_ceiling_is_left_alone() {
+        let prov = Summariser::default();
+        let params = provider::ChatParams { max_tokens: Some(4_096), ..Default::default() };
+
+        compact_with_retry(&prov, "system", "### User\nhello\n\n", &params, &budget())
+            .await
+            .unwrap();
+
+        assert_eq!(prov.ceilings(), [Some(4_096)]);
+    }
+
+    /// The cap alone is not enough. A history that nearly fills the window
+    /// leaves less than 16k behind it, and a request for 16k anyway is refused
+    /// before any of the section-dropping gets a chance to help.
+    #[tokio::test]
+    async fn a_summary_asks_for_what_its_own_input_left() {
+        let prov = Summariser::default();
+        let params = provider::ChatParams { max_tokens: Some(128_000), ..Default::default() };
+
+        // Comfortably inside a 32k window, but not by 16k.
+        let out = compact_with_retry(&prov, "system", &history(24_000), &params, &budget())
+            .await
+            .unwrap();
+
+        assert_eq!(out, "a summary");
+        every_request_fits(&prov, 32_000);
+        let asked = prov.ceilings()[0].unwrap() as usize;
+        assert!(asked < SUMMARY_OUTPUT_CAP, "took the cap without looking: {asked}");
+        assert!(asked >= MIN_SUMMARY_TOKENS);
+    }
+
+    /// And when there is no room at all, dropping sections is what makes it --
+    /// not sending the request and finding out.
+    #[tokio::test]
+    async fn a_history_with_no_room_behind_it_is_cut_before_it_is_sent() {
+        let prov = Summariser::default();
+        let params = provider::ChatParams { max_tokens: Some(128_000), ..Default::default() };
+
+        let out = compact_with_retry(&prov, "system", &history(31_000), &params, &budget())
+            .await
+            .unwrap();
+
+        assert_eq!(out, "a summary");
+        every_request_fits(&prov, 32_000);
+        // The first attempt never left the building: it was measured, found not
+        // to fit, and cut instead.
+        let first = prov.requests()[0].0;
+        assert!(first < 31_000, "sent the whole history anyway: {first} tokens");
+    }
+
+    /// Nothing left to cut. Better to say so than to send a request that will
+    /// come back as an unattributable provider error.
+    #[tokio::test]
+    async fn a_history_that_cannot_be_cut_small_enough_says_so() {
+        let prov = Summariser::default();
+        let params = provider::ChatParams { max_tokens: Some(128_000), ..Default::default() };
+
+        // One indivisible section, larger than the window.
+        let huge = format!("### User\n{}\n\n", "word ".repeat(40_000));
+        let err = compact_with_retry(&prov, "system", &huge, &params, &budget())
+            .await
+            .expect_err("there was never room for a summary");
+
+        assert!(err.contains("no room for a summary"), "unhelpful: {err}");
+        assert!(prov.requests().is_empty(), "sent it anyway: {:?}", prov.requests());
+    }
+
+    /// Compaction gets one pass, and its failures open a circuit breaker. A
+    /// gateway hiccup should not cost both.
+    #[tokio::test]
+    async fn a_transient_failure_is_retried_rather_than_counted_against_compaction() {
+        let prov =
+            Summariser::failing(vec![ProviderError::Api { status: 502, body: "bad gateway".into() }]);
+        let params = provider::ChatParams { max_tokens: Some(8_000), ..Default::default() };
+
+        let out = compact_with_retry(&prov, "system", "### User\nhello\n\n", &params, &budget())
+            .await
+            .unwrap();
+
+        assert_eq!(out, "a summary");
+        assert_eq!(prov.requests().len(), 2, "gave up on the first 502");
+    }
+
+    /// But not a rejection. Retrying a bad key just delays the report of it.
+    #[tokio::test]
+    async fn a_rejection_is_not_retried() {
+        let prov = Summariser::failing(vec![ProviderError::Api {
+            status: 401,
+            body: "invalid api key".into(),
+        }]);
+        let params = provider::ChatParams { max_tokens: Some(8_000), ..Default::default() };
+
+        let err = compact_with_retry(&prov, "system", "### User\nhello\n\n", &params, &budget())
+            .await
+            .expect_err("401 is an answer, not a hiccup");
+
+        assert!(err.contains("401"), "lost the reason: {err}");
+        assert_eq!(prov.requests().len(), 1, "retried a rejection");
+    }
 
     #[test]
     fn test_circuit_breaker_closes_on_success() {

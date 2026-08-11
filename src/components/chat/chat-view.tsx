@@ -451,12 +451,14 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     contextLimit: number
     autoCompactEnabled: boolean
     autoCompactThreshold: number
+    compactBreaker: string
   }>({
     messageCount: 0,
     estimatedTokens: 0,
     contextLimit: selectedAssistant?.context_limit ?? 128000,
     autoCompactEnabled: selectedAssistant?.auto_compact_enabled === 1,
     autoCompactThreshold: 0,
+    compactBreaker: 'closed',
   })
 
   useEffect(() => {
@@ -470,11 +472,17 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
           contextLimit: info.context_limit,
           autoCompactEnabled: info.auto_compact_enabled,
           autoCompactThreshold: info.compact_threshold,
+          compactBreaker: info.circuit_breaker_state,
         })
       }).catch(() => {})
     }, 100)
     return () => { cancelled = true; clearTimeout(timer) }
-  }, [conversationId, messages.length, compactBoundary])
+    // `compacting` is in here for its falling edge. A pass that ran mid-turn
+    // changes nothing on disk, so nothing else in this list moves — but it is
+    // also where the circuit breaker opens, and a breaker that opened without
+    // the indicator noticing leaves "0% until auto-compact" next to a number
+    // that will now never come down.
+  }, [conversationId, messages.length, compactBoundary, compacting])
 
   const leading = (
     <>

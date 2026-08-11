@@ -33,6 +33,7 @@ use crate::agent::modes::ModeSpec;
 use crate::agent::{
     is_context_window_error, is_retryable_stream_error, MAX_STREAM_RETRIES, STREAM_RETRY_BASE,
 };
+use crate::agent::tokenizer::MIN_REPLY_TOKENS;
 use crate::agent::{serialize_tool_calls_openai, TokenBudget};
 use crate::db::models::turn::TurnPhase;
 use crate::db::DbPool;
@@ -46,6 +47,18 @@ use super::{
     append_steering, append_tool_result, begin_assistant, complete_assistant, consume_stream,
     in_phase, transitions, ApprovalDecision,
 };
+
+/// Why no request was made. Counts only -- this reaches a window, and the
+/// numbers are the whole diagnosis: what the conversation costs against what it
+/// is allowed to.
+fn no_room(budget: &TokenBudget) -> String {
+    format!(
+        "the conversation fills the context window ({used} of {limit} tokens) and compacting it \
+         freed nothing, so there is no room left for a reply",
+        used = budget.current_estimate,
+        limit = budget.context_limit,
+    )
+}
 
 /// The long-lived things a turn borrows. No `AppHandle`, and no state locator:
 /// each of these is already an explicit parameter on the OneBot side, and making
@@ -228,7 +241,7 @@ async fn run(
     // left. Held apart from `params` because the trimming is per request and
     // must never compound: taking it from the previous request's already
     // reduced value would ratchet the ceiling down round after round.
-    let configured_reply = params.max_tokens.unwrap_or(0).max(0) as usize;
+    let configured_reply = params.max_tokens.filter(|m| *m > 0).map(|m| m as usize);
     // Seeded here so the first request of the turn is measured too. Every later
     // one is covered by the compaction pass, which leaves the estimate current.
     budget.update_estimate(&chat_messages);
@@ -236,6 +249,30 @@ async fn run(
     loop {
         if cancel.is_cancelled() {
             break;
+        }
+
+        // A prompt that already fills the window has nowhere to put an answer,
+        // and no output ceiling makes it servable. Sending it anyway buys one
+        // refusal and lands in the recovery below, so take the recovery
+        // directly -- it is the same pass, minus a request that could only
+        // fail. Unlike the threshold pass this is not a preference: the
+        // alternative is a turn that cannot continue at all.
+        if budget.room_for_reply() < MIN_REPLY_TOKENS {
+            compaction
+                .on_overflow(Compacting {
+                    messages: &mut chat_messages,
+                    budget: &mut budget,
+                    provider,
+                    params: &params,
+                    keep_recent,
+                    context_limit,
+                    emit,
+                    conversation_id: &conversation_id,
+                })
+                .await;
+            if budget.room_for_reply() < MIN_REPLY_TOKENS {
+                return Err(no_room(&budget));
+            }
         }
 
         let assistant_msg_id =
@@ -298,7 +335,7 @@ async fn run(
                         chat_messages.clone(),
                         tool_defs.clone(),
                         ChatParams {
-                            max_tokens: Some(budget.reply_ceiling(configured_reply) as i32),
+                            max_tokens: budget.reply_ceiling(configured_reply).map(|c| c as i32),
                             ..params.clone()
                         },
                     )
@@ -351,6 +388,16 @@ async fn run(
                                 "conversation_id": &conversation_id,
                             }),
                         );
+                        // There is one recovery attempt, so a second request that
+                        // cannot be served spends it on nothing. Said plainly
+                        // here rather than passed on as whatever the provider
+                        // calls an empty output allowance.
+                        if budget.room_for_reply() < MIN_REPLY_TOKENS {
+                            return Err(format!(
+                                "Context overflow recovery failed: {}",
+                                no_room(&budget)
+                            ));
+                        }
                         // Recomputed, not reused: the recovery above is what just
                         // made room, and asking with the pre-compaction ceiling
                         // would waste it.
@@ -359,7 +406,7 @@ async fn run(
                                 chat_messages.clone(),
                                 tool_defs.clone(),
                                 ChatParams {
-                                    max_tokens: Some(budget.reply_ceiling(configured_reply) as i32),
+                                    max_tokens: budget.reply_ceiling(configured_reply).map(|c| c as i32),
                                     ..params.clone()
                                 },
                             )
@@ -800,11 +847,18 @@ mod tests {
         /// the end — and the end is what sets `ran_to_completion`. A test that
         /// cancels against one is testing a coin toss.
         stalls: bool,
+        /// What a summarisation request comes back with. Compaction runs against
+        /// the turn's own provider, so a test about compaction has to answer for
+        /// it too.
+        summary: Option<String>,
     }
 
     impl Scripted {
         fn of(rounds: Vec<Vec<StreamEvent>>) -> Self {
             Self { script: Mutex::new(rounds.into()), ..Default::default() }
+        }
+        fn summarising_to(self, summary: &str) -> Self {
+            Self { summary: Some(summary.to_string()), ..self }
         }
         /// Says its piece and then nothing, the way a provider that has stopped
         /// sending does. The only way to leave cancellation as the sole branch
@@ -857,7 +911,10 @@ mod tests {
             _messages: Vec<ChatMessage>,
             _params: ChatParams,
         ) -> Result<String, ProviderError> {
-            Err(ProviderError::NotImplemented("not used by the loop".into()))
+            match self.summary {
+                Some(ref s) => Ok(s.clone()),
+                None => Err(ProviderError::NotImplemented("not used by the loop".into())),
+            }
         }
 
         async fn chat_with_tools(
@@ -1565,6 +1622,71 @@ mod tests {
             prompt + asked as usize <= 256_000,
             "prompt {prompt} + reply {asked} still overruns the window",
         );
+    }
+
+    /// The other end of the same rule. A prompt that already fills the window
+    /// has nowhere to put an answer, and no output allowance rescues it — least
+    /// of all a small one invented to avoid sending a zero. So the request is
+    /// not made at all, and what comes back names the numbers.
+    #[tokio::test]
+    async fn a_prompt_that_fills_the_window_is_never_sent() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![says("never reached")]);
+        let approvals = Answers::nobody();
+
+        let mut s = setup(&provider, &pool, &cancel, &[]);
+        s.params.max_tokens = Some(8_000);
+        s.budget = TokenBudget::new("openai", "m", 32_000, 8_000, None);
+        s.context_limit = 32_000;
+        // One message larger than the whole window: nothing compaction does to
+        // the list around it can make room.
+        s.chat_messages.push(ChatMessage::user(&"word ".repeat(40_000)));
+
+        let out = run_turn(&services(&pool, &tools, &mcp), s, ports(&approvals, None)).await;
+
+        let err = out.reply.expect_err("a turn with no room to answer in is not a success");
+        assert!(err.contains("fills the context window"), "unhelpful: {err}");
+        assert!(provider.ceilings().is_empty(), "a request was sent anyway: {:?}", provider.ceilings());
+    }
+
+    /// Recovery gets one attempt, so a second request that cannot be served
+    /// spends it on nothing. Reachable because compaction is not guaranteed to
+    /// shrink anything: a summariser that returns more than it replaced leaves
+    /// the turn worse off than the refusal did.
+    #[tokio::test]
+    async fn recovery_that_frees_nothing_fails_instead_of_asking_again() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![vec![StreamEvent::Error {
+            message: "context_length_exceeded".into(),
+        }]])
+        .summarising_to(&"word ".repeat(40_000));
+        let approvals = Answers::nobody();
+
+        let mut s = setup(&provider, &pool, &cancel, &[]);
+        s.params.max_tokens = Some(8_000);
+        s.budget = TokenBudget::new("openai", "m", 32_000, 8_000, None);
+        s.context_limit = 32_000;
+        s.keep_recent = 2;
+        s.compaction = CompactionPolicy::Desktop {
+            enabled: true,
+            breaker: std::sync::Arc::new(crate::agent::CompactCircuitBreaker::new()),
+        };
+        // Over the threshold so the summariser is what recovery reaches for, and
+        // under the window so the first request is legitimately made.
+        for _ in 0..7 {
+            s.chat_messages.push(ChatMessage::user(&"word ".repeat(4_000)));
+        }
+
+        let out = run_turn(&services(&pool, &tools, &mcp), s, ports(&approvals, None)).await;
+
+        let err = out.reply.expect_err("there was no room for the second request either");
+        assert!(err.contains("recovery failed"), "not attributed to recovery: {err}");
+        assert!(err.contains("fills the context window"), "unhelpful: {err}");
+        assert_eq!(provider.rounds(), 1, "asked again with nowhere to put the answer");
     }
 
     /// A short conversation is not penalised for the long ones' sake.

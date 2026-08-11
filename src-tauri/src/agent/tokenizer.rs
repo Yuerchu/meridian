@@ -142,6 +142,13 @@ fn safe_threshold(context_limit: usize, max_output: usize) -> usize {
         .max(context_limit / 2)
 }
 
+/// The smallest reply worth making a request for.
+///
+/// Under this the model has nowhere to put an answer: it is refused outright,
+/// or it returns a sentence cut in half. The prompt is paid for either way, so
+/// the honest move is to say the window is full before sending.
+pub const MIN_REPLY_TOKENS: usize = 256;
+
 pub struct TokenBudget {
     pub context_limit: usize,
     pub max_output: usize,
@@ -177,20 +184,28 @@ impl TokenBudget {
         }
     }
 
+    /// What is left of the window with this prompt in it.
+    ///
+    /// Most providers count the prompt and `max_tokens` against one budget, so
+    /// this is the most an answer may be allowed to reach — and only ever a
+    /// ceiling, never a floor under one. Zero means the prompt already fills the
+    /// window: no ceiling makes that request servable, and picking a small one
+    /// anyway just moves the refusal.
+    pub fn room_for_reply(&self) -> usize {
+        self.context_limit.saturating_sub(self.current_estimate)
+    }
+
     /// What to ask for as this request's output ceiling.
     ///
     /// The configured maximum is what the model *can* write, not what it will,
     /// and asking for all of it on top of a long prompt is a request most
-    /// providers have to refuse — they count the prompt and `max_tokens`
-    /// against one window. So it is trimmed to what is actually left.
+    /// providers have to refuse. So it is trimmed to what is actually left.
     ///
-    /// The floor is deliberate. Reaching it means compaction should already have
-    /// happened, and asking for nothing would turn that into an obscure provider
-    /// error; asking for a little produces the honest one.
-    pub fn reply_ceiling(&self, configured: usize) -> usize {
-        const FLOOR: usize = 1024;
-        let left = self.context_limit.saturating_sub(self.current_estimate);
-        configured.min(left).max(FLOOR)
+    /// `None` where nothing is configured, and it stays `None`: leaving the
+    /// field off is what lets the provider fit the answer to the room it has,
+    /// and a number invented here would be a cap the user never asked for.
+    pub fn reply_ceiling(&self, configured: Option<usize>) -> Option<usize> {
+        configured.map(|c| c.min(self.room_for_reply()))
     }
 
     pub fn update_estimate(&mut self, messages: &[ChatMessage]) {
@@ -304,7 +319,7 @@ mod tests {
         ] {
             let mut b = TokenBudget::new("openai", "gpt-4o", limit, max_out, None);
             b.current_estimate = b.compact_threshold;
-            let reply = b.reply_ceiling(max_out);
+            let reply = b.reply_ceiling(Some(max_out)).unwrap();
             assert!(
                 b.compact_threshold + reply <= limit,
                 "{limit}/{max_out}: threshold {} + reply {reply} overruns the window",
@@ -340,15 +355,60 @@ mod tests {
         let mut budget = TokenBudget::new("openai", "gpt-4o", 256_000, 128_000, None);
 
         budget.current_estimate = 10_000;
-        assert_eq!(budget.reply_ceiling(128_000), 128_000, "plenty of room, ask for it all");
+        assert_eq!(budget.reply_ceiling(Some(128_000)), Some(128_000), "plenty of room, ask for it all");
 
         budget.current_estimate = 200_000;
-        assert_eq!(budget.reply_ceiling(128_000), 56_000, "trimmed to the room left");
+        assert_eq!(budget.reply_ceiling(Some(128_000)), Some(56_000), "trimmed to the room left");
+    }
 
-        // Past the window entirely: still asks for something, because a refusal
-        // naming the real problem beats one about `max_tokens: 0`.
+    /// The ceiling is never a floor. A small remainder is a reason to stop, not
+    /// a reason to round up -- rounding up is how the request that could not be
+    /// served got built in the first place, one order of magnitude smaller.
+    #[test]
+    fn a_ceiling_never_exceeds_what_is_left() {
+        let mut budget = TokenBudget::new("openai", "gpt-4o", 256_000, 128_000, None);
+
+        for estimate in [255_500, 255_999, 256_000, 300_000] {
+            budget.current_estimate = estimate;
+            let asked = budget.reply_ceiling(Some(128_000)).unwrap();
+            assert!(
+                estimate + asked <= 256_000.max(estimate),
+                "{estimate}: asked for {asked} with {} left",
+                budget.room_for_reply(),
+            );
+            assert!(asked <= budget.room_for_reply(), "{estimate}: asked for more than is left");
+        }
+    }
+
+    /// Nothing configured means nothing sent, rather than something invented
+    /// here and applied to every reply in the app.
+    ///
+    /// Not reachable through `resolve_turn_params` today: it backfills
+    /// `max_tokens` with the model's advertised output, so a turn always
+    /// carries one. This is about which of the two decides -- whether the
+    /// absence of a setting can be manufactured into a cap by a floor down
+    /// here. Whether the backfill itself should exist is a separate question
+    /// and not this function's to answer: Anthropic requires the field and
+    /// falls back to 4096 without it.
+    #[test]
+    fn an_unset_ceiling_stays_unset() {
+        let mut budget = TokenBudget::new("openai", "gpt-4o", 256_000, 128_000, None);
+        budget.current_estimate = 10_000;
+        assert_eq!(budget.reply_ceiling(None), None);
+        budget.current_estimate = 255_900;
+        assert_eq!(budget.reply_ceiling(None), None);
+    }
+
+    /// What the caller checks before building a request at all.
+    #[test]
+    fn a_full_window_reports_no_room() {
+        let mut budget = TokenBudget::new("openai", "gpt-4o", 256_000, 128_000, None);
+        budget.current_estimate = 255_900;
+        assert!(budget.room_for_reply() < MIN_REPLY_TOKENS);
         budget.current_estimate = 300_000;
-        assert_eq!(budget.reply_ceiling(128_000), 1_024);
+        assert_eq!(budget.room_for_reply(), 0);
+        budget.current_estimate = 200_000;
+        assert!(budget.room_for_reply() >= MIN_REPLY_TOKENS);
     }
 
     #[test]

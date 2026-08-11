@@ -485,7 +485,11 @@ export interface ConversationStore {
    *  clear the streaming flag or the approvals of the turn that is showing. */
   handleStop: (convId: string, turnId?: string) => void
   handleCompactStart: (convId: string) => void
-  handleCompactDone: (convId: string) => void
+  /** `midTurn` marks a compaction that only rewrote the request in memory. It
+   *  wrote nothing, so re-reading the transcript would return what is already
+   *  on screen -- at the cost of a full snapshot of a conversation big enough
+   *  to have needed compacting, in the middle of a stream. */
+  handleCompactDone: (convId: string, midTurn?: boolean) => void
 
   setStreaming: (convId: string, value: boolean) => void
   setCompacting: (convId: string, value: boolean) => void
@@ -1034,7 +1038,14 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }))
   },
 
-  handleCompactDone: (convId) => {
+  handleCompactDone: (convId, midTurn) => {
+    if (midTurn) {
+      set(produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (session) session.compacting = false
+      }))
+      return
+    }
     const generation = get().sessions[convId]?.generation ?? 0
     api.conversationSnapshot(convId).then((snap) => {
       const snapshot = reconcileMessages(

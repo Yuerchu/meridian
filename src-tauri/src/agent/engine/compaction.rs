@@ -57,6 +57,24 @@ impl Compacting<'_> {
         self.budget.update_estimate(self.messages);
     }
 
+    /// The one record that a pass happened at all. `announce` reaches a window
+    /// that may not be open, and a successful summary logs nothing on its own,
+    /// so without this the only evidence compaction ever ran is the token count
+    /// not moving -- which is also what never running looks like. Counts only:
+    /// nothing here comes from a message body.
+    fn report(&self, trigger: &str, before: usize, rung: &str) {
+        tracing::info!(
+            conversation_id = %self.conversation_id,
+            trigger,
+            rung,
+            before,
+            after = self.budget.current_estimate,
+            threshold = self.budget.compact_threshold,
+            limit = self.context_limit,
+            "compacted mid-turn"
+        );
+    }
+
     fn announce(&self, channel: &str, extra: serde_json::Value) {
         let Some(emit) = self.emit else { return };
         let mut payload = serde_json::json!({
@@ -90,27 +108,37 @@ impl CompactionPolicy {
     /// sizes the retry's output allowance from it, and a stale one would ask for
     /// room the trim just spent.
     pub(crate) async fn on_overflow(&self, mut c: Compacting<'_>) {
+        // Whatever the refused request was sized against.
+        let before = c.budget.current_estimate;
         match self {
-            CompactionPolicy::OneBot => c.trim(),
+            CompactionPolicy::OneBot => {
+                c.trim();
+                c.report("api_error", before, "trim");
+            }
             CompactionPolicy::Desktop { breaker, .. } => {
                 microcompact(c.messages, c.budget, c.keep_recent);
                 c.budget.update_estimate(c.messages);
                 if !(c.budget.needs_compact() && breaker.can_compact()) {
                     c.trim();
+                    c.report("api_error", before, "trim");
                     return;
                 }
                 c.announce("compact-start", serde_json::json!({ "trigger": "api_error" }));
-                match mid_turn_compact(c.messages, c.budget, c.provider, c.params, c.keep_recent).await {
-                    Ok(_) => {
-                        breaker.record_success();
-                        c.budget.update_estimate(c.messages);
-                    }
-                    Err(_) => {
-                        breaker.record_failure();
-                        c.trim();
-                    }
-                }
+                let rung =
+                    match mid_turn_compact(c.messages, c.budget, c.provider, c.params, c.keep_recent).await {
+                        Ok(_) => {
+                            breaker.record_success();
+                            c.budget.update_estimate(c.messages);
+                            "summary"
+                        }
+                        Err(_) => {
+                            breaker.record_failure();
+                            c.trim();
+                            "trim"
+                        }
+                    };
                 c.announce("compact-done", serde_json::json!({ "trigger": "api_error" }));
+                c.report("api_error", before, rung);
             }
         }
     }
@@ -121,19 +149,24 @@ impl CompactionPolicy {
         if !c.budget.needs_compact() {
             return;
         }
+        let before = c.budget.current_estimate;
         match self {
             CompactionPolicy::OneBot => {
                 microcompact(c.messages, c.budget, c.keep_recent);
                 c.budget.update_estimate(c.messages);
+                let mut rung = "microcompact";
                 if c.budget.needs_compact() {
+                    rung = "summary";
                     if let Err(e) =
                         mid_turn_compact(c.messages, c.budget, c.provider, c.params, c.keep_recent).await
                     {
                         tracing::warn!("OneBot mid-turn compact failed: {e}");
+                        rung = "trim";
                         c.trim();
                     }
                     c.budget.update_estimate(c.messages);
                 }
+                c.report("threshold", before, rung);
             }
             CompactionPolicy::Desktop { enabled, breaker } => {
                 if !(*enabled && breaker.can_compact()) {
@@ -152,6 +185,7 @@ impl CompactionPolicy {
                         serde_json::json!({})
                     };
                     c.announce("compact-done", extra);
+                    c.report("threshold", before, "microcompact");
                     return;
                 }
                 match mid_turn_compact(c.messages, c.budget, c.provider, c.params, c.keep_recent).await {
@@ -162,6 +196,7 @@ impl CompactionPolicy {
                             "compact-done",
                             serde_json::json!({ "tokens_reclaimed": reclaimed + more }),
                         );
+                        c.report("threshold", before, "summary");
                     }
                     Err(e) => {
                         tracing::warn!("Mid-turn compact failed: {e}");
@@ -172,6 +207,7 @@ impl CompactionPolicy {
                             "compact-done",
                             serde_json::json!({ "fallback": true, "error": e.to_string() }),
                         );
+                        c.report("threshold", before, "trim");
                     }
                 }
             }
