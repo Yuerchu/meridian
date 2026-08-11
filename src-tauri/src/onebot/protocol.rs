@@ -76,6 +76,16 @@ pub struct OneBotAction {
 }
 
 impl OneBotAction {
+    /// Give an action an echo so its response can be matched back to it.
+    ///
+    /// The send helpers below leave it off, because almost nothing needs to
+    /// hear back from a message it sent. An approval prompt does: what comes
+    /// back names the message the answer will have to quote.
+    pub fn with_echo(mut self, echo: String) -> Self {
+        self.echo = Some(echo);
+        self
+    }
+
     pub fn get_msg(message_id: i64, echo: String) -> Self {
         Self {
             action: "get_msg".into(),

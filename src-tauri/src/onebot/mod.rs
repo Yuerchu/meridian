@@ -93,7 +93,29 @@ pub struct PendingApproval {
     /// waiters out in one pass, rather than leaving a sender in the map until
     /// somebody happens to reply to it or the next call overwrites it.
     pub turn_id: String,
+    /// The prompt this is an answer to, so an answer can be recognised as one.
+    ///
+    /// Without it, any message from the initiator counts — and in a group the
+    /// initiator is mostly talking to other people. A "y" meant for someone
+    /// else approved whatever happened to be waiting.
+    ///
+    /// `None` when the send did not come back with an id: an adapter that
+    /// answers nothing, or a call that timed out after the message went out.
+    /// The rule then falls back to "anything from the initiator", because the
+    /// alternative is an approval nobody can ever answer.
+    pub prompt_message_id: Option<i64>,
     pub responder: oneshot::Sender<bool>,
+}
+
+impl PendingApproval {
+    /// Whether a message from the initiator is answering this, given what it
+    /// quoted.
+    pub fn answered_by(&self, reply_to: Option<i64>) -> bool {
+        match self.prompt_message_id {
+            Some(id) => reply_to == Some(id),
+            None => true,
+        }
+    }
 }
 
 /// Session key → the call that session is waiting on an answer for.
@@ -1217,7 +1239,12 @@ mod tests {
             let (tx, rx) = oneshot::channel();
             self.approvals.lock().insert(
                 key.to_string(),
-                PendingApproval { initiator: 7, turn_id: turn_id.into(), responder: tx },
+                PendingApproval {
+                    initiator: 7,
+                    turn_id: turn_id.into(),
+                    prompt_message_id: Some(9001),
+                    responder: tx,
+                },
             );
             rx
         }
@@ -1578,6 +1605,38 @@ mod tests {
         drop(running);
         assert_eq!(watch.stops().len(), 1);
         assert_eq!(watch.stops()[0].0["reason"], "error");
+    }
+
+    /// What separates an answer from the rest of a group conversation. Without
+    /// it the initiator's every message counted, and in a group most of them
+    /// are addressed to other people: a "y" typed at a friend approved whatever
+    /// happened to be waiting.
+    #[test]
+    fn only_a_reply_to_the_prompt_answers_it() {
+        let asked = PendingApproval {
+            initiator: 7,
+            turn_id: "t1".into(),
+            prompt_message_id: Some(42),
+            responder: oneshot::channel().0,
+        };
+        assert!(asked.answered_by(Some(42)));
+        assert!(!asked.answered_by(Some(41)), "answered a different message");
+        assert!(!asked.answered_by(None), "answered nothing in particular");
+    }
+
+    /// And when the prompt never learnt its own id — a send that failed, or an
+    /// adapter that returns nothing — the old rule stands. Worse, but an
+    /// approval nobody can answer is worse still.
+    #[test]
+    fn a_prompt_that_does_not_know_its_own_id_takes_any_answer() {
+        let asked = PendingApproval {
+            initiator: 7,
+            turn_id: "t1".into(),
+            prompt_message_id: None,
+            responder: oneshot::channel().0,
+        };
+        assert!(asked.answered_by(None));
+        assert!(asked.answered_by(Some(42)));
     }
 
     /// The third thing a turn owes back. `make_approval_fn` parks on a

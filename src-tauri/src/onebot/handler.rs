@@ -43,6 +43,8 @@ pub async fn handle_message(
     let self_id = event.self_id.unwrap_or(0);
     let is_group = event.message_type.as_deref() == Some("group");
 
+    let reply_message_id = format::extract_reply_message_id(message);
+
     if is_group && !format::is_at_bot(message, self_id) {
         let session_key = SessionKey::group(event.group_id.unwrap_or(0));
         // Only the user who triggered a pending approval may answer it without
@@ -54,13 +56,18 @@ pub async fn handle_message(
             let text = format::segments_to_text(message, Some(self_id));
             if !text.is_empty() {
                 let parsed = format::ParsedMessage::from_text(&text);
-                return handle_text_message(event, state, user_id, parsed, None, conn_id).await;
+                // What it quoted travels with it. This is the path an answer
+                // normally arrives by -- quoting the prompt instead of
+                // @mentioning the bot -- and dropping it here left every such
+                // answer looking like it had quoted nothing.
+                return handle_text_message(
+                    event, state, user_id, parsed, reply_message_id, conn_id,
+                ).await;
             }
         }
         return vec![];
     }
 
-    let reply_message_id = format::extract_reply_message_id(message);
     let parsed = format::parse_segments(message, Some(self_id));
     if parsed.text.is_empty() && !parsed.has_media() {
         return vec![];
@@ -97,7 +104,29 @@ async fn handle_text_message(
     // Allowed in groups too: reaching this point already required an @mention,
     // which is intent enough, and it lets the operator confirm without leaving
     // the conversation the proposal came from.
-    if is_admin {
+    // A message that quotes the prompt is answering it, and nothing else gets
+    // to read it first. Only the initiator's, and only when it quotes: in a
+    // group the initiator spends most of their time talking to other people,
+    // and a bare "y" among that used to approve whatever was waiting.
+    let answering_approval = {
+        let approvals = state.pending_approvals.lock();
+        approvals.get(&session_key.to_string()).is_some_and(|p| {
+            p.initiator == user_id && p.answered_by(reply_to_message_id)
+        })
+    };
+
+    // Admin decision on anything numbered ("同意 N" / "拒绝 N [理由]"): friend and
+    // group requests, and bot-wide memory proposals.
+    //
+    // Behind the approval check, not in front of it: a parked question is a
+    // narrower and more recent commitment than a standing queue, and an answer
+    // that quotes it says which it is. Ahead of the Y/N read that follows, so a
+    // decision typed at the queue is never taken for a tool denial.
+    //
+    // Allowed in groups too: reaching this point already required an @mention,
+    // which is intent enough, and it lets the operator confirm without leaving
+    // the conversation the proposal came from.
+    if is_admin && !answering_approval {
         if let Some(decision) = command::parse_request_decision(text) {
             if let Some(actions) = dispatch_decision(event, state, decision, user_id).await {
                 return actions;
@@ -106,13 +135,12 @@ async fn handle_text_message(
         }
     }
 
-    // Check for pending tool approval
-    {
-        let mut approvals = state.pending_approvals.lock();
-        let is_initiator = approvals.get(&session_key.to_string())
-            .is_some_and(|p| p.initiator == user_id);
-        if is_initiator {
-            let pending = approvals.remove(&session_key.to_string()).unwrap();
+    if answering_approval {
+        let pending = state.pending_approvals.lock().remove(&session_key.to_string());
+        // Gone between the two locks: the turn ended, or the 60 seconds ran out.
+        // Whatever they typed is then an ordinary message, which is what it
+        // would have been a moment later anyway.
+        if let Some(pending) = pending {
             let approved = text.trim().eq_ignore_ascii_case("y")
                 || text.trim().eq_ignore_ascii_case("yes");
             let _ = pending.responder.send(approved);
@@ -247,13 +275,13 @@ fn make_approval_fn(
             // duplicate of the prompt just answered.
             let prompt = match sandbox_reason {
                 Some(reason) => format!(
-                    "⚠️ 命令被沙箱拦截:\n工具: {}\n参数: {}\n拦截输出: {}\n\n回复 Y 在沙箱外重试，其他内容拒绝（60秒超时）",
+                    "⚠️ 命令被沙箱拦截:\n工具: {}\n参数: {}\n拦截输出: {}\n\n引用本条消息回复 Y 在沙箱外重试，其他内容拒绝（60秒超时）",
                     tc.name,
                     truncate_args(&tc.arguments, 500),
                     truncate_args(&reason, 300),
                 ),
                 None => format!(
-                    "🔧 工具调用请求:\n工具: {}\n参数: {}\n\n回复 Y 批准，其他内容拒绝（60秒超时）",
+                    "🔧 工具调用请求:\n工具: {}\n参数: {}\n\n引用本条消息回复 Y 批准，其他内容拒绝（60秒超时）",
                     tc.name,
                     truncate_args(&tc.arguments, 500),
                 ),
@@ -271,7 +299,25 @@ fn make_approval_fn(
                 OneBotAction::send_private_msg(initiator_user_id, vec![MessageSegment::text(&prompt)])
             };
 
-            super::send_action_nowait(&state, &approval_msg).await;
+            // Sent with an echo and waited on, unlike every other message this
+            // file sends: the response carries the id of the message that just
+            // went out, and that id is what an answer has to quote. A send that
+            // fails or answers nothing leaves it unknown, and the approval falls
+            // back to accepting anything from the initiator -- worse, but
+            // answerable.
+            let prompt_message_id = super::call_api(
+                &state,
+                approval_msg.with_echo(uuid::Uuid::new_v4().to_string()),
+            )
+            .await
+            .ok()
+            .and_then(|d| d.get("message_id").and_then(|v| v.as_i64()));
+            if prompt_message_id.is_none() {
+                tracing::warn!(
+                    tool = %tc.name,
+                    "the approval prompt did not come back with a message id; any reply from the initiator will answer it"
+                );
+            }
 
             let (tx, rx) = oneshot::channel();
             state.pending_approvals.lock().insert(
@@ -279,6 +325,7 @@ fn make_approval_fn(
                 super::PendingApproval {
                     initiator: initiator_user_id,
                     turn_id: turn_id.clone(),
+                    prompt_message_id,
                     responder: tx,
                 },
             );
