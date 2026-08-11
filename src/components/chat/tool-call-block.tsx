@@ -889,7 +889,17 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
         </ChatToolTrigger>
         <ChatToolContent>
           {data.approval_id && (
-            <PendingApproval approvalId={data.approval_id} retryReason={data.retry_reason} />
+            <PendingApproval
+              // A new approval id is a new question, and the answer to the last
+              // one must not still be on screen. Without this the card keeps the
+              // "sent" it was left in — which is the spinner — so a sandbox
+              // escalation arrives behind a card that looks like it is already
+              // working, and the buttons only appear if the conversation is
+              // reopened and the component is rebuilt from scratch.
+              key={data.approval_id}
+              approvalId={data.approval_id}
+              retryReason={data.retry_reason}
+            />
           )}
         </ChatToolContent>
       </ChatTool>
@@ -1462,7 +1472,11 @@ export function ToolCallBlock(
           : showArgs && <ChatToolArgs text={data.arguments} />}
 
         {data.status === 'pending' && data.approval_id && (
-          <PendingApproval approvalId={data.approval_id} retryReason={data.retry_reason} />
+          <PendingApproval
+            key={data.approval_id}
+            approvalId={data.approval_id}
+            retryReason={data.retry_reason}
+          />
         )}
 
         {data.status === 'orphaned' && <OrphanedNotice />}

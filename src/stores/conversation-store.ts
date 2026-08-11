@@ -90,6 +90,15 @@ function outcomeOf(toolMsg: Message): ToolCallDisplay['status'] {
  *  including a status written by a later build — is not evidence that one did. */
 const ENDED = new Set(['done', 'cancelled', 'failed', 'interrupted'])
 
+/** A tool call that already has its answer.
+ *
+ *  Both live paths need the same notion of "still outstanding": results and
+ *  approvals arrive in the order the calls were made, so the first card without
+ *  an answer is the one either of them is talking about. Two spellings of that
+ *  would eventually disagree about a row whose gateway restarts its call ids
+ *  at "0", which is the case they both exist to get right. */
+const ANSWERED = new Set<ToolCallDisplay['status']>(['completed', 'denied', 'error'])
+
 /**
  * What a call with no tool row and nothing waiting on it actually is.
  *
@@ -790,17 +799,34 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       } else {
         session.pendingApprovals[approvalId] = entry
       }
-      // Only under the assistant row that asked, and only the first card there
-      // that has not already been claimed. Scanning the whole transcript — which
-      // this used to do — lights up every card sharing the id, and gateways
-      // that restart their ids at "0" make that routine; lighting up all of
-      // them within one row is the same mistake at smaller scale.
+      // Only under the assistant row that asked, and only a card still
+      // outstanding — scanning the whole transcript, which this used to do,
+      // lights up every card sharing the id, and gateways that restart theirs
+      // at "0" make that routine.
+      //
+      // Past that the two kinds of question want different cards. A first ask
+      // wants one nobody has claimed, so two asks in a row land on two cards.
+      // A sandbox escalation is the second question about a call that was
+      // already approved and has already run: its card is claimed by
+      // construction, so asking for an unclaimed one finds nothing and leaves
+      // the card saying "running" while the backend waits for an answer the
+      // user is never offered. Reopening the conversation used to be the only
+      // way out, because hydration matches on the call id and does not care who
+      // claimed it.
       const target = session.messages.find((m) => m.id === messageId)
       const card = (target?._blocks ?? []).find(
-        (b) => b.type === 'tool_call' && b.data.call_id === callId && !b.data.approval_id
-          && b.data.status !== 'pending',
+        (b) => b.type === 'tool_call' && b.data.call_id === callId
+          && !ANSWERED.has(b.data.status)
+          && (retryReason !== undefined || (!b.data.approval_id && b.data.status !== 'pending')),
       )
       if (card?.type === 'tool_call') {
+        // Whatever it was holding has been answered and acted on already — that
+        // is how the call got as far as being refused. Leaving the entry would
+        // keep the sidebar claiming this conversation needs attention twice.
+        if (card.data.approval_id) {
+          delete session.pendingApprovals[card.data.approval_id]
+          delete session.pendingAsks[card.data.approval_id]
+        }
         card.data.status = 'pending'
         card.data.approval_id = approvalId
         card.data.retry_reason = retryReason
@@ -816,14 +842,13 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         outcome === 'denied' ? 'denied'
           : outcome === 'error' ? 'error'
             : 'completed'
-      // Same locality and claim-once rules as the approval above: results
-      // arrive in the order the calls were made, so the first card still
-      // outstanding is the one this answers.
+      // Same locality rule as the approval above, and the same notion of still
+      // outstanding: results arrive in the order the calls were made, so the
+      // first card without an answer is the one this answers.
       const target = session.messages.find((m) => m.id === messageId)
       const card = (target?._blocks ?? []).find(
         (b) => b.type === 'tool_call' && b.data.call_id === callId
-          && b.data.status !== 'completed' && b.data.status !== 'denied'
-          && b.data.status !== 'error',
+          && !ANSWERED.has(b.data.status),
       )
       if (card?.type === 'tool_call') {
         // Retire the entry this card was waiting on, not every entry sharing

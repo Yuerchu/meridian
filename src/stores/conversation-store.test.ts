@@ -373,6 +373,48 @@ describe('live approval events', () => {
       retryReason: 'sandbox denied',
     })
   })
+
+  /// The sequence a sandbox escalation actually arrives in, which is not the
+  /// one above: the call is approved, it runs, the sandbox refuses it, and only
+  /// then is the second question asked. By that point the card is already
+  /// holding the first approval — so matching it the way a first ask is matched
+  /// finds nothing, and the card sits on "running" while the backend waits for
+  /// an answer nobody can give it. Reopening the conversation fixed it, because
+  /// hydration matches on the call id and does not care who claimed it.
+  it('offers the retry on a card that was already approved once', () => {
+    store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command')
+    expect(cards()[0]).toMatchObject({ status: 'pending', approval_id: 'appr-1' })
+
+    // The user says yes, the command runs, the sandbox blocks it.
+    store().handleToolApproval(
+      CONV, 'a1', 'appr-2', 'c1', 'run_command', 'sandbox denied', 'c1',
+    )
+
+    expect(cards()[0]).toMatchObject({
+      status: 'pending',
+      approval_id: 'appr-2',
+      retry_reason: 'sandbox denied',
+    })
+    // And the answer the user already gave is not still on the books.
+    expect(Object.keys(store().sessions[CONV]!.pendingApprovals)).toEqual(['appr-2'])
+  })
+
+  /// A retry belongs to the call that is still in flight. An earlier card that
+  /// already has its answer is behind it and must keep it.
+  it('does not reopen a call that already finished', () => {
+    store().handleToolCall(CONV, 'a1', '0', 'run_command', '{}')
+    store().handleToolCall(CONV, 'a1', '0', 'run_command', '{}')
+    store().handleToolResult(CONV, 'a1', '0', 'the first one is done')
+
+    store().handleToolApproval(
+      CONV, 'a1', 'appr-2', '0', 'run_command', 'sandbox denied', '0',
+    )
+
+    expect(cards().map((c) => c.status)).toEqual(['completed', 'pending'])
+    expect(cards()[0].result).toBe('the first one is done')
+    expect(cards()[1].retry_reason).toBe('sandbox denied')
+  })
 })
 
 describe('stops are scoped to a turn', () => {

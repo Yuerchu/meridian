@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { ToolCallBlock } from './tool-call-block'
 import { expectExpanded } from '@/test/disclosure'
 import i18n from '@/i18n'
@@ -257,6 +258,33 @@ describe('the interactive cards say what became of them', () => {
       expect(screen.queryByText(i18n.t('chat.tool.queued')), status).toBeNull()
       unmount()
     }
+  })
+
+  /// What a sandbox escalation actually walks into: the same card, already
+  /// answered once. The card's "sent" state is a spinner, and it is local — so
+  /// without a remount the second question arrives behind a card that looks
+  /// like it is already working, which is the bug as the user meets it: stuck
+  /// on "running", buttons only after reopening the conversation.
+  it('offers the sandbox retry on a card the user already answered', async () => {
+    const first = toolCall('run_command', { command: 'cargo test' })
+    const { rerender } = render(<ToolCallBlock data={first} />)
+
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.allow') }))
+    expect(screen.queryByRole('button', { name: i18n.t('chat.tool.allow') })).toBeNull()
+    expect(screen.getByText(i18n.t('chat.tool.running'))).toBeVisible()
+
+    rerender(
+      <ToolCallBlock
+        data={{ ...first, approval_id: 'appr-2', retry_reason: 'sandbox denied' }}
+      />,
+    )
+
+    expect(screen.getByText(i18n.t('chat.tool.sandboxRetryPrompt'))).toBeVisible()
+    // Its own label, not "Allow": what is being agreed to is not the call the
+    // user already agreed to.
+    expect(
+      screen.getByRole('button', { name: i18n.t('chat.tool.retryWithoutSandbox') }),
+    ).toBeVisible()
   })
 
   /// Two spinners side by side read as two things happening at once.
