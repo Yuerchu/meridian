@@ -32,9 +32,11 @@ pub(crate) use transcript::{
     append_steering, append_tool_result, begin_assistant, complete_assistant, in_phase,
 };
 pub(crate) use compaction::CompactionPolicy;
-pub(crate) use ports::{Approvals, TurnPorts};
+pub(crate) use ports::{Approvals, Commentary, Steered, Steering, SurfaceTools, TurnPorts};
 pub(crate) use transitions::Transitions;
-pub(crate) use turn::{run_turn, ApprovalRule, TurnServices, TurnSetup, WithheldWording};
+pub(crate) use turn::{
+    run_turn, ApprovalRule, TurnOutcome, TurnProgress, TurnServices, TurnSetup, WithheldWording,
+};
 
 /// Where a turn's progress goes while it is still happening.
 ///
