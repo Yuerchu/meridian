@@ -40,6 +40,18 @@ pub(crate) struct Compacting<'a> {
 }
 
 impl Compacting<'_> {
+    /// The cheap rung: truncate the old tool output and drop the inlined
+    /// images, keeping every message. Costs no model call, which is why both
+    /// moments reach for it before anything that does.
+    ///
+    /// Hands back what it freed, because the threshold path puts that number in
+    /// front of a person.
+    fn cheap_pass(&mut self) -> usize {
+        let reclaimed = microcompact(self.messages, self.budget, self.keep_recent);
+        self.budget.update_estimate(self.messages);
+        reclaimed
+    }
+
     /// The last resort, and the only step that cannot fail. Half the window and
     /// half the tail: deliberately harsher than the threshold path, because by
     /// the time anything calls this the alternative is a request that will be
@@ -116,8 +128,7 @@ impl CompactionPolicy {
                 c.report("api_error", before, "trim");
             }
             CompactionPolicy::Desktop { breaker, .. } => {
-                microcompact(c.messages, c.budget, c.keep_recent);
-                c.budget.update_estimate(c.messages);
+                c.cheap_pass();
                 if !(c.budget.needs_compact() && breaker.can_compact()) {
                     c.trim();
                     c.report("api_error", before, "trim");
@@ -152,8 +163,7 @@ impl CompactionPolicy {
         let before = c.budget.current_estimate;
         match self {
             CompactionPolicy::OneBot => {
-                microcompact(c.messages, c.budget, c.keep_recent);
-                c.budget.update_estimate(c.messages);
+                c.cheap_pass();
                 let mut rung = "microcompact";
                 if c.budget.needs_compact() {
                     rung = "summary";
@@ -173,8 +183,7 @@ impl CompactionPolicy {
                     return;
                 }
                 c.announce("compact-start", serde_json::json!({ "trigger": "threshold" }));
-                let reclaimed = microcompact(c.messages, c.budget, c.keep_recent);
-                c.budget.update_estimate(c.messages);
+                let reclaimed = c.cheap_pass();
                 if !c.budget.needs_compact() {
                     // Said even when the cheap pass freed nothing, because the
                     // start went out and a window left holding it would show a
