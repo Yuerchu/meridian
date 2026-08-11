@@ -280,6 +280,63 @@ mod tests {
         assert_eq!(summarising.thinking_effort, None);
     }
 
+    /// What decides whether this turn offers tools at all. The headless side
+    /// used to answer it from `capabilities::resolve` directly, which does not
+    /// apply overrides — so a model the user had told us takes no tools was
+    /// still sent them, while every other parameter of the same request came
+    /// from here and did honour the override.
+    #[test]
+    fn a_capability_override_reaches_the_turns_capabilities() {
+        let pool = crate::db::test_db();
+        {
+            let mut conn = pool.get().unwrap();
+            db::ops::provider::create_provider(&mut conn, &db::models::provider::NewProvider {
+                id: "p1",
+                name: "P",
+                provider_type: "openai",
+                base_url: "https://example.invalid",
+                is_enabled: 1,
+                sort_order: 0,
+                created_at: 0,
+                updated_at: 0,
+                api_format: "chat",
+            })
+            .unwrap();
+            db::ops::model_config::upsert(&mut conn, &db::models::model_config::NewModelConfig {
+                id: "mc1",
+                provider_id: "p1",
+                model_id: "gpt-4o",
+                display_name: None,
+                context_window: 128_000,
+                compact_threshold: 0,
+                max_output_tokens: Some(16_384),
+                input_price: 0.0,
+                output_price: 0.0,
+                cache_price: None,
+                created_at: 0,
+                updated_at: 0,
+                capability_overrides: Some(r#"{"supports_tools": false}"#),
+            })
+            .unwrap();
+        }
+        let assistant = assistant_with(None);
+
+        let with_provider = resolve_turn_params(&pool, TurnParamsInput {
+            assistant: Some(&assistant),
+            provider_id: Some("p1"),
+            provider_type: "openai",
+            api_format: "chat",
+            model: "gpt-4o",
+            thinking_level: None,
+            fast: false,
+        })
+        .unwrap();
+        assert!(!with_provider.caps.supports_tools);
+
+        // And it is the row that says so, not the catalog.
+        assert!(resolve_for(&pool, "gpt-4o", &assistant).caps.supports_tools);
+    }
+
     #[test]
     fn an_unknown_model_asks_the_user_to_configure_it() {
         let pool = crate::db::test_db();

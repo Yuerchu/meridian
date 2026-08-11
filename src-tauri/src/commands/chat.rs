@@ -90,6 +90,10 @@ struct PlanTransitions {
     project_id: Option<String>,
     persona: String,
     context_blocks: Vec<String>,
+    /// Carried rather than re-read. This rebuilds the tool set mid-turn, so a
+    /// check made only where the turn was set up would be undone by the first
+    /// mode switch.
+    supports_tools: bool,
 }
 
 #[async_trait::async_trait]
@@ -111,7 +115,7 @@ impl crate::agent::engine::Transitions for PlanTransitions {
             // This type exists to answer the question, so the answer is yes.
             mode: crate::agent::modes::Modes::Switchable(mode),
             mcp_defs,
-            include_tools: true,
+            include_tools: self.supports_tools,
             persona: self.persona.clone(),
             context_blocks: self.context_blocks.clone(),
         };
@@ -708,6 +712,18 @@ async fn chat_inner(
             })
         }).await.map_err(|e| e.to_string())??
     };
+    // A model that cannot take tools is sent none at all — several providers
+    // refuse any request carrying a tools field. Decided here rather than by
+    // emptying the list afterwards, because `offered` is what authorises a call
+    // and it is derived from the same resolution: the two have to go empty
+    // together, and only the resolver can do that.
+    //
+    // A capability copy rather than a borrow: `turn_params.params` is moved
+    // later in the turn.
+    let supports_tools = turn_params.caps.supports_tools;
+    if !supports_tools {
+        tracing::info!(model = %model, "the model cannot take tools; none are offered this turn");
+    }
 
     let turn = {
         let pool2 = pool.clone();
@@ -718,7 +734,7 @@ async fn chat_inner(
             project_id: project_id.clone(),
             mode: crate::agent::modes::Modes::Switchable(mode),
             mcp_defs,
-            include_tools: true,
+            include_tools: supports_tools,
             persona: persona.clone(),
             context_blocks: context_blocks.clone(),
         };
@@ -952,6 +968,7 @@ async fn chat_inner(
         project_id: project_id.clone(),
         persona,
         context_blocks,
+        supports_tools,
     };
 
     // The loop itself is shared with the OneBot runner now. What stays here is

@@ -406,6 +406,22 @@ mod tests {
         assert!(cfg.system_prompt.starts_with("# Plan mode"));
     }
 
+    /// A model that cannot take a tools field is offered nothing, transitions
+    /// included. Asserted rather than left to the short-circuit above it,
+    /// because that is one restructuring away from letting the mode add
+    /// `enter_plan` back to an otherwise empty set.
+    #[test]
+    fn a_turn_with_no_tools_is_not_offered_a_way_into_plan() {
+        let (pool, reg) = setup();
+        let mut conn = pool.get().unwrap();
+        let mut i = input(switchable(None), None);
+        i.include_tools = false;
+        let cfg = resolve(&mut conn, &reg, i);
+
+        assert!(cfg.offered.is_empty(), "got: {:?}", cfg.offered);
+        assert!(cfg.tool_defs.is_empty());
+    }
+
     /// The headless side, end to end. It has every write tool an admin session
     /// gets, which is exactly the condition that used to earn it `enter_plan`.
     #[test]

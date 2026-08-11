@@ -441,6 +441,14 @@ async fn headless_chat_inner(
         }).await.map_err(|e| e.to_string())??
     };
     let context_limit = turn_params.context_limit;
+    // Off `turn_params` rather than a second `get_capabilities` call. That one
+    // goes through `capabilities::resolve` without `apply_overrides`, so a
+    // per-model capability the user wrote was ignored here while every other
+    // parameter of the same request honoured it.
+    let supports_tools = turn_params.caps.supports_tools;
+    if !supports_tools {
+        tracing::info!(model = %effective_model, "the model cannot take tools; none are offered this turn");
+    }
 
     let turn = {
         let pool2 = pool.clone();
@@ -458,7 +466,7 @@ async fn headless_chat_inner(
             mcp_defs,
             // Non-admin sessions get no registry or MCP tools at all; the
             // scope-locked QQ tools are appended further down.
-            include_tools: is_admin,
+            include_tools: is_admin && supports_tools,
             persona: assistant.as_ref().map(|a| a.system_prompt.clone()).unwrap_or_default(),
             // Memory is absent on purpose — it ships as a user-role message.
             context_blocks: Vec::new(),
@@ -572,18 +580,12 @@ async fn headless_chat_inner(
 
     let params = turn_params.params;
 
-    // Session-scoped QQ tools are available to everyone (read-only, scope-locked)
-    if let Some(qq) = qq_tools {
+    // Session-scoped QQ tools are available to everyone (read-only,
+    // scope-locked) -- but not to a model that cannot take a tools field at
+    // all. This used to be covered by the clear() that followed; with the check
+    // moved into the resolver, these are the one set it does not reach.
+    if let Some(qq) = qq_tools.filter(|_| supports_tools) {
         tool_defs.extend(qq.definitions());
-    }
-    // Drop every tool when the effective model can't use them, so the provider
-    // omits the tools field entirely (some models 400 on any tools param). Also
-    // guards admins who pick a non-tool model.
-    let caps = crate::provider::registry::get_capabilities(
-        &provider_type, Some(&api_format), &params.model,
-    );
-    if !caps.supports_tools {
-        tool_defs.clear();
     }
     // Only tools actually offered this turn may execute; blocks non-admin (and
     // enabled_tools-filtered) sessions from invoking registry/MCP tools by name.
