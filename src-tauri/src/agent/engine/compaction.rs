@@ -1,22 +1,22 @@
 //! When a turn runs out of room, and what it does about it.
 //!
-//! Not a boolean. The two runners differ in four ways at once — whether a
+//! Not a boolean. The two runners differ in three ways at once — whether a
 //! preference can switch it off, whether a repeatedly failing summariser is
-//! allowed to stop trying, whether the cheap pass runs before the expensive one,
-//! and whether any of it is announced — and a flag per difference would let
-//! three of the sixteen combinations exist that neither runner has ever been.
+//! allowed to stop trying, and whether any of it is announced — and a flag per
+//! difference would let combinations exist that neither runner has ever been.
 //!
 //! So it is a policy with two moments. `on_overflow` is recovery: the provider
 //! has already refused the request, and something has to come out of the history
 //! before it can be sent again. `between_rounds` is prevention: the budget says
 //! the next request would be tight, and there is a quiet moment to fix it.
 //!
-//! The desktop does the full ladder in both — cheap pass, then a summariser
-//! behind a circuit breaker, then a blunt trim if that fails — and says so on
-//! `compact-start` / `compact-done`. OneBot's recovery is the blunt trim alone.
-//! That gap loses content a summary would have kept, and it is on the drift list
-//! rather than fixed here: closing it is a behaviour change, and this is not
-//! where behaviour changes.
+//! Both policies now climb the same ladder in both moments — cheap pass, then a
+//! summariser, then a blunt trim if that fails. What is left between them is
+//! everything around the ladder rather than the ladder itself: the desktop's is
+//! gated on a preference, guarded by a circuit breaker so a summariser that
+//! keeps failing stops being asked, and narrated on `compact-start` /
+//! `compact-done`. So the variants are really "attended" and "unattended", and
+//! are named after their runners for historical reasons only.
 
 use std::sync::Arc;
 
@@ -124,7 +124,16 @@ impl CompactionPolicy {
         let before = c.budget.current_estimate;
         match self {
             CompactionPolicy::OneBot => {
+                // Ahead of the trim rather than instead of it. Truncating the
+                // old tool output can put the history back under the limit on
+                // its own, and then the trim discards nothing — which is the
+                // whole of what this rung buys here: the same recovery, minus
+                // the turns it used to throw away to get there.
+                c.cheap_pass();
                 c.trim();
+                // Still "trim": the rung names the deepest one reached, which is
+                // how the other policy reads, and `before`/`after` in the same
+                // record already show what the cheap pass achieved.
                 c.report("api_error", before, "trim");
             }
             CompactionPolicy::Desktop { breaker, .. } => {
@@ -220,6 +229,142 @@ impl CompactionPolicy {
                     }
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::{AgentResponse, ChatStream, ProviderError, ToolDefinition};
+
+    /// Recovery that reaches for the model has already lost: the provider
+    /// refused this very request a moment ago, and the summariser would go to
+    /// the same one. Any call at all fails the test.
+    struct NeverAsked;
+
+    #[async_trait::async_trait]
+    impl ChatProvider for NeverAsked {
+        async fn stream_chat_with_tools(
+            &self,
+            _messages: Vec<ChatMessage>,
+            _tools: Vec<ToolDefinition>,
+            _params: ChatParams,
+        ) -> Result<ChatStream, ProviderError> {
+            panic!("recovery asked the model to stream")
+        }
+
+        async fn chat(
+            &self,
+            _messages: Vec<ChatMessage>,
+            _params: ChatParams,
+        ) -> Result<String, ProviderError> {
+            panic!("recovery asked the model for a summary")
+        }
+
+        async fn chat_with_tools(
+            &self,
+            _messages: Vec<ChatMessage>,
+            _tools: Vec<ToolDefinition>,
+            _params: ChatParams,
+        ) -> Result<AgentResponse, ProviderError> {
+            panic!("recovery asked the model")
+        }
+    }
+
+    const LIMIT: usize = 32_000;
+
+    fn budget() -> TokenBudget {
+        TokenBudget::new("openai", "gpt-4o", LIMIT, 8_000, None)
+    }
+
+    fn compacting<'a>(
+        messages: &'a mut Vec<ChatMessage>,
+        budget: &'a mut TokenBudget,
+        provider: &'a dyn ChatProvider,
+        params: &'a ChatParams,
+    ) -> Compacting<'a> {
+        Compacting {
+            messages,
+            budget,
+            provider,
+            params,
+            keep_recent: 2,
+            context_limit: LIMIT,
+            emit: None,
+            conversation_id: "c1",
+        }
+    }
+
+    fn system(text: &str) -> ChatMessage {
+        ChatMessage { role: "system".into(), ..ChatMessage::user(text) }
+    }
+
+    /// A history whose weight is one old tool result, with a short tail behind
+    /// it that the cheap pass is not allowed to touch. Over the trim's own
+    /// threshold as it stands, and under it once the tool result is truncated —
+    /// which is the whole distinction being tested.
+    fn one_heavy_tool_result() -> Vec<ChatMessage> {
+        vec![
+            system("you are helpful"),
+            ChatMessage::tool_result("c1", &"word ".repeat(14_000)),
+            ChatMessage::user("and then?"),
+            ChatMessage::assistant("this"),
+            ChatMessage::user("go on"),
+            ChatMessage::assistant("that"),
+        ]
+    }
+
+    /// The thing this policy could not do before: truncating the old output can
+    /// put the history back under the limit on its own, and then nothing has to
+    /// be thrown away at all.
+    #[tokio::test]
+    async fn overflow_recovery_truncates_before_it_discards() {
+        let (mut messages, mut budget) = (one_heavy_tool_result(), budget());
+        let before = messages.len();
+        budget.update_estimate(&messages);
+        let was = budget.current_estimate;
+
+        CompactionPolicy::OneBot
+            .on_overflow(compacting(&mut messages, &mut budget, &NeverAsked, &ChatParams::default()))
+            .await;
+
+        assert_eq!(messages.len(), before, "discarded turns it did not have to");
+        assert!(budget.current_estimate < was, "freed nothing: {was} -> {}", budget.current_estimate);
+    }
+
+    /// And it is still only the first rung. A history with nothing truncatable
+    /// in it has to lose messages, which is what the trim is for.
+    #[tokio::test]
+    async fn overflow_recovery_still_discards_when_truncating_is_not_enough() {
+        let mut messages = vec![system("you are helpful")];
+        for _ in 0..8 {
+            messages.push(ChatMessage::user(&"word ".repeat(2_000)));
+        }
+        let (before, mut budget) = (messages.len(), budget());
+        budget.update_estimate(&messages);
+
+        CompactionPolicy::OneBot
+            .on_overflow(compacting(&mut messages, &mut budget, &NeverAsked, &ChatParams::default()))
+            .await;
+
+        assert!(messages.len() < before, "nothing came out of a history that had to shrink");
+    }
+
+    /// The caller sizes the retry's output allowance from the estimate, so an
+    /// estimate describing the history as it was before the pass asks for room
+    /// the pass just spent.
+    #[tokio::test]
+    async fn the_estimate_describes_what_is_left() {
+        for messages in [one_heavy_tool_result(), vec![system("s"), ChatMessage::user("hi")]] {
+            let (mut messages, mut budget) = (messages, budget());
+            budget.update_estimate(&messages);
+
+            CompactionPolicy::OneBot
+                .on_overflow(compacting(&mut messages, &mut budget, &NeverAsked, &ChatParams::default()))
+                .await;
+
+            assert_eq!(budget.current_estimate, budget.counter.count_messages(&messages));
         }
     }
 }
