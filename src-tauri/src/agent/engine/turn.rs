@@ -762,11 +762,25 @@ mod tests {
     struct Scripted {
         script: Mutex<VecDeque<Vec<StreamEvent>>>,
         sent: Mutex<Vec<(Vec<ChatMessage>, Vec<String>)>>,
+        /// Never let a round run out, so cancelling it means something.
+        ///
+        /// `consume_stream` reads its cancellation token and its stream in one
+        /// `select!`, which picks at random among *ready* branches. A finite
+        /// stream is always ready, so a cancelled read can still poll its way to
+        /// the end — and the end is what sets `ran_to_completion`. A test that
+        /// cancels against one is testing a coin toss.
+        stalls: bool,
     }
 
     impl Scripted {
         fn of(rounds: Vec<Vec<StreamEvent>>) -> Self {
-            Self { script: Mutex::new(rounds.into()), sent: Mutex::new(Vec::new()) }
+            Self { script: Mutex::new(rounds.into()), sent: Mutex::new(Vec::new()), stalls: false }
+        }
+        /// Says its piece and then nothing, the way a provider that has stopped
+        /// sending does. The only way to leave cancellation as the sole branch
+        /// that can fire.
+        fn stalling(rounds: Vec<Vec<StreamEvent>>) -> Self {
+            Self { stalls: true, ..Self::of(rounds) }
         }
         fn requests(&self) -> Vec<(Vec<ChatMessage>, Vec<String>)> {
             self.sent.lock().unwrap().clone()
@@ -789,7 +803,14 @@ mod tests {
                 .unwrap()
                 .push((messages, tools.into_iter().map(|t| t.name).collect()));
             match self.script.lock().unwrap().pop_front() {
-                Some(events) => Ok(Box::pin(futures::stream::iter(events.into_iter().map(Ok)))),
+                Some(events) => {
+                    let said = futures::stream::iter(events.into_iter().map(Ok));
+                    Ok(if self.stalls {
+                        Box::pin(futures::StreamExt::chain(said, futures::stream::pending()))
+                    } else {
+                        Box::pin(said)
+                    })
+                }
                 // A loop that asked one more time than the test scripted has
                 // gone somewhere the test does not describe. Say so rather than
                 // hanging or quietly answering nothing.
@@ -1430,7 +1451,7 @@ mod tests {
         // Round one is stopped the moment the first chunk lands.
         let cancel = CancellationToken::new();
         let stopper = StopOnText(cancel.clone());
-        let interrupted_run = Scripted::of(vec![vec![
+        let interrupted_run = Scripted::stalling(vec![vec![
             StreamEvent::Text { content: "I was about to".into() },
             StreamEvent::Text { content: "never sent".into() },
         ]]);

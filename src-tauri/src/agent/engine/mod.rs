@@ -31,13 +31,10 @@ pub(crate) use stream::consume_stream;
 pub(crate) use transcript::{
     append_steering, append_tool_result, begin_assistant, complete_assistant, in_phase,
 };
+pub(crate) use compaction::CompactionPolicy;
+pub(crate) use ports::{Approvals, TurnPorts};
 pub(crate) use transitions::Transitions;
-
-// `turn`, `ports` and `compaction` are reached through their own modules until
-// a runner calls them. Re-exporting ahead of that would be a list of names
-// nothing imports, and the compiler would be right to say so — the loop having
-// no caller for one batch is the point of building it before moving anyone
-// into it, not something to paper over.
+pub(crate) use turn::{run_turn, ApprovalRule, TurnServices, TurnSetup, WithheldWording};
 
 /// Where a turn's progress goes while it is still happening.
 ///
