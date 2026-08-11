@@ -424,6 +424,44 @@ describe('TurnItem', () => {
       expect(screen.getByText('Deny')).toBeVisible()
     })
 
+    /// A turn that stopped without ever reaching an ending. Collapsed it looks
+    /// like a short answer, and what it was doing when it stopped — which may be
+    /// a half-written file — is exactly what is inside the panel.
+    it('holds a crashed turn open, and says so in words of its own', () => {
+      const u = msg('user', { content: 'q', created_at: 1000 })
+      const a = msg('assistant', {
+        turn_id: 't-dead',
+        _blocks: [text('editing the file'), toolBlock('edit_file', 'orphaned')],
+        created_at: 5000,
+      })
+      const turn = buildTurns([u, a], { crashedTurnIds: new Set(['t-dead']) })[0]
+      expect(turn.status).toBe('crashed')
+
+      render(<TurnItem turn={turn} conversationId={CONV} />)
+
+      // Its own headline, not the one a turn the user stopped gets: nobody
+      // stopped this, and saying "stopped" about it is how a half-written file
+      // goes unnoticed.
+      const trigger = screen.getByRole('button', { name: /Cut off before it finished/ })
+      expectExpanded(trigger)
+      expect(screen.getByText('editing the file')).toBeVisible()
+    })
+
+    /// The same turn without the record behind it. The transcript alone cannot
+    /// tell this apart from a turn that simply ended on a tool call, which is
+    /// why the record has to reach the front end for the case above to work.
+    it('cannot tell a crashed turn from an ordinary one without the record', () => {
+      const u = msg('user', { content: 'q', created_at: 1000 })
+      const a = msg('assistant', {
+        turn_id: 't-dead',
+        _blocks: [text('editing the file'), toolBlock('edit_file', 'orphaned')],
+        created_at: 5000,
+      })
+      const turn = buildTurns([u, a])[0]
+
+      expect(turn.status).toBe('interrupted')
+    })
+
     it('remembers a turn the user opened by hand', async () => {
       const turn = toolTurn()
       render(<TurnItem turn={turn} conversationId={CONV} />)
