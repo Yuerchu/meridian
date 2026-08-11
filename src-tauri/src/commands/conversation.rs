@@ -341,7 +341,9 @@ async fn assemble_system_prompt(
                 assistant,
                 conversation_id: conv_id,
                 project_id: pid,
-                mode,
+                // The estimate has to count the prompt the chat loop will
+                // actually send, transitions included.
+                mode: crate::agent::modes::Modes::Switchable(mode),
                 mcp_defs,
                 include_tools: true,
                 persona,

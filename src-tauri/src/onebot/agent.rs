@@ -418,7 +418,12 @@ async fn headless_chat_inner(
             assistant: assistant.clone(),
             conversation_id: conversation_id.to_string(),
             project_id: project_id.map(|s| s.to_string()),
-            mode: crate::agent::modes::resolve(None),
+            // No transitions port on this side, so no transition tool. Left
+            // switchable, an admin session is always offered `enter_plan` --
+            // it only needs one write tool in the set -- and calling it reaches
+            // the registry, whose refusal to be called outside the loop lands
+            // in the transcript as this turn's tool result.
+            mode: crate::agent::modes::Modes::Fixed,
             mcp_defs,
             // Non-admin sessions get no registry or MCP tools at all; the
             // scope-locked QQ tools are appended further down.
@@ -688,8 +693,10 @@ async fn headless_chat_inner(
             offered,
             // Modes stay off. A headless turn has no way to switch them, and a
             // QQ session already cannot touch the filesystem — its file access
-            // is an empty root set — so plan mode would guard nothing.
-            mode: crate::agent::modes::resolve(None),
+            // is an empty root set — so plan mode would guard nothing. The same
+            // `Modes::Fixed` above is what keeps the transition tools out of the
+            // set; this is where the mode itself lands.
+            mode: crate::agent::modes::Modes::Fixed.spec(),
             tool_context,
             budget,
             turn_id: turn_id.to_string(),

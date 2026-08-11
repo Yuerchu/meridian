@@ -289,7 +289,13 @@ pub fn run() {
                 // inside that mode, so listing it here would point the model at
                 // a tool that gets refused in every ordinary conversation.
                 let mut tool_defs = agent::tool_defs::collect(&registry, Vec::new(), None);
-                agent::tool_defs::apply_mode(&mut tool_defs, agent::modes::resolve(None), &registry);
+                agent::tool_defs::apply_mode(
+                    &mut tool_defs,
+                    // Switchable: the manual describes what a desktop
+                    // conversation can do, and entering plan mode is part of it.
+                    agent::modes::Modes::Switchable(agent::modes::resolve(None)),
+                    &registry,
+                );
                 if let Err(e) = agent::manual::write_manual(&skills_root, &tool_defs) {
                     tracing::error!(error = %e, "failed to write the manual skill");
                 }

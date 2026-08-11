@@ -556,10 +556,13 @@ async fn run(
                     .transitions
                     .and_then(|_| crate::agent::modes::by_enter_tool(&tc.name))
                 {
-                    // Reachable only where there is somewhere to go. A runner
-                    // with no transitions falls past this to the registry, which
-                    // is where its `enter_plan` ends up today — on the drift
-                    // list, not fixed here.
+                    // Guarded on the port, and the tool set is too: a runner
+                    // with no transitions is offered no transition tool
+                    // (`Modes::Fixed`), so the model has no way to name one and
+                    // this is the only path that ever reaches one. The guard
+                    // stays because the two are decided in different places, and
+                    // falling past it lands on the registry tool, whose refusal
+                    // to be called outside the loop would be read as a result.
                     let decision = ports.approvals.ask(&assistant_msg_id, tc, None).await?;
                     transitions::enter(
                         pool,

@@ -108,7 +108,8 @@ impl crate::agent::engine::Transitions for PlanTransitions {
             assistant: self.assistant.clone(),
             conversation_id: self.conversation_id.clone(),
             project_id: self.project_id.clone(),
-            mode,
+            // This type exists to answer the question, so the answer is yes.
+            mode: crate::agent::modes::Modes::Switchable(mode),
             mcp_defs,
             include_tools: true,
             persona: self.persona.clone(),
@@ -675,7 +676,7 @@ async fn chat_inner(
             assistant: assistant.clone(),
             conversation_id: conversation_id.clone(),
             project_id: project_id.clone(),
-            mode,
+            mode: crate::agent::modes::Modes::Switchable(mode),
             mcp_defs,
             include_tools: true,
             persona: persona.clone(),
