@@ -224,6 +224,15 @@ async fn run(
     let mut loop_guard = crate::agent::ToolLoopGuard::default();
     let mut turn_aborted = false;
 
+    // What the reply may cost, before it is trimmed to what each request has
+    // left. Held apart from `params` because the trimming is per request and
+    // must never compound: taking it from the previous request's already
+    // reduced value would ratchet the ceiling down round after round.
+    let configured_reply = params.max_tokens.unwrap_or(0).max(0) as usize;
+    // Seeded here so the first request of the turn is measured too. Every later
+    // one is covered by the compaction pass, which leaves the estimate current.
+    budget.update_estimate(&chat_messages);
+
     loop {
         if cancel.is_cancelled() {
             break;
@@ -278,8 +287,21 @@ async fn run(
                         }),
                     );
                 }
+                // Asked for against what this prompt has left rather than
+                // against the model's advertised maximum. Most providers count
+                // the prompt and `max_tokens` against one window, so a long
+                // conversation plus a full-size output allowance is a request
+                // they have to refuse — while the conversation itself would
+                // have fitted perfectly well.
                 let opened = provider
-                    .stream_chat_with_tools(chat_messages.clone(), tool_defs.clone(), params.clone())
+                    .stream_chat_with_tools(
+                        chat_messages.clone(),
+                        tool_defs.clone(),
+                        ChatParams {
+                            max_tokens: Some(budget.reply_ceiling(configured_reply) as i32),
+                            ..params.clone()
+                        },
+                    )
                     .await;
                 let read = match opened {
                     Ok(stream) => {
@@ -329,11 +351,17 @@ async fn run(
                                 "conversation_id": &conversation_id,
                             }),
                         );
+                        // Recomputed, not reused: the recovery above is what just
+                        // made room, and asking with the pre-compaction ceiling
+                        // would waste it.
                         let stream = provider
                             .stream_chat_with_tools(
                                 chat_messages.clone(),
                                 tool_defs.clone(),
-                                params.clone(),
+                                ChatParams {
+                                    max_tokens: Some(budget.reply_ceiling(configured_reply) as i32),
+                                    ..params.clone()
+                                },
                             )
                             .await
                             .map_err(|e| format!("Context overflow recovery failed: {e}"))?;
@@ -762,6 +790,8 @@ mod tests {
     struct Scripted {
         script: Mutex<VecDeque<Vec<StreamEvent>>>,
         sent: Mutex<Vec<(Vec<ChatMessage>, Vec<String>)>>,
+        /// The output allowance each request actually asked for.
+        ceilings: Mutex<Vec<Option<i32>>>,
         /// Never let a round run out, so cancelling it means something.
         ///
         /// `consume_stream` reads its cancellation token and its stream in one
@@ -774,7 +804,7 @@ mod tests {
 
     impl Scripted {
         fn of(rounds: Vec<Vec<StreamEvent>>) -> Self {
-            Self { script: Mutex::new(rounds.into()), sent: Mutex::new(Vec::new()), stalls: false }
+            Self { script: Mutex::new(rounds.into()), ..Default::default() }
         }
         /// Says its piece and then nothing, the way a provider that has stopped
         /// sending does. The only way to leave cancellation as the sole branch
@@ -788,6 +818,9 @@ mod tests {
         fn rounds(&self) -> usize {
             self.sent.lock().unwrap().len()
         }
+        fn ceilings(&self) -> Vec<Option<i32>> {
+            self.ceilings.lock().unwrap().clone()
+        }
     }
 
     #[async_trait::async_trait]
@@ -796,12 +829,13 @@ mod tests {
             &self,
             messages: Vec<ChatMessage>,
             tools: Vec<ToolDefinition>,
-            _params: ChatParams,
+            params: ChatParams,
         ) -> Result<crate::provider::ChatStream, ProviderError> {
             self.sent
                 .lock()
                 .unwrap()
                 .push((messages, tools.into_iter().map(|t| t.name).collect()));
+            self.ceilings.lock().unwrap().push(params.max_tokens);
             match self.script.lock().unwrap().pop_front() {
                 Some(events) => {
                     let said = futures::stream::iter(events.into_iter().map(Ok));
@@ -1498,6 +1532,57 @@ mod tests {
             }
             Ok(())
         }
+    }
+
+    /// The prompt and the output allowance are charged against one window by
+    /// most providers, so asking for the model's advertised maximum on top of a
+    /// long conversation is a request that has to be refused — while the
+    /// conversation itself would have fitted.
+    #[tokio::test]
+    async fn the_output_allowance_is_trimmed_to_what_the_prompt_left() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![says("brief")]);
+        let approvals = Answers::nobody();
+
+        let mut s = setup(&provider, &pool, &cancel, &[]);
+        s.params.max_tokens = Some(128_000);
+        s.budget = TokenBudget::new("openai", "m", 256_000, 128_000, None);
+        // A prompt big enough that the full allowance would not fit behind it.
+        s.chat_messages.push(ChatMessage::user(&"word ".repeat(210_000)));
+
+        run_turn(&services(&pool, &tools, &mcp), s, ports(&approvals, None)).await;
+
+        let asked = provider.ceilings()[0].expect("a ceiling is always sent");
+        assert!(asked < 128_000, "still asked for the advertised maximum: {asked}");
+        assert!(asked > 0);
+        // And what it asked for is what was actually left.
+        let prompt = TokenBudget::new("openai", "m", 256_000, 128_000, None)
+            .counter
+            .count_messages(&provider.requests()[0].0);
+        assert!(
+            prompt + asked as usize <= 256_000,
+            "prompt {prompt} + reply {asked} still overruns the window",
+        );
+    }
+
+    /// A short conversation is not penalised for the long ones' sake.
+    #[tokio::test]
+    async fn a_short_prompt_still_gets_the_whole_allowance() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![says("hi")]);
+        let approvals = Answers::nobody();
+
+        let mut s = setup(&provider, &pool, &cancel, &[]);
+        s.params.max_tokens = Some(8_000);
+        s.budget = TokenBudget::new("openai", "m", 256_000, 8_000, None);
+
+        run_turn(&services(&pool, &tools, &mcp), s, ports(&approvals, None)).await;
+
+        assert_eq!(provider.ceilings(), [Some(8_000)]);
     }
 
     /// Usage is accumulated across every round, not taken from the last one.

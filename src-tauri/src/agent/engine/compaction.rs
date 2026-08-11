@@ -50,6 +50,11 @@ impl Compacting<'_> {
             self.context_limit / 2,
             (self.keep_recent / 2).max(2),
         );
+        // Re-measured here rather than at each of the four call sites. Trimming
+        // is the one step that always changes what the estimate describes, and
+        // the caller sizes the retry's output allowance from it — a stale one
+        // asks for room this just spent.
+        self.budget.update_estimate(self.messages);
     }
 
     fn announce(&self, channel: &str, extra: serde_json::Value) {
@@ -80,6 +85,10 @@ pub(crate) enum CompactionPolicy {
 
 impl CompactionPolicy {
     /// The provider refused the request as too large.
+    ///
+    /// Leaves the estimate describing what is left, on every path: the caller
+    /// sizes the retry's output allowance from it, and a stale one would ask for
+    /// room the trim just spent.
     pub(crate) async fn on_overflow(&self, mut c: Compacting<'_>) {
         match self {
             CompactionPolicy::OneBot => c.trim(),

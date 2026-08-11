@@ -112,6 +112,36 @@ impl TokenCounter {
     }
 }
 
+/// The most of the window a single reply is allowed to be reserved.
+///
+/// A model's advertised maximum is a ceiling, not a forecast: a 256k model that
+/// *can* emit 128k tokens will almost never be asked to, and reserving all of it
+/// spends half the window on a reply nobody wanted. Bounding it is what lets a
+/// large window actually be used.
+const OUTPUT_RESERVE_CAP: usize = 32_000;
+
+/// Room for what neither side counted: the tool definitions, the wire framing,
+/// and the gap between our tokenizer and the provider's.
+const HEADROOM_CAP: usize = 8_000;
+
+/// The latest a turn can start compacting and still have somewhere to put the
+/// answer.
+///
+/// Not a percentage of the window. A flat 90% is what Codex uses and it works
+/// there because nothing in that path claims output space; we send `max_tokens`
+/// on every request, and most providers count it against the same window — so
+/// the same 90% leaves a request the provider has to refuse.
+fn safe_threshold(context_limit: usize, max_output: usize) -> usize {
+    let reserve = max_output.min(OUTPUT_RESERVE_CAP);
+    let headroom = (context_limit / 20).min(HEADROOM_CAP);
+    // Never below half the window. A configuration that would put it there is
+    // one no amount of compacting can rescue — the reply simply does not fit —
+    // and compacting on every single turn would hide that rather than fix it.
+    context_limit
+        .saturating_sub(reserve + headroom)
+        .max(context_limit / 2)
+}
+
 pub struct TokenBudget {
     pub context_limit: usize,
     pub max_output: usize,
@@ -129,10 +159,13 @@ impl TokenBudget {
         max_output: usize,
         compact_threshold_override: Option<usize>,
     ) -> Self {
-        let compact_threshold = compact_threshold_override.unwrap_or_else(|| {
-            let reserve = max_output.max(context_limit / 5);
-            context_limit.saturating_sub(reserve)
-        });
+        let safe = safe_threshold(context_limit, max_output);
+        // A stored threshold may only ever bring compaction *forward*. It
+        // arrives from the model's configuration while `context_limit` may come
+        // from the assistant's, so the two are not guaranteed to be about the
+        // same number — and a stored value that outran the window is exactly the
+        // shape that stopped compaction firing at all.
+        let compact_threshold = compact_threshold_override.map_or(safe, |t| t.min(safe));
         let hard_limit = context_limit * 95 / 100;
         Self {
             context_limit,
@@ -142,6 +175,22 @@ impl TokenBudget {
             current_estimate: 0,
             counter: TokenCounter::for_model(provider_type, model),
         }
+    }
+
+    /// What to ask for as this request's output ceiling.
+    ///
+    /// The configured maximum is what the model *can* write, not what it will,
+    /// and asking for all of it on top of a long prompt is a request most
+    /// providers have to refuse — they count the prompt and `max_tokens`
+    /// against one window. So it is trimmed to what is actually left.
+    ///
+    /// The floor is deliberate. Reaching it means compaction should already have
+    /// happened, and asking for nothing would turn that into an obscure provider
+    /// error; asking for a little produces the honest one.
+    pub fn reply_ceiling(&self, configured: usize) -> usize {
+        const FLOOR: usize = 1024;
+        let left = self.context_limit.saturating_sub(self.current_estimate);
+        configured.min(left).max(FLOOR)
     }
 
     pub fn update_estimate(&mut self, messages: &[ChatMessage]) {
@@ -217,15 +266,89 @@ mod tests {
 
     #[test]
     fn test_budget_thresholds() {
+        // Reserve is the model's own maximum here, being under the cap.
         let budget = TokenBudget::new("openai", "gpt-4o", 128_000, 16_384, None);
-        assert_eq!(budget.compact_threshold, 128_000 - 128_000 / 5);
+        assert_eq!(budget.compact_threshold, 128_000 - 16_384 - 6_400);
         assert_eq!(budget.hard_limit, 128_000 * 95 / 100);
     }
 
+    /// The case that made a large window unusable: reserving all of a model's
+    /// advertised output spent half the context on a reply nobody asked for, so
+    /// a 256k window started compacting at 128k.
     #[test]
-    fn test_budget_large_output() {
-        let budget = TokenBudget::new("anthropic", "claude-sonnet-4-20250514", 200_000, 64_000, None);
-        assert_eq!(budget.compact_threshold, 200_000 - 64_000);
+    fn a_huge_advertised_output_does_not_eat_the_window() {
+        let budget = TokenBudget::new("openai", "gpt-4o", 256_000, 128_000, None);
+        assert_eq!(budget.compact_threshold, 256_000 - 32_000 - 8_000);
+        assert!(
+            budget.compact_threshold > 256_000 / 2,
+            "a big window has to stay usable: {}",
+            budget.compact_threshold,
+        );
+    }
+
+    /// A reply still has to fit at the moment compaction starts, which is the
+    /// property the old formula lost and the stored override never had.
+    ///
+    /// Stated at the threshold rather than at rest: the ceiling is whatever is
+    /// left, so it only says anything once the prompt has grown to the point the
+    /// question is being asked.
+    #[test]
+    fn a_reply_still_fits_at_the_moment_compaction_fires() {
+        for (limit, max_out) in [
+            (128_000, 16_384),
+            (256_000, 128_000),
+            (200_000, 64_000),
+            (32_000, 8_000),
+            (1_000_000, 128_000),
+            (8_000, 8_000),
+        ] {
+            let mut b = TokenBudget::new("openai", "gpt-4o", limit, max_out, None);
+            b.current_estimate = b.compact_threshold;
+            let reply = b.reply_ceiling(max_out);
+            assert!(
+                b.compact_threshold + reply <= limit,
+                "{limit}/{max_out}: threshold {} + reply {reply} overruns the window",
+                b.compact_threshold,
+            );
+        }
+    }
+
+    /// The shape that stopped compaction firing at all: a stored threshold, from
+    /// the model's configuration, larger than the window the assistant's
+    /// configuration actually imposes.
+    #[test]
+    fn a_stored_threshold_can_only_bring_compaction_forward() {
+        let safe = TokenBudget::new("openai", "gpt-4o", 256_000, 128_000, None).compact_threshold;
+
+        let over = TokenBudget::new("openai", "gpt-4o", 256_000, 128_000, Some(244_800));
+        assert_eq!(over.compact_threshold, safe, "an override cannot postpone it");
+
+        let under = TokenBudget::new("openai", "gpt-4o", 256_000, 128_000, Some(100_000));
+        assert_eq!(under.compact_threshold, 100_000, "but it can bring it forward");
+    }
+
+    /// A tiny window cannot be rescued by compacting sooner, so it is not asked
+    /// to compact on every turn either.
+    #[test]
+    fn a_window_too_small_for_its_own_output_still_gets_a_usable_threshold() {
+        let budget = TokenBudget::new("openai", "gpt-4o", 8_000, 8_000, None);
+        assert_eq!(budget.compact_threshold, 4_000);
+    }
+
+    #[test]
+    fn the_reply_ceiling_is_what_is_left_rather_than_what_was_asked_for() {
+        let mut budget = TokenBudget::new("openai", "gpt-4o", 256_000, 128_000, None);
+
+        budget.current_estimate = 10_000;
+        assert_eq!(budget.reply_ceiling(128_000), 128_000, "plenty of room, ask for it all");
+
+        budget.current_estimate = 200_000;
+        assert_eq!(budget.reply_ceiling(128_000), 56_000, "trimmed to the room left");
+
+        // Past the window entirely: still asks for something, because a refusal
+        // naming the real problem beats one about `max_tokens: 0`.
+        budget.current_estimate = 300_000;
+        assert_eq!(budget.reply_ceiling(128_000), 1_024);
     }
 
     #[test]
