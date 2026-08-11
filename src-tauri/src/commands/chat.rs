@@ -669,6 +669,46 @@ async fn chat_inner(
         crate::voice::prompt::voice_context_block(&ctx.path, voice == Some(true))
             .unwrap_or_default(),
     ];
+    let effective_provider_id = provider_override.clone()
+        .or_else(|| assistant.as_ref().and_then(|a| a.provider_id.clone()));
+
+    // Precedence: per-request override > conversation preference > assistant default.
+    // Read once at the top of the turn: a mid-turn flip should not retroactively
+    // widen calls the user is already looking at an approval card for.
+    let accept_edits = conv_prefs.3;
+    let (conv_thinking_level, conv_fast_mode, _, _) = conv_prefs;
+    let effective_level = thinking_level.as_deref().or(conv_thinking_level.as_deref());
+    // Ahead of the tool set, and ahead of the compaction check: the summariser
+    // and the turn it summarises have to send parameters filtered against the
+    // same model, and what the model can be sent at all — whether it takes a
+    // tools field — decides the tool set below.
+    //
+    // `context_limit` stays where it was, deliberately. The one bound above is
+    // the assistant's and it sizes the memory block and the project
+    // instructions; this one is the model's and shadows it for the loop. Moving
+    // the shadow up with the resolution would silently resize both.
+    let turn_params = {
+        let pool2 = pool.clone();
+        let assistant2 = assistant.clone();
+        let pid = effective_provider_id.clone();
+        let pt = provider_type.clone();
+        let af = api_format.clone();
+        let mid = model.clone();
+        let level = effective_level.map(|s| s.to_string());
+        let fast = fast.unwrap_or(conv_fast_mode);
+        tokio::task::spawn_blocking(move || {
+            crate::agent::resolve_turn_params(&pool2, crate::agent::TurnParamsInput {
+                assistant: assistant2.as_ref(),
+                provider_id: pid.as_deref(),
+                provider_type: &pt,
+                api_format: &af,
+                model: &mid,
+                thinking_level: level.as_deref(),
+                fast,
+            })
+        }).await.map_err(|e| e.to_string())??
+    };
+
     let turn = {
         let pool2 = pool.clone();
         let registry = tool_registry.0.clone();
@@ -693,38 +733,6 @@ async fn chat_inner(
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
     let auto_compact = assistant.as_ref().map(|a| a.auto_compact_enabled != 0).unwrap_or(false);
 
-    let effective_provider_id = provider_override.clone()
-        .or_else(|| assistant.as_ref().and_then(|a| a.provider_id.clone()));
-
-    // Precedence: per-request override > conversation preference > assistant default.
-    // Read once at the top of the turn: a mid-turn flip should not retroactively
-    // widen calls the user is already looking at an approval card for.
-    let accept_edits = conv_prefs.3;
-    let (conv_thinking_level, conv_fast_mode, _, _) = conv_prefs;
-    let effective_level = thinking_level.as_deref().or(conv_thinking_level.as_deref());
-    // Resolved before the compaction check so the summariser and the turn it
-    // summarises send parameters filtered against the same model.
-    let turn_params = {
-        let pool2 = pool.clone();
-        let assistant2 = assistant.clone();
-        let pid = effective_provider_id.clone();
-        let pt = provider_type.clone();
-        let af = api_format.clone();
-        let mid = model.clone();
-        let level = effective_level.map(|s| s.to_string());
-        let fast = fast.unwrap_or(conv_fast_mode);
-        tokio::task::spawn_blocking(move || {
-            crate::agent::resolve_turn_params(&pool2, crate::agent::TurnParamsInput {
-                assistant: assistant2.as_ref(),
-                provider_id: pid.as_deref(),
-                provider_type: &pt,
-                api_format: &af,
-                model: &mid,
-                thinking_level: level.as_deref(),
-                fast,
-            })
-        }).await.map_err(|e| e.to_string())??
-    };
     let context_limit = turn_params.context_limit;
     let max_output = turn_params.max_output;
     let model_config = turn_params.model_config;

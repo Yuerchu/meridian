@@ -411,6 +411,37 @@ async fn headless_chat_inner(
     } else {
         Vec::new()
     };
+    let effective_model = model_override
+        .or(assistant.as_ref().and_then(|a| a.model_id.as_deref()))
+        .unwrap_or(&model)
+        .to_string();
+    // Same resolution as the desktop chat command, so a per-model config the
+    // user wrote applies here too. No per-request tier: OneBot turns run off
+    // the assistant's stored defaults. Off the async thread because it takes a
+    // pooled connection.
+    //
+    // Ahead of the tool set because what the model can be sent at all — whether
+    // it takes a tools field — decides what that set may contain.
+    let turn_params = {
+        let pool2 = pool.clone();
+        let assistant2 = assistant.clone();
+        let pt = provider_type.clone();
+        let af = api_format.clone();
+        let em = effective_model.clone();
+        tokio::task::spawn_blocking(move || {
+            crate::agent::resolve_turn_params(&pool2, crate::agent::TurnParamsInput {
+                assistant: assistant2.as_ref(),
+                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                provider_type: &pt,
+                api_format: &af,
+                model: &em,
+                thinking_level: None,
+                fast: false,
+            })
+        }).await.map_err(|e| e.to_string())??
+    };
+    let context_limit = turn_params.context_limit;
+
     let turn = {
         let pool2 = pool.clone();
         let registry = tool_registry.clone();
@@ -439,33 +470,6 @@ async fn headless_chat_inner(
     };
     let mut tool_defs = turn.tool_defs;
     let system_prompt = turn.system_prompt;
-    let effective_model = model_override
-        .or(assistant.as_ref().and_then(|a| a.model_id.as_deref()))
-        .unwrap_or(&model)
-        .to_string();
-    // Same resolution as the desktop chat command, so a per-model config the
-    // user wrote applies here too. No per-request tier: OneBot turns run off
-    // the assistant's stored defaults. Off the async thread because it takes a
-    // pooled connection.
-    let turn_params = {
-        let pool2 = pool.clone();
-        let assistant2 = assistant.clone();
-        let pt = provider_type.clone();
-        let af = api_format.clone();
-        let em = effective_model.clone();
-        tokio::task::spawn_blocking(move || {
-            crate::agent::resolve_turn_params(&pool2, crate::agent::TurnParamsInput {
-                assistant: assistant2.as_ref(),
-                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
-                provider_type: &pt,
-                api_format: &af,
-                model: &em,
-                thinking_level: None,
-                fast: false,
-            })
-        }).await.map_err(|e| e.to_string())??
-    };
-    let context_limit = turn_params.context_limit;
 
     // Who this turn may recall. A private chat is about the one person on the
     // other end; a group is about whoever actually spoke, filtered so nothing
