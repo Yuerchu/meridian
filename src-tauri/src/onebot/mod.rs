@@ -104,7 +104,12 @@ pub struct PendingApproval {
     /// The rule then falls back to "anything from the initiator", because the
     /// alternative is an approval nobody can ever answer.
     pub prompt_message_id: Option<i64>,
-    pub responder: oneshot::Sender<bool>,
+    /// What kind of question is parked, so the acknowledgement can be worded
+    /// without re-deriving it from a tool name this side no longer holds.
+    pub kind: crate::onebot::agent::AskKind,
+    /// What they typed, verbatim. Never logged, and read only by the adapter
+    /// that knows which tool asked and therefore what the words mean.
+    pub responder: oneshot::Sender<String>,
 }
 
 impl PendingApproval {
@@ -1235,7 +1240,7 @@ mod tests {
 
         /// A tool call parked in front of the user, as `make_approval_fn`
         /// leaves it.
-        fn park_approval(&self, key: &SessionKey, turn_id: &str) -> oneshot::Receiver<bool> {
+        fn park_approval(&self, key: &SessionKey, turn_id: &str) -> oneshot::Receiver<String> {
             let (tx, rx) = oneshot::channel();
             self.approvals.lock().insert(
                 key.to_string(),
@@ -1243,6 +1248,7 @@ mod tests {
                     initiator: 7,
                     turn_id: turn_id.into(),
                     prompt_message_id: Some(9001),
+                    kind: crate::onebot::agent::AskKind::Permission,
                     responder: tx,
                 },
             );
@@ -1617,6 +1623,7 @@ mod tests {
             initiator: 7,
             turn_id: "t1".into(),
             prompt_message_id: Some(42),
+            kind: crate::onebot::agent::AskKind::Permission,
             responder: oneshot::channel().0,
         };
         assert!(asked.answered_by(Some(42)));
@@ -1633,6 +1640,7 @@ mod tests {
             initiator: 7,
             turn_id: "t1".into(),
             prompt_message_id: None,
+            kind: crate::onebot::agent::AskKind::Permission,
             responder: oneshot::channel().0,
         };
         assert!(asked.answered_by(None));

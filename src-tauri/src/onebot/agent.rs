@@ -19,10 +19,51 @@ use crate::agent::{
     TokenBudget,
 };
 
-/// `(tool_call, sandbox_block_reason)` → approved. The reason is `Some` only
-/// for the retry-without-sandbox escalation ask, so the prompt can say why a
-/// second approval for the same call is being requested.
-pub type ApprovalFn = Box<dyn Fn(ToolCall, Option<String>) -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>;
+/// `(tool_call, sandbox_block_reason)` → what the user typed, or `None` if
+/// nobody answered. The reason is `Some` only for the retry-without-sandbox
+/// escalation ask, so the prompt can say why a second approval for the same
+/// call is being requested.
+///
+/// Words rather than a verdict: what a reply means depends on what was asked,
+/// and only the adapter that knows the tool can say. A transport that decided
+/// would be able to hand a permission prompt somebody's sentence as if it were
+/// an answer, which is the one mapping the ports forbid.
+pub type ApprovalFn =
+    Box<dyn Fn(ToolCall, Option<String>) -> Pin<Box<dyn Future<Output = Option<String>> + Send>> + Send + Sync>;
+
+/// What the user is being asked for. Decides how the prompt is worded, what the
+/// acknowledgement says, and what their words become.
+#[derive(Clone, Copy, PartialEq)]
+pub enum AskKind {
+    /// A tool wants to run. `Y` authorises it; anything else refuses it, and
+    /// what they typed travels back as the reason.
+    Permission,
+    /// `ask_user` asked a question. There is nothing to authorise: whatever
+    /// they type is the answer, verbatim.
+    Question,
+}
+
+impl AskKind {
+    pub fn of(tool: &str) -> Self {
+        if tool == "ask_user" { Self::Question } else { Self::Permission }
+    }
+
+    /// The per-tool mapping the ports describe, in the one place it happens.
+    fn decide(self, said: &str) -> crate::agent::engine::ApprovalDecision {
+        use crate::agent::engine::ApprovalDecision;
+        let said = said.trim();
+        match (self, said) {
+            // A reply with no words in it — an image, a sticker — answered
+            // nothing and authorised nothing.
+            (_, "") => ApprovalDecision::Denied(None),
+            (Self::Question, _) => ApprovalDecision::Response(said.to_string()),
+            (Self::Permission, s) if s.eq_ignore_ascii_case("y") || s.eq_ignore_ascii_case("yes") => {
+                ApprovalDecision::Approved
+            }
+            (Self::Permission, s) => ApprovalDecision::Denied(Some(s.to_string())),
+        }
+    }
+}
 
 /// Called with each tool-calling iteration's assistant text before the tools
 /// execute, so headless frontends can deliver mid-turn commentary in order
@@ -85,19 +126,13 @@ impl crate::agent::engine::Emit for BestEffortEmit {
     }
 }
 
-/// Asking in a chat, where the only answer the transport can carry is yes or no.
+/// Asking in a chat, where the answer arrives as whatever the person typed.
 ///
 /// The mapping to a decision is per tool and cannot be otherwise. `ask_user`
 /// asks a *question*, and the loop reads its answer as the thing to hand back to
-/// the model — so a bare `Approved` there would be read as "nobody answered" and
-/// the model would be told so. Everything else is a permission, where a yes is
-/// `Approved` and nothing else will do: sending a `Response` would turn somebody
-/// typing into authorisation to run a command.
-///
-/// What is lost is the words. A person who replies with a sentence has it
-/// flattened to `"User approved."`, and a refusal arrives with no reason at all.
-/// That is this transport's shape today rather than a decision made here, and it
-/// is on the drift list.
+/// the model. Everything else is a permission, where a yes is `Approved` and
+/// nothing else will do: reading somebody's sentence as a `Response` there would
+/// turn typing into authorisation to run a command.
 struct ChatApprovals<'a> {
     approval_fn: &'a ApprovalFn,
     pool: DbPool,
@@ -112,11 +147,10 @@ impl crate::agent::engine::Approvals for ChatApprovals<'_> {
         call: &ToolCall,
         retry_reason: Option<&str>,
     ) -> Result<Option<crate::agent::engine::ApprovalDecision>, String> {
-        use crate::agent::engine::ApprovalDecision;
         // A QQ approval is a message in a chat and can sit there for the full
         // minute, so this is a window the process can easily be killed in — and
         // dying here means nothing ran, which is worth being able to say.
-        let yes = engine::in_phase(
+        let said = engine::in_phase(
             &self.pool,
             &self.turn_id,
             TurnPhase::AwaitingApproval,
@@ -126,13 +160,11 @@ impl crate::agent::engine::Approvals for ChatApprovals<'_> {
         .await;
         // Never `Err`: this side's answer goes out over the chat transport, so
         // there is no send here that can fail the way drawing a card can.
-        Ok(match (yes, call.name.as_str()) {
-            (true, "ask_user") => Some(ApprovalDecision::Response("User approved.".to_string())),
-            (true, _) => Some(ApprovalDecision::Approved),
-            // Timed out, refused, or answered by somebody who was not asked —
-            // the transport cannot tell them apart, and none of them is a yes.
-            (false, _) => Some(ApprovalDecision::Denied(None)),
-        })
+        //
+        // `None` is nobody answering — the minute ran out, or the turn was swept
+        // out from under the question. Distinct from a refusal for the first
+        // time, and the loop already words the two differently.
+        Ok(said.map(|text| AskKind::of(&call.name).decide(&text)))
     }
 }
 
@@ -815,7 +847,10 @@ mod tests {
         use crate::db::test_db;
         use crate::turn::TurnOrigin;
 
-        fn asked(answer: bool, tool: &str) -> Option<ApprovalDecision> {
+        /// `said` of `None` is nobody answering: the minute ran out, or the turn
+        /// was swept out from under the question.
+        fn asked(said: Option<&str>, tool: &str) -> Option<ApprovalDecision> {
+            let said = said.map(str::to_string);
             let pool = test_db();
             {
                 let mut conn = pool.get().unwrap();
@@ -826,8 +861,10 @@ mod tests {
                 crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::OneBot, 1000)
                     .unwrap();
             }
-            let approval_fn: ApprovalFn =
-                Box::new(move |_, _| Box::pin(async move { answer }));
+            let approval_fn: ApprovalFn = Box::new(move |_, _| {
+                let said = said.clone();
+                Box::pin(async move { said })
+            });
             let adapter = ChatApprovals {
                 approval_fn: &approval_fn,
                 pool: pool.clone(),
@@ -847,38 +884,60 @@ mod tests {
         }
 
         /// The distinction the whole mapping exists for. `ask_user` asked a
-        /// question, so a yes is an *answer* and the loop hands it to the model;
-        /// an `Approved` there would be read as nobody having replied.
+        /// question, so what they typed *is* the answer and the loop hands it to
+        /// the model verbatim. It used to arrive as the words "User approved."
+        /// however they had replied.
         #[test]
-        fn a_yes_to_a_question_is_an_answer() {
+        fn what_the_user_typed_is_what_the_question_gets() {
             assert!(matches!(
-                asked(true, "ask_user"),
-                Some(ApprovalDecision::Response(ref s)) if s == "User approved.",
+                asked(Some("用第二个方案，但先备份"), "ask_user"),
+                Some(ApprovalDecision::Response(ref s)) if s == "用第二个方案，但先备份",
             ));
         }
 
         /// And a yes to anything else is permission, which is the only thing
-        /// that authorises a call. Sending a `Response` here would turn somebody
-        /// typing into authorisation to run a command.
+        /// that authorises a call. Reading a sentence as a `Response` here would
+        /// turn somebody typing into authorisation to run a command.
         #[test]
         fn a_yes_to_a_tool_is_permission() {
             for tool in ["run_command", "mcp__server__do", "qq_recall"] {
-                assert!(
-                    matches!(asked(true, tool), Some(ApprovalDecision::Approved)),
-                    "{tool}",
-                );
+                for said in ["y", "Y", "yes", "  Y  "] {
+                    assert!(
+                        matches!(asked(Some(said), tool), Some(ApprovalDecision::Approved)),
+                        "{tool} / {said:?}",
+                    );
+                }
             }
         }
 
-        /// Timed out, refused, or answered by somebody who was not asked. The
-        /// transport cannot tell them apart and none of them is a yes — and a
-        /// refusal with no reason is not the same as nobody answering, which is
-        /// why it is `Denied` rather than `None`.
+        /// Anything else refuses it, and why travels with the refusal. The model
+        /// is about to decide what to do instead, and "no" on its own is most of
+        /// a reason short of one.
         #[test]
-        fn anything_short_of_a_yes_is_a_refusal() {
+        fn a_refusal_carries_its_reason_back() {
+            assert!(matches!(
+                asked(Some("别动生产库"), "run_command"),
+                Some(ApprovalDecision::Denied(Some(ref s))) if s == "别动生产库",
+            ));
+        }
+
+        /// Nobody answered: the minute ran out, or the turn was swept out from
+        /// under the question. Not the same as a refusal, and reachable from this
+        /// side for the first time — the old transport could only say no.
+        #[test]
+        fn nobody_answering_is_not_a_refusal() {
+            for tool in ["ask_user", "run_command"] {
+                assert!(matches!(asked(None, tool), None), "{tool}");
+            }
+        }
+
+        /// A reply with no words in it — an image, a sticker — answered nothing
+        /// and authorised nothing.
+        #[test]
+        fn a_reply_with_no_words_in_it_answers_nothing() {
             for tool in ["ask_user", "run_command"] {
                 assert!(
-                    matches!(asked(false, tool), Some(ApprovalDecision::Denied(None))),
+                    matches!(asked(Some("   "), tool), Some(ApprovalDecision::Denied(None))),
                     "{tool}",
                 );
             }

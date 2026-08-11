@@ -141,10 +141,20 @@ async fn handle_text_message(
         // Whatever they typed is then an ordinary message, which is what it
         // would have been a moment later anyway.
         if let Some(pending) = pending {
-            let approved = text.trim().eq_ignore_ascii_case("y")
-                || text.trim().eq_ignore_ascii_case("yes");
-            let _ = pending.responder.send(approved);
-            let reply = if approved { "已批准执行。" } else { "已拒绝。" };
+            let kind = pending.kind;
+            // What they wrote, unread. Which tool asked is what decides whether
+            // it authorises anything, and only the adapter knows that.
+            let _ = pending.responder.send(text.to_string());
+            let trimmed = text.trim();
+            let reply = match kind {
+                super::agent::AskKind::Question => "已转达。",
+                super::agent::AskKind::Permission
+                    if trimmed.eq_ignore_ascii_case("y") || trimmed.eq_ignore_ascii_case("yes") =>
+                {
+                    "已批准执行。"
+                }
+                super::agent::AskKind::Permission => "已拒绝，你写的理由会一并转达。",
+            };
             return build_reply(event, reply, None);
         }
     }
@@ -273,15 +283,23 @@ fn make_approval_fn(
             // A sandbox reason means this is the second ask for the same call
             // (escalation to run without sandbox); say so, or it reads as a
             // duplicate of the prompt just answered.
-            let prompt = match sandbox_reason {
-                Some(reason) => format!(
-                    "⚠️ 命令被沙箱拦截:\n工具: {}\n参数: {}\n拦截输出: {}\n\n引用本条消息回复 Y 在沙箱外重试，其他内容拒绝（60秒超时）",
+            let kind = super::agent::AskKind::of(&tc.name);
+            let prompt = match (sandbox_reason, kind) {
+                // A sandbox reason means this is the second ask for the same
+                // call (escalation to run without sandbox); say so, or it reads
+                // as a duplicate of the prompt just answered. It is a permission
+                // by construction — `ask_user` never runs a command.
+                (Some(reason), _) => format!(
+                    "⚠️ 命令被沙箱拦截:\n工具: {}\n参数: {}\n拦截输出: {}\n\n引用本条消息回复 Y 在沙箱外重试，其他内容拒绝并作为理由转达（60秒超时）",
                     tc.name,
                     truncate_args(&tc.arguments, 500),
                     truncate_args(&reason, 300),
                 ),
-                None => format!(
-                    "🔧 工具调用请求:\n工具: {}\n参数: {}\n\n引用本条消息回复 Y 批准，其他内容拒绝（60秒超时）",
+                (None, super::agent::AskKind::Question) => {
+                    super::format::ask_user_prompt(&tc.arguments)
+                }
+                (None, super::agent::AskKind::Permission) => format!(
+                    "🔧 工具调用请求:\n工具: {}\n参数: {}\n\n引用本条消息回复 Y 批准，其他内容拒绝并作为理由转达（60秒超时）",
                     tc.name,
                     truncate_args(&tc.arguments, 500),
                 ),
@@ -326,12 +344,13 @@ fn make_approval_fn(
                     initiator: initiator_user_id,
                     turn_id: turn_id.clone(),
                     prompt_message_id,
+                    kind,
                     responder: tx,
                 },
             );
 
             match tokio::time::timeout(std::time::Duration::from_secs(60), rx).await {
-                Ok(Ok(approved)) => approved,
+                Ok(Ok(said)) => Some(said),
                 _ => {
                     // Timed out, or the sender was dropped — which is what the
                     // turn guard does on its way out. Either way the entry is
@@ -341,7 +360,7 @@ fn make_approval_fn(
                     if approvals.get(&session_str).is_some_and(|p| p.turn_id == turn_id) {
                         approvals.remove(&session_str);
                     }
-                    false
+                    None
                 }
             }
         })

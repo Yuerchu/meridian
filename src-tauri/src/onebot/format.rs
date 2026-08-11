@@ -258,6 +258,54 @@ fn find_split_point(text: &str, max_len: usize) -> usize {
     end
 }
 
+/// `ask_user`'s arguments, as a question rather than as a permission request.
+///
+/// The chat surface has one prompt shape for everything a tool wants, and for
+/// this tool that is wrong twice over: the model is not asking to be allowed to
+/// do something, and what it is actually asking never appeared — the person saw
+/// the tool's name and its raw JSON and was invited to reply `Y`.
+///
+/// Arguments that will not parse still produce a prompt. They come from a model
+/// and are the only thing anyone has to go on, so a truncated dump beats
+/// silence: the alternative is a question the user is given no way to answer,
+/// waiting out its minute.
+pub fn ask_user_prompt(arguments: &str) -> String {
+    const FOOTER: &str = "\n引用本条消息作答（60秒超时）";
+    let questions = serde_json::from_str::<serde_json::Value>(arguments)
+        .ok()
+        .and_then(|v| v.get("questions").and_then(|q| q.as_array()).cloned())
+        .unwrap_or_default();
+
+    let mut out = String::from("❓ 助手有个问题:\n");
+    let mut asked = 0;
+    for q in &questions {
+        let Some(text) = q.get("question").and_then(|t| t.as_str()) else { continue };
+        asked += 1;
+        out.push_str(&format!("\n{text}\n"));
+        for (i, opt) in q
+            .get("options")
+            .and_then(|o| o.as_array())
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+            .iter()
+            .enumerate()
+        {
+            let Some(label) = opt.get("label").and_then(|l| l.as_str()) else { continue };
+            match opt.get("description").and_then(|d| d.as_str()) {
+                Some(desc) if !desc.is_empty() => {
+                    out.push_str(&format!("  {}. {label} — {desc}\n", i + 1))
+                }
+                _ => out.push_str(&format!("  {}. {label}\n", i + 1)),
+            }
+        }
+    }
+    if asked == 0 {
+        out.push_str(&format!("\n{}\n", crate::util::take_bytes_at_char_boundary(arguments, 500)));
+    }
+    out.push_str(FOOTER);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -327,6 +375,36 @@ mod tests {
             format!("看这个 {IMAGE_SENTINEL}{RECORD_SENTINEL}")
         );
         assert_eq!(segments_to_text(&msg, None), "看这个 [图片][语音]");
+    }
+
+    /// What the QQ user used to be shown for this was the tool's name and its
+    /// raw JSON, under "回复 Y 批准" — a permission prompt for something that
+    /// was not asking permission, and which never showed the question.
+    #[test]
+    fn a_question_is_shown_as_a_question() {
+        let prompt = ask_user_prompt(
+            r#"{"questions":[{"id":"q1","question":"先修哪个?","options":[
+                {"label":"压缩","description":"上下文爆了"},
+                {"label":"审批"}
+            ]}]}"#,
+        );
+
+        assert!(prompt.contains("先修哪个?"), "{prompt}");
+        assert!(prompt.contains("1. 压缩 — 上下文爆了"), "{prompt}");
+        assert!(prompt.contains("2. 审批"), "{prompt}");
+        assert!(!prompt.contains("批准"), "still worded as a permission: {prompt}");
+        assert!(prompt.contains("引用本条消息作答"), "{prompt}");
+    }
+
+    /// The arguments come from a model. A prompt that refused to render would
+    /// leave a question nobody can answer, waiting out its minute in silence.
+    #[test]
+    fn a_malformed_question_still_produces_a_prompt() {
+        for args in ["", "{", r#"{"questions":[]}"#, r#"{"questions":"soon"}"#] {
+            let prompt = ask_user_prompt(args);
+            assert!(prompt.contains("引用本条消息作答"), "{args:?} -> {prompt}");
+            assert!(prompt.len() > "❓ 助手有个问题:".len(), "{args:?} -> {prompt}");
+        }
     }
 
     #[test]
