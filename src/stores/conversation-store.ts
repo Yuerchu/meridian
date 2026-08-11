@@ -22,6 +22,18 @@ function readTodoArgs(args: string): TodoArgs | null {
   return todoArgs.todos.every((t) => t.status === 'completed') ? null : todoArgs
 }
 
+/** The calls a finished assistant row records having made, or `null` while it
+ *  is still being written. */
+function storedCalls(column: string | null | undefined): OpenAIToolCall[] | null {
+  if (!column) return null
+  try {
+    const parsed = JSON.parse(column) as OpenAIToolCall[]
+    return Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
 /**
  * Group the tool rows under the assistant message they answered.
  *
@@ -227,9 +239,53 @@ export function reconcileMessages(prev: Message[], next: Message[]): Message[] {
       return old
     }
     identical = false
-    return m
+    return old ? keepAnswered(old, m) : m
   })
   return identical ? prev : out
+}
+
+/**
+ * A row the snapshot supersedes keeps whatever it already knew the answer to.
+ *
+ * The snapshot's cards are rebuilt from the database, and the database is
+ * behind: a result is announced to the window before its row is written, and
+ * the whole round's calls are written before any of them runs. So a read taken
+ * mid-round describes calls as still going that this window has already been
+ * told finished — and told once, because the event does not come again. Taking
+ * the snapshot's word for it reverts a finished card to "running" for good:
+ * once the turn ends the row's stored columns stop changing, so every later
+ * reload reuses this same object.
+ *
+ * Only ever forwards. A card that has an outcome here keeps it; nothing else is
+ * carried over, because for everything else the database is the one that knows.
+ * Results do not un-happen, which is what makes the direction safe to assume
+ * without either side carrying a timestamp.
+ *
+ * Matched by consuming, not by lookup: two cards under one row can share an id
+ * once a snapshot and a live event have both put one there, and the second must
+ * not claim the first's answer.
+ */
+function keepAnswered(local: Message, fresh: Message): Message {
+  const answered = (local._blocks ?? []).filter(
+    (b): b is Extract<ContentBlock, { type: 'tool_call' }> =>
+      b.type === 'tool_call' && ANSWERED.has(b.data.status),
+  )
+  if (answered.length === 0 || !fresh._blocks) return fresh
+  const taken = new Set<number>()
+  let carried = false
+  const blocks = fresh._blocks.map((b) => {
+    if (b.type !== 'tool_call' || ANSWERED.has(b.data.status)) return b
+    const at = answered.findIndex((c, i) => !taken.has(i) && c.data.call_id === b.data.call_id)
+    if (at < 0) return b
+    taken.add(at)
+    carried = true
+    const was = answered[at].data
+    return {
+      ...b,
+      data: { ...b.data, status: was.status, result: was.result, approval_id: undefined },
+    }
+  })
+  return carried ? { ...fresh, _blocks: blocks } : fresh
 }
 
 /** Compares every persisted column, ignoring the front-end-only `_blocks`. Keys
@@ -773,6 +829,25 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       if (idx < 0) return
       const target = session.messages[idx]
       const blocks = target._blocks ?? []
+      target._blocks = blocks
+      session.retry = null
+      // The card may be here already. A reload that read the database after
+      // this row's `tool_calls` column was written rebuilds every card in the
+      // round from it, and that snapshot can be applied after this event was
+      // sent and before it was handled. Pushing regardless leaves a second copy
+      // that nothing will ever answer: results go to the first unanswered card
+      // with the id, and the rebuilt one is always ahead of this.
+      //
+      // But two cards can also share an id honestly — gateways that number
+      // their calls per request repeat "0" within one, and the tests below
+      // hold that behaviour — so this cannot be a lookup by id. The column
+      // decides instead: it is written once, with every call the round made,
+      // and a row carrying it has had all of them drawn already. A row still
+      // being streamed into has no column yet, which is the whole live path.
+      //
+      // Malformed is not the same as present: hydration would have drawn
+      // nothing from it, so there is nothing here to duplicate.
+      if (storedCalls(target.tool_calls)) return
       blocks.push({
         type: 'tool_call',
         data: {
@@ -782,8 +857,6 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           status: 'running',
         },
       })
-      target._blocks = blocks
-      session.retry = null
     }))
   },
 

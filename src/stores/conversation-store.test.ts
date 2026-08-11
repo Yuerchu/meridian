@@ -417,6 +417,116 @@ describe('live approval events', () => {
   })
 })
 
+/// A reload racing the round it describes. The snapshot's DB read happens at
+/// one moment, its application at another, and tool events for the round in
+/// flight land in between — nothing bumps the generation for them, so the
+/// guard lets the stale snapshot through. Hydration then rebuilds the round's
+/// cards from what the database said *before* those events: a result that had
+/// already arrived is reverted to `running` and its event is never coming
+/// again, and a `tool_call` delivered after the apply pushes a second copy of
+/// a card hydration already materialised — whose result then answers the first
+/// copy and leaves the duplicate unfinished for good. On screen that is a
+/// finished command sitting above two "queued" ones in a turn that ended.
+describe('a reload racing the live round', () => {
+  const CONV = 'conv-1'
+  const store = () => useConversationStore.getState()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useConversationStore.setState({ sessions: {} })
+    store().ensureSession(CONV)
+  })
+
+  function cards(): ToolCallDisplay[] {
+    const row = store().sessions[CONV]!.messages.find((m) => m.id === 'a1')
+    return (row?._blocks ?? [])
+      .filter((b): b is Extract<ContentBlock, { type: 'tool_call' }> => b.type === 'tool_call')
+      .map((b) => b.data)
+  }
+
+  /** A reload whose response lands only when the test says so. */
+  function reloadPausedMidRound(): [Promise<void>, (snap: ConversationSnapshot) => void] {
+    let land: (snap: ConversationSnapshot) => void = () => {}
+    vi.mocked(api.conversationSnapshot).mockReturnValueOnce(
+      new Promise<ConversationSnapshot>((resolve) => { land = resolve }),
+    )
+    return [store().loadMessages(CONV), (snap) => land(snap)]
+  }
+
+  /** What the database has once the round's calls are written and none of its
+   *  tool rows are. */
+  function roundWritten(ids: string[]): ConversationSnapshot {
+    return snapshotOf(
+      {
+        messages: [msg('a1', {
+          turn_id: 'turn-1',
+          content: 'on it',
+          tool_calls: JSON.stringify(
+            ids.map((id) => ({
+              id,
+              type: 'function',
+              function: { name: 'run_command', arguments: '{}' },
+            })),
+          ),
+        })],
+        head_message_id: 'a1',
+        branches: [],
+      },
+      { turns: [turnRecord('turn-1', 'running')] },
+    )
+  }
+
+  it('does not lose a result, or double a card, to a snapshot read mid-round', async () => {
+    store().beginTurn(CONV, 'turn-1')
+    store().handleMessageStart(CONV, 'a1', 'turn-1')
+
+    // The user switches back to this conversation mid-round: the reload's DB
+    // read sees the round's calls written but none of its tool rows yet.
+    const [reloading, land] = reloadPausedMidRound()
+
+    // While the response is in flight, the first call is announced and answered.
+    store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
+    store().handleToolResult(CONV, 'a1', 'c1', 'first result', 'success')
+
+    land(roundWritten(['c1', 'c2']))
+    await reloading
+
+    // The second call is announced and answered after the stale apply.
+    store().handleToolCall(CONV, 'a1', 'c2', 'run_command', '{}')
+    store().handleToolResult(CONV, 'a1', 'c2', 'second result', 'success')
+
+    // One card per call the model made — the event delivered after the apply
+    // must not add a second copy of a card the snapshot already carries.
+    expect(cards().map((c) => c.call_id)).toEqual(['c1', 'c2'])
+    // And a result that arrived before the apply is still an outcome. Losing
+    // it here is permanent: its event was consumed, and every later reload
+    // reuses this object because the row's stored columns never change again.
+    expect(cards().map((c) => c.status)).toEqual(['completed', 'completed'])
+  })
+
+  /// A round the gateway numbered from zero, going through the same race. Both
+  /// cards come from the column and both stay answerable one at a time — the
+  /// live events that follow add nothing, and must not, but neither may the
+  /// rule that stops them be a lookup by id.
+  it('keeps both cards of a repeated id answerable through the same race', async () => {
+    store().beginTurn(CONV, 'turn-1')
+    store().handleMessageStart(CONV, 'a1', 'turn-1')
+
+    const [reloading, land] = reloadPausedMidRound()
+    store().handleToolCall(CONV, 'a1', '0', 'run_command', '{}')
+    land(roundWritten(['0', '0']))
+    await reloading
+
+    store().handleToolCall(CONV, 'a1', '0', 'run_command', '{}')
+    expect(cards()).toHaveLength(2)
+
+    store().handleToolResult(CONV, 'a1', '0', 'first result', 'success')
+    expect(cards().map((c) => c.status)).toEqual(['completed', 'running'])
+    store().handleToolResult(CONV, 'a1', '0', 'second result', 'success')
+    expect(cards().map((c) => c.result)).toEqual(['first result', 'second result'])
+  })
+})
+
 describe('stops are scoped to a turn', () => {
   const CONV = 'conv-1'
   const store = () => useConversationStore.getState()
