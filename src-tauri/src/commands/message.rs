@@ -59,6 +59,27 @@ pub struct TurnView {
     pub ended_at: Option<i64>,
 }
 
+/// A delegated run as the card on the parent's turn needs it.
+///
+/// `status` is judged the same way `TurnView`'s is, against the coordinator —
+/// but against the *sub-agent's* conversation, not the parent's. The parent's
+/// revision does not move when a child's lease is taken or released, so reusing
+/// the parent's reading here would leave a sub-agent that died in a panic
+/// spinning on the card for ever.
+#[derive(serde::Serialize)]
+pub struct SubAgentRunView {
+    pub conversation_id: String,
+    pub spawned_by_message_id: Option<String>,
+    pub spawned_by_call_id: Option<String>,
+    pub spawned_turn_id: Option<String>,
+    pub agent_kind: Option<String>,
+    pub title: Option<String>,
+    pub steps: i64,
+    /// `None` when the delegating turn's row has gone. The card reads that as
+    /// "no longer running" rather than inventing an ending.
+    pub status: Option<String>,
+}
+
 /// Everything one conversation needs to be drawn, as of one moment.
 #[derive(serde::Serialize)]
 pub struct ConversationSnapshot {
@@ -66,6 +87,8 @@ pub struct ConversationSnapshot {
     pub tree: MessageTree,
     pub turns: Vec<TurnView>,
     pub pending_approvals: Vec<crate::commands::approval::PendingApprovalInfo>,
+    /// Empty for every conversation that has never delegated.
+    pub sub_agent_runs: Vec<SubAgentRunView>,
 }
 
 /// One conversation, read as one state rather than assembled from several.
@@ -108,20 +131,34 @@ pub async fn conversation_snapshot(
 
     let mut settled = None;
     for attempt in 0..SNAPSHOT_ATTEMPTS {
-        let seen = coordinator.observe(&conversation_id);
-        let read = read_off_thread(&pool, &conversation_id, Live::Holding(seen.held())).await?;
-        if coordinator.unchanged_since(&seen) {
+        // The children have to be named before the coordinator is read, because
+        // each of them is a separate entry in it. Reading them after would leave
+        // a sub-agent spawned in the gap judged against a reading that never
+        // looked at its conversation.
+        let children = children_off_thread(&pool, &conversation_id).await?;
+        let mut seen = Vec::with_capacity(children.len() + 1);
+        seen.push(coordinator.observe(&conversation_id));
+        seen.extend(children.iter().map(|c| coordinator.observe(c)));
+
+        let read = read_off_thread(&pool, &conversation_id, Live::Holding(&seen)).await?;
+
+        // Two ways this pass can be unusable: something started or stopped in
+        // one of the conversations, or the set of conversations itself changed —
+        // a run delegated between naming the children and reading them would be
+        // judged against no reading at all.
+        let same_children = read.3.iter().map(|r| r.conversation_id.as_str()).eq(children.iter().map(String::as_str));
+        if same_children && seen.iter().all(|s| coordinator.unchanged_since(s)) {
             settled = Some(read);
             break;
         }
         tracing::debug!(
             conversation_id = %conversation_id,
             attempt,
-            "a turn started or ended mid-snapshot; reading again",
+            "a turn or a sub-agent started or ended mid-snapshot; reading again",
         );
     }
 
-    let (conversation, tree, turns) = match settled {
+    let (conversation, tree, turns, sub_agent_runs) = match settled {
         Some(read) => read,
         // Turns are starting and stopping faster than the conversation can be
         // read. Rather than pick one of the passes and hope, this one refuses to
@@ -138,7 +175,7 @@ pub async fn conversation_snapshot(
     };
 
     let pending_approvals = crate::commands::approval::pending_for(&app, &conversation_id);
-    Ok(ConversationSnapshot { conversation, tree, turns, pending_approvals })
+    Ok(ConversationSnapshot { conversation, tree, turns, pending_approvals, sub_agent_runs })
 }
 
 /// How many passes before the snapshot gives up on pinning the coordinator down.
@@ -148,7 +185,27 @@ pub async fn conversation_snapshot(
 /// hammering this process.
 const SNAPSHOT_ATTEMPTS: usize = 4;
 
-type SnapshotRead = (db::models::conversation::Conversation, MessageTree, Vec<TurnView>);
+type SnapshotRead = (
+    db::models::conversation::Conversation,
+    MessageTree,
+    Vec<TurnView>,
+    Vec<SubAgentRunView>,
+);
+
+async fn children_off_thread(
+    pool: &db::DbPool,
+    conversation_id: &str,
+) -> Result<Vec<String>, String> {
+    let pool = pool.clone();
+    let conv_id = conversation_id.to_string();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        db::ops::conversation::sub_agent_conversation_ids(&mut conn, &conv_id)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
 
 async fn read_off_thread(
     pool: &db::DbPool,
@@ -160,18 +217,21 @@ async fn read_off_thread(
     let live = live.owned();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        read_snapshot(&mut conn, &conv_id, live.borrowed())
+        read_snapshot(&mut conn, &conv_id, &live)
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-/// What the coordinator had to say about this conversation, or that it would
-/// not hold still long enough to say anything.
+/// What the coordinator had to say about the conversations being read, or that
+/// it would not hold still long enough to say anything.
+///
+/// Several conversations, not one: a turn and every sub-agent it delegated to
+/// occupy separate entries, and a row is only judged against the reading of its
+/// own conversation.
 #[derive(Clone)]
 enum Live<'a> {
-    /// The turn it was holding, `None` for none at all.
-    Holding(Option<&'a str>),
+    Holding(&'a [crate::turn::Observed]),
     /// It kept moving. No row is called interrupted on this pass.
     Unsettled,
 }
@@ -179,24 +239,36 @@ enum Live<'a> {
 /// The same thing, minus the borrow, for crossing into `spawn_blocking`.
 #[derive(Clone)]
 enum OwnedLive {
-    Holding(Option<String>),
+    Holding(std::collections::HashMap<String, Option<String>>),
     Unsettled,
 }
 
 impl Live<'_> {
     fn owned(&self) -> OwnedLive {
         match self {
-            Live::Holding(id) => OwnedLive::Holding(id.map(str::to_string)),
+            Live::Holding(seen) => OwnedLive::Holding(
+                seen.iter()
+                    .map(|o| (o.conversation_id().to_string(), o.held().map(str::to_string)))
+                    .collect(),
+            ),
             Live::Unsettled => OwnedLive::Unsettled,
         }
     }
 }
 
 impl OwnedLive {
-    fn borrowed(&self) -> Live<'_> {
+    /// Whether this row belongs to a turn that stopped without saying so.
+    ///
+    /// A conversation nobody read is never judged: `Unsettled` means the whole
+    /// pass is untrustworthy, and a missing entry means this reader never looked
+    /// at that conversation, which is the same thing for the rows in it.
+    fn cut_off(&self, turn: &db::models::turn::Turn) -> bool {
         match self {
-            OwnedLive::Holding(id) => Live::Holding(id.as_deref()),
-            OwnedLive::Unsettled => Live::Unsettled,
+            OwnedLive::Holding(held) => match held.get(&turn.conversation_id) {
+                Some(h) => crate::agent::interrupted::was_cut_off(turn, h.as_deref()),
+                None => false,
+            },
+            OwnedLive::Unsettled => false,
         }
     }
 }
@@ -213,7 +285,7 @@ impl OwnedLive {
 fn read_snapshot(
     conn: &mut db::PooledConn,
     conversation_id: &str,
-    live: Live<'_>,
+    live: &OwnedLive,
 ) -> Result<SnapshotRead, String> {
     conn.transaction::<_, diesel::result::Error, _>(|conn| {
         let (conversation, tree) = read_tree_with_conversation(conn, conversation_id)
@@ -221,7 +293,7 @@ fn read_snapshot(
         let turns = db::ops::turn::list_for_conversation(conn, conversation_id)?
             .into_iter()
             .map(|t| TurnView {
-                status: effective_status(&t, &live),
+                status: effective_status(&t, live),
                 id: t.id,
                 phase: t.phase,
                 phase_tool: t.phase_tool,
@@ -230,7 +302,20 @@ fn read_snapshot(
                 ended_at: t.ended_at,
             })
             .collect();
-        Ok((conversation, tree, turns))
+        let sub_agent_runs = db::ops::conversation::sub_agent_runs(conn, conversation_id)?
+            .into_iter()
+            .map(|r| SubAgentRunView {
+                status: r.turn.as_ref().map(|t| effective_status(t, live)),
+                conversation_id: r.conversation_id,
+                spawned_by_message_id: r.spawned_by_message_id,
+                spawned_by_call_id: r.spawned_by_call_id,
+                spawned_turn_id: r.spawned_turn_id,
+                agent_kind: r.agent_kind,
+                title: r.title,
+                steps: r.steps,
+            })
+            .collect();
+        Ok((conversation, tree, turns, sub_agent_runs))
     })
     .map_err(|e| e.to_string())
 }
@@ -240,12 +325,11 @@ fn read_snapshot(
 /// Kept as the stored string rather than a typed enum so a status written by a
 /// later build travels through unrecognised instead of being flattened into
 /// something this one happens to know.
-fn effective_status(turn: &db::models::turn::Turn, live: &Live<'_>) -> String {
-    match live {
-        Live::Holding(held) if crate::agent::interrupted::was_cut_off(turn, *held) => {
-            db::models::turn::TurnStatus::Interrupted.as_str().to_string()
-        }
-        _ => turn.status.clone(),
+fn effective_status(turn: &db::models::turn::Turn, live: &OwnedLive) -> String {
+    if live.cut_off(turn) {
+        db::models::turn::TurnStatus::Interrupted.as_str().to_string()
+    } else {
+        turn.status.clone()
     }
 }
 
@@ -517,9 +601,16 @@ mod tests {
             .unwrap();
     }
 
+    /// One conversation's reading, in the shape the snapshot carries several of.
+    fn holding(conversation_id: &str, held: Option<&str>) -> OwnedLive {
+        OwnedLive::Holding(
+            [(conversation_id.to_string(), held.map(str::to_string))].into_iter().collect(),
+        )
+    }
+
     fn snapshot(pool: &crate::db::DbPool, held: Option<&str>) -> Vec<TurnView> {
         let mut conn = pool.get().unwrap();
-        read_snapshot(&mut conn, "c1", Live::Holding(held)).unwrap().2
+        read_snapshot(&mut conn, "c1", &holding("c1", held)).unwrap().2
     }
 
     /// When the coordinator will not hold still, nothing is called interrupted.
@@ -527,7 +618,7 @@ mod tests {
     /// turn labelled as crashed is a lie the user reads now.
     fn unsettled(pool: &crate::db::DbPool) -> Vec<TurnView> {
         let mut conn = pool.get().unwrap();
-        read_snapshot(&mut conn, "c1", Live::Unsettled).unwrap().2
+        read_snapshot(&mut conn, "c1", &OwnedLive::Unsettled).unwrap().2
     }
 
     /// The whole reason the status is decided here rather than in the front
@@ -684,6 +775,9 @@ mod tests {
                     source: None,
                     turn_id: Some("t1"),
                     tool_outcome: None,
+                    cache_read_tokens: None,
+                    cache_write_tokens: None,
+                    provider_name: None,
                 },
                 None,
             )
@@ -691,8 +785,8 @@ mod tests {
         }
 
         let mut conn = pool.get().unwrap();
-        let (conv, tree, turns) =
-            read_snapshot(&mut conn, "c1", Live::Holding(Some("t1"))).unwrap();
+        let (conv, tree, turns, runs) =
+            read_snapshot(&mut conn, "c1", &holding("c1", Some("t1"))).unwrap();
 
         assert_eq!(conv.id, "c1");
         assert_eq!(tree.messages.len(), 1);
@@ -700,5 +794,59 @@ mod tests {
         assert_eq!(tree.head_message_id.as_deref(), Some(tree.messages[0].id.as_str()));
         assert_eq!(turns.len(), 1);
         assert_eq!(turns[0].id, "t1");
+        assert!(runs.is_empty(), "a conversation that never delegated has no runs");
+    }
+
+    /// A sub-agent occupies its own conversation, so the parent's revision does
+    /// not move when its lease is taken or dropped. Judging the child's row
+    /// against the parent's reading would leave a run that died in a panic
+    /// spinning on the card for ever.
+    #[test]
+    fn a_child_that_stopped_without_saying_so_is_judged_against_its_own_conversation() {
+        let pool = crate::db::test_db();
+        seed(&pool);
+        let mut conn = pool.get().unwrap();
+
+        crate::db::ops::conversation::insert(
+            &mut conn,
+            crate::db::models::conversation::NewConversation {
+                id: "child",
+                title: Some("look it up"),
+                created_at: 10,
+                updated_at: 10,
+                parent_conversation_id: Some("c1"),
+                spawned_by_message_id: Some("m1"),
+                spawned_by_call_id: Some("0"),
+                spawned_turn_id: Some("t-child"),
+                agent_kind: Some("explore"),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        crate::db::ops::turn::begin(&mut conn, "t-child", "child", TurnOrigin::SubAgent, 10)
+            .unwrap();
+
+        // The parent is being read while it holds its own turn. Nobody holds the
+        // child's, so the child's `running` row is a run that stopped.
+        let live = OwnedLive::Holding(
+            [("c1".to_string(), Some("t1".to_string())), ("child".to_string(), None)]
+                .into_iter()
+                .collect(),
+        );
+        let runs = read_snapshot(&mut conn, "c1", &live).unwrap().3;
+        assert_eq!(runs[0].status.as_deref(), Some("interrupted"));
+
+        // Still held: still running.
+        let live = OwnedLive::Holding(
+            [("c1".to_string(), None), ("child".to_string(), Some("t-child".to_string()))]
+                .into_iter()
+                .collect(),
+        );
+        let runs = read_snapshot(&mut conn, "c1", &live).unwrap().3;
+        assert_eq!(runs[0].status.as_deref(), Some("running"));
+
+        // And when the coordinator would not hold still, no run is accused.
+        let runs = read_snapshot(&mut conn, "c1", &OwnedLive::Unsettled).unwrap().3;
+        assert_eq!(runs[0].status.as_deref(), Some("running"));
     }
 }

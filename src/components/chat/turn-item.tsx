@@ -18,6 +18,7 @@ import { useCollapseScrollAnchor } from '@/hooks/use-collapse-scroll-anchor'
 import { useConversationStore } from '@/stores/conversation-store'
 import { answerAnchorId, formatDuration, hasCollapsibleProcess, type Turn } from '@/lib/turns'
 import type { EmojiMap } from './emoji-renderer'
+import type { SenderNames } from '@/hooks/use-sender-names'
 
 /** Long enough for `handleStop`'s reload to land first. Collapsing before it
  *  arrives would shrink the turn once, then reflow again when the snapshot
@@ -57,6 +58,8 @@ export interface TurnItemProps {
   onRate?: (id: string, rating: number | null) => void
   isOneBot?: boolean
   emojiMap?: EmojiMap
+  /** Nicknames for the ids on user rows. Only a group has more than one. */
+  senderNames?: SenderNames
   assistantAvatar?: string | null
   className?: string
 }
@@ -80,6 +83,7 @@ export const TurnItem = React.memo(function TurnItem({
   onRate,
   isOneBot,
   emojiMap,
+  senderNames,
   assistantAvatar,
   className,
 }: TurnItemProps) {
@@ -244,6 +248,7 @@ export const TurnItem = React.memo(function TurnItem({
         onEdit={!streaming ? onEdit : undefined}
         isOneBot={isOneBot}
         emojiMap={emojiMap}
+        senderNames={senderNames}
         assistantAvatar={assistantAvatar}
       />
     </ErrorBoundary>

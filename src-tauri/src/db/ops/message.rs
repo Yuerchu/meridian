@@ -1,7 +1,7 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::message::{Message, NewMessage};
+use crate::db::models::message::{Message, MessageUsage, NewMessage};
 use crate::db::schema::{conversations, messages};
 
 /// Append a message to the end of a conversation's active path.
@@ -25,13 +25,42 @@ pub fn append_message(
     new: &NewMessage,
     parent: Option<&str>,
 ) -> QueryResult<Message> {
-    conn.transaction(|conn| {
+    let row = conn.transaction(|conn| {
         let row = insert_message(conn, &NewMessage { parent_id: parent, ..copy_of(new) })?;
         diesel::update(conversations::table.find(new.conversation_id))
             .set(conversations::head_message_id.eq(Some(&row.id)))
             .execute(conn)?;
-        Ok(row)
-    })
+        Ok::<_, diesel::result::Error>(row)
+    })?;
+    audit_copy(conn, &row);
+    Ok(row)
+}
+
+/// Keep a copy of what someone said where deleting the conversation cannot reach
+/// it.
+///
+/// Outside the transaction above, and its failure is logged rather than
+/// returned. A database that cannot take the audit copy is worth shouting about,
+/// but rolling the message itself back because of it would turn a bookkeeping
+/// fault into the user's message disappearing as they watch.
+///
+/// Only user rows. An assistant reply is recorded by `complete_assistant`, once
+/// it has content and token counts — recording the placeholder here would file an
+/// empty row and then a full one for every turn. Tool results are left out
+/// altogether: they are our own text, and their arguments carry file contents and
+/// command output this table has no business holding a second copy of. A
+/// compaction summary is not something anyone said.
+fn audit_copy(conn: &mut SqliteConnection, row: &Message) {
+    if row.role != "user" || row.is_compact_summary != 0 {
+        return;
+    }
+    if let Err(e) = crate::db::ops::audit::record(conn, row) {
+        tracing::error!(
+            error = %e,
+            message_id = %row.id,
+            "the audit copy of a message could not be written",
+        );
+    }
 }
 
 /// Where the active path currently ends.
@@ -183,9 +212,21 @@ fn copy_of<'a>(n: &NewMessage<'a>) -> NewMessage<'a> {
         compact_anchor_id: n.compact_anchor_id,
         turn_id: n.turn_id,
         tool_outcome: n.tool_outcome,
+        cache_read_tokens: n.cache_read_tokens,
+        cache_write_tokens: n.cache_write_tokens,
+        provider_name: n.provider_name,
     }
 }
 
+/// Selected by name rather than by position.
+///
+/// `load::<Message>` maps columns to fields in declaration order, so two
+/// adjacent columns of the same type are held apart by nothing but the order of
+/// two files agreeing. `messages` now has `cache_read_tokens` and
+/// `cache_write_tokens` side by side, both `Nullable<Integer>`: transposing them
+/// in either `schema.rs` or the struct would compile, pass every test, and
+/// quietly report each cache write as a read for the rest of the table's life.
+/// `as_select()` makes that a compile error instead.
 pub fn list_messages(
     conn: &mut SqliteConnection,
     conversation_id: &str,
@@ -193,7 +234,8 @@ pub fn list_messages(
     messages::table
         .filter(messages::conversation_id.eq(conversation_id))
         .order(messages::sort_order.asc())
-        .load::<Message>(conn)
+        .select(Message::as_select())
+        .load(conn)
 }
 
 pub fn insert_message(
@@ -226,41 +268,37 @@ pub fn update_content_and_tool_calls(
     Ok(())
 }
 
+/// One row by id. Selected by name, for the reason `list_messages` is.
+pub fn get_message(conn: &mut SqliteConnection, id: &str) -> QueryResult<Message> {
+    messages::table.find(id).select(Message::as_select()).first(conn)
+}
+
 pub fn update_assistant_message(
     conn: &mut SqliteConnection,
     id: &str,
     content: &str,
     reasoning_content: Option<&str>,
     tool_calls: Option<&str>,
-    input_tokens: Option<i32>,
-    output_tokens: Option<i32>,
+    usage: &MessageUsage,
 ) -> QueryResult<()> {
     diesel::update(messages::table.find(id))
         .set((
             messages::content.eq(content),
             messages::reasoning_content.eq(reasoning_content),
             messages::tool_calls.eq(tool_calls),
-            messages::input_tokens.eq(input_tokens),
-            messages::output_tokens.eq(output_tokens),
+            messages::input_tokens.eq(usage.input_tokens),
+            messages::output_tokens.eq(usage.output_tokens),
+            messages::cache_read_tokens.eq(usage.cache_read_tokens),
+            messages::cache_write_tokens.eq(usage.cache_write_tokens),
         ))
         .execute(conn)?;
     Ok(())
 }
 
-pub fn update_tokens(
-    conn: &mut SqliteConnection,
-    id: &str,
-    input_tokens: Option<i32>,
-    output_tokens: Option<i32>,
-) -> QueryResult<()> {
-    diesel::update(messages::table.find(id))
-        .set((
-            messages::input_tokens.eq(input_tokens),
-            messages::output_tokens.eq(output_tokens),
-        ))
-        .execute(conn)?;
-    Ok(())
-}
+// `update_tokens` was here, and had no callers. It wrote the same two columns
+// `update_assistant_message` writes, from nowhere, which meant a second answer
+// to "how does a row get its token counts" that could drift from the first. The
+// cache columns would have doubled that surface for nothing.
 
 pub fn update_rating(
     conn: &mut SqliteConnection,
@@ -496,7 +534,134 @@ mod tests {
             source: None,
             turn_id: None,
             tool_outcome: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            provider_name: None,
         }
+    }
+
+    /// Every field handed to `append_message` comes back out of it.
+    ///
+    /// `copy_of` is written by hand, field by field, with no `..` spread to
+    /// carry anything along — that is what lets `append_message` override
+    /// `parent_id` without every caller having to pass one. The cost is that a
+    /// column added to `NewMessage` produces a missing-field error inside
+    /// `copy_of`, and the shortest way to silence that error is to write
+    /// `None`. Which compiles, and drops the value on every insert, and breaks
+    /// no other test in the suite.
+    ///
+    /// The `Message` below is destructured rather than read field by field on
+    /// purpose. An exhaustive pattern with no `..` fails to compile when a
+    /// column is added, so this test cannot silently stop covering the table —
+    /// which is the only property that makes it worth having.
+    ///
+    /// Distinct values everywhere, and deliberately distinct *within* each pair
+    /// of same-typed columns: input 7 against output 11, cache read 41 against
+    /// cache write 43. Two `Option<i32>` columns holding the same number would
+    /// pass while transposed, and transposition is exactly what the positional
+    /// `Queryable` mapping makes possible.
+    #[test]
+    fn append_message_keeps_every_field_it_was_given() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        let root = append_message(&mut conn, &row("root", "c1", "user"), None).unwrap();
+
+        let full = NewMessage {
+            id: "m1",
+            conversation_id: "c1",
+            role: "assistant",
+            content: "the answer",
+            // No providers row in this fixture, and the foreign key is enforced
+            // — the name travels beside it precisely so a report does not need
+            // that row to still exist.
+            provider_id: None,
+            provider_name: Some("DeepSeek"),
+            model_id: Some("deepseek-chat"),
+            input_tokens: Some(7),
+            output_tokens: Some(11),
+            cache_read_tokens: Some(41),
+            cache_write_tokens: Some(43),
+            tool_calls: Some("[]"),
+            tool_call_id: Some("call-1"),
+            sort_order: 0,
+            created_at: 1234,
+            reasoning_content: Some("thinking"),
+            rating: Some(1),
+            schema_version: 2,
+            is_compact_summary: 0,
+            sender_id: Some(99),
+            // Overridden by `append_message` — that is the whole reason
+            // `copy_of` exists, so it is asserted below rather than round-tripped.
+            parent_id: None,
+            // A real row: migration 21 put a foreign key on this one, unlike
+            // `parent_id` beside it.
+            compact_anchor_id: Some(root.id.as_str()),
+            source: Some("voice"),
+            turn_id: Some("t1"),
+            tool_outcome: Some("success"),
+        };
+        append_message(&mut conn, &full, Some(&root.id)).unwrap();
+
+        let stored = list_messages(&mut conn, "c1")
+            .unwrap()
+            .into_iter()
+            .find(|m| m.id == "m1")
+            .expect("the row that was just written");
+
+        let Message {
+            id,
+            conversation_id,
+            role,
+            content,
+            provider_id,
+            model_id,
+            input_tokens,
+            output_tokens,
+            tool_calls,
+            tool_call_id,
+            sort_order,
+            created_at,
+            reasoning_content,
+            rating,
+            schema_version,
+            is_compact_summary,
+            sender_id,
+            parent_id,
+            compact_anchor_id,
+            source,
+            turn_id,
+            tool_outcome,
+            cache_read_tokens,
+            cache_write_tokens,
+            provider_name,
+        } = stored;
+
+        assert_eq!(id, "m1");
+        assert_eq!(conversation_id, "c1");
+        assert_eq!(role, "assistant");
+        assert_eq!(content, "the answer");
+        assert_eq!(provider_id, None);
+        assert_eq!(provider_name.as_deref(), Some("DeepSeek"));
+        assert_eq!(model_id.as_deref(), Some("deepseek-chat"));
+        assert_eq!(input_tokens, Some(7));
+        assert_eq!(output_tokens, Some(11));
+        assert_eq!(cache_read_tokens, Some(41), "a read must not land in the write column");
+        assert_eq!(cache_write_tokens, Some(43));
+        assert_eq!(tool_calls.as_deref(), Some("[]"));
+        assert_eq!(tool_call_id.as_deref(), Some("call-1"));
+        assert!(sort_order > 0, "assigned by the trigger");
+        assert_eq!(created_at, 1234);
+        assert_eq!(reasoning_content.as_deref(), Some("thinking"));
+        assert_eq!(rating, Some(1));
+        assert_eq!(schema_version, 2);
+        assert_eq!(is_compact_summary, 0);
+        assert_eq!(sender_id, Some(99));
+        assert_eq!(parent_id.as_deref(), Some("root"), "the one field the copy overrides");
+        assert_eq!(compact_anchor_id.as_deref(), Some("root"));
+        assert_eq!(source.as_deref(), Some("voice"));
+        assert_eq!(turn_id.as_deref(), Some("t1"));
+        assert_eq!(tool_outcome.as_deref(), Some("success"));
     }
 
     #[test]

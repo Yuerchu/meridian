@@ -34,6 +34,11 @@ use tokio_util::sync::CancellationToken;
 pub enum TurnOrigin {
     Desktop,
     OneBot,
+    /// A turn a `run_agent` call delegated. It runs in a conversation of its
+    /// own, so it contends with nobody — but the distinction is what lets an
+    /// interruption report say "a sub-agent was partway through" instead of
+    /// naming a conversation the user has never seen.
+    SubAgent,
 }
 
 impl TurnOrigin {
@@ -43,15 +48,16 @@ impl TurnOrigin {
         match self {
             TurnOrigin::Desktop => "desktop",
             TurnOrigin::OneBot => "onebot",
+            TurnOrigin::SubAgent => "sub_agent",
         }
     }
 
     /// Read side, for whoever reports on a stored turn.
-    #[allow(dead_code)]
     pub fn parse(value: &str) -> Result<Self, String> {
         match value {
             "desktop" => Ok(TurnOrigin::Desktop),
             "onebot" => Ok(TurnOrigin::OneBot),
+            "sub_agent" => Ok(TurnOrigin::SubAgent),
             other => Err(format!("unknown turn origin '{other}'")),
         }
     }
@@ -101,6 +107,12 @@ impl std::fmt::Display for Busy {
             }
             Busy::Turn(TurnOrigin::OneBot) => {
                 write!(f, "This conversation is being answered from QQ right now. Wait for that turn to finish.")
+            }
+            // Reachable from the sub-agent's own conversation, which the user
+            // can open while it runs. Not from the parent's: a delegated run
+            // occupies a conversation nobody else is writing to.
+            Busy::Turn(TurnOrigin::SubAgent) => {
+                write!(f, "A sub-agent is working in this conversation. Wait for it to finish, or stop it first.")
             }
             Busy::Mutation(kind) => {
                 write!(f, "This conversation is busy: {kind} is in progress.")
@@ -174,6 +186,13 @@ impl Observed {
     pub fn held(&self) -> Option<&str> {
         self.held.as_deref()
     }
+
+    /// Which conversation this reading is about. A reader judging several at
+    /// once — a turn and the sub-agents it delegated to — keeps one of these per
+    /// conversation and needs to know which is which.
+    pub fn conversation_id(&self) -> &str {
+        &self.conversation_id
+    }
 }
 
 impl TurnCoordinator {
@@ -213,7 +232,25 @@ impl TurnCoordinator {
         origin: TurnOrigin,
         turn_id: String,
     ) -> Result<TurnLease, Busy> {
-        let cancel = CancellationToken::new();
+        self.try_acquire_turn_with(conversation_id, origin, turn_id, CancellationToken::new())
+    }
+
+    /// Same again, under a token the caller already has.
+    ///
+    /// Which matters when the turn is not the only thing that can stop it. A
+    /// delegated run has to end when its own conversation is stopped *and* when
+    /// the turn that spawned it is, so it is entered under a child of the
+    /// parent's token. Minting a fresh one here instead would put a different
+    /// token in the register from the one the runner is watching, and Stop on
+    /// the sub-agent's conversation would cancel something nobody was waiting
+    /// on — a button that reads as broken rather than as unimplemented.
+    pub fn try_acquire_turn_with(
+        self: &Arc<Self>,
+        conversation_id: &str,
+        origin: TurnOrigin,
+        turn_id: String,
+        cancel: CancellationToken,
+    ) -> Result<TurnLease, Busy> {
         {
             let mut map = self.lock();
             if let Some(occupant) = map.by_conversation.get(conversation_id) {
@@ -435,6 +472,45 @@ mod tests {
             c.try_acquire_mutation("conv-1", "delete").err(),
             Some(Busy::Turn(TurnOrigin::Desktop)),
         );
+    }
+
+    /// A run entered under somebody else's token answers to both of them.
+    ///
+    /// The register has to hold the *same* token the runner is watching. Minting
+    /// a fresh one here would leave Stop on this conversation cancelling
+    /// something nobody awaits, and the parent's Stop reaching a child that
+    /// carries on regardless.
+    #[test]
+    fn a_lease_entered_under_a_caller_token_answers_to_it_and_to_stop() {
+        let c = coordinator();
+        let parent = CancellationToken::new();
+
+        let lease = c
+            .try_acquire_turn_with(
+                "child",
+                TurnOrigin::SubAgent,
+                "t-child".into(),
+                parent.child_token(),
+            )
+            .expect("free");
+
+        // Stopping the conversation stops the token the runner is holding.
+        assert!(c.cancel("child", None));
+        assert!(lease.cancel_token().is_cancelled());
+        drop(lease);
+
+        // And the other direction: the parent going away takes the child with it.
+        let lease = c
+            .try_acquire_turn_with(
+                "child",
+                TurnOrigin::SubAgent,
+                "t-again".into(),
+                parent.child_token(),
+            )
+            .expect("released");
+        assert!(!lease.cancel_token().is_cancelled());
+        parent.cancel();
+        assert!(lease.cancel_token().is_cancelled());
     }
 
     /// A panic unwinds through the lease, which is the only cleanup path a

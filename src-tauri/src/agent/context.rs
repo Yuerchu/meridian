@@ -63,14 +63,40 @@ pub(crate) fn build_messages_with_senders(
     // three token-estimation callers did not, so the estimate counted rows that
     // never went out.
     remove_orphan_tool_messages(&mut msgs);
+    attach_sender_note(&mut msgs);
     msgs
+}
+
+/// Explain the `<sender>` marker once, in the system prompt, whenever anyone in
+/// this payload is attributed.
+///
+/// Lives here rather than in each adapter because the marker is no longer a
+/// fallback for formats lacking a `name` field — it is how every format carries
+/// a speaker — so the explanation is not a per-adapter concern either.
+fn attach_sender_note(msgs: &mut Vec<ChatMessage>) {
+    if !provider::needs_sender_note(msgs) {
+        return;
+    }
+    if let Some(system) = msgs.first_mut().filter(|m| m.role == "system") {
+        system.content.push_str("\n\n");
+        system.content.push_str(provider::SENDER_PREFIX_NOTE);
+        return;
+    }
+    msgs.insert(0, ChatMessage {
+        role: "system".into(),
+        content: provider::SENDER_PREFIX_NOTE.into(),
+        reasoning_content: None,
+        tool_calls: None,
+        tool_call_id: None,
+        signature: None,
+        origin: provider::MessageOrigin::Assistant,
+    });
 }
 
 fn sender_ref(user_id: i64, names: &SenderNames) -> SenderRef {
     SenderRef {
         user_id,
         nickname: names.get(&user_id).cloned(),
-        role: None,
     }
 }
 
@@ -349,6 +375,9 @@ mod tests {
             source: None,
             turn_id: None,
             tool_outcome: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            provider_name: None,
         }
     }
 
@@ -646,6 +675,9 @@ mod injected_context_tests {
             source: None,
             turn_id: None,
             tool_outcome: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            provider_name: None,
         }];
         let context = crate::db::ops::message::ActiveContext {
             path: Vec::new(),

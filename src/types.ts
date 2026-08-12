@@ -135,8 +135,14 @@ export interface ToolCallDisplay {
    *  unanswered one is doing anything; the rest read as `running` from the
    *  transcript and are corrected at render from their position. Keeping it out
    *  of the store is the point — a stored copy would have to be promoted every
-   *  time a result landed, and would be wrong in between. */
-  status: 'pending' | 'approved' | 'denied' | 'running' | 'queued' | 'completed' | 'error' | 'orphaned'
+   *  time a result landed, and would be wrong in between.
+   *
+   *  `awaiting_parent` is a delegated run's call, seen from inside the
+   *  sub-agent. It is genuinely waiting on a person, but not on anyone reading
+   *  this transcript — the question was put on the card that spawned the run,
+   *  which is where somebody is actually looking. Drawn without buttons, so
+   *  there is only ever one place an answer can come from. */
+  status: 'pending' | 'approved' | 'denied' | 'running' | 'queued' | 'completed' | 'error' | 'orphaned' | 'awaiting_parent'
   result?: string
   /** What the buttons answer with while this call is `pending`. Minted by the
    *  backend per approval rather than taken from the provider's call id, which
@@ -147,6 +153,40 @@ export interface ToolCallDisplay {
   /** Present exactly when this is a sandbox-blocked call asking to be retried
    *  without the sandbox. The retry reuses the original call id. */
   retry_reason?: string
+  /** Set on a `run_agent` call once its run exists. */
+  sub_agent?: SubAgentRunDisplay
+  /** A question the delegated run is asking. It belongs to a tool call in
+   *  another conversation, so it arrives as a whole rather than as a status on
+   *  this card — this card's own status stays `running`, because `run_agent`
+   *  really is still going. */
+  nested_approval?: NestedApproval
+}
+
+/** The delegated run a `run_agent` call started. */
+export interface SubAgentRunDisplay {
+  /** Where it is happening. Hidden from the sidebar; reachable only from here. */
+  conversation_id: string
+  /** The run itself. The card counts steps against this rather than against the
+   *  conversation, whose later turns may be a follow-up chat. */
+  turn_id: string
+  kind?: string
+  /** Assistant iterations — how many times the model was asked. From the
+   *  snapshot; while the run is live the store's own counter is ahead of it. */
+  steps: number
+}
+
+/** A tool call inside a delegated run, waiting on the person watching the
+ *  parent. */
+export interface NestedApproval {
+  approval_id: string
+  /** The call id *in the sub-agent's conversation*. Never used to place this —
+   *  the `run_agent` card is what places it — only to say what is being asked. */
+  call_id: string
+  tool_name: string
+  arguments: string
+  retry_reason?: string
+  /** Where to go to watch what led to the question. */
+  sub_conversation_id?: string
 }
 
 /** One run of the agent loop, as the backend recorded it.
@@ -184,19 +224,50 @@ export interface ConversationSnapshot {
   tree: MessageTree
   turns: TurnRecord[]
   pending_approvals: PendingApprovalInfo[]
+  /** Empty for every conversation that has never delegated. */
+  sub_agent_runs: SubAgentRunView[]
+}
+
+/** One delegated run, as the conversation that started it sees it. */
+export interface SubAgentRunView {
+  conversation_id: string
+  /** Which `run_agent` call started it — both halves, because a provider call
+   *  id repeats across the rows of one conversation. */
+  spawned_by_message_id: string | null
+  spawned_by_call_id: string | null
+  spawned_turn_id: string | null
+  agent_kind: string | null
+  title: string | null
+  steps: number
+  /** Already folded against the live register, so `running` here means running.
+   *  `null` when the delegating turn's row has gone. */
+  status: string | null
 }
 
 /** A tool call the backend is still holding a turn open for. Recovered on load,
  *  since the streamed event that first announced it is gone by then. */
 export interface PendingApprovalInfo {
   approval_id: string
+  /** The row the card hangs off *in this conversation*. For a delegated run the
+   *  parent names its own `run_agent` row and the sub-agent names the row the
+   *  call is on. */
   assistant_message_id: string
   provider_call_id: string
   /** The call this one retries. Set only for sandbox escalations, where it
    *  currently equals `provider_call_id` — a retry reuses the id. */
   origin_call_id?: string
   tool_name: string
+  /** What the tool was called with. Sent rather than read off the transcript,
+   *  because a delegated call's row is in another conversation. */
+  arguments: string
   retry_reason?: string
+  /** Shown here, answered elsewhere: this belongs to a delegated run and the
+   *  card draws without buttons. */
+  bubbled: boolean
+  /** Which `run_agent` call to nest the card under. Parent's view only. */
+  parent_call_id?: string
+  /** Where the delegated run can be watched. Parent's view only. */
+  sub_conversation_id?: string
 }
 
 export type ContentBlock =
@@ -245,6 +316,11 @@ export interface Message {
   parent_id?: string | null
   /** How the message was produced: null for typed, 'voice' for speech input. */
   source?: string | null
+  /** Platform id of whoever sent this, on surfaces where more than one person
+   *  can speak. Null on desktop rows, which have a single implicit author, and
+   *  on history written before speakers were attributed. The nickname is not
+   *  stored alongside it — nicknames change, so they are looked up separately. */
+  sender_id?: number | null
   /** Only on compaction summaries: the first message the summary stands in
    *  front of. */
   compact_anchor_id?: string | null
@@ -610,4 +686,19 @@ export interface StreamChunk {
   delay_ms?: number
   input_tokens?: number
   output_tokens?: number
+  /** On `sub_agent_started`, and on a `tool_approval_req` a delegated run
+   *  raised: which `run_agent` call on `message_id` this belongs under. Its
+   *  presence is what marks the event as being about a sub-agent. */
+  parent_call_id?: string
+  /** Where the delegated run is happening — the conversation to open when the
+   *  card is clicked. */
+  sub_conversation_id?: string
+  /** The turn that run *is*, which the card counts steps against. Not the
+   *  sub-agent conversation's latest turn: that becomes a follow-up chat the
+   *  moment anyone types into it. */
+  spawned_turn_id?: string
+  /** `explore` | `agent`, and the three-to-five words the parent wrote. Only on
+   *  `sub_agent_started`. */
+  kind?: string
+  description?: string
 }

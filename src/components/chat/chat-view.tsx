@@ -11,6 +11,7 @@ import { useTurns } from '@/hooks/use-turns'
 import { InputBar, type AttachedFile } from './input-bar'
 import { TodoBar } from './todo-bar'
 import { useEmojiMap } from './emoji-renderer'
+import { useSenderNames } from '@/hooks/use-sender-names'
 import { useConversationStore } from '@/stores/conversation-store'
 import { coerceThinkingLevel } from '@/lib/thinking'
 import type { Assistant, ChatMode, Message, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
@@ -76,6 +77,18 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   const [showCompactedMessages, setShowCompactedMessages] = useState(false)
   const [showCompactSummary, setShowCompactSummary] = useState(false)
   const emojiMap = useEmojiMap(selectedAssistantId)
+  // Only a OneBot conversation has more than one speaker; a desktop row has no
+  // sender id to look up. Keyed on who is actually in the transcript so a
+  // newcomer's first message fetches their nickname, and nothing else does.
+  const speakerKey = useMemo(() => {
+    if (!isOneBot) return null
+    const ids = new Set<number>()
+    for (const m of messages) {
+      if (m.sender_id != null) ids.add(m.sender_id)
+    }
+    return [...ids].sort((a, b) => a - b).join(',')
+  }, [isOneBot, messages])
+  const senderNames = useSenderNames(speakerKey)
   const { t } = useTranslation()
   const submittingRef = useRef(false)
 
@@ -505,6 +518,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
                     onDelete={handleDelete}
                     isOneBot={isOneBot}
                     emojiMap={emojiMap}
+                    senderNames={senderNames}
                     assistantAvatar={selectedAssistant?.avatar}
                   />
                 </div>
@@ -581,6 +595,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         onRate={handleRate}
         isOneBot={isOneBot}
         emojiMap={emojiMap}
+        senderNames={senderNames}
         assistantAvatar={selectedAssistant?.avatar}
         leading={leading}
         trailing={trailing}

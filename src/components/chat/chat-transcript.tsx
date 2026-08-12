@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/message-scroller'
 import { TurnItem } from './turn-item'
 import type { EmojiMap } from './emoji-renderer'
+import type { SenderNames } from '@/hooks/use-sender-names'
 import { answerAnchorId, type Turn } from '@/lib/turns'
 
 const MotionMessageScrollerItem = motion.create(MessageScrollerItem)
@@ -63,6 +64,8 @@ export interface ChatTranscriptProps {
   onRate?: (id: string, rating: number | null) => void
   isOneBot?: boolean
   emojiMap?: EmojiMap
+  /** Nicknames for the ids on user rows. Only a group has more than one. */
+  senderNames?: SenderNames
   assistantAvatar?: string | null
   /** Rows above the turns — the compacted region and its boundary marker. */
   leading?: React.ReactNode
@@ -90,6 +93,7 @@ export function ChatTranscript({
   onRate,
   isOneBot,
   emojiMap,
+  senderNames,
   assistantAvatar,
   leading,
   trailing,
@@ -120,6 +124,7 @@ export function ChatTranscript({
                   onRate={onRate}
                   isOneBot={isOneBot}
                   emojiMap={emojiMap}
+                  senderNames={senderNames}
                   assistantAvatar={assistantAvatar}
                 />
               )

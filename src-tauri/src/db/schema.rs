@@ -73,6 +73,13 @@ diesel::table! {
         mode -> Nullable<Text>,
         head_message_id -> Nullable<Text>,
         accept_edits -> Integer,
+        parent_conversation_id -> Nullable<Text>,
+        spawned_by_message_id -> Nullable<Text>,
+        spawned_by_call_id -> Nullable<Text>,
+        spawned_turn_id -> Nullable<Text>,
+        agent_kind -> Nullable<Text>,
+        agent_provider_id -> Nullable<Text>,
+        agent_model_id -> Nullable<Text>,
     }
 }
 
@@ -198,6 +205,31 @@ diesel::table! {
 }
 
 diesel::table! {
+    audit_messages (id) {
+        id -> Text,
+        recorded_at -> BigInt,
+        message_id -> Text,
+        conversation_id -> Text,
+        turn_id -> Nullable<Text>,
+        source_type -> Nullable<Text>,
+        source_id -> Nullable<Text>,
+        turn_origin -> Nullable<Text>,
+        role -> Text,
+        content -> Text,
+        sender_id -> Nullable<BigInt>,
+        sender_name -> Nullable<Text>,
+        provider_id -> Nullable<Text>,
+        provider_name -> Nullable<Text>,
+        model_id -> Nullable<Text>,
+        input_tokens -> Nullable<Integer>,
+        output_tokens -> Nullable<Integer>,
+        cache_read_tokens -> Nullable<Integer>,
+        cache_write_tokens -> Nullable<Integer>,
+        created_at -> BigInt,
+    }
+}
+
+diesel::table! {
     messages (id) {
         id -> Text,
         conversation_id -> Text,
@@ -221,6 +253,9 @@ diesel::table! {
         source -> Nullable<Text>,
         turn_id -> Nullable<Text>,
         tool_outcome -> Nullable<Text>,
+        cache_read_tokens -> Nullable<Integer>,
+        cache_write_tokens -> Nullable<Integer>,
+        provider_name -> Nullable<Text>,
     }
 }
 
@@ -400,6 +435,7 @@ diesel::table! {
         updated_at -> BigInt,
         ended_at -> Nullable<BigInt>,
         reported_at -> Nullable<BigInt>,
+        parent_reported_at -> Nullable<BigInt>,
     }
 }
 

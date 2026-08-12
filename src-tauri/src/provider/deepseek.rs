@@ -3,8 +3,8 @@ use eventsource_stream::Eventsource;
 use futures::stream::StreamExt;
 
 use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
-use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ToolCall, ToolDefinition, TokenUsage};
-use super::openai_compat::{ChatChunk, parse_openai_sse_events};
+use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ToolCall, ToolDefinition};
+use super::openai_compat::{ChatChunk, ChunkUsage, normalise_openai_usage, parse_openai_sse_events};
 
 pub struct DeepSeekProvider {
     base_url: String,
@@ -193,13 +193,13 @@ impl ChatProvider for DeepSeekProvider {
             Vec::new()
         };
 
-        let usage = parsed.get("usage").map(|u| TokenUsage {
-            prompt_tokens: u["prompt_tokens"].as_i64().map(|v| v as i32),
-            completion_tokens: u["completion_tokens"].as_i64().map(|v| v as i32),
-            total_tokens: u["total_tokens"].as_i64().map(|v| v as i32),
-            cache_hit_tokens: u["prompt_cache_hit_tokens"].as_i64().map(|v| v as i32),
-            cache_miss_tokens: u["prompt_cache_miss_tokens"].as_i64().map(|v| v as i32),
-        });
+        // Same struct and same normaliser as the streaming path and as
+        // `openai_compat` — DeepSeek speaks that dialect, and a second hand-written
+        // mapping here is how the two would come to disagree about a cache hit.
+        let usage = parsed
+            .get("usage")
+            .and_then(|u| serde_json::from_value::<ChunkUsage>(u.clone()).ok())
+            .map(|u| normalise_openai_usage(&u));
 
         Ok(AgentResponse { text, reasoning_content, tool_calls, usage })
     }

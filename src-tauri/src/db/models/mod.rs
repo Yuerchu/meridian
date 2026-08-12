@@ -1,6 +1,7 @@
 pub mod assistant;
 pub mod assistant_emoji_pack;
 pub mod attachment;
+pub mod audit;
 pub mod conversation;
 pub mod emoji;
 pub mod emoji_pack;

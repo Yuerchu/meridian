@@ -1,4 +1,5 @@
 pub mod assistant;
+pub mod audit;
 pub mod conversation;
 pub mod emoji;
 pub mod emoji_pack;

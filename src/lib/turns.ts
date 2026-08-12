@@ -125,8 +125,11 @@ export function markQueued(
 ): boolean[] {
   let busy = false
   return statuses.map((status) => {
-    // Everything else has an outcome, and an outcome means it ran.
+    // Everything else has an outcome, and an outcome means it ran. A call
+    // waiting on the conversation above has not run either — it is waiting for
+    // an answer like a `pending` one, just not from anyone reading this.
     const unfinished = status === 'pending' || status === 'approved' || status === 'running'
+      || status === 'awaiting_parent'
     if (!unfinished) return false
     if (busy) return true
     busy = true
@@ -161,6 +164,10 @@ function blocksOf(message: Message): ContentBlock[] {
 function isPinned(step: TurnStep): boolean {
   if (step.kind !== 'tool') return false
   if (step.data.status === 'pending') return true
+  // A delegated run asking for permission. The card itself is only `running` —
+  // `run_agent` really is — so without this the one thing on screen that needs
+  // a person could sit inside a collapsed region.
+  if (step.data.nested_approval) return true
   // An interactive tool with no outcome yet is still holding the turn open.
   return INTERACTIVE_TOOLS.has(step.data.tool_name) && step.data.status === 'running'
 }

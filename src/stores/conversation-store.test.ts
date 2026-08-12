@@ -21,6 +21,7 @@ function snapshotOf(tree: MessageTree, over: Partial<ConversationSnapshot> = {})
     tree,
     turns: [],
     pending_approvals: [],
+    sub_agent_runs: [],
     ...over,
   }
 }
@@ -1056,5 +1057,195 @@ describe('branch state', () => {
     const live = session().messages.find((m) => m.id === 'live')!
     expect(live._blocks).toEqual([{ type: 'text', text: 'half a sentence' }])
     expect(session().switchingBranch).toBe(false)
+  })
+})
+
+describe('delegated runs', () => {
+  const store = () => useConversationStore.getState()
+
+  function callBlocks(msgs: Message[], messageId: string): ToolCallDisplay[] {
+    const row = msgs.find((m) => m.id === messageId)
+    return (row?._blocks ?? [])
+      .filter((b): b is Extract<ContentBlock, { type: 'tool_call' }> => b.type === 'tool_call')
+      .map((b) => b.data)
+  }
+
+  function delegator(id: string, callId: string): Message {
+    return msg(id, {
+      turn_id: 't1',
+      tool_calls: JSON.stringify([{
+        id: callId,
+        type: 'function',
+        function: { name: 'run_agent', arguments: '{"agent":"agent","description":"fix the test"}' },
+      }]),
+    })
+  }
+
+  // The card is named by the row *and* the call. A gateway that restarts its
+  // call ids at "0" makes two delegations share one, and matching on the call
+  // alone would put the second one's transcript on the first one's card.
+  it('attaches each run to the call that started it', () => {
+    const out = hydrateBlocks(
+      [delegator('a1', '0'), delegator('a2', '0')],
+      [],
+      [turnRecord('t1', 'running')],
+      [
+        { conversation_id: 'sub-1', spawned_by_message_id: 'a1', spawned_by_call_id: '0',
+          spawned_turn_id: 'run-1', agent_kind: 'agent', title: 'first', steps: 3, status: 'done' },
+        { conversation_id: 'sub-2', spawned_by_message_id: 'a2', spawned_by_call_id: '0',
+          spawned_turn_id: 'run-2', agent_kind: 'explore', title: 'second', steps: 1, status: 'running' },
+      ],
+    )
+
+    expect(callBlocks(out, 'a1')[0].sub_agent).toMatchObject({
+      conversation_id: 'sub-1', turn_id: 'run-1', steps: 3,
+    })
+    expect(callBlocks(out, 'a2')[0].sub_agent).toMatchObject({
+      conversation_id: 'sub-2', turn_id: 'run-2', steps: 1,
+    })
+  })
+
+  // The question happened inside the sub-agent, so the parent's own transcript
+  // has no row for it. It arrives whole and goes inside the `run_agent` card,
+  // which itself is still only running.
+  it('puts a delegated question inside the card that spawned the run', () => {
+    const out = hydrateBlocks(
+      [delegator('a1', '0')],
+      [{
+        approval_id: 'appr-1',
+        assistant_message_id: 'a1',
+        provider_call_id: 'child-call',
+        tool_name: 'run_command',
+        arguments: '{"command":"cargo test --all"}',
+        bubbled: false,
+        parent_call_id: '0',
+        sub_conversation_id: 'sub-1',
+      }],
+      [turnRecord('t1', 'running')],
+    )
+
+    const card = callBlocks(out, 'a1')[0]
+    expect(card.status).toBe('running')
+    expect(card.nested_approval).toMatchObject({
+      approval_id: 'appr-1',
+      tool_name: 'run_command',
+      // The reason it is stored rather than read back off the transcript.
+      arguments: '{"command":"cargo test --all"}',
+      sub_conversation_id: 'sub-1',
+    })
+  })
+
+  // Seen from inside the sub-agent, the same approval is real but unanswerable:
+  // it was put to whoever is watching the parent.
+  it('shows the call as waiting on the conversation above, with no way to answer', () => {
+    const caller = msg('a1', {
+      turn_id: 't1',
+      tool_calls: JSON.stringify([
+        { id: 'child-call', type: 'function', function: { name: 'run_command', arguments: '{}' } },
+      ]),
+    })
+    const out = hydrateBlocks(
+      [caller],
+      [{
+        approval_id: 'appr-1',
+        assistant_message_id: 'a1',
+        provider_call_id: 'child-call',
+        tool_name: 'run_command',
+        arguments: '{}',
+        bubbled: true,
+      }],
+      [turnRecord('t1', 'running')],
+    )
+
+    const card = callBlocks(out, 'a1')[0]
+    expect(card.status).toBe('awaiting_parent')
+    // Having an id and being answerable here are the same thing, so it has none.
+    expect(card.approval_id).toBeUndefined()
+  })
+
+  describe('live', () => {
+    const CONV = 'conv-1'
+
+    beforeEach(() => {
+      vi.clearAllMocks()
+      useConversationStore.setState({ sessions: {}, subAgentSteps: {} })
+      store().ensureSession(CONV)
+      store().handleMessageStart(CONV, 'a1', 'parent-turn')
+      store().handleToolCall(CONV, 'a1', '0', 'run_agent', '{"agent":"agent","description":"fix it"}')
+    })
+
+    function card(): ToolCallDisplay {
+      const row = store().sessions[CONV]!.messages.find((m) => m.id === 'a1')
+      const block = (row?._blocks ?? []).find((b) => b.type === 'tool_call')
+      return (block as Extract<ContentBlock, { type: 'tool_call' }>).data
+    }
+
+    it('counts only the runs that announced themselves', () => {
+      store().handleSubAgentStarted(CONV, 'a1', '0', {
+        conversationId: 'sub-1', turnId: 'run-1', kind: 'agent',
+      })
+      expect(card().sub_agent).toMatchObject({ conversation_id: 'sub-1', turn_id: 'run-1' })
+
+      store().handleMessageStart('sub-1', 'm1', 'run-1')
+      store().handleMessageStart('sub-1', 'm2', 'run-1')
+      expect(store().subAgentSteps['run-1']).toBe(2)
+
+      // An ordinary turn is not a delegation and never gets a key.
+      store().handleMessageStart(CONV, 'a2', 'parent-turn')
+      expect(store().subAgentSteps['parent-turn']).toBeUndefined()
+    })
+
+    it('nests a delegated question instead of inventing a card for it', () => {
+      store().handleToolApproval(
+        CONV, 'a1', 'appr-1', 'child-call', 'run_command', undefined, undefined,
+        { parentCallId: '0', arguments: '{"command":"ls"}', subConversationId: 'sub-1' },
+      )
+
+      const row = store().sessions[CONV]!.messages.find((m) => m.id === 'a1')!
+      const calls = (row._blocks ?? []).filter((b) => b.type === 'tool_call')
+      expect(calls).toHaveLength(1)
+      expect(card().status).toBe('running')
+      expect(card().nested_approval?.approval_id).toBe('appr-1')
+      // It still counts as something this conversation needs a person for.
+      expect(Object.keys(store().sessions[CONV]!.pendingApprovals)).toEqual(['appr-1'])
+
+      store().resolveNestedApproval(CONV, 'appr-1')
+      expect(card().nested_approval).toBeUndefined()
+      expect(Object.keys(store().sessions[CONV]!.pendingApprovals)).toEqual([])
+    })
+
+    // The run is not what failed — only its question was lost.
+    it('drops a lost question without writing off the run', () => {
+      store().handleToolApproval(
+        CONV, 'a1', 'appr-1', 'child-call', 'run_command', undefined, undefined,
+        { parentCallId: '0', arguments: '{}' },
+      )
+      store().markApprovalOrphaned('appr-1')
+
+      expect(card().nested_approval).toBeUndefined()
+      expect(card().status).toBe('running')
+    })
+  })
+
+  describe('navigation', () => {
+    beforeEach(() => {
+      useConversationStore.setState({ sessions: {}, activeId: null, navigationStack: [] })
+    })
+
+    it('remembers the way back, and forgets it on a sideways move', () => {
+      store().setActiveId('parent')
+      store().openConversation('sub-1')
+      expect(store().activeId).toBe('sub-1')
+      expect(store().navigationStack).toEqual(['parent'])
+
+      store().goBack()
+      expect(store().activeId).toBe('parent')
+      expect(store().navigationStack).toEqual([])
+
+      // Picking something from the sidebar is not a step back up.
+      store().openConversation('sub-1')
+      store().setActiveId('elsewhere')
+      expect(store().navigationStack).toEqual([])
+    })
   })
 })

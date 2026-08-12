@@ -256,8 +256,9 @@ pub(super) async fn oneshot_completion(
         let secrets2 = state.secrets.clone();
         let assistant2 = assistant.clone();
         tokio::task::spawn_blocking(move || {
-            let (provider_type, base_url, api_key, model, api_format) =
-                resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
+            let crate::agent::ResolvedProvider {
+                provider_type, base_url, api_key, model, api_format, ..
+            } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
             let effective_model = assistant2
                 .as_ref()
                 .and_then(|a| a.model_id.clone())
@@ -418,7 +419,9 @@ async fn headless_chat_inner(
     // Resolve provider off the async thread: it takes a pooled connection and
     // reads the OS credential store, either of which can block for as long as
     // the pool's acquire timeout.
-    let (provider_type, base_url, api_key, model, api_format) = {
+    let crate::agent::ResolvedProvider {
+        provider_type, base_url, api_key, model, api_format, provider_id, provider_name,
+    } = {
         let pool2 = pool.clone();
         let secrets2 = secrets.clone();
         let assistant2 = assistant.clone();
@@ -495,6 +498,11 @@ async fn headless_chat_inner(
             // the registry, whose refusal to be called outside the loop lands
             // in the transcript as this turn's tool result.
             mode: crate::agent::modes::Modes::Fixed,
+            // And no sub-agents port either, for the same reason stated the
+            // same way: a QQ session's file access is an empty root set, so a
+            // delegated run could reach nothing, and a group chat has nowhere
+            // to put the approvals it would raise.
+            sub_agents: None,
             mcp_defs,
             // Non-admin sessions get no registry or MCP tools at all; the
             // scope-locked QQ tools are appended further down.
@@ -518,7 +526,10 @@ async fn headless_chat_inner(
     let subjects: Vec<crate::agent::MemorySubjectRef> = incoming
         .iter()
         .filter_map(|m| m.sender.as_ref())
-        .map(|s| crate::agent::MemorySubjectRef::from_user(s.user_id, s.nickname.clone()))
+        .map(|s| {
+            crate::agent::MemorySubjectRef::from_user(s.user_id, s.nickname.clone())
+                .with_standing(s.role.clone(), s.title.clone())
+        })
         .collect();
     let budget_tokens = crate::agent::memory_budget(context_limit);
     let memory_request = if is_group {
@@ -660,6 +671,9 @@ async fn headless_chat_inner(
                     sender_id: *sender_id,
                     parent_id: None, compact_anchor_id: None, source: None,
                     turn_id: Some(&turn), tool_outcome: None,
+                    // What someone said cost no tokens and came from no upstream.
+                    cache_read_tokens: None, cache_write_tokens: None,
+                    provider_name: None,
                 }, parent.as_deref()).map_err(|e| e.to_string())?;
                 // Queued messages chain to each other, not all to the same parent.
                 parent = Some(msg_id.clone());
@@ -739,6 +753,11 @@ async fn headless_chat_inner(
             budget,
             turn_id: turn_id.to_string(),
             conversation_id: conversation_id.to_string(),
+            // Whatever the resolver landed on — there is no per-request picker
+            // on this side, so this is the assistant's provider or the first
+            // enabled one, and either way it is the endpoint that was called.
+            provider_id: Some(provider_id),
+            provider_name: Some(provider_name),
             parent_cursor,
             cancel: cancel.clone(),
             keep_recent,
@@ -764,6 +783,7 @@ async fn headless_chat_inner(
             // still reaches the registry and answers with a sentence — see the
             // drift list; this batch preserves it rather than deciding it.
             transitions: None,
+            sub_agents: None,
         },
     )
     .await;

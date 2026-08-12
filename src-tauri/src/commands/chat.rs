@@ -2,16 +2,13 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use tauri::{Emitter, Manager};
-use tokio::sync::oneshot;
-use tokio_util::sync::CancellationToken;
 
-use crate::agent::engine::{self, ApprovalDecision};
+use crate::agent::engine;
 use crate::agent::turn_record;
 use crate::agent::{
     build_file_access, build_messages_with_senders, do_compact, file_access_prompt,
-    get_provider_api_key, instruction_budget, load_project_instructions, microcompact,
-    resolve_file_uris_in_messages, resolve_provider_config, trailing_with_memory,
-    trim_to_context_limit, CompactCircuitBreaker, TokenBudget,
+    instruction_budget, load_project_instructions, microcompact, resolve_file_uris_in_messages,
+    trailing_with_memory, trim_to_context_limit, CompactCircuitBreaker, TokenBudget,
 };
 use crate::db;
 use crate::db::models::assistant::Assistant;
@@ -39,42 +36,6 @@ impl crate::agent::engine::Emit for WindowEmit {
     }
 }
 
-/// The desktop's way of asking: a card in the window, and a wait that ends when
-/// the user answers or the turn is cancelled.
-///
-/// Holds the turn's identity rather than taking it per call, because everything
-/// except which row is asking is fixed for the whole turn. `Err` here ends the
-/// turn, and only this adapter can produce one: drawing the card *is* an event,
-/// so a send that fails means the user is looking at a question that will never
-/// appear.
-struct DesktopApprovals {
-    app: tauri::AppHandle,
-    cancel: CancellationToken,
-    turn_id: String,
-    conversation_id: String,
-}
-
-#[async_trait::async_trait]
-impl crate::agent::engine::Approvals for DesktopApprovals {
-    async fn ask(
-        &self,
-        assistant_message_id: &str,
-        call: &provider::ToolCall,
-        retry_reason: Option<&str>,
-    ) -> Result<Option<ApprovalDecision>, String> {
-        wait_for_approval(
-            &self.app,
-            &self.cancel,
-            call,
-            &self.turn_id,
-            assistant_message_id,
-            &self.conversation_id,
-            retry_reason,
-        )
-        .await
-    }
-}
-
 /// Everything a mid-turn mode switch needs that the loop does not carry.
 ///
 /// Held for the whole turn rather than assembled at the switch, because by then
@@ -94,6 +55,10 @@ struct PlanTransitions {
     /// check made only where the turn was set up would be undone by the first
     /// mode switch.
     supports_tools: bool,
+    /// Same reason again. Re-reading it here would let a mode switch hand out —
+    /// or take away — the ability to delegate, and change which models it may
+    /// reach, in the middle of a turn.
+    sub_agents: crate::agent::sub_agents::SubAgentCatalog,
 }
 
 #[async_trait::async_trait]
@@ -114,6 +79,8 @@ impl crate::agent::engine::Transitions for PlanTransitions {
             project_id: self.project_id.clone(),
             // This type exists to answer the question, so the answer is yes.
             mode: crate::agent::modes::Modes::Switchable(mode),
+            // The turn's own, carried rather than resolved again.
+            sub_agents: Some(self.sub_agents.clone()),
             mcp_defs,
             include_tools: self.supports_tools,
             persona: self.persona.clone(),
@@ -207,91 +174,6 @@ impl Drop for TurnGuard<'_> {
             }));
         }
     }
-}
-
-/// Put a tool call in front of the user and wait for their answer. Returns
-/// `None` when the chat is cancelled (stop button) before a decision arrives,
-/// so approval waits cannot outlive the conversation.
-///
-/// Brackets the wait with the turn's phase, so a process killed while the card
-/// is on screen is diagnosed as "stopped waiting for you" rather than as
-/// something that might have run.
-///
-/// `retry_reason` is set when a sandbox-blocked command is asking to be run
-/// again without the sandbox. It retries the same call under the same id — the
-/// approval is what is new, and that gets its own `approval_id`.
-async fn wait_for_approval(
-    app: &tauri::AppHandle,
-    cancel: &CancellationToken,
-    tc: &provider::ToolCall,
-    turn_id: &str,
-    message_id: &str,
-    conversation_id: &str,
-    retry_reason: Option<&str>,
-) -> Result<Option<ApprovalDecision>, String> {
-    // Ours, not the provider's. See `PendingApproval` for what reusing the tool
-    // call id used to cost.
-    let approval_id = uuid::Uuid::new_v4().to_string();
-    let (tx, rx) = oneshot::channel();
-    // Registered before the event goes out, so a decision can never arrive
-    // before there is somewhere to put it.
-    {
-        let waiters = app.state::<ApprovalWaiters>();
-        waiters.lock().insert(approval_id.clone(), crate::state::PendingApproval {
-            conversation_id: conversation_id.to_string(),
-            turn_id: turn_id.to_string(),
-            assistant_message_id: message_id.to_string(),
-            provider_call_id: tc.id.clone(),
-            // A retry is an attempt at the same call, under the same id.
-            origin_call_id: retry_reason.map(|_| tc.id.clone()),
-            tool_name: tc.name.clone(),
-            retry_reason: retry_reason.map(str::to_string),
-            sender: tx,
-        });
-    }
-    let mut payload = serde_json::json!({
-        "type": "tool_approval_req",
-        "approval_id": approval_id,
-        "call_id": tc.id,
-        "tool_name": tc.name,
-        "arguments": tc.arguments,
-        "message_id": message_id,
-        "conversation_id": conversation_id,
-    });
-    // The reason's presence is the flag; a separate boolean beside it could
-    // only ever disagree with it.
-    if let Some(reason) = retry_reason {
-        payload["retry_reason"] = serde_json::json!(reason);
-        payload["origin_call_id"] = serde_json::json!(tc.id);
-    }
-    if let Err(e) = app.emit("chat-stream", payload) {
-        // Nobody will ever answer a card that was never drawn; don't leave the
-        // entry behind for the turn guard to find.
-        app.state::<ApprovalWaiters>().lock().remove(&approval_id);
-        return Err(e.to_string());
-    }
-    // After the card is on screen, so the recorded phase is never ahead of what
-    // the user can actually see.
-    let pool = app.state::<AppDb>().0.clone();
-    // The bracket restores `Streaming` however the wait ends — leaving the
-    // phase behind would have a crash a minute later report a card that is no
-    // longer on screen.
-    let decision = engine::in_phase(
-        &pool, turn_id, TurnPhase::AwaitingApproval, Some(&tc.name),
-        async {
-            let decision = tokio::select! {
-                _ = cancel.cancelled() => None,
-                r = rx => r.ok(),
-            };
-            if decision.is_none() {
-                // Cancelled, or the sender was dropped. Take the entry out so a
-                // late answer cannot land on a turn that has already moved on.
-                app.state::<ApprovalWaiters>().lock().remove(&approval_id);
-            }
-            decision
-        },
-    ).await;
-    Ok(decision)
 }
 
 /// Ask the turn running for this conversation to stop.
@@ -537,38 +419,36 @@ async fn chat_inner(
     // Resolve provider config (with optional overrides). Off the async thread:
     // it takes a pooled connection and reads the OS credential store, either of
     // which can block for as long as the pool's acquire timeout.
-    let (mut provider_type, mut base_url, mut api_key, model, mut api_format) = {
+    let resolved = {
         let pool2 = pool.clone();
         let secrets2 = secrets.0.clone();
         let assistant2 = assistant.clone();
+        let model_override = model_override.clone();
+        let provider_override = provider_override.clone();
         tokio::task::spawn_blocking(move || {
-            resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())
-        }).await.map_err(|e| e.to_string())??
+            crate::agent::resolve_with_overrides(
+                &secrets2,
+                &pool2,
+                assistant2.as_ref(),
+                model_override,
+                provider_override.as_deref(),
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
+    let model = resolved.model;
 
-    let model = model_override.unwrap_or(model);
     // Filled in now rather than declared at entry: which model a turn actually
     // used is the first thing a provider error needs explaining.
     tracing::Span::current().record("model", model.as_str());
 
-    if let Some(ref pid) = provider_override {
-        let pool2 = pool.clone();
-        let pid2 = pid.clone();
-        let secrets2 = secrets.0.clone();
-        let (pt, bu, ak, af) = tokio::task::spawn_blocking(move || {
-            let mut conn = get_conn(&pool2)?;
-            let p = db::ops::provider::get_provider(&mut conn, &pid2).map_err(|e| e.to_string())?;
-            let ak = get_provider_api_key(&secrets2, &pid2)
-                .ok_or_else(|| format!("API Key not set for provider '{}'", p.name))?;
-            Ok::<_, String>((p.provider_type, p.base_url.trim_end_matches('/').to_string(), ak, p.api_format))
-        }).await.map_err(|e| e.to_string())??;
-        provider_type = pt;
-        base_url = bu;
-        api_key = ak;
-        api_format = af;
-    }
-
-    let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
+    let provider = provider::registry::create_provider(
+        &resolved.provider_type,
+        &resolved.base_url,
+        &resolved.api_key,
+        Some(&resolved.api_format),
+    );
 
     // Needed before the tool set is assembled, unlike the other two prefs which
     // only matter once the request parameters are built.
@@ -673,8 +553,13 @@ async fn chat_inner(
         crate::voice::prompt::voice_context_block(&ctx.path, voice == Some(true))
             .unwrap_or_default(),
     ];
-    let effective_provider_id = provider_override.clone()
-        .or_else(|| assistant.as_ref().and_then(|a| a.provider_id.clone()));
+    // Taken from the resolution rather than recomputed from the override and the
+    // assistant. Those two miss the third case: with neither set, the resolver
+    // falls back to the first enabled provider and really does send the request
+    // there, which the old expression reported as `None`. That turn then priced
+    // itself against no `model_configs` row and wrote a reply belonging to no
+    // upstream.
+    let effective_provider_id = Some(resolved.provider_id.clone());
 
     // Precedence: per-request override > conversation preference > assistant default.
     // Read once at the top of the turn: a mid-turn flip should not retroactively
@@ -695,8 +580,8 @@ async fn chat_inner(
         let pool2 = pool.clone();
         let assistant2 = assistant.clone();
         let pid = effective_provider_id.clone();
-        let pt = provider_type.clone();
-        let af = api_format.clone();
+        let pt = resolved.provider_type.clone();
+        let af = resolved.api_format.clone();
         let mid = model.clone();
         let level = effective_level.map(|s| s.to_string());
         let fast = fast.unwrap_or(conv_fast_mode);
@@ -725,22 +610,34 @@ async fn chat_inner(
         tracing::info!(model = %model, "the model cannot take tools; none are offered this turn");
     }
 
-    let turn = {
+    // Read once and carried, not re-read per use. It goes into the tool
+    // description as a roster of models, and a mid-turn mode switch that
+    // resolved a different one would quietly change what the model may delegate
+    // to — halfway through a turn, with nothing on screen to say so.
+    let (turn, sub_agent_catalog) = {
         let pool2 = pool.clone();
         let registry = tool_registry.0.clone();
-        let input = crate::agent::turn_config::TurnConfigInput {
-            assistant: assistant.clone(),
-            conversation_id: conversation_id.clone(),
-            project_id: project_id.clone(),
-            mode: crate::agent::modes::Modes::Switchable(mode),
-            mcp_defs,
-            include_tools: supports_tools,
-            persona: persona.clone(),
-            context_blocks: context_blocks.clone(),
-        };
+        let assistant2 = assistant.clone();
+        let (conv_id, pid) = (conversation_id.clone(), project_id.clone());
+        let (persona2, blocks) = (persona.clone(), context_blocks.clone());
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool2)?;
-            Ok::<_, String>(crate::agent::turn_config::resolve(&mut conn, &registry, input))
+            let catalog = crate::agent::sub_agents::catalog(&mut conn);
+            let input = crate::agent::turn_config::TurnConfigInput {
+                assistant: assistant2,
+                conversation_id: conv_id,
+                project_id: pid,
+                mode: crate::agent::modes::Modes::Switchable(mode),
+                sub_agents: Some(catalog.clone()),
+                mcp_defs,
+                include_tools: supports_tools,
+                persona: persona2,
+                context_blocks: blocks,
+            };
+            Ok::<_, String>((
+                crate::agent::turn_config::resolve(&mut conn, &registry, input),
+                catalog,
+            ))
         }).await.map_err(|e| e.to_string())??
     };
     let tool_defs = turn.tool_defs;
@@ -752,7 +649,7 @@ async fn chat_inner(
     let context_limit = turn_params.context_limit;
     let max_output = turn_params.max_output;
     let model_config = turn_params.model_config;
-    let mut budget = TokenBudget::new(&provider_type, &model, context_limit, max_output, turn_params.compact_threshold);
+    let mut budget = TokenBudget::new(&resolved.provider_type, &model, context_limit, max_output, turn_params.compact_threshold);
 
     let circuit_breaker = {
         let breakers = app.state::<CompactBreakers>();
@@ -896,6 +793,9 @@ async fn chat_inner(
                 parent_id: None, compact_anchor_id: None,
                 source: if voice == Some(true) { Some("voice") } else { None },
                 turn_id: Some(&turn), tool_outcome: None,
+                // What the user typed cost no tokens and came from no upstream.
+                cache_read_tokens: None, cache_write_tokens: None,
+                provider_name: None,
             }, parent.as_deref()).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
@@ -963,12 +863,33 @@ async fn chat_inner(
         app: app.clone(),
         pool: pool.clone(),
         registry: tool_registry.0.clone(),
-        assistant,
+        assistant: assistant.clone(),
         conversation_id: conversation_id.clone(),
         project_id: project_id.clone(),
         persona,
         context_blocks,
         supports_tools,
+        sub_agents: sub_agent_catalog,
+    };
+
+    // Assembled here rather than per call: by the time a `run_agent` arrives,
+    // the assistant row, the project and the tool context are hundreds of lines
+    // behind, and a delegated run needs all three.
+    let sub_agents = super::sub_agent::DesktopSubAgents {
+        app: app.clone(),
+        pool: pool.clone(),
+        secrets: secrets.0.clone(),
+        registry: tool_registry.0.clone(),
+        coordinator: app.state::<AppTurns>().0.clone(),
+        mcp: app.state::<AppMcp>().0.clone(),
+        parent_conversation_id: conversation_id.clone(),
+        parent_cancel: cancel.clone(),
+        assistant,
+        project_id: project_id.clone(),
+        tool_context: tool_context.clone(),
+        files_root: files_root.clone(),
+        accept_edits,
+        keep_recent,
     };
 
     // The loop itself is shared with the OneBot runner now. What stays here is
@@ -976,11 +897,13 @@ async fn chat_inner(
     // rather than being part of one: the lease, the turn record, the terminal
     // event, and this conversation's own setup and epilogue.
     let mcp = app.state::<AppMcp>().0.clone();
-    let approvals = DesktopApprovals {
+    let approvals = super::approval_adapter::DesktopApprovals {
         app: app.clone(),
         cancel: cancel.clone(),
         turn_id: turn_id.clone(),
         conversation_id: conversation_id.clone(),
+        // The user started this turn themselves; its cards belong here.
+        bubble: None,
     };
     let outcome = engine::run_turn(
         &engine::TurnServices { pool: &pool, tools: &tool_registry.0, mcp: &mcp },
@@ -997,6 +920,8 @@ async fn chat_inner(
             budget,
             turn_id: turn_id.clone(),
             conversation_id: conversation_id.clone(),
+            provider_id: Some(resolved.provider_id.clone()),
+            provider_name: Some(resolved.provider_name.clone()),
             parent_cursor,
             cancel: cancel.clone(),
             keep_recent,
@@ -1025,6 +950,7 @@ async fn chat_inner(
             surface_tools: None,
             steering: None,
             transitions: Some(&transitions),
+            sub_agents: Some(&sub_agents),
         },
     )
     .await;
@@ -1037,6 +963,8 @@ async fn chat_inner(
     let assistant_msg_id = outcome.progress.message_id.clone().unwrap_or_default();
     let total_input_tokens = outcome.progress.input_tokens;
     let total_output_tokens = outcome.progress.output_tokens;
+    let total_cache_read = outcome.progress.cache_read_tokens;
+    let total_cache_write = outcome.progress.cache_write_tokens;
     let turn_aborted = outcome.progress.aborted;
     let last_assistant_text = outcome.reply?;
 
@@ -1047,8 +975,11 @@ async fn chat_inner(
                 prompt_tokens: Some(total_input_tokens),
                 completion_tokens: Some(total_output_tokens),
                 total_tokens: Some(total_input_tokens + total_output_tokens),
-                cache_hit_tokens: None,
-                cache_miss_tokens: None,
+                // Zero from a turn where nothing was reported reads the same as
+                // zero from one where nothing was cached, and for a price that is
+                // the right answer either way: both cost the full input rate.
+                cache_read_tokens: Some(total_cache_read),
+                cache_write_tokens: Some(total_cache_write),
             };
             crate::agent::pricing::compute_cost(&usage, mc)
         });

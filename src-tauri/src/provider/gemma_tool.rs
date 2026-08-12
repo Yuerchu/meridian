@@ -5,10 +5,10 @@ use eventsource_stream::Eventsource;
 use futures::stream::StreamExt;
 
 use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
-use super::openai_compat::{ChatChunk, parse_openai_sse_events};
+use super::openai_compat::{ChatChunk, ChunkUsage, normalise_openai_usage, parse_openai_sse_events};
 use super::{
     AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent,
-    ToolCall, ToolDefinition, TokenUsage,
+    ToolCall, ToolDefinition,
 };
 
 const TOOL_CALL_START: &str = "<|tool_call>";
@@ -623,12 +623,14 @@ impl ChatProvider for GemmaToolProvider {
 
         let (text, tool_calls) = extract_tool_calls_from_text(&raw_content);
 
-        let usage = parsed.get("usage").map(|u| TokenUsage {
-            prompt_tokens: u["prompt_tokens"].as_i64().map(|v| v as i32),
-            completion_tokens: u["completion_tokens"].as_i64().map(|v| v as i32),
-            total_tokens: u["total_tokens"].as_i64().map(|v| v as i32),
-            ..Default::default()
-        });
+        // Through the shared struct, which is how this path picks up the cache
+        // fields it never parsed: self-hosted vLLM and SGLang endpoints emit
+        // `prompt_tokens_details` too, and the hand-written mapping that used to
+        // be here dropped it along with everything else it did not name.
+        let usage = parsed
+            .get("usage")
+            .and_then(|u| serde_json::from_value::<ChunkUsage>(u.clone()).ok())
+            .map(|u| normalise_openai_usage(&u));
 
         Ok(AgentResponse {
             text,

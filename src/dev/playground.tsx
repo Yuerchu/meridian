@@ -381,6 +381,12 @@ const ASK_USER_ARGS = JSON.stringify({
   ],
 })
 
+const RUN_AGENT_ARGS = JSON.stringify({
+  agent: 'agent',
+  description: '修好那个偶发失败的测试',
+  prompt: 'src-tauri 里 concurrent_sessions 那条测试大约每二十次失败一次。找出原因并修掉，然后把整个测试套跑一遍。',
+})
+
 const todoStep = (content: string, activeForm: string, status: string) => ({
   content,
   active_form: activeForm,
@@ -670,6 +676,67 @@ function Gallery() {
               tool_name: 'read_file',
               status: 'denied',
               arguments: JSON.stringify({ path: 'C:/Users/dev/.ssh/id_ed25519' }),
+            })} />
+          </div>
+        </Section>
+
+        <Section title="ToolCallBlock / run_agent">
+          <div>
+            {/* 跑着，还没派出去——事件到达之前卡片上没有会话可以点进去。 */}
+            <ToolCallBlock data={tool({
+              tool_name: 'run_agent',
+              status: 'running',
+              arguments: RUN_AGENT_ARGS,
+            })} />
+            {/* 跑着，已经有会话和步数。 */}
+            <ToolCallBlock data={tool({
+              tool_name: 'run_agent',
+              status: 'running',
+              call_id: 'pg-run-agent-live',
+              arguments: RUN_AGENT_ARGS,
+              sub_agent: { conversation_id: 'pg-sub-1', turn_id: 'pg-run-1', kind: 'agent', steps: 4 },
+            })} />
+            {/* 它要权限。问题画在这里，因为没人在看它自己那条会话。 */}
+            <ToolCallBlock data={tool({
+              tool_name: 'run_agent',
+              status: 'running',
+              call_id: 'pg-run-agent-asking',
+              arguments: RUN_AGENT_ARGS,
+              sub_agent: { conversation_id: 'pg-sub-1', turn_id: 'pg-run-2', kind: 'agent', steps: 2 },
+              nested_approval: {
+                approval_id: 'pg-nested',
+                call_id: 'pg-child-call',
+                tool_name: 'run_command',
+                arguments: JSON.stringify({ command: 'cargo test --all' }),
+                sub_conversation_id: 'pg-sub-1',
+              },
+            })} />
+            {/* 只读的那一种。 */}
+            <ToolCallBlock data={tool({
+              tool_name: 'run_agent',
+              status: 'completed',
+              call_id: 'pg-run-agent-explore',
+              arguments: JSON.stringify({
+                agent: 'explore',
+                description: '找出 SSE 解析在哪一层',
+                prompt: '在 src-tauri/src/provider 下找到 SSE 事件变成 ChatChunk 的位置，报告文件与行号。',
+              }),
+              sub_agent: { conversation_id: 'pg-sub-2', turn_id: 'pg-run-3', kind: 'explore', steps: 3 },
+              result: 'openai_compat.rs:187 起，eventsource-stream 的 Event 在这里变成 ChatChunk。',
+            })} />
+            {/* 派出去了，然后进程没了。 */}
+            <ToolCallBlock data={tool({
+              tool_name: 'run_agent',
+              status: 'orphaned',
+              call_id: 'pg-run-agent-dead',
+              arguments: RUN_AGENT_ARGS,
+              sub_agent: { conversation_id: 'pg-sub-3', turn_id: 'pg-run-4', kind: 'agent', steps: 1 },
+            })} />
+            {/* 子会话里看同一次调用：确实在等人，但不是等看这条 transcript 的人。 */}
+            <ToolCallBlock data={tool({
+              tool_name: 'run_command',
+              status: 'awaiting_parent',
+              arguments: JSON.stringify({ command: 'cargo test --all' }),
             })} />
           </div>
         </Section>
