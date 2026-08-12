@@ -5,6 +5,7 @@ import { api } from '@/api'
 import { Button, Card, Drawer } from '@heroui/react'
 import { MemoryBadge } from './memory-badge'
 import type { Memory } from '@/types'
+import { useHistoryLevel } from '@/hooks/use-nav'
 
 interface MemoryTrashProps {
   open: boolean
@@ -31,6 +32,10 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
     if (open) load()
   }, [open, load])
 
+  // Without this the back gesture would close the settings screen out from
+  // under an open drawer instead of closing the drawer.
+  useHistoryLevel(open, () => onOpenChange(false))
+
   const deletedByLabel = (by: string | null) => {
     switch (by) {
       case 'self':
@@ -47,7 +52,9 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
       <Drawer.Content placement="right">
         <Drawer.Dialog
           aria-describedby={hintId}
-          className="w-[28rem] max-w-[85vw]"
+          // Portalled, so no ancestor's inset reaches it: the restore and purge
+          // buttons on the last row would sit under the navigation bar.
+          className="w-[28rem] max-w-[85vw] pb-[max(1.5rem,var(--safe-bottom))] pr-[max(1.5rem,var(--safe-right))]"
           data-slot="memory-trash"
         >
           <Drawer.CloseTrigger />

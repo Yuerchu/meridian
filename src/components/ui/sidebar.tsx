@@ -170,7 +170,9 @@ function Sidebar({
             }
           >
             <div
-              className="flex h-full w-full flex-col pt-[var(--safe-top)] pb-[var(--safe-bottom)]"
+              // The drawer slides in from a screen edge, so in landscape it is
+              // the one covered by the cutout or by the relocated 3-button bar.
+              className="flex h-full w-full flex-col pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]"
               {...props}
             >
               {children}

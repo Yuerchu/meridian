@@ -244,6 +244,11 @@ img.emoji-sticker {
 :root {
   --safe-top: var(--native-inset-top, env(safe-area-inset-top, 0px));
   --safe-bottom: var(--native-inset-bottom, env(safe-area-inset-bottom, 0px));
+  /* Zero in portrait, which is why these went unnoticed: a cutout only takes a
+     side once the phone is turned, and then it takes a whole column of text
+     with it. */
+  --safe-left: var(--native-inset-left, env(safe-area-inset-left, 0px));
+  --safe-right: var(--native-inset-right, env(safe-area-inset-right, 0px));
 }
 
 /* HeroUI ships `scrollbar`, `scrollbar-thin`, `scrollbar-default` and

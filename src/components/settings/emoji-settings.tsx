@@ -70,7 +70,9 @@ function PackCard({
                     <p className="text-xs text-muted">{detail.pack.description}</p>
                   )}
 
-                  <div className="grid grid-cols-6 gap-2">
+                  {/* Six across needs 280px of grid before gaps; a 360px phone
+                      does not have it once the card's own padding is taken. */}
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
                     {detail.emojis.map((e) => (
                       <div key={e.id} className="group relative">
                         <img
@@ -107,7 +109,10 @@ function PackCard({
                             variant="ghost"
                             isIconOnly
                             aria-label={t('settings.emoji.deleteEmoji')}
-                            className="absolute -top-1.5 -right-1.5 !size-5 rounded-full bg-danger text-danger-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                            // Always visible where there is no hover to reveal
+                            // it — this is the only way to delete an emoji, and
+                            // a touch screen never reaches `group-hover`.
+                            className="absolute -top-1.5 -right-1.5 !size-6 rounded-full bg-danger text-danger-foreground opacity-0 transition-opacity group-hover:opacity-100 pointer-coarse:opacity-100 touch-hitbox"
                             onClick={() => onDeleteEmoji(e.id)}
                           >
                             <TrashBin className="!size-3" />
@@ -181,10 +186,11 @@ export function EmojiSettings() {
   }, [refresh])
 
   const handleImport = useCallback(async (packId: string) => {
+    // Cancelling the picker rejects on Android instead of resolving to null.
     const files = await dialogOpen({
       multiple: true,
       filters: [{ name: 'Images', extensions: ['gif', 'apng', 'png', 'webp', 'jpg', 'jpeg', 'bmp', 'json'] }],
-    })
+    }).catch(() => null)
     if (!files) return
     const paths = Array.isArray(files) ? files : [files]
     if (paths.length === 0) return

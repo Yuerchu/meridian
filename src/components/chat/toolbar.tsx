@@ -156,7 +156,12 @@ export function MobileOptionsMenu({
         <Drawer.Content placement="bottom">
           <Drawer.Dialog
             aria-label={t('composer.menu')}
-            className="max-h-[70vh] px-0 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]"
+            // `--safe-bottom`, not bare `env()`: Android WebView reports zero
+            // for the latter (crbug 40699457, only fixed in M144), which is the
+            // whole reason the native bridge writes these variables. With
+            // 3-button navigation that bar is 48dp of opaque buttons, so the
+            // last row here was landing under it and could not be tapped.
+            className="max-h-[70vh] px-0 pt-2 pb-[max(1rem,var(--safe-bottom))]"
           >
             <Drawer.Handle />
             {/* Only the colour is overridden. HeroUI's `-mx-3px p-3px` looks

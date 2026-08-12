@@ -4,6 +4,7 @@ import { Plus, StarFill, Check, SquareDashedText } from '@gravity-ui/icons'
 import { Button, Checkbox, Disclosure, DisclosureGroup, Input, ListBox, Select, TextArea, Tooltip } from '@heroui/react'
 import { api } from '@/api'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
+import { SettingsDrilldown } from './settings-drilldown'
 
 function AssistantEditor({
   assistant,
@@ -290,8 +291,14 @@ function AssistantEditor({
         )}
       </div>
 
-      <div className="space-y-1.5">
-        <label className="block text-xs text-muted">{t('settings.assistant.tools')}</label>
+      <SettingsDrilldown
+        title={t('settings.assistant.tools')}
+        summary={
+          toolMode === 'all' ? t('settings.assistant.toolsAll')
+            : toolMode === 'preset' ? t('settings.tools.preset')
+              : t('settings.assistant.toolsCustom')
+        }
+      >
         <div className="flex gap-2 mb-2">
           <Button
             variant={toolMode === 'all' ? 'primary' : 'outline'}
@@ -360,11 +367,13 @@ function AssistantEditor({
             ))}
           </div></div>
         )}
-      </div>
+      </SettingsDrilldown>
 
       {allPacks.length > 0 && (
-        <div className="space-y-1.5">
-          <label className="block text-xs text-muted">{t('settings.assistant.emojiPacks')}</label>
+        <SettingsDrilldown
+          title={t('settings.assistant.emojiPacks')}
+          summary={assignedPackIds.size || undefined}
+        >
           <div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2 border border-border rounded-lg">
             {allPacks.map((pack) => (
               <Checkbox
@@ -394,12 +403,14 @@ function AssistantEditor({
               </Checkbox>
             ))}
           </div>
-        </div>
+        </SettingsDrilldown>
       )}
 
       {allSkills.length > 0 && (
-        <div className="space-y-1.5">
-          <label className="block text-xs text-muted">{t('settings.skills.assistantSection')}</label>
+        <SettingsDrilldown
+          title={t('settings.skills.assistantSection')}
+          summary={boundSkillDirs.size || undefined}
+        >
           <p className="text-xs text-muted">{t('settings.skills.assistantHint')}</p>
           <div
             data-slot="skill-list"
@@ -433,7 +444,7 @@ function AssistantEditor({
             ))}
           </div></div>
           {skillError && <p className="text-xs text-danger">{skillError}</p>}
-        </div>
+        </SettingsDrilldown>
       )}
 
       <div className="flex items-center gap-2 pt-1">

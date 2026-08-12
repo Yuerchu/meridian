@@ -1,10 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Check, ArrowsRotateRight, TrashBin, Cloud, Key, ArrowLeft, Sliders, Xmark } from '@gravity-ui/icons'
+import { Plus, Check, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
 import { Button, Disclosure, Input, ListBox, Select, Spinner, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
+import { MasterDetail } from './master-detail'
+import { useMasterDetail } from './use-master-detail'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import type { ModelConfig, ModelConfigInput, Provider, ModelInfo, ProviderCapabilities, ThinkingEffort } from '@/types'
 
@@ -602,9 +603,9 @@ function ProviderEditor({
 
 export function ProviderSettings() {
   const { t } = useTranslation()
-  const isMobile = useIsMobile()
+  const nav = useMasterDetail()
+  const { isMobile, selectedId } = nav
   const [providers, setProviders] = useState<Provider[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const initialized = useRef(false)
 
@@ -618,26 +619,29 @@ export function ProviderSettings() {
     if (initialized.current) return
     initialized.current = true
     refresh().then((list) => {
+      // Not on a phone: the list is the whole screen there, and opening the
+      // first provider over it would hide the other ones behind a back button
+      // nobody asked for.
       if (list.length > 0 && !isMobile) {
-        setSelectedId(list[0].id)
+        nav.select(list[0].id)
       }
       setLoading(false)
     })
-  }, [refresh, isMobile])
+  }, [refresh, isMobile, nav])
 
   const handleCreate = useCallback(async () => {
     const p = await api.createProvider('New Provider', 'openai', 'https://api.openai.com/v1', 'responses')
     await refresh()
-    setSelectedId(p.id)
-  }, [refresh])
+    nav.openItem(p.id)
+  }, [refresh, nav])
 
   const handleDelete = useCallback(async (id: string) => {
     await api.deleteProvider(id)
     const list = await refresh()
     if (selectedId === id) {
-      setSelectedId(list.length > 0 ? list[0].id : null)
+      nav.select(list.length > 0 ? list[0].id : null)
     }
-  }, [selectedId, refresh])
+  }, [selectedId, refresh, nav])
 
   if (loading) {
     return <div className="text-muted text-sm">{t('common.loading')}</div>
@@ -651,7 +655,7 @@ export function ProviderSettings() {
         <Button
           key={p.id}
           variant="ghost"
-          onClick={() => setSelectedId(p.id)}
+          onClick={() => nav.openItem(p.id)}
           className={cn(
             'w-full justify-start h-auto px-3 py-2 text-sm',
             selectedId === p.id
@@ -669,81 +673,33 @@ export function ProviderSettings() {
     </>
   )
 
-  if (isMobile) {
-    return (
-      <div className="max-w-3xl">
-        {selected ? (
-          <>
-            <Button
-              variant="ghost"
-              onClick={() => setSelectedId(null)}
-              className="text-sm text-muted mb-4 hover:text-foreground"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              {t('common.back')}
-            </Button>
-            <ProviderEditor
-              key={selected.id}
-              provider={selected}
-              onUpdate={refresh}
-              onDelete={handleDelete}
-            />
-          </>
-        ) : (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-medium">{t('settings.provider.title')}</h2>
-              <Tooltip delay={0}>
-                <Button
-                  isIconOnly
-                  aria-label={t('settings.provider.addProvider')}
-                  variant="ghost"
-                  onClick={handleCreate}
-                >
-                  <Plus className="w-4 h-4" />
-                </Button>
-                <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
-              </Tooltip>
-            </div>
-            {providerList}
-          </div>
-        )}
-      </div>
-    )
-  }
-
   return (
-    <div className="flex gap-6 max-w-3xl">
-      <div className="w-44 flex-shrink-0 space-y-2">
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-lg font-medium">{t('settings.provider.title')}</h2>
-          <Tooltip delay={0}>
-            <Button
-              isIconOnly
-              aria-label={t('settings.provider.addProvider')}
-              variant="ghost"
-              onClick={handleCreate}
-            >
-              <Plus className="w-4 h-4" />
-            </Button>
-            <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
-          </Tooltip>
-        </div>
-        {providerList}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        {selected ? (
-          <ProviderEditor
-            key={selected.id}
-            provider={selected}
-            onUpdate={refresh}
-            onDelete={handleDelete}
-          />
-        ) : (
-          <div className="text-sm text-muted">{t('settings.provider.selectProvider')}</div>
-        )}
-      </div>
-    </div>
+    <MasterDetail
+      nav={nav}
+      title={t('settings.provider.title')}
+      actions={
+        <Tooltip delay={0}>
+          <Button
+            isIconOnly
+            aria-label={t('settings.provider.addProvider')}
+            variant="ghost"
+            onClick={handleCreate}
+          >
+            <Plus className="w-4 h-4" />
+          </Button>
+          <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
+        </Tooltip>
+      }
+      list={providerList}
+      detail={selected ? (
+        <ProviderEditor
+          key={selected.id}
+          provider={selected}
+          onUpdate={refresh}
+          onDelete={handleDelete}
+        />
+      ) : undefined}
+      emptyDetail={t('settings.provider.selectProvider')}
+    />
   )
 }

@@ -74,7 +74,8 @@ export function MemorySettings() {
         </div>
       </div>
 
-      <div className="flex gap-4">
+      {/* Stacked until the viewport can hold two columns. */}
+      <div className="flex flex-col gap-4 md:flex-row">
         <ScopeNav
           filter={browser.filter}
           onFilterChange={browser.setFilter}

@@ -92,4 +92,24 @@ export default tseslint.config(
       "no-restricted-syntax": ["error", ...styleRestrictions, ...nativeElementRestrictions],
     },
   },
+  // The settings barrel imports all eleven panels, and App.tsx loads it lazily
+  // so none of that reaches the main bundle. A *value* import from the barrel
+  // anywhere eagerly-loaded undoes that silently — nothing breaks, the bundle
+  // just grows by the whole settings tree. Type imports are erased, so they
+  // stay allowed; the tab list lives in `settings/tabs` for exactly this.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/components/settings/**"],
+    rules: {
+      // The typescript-eslint version, not the base rule: only this one
+      // understands `allowTypeImports`.
+      "@typescript-eslint/no-restricted-imports": ["error", {
+        paths: [{
+          name: "@/components/settings",
+          allowTypeImports: true,
+          message: "Value import from the settings barrel pulls the lazy settings chunk into the main bundle. Import from '@/components/settings/tabs' (or the specific panel) instead.",
+        }],
+      }],
+    },
+  },
 );
