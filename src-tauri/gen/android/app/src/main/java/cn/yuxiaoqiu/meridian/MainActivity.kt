@@ -16,6 +16,18 @@ import androidx.documentfile.provider.DocumentFile
 import java.io.File
 
 class MainActivity : TauriActivity() {
+  /**
+   * Hands the back gesture to the WebView's own history.
+   *
+   * WryActivity does this by default, but the generated TauriActivity turns it
+   * off, which leaves the hardware key closing the app from wherever the user
+   * happens to be. The web side builds its navigation out of `history.pushState`
+   * entries, so `canGoBack()` is exactly "there is a screen underneath this
+   * one"; at the bottom of the stack it goes false again and the default
+   * behaviour — leaving the app — is the right one.
+   */
+  override val handleBackNavigation: Boolean = true
+
   companion object {
     init {
       System.loadLibrary("meridian_lib")

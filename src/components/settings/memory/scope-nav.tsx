@@ -60,7 +60,10 @@ export function ScopeNav({
   )
 
   return (
-    <div data-slot="memory-scope-nav" className="flex w-56 shrink-0 flex-col gap-0.5">
+    // Full width until there is room for a column beside the list. Fixed at
+    // 14rem, this left 88px for the memories on a 360px screen — the scope
+    // picker was taking the whole screen and calling it a sidebar.
+    <div data-slot="memory-scope-nav" className="flex w-full shrink-0 flex-col gap-0.5 md:w-56">
       <div className="px-2 pb-1 text-xs font-medium text-muted">
         {t('settings.memory.nav.scope')}
       </div>

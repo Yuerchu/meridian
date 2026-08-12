@@ -1,20 +1,16 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
-import { AppSidebar } from '@/components/layout/app-sidebar'
-import { ChatView } from '@/components/chat/chat-view'
-import { EmptyState } from '@/components/chat/empty-state'
-// Settings is a couple of dozen components behind a button most sessions never
-// press. Split out so the chat window is not waiting on it to start.
-const SettingsPage = lazy(() => import('@/components/settings'))
-import type { SettingsTab } from '@/components/settings'
+import { DesktopShell } from '@/components/layout/desktop-shell'
+import { MobileShell } from '@/components/layout/mobile-shell'
+import type { SettingsTab } from '@/components/settings/tabs'
 import { api } from '@/api'
 import { useContextMenuGuard } from '@/hooks/use-context-menu-guard'
 import { useAndroidInsets } from '@/hooks/use-android-insets'
+import { usePlatform } from '@/hooks/use-platform'
 import { useGlobalEventListener } from '@/hooks/use-global-event-listener'
 import { useConversationStore } from '@/stores/conversation-store'
+import type { Page } from '@/lib/nav'
 
-type Page = 'chat' | 'settings'
 
 /** How long to wait for a stopped turn to let go of its conversation before
  *  giving up and surfacing the refusal. */
@@ -39,6 +35,21 @@ function App() {
   useGlobalEventListener()
   useAndroidInsets()
 
+  // Tauri injects its drag script unconditionally, but `start_dragging` is
+  // `#[cfg(desktop)]` — on a phone every tap on the header invokes a command
+  // that was never registered and rejects, and the script's
+  // `stopImmediatePropagation` eats the mousedown on the way past. There is no
+  // window to drag there anyway. `null` on the first frame counts as not
+  // desktop: the attribute is cheaper to add late than to have acted on.
+  const platform = usePlatform()
+  const canDragWindow = platform !== null && platform !== 'android' && platform !== 'ios'
+
+  // Read once, at startup, and never again. A stack is what a device with a
+  // hardware back key needs, not what a narrow viewport needs — and a phone in
+  // landscape is routinely wider than the 768px breakpoint, so re-reading this
+  // would swap the whole shell on rotation and take the composer draft with it.
+  // Panels inside still use `useIsMobile` for layout, which stays responsive.
+  const [stackMode] = useState(() => window.innerWidth < 768)
   const [page, setPage] = useState<Page>('chat')
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('provider')
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
@@ -142,59 +153,35 @@ function App() {
   const activeConversation = conversations.find((c) => c.id === activeId)
   const activeProject = projects.find((p) => p.id === activeProjectId)
 
-  return (
-    <SidebarProvider>
-      <AppSidebar
-        conversations={conversations}
-        activeId={activeId}
-        onSelect={handleSelect}
-        onCreate={handleCreate}
-        onDelete={handleDelete}
-        page={page}
-        onOpenSettings={() => setPage('settings')}
-        onCloseSettings={() => setPage('chat')}
-        settingsTab={settingsTab}
-        onSettingsTabChange={setSettingsTab}
-        projects={projects}
-        activeProjectId={activeProjectId}
-        onSelectProject={handleSelectProject}
-        onCreateProject={handleCreateProject}
-        onRename={handleRename}
-        onTogglePin={handleTogglePin}
-        onDeleteProject={handleDeleteProject}
-        onRenameProject={handleRenameProject}
-      />
-      <SidebarInset className="flex flex-col overflow-hidden">
-        <header className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] border-b border-border select-none shrink-0" data-tauri-drag-region>
-          <SidebarTrigger className="-ml-1" />
-          <span className="text-sm font-medium">
-            {page === 'settings'
-              ? t('settings.title')
-              : (activeConversation?.title ?? activeProject?.name ?? t('app.name'))}
-          </span>
-        </header>
+  const shellProps = {
+    conversations,
+    activeId,
+    projects,
+    activeProjectId,
+    page,
+    settingsTab,
+    pendingMessage,
+    headerTitle: page === 'settings'
+      ? t('settings.title')
+      : (activeConversation?.title ?? activeProject?.name ?? t('app.name')),
+    canDragWindow,
+    onSelect: handleSelect,
+    onCreate: handleCreate,
+    onDelete: handleDelete,
+    onRename: handleRename,
+    onTogglePin: handleTogglePin,
+    onSelectProject: handleSelectProject,
+    onCreateProject: handleCreateProject,
+    onDeleteProject: handleDeleteProject,
+    onRenameProject: handleRenameProject,
+    onOpenSettings: () => setPage('settings'),
+    onCloseSettings: () => setPage('chat'),
+    onSettingsTabChange: setSettingsTab,
+    onCreateWithMessage: handleCreateWithMessage,
+    onInitialMessageConsumed: () => setPendingMessage(null),
+  }
 
-        <main className="flex-1 min-h-0 overflow-hidden">
-          {page === 'settings' ? (
-            // No spinner: the chunk is on local disk and resolves within a
-            // frame or two, where a flash of "loading" would read as jank.
-            <Suspense fallback={null}>
-              <SettingsPage activeTab={settingsTab} />
-            </Suspense>
-          ) : activeId ? (
-            <ChatView
-              key={activeId}
-              conversationId={activeId}
-              initialMessage={pendingMessage}
-              onInitialMessageConsumed={() => setPendingMessage(null)}
-            />
-          ) : (
-            <EmptyState onSubmit={handleCreateWithMessage} />
-          )}
-        </main>
-      </SidebarInset>
-    </SidebarProvider>
-  )
+  return stackMode ? <MobileShell {...shellProps} /> : <DesktopShell {...shellProps} />
 }
 
 export default App

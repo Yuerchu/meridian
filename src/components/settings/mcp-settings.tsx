@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowLeft, ArrowDownToSquare } from '@gravity-ui/icons'
+import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } from '@gravity-ui/icons'
 import { Button, Input, Switch, TextArea, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { api } from '@/api'
 import type { McpServer, McpToolDef } from '@/types'
+import { MasterDetail } from './master-detail'
+import { useMasterDetail } from './use-master-detail'
 
 interface McpServersJson {
   mcpServers?: Record<string, {
@@ -305,10 +306,12 @@ function McpServerEditor({
 
 export function McpSettings() {
   const { t } = useTranslation()
-  const isMobile = useIsMobile()
+  // Never auto-selects: unlike providers, an MCP server list is often empty on
+  // first open, and there is nothing to fall back to.
+  const nav = useMasterDetail<'import'>()
+  const { selectedId } = nav
   const [servers, setServers] = useState<McpServer[]>([])
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [showImport, setShowImport] = useState(false)
+  const showImport = nav.aux === 'import'
 
   const refresh = useCallback(() => {
     api.listMcpServers().then(setServers)
@@ -319,12 +322,12 @@ export function McpSettings() {
   const handleAdd = useCallback(async () => {
     const server = await api.createMcpServer('New Server', 'stdio')
     refresh()
-    setSelectedId(server.id)
+    nav.openItem(server.id)
   }, [refresh])
 
   const handleDelete = useCallback(async (id: string) => {
     await api.deleteMcpServer(id)
-    if (selectedId === id) setSelectedId(null)
+    if (selectedId === id) nav.select(null)
     refresh()
   }, [selectedId, refresh])
 
@@ -342,9 +345,9 @@ export function McpSettings() {
       })
       lastId = server.id
     }
-    setShowImport(false)
+    nav.back()
     refresh()
-    if (lastId) setSelectedId(lastId)
+    if (lastId) nav.openItem(lastId)
   }, [refresh])
 
   const selected = servers.find((s) => s.id === selectedId)
@@ -355,7 +358,7 @@ export function McpSettings() {
         <Button
           key={s.id}
           variant="ghost"
-          onClick={() => setSelectedId(s.id)}
+          onClick={() => nav.openItem(s.id)}
           className={cn(
             'w-full justify-start h-auto px-3 py-2',
             selectedId === s.id
@@ -381,7 +384,7 @@ export function McpSettings() {
         <Button
           aria-label={t('settings.mcp.importJson')}
           variant="outline"
-          onClick={() => setShowImport(true)}
+          onClick={() => nav.openAux('import')}
         >
           <ArrowDownToSquare className="w-4 h-4" />
         </Button>
@@ -393,86 +396,39 @@ export function McpSettings() {
     </div>
   )
 
-  if (isMobile) {
-    return (
-      <div className="max-w-3xl">
-        {showImport ? (
-          <>
-            <h2 className="text-lg font-semibold mb-4">{t('settings.mcp.importJson')}</h2>
-            <JsonImportDialog onImport={handleImport} onCancel={() => setShowImport(false)} />
-          </>
-        ) : selected ? (
-          <>
-            <Button
-              variant="ghost"
-              onClick={() => setSelectedId(null)}
-              className="text-muted mb-4"
-            >
-              <ArrowLeft />
-              {t('common.back')}
-            </Button>
-            <McpServerEditor
-              key={selected.id}
-              server={selected}
-              onUpdate={refresh}
-              onDelete={handleDelete}
-            />
-          </>
-        ) : (
-          <>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">{t('settings.mcp.title')}</h2>
-              {headerActions}
-            </div>
-            {servers.length === 0 ? (
-              <p className="text-sm text-muted">{t('settings.mcp.noServers')}</p>
-            ) : (
-              serverList
-            )}
-          </>
-        )}
-      </div>
-    )
-  }
-
   return (
-    <div className="max-w-3xl">
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">{t('settings.mcp.title')}</h2>
-        {headerActions}
-      </div>
-
-      {showImport && (
-        <div className="mb-4">
-          <JsonImportDialog onImport={handleImport} onCancel={() => setShowImport(false)} />
+    <MasterDetail
+      nav={nav}
+      title={t('settings.mcp.title')}
+      actions={headerActions}
+      listWidth="w-48"
+      headerPlacement="top"
+      list={
+        <div
+          data-slot="mcp-server-list"
+          className="overflow-y-auto overscroll-contain"
+        >
+          {serverList}
         </div>
-      )}
-
-      {servers.length === 0 && !showImport ? (
+      }
+      detail={selected ? (
+        <McpServerEditor
+          key={selected.id}
+          server={selected}
+          onUpdate={refresh}
+          onDelete={handleDelete}
+        />
+      ) : undefined}
+      emptyDetail={t('settings.mcp.selectServer')}
+      // On a phone the import form is a screen of its own and now has a way
+      // back out of it; on a desktop it opens above a list that stays put.
+      auxTitle={t('settings.mcp.importJson')}
+      aux={showImport ? (
+        <JsonImportDialog onImport={handleImport} onCancel={nav.back} />
+      ) : undefined}
+      emptyState={servers.length === 0 && !showImport ? (
         <p className="text-sm text-muted">{t('settings.mcp.noServers')}</p>
-      ) : (
-        <div className="flex gap-4">
-          <div
-            data-slot="mcp-server-list"
-            className="w-48 flex-shrink-0 overflow-y-auto overscroll-contain"
-          >
-            {serverList}
-          </div>
-
-          <div className="flex-1">
-            {selected ? (
-              <McpServerEditor
-                key={selected.id}
-                server={selected}
-                onUpdate={refresh}
-                onDelete={handleDelete}
-              />
-            ) : (
-              <p className="text-sm text-muted">{t('settings.mcp.selectServer')}</p>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+      ) : undefined}
+    />
   )
 }

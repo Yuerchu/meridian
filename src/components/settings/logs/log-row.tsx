@@ -96,7 +96,10 @@ function LogRowImpl({ entry }: { entry: LogEntry }) {
         size="sm"
         aria-label={t('settings.about.logs.copyRecord')}
         onClick={onCopy}
-        className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+        // Focus-visible alone does not rescue this on a touch screen, where a
+        // tap grants no focus ring — the only action on the row would be
+        // permanently invisible.
+        className="opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
       >
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
       </Button>

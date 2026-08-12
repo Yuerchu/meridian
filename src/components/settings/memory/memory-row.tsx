@@ -37,7 +37,11 @@ export function MemoryRow({
       data-slot="memory-row"
       className="flex w-full flex-col rounded-lg border border-border"
     >
-      <div data-slot="memory-row-header" className="flex items-center gap-2 p-3">
+      {/* Wraps rather than overflows: a key, three or four badges and a date do
+          not fit one line on a phone, and this scroller shares its horizontal
+          overflow with the whole settings page — one long key here used to drag
+          every other panel sideways with it. */}
+      <div data-slot="memory-row-header" className="flex flex-wrap items-center gap-2 p-3">
         {/* No label of its own — the row's key names it. */}
         <Checkbox
           data-slot="memory-row-check"
@@ -64,7 +68,7 @@ export function MemoryRow({
             <Disclosure.Indicator className="size-4" />
           </Disclosure.Trigger>
         </Disclosure.Heading>
-        <span className="font-mono text-sm">{memory.key}</span>
+        <span className="min-w-0 truncate font-mono text-sm">{memory.key}</span>
         <MemoryBadge tone="accent">
           {memory.scope_type.replace('onebot_', '').replace('client_global', 'client')}
         </MemoryBadge>

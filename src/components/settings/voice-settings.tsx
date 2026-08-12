@@ -6,6 +6,7 @@ import { TrashBin } from '@gravity-ui/icons'
 import { Button, Card, Input, ListBox, ProgressCircle, Select } from '@heroui/react'
 import { api } from '@/api'
 import type { VoiceModelStatus } from '@/types'
+import { SettingsHeader, SettingsPane } from './primitives'
 
 const FILTER_LEVELS = ['off', 'standard', 'aggressive'] as const
 
@@ -75,10 +76,11 @@ export function VoiceSettings() {
   }
 
   const handleImport = async () => {
+    // Cancelling the picker rejects on Android instead of resolving to null.
     const file = await open({
       multiple: false,
       filters: [{ name: 'Model archive', extensions: ['bz2', 'tar'] }],
-    })
+    }).catch(() => null)
     if (typeof file !== 'string') return
     setError(null)
     setImporting(true)
@@ -115,11 +117,8 @@ export function VoiceSettings() {
   const filterOptions = FILTER_LEVELS.map((v) => ({ value: v, label: t(`settings.voice.filter.${v}`) }))
 
   return (
-    <div className="max-w-lg space-y-6">
-      <div>
-        <h2 className="text-lg font-medium">{t('settings.voice.title')}</h2>
-        <p className="text-xs text-muted mt-1">{t('settings.voice.intro')}</p>
-      </div>
+    <SettingsPane>
+      <SettingsHeader title={t('settings.voice.title')} subtitle={t('settings.voice.intro')} />
 
       <div className="space-y-1.5">
         <label className="block text-xs font-medium text-muted">
@@ -216,6 +215,6 @@ export function VoiceSettings() {
         </Select>
         <p className="text-xs text-muted">{t('settings.voice.filterHint')}</p>
       </div>
-    </div>
+    </SettingsPane>
   )
 }

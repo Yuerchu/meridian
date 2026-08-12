@@ -4,6 +4,8 @@ import { Plus, TrashBin, Wrench, Terminal, Check } from '@gravity-ui/icons'
 import { Button, Card, Disclosure, DisclosureGroup, Input, ListBox, Select } from '@heroui/react'
 import { api } from '@/api'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
+import { SettingsHeader, SettingsPane } from './primitives'
+import { SettingsDrilldown } from './settings-drilldown'
 
 function CustomToolEditor({
   tool,
@@ -151,14 +153,13 @@ export function ToolMarketplace() {
   }
 
   return (
-    <div className="max-w-lg space-y-6">
-      <div>
-        <h2 className="text-lg font-medium">{t('settings.tools.title')}</h2>
-        <p className="text-xs text-muted mt-1">{t('settings.tools.subtitle')}</p>
-      </div>
+    <SettingsPane>
+      <SettingsHeader title={t('settings.tools.title')} subtitle={t('settings.tools.subtitle')} />
 
-      <div>
-        <h3 className="text-sm font-medium mb-2">{t('settings.tools.builtinSection')}</h3>
+      <SettingsDrilldown
+        title={t('settings.tools.builtinSection')}
+        summary={builtinTools.filter((tool) => tool.source === 'builtin').length}
+      >
         <div className="grid grid-cols-1 gap-1">
           {builtinTools.filter((t) => t.source === 'builtin').map((tool) => (
             <div key={tool.name} className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg">
@@ -168,12 +169,14 @@ export function ToolMarketplace() {
             </div>
           ))}
         </div>
-      </div>
+      </SettingsDrilldown>
 
       {builtinTools.some((tool) => tool.source === 'onebot') && (
-        <div>
-          <h3 className="text-sm font-medium mb-1">{t('settings.tools.onebotSection')}</h3>
-          <p className="text-xs text-muted mb-2">{t('settings.tools.onebotHint')}</p>
+        <SettingsDrilldown
+          title={t('settings.tools.onebotSection')}
+          summary={builtinTools.filter((tool) => tool.source === 'onebot').length}
+        >
+          <p className="text-xs text-muted">{t('settings.tools.onebotHint')}</p>
           <div className="grid grid-cols-1 gap-1">
             {builtinTools.filter((tool) => tool.source === 'onebot').map((tool) => (
               <div key={tool.name} className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg">
@@ -197,7 +200,7 @@ export function ToolMarketplace() {
               </div>
             ))}
           </div>
-        </div>
+        </SettingsDrilldown>
       )}
 
       <div>
@@ -298,6 +301,6 @@ export function ToolMarketplace() {
           })}
         </div>
       </div>
-    </div>
+    </SettingsPane>
   )
 }

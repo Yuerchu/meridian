@@ -574,16 +574,18 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
   refreshConversations: async () => {
     const { activeProjectId } = get()
-    let conversations: Conversation[]
-    if (activeProjectId) {
-      const [active, archived] = await Promise.all([
-        api.listConversationsByProject(activeProjectId, false),
-        api.listConversationsByProject(activeProjectId, true),
-      ])
-      conversations = [...active, ...archived]
-    } else {
-      conversations = await api.listConversations()
-    }
+    // One query either way. Concatenating a second, archived result used to
+    // leave two separately-sorted runs in one list — invisible while a row
+    // showed nothing but its title, and plainly wrong now that each carries a
+    // timestamp and a pin marker. The other branch never included archived
+    // conversations to begin with, so this also settles which of the two was
+    // right.
+    // TODO: archived conversations are currently unreachable in the UI. There
+    // is no archive/unarchive command either — `is_archived` is only ever read
+    // while rendering. Both belong in one change.
+    const conversations: Conversation[] = activeProjectId
+      ? await api.listConversationsByProject(activeProjectId, false)
+      : await api.listConversations()
     set({ conversations })
     return conversations
   },

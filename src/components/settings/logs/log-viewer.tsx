@@ -15,10 +15,11 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
   const onExport = useCallback(async () => {
     // The webview has no filesystem access; the dialog picks a path and Rust
     // does the writing, same as conversation export.
+    // Cancelling the picker rejects on Android instead of resolving to null.
     const path = await save({
       defaultPath: `meridian-logs-${new Date().toISOString().slice(0, 10)}.jsonl`,
       filters: [{ name: 'JSONL', extensions: ['jsonl'] }],
-    })
+    }).catch(() => null)
     if (!path) return
     await api.exportLogs(path)
     setExported(true)

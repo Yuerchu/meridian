@@ -21,7 +21,7 @@ import {
   AttachmentMedia,
   AttachmentTitle,
 } from '@/components/ui/attachment'
-import { isSubmitKey } from '@/hooks/use-coarse-pointer'
+import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
 import { VoiceButton } from '@/components/ui/voice-button'
 import { MobileOptionsMenu } from './toolbar'
@@ -79,6 +79,37 @@ interface InputBarProps {
   onCompact?: () => void
 }
 
+/**
+ * Wraps the composer in our own menu on a mouse, and steps aside on a touch
+ * screen.
+ *
+ * Ours is the worse menu there in three separate ways: it opens wherever the
+ * finger landed rather than beside the caret, it captions its items with
+ * Ctrl+V, and opening it takes focus off the textarea — which dismisses the
+ * keyboard and staleds the `selectionStart` that Paste inserts at. The
+ * platform's own long-press menu has none of those problems and custom ROMs
+ * add clipboard history and translation to it, so let the WebView have it.
+ */
+function ComposerContextMenu({
+  enabled,
+  onOpenChange,
+  items,
+  children,
+}: {
+  enabled: boolean
+  onOpenChange: (open: boolean) => void
+  items: React.ReactNode
+  children: React.ReactNode
+}) {
+  if (!enabled) return children
+  return (
+    <ContextMenu onOpenChange={onOpenChange}>
+      <ContextMenuTrigger>{children}</ContextMenuTrigger>
+      <ContextMenuContent>{items}</ContextMenuContent>
+    </ContextMenu>
+  )
+}
+
 export function InputBar({
   value,
   onChange,
@@ -131,8 +162,22 @@ export function InputBar({
   })
 
   useEffect(() => {
+    // Not on a touch screen, where focus summons the keyboard over half the
+    // display. ChatView is keyed by conversation id, so this runs again on
+    // every switch — landing in a conversation to read it would cost the
+    // keyboard each time.
+    if (isCoarsePointer()) return
     textareaRef.current?.focus()
   }, [])
+
+  // A pinyin or kana candidate lives in the textarea before it has been chosen.
+  // Enter is already guarded by `isSubmitKey`, but on a phone the send button is
+  // what gets pressed, and it sits next to the candidate bar.
+  const composingRef = useRef(false)
+  const handleSubmit = useCallback(() => {
+    if (composingRef.current) return
+    onSubmit()
+  }, [onSubmit])
 
   const handleContextMenuOpen = useCallback((open: boolean) => {
     if (open) {
@@ -221,7 +266,10 @@ export function InputBar({
   }, [onAttachFiles])
 
   const handlePickFile = useCallback(async () => {
-    const paths = await open({ multiple: true })
+    // Cancelling rejects on Android rather than resolving to null, so a tap on
+    // Back out of the picker would otherwise surface as an unhandled rejection.
+    // Every caller here already treats null as "nothing chosen".
+    const paths = await open({ multiple: true }).catch(() => null)
     if (paths && onAttachFiles) {
       const files = await Promise.all(
         (Array.isArray(paths) ? paths : [paths]).map(async (p) => ({
@@ -233,14 +281,49 @@ export function InputBar({
     }
   }, [onAttachFiles])
 
+  const menuItems = (
+    <>
+      {selectedText && (
+        <>
+          <ContextMenuItem onClick={handleCut}>
+            <Scissors />
+            {t('contextMenu.cut')}
+            <span className="ml-auto text-xs text-muted">Ctrl+X</span>
+          </ContextMenuItem>
+          <ContextMenuItem onClick={handleCopy}>
+            <Copy />
+            {t('chat.copy')}
+            <span className="ml-auto text-xs text-muted">Ctrl+C</span>
+          </ContextMenuItem>
+        </>
+      )}
+      <ContextMenuItem onClick={handlePaste}>
+        <ArrowDownToSquare />
+        {t('contextMenu.paste')}
+        <span className="ml-auto text-xs text-muted">Ctrl+V</span>
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem onClick={handleSelectAll}>
+        <SquareDashedText />
+        {t('contextMenu.selectAll')}
+        <span className="ml-auto text-xs text-muted">Ctrl+A</span>
+      </ContextMenuItem>
+    </>
+  )
+
   return (
-    <div className="px-4 pb-[max(1rem,var(--safe-bottom))] pt-2">
+    // Sides as well as bottom: turned sideways the 3-button bar moves to one
+    // edge, and the send button is in the corner it lands on.
+    <div className="px-4 pb-[max(1rem,var(--safe-bottom))] pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
       <div className="max-w-2xl mx-auto">
         {voiceNotice && (
           <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>
         )}
-        <ContextMenu onOpenChange={handleContextMenuOpen}>
-        <ContextMenuTrigger>
+        <ComposerContextMenu
+          enabled={!isCoarsePointer()}
+          onOpenChange={handleContextMenuOpen}
+          items={menuItems}
+        >
         <TextField fullWidth aria-label={t('chat.placeholder')}>
         <InputGroup fullWidth className="flex flex-col gap-2 rounded-2xl py-2">
           {attachedFiles.length > 0 && (
@@ -277,6 +360,8 @@ export function InputBar({
               onChange(e.target.value)
             }}
             onKeyDown={handleKeyDown}
+            onCompositionStart={() => { composingRef.current = true }}
+            onCompositionEnd={() => { composingRef.current = false }}
             placeholder={t('chat.placeholder')}
             disabled={disabled && !streaming}
             rows={1}
@@ -436,7 +521,7 @@ export function InputBar({
                   isIconOnly
                   size="sm"
                   aria-label={t('chat.send')}
-                  onClick={onSubmit}
+                  onClick={handleSubmit}
                   isDisabled={disabled || !value.trim()}
                   className="rounded-full"
                 >
@@ -447,35 +532,7 @@ export function InputBar({
           </InputGroup.Suffix>
         </InputGroup>
         </TextField>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          {selectedText && (
-            <>
-              <ContextMenuItem onClick={handleCut}>
-                <Scissors />
-                {t('contextMenu.cut')}
-                <span className="ml-auto text-xs text-muted">Ctrl+X</span>
-              </ContextMenuItem>
-              <ContextMenuItem onClick={handleCopy}>
-                <Copy />
-                {t('chat.copy')}
-                <span className="ml-auto text-xs text-muted">Ctrl+C</span>
-              </ContextMenuItem>
-            </>
-          )}
-          <ContextMenuItem onClick={handlePaste}>
-            <ArrowDownToSquare />
-            {t('contextMenu.paste')}
-            <span className="ml-auto text-xs text-muted">Ctrl+V</span>
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onClick={handleSelectAll}>
-            <SquareDashedText />
-            {t('contextMenu.selectAll')}
-            <span className="ml-auto text-xs text-muted">Ctrl+A</span>
-          </ContextMenuItem>
-        </ContextMenuContent>
-        </ContextMenu>
+        </ComposerContextMenu>
       </div>
     </div>
   )

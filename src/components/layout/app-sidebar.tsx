@@ -2,15 +2,17 @@ import { useState, useCallback, useId, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open, save } from '@tauri-apps/plugin-dialog'
 import {
-  Comment, Person, Plus, Gear, TrashBin, FolderOpen, FolderPlus,
-  Persons, Archive, ArrowDownToLine, ArrowLeft, Pin, PinSlash, Pencil,
-  Cloud, FaceRobot, FaceSmile, Wrench, Sparkles, LogoMcp, Bulb, Microphone,
-  BroadcastSignal, Sliders, CircleInfo,
+  Comment, Plus, Gear, TrashBin, FolderOpen, FolderPlus,
+  Archive, ArrowDownToLine, ArrowLeft, Pin, PinSlash, Pencil,
 } from '@gravity-ui/icons'
 import SpotlightCard from '@/components/SpotlightCard'
-import { useConversationStore } from '@/stores/conversation-store'
 import type { Conversation, Project } from '@/types'
-import type { SettingsTab } from '@/components/settings'
+import type { Page } from '@/lib/nav'
+// Not from the settings barrel: this is a value import, and the barrel would
+// pull the whole lazily-loaded settings chunk into the main bundle.
+import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
+import { ConversationIndicator } from './conversation-indicator'
+import { ProjectIcon } from './project-icon'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { AlertDialog, Button, Input } from '@heroui/react'
@@ -42,7 +44,7 @@ interface AppSidebarProps {
   onDelete: (id: string) => void
   onRename: (id: string, newTitle: string) => void
   onTogglePin: (id: string) => void
-  page: 'chat' | 'settings'
+  page: Page
   onOpenSettings: () => void
   onCloseSettings: () => void
   settingsTab: SettingsTab
@@ -61,7 +63,8 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
   const [path, setPath] = useState('')
 
   const handleBrowse = useCallback(async () => {
-    const selected = await open({ directory: true, multiple: false })
+    // Cancelling the picker rejects on Android instead of resolving to null.
+    const selected = await open({ directory: true, multiple: false }).catch(() => null)
     if (selected) {
       setPath(selected)
       if (!name.trim()) {
@@ -111,46 +114,6 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
       </div>
     </div>
   )
-}
-
-function ProjectIcon({ sourceType }: { sourceType: string }) {
-  switch (sourceType) {
-    case 'onebot_private': return <Person />
-    case 'onebot_group': return <Persons />
-    default: return <FolderOpen />
-  }
-}
-
-const settingsTabs: Array<{ id: SettingsTab; labelKey: string; icon: React.ElementType }> = [
-  { id: 'provider', labelKey: 'settings.provider', icon: Cloud },
-  { id: 'assistants', labelKey: 'settings.assistants', icon: FaceRobot },
-  { id: 'emoji', labelKey: 'settings.emoji', icon: FaceSmile },
-  { id: 'tools', labelKey: 'settings.toolsTab', icon: Wrench },
-  { id: 'skills', labelKey: 'settings.skillsTab', icon: Sparkles },
-  { id: 'mcp', labelKey: 'settings.mcp', icon: LogoMcp },
-  { id: 'memories', labelKey: 'settings.memories', icon: Bulb },
-  { id: 'voice', labelKey: 'settings.voice', icon: Microphone },
-  { id: 'onebot', labelKey: 'settings.onebot', icon: BroadcastSignal },
-  { id: 'general', labelKey: 'settings.general', icon: Sliders },
-  { id: 'about', labelKey: 'settings.about', icon: CircleInfo },
-]
-
-function ConversationIndicator({ conversationId, activeId }: { conversationId: string; activeId: string | null }) {
-  const session = useConversationStore((s) => s.sessions[conversationId])
-  if (!session || conversationId === activeId) return null
-
-  // Key counts, not truthiness: these are records now, and an empty one is
-  // still an object.
-  if (Object.keys(session.pendingApprovals).length > 0 || Object.keys(session.pendingAsks).length > 0) {
-    return <span className="size-2 shrink-0 rounded-full bg-warning animate-pulse" />
-  }
-  if (session.streaming) {
-    return <span className="size-2 shrink-0 rounded-full bg-info animate-pulse" />
-  }
-  if (session.fulfilledUnseen) {
-    return <span className="size-2 shrink-0 rounded-full bg-success" />
-  }
-  return null
 }
 
 function InlineRenameInput({ value, onSubmit, onCancel }: { value: string; onSubmit: (v: string) => void; onCancel: () => void }) {
@@ -233,7 +196,7 @@ export function AppSidebar({
             <SidebarGroupLabel>{t('settings.title')}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {settingsTabs.filter((tab) => (tab.id !== 'onebot' && tab.id !== 'voice') || platform !== 'android').map((tab) => (
+                {visibleSettingsTabs(platform).map((tab) => (
                   <SidebarMenuItem key={tab.id}>
                     <SidebarMenuButton
                       isActive={settingsTab === tab.id}
@@ -343,11 +306,11 @@ export function AppSidebar({
             <SidebarMenu>
               {conversations.map((conv) => {
                 const exportSft = async () => {
-                  const path = await save({ defaultPath: `${conv.title ?? 'chat'}_sft.jsonl`, filters: [{ name: 'JSONL', extensions: ['jsonl'] }] })
+                  const path = await save({ defaultPath: `${conv.title ?? 'chat'}_sft.jsonl`, filters: [{ name: 'JSONL', extensions: ['jsonl'] }] }).catch(() => null)
                   if (path) await api.exportConversation(conv.id, 'sft', path)
                 }
                 const exportDpo = async () => {
-                  const path = await save({ defaultPath: `${conv.title ?? 'chat'}_dpo.jsonl`, filters: [{ name: 'JSONL', extensions: ['jsonl'] }] })
+                  const path = await save({ defaultPath: `${conv.title ?? 'chat'}_dpo.jsonl`, filters: [{ name: 'JSONL', extensions: ['jsonl'] }] }).catch(() => null)
                   if (path) await api.exportConversation(conv.id, 'dpo', path)
                 }
                 return (
