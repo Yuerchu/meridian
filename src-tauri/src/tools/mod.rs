@@ -16,6 +16,7 @@ pub mod reach;
 pub mod run_command;
 pub mod search_files;
 pub mod skill;
+pub mod sub_agent;
 pub mod todo;
 pub mod verified;
 pub mod web_search;
@@ -433,6 +434,12 @@ impl ToolRegistry {
             Arc::new(todo::UpdateTodosTool),
             Arc::new(plan::EnterPlanTool),
             Arc::new(plan::ExitPlanTool),
+            // In the registry like anything else, but only ever offered to a
+            // runner that has somewhere to run a sub-agent. Which runners those
+            // are is decided in `TurnConfigInput`, not here and not at dispatch:
+            // `PlanTransitions` rebuilds the tool set mid-turn and would undo
+            // any filtering a call site did.
+            Arc::new(sub_agent::RunAgentTool),
             Arc::new(web_search::WebSearchTool::new()),
         ];
         #[cfg(not(target_os = "android"))]

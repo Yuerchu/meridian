@@ -29,6 +29,14 @@ pub(crate) struct TurnConfigInput {
     pub mcp_defs: Vec<ToolDefinition>,
     /// False for OneBot's non-admin sessions, which get no tools at all.
     pub include_tools: bool,
+    /// Whether this runner can delegate, and to which models.
+    ///
+    /// `None` is not "no models" — it is "there is no `SubAgents` port here", so
+    /// `run_agent` is taken out of the tool set entirely. It has to be decided
+    /// at this level rather than at the call site or at dispatch, because
+    /// `PlanTransitions` re-resolves mid-turn and would undo anything a call
+    /// site had filtered.
+    pub sub_agents: Option<crate::agent::sub_agents::SubAgentCatalog>,
     /// The assistant's own prompt, template variables already resolved.
     pub persona: String,
     /// Slotted in after the persona: project instructions, file access notes.
@@ -58,6 +66,7 @@ pub(crate) fn resolve(
         mode,
         mcp_defs,
         include_tools,
+        sub_agents,
         persona,
         context_blocks,
     } = input;
@@ -83,6 +92,7 @@ pub(crate) fn resolve(
             Vec::new()
         });
         super::tool_defs::apply_skill_catalog(&mut defs, &available);
+        super::tool_defs::apply_sub_agent_catalog(&mut defs, sub_agents.as_ref());
         defs
     } else {
         Vec::new()
@@ -268,6 +278,7 @@ mod tests {
             conversation_id: "c1".into(),
             project_id: None,
             mode,
+            sub_agents: None,
             mcp_defs: Vec::new(),
             include_tools: true,
             persona: "You are a test.".into(),

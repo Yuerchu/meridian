@@ -313,6 +313,7 @@ pub fn run() {
             app.manage(AppDb(pool));
             app.manage(AppTools(Arc::new(registry)));
             app.manage(ApprovalWaiters::new());
+            app.manage(crate::state::AppSubAgentInboxes::default());
             // One table for every writer of a conversation, desktop and OneBot
             // alike. It lives on the app rather than inside either runner
             // because `start_onebot` rebuilds the OneBot server's whole shared
@@ -497,6 +498,8 @@ pub fn run() {
             commands::memory::restore_memories,
             commands::memory::purge_memories,
             commands::memory::memory_enums,
+            commands::audit::list_audit_messages,
+            commands::audit::purge_audit_before,
             commands::preference::get_preference,
             commands::preference::set_preference,
             commands::mcp::list_mcp_servers,

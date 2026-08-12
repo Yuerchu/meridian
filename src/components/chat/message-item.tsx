@@ -44,6 +44,7 @@ import { markQueued } from '@/lib/turns'
 import { ToolCallBlock } from './tool-call-block'
 import { renderEmojisInText } from './emoji-renderer'
 import type { ContentBlock, Message as MessageData } from '@/types'
+import type { SenderNames } from '@/hooks/use-sender-names'
 import type { EmojiMap } from './emoji-renderer'
 
 // Attachment URLs are stored as file:// URIs, but the WebView runs on an http
@@ -142,6 +143,25 @@ function parseOneBotContent(content: string): ParsedOneBotContent {
   }
 
   return { senderPrefix, quotedMessage, body: remaining }
+}
+
+/**
+ * Who to credit above a user bubble.
+ *
+ * The row stores an id and nothing else, so the nickname is looked up — it
+ * changes, and a stored copy would freeze. History written before attribution
+ * became structural has no id at all and still carries the old `[nick(id)]`
+ * marker in its body, which is what `legacyPrefix` recovers. An id with no
+ * nickname on file shows as the bare number: still enough to tell two people
+ * apart, which is the whole point.
+ */
+function speakerLabel(
+  senderId: number | null | undefined,
+  names: SenderNames | undefined,
+  legacyPrefix: string | null,
+): string | null {
+  if (senderId == null) return legacyPrefix
+  return names?.[senderId] ?? String(senderId)
 }
 
 function QuotedMessageBlock({ sender, content }: { sender: string; content: string }) {
@@ -321,6 +341,8 @@ interface MessageItemProps {
   onRate?: (id: string, rating: number | null) => void
   isOneBot?: boolean
   emojiMap?: EmojiMap
+  /** Nicknames for the ids on user rows. Only a group has more than one. */
+  senderNames?: SenderNames
   assistantAvatar?: string | null
   /** First row of a run of answers from the same model: carries the avatar and
    *  the header naming it, where the rows after it only indent to match. */
@@ -344,7 +366,7 @@ interface MessageItemProps {
   blocksOverride?: ContentBlock[]
 }
 
-export const MessageItem = React.memo(function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, onEdit, onRate, isOneBot, emojiMap, assistantAvatar, isFirstInGroup = true, showAvatar, showFooter = true, tokenTotals, blocksOverride }: MessageItemProps) {
+export const MessageItem = React.memo(function MessageItem({ message, isStreaming, isLastMessage, onDelete, onRegenerate, onEdit, onRate, isOneBot, emojiMap, senderNames, assistantAvatar, isFirstInGroup = true, showAvatar, showFooter = true, tokenTotals, blocksOverride }: MessageItemProps) {
   const { t } = useTranslation()
   const isUser = message.role === 'user'
   const footerTokens = tokenTotals ?? { input: message.input_tokens, output: message.output_tokens }
@@ -428,6 +450,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
     const { senderPrefix, quotedMessage, body } = isOneBot
       ? parseOneBotContent(textContent)
       : { senderPrefix: null, quotedMessage: null, body: textContent }
+    const speaker = isOneBot ? speakerLabel(message.sender_id, senderNames, senderPrefix) : null
 
     const hasAttachments = !!contentParts && contentParts.some((p) => p.type === 'image_url' || p.type === 'file')
 
@@ -435,8 +458,8 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
       <ContextMenu onOpenChange={handleContextMenuOpenChange}>
         <ContextMenuTrigger render={<Message align="end" />}>
           <MessageContent>
-            {senderPrefix && (
-              <MessageHeader className="justify-end text-muted font-normal">{senderPrefix}</MessageHeader>
+            {speaker && (
+              <MessageHeader className="justify-end text-muted font-normal">{speaker}</MessageHeader>
             )}
             {hasAttachments && (
               <AttachmentGroup className="items-start max-w-[80%]">

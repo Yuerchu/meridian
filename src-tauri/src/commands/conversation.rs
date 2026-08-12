@@ -334,6 +334,7 @@ async fn assemble_system_prompt(
         let Ok(mut conn) = pool2.get() else { return (String::new(), String::new()) };
         let (persona, memory_block) =
             load_persona_and_memory(&mut conn, assistant.as_ref(), pid.as_deref());
+        let sub_agents = crate::agent::sub_agents::catalog(&mut conn);
         let turn = crate::agent::turn_config::resolve(
             &mut conn,
             &registry,
@@ -344,6 +345,11 @@ async fn assemble_system_prompt(
                 // The estimate has to count the prompt the chat loop will
                 // actually send, transitions included.
                 mode: crate::agent::modes::Modes::Switchable(mode),
+                // And for the same reason it has to answer this the way the
+                // chat loop does. `run_agent` carries a roster of models in its
+                // description, which is not a small number of tokens to be
+                // wrong about.
+                sub_agents: Some(sub_agents),
                 mcp_defs,
                 include_tools: true,
                 persona,
@@ -398,8 +404,9 @@ pub async fn get_context_info(
         let secrets2 = secrets.0.clone();
         let assistant2 = assistant.clone();
         tokio::task::spawn_blocking(move || {
-            let (provider_type, _, _, model, api_format) =
-                resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
+            let crate::agent::ResolvedProvider {
+                provider_type, model, api_format, ..
+            } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
             let turn = resolve_turn_params(&pool2, TurnParamsInput {
                 assistant: assistant2.as_ref(),
                 provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),

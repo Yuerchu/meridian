@@ -118,8 +118,8 @@ pub fn unreported_for_conversation(
     conversation_id: &str,
     excluding: Option<&str>,
     limit: i64,
-) -> QueryResult<Vec<Turn>> {
-    turns::table
+) -> QueryResult<Vec<InterruptedCandidate>> {
+    let mut out: Vec<InterruptedCandidate> = turns::table
         .filter(turns::conversation_id.eq(conversation_id))
         .filter(turns::id.ne(excluding.unwrap_or("")))
         .filter(turns::reported_at.is_null())
@@ -129,7 +129,84 @@ pub fn unreported_for_conversation(
         ]))
         .order((turns::started_at.desc(), insertion_order().desc()))
         .limit(limit)
-        .load::<Turn>(conn)
+        .load::<Turn>(conn)?
+        .into_iter()
+        .map(|turn| InterruptedCandidate { turn, ledger: Ledger::Own, child_title: None })
+        .collect();
+
+    // What the conversation delegated. The parent has to hear about these
+    // itself: "a sub-agent was partway through `edit_file`" is the fact that
+    // matters, and it lives on a row in a conversation the parent's own history
+    // never mentions.
+    let children: Vec<(String, Option<String>)> = crate::db::schema::conversations::table
+        .filter(crate::db::schema::conversations::parent_conversation_id.eq(conversation_id))
+        .select((
+            crate::db::schema::conversations::id,
+            crate::db::schema::conversations::title,
+        ))
+        .load(conn)?;
+    if !children.is_empty() {
+        let ids: Vec<&str> = children.iter().map(|(id, _)| id.as_str()).collect();
+        let delegated = turns::table
+            .filter(turns::conversation_id.eq_any(&ids))
+            // Only the delegated run itself. A follow-up the user typed into the
+            // sub-agent's transcript is between them and that conversation — the
+            // parent never saw the question and would be left guessing what an
+            // interruption there was even about.
+            .filter(turns::origin.eq(TurnOrigin::SubAgent.as_str()))
+            .filter(turns::parent_reported_at.is_null())
+            .filter(turns::status.eq_any([
+                TurnStatus::Running.as_str(),
+                TurnStatus::Interrupted.as_str(),
+            ]))
+            .order((turns::started_at.desc(), insertion_order().desc()))
+            .limit(limit)
+            .load::<Turn>(conn)?;
+        out.extend(delegated.into_iter().map(|turn| {
+            let child_title = children
+                .iter()
+                .find(|(id, _)| *id == turn.conversation_id)
+                .and_then(|(_, title)| title.clone());
+            InterruptedCandidate { turn, ledger: Ledger::Parent, child_title }
+        }));
+    }
+
+    // Both halves arrive newest first; merging keeps that. A stable sort settles
+    // a shared millisecond in favour of the conversation's own turn, which is
+    // the one the reader has actually seen.
+    out.sort_by(|a, b| b.turn.started_at.cmp(&a.turn.started_at));
+    out.truncate(limit as usize);
+    Ok(out)
+}
+
+/// Which ledger records that a turn has been described.
+///
+/// A delegated run has two audiences — its own conversation, which the user can
+/// open and read, and the one that spawned it — and one column cannot serve
+/// both. With a single `reported_at`, opening the sub-agent and typing one
+/// message would consume the notice, and the parent would never hear that a tool
+/// had been left half-run.
+///
+/// Two columns rather than a `(turn, recipient)` table because depth is one by
+/// construction: a sub-agent is handed no way to delegate, so a turn has at most
+/// two audiences. Lift that and this has to become the table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ledger {
+    /// `turns.reported_at`: the conversation the turn ran in has been told.
+    Own,
+    /// `turns.parent_reported_at`: the conversation that delegated it has.
+    Parent,
+}
+
+/// A turn that may still owe an explanation, and who it owes it to.
+pub struct InterruptedCandidate {
+    pub turn: Turn,
+    pub ledger: Ledger,
+    /// The sub-agent's title — the description the parent gave when it
+    /// delegated. Joined here rather than looked up while wording the report:
+    /// that side has no connection, and asking it to grow one to fetch a string
+    /// it was handed would be a query per line.
+    pub child_title: Option<String>,
 }
 
 /// Record that these turns have now been described to the model.
@@ -137,18 +214,27 @@ pub fn unreported_for_conversation(
 /// `updated_at` is left alone on purpose: it says when the turn itself last did
 /// something, and the turn is dead. Being talked about is not doing something.
 ///
-/// The `reported_at IS NULL` filter keeps the first telling as the recorded one,
-/// which matters because two runners can read the same unreported turn before
-/// either of them dispatches.
-pub fn mark_reported(conn: &mut SqliteConnection, ids: &[String], now: i64) -> QueryResult<usize> {
+/// The `IS NULL` filter keeps the first telling as the recorded one, which
+/// matters because two runners can read the same unreported turn before either
+/// of them dispatches.
+pub fn mark_reported(
+    conn: &mut SqliteConnection,
+    ids: &[String],
+    ledger: Ledger,
+    now: i64,
+) -> QueryResult<usize> {
     if ids.is_empty() {
         return Ok(0);
     }
-    diesel::update(
-        turns::table.filter(turns::id.eq_any(ids)).filter(turns::reported_at.is_null()),
-    )
-    .set(turns::reported_at.eq(Some(now)))
-    .execute(conn)
+    let rows = turns::table.filter(turns::id.eq_any(ids));
+    match ledger {
+        Ledger::Own => diesel::update(rows.filter(turns::reported_at.is_null()))
+            .set(turns::reported_at.eq(Some(now)))
+            .execute(conn),
+        Ledger::Parent => diesel::update(rows.filter(turns::parent_reported_at.is_null()))
+            .set(turns::parent_reported_at.eq(Some(now)))
+            .execute(conn),
+    }
 }
 
 /// Tie-break for turns that started in the same millisecond.
@@ -314,8 +400,8 @@ mod tests {
         assert_eq!(t.error.as_deref(), Some("API Key not set"));
     }
 
-    fn ids(turns: Vec<Turn>) -> Vec<String> {
-        turns.into_iter().map(|t| t.id).collect()
+    fn ids(candidates: Vec<InterruptedCandidate>) -> Vec<String> {
+        candidates.into_iter().map(|c| c.turn.id).collect()
     }
 
     #[test]
@@ -385,14 +471,14 @@ mod tests {
         begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
         begin(&mut conn, "t2", "c1", TurnOrigin::Desktop, 2000).unwrap();
 
-        assert_eq!(mark_reported(&mut conn, &["t1".to_string()], 5000).unwrap(), 1);
+        assert_eq!(mark_reported(&mut conn, &["t1".to_string()], Ledger::Own, 5000).unwrap(), 1);
         assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()), ["t2"]);
 
         // Told once. A second telling finds nothing to record, and the first
         // timestamp stands.
-        assert_eq!(mark_reported(&mut conn, &["t1".to_string()], 9000).unwrap(), 0);
+        assert_eq!(mark_reported(&mut conn, &["t1".to_string()], Ledger::Own, 9000).unwrap(), 0);
         assert_eq!(get(&mut conn, "t1").reported_at, Some(5000));
-        assert_eq!(mark_reported(&mut conn, &[], 9000).unwrap(), 0);
+        assert_eq!(mark_reported(&mut conn, &[], Ledger::Own, 9000).unwrap(), 0);
 
         // Reconciliation is about how a turn ended, and does not un-tell it.
         reconcile_interrupted(&mut conn, 9500).unwrap();

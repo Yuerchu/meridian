@@ -158,8 +158,9 @@ pub(crate) async fn do_compact(
         let secrets2 = secrets.clone();
         let assistant2 = assistant.cloned();
         tokio::task::spawn_blocking(move || {
-            let (provider_type, base_url, api_key, model, api_format) =
-                resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
+            let crate::agent::ResolvedProvider {
+                provider_type, base_url, api_key, model, api_format, ..
+            } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
             let turn = resolve_turn_params(&pool2, TurnParamsInput {
                 assistant: assistant2.as_ref(),
                 provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
@@ -222,6 +223,12 @@ pub(crate) async fn do_compact(
                 // happened to trigger the compaction would make it disappear
                 // with that turn's record.
                 turn_id: None, tool_outcome: None,
+                // The summarising request had its own usage, but it is not this
+                // row's: this row is the summary, not the reply that produced
+                // it, and charging it here would double-count against the turn
+                // that already recorded that call.
+                cache_read_tokens: None, cache_write_tokens: None,
+                provider_name: None,
             }).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         }).await.map_err(|e| e.to_string())??;
@@ -844,6 +851,9 @@ mod tests {
             source: None,
             turn_id: None,
             tool_outcome: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            provider_name: None,
         };
         let result = prepare_compact_input(&[&msg]);
         assert!(result.contains("truncated"));

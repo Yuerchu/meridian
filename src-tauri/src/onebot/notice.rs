@@ -82,7 +82,9 @@ async fn handle_poke(
     let sender = super::SenderContext {
         user_id,
         nickname: nickname.clone(),
+        // A poke event carries no sender object, so neither is known here.
         role: None,
+        title: None,
         is_admin: state.config.admin_users.contains(&user_id),
         is_group: session_key.kind == SessionKind::Group,
     };

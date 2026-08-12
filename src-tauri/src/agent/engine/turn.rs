@@ -35,6 +35,7 @@ use crate::agent::{
 };
 use crate::agent::tokenizer::MIN_REPLY_TOKENS;
 use crate::agent::{serialize_tool_calls_openai, TokenBudget};
+use crate::db::models::message::MessageUsage;
 use crate::db::models::turn::TurnPhase;
 use crate::db::DbPool;
 use crate::mcp::McpRegistry;
@@ -42,7 +43,7 @@ use crate::provider::{ChatMessage, ChatParams, ChatProvider, ToolDefinition};
 use crate::tools::{self, ToolContext, ToolRegistry};
 
 use super::compaction::{Compacting, CompactionPolicy};
-use super::ports::TurnPorts;
+use super::ports::{SubAgentReport, SubAgentSpec, SubAgentStatus, TurnPorts};
 use super::{
     append_steering, append_tool_result, begin_assistant, complete_assistant, consume_stream,
     in_phase, transitions, ApprovalDecision,
@@ -58,6 +59,68 @@ fn no_room(budget: &TokenBudget) -> String {
         used = budget.current_estimate,
         limit = budget.context_limit,
     )
+}
+
+/// Read a `run_agent` call into something the port can act on.
+///
+/// Every failure here is the model's to fix, so each one says what to write
+/// instead rather than just what was wrong. They come back as a tool result, not
+/// as an error that ends the turn: naming a model that has not been configured
+/// is an ordinary mistake, and the answer to it is to pick another one.
+fn parse_sub_agent(
+    arguments: &str,
+    parent_message_id: &str,
+    parent_call_id: &str,
+) -> Result<SubAgentSpec, String> {
+    let args: serde_json::Value =
+        serde_json::from_str(arguments).map_err(|e| format!("arguments were not valid JSON: {e}"))?;
+    let text = |key: &str| -> Result<String, String> {
+        args.get(key)
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .ok_or_else(|| format!("`{key}` is required and must be a non-empty string"))
+    };
+
+    Ok(SubAgentSpec {
+        kind: crate::agent::sub_agents::SubAgentKind::parse(&text("agent")?)?,
+        description: text("description")?,
+        prompt: text("prompt")?,
+        model: args.get("model").and_then(|v| v.as_str()).map(str::to_string),
+        parent_message_id: parent_message_id.to_string(),
+        parent_call_id: parent_call_id.to_string(),
+    })
+}
+
+/// What the parent's model is told about a run that has ended.
+///
+/// The verdict comes first and in words, because the reply on its own does not
+/// carry one: a cancelled run and a finished one both return whatever text had
+/// been written. Reading half an answer as the answer is the failure this
+/// sentence exists to prevent.
+fn sub_agent_result(report: &SubAgentReport) -> String {
+    let steps = report.steps;
+    let head = match report.status {
+        SubAgentStatus::Done => format!("Sub-agent finished after {steps} steps."),
+        SubAgentStatus::Cancelled => format!(
+            "Sub-agent was stopped after {steps} steps. Anything below is partial and does not \
+             answer the task; do not treat it as a conclusion."
+        ),
+        SubAgentStatus::Aborted => format!(
+            "Sub-agent was stopped after {steps} steps because it kept repeating itself. \
+             Anything below is partial."
+        ),
+        SubAgentStatus::Failed => {
+            format!("Sub-agent failed after {steps} steps.")
+        }
+    };
+    let body = report.reply.trim();
+    if body.is_empty() {
+        format!("{head} It returned no text.")
+    } else {
+        format!("{head}\n\n{body}")
+    }
 }
 
 /// The long-lived things a turn borrows. No `AppHandle`, and no state locator:
@@ -121,6 +184,20 @@ pub(crate) struct TurnSetup<'a> {
     pub budget: TokenBudget,
     pub turn_id: String,
     pub conversation_id: String,
+    /// Which configured upstream this turn is talking to, and what it was called,
+    /// for the rows it writes.
+    ///
+    /// Carried rather than derived, because nothing the loop already holds knows
+    /// it: `ChatParams` has only the model name, and `provider` is a trait object
+    /// with no identity. Each of the three callers has the answer in scope and
+    /// each arrives at it differently — a per-request override on the desktop,
+    /// the assistant's own on OneBot, a resolved `provider:model` on a sub-agent.
+    ///
+    /// `None` is legitimate rather than a bug: the test harness runs turns with
+    /// no `providers` row to point at, and the foreign key on the column would
+    /// refuse a made-up id.
+    pub provider_id: Option<String>,
+    pub provider_name: Option<String>,
     /// Where the next row hangs. A cursor rather than one precomputed parent:
     /// the turn writes as it goes, and steering can add rows mid-flight.
     pub parent_cursor: Option<String>,
@@ -138,6 +215,28 @@ pub(crate) struct TurnSetup<'a> {
     pub compaction: CompactionPolicy,
 }
 
+/// What one reply reported, in the shape a row stores.
+///
+/// Written here rather than as a `From` impl on `MessageUsage`, so that
+/// `db::models` goes on knowing nothing about providers. The database layer
+/// stores four numbers under a stated contract; which wire field each came from,
+/// and what had to be folded together to satisfy that contract, is the provider
+/// layer's business.
+///
+/// A response with no usage block leaves every field `None` rather than zero. A
+/// provider that did not say is not a provider that said the reply was free.
+fn row_usage(usage: Option<&crate::provider::TokenUsage>) -> MessageUsage {
+    match usage {
+        Some(u) => MessageUsage {
+            input_tokens: u.prompt_tokens,
+            output_tokens: u.completion_tokens,
+            cache_read_tokens: u.cache_read_tokens,
+            cache_write_tokens: u.cache_write_tokens,
+        },
+        None => MessageUsage::default(),
+    }
+}
+
 /// What a turn left behind, whatever became of it.
 #[derive(Default)]
 pub struct TurnProgress {
@@ -147,8 +246,22 @@ pub struct TurnProgress {
     pub message_id: Option<String>,
     pub input_tokens: i32,
     pub output_tokens: i32,
+    /// Prompt tokens this turn's rounds got out of the upstream's cache, and
+    /// wrote into it, summed the same way as the two above.
+    ///
+    /// Plain `i32` rather than `Option<i32>`, unlike the row columns. A turn
+    /// total has nowhere to put "nobody said": it is a sum over rounds that may
+    /// disagree about whether they reported at all, and `Some(0) + None` has no
+    /// honest answer. That distinction is kept per row, where each number has
+    /// exactly one reporter.
+    pub cache_read_tokens: i32,
+    pub cache_write_tokens: i32,
     /// The loop guard cut it short.
     pub aborted: bool,
+    /// How many times the model was asked — one per assistant row. Not tool
+    /// calls: a round that made three is still one step, and a round that made
+    /// none still cost a request.
+    pub steps: usize,
 }
 
 /// A turn's reply, plus what the caller needs to close it out.
@@ -158,6 +271,13 @@ pub struct TurnOutcome {
 }
 
 impl TurnOutcome {
+    /// A turn that never got as far as asking anything. Its progress really is
+    /// nothing, which is a different thing from a turn that failed partway —
+    /// and why a caller is handed progress either way.
+    pub(crate) fn failed(error: String) -> Self {
+        Self { reply: Err(error), progress: TurnProgress::default() }
+    }
+
     /// What to tell the front end this turn ended as.
     pub fn stop_reason(&self) -> &'static str {
         if self.reply.is_err() {
@@ -203,6 +323,8 @@ async fn run(
         mut budget,
         turn_id,
         conversation_id,
+        provider_id,
+        provider_name,
         mut parent_cursor,
         cancel,
         keep_recent,
@@ -275,13 +397,23 @@ async fn run(
             }
         }
 
-        let assistant_msg_id =
-            begin_assistant(pool, &conversation_id, &turn_id, &params.model, parent_cursor.as_deref())
-                .await?;
+        let assistant_msg_id = begin_assistant(
+            pool,
+            &conversation_id,
+            &turn_id,
+            (provider_id.as_deref(), provider_name.as_deref()),
+            &params.model,
+            parent_cursor.as_deref(),
+        )
+        .await?;
         parent_cursor = Some(assistant_msg_id.clone());
         // Recorded before the event, and whether or not anyone is watching: the
         // caller closes the turn out with it even when nothing was attached.
         progress.message_id = Some(assistant_msg_id.clone());
+        // One per row, which is the same thing a reader counting assistant rows
+        // afterwards arrives at. Two ways of asking "how long did this take"
+        // that disagreed would be worse than either.
+        progress.steps += 1;
         announce(serde_json::json!({
             "type": "message_start", "message_id": &assistant_msg_id,
             "turn_id": &turn_id, "conversation_id": &conversation_id,
@@ -443,6 +575,13 @@ async fn run(
         if let Some(ref u) = result.usage {
             progress.input_tokens += u.prompt_tokens.unwrap_or(0);
             progress.output_tokens += u.completion_tokens.unwrap_or(0);
+            // Added, not replaced, for the same reason as the two above: a turn
+            // is however many requests it took, and the round that reused a
+            // cached prefix and the round that had to rebuild it are both part
+            // of what it cost. Subsets of `input_tokens`, so a caller wanting
+            // "tokens paid for at full price" subtracts them rather than adds.
+            progress.cache_read_tokens += u.cache_read_tokens.unwrap_or(0);
+            progress.cache_write_tokens += u.cache_write_tokens.unwrap_or(0);
             budget.calibrate_from_usage(u);
         }
 
@@ -459,8 +598,7 @@ async fn run(
             &result.text,
             (!result.reasoning.is_empty()).then_some(result.reasoning.as_str()),
             tool_calls_json.as_deref(),
-            result.usage.as_ref().and_then(|u| u.prompt_tokens),
-            result.usage.as_ref().and_then(|u| u.completion_tokens),
+            row_usage(result.usage.as_ref()),
         )
         .await?;
 
@@ -551,6 +689,33 @@ async fn run(
                     match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
                         Some(ApprovalDecision::Response(text)) => (text, "success"),
                         _ => ("User did not respond.".to_string(), "denied"),
+                    }
+                } else if let (crate::agent::sub_agents::RUN_AGENT_TOOL, Some(sub_agents)) =
+                    (tc.name.as_str(), ports.sub_agents)
+                {
+                    // The phase is the parent's: for as long as the sub-agent
+                    // runs, this turn is running a tool called `run_agent`. A
+                    // crash here reads as "that call may have half-happened",
+                    // which is exactly what it means.
+                    match parse_sub_agent(&tc.arguments, &assistant_msg_id, &tc.id) {
+                        Err(e) => (format!("Error: {e}"), "error"),
+                        Ok(spec) => {
+                            let ran = in_phase(
+                                pool,
+                                &turn_id,
+                                TurnPhase::RunningTool,
+                                Some(&tc.name),
+                                sub_agents.run(spec),
+                            )
+                            .await;
+                            match ran {
+                                Ok(report) => {
+                                    let outcome = report.status.outcome();
+                                    (sub_agent_result(&report), outcome)
+                                }
+                                Err(e) => (format!("Error: {e}"), "error"),
+                            }
+                        }
                     }
                 } else if let Some(target) = ports
                     .transitions
@@ -1146,6 +1311,11 @@ mod tests {
             budget: TokenBudget::new("openai", "m", 128_000, 4096, None),
             turn_id: "t1".into(),
             conversation_id: "c1".into(),
+            // No `providers` row in the harness, and the column has a foreign
+            // key — a made-up id would take every test in this module down on
+            // the placeholder insert.
+            provider_id: None,
+            provider_name: None,
             parent_cursor: None,
             cancel: cancel.clone(),
             keep_recent: 10,
@@ -1166,6 +1336,7 @@ mod tests {
             surface_tools: None,
             steering: None,
             transitions: None,
+            sub_agents: None,
         }
     }
 
@@ -1175,6 +1346,204 @@ mod tests {
         mcp: &'a McpRegistry,
     ) -> TurnServices<'a> {
         TurnServices { pool, tools, mcp }
+    }
+
+    /// A `SubAgents` port that keeps what it was asked for and answers from a
+    /// fixed script.
+    struct Delegate {
+        seen: Mutex<Vec<SubAgentSpec>>,
+        reply: Result<(SubAgentStatus, &'static str, usize), String>,
+    }
+
+    impl Delegate {
+        fn returning(status: SubAgentStatus, text: &'static str, steps: usize) -> Self {
+            Self { seen: Mutex::new(Vec::new()), reply: Ok((status, text, steps)) }
+        }
+        fn failing(error: &str) -> Self {
+            Self { seen: Mutex::new(Vec::new()), reply: Err(error.to_string()) }
+        }
+        fn asked(&self) -> usize {
+            self.seen.lock().unwrap().len()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl super::super::ports::SubAgents for Delegate {
+        async fn run(&self, spec: SubAgentSpec) -> Result<SubAgentReport, String> {
+            self.seen.lock().unwrap().push(spec);
+            match &self.reply {
+                Ok((status, text, steps)) => {
+                    Ok(SubAgentReport { status: *status, reply: (*text).to_string(), steps: *steps })
+                }
+                Err(e) => Err(e.clone()),
+            }
+        }
+    }
+
+    fn delegating<'a>(
+        approvals: &'a Answers,
+        sub_agents: &'a Delegate,
+    ) -> TurnPorts<'a> {
+        TurnPorts { sub_agents: Some(sub_agents), ..ports(approvals, None) }
+    }
+
+    fn run_agent_call(id: &str, args: &str) -> Vec<StreamEvent> {
+        calls(id, crate::agent::sub_agents::RUN_AGENT_TOOL, args)
+    }
+
+    const ERRAND: &str = r#"{"agent":"explore","description":"find the caller","prompt":"Find every caller of resolve_head and say what each one does with the answer."}"#;
+
+    /// The whole point of the port: the loop recognises the name, hands over,
+    /// and puts the answer back where a tool result goes.
+    #[tokio::test]
+    async fn a_delegated_run_reaches_the_port_and_its_answer_reaches_the_model() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![run_agent_call("c1", ERRAND), says("thanks")]);
+        let approvals = Answers::nobody();
+        let delegate = Delegate::returning(SubAgentStatus::Done, "Three callers.", 4);
+
+        let outcome = run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &[crate::agent::sub_agents::RUN_AGENT_TOOL]),
+            delegating(&approvals, &delegate),
+        )
+        .await;
+
+        assert_eq!(outcome.reply.as_deref(), Ok("thanks"));
+        let seen = delegate.seen.lock().unwrap();
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].kind, crate::agent::sub_agents::SubAgentKind::Explore);
+        assert_eq!(seen[0].description, "find the caller");
+        assert!(seen[0].prompt.contains("resolve_head"));
+        assert_eq!(seen[0].parent_call_id, "c1");
+        assert!(seen[0].model.is_none(), "an omitted model stays omitted");
+        drop(seen);
+
+        // The verdict and the count travel with the text; the model is not left
+        // to infer either from prose.
+        let tool_row = rows(&pool).into_iter().find(|r| r.role == "tool").unwrap();
+        assert!(tool_row.content.contains("finished after 4 steps"), "{}", tool_row.content);
+        assert!(tool_row.content.contains("Three callers."));
+        assert_eq!(tool_row.tool_outcome.as_deref(), Some("success"));
+    }
+
+    /// A run somebody stopped returns whatever text had been written, exactly as
+    /// a finished one does. Without a verdict in front of it the model reads
+    /// half an answer as the answer.
+    #[tokio::test]
+    async fn a_stopped_sub_agent_does_not_come_back_looking_like_a_conclusion() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![run_agent_call("c1", ERRAND), says("ok")]);
+        let approvals = Answers::nobody();
+        let delegate = Delegate::returning(SubAgentStatus::Cancelled, "I found two so far", 2);
+
+        run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &[crate::agent::sub_agents::RUN_AGENT_TOOL]),
+            delegating(&approvals, &delegate),
+        )
+        .await;
+
+        let tool_row = rows(&pool).into_iter().find(|r| r.role == "tool").unwrap();
+        assert!(tool_row.content.contains("stopped"), "{}", tool_row.content);
+        assert!(tool_row.content.contains("do not treat it as a conclusion"));
+        assert!(tool_row.content.contains("I found two so far"), "the partial text is still there");
+        assert_eq!(
+            tool_row.tool_outcome.as_deref(),
+            Some("error"),
+            "a run that was stopped is not a successful call",
+        );
+    }
+
+    /// A delegation that could not start is an ordinary tool failure. Ending the
+    /// turn over it would throw away everything the parent had already done.
+    #[tokio::test]
+    async fn a_port_that_refuses_is_a_tool_result_and_the_turn_carries_on() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![run_agent_call("c1", ERRAND), says("I will do it myself")]);
+        let approvals = Answers::nobody();
+        let delegate = Delegate::failing("no model configured for sub-agents");
+
+        let outcome = run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &[crate::agent::sub_agents::RUN_AGENT_TOOL]),
+            delegating(&approvals, &delegate),
+        )
+        .await;
+
+        assert_eq!(outcome.reply.as_deref(), Ok("I will do it myself"));
+        assert_eq!(provider.rounds(), 2, "the loop went round again");
+        let tool_row = rows(&pool).into_iter().find(|r| r.role == "tool").unwrap();
+        assert!(tool_row.content.contains("no model configured"), "{}", tool_row.content);
+        assert_eq!(tool_row.tool_outcome.as_deref(), Some("error"));
+    }
+
+    /// Arguments the loop cannot read never reach the port, and what comes back
+    /// says what to write instead. Naming an agent that does not exist is a
+    /// mistake the model can fix on the next round.
+    #[tokio::test]
+    async fn unusable_arguments_are_answered_rather_than_acted_on() {
+        for (args, expected) in [
+            (r#"{"agent":"researcher","description":"d","prompt":"p"}"#, "explore"),
+            (r#"{"agent":"explore","description":"d"}"#, "`prompt` is required"),
+            (r#"{"agent":"explore","description":"  ","prompt":"p"}"#, "`description` is required"),
+            ("not json at all", "not valid JSON"),
+        ] {
+            let pool = test_db();
+            conversation(&pool);
+            let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+            let provider = Scripted::of(vec![run_agent_call("c1", args), says("fine")]);
+            let approvals = Answers::nobody();
+            let delegate = Delegate::returning(SubAgentStatus::Done, "never runs", 1);
+
+            run_turn(
+                &services(&pool, &tools, &mcp),
+                setup(&provider, &pool, &cancel, &[crate::agent::sub_agents::RUN_AGENT_TOOL]),
+                delegating(&approvals, &delegate),
+            )
+            .await;
+
+            assert_eq!(delegate.asked(), 0, "nothing was started for `{args}`");
+            let tool_row = rows(&pool).into_iter().find(|r| r.role == "tool").unwrap();
+            assert!(
+                tool_row.content.contains(expected),
+                "for `{args}` expected {expected:?} in {:?}",
+                tool_row.content,
+            );
+        }
+    }
+
+    /// With no port, the name is not offered, so it never reaches dispatch at
+    /// all — the withholding wording answers first. This is the property that
+    /// keeps a sub-agent from delegating to a sub-agent.
+    #[tokio::test]
+    async fn without_a_port_the_name_is_withheld_and_nothing_is_started() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![run_agent_call("c1", ERRAND), says("understood")]);
+        let approvals = Answers::nobody();
+
+        run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &[]),
+            ports(&approvals, None),
+        )
+        .await;
+
+        let tool_row = rows(&pool).into_iter().find(|r| r.role == "tool").unwrap();
+        assert_eq!(tool_row.tool_outcome.as_deref(), Some("error"));
+        assert!(
+            !tool_row.content.contains("must be handled by the agent loop"),
+            "the registry's placeholder must never reach the model: {}",
+            tool_row.content,
+        );
     }
 
     // --- the contract ----------------------------------------------------
@@ -1478,7 +1847,7 @@ mod tests {
         let inbox = Inbox(Mutex::new(vec![
             Steered {
                 text: "one more thing".into(),
-                speaker: Some(SenderRef { user_id: 7, nickname: None, role: None }),
+                speaker: Some(SenderRef { user_id: 7, nickname: None }),
             },
             Steered { text: "they left the group".into(), speaker: None },
         ]));
@@ -1744,6 +2113,98 @@ mod tests {
 
         assert_eq!(outcome.progress.input_tokens, 300);
         assert_eq!(outcome.progress.output_tokens, 30);
+    }
+
+    /// The whole chain in one test: a provider reports a cache hit, the loop
+    /// carries it past the two places that used to drop it, and the row says so
+    /// afterwards.
+    ///
+    /// Two rounds with different numbers, because a row records its own round
+    /// while `TurnProgress` records the turn. A version that stored the turn
+    /// total on every row would pass a single-round test.
+    #[tokio::test]
+    async fn a_cache_hit_reaches_the_row_that_got_it() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let used = |p: i32, c: i32, read: i32| StreamEvent::Stop {
+            reason: "stop".into(),
+            usage: Some(TokenUsage {
+                prompt_tokens: Some(p),
+                completion_tokens: Some(c),
+                cache_read_tokens: Some(read),
+                ..Default::default()
+            }),
+        };
+        let provider = Scripted::of(vec![
+            vec![
+                StreamEvent::ToolCallStart { index: 0, id: "c".into(), name: "fixture".into() },
+                StreamEvent::ToolCallDone { index: 0, arguments: "{}".into() },
+                used(100, 10, 0),
+            ],
+            vec![StreamEvent::Text { content: "done".into() }, used(200, 20, 180)],
+        ]);
+        let approvals = Answers::nobody();
+        let fixture = Fixture::returning("ok");
+
+        let outcome = run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &["fixture"]),
+            TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, None) },
+        )
+        .await;
+        assert!(outcome.reply.is_ok());
+
+        let assistant: Vec<_> =
+            rows(&pool).into_iter().filter(|m| m.role == "assistant").collect();
+        assert_eq!(assistant.len(), 2, "one row per round");
+        // The cold round is stored as a reported zero, not as absent: the
+        // provider said nothing was cached, which is a different claim from
+        // saying nothing at all.
+        assert_eq!(assistant[0].cache_read_tokens, Some(0));
+        assert_eq!(assistant[1].cache_read_tokens, Some(180));
+        assert_eq!(
+            assistant[1].input_tokens,
+            Some(200),
+            "the read is a subset of the prompt, not an addition to it",
+        );
+        assert_eq!(outcome.progress.cache_read_tokens, 180, "summed across rounds");
+        assert_eq!(outcome.progress.cache_write_tokens, 0);
+    }
+
+    /// An upstream that says nothing about caching leaves the columns empty
+    /// rather than zero. A hit rate that cannot tell the two apart reports every
+    /// such reply as a total cache miss — a claim about the provider rather than
+    /// about the data.
+    #[tokio::test]
+    async fn a_provider_that_says_nothing_about_caching_stores_nothing() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![vec![
+            StreamEvent::Text { content: "hi".into() },
+            StreamEvent::Stop {
+                reason: "stop".into(),
+                usage: Some(TokenUsage {
+                    prompt_tokens: Some(50),
+                    completion_tokens: Some(5),
+                    ..Default::default()
+                }),
+            },
+        ]]);
+        let approvals = Answers::nobody();
+
+        run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &[]),
+            ports(&approvals, None),
+        )
+        .await;
+
+        let row = rows(&pool).into_iter().find(|m| m.role == "assistant").unwrap();
+        assert_eq!(row.input_tokens, Some(50));
+        assert_eq!(row.cache_read_tokens, None);
+        assert_eq!(row.cache_write_tokens, None);
     }
 
     /// A tool the turn did not offer is refused by the loop, not by the

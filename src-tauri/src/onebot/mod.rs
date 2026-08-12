@@ -205,7 +205,12 @@ pub struct SenderContext {
     pub user_id: i64,
     pub nickname: Option<String>,
     /// QQ group role (`owner` / `admin` / `member`), when the event carried one.
+    /// Reaches the model through the `<people>` roster rather than the per-message
+    /// marker: history rows carry no role, so a marker would show the same person
+    /// holding rank this turn and none the turn before.
     pub role: Option<String>,
+    /// The group's bespoke honorific, alongside `role` and by the same route.
+    pub title: Option<String>,
     pub is_admin: bool,
     pub is_group: bool,
 }
@@ -229,10 +234,11 @@ impl SenderContext {
 
 impl From<&SenderContext> for crate::provider::SenderRef {
     fn from(s: &SenderContext) -> Self {
+        // `role` and `title` are not copied: they reach the model on the
+        // `<people>` roster, not on every message.
         crate::provider::SenderRef {
             user_id: s.user_id,
             nickname: s.nickname.clone(),
-            role: s.role.clone(),
         }
     }
 }
@@ -1722,6 +1728,8 @@ mod tests {
             input_tokens: 10,
             output_tokens: 1,
             aborted: false,
+            steps: 1,
+            ..Default::default()
         });
         assert!(running.end_round("end_turn").is_some());
         // The follow-up round never wrote a row, so the first round's stands.

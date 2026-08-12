@@ -29,7 +29,7 @@
 
 use std::future::Future;
 
-use crate::db::models::message::NewMessage;
+use crate::db::models::message::{MessageUsage, NewMessage};
 use crate::db::models::turn::TurnPhase;
 use crate::db::DbPool;
 use crate::util::{get_conn, now_ms};
@@ -44,6 +44,7 @@ pub(crate) async fn begin_assistant(
     pool: &DbPool,
     conversation_id: &str,
     turn_id: &str,
+    provider: (Option<&str>, Option<&str>),
     model: &str,
     parent: Option<&str>,
 ) -> Result<String, String> {
@@ -51,6 +52,8 @@ pub(crate) async fn begin_assistant(
     let pool = pool.clone();
     let conv_id = conversation_id.to_string();
     let msg_id = message_id.clone();
+    // Owned for the same reason `parent` is: the closure outlives the borrow.
+    let (provider_id, provider_name) = (provider.0.map(str::to_string), provider.1.map(str::to_string));
     let model = model.to_string();
     let turn = turn_id.to_string();
     let parent = parent.map(str::to_string);
@@ -60,12 +63,28 @@ pub(crate) async fn begin_assistant(
             &mut conn,
             &NewMessage {
                 id: &msg_id, conversation_id: &conv_id, role: "assistant", content: "",
-                provider_id: None, model_id: Some(&model), input_tokens: None,
+                // Written when the row is opened, not when it is filled in. The
+                // window between the two is the longest in the turn, and a turn
+                // that dies inside it still cost the upstream everything it had
+                // already served — including anything served out of cache.
+                // Attributing at the end would leave exactly the expensive,
+                // interrupted rows belonging to nobody.
+                //
+                // A foreign key onto `providers` is enforced on this insert, so an
+                // id that does not exist takes the turn down. Every caller has
+                // already read that row through `get_provider` before reaching
+                // here, and a provider deleted in the window between is a broken
+                // configuration worth failing on rather than papering over.
+                provider_id: provider_id.as_deref(), model_id: Some(&model), input_tokens: None,
                 output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
                 created_at: now_ms(), reasoning_content: None, rating: None, schema_version: 2,
                 is_compact_summary: 0, sender_id: None,
                 parent_id: None, compact_anchor_id: None, source: None,
                 turn_id: Some(&turn), tool_outcome: None,
+                // Nothing is known about the reply yet; the update that fills
+                // this row in is what supplies them.
+                cache_read_tokens: None, cache_write_tokens: None,
+                provider_name: provider_name.as_deref(),
             },
             parent.as_deref(),
         )
@@ -93,8 +112,7 @@ pub(crate) async fn complete_assistant(
     content: &str,
     reasoning: Option<&str>,
     tool_calls_json: Option<&str>,
-    input_tokens: Option<i32>,
-    output_tokens: Option<i32>,
+    usage: MessageUsage,
 ) -> Result<(), String> {
     let pool = pool.clone();
     let msg_id = message_id.to_string();
@@ -103,15 +121,41 @@ pub(crate) async fn complete_assistant(
     let tool_calls_json = tool_calls_json.map(str::to_string);
     tokio::task::spawn_blocking(move || {
         if let Ok(mut conn) = pool.get() {
-            let _ = crate::db::ops::message::update_assistant_message(
+            let written = crate::db::ops::message::update_assistant_message(
                 &mut conn,
                 &msg_id,
                 &content,
                 reasoning.as_deref(),
                 tool_calls_json.as_deref(),
-                input_tokens,
-                output_tokens,
+                &usage,
             );
+            // Recorded here rather than when the row was opened: this is the
+            // first moment it has content and token counts, and an audit copy of
+            // an empty placeholder would answer nothing. A turn that dies before
+            // reaching this point leaves no record of its reply — the reply does
+            // not exist either, and what it cost is still on the `messages` row
+            // until that conversation is deleted.
+            //
+            // Skipped when the write was refused, so the log cannot end up
+            // holding a reply the transcript never got.
+            if written.is_ok() {
+                match crate::db::ops::message::get_message(&mut conn, &msg_id) {
+                    Ok(row) => {
+                        if let Err(e) = crate::db::ops::audit::record(&mut conn, &row) {
+                            tracing::error!(
+                                error = %e,
+                                message_id = %msg_id,
+                                "the audit copy of a reply could not be written",
+                            );
+                        }
+                    }
+                    Err(e) => tracing::error!(
+                        error = %e,
+                        message_id = %msg_id,
+                        "a completed reply could not be read back for the audit log",
+                    ),
+                }
+            }
         }
     })
     .await
@@ -162,6 +206,10 @@ pub(crate) async fn append_tool_result(
                 // turn a refusal into a green tick with the refusal text
                 // sitting in it as the result.
                 tool_outcome: Some(outcome),
+                // A tool result is our own text, not something an upstream was
+                // paid to produce.
+                cache_read_tokens: None, cache_write_tokens: None,
+                provider_name: None,
             },
             parent.as_deref(),
         )
@@ -221,6 +269,8 @@ pub(crate) async fn append_steering(
                 schema_version: 2, is_compact_summary: 0, sender_id,
                 parent_id: None, compact_anchor_id: None, source: None,
                 turn_id: Some(&turn), tool_outcome: None,
+                cache_read_tokens: None, cache_write_tokens: None,
+                provider_name: None,
             },
             parent.as_deref(),
         )
@@ -303,21 +353,86 @@ mod tests {
         let pool = test_db();
         conversation(&pool);
 
-        let id = begin_assistant(&pool, "c1", "t1", "gpt-4.1-mini", None).await.unwrap();
+        let id = begin_assistant(&pool, "c1", "t1", (None, None), "gpt-4.1-mini", None)
+            .await
+            .unwrap();
         // Empty until the model has finished, which is what makes a `done` turn
         // above an empty row diagnosable as a lost write.
         assert_eq!(rows(&pool)[0].content, "");
         assert_eq!(head(&pool).as_deref(), Some(id.as_str()));
 
-        complete_assistant(&pool, &id, "the answer", Some("thinking"), None, Some(7), Some(11))
-            .await
-            .unwrap();
+        complete_assistant(
+            &pool,
+            &id,
+            "the answer",
+            Some("thinking"),
+            None,
+            MessageUsage {
+                input_tokens: Some(7),
+                output_tokens: Some(11),
+                cache_read_tokens: Some(41),
+                cache_write_tokens: Some(43),
+            },
+        )
+        .await
+        .unwrap();
 
         let row = &rows(&pool)[0];
         assert_eq!(row.content, "the answer");
         assert_eq!(row.reasoning_content.as_deref(), Some("thinking"));
         assert_eq!(row.input_tokens, Some(7));
+        assert_eq!(row.output_tokens, Some(11));
+        // Distinct values, so a transposed pair cannot pass.
+        assert_eq!(row.cache_read_tokens, Some(41));
+        assert_eq!(row.cache_write_tokens, Some(43));
         assert_eq!(row.turn_id.as_deref(), Some("t1"));
+    }
+
+    /// A reply reaches the audit log when it is finished, not when its row is
+    /// opened — the placeholder has neither content nor token counts, and a copy
+    /// of that answers nothing.
+    #[tokio::test]
+    async fn a_completed_reply_is_copied_into_the_audit_log() {
+        let pool = test_db();
+        conversation(&pool);
+
+        // The pool hands out one connection, so every borrow here is scoped:
+        // holding one across an await that needs its own is a deadlock, not a
+        // failure of what is being tested.
+        let id = begin_assistant(&pool, "c1", "t1", (None, None), "m", None).await.unwrap();
+        {
+            let mut conn = pool.get().unwrap();
+            assert!(
+                crate::db::ops::audit::list_recent(&mut conn, 10).unwrap().is_empty(),
+                "an empty placeholder is not worth recording",
+            );
+        }
+
+        complete_assistant(
+            &pool,
+            &id,
+            "the answer",
+            None,
+            None,
+            MessageUsage {
+                input_tokens: Some(200),
+                output_tokens: Some(20),
+                cache_read_tokens: Some(180),
+                cache_write_tokens: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let mut conn = pool.get().unwrap();
+        let logged = crate::db::ops::audit::list_recent(&mut conn, 10).unwrap();
+        assert_eq!(logged.len(), 1);
+        assert_eq!(logged[0].message_id, id);
+        assert_eq!(logged[0].content, "the answer");
+        assert_eq!(logged[0].role, "assistant");
+        assert_eq!(logged[0].input_tokens, Some(200));
+        assert_eq!(logged[0].cache_read_tokens, Some(180));
+        assert_eq!(logged[0].turn_origin.as_deref(), Some("desktop"), "snapshotted off the turn");
     }
 
     /// The one write that takes the turn down with it. Everything downstream is
@@ -327,7 +442,7 @@ mod tests {
     async fn a_turn_that_cannot_open_a_row_stops() {
         let pool = test_db();
         // No conversation, so the foreign key refuses it.
-        assert!(begin_assistant(&pool, "nope", "t1", "m", None).await.is_err());
+        assert!(begin_assistant(&pool, "nope", "t1", (None, None), "m", None).await.is_err());
     }
 
     /// Filling the row in is the one write that swallows a refused write.
@@ -350,7 +465,7 @@ mod tests {
     async fn filling_a_row_in_swallows_a_database_write_error() {
         let pool = test_db();
         conversation(&pool);
-        let id = begin_assistant(&pool, "c1", "t1", "m", None).await.unwrap();
+        let id = begin_assistant(&pool, "c1", "t1", (None, None), "m", None).await.unwrap();
 
         {
             use diesel::connection::SimpleConnection;
@@ -359,7 +474,7 @@ mod tests {
             // The write really is refused, so what follows is testing something.
             assert!(
                 crate::db::ops::message::update_assistant_message(
-                    &mut conn, &id, "the answer", None, None, None, None,
+                    &mut conn, &id, "the answer", None, None, &MessageUsage::default(),
                 )
                 .is_err(),
                 "query_only must make this a real failure",
@@ -367,7 +482,9 @@ mod tests {
         }
 
         assert!(
-            complete_assistant(&pool, &id, "the answer", None, None, None, None).await.is_ok(),
+            complete_assistant(&pool, &id, "the answer", None, None, MessageUsage::default())
+                .await
+                .is_ok(),
             "a refused write does not take the turn down with it",
         );
 
@@ -388,7 +505,7 @@ mod tests {
     async fn a_tool_result_that_cannot_be_written_does_not_stop_the_turn() {
         let pool = test_db();
         conversation(&pool);
-        let assistant = begin_assistant(&pool, "c1", "t1", "m", None).await.unwrap();
+        let assistant = begin_assistant(&pool, "c1", "t1", (None, None), "m", None).await.unwrap();
 
         let landed = append_tool_result(
             &pool, "c1", "t1", "call-1", "done", "success", Some(&assistant),

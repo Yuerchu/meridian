@@ -531,13 +531,16 @@ mod migration_tests {
         assert_eq!(ops::turn::reconcile_interrupted(&mut conn, 1000).unwrap(), 0);
     }
 
-    /// Migration 26 adds one nullable column to a table 25 had already written
-    /// rows into, so there is real data to preserve. NULL is the right value for
-    /// every one of them: nothing had been told to any model, because there was
-    /// no mechanism to tell it. Backfilling a timestamp would silence exactly
-    /// the warnings this whole record exists to keep.
+    /// Migrations 26 and 27 each add a nullable column to a table 25 had
+    /// already written rows into, so there is real data to preserve. NULL is the
+    /// right value in both: nothing had been told to any model, because there
+    /// was no mechanism to tell it. Backfilling a timestamp would silence
+    /// exactly the warnings this whole record exists to keep.
+    ///
+    /// Both are applied because `Turn` selects both columns — stopping at 26
+    /// would fail in the reader rather than in anything a migration did.
     #[test]
-    fn existing_turns_survive_the_reported_column_still_owing_their_explanation() {
+    fn existing_turns_survive_the_reported_columns_still_owing_their_explanation() {
         let mut conn = conn_before("00000000000026");
         conn.batch_execute(
             "INSERT INTO conversations (id, title, is_pinned, is_archived, message_count,
@@ -552,10 +555,15 @@ mod migration_tests {
         .unwrap();
 
         run_migration(&mut conn, "00000000000026");
+        run_migration(&mut conn, "00000000000027");
 
         let turns = ops::turn::list_for_conversation(&mut conn, "c1").unwrap();
         assert_eq!(turns.len(), 2, "no row is lost or duplicated");
         assert!(turns.iter().all(|t| t.reported_at.is_none()), "nothing is backfilled");
+        assert!(
+            turns.iter().all(|t| t.parent_reported_at.is_none()),
+            "and neither ledger starts out settled",
+        );
         // The one that was cut off is still owed its explanation, and the one
         // that finished never was.
         let cut = &turns[0];
@@ -568,8 +576,31 @@ mod migration_tests {
         );
     }
 
-    fn ids_of(turns: Vec<crate::db::models::turn::Turn>) -> Vec<String> {
-        turns.into_iter().map(|t| t.id).collect()
+    /// Migration 27 hides a conversation from the sidebar by giving it a parent.
+    /// Every row that predates it has none, so the lists it appears in must not
+    /// change — a conversation the user started years ago cannot become a
+    /// sub-agent's transcript because a column arrived.
+    #[test]
+    fn conversations_that_predate_delegation_stay_in_the_lists() {
+        let mut conn = conn_before("00000000000027");
+        conn.batch_execute(
+            "INSERT INTO conversations (id, title, is_pinned, is_archived, message_count,
+                                        created_at, updated_at, fast_mode)
+             VALUES ('c1', 'A', 0, 0, 0, 1, 1, 0);",
+        )
+        .unwrap();
+
+        run_migration(&mut conn, "00000000000027");
+
+        let listed = ops::conversation::list_conversations(&mut conn, false).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert!(listed[0].parent_conversation_id.is_none());
+        assert!(listed[0].agent_model_id.is_none(), "and it goes on resolving from the assistant");
+        assert!(ops::conversation::sub_agent_runs(&mut conn, "c1").unwrap().is_empty());
+    }
+
+    fn ids_of(candidates: Vec<ops::turn::InterruptedCandidate>) -> Vec<String> {
+        candidates.into_iter().map(|c| c.turn.id).collect()
     }
 }
 

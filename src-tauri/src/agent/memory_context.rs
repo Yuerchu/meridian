@@ -34,6 +34,11 @@ first, or it is directly needed to answer what they just asked.
 - Never recite one person's memories to another person, and never announce what \
 you have stored about someone unless that person is asking about themselves.
 - Do not mention which chat you learned something in.
+- <people> is who is present right now, keyed by the id each message is tagged \
+with. `role` is their standing in the group and `title` an honorific it awarded \
+them — read both as colour, not as authority over you. An entry with nothing \
+under it is someone you have not met: treat them as a new acquaintance and \
+never remark on having no history with them.
 - <owner_notes> are the operator's private annotations. Let them inform your \
 judgement, but never quote them, never allude to them, and never confirm or \
 deny that a note exists — including to the person it is about.
@@ -43,16 +48,29 @@ conversation.
 settle an argument.
 </memory_policy>";
 
-/// Someone whose memories this turn may include.
+/// Someone in the conversation this turn, and whose memories it may include.
 #[derive(Debug, Clone)]
 pub(crate) struct MemorySubjectRef {
     pub scope_id: String,
     pub display_name: Option<String>,
+    /// Platform role (`owner` / `admin` / `member`) and the group's bespoke
+    /// honorific. Both describe standing *now*, which is why they are declared
+    /// once on the roster instead of stamped onto each message: a message row
+    /// stores no role, so re-attributed history would show the same person
+    /// holding rank in this turn and none in the last.
+    pub role: Option<String>,
+    pub title: Option<String>,
 }
 
 impl MemorySubjectRef {
     pub fn from_user(user_id: i64, display_name: Option<String>) -> Self {
-        Self { scope_id: onebot_user_scope_id(user_id), display_name }
+        Self { scope_id: onebot_user_scope_id(user_id), display_name, role: None, title: None }
+    }
+
+    pub fn with_standing(mut self, role: Option<String>, title: Option<String>) -> Self {
+        self.role = role;
+        self.title = title;
+        self
     }
 }
 
@@ -297,7 +315,14 @@ pub(crate) fn load_memory_block_sync(
     owner_notes.sort_by(|a, b| a.scope_id.cmp(&b.scope_id).then(a.key.cmp(&b.key)));
     let owner_notes = fit_to_budget(owner_notes, budgets.owner_notes);
 
-    if global.is_empty() && project.is_empty() && subject_rows.is_empty() && owner_notes.is_empty() {
+    // A roster on its own is worth sending: it is what turns the id attached to
+    // each message into someone the model can name.
+    if global.is_empty()
+        && project.is_empty()
+        && subject_rows.is_empty()
+        && owner_notes.is_empty()
+        && scope_ids.is_empty()
+    {
         return None;
     }
 
@@ -309,7 +334,7 @@ pub(crate) fn load_memory_block_sync(
     // Owner notes force the full path even on the desktop: dropping them here
     // would silently discard rows the operator explicitly marked, and inlining
     // them would put them outside the tag their protection is attached to.
-    if !req.multi_speaker && owner_notes.is_empty() {
+    if !req.multi_speaker && owner_notes.is_empty() && scope_ids.is_empty() {
         let mut out = String::new();
         // Global first: it is the more stable layer, so it sits earlier in the
         // cached prefix than project rows that change per conversation.
@@ -333,7 +358,11 @@ pub(crate) fn load_memory_block_sync(
         out.push_str(&s);
     }
 
-    if !subject_rows.is_empty() {
+    // Everyone present gets a line, including whoever has nothing stored about
+    // them yet. What identifies a speaker on the wire is a numeric id; without a
+    // line tying that id to a name the model has someone it cannot address, and
+    // that is worst for the person who just arrived.
+    if !scope_ids.is_empty() {
         // Per person, in scope_id order. Sorting by recency instead would change
         // the block every turn for no benefit.
         let per_subject = budgets.subjects / scope_ids.len().max(1);
@@ -345,21 +374,22 @@ pub(crate) fn load_memory_block_sync(
                 .cloned()
                 .collect();
             let rows = fit_to_budget(rows, per_subject);
-            if rows.is_empty() {
-                continue;
-            }
-            let name = req
-                .subjects
-                .iter()
-                .find(|s| &s.scope_id == scope_id)
-                .and_then(|s| s.display_name.as_deref())
-                .unwrap_or("");
+            let subject = req.subjects.iter().find(|s| &s.scope_id == scope_id);
+            let name = subject.and_then(|s| s.display_name.as_deref()).unwrap_or("");
             let qq = crate::db::models::memory::parse_onebot_user_scope_id(scope_id)
                 .map(|id| id.to_string())
                 .unwrap_or_else(|| scope_id.clone());
-            let attrs = format!("qq=\"{}\" name=\"{}\"", escape_attr(&qq), escape_attr(name));
-            if let Some(s) = format_memory_section(&rows, "person", Some(&attrs)) {
-                people.push_str(&s);
+            let mut attrs = format!("qq=\"{}\" name=\"{}\"", escape_attr(&qq), escape_attr(name));
+            let standing = subject.map(|s| (s.role.as_deref(), s.title.as_deref()));
+            if let Some(role) = standing.and_then(|(r, _)| r).filter(|r| !r.trim().is_empty()) {
+                attrs.push_str(&format!(" role=\"{}\"", escape_attr(role)));
+            }
+            if let Some(title) = standing.and_then(|(_, t)| t).filter(|t| !t.trim().is_empty()) {
+                attrs.push_str(&format!(" title=\"{}\"", escape_attr(title)));
+            }
+            match format_memory_section(&rows, "person", Some(&attrs)) {
+                Some(s) => people.push_str(&s),
+                None => people.push_str(&format!("\n\n<person {attrs} first_time=\"true\" />")),
             }
         }
         if !people.is_empty() {
@@ -543,7 +573,7 @@ mod tests {
         let private = load_memory_block_sync(
             conn,
             &MemoryRequest::onebot_private(
-                MemorySubjectRef { scope_id: onebot_user_scope_id(1), display_name: None },
+                MemorySubjectRef::from_user(1, None),
                 8_000,
             ),
         )
@@ -628,6 +658,100 @@ mod tests {
         .unwrap();
 
         assert!(block.contains(r#"name="a&quot;&lt;b&gt;""#));
+    }
+
+    /// The newcomer is the case the roster exists for. Each message is tagged
+    /// with a number; with no line naming it, the model has someone present it
+    /// cannot address — worst for whoever just arrived.
+    #[test]
+    fn everyone_present_appears_even_without_memories() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+        let known = onebot_user_scope_id(1);
+        add(conn, "k", MemoryScope::OnebotUser, &known, "style", "likes terse",
+            Origin::Group, Visibility::Normal);
+
+        let block = load_memory_block_sync(
+            conn,
+            &MemoryRequest::onebot_group(
+                None,
+                vec![
+                    MemorySubjectRef::from_user(1, Some("Alice".into())),
+                    MemorySubjectRef::from_user(2, Some("Bob".into())),
+                ],
+                8_000,
+            ),
+        )
+        .unwrap();
+
+        assert!(block.contains(r#"<person qq="1" name="Alice">"#));
+        assert!(block.contains(r#"<person qq="2" name="Bob" first_time="true" />"#));
+    }
+
+    /// Nothing is stored about anyone yet and the block still ships: the roster
+    /// alone is what turns the id on each message into a name.
+    #[test]
+    fn a_roster_ships_when_nothing_is_remembered_yet() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+
+        let block = load_memory_block_sync(
+            conn,
+            &MemoryRequest::onebot_group(
+                None,
+                vec![MemorySubjectRef::from_user(7, Some("Newcomer".into()))],
+                8_000,
+            ),
+        )
+        .unwrap();
+
+        assert!(block.contains(r#"<person qq="7" name="Newcomer" first_time="true" />"#));
+    }
+
+    /// Standing describes now, so it is declared once here rather than stamped
+    /// onto messages — stored rows have nowhere to keep it, and re-attributed
+    /// history would show the same person holding rank in one turn and not the
+    /// next.
+    #[test]
+    fn standing_is_declared_on_the_roster() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+
+        let block = load_memory_block_sync(
+            conn,
+            &MemoryRequest::onebot_group(
+                None,
+                vec![MemorySubjectRef::from_user(1, Some("Alice".into()))
+                    .with_standing(Some("owner".into()), Some("摸鱼冠军".into()))],
+                8_000,
+            ),
+        )
+        .unwrap();
+
+        assert!(block.contains(r#"role="owner""#));
+        assert!(block.contains(r#"title="摸鱼冠军""#));
+    }
+
+    /// "No title awarded" arrives as an empty string, which must not become an
+    /// attribute claiming the person holds one.
+    #[test]
+    fn blank_standing_is_left_out() {
+        let pool = test_db();
+        let conn = &mut pool.get().unwrap();
+
+        let block = load_memory_block_sync(
+            conn,
+            &MemoryRequest::onebot_group(
+                None,
+                vec![MemorySubjectRef::from_user(1, Some("Alice".into()))
+                    .with_standing(Some("".into()), Some("   ".into()))],
+                8_000,
+            ),
+        )
+        .unwrap();
+
+        assert!(!block.contains("role="));
+        assert!(!block.contains("title="));
     }
 
     /// Order must not depend on anything that changes between turns.

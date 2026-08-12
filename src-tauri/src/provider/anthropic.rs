@@ -74,8 +74,12 @@ impl AnthropicProvider {
                 }
             }
 
-            if m.content.starts_with('[') {
-                if let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(&m.content) {
+            // Attribution and caption escaping are applied first, so what gets
+            // parsed here is already a speaker-prefixed part list; this branch
+            // only translates part shapes into Anthropic's.
+            let rendered = super::render_message(m, super::SenderRendering::Prefix);
+            if rendered.content.starts_with('[') {
+                if let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(&rendered.content) {
                     let anthropic_parts: Vec<serde_json::Value> = parts.iter().map(|p| {
                         match p.get("type").and_then(|t| t.as_str()) {
                             Some("image_url") => {
@@ -107,32 +111,10 @@ impl AnthropicProvider {
                             _ => p.clone()
                         }
                     }).collect();
-                    // Anthropic has no `name`, so a known speaker becomes a
-                    // leading text block rather than being lost.
-                    let mut anthropic_parts = anthropic_parts;
-                    if let Some(sender) = m.origin.sender() {
-                        // The caption travels as its own part here, so it never
-                        // passed through render_message — escape it explicitly,
-                        // or an image with a hand-typed marker in its caption
-                        // reaches the model as a second, forged sender block.
-                        for part in anthropic_parts.iter_mut() {
-                            if let Some(text) = part.get("text").and_then(|t| t.as_str()) {
-                                let cleaned = super::neutralise_markers(text);
-                                if cleaned != text {
-                                    part["text"] = serde_json::Value::String(cleaned);
-                                }
-                            }
-                        }
-                        anthropic_parts.insert(0, serde_json::json!({
-                            "type": "text",
-                            "text": format!("<sender>{}</sender>: ", sender.display()),
-                        }));
-                    }
                     out.push(serde_json::json!({"role": m.role, "content": anthropic_parts}));
                     continue;
                 }
             }
-            let rendered = super::render_message(m, super::SenderRendering::Prefix);
             out.push(serde_json::json!({"role": m.role, "content": rendered.content}));
         }
 
@@ -150,18 +132,14 @@ impl AnthropicProvider {
         params: &ChatParams,
         stream: bool,
     ) -> Request {
-        let mut system = messages.iter()
+        // The sender note is part of the system prompt by the time it arrives —
+        // every format renders the marker now, so explaining it is no longer a
+        // per-adapter concern.
+        let system = messages.iter()
             .filter(|m| m.role == "system")
             .map(|m| m.content.as_str())
             .collect::<Vec<_>>()
             .join("\n\n");
-        // Explain the degraded sender marker only when one is actually present.
-        if super::needs_sender_note(messages, super::SenderRendering::Prefix) {
-            if !system.is_empty() {
-                system.push_str("\n\n");
-            }
-            system.push_str(super::SENDER_PREFIX_NOTE);
-        }
 
         let mut body = serde_json::json!({
             "model": params.model,
@@ -259,6 +237,14 @@ struct AnthropicStreamEvent {
     content_block: Option<AnthropicContentBlock>,
     usage: Option<AnthropicUsage>,
     error: Option<AnthropicError>,
+    /// Only on `message_start`, and the only place the prompt-side counts —
+    /// including both cache figures — are guaranteed to appear.
+    message: Option<AnthropicMessageStart>,
+}
+
+#[derive(Deserialize)]
+struct AnthropicMessageStart {
+    usage: Option<AnthropicUsage>,
 }
 
 #[derive(Deserialize)]
@@ -289,9 +275,74 @@ struct AnthropicContentBlock {
 }
 
 #[derive(Deserialize)]
-struct AnthropicUsage {
+pub(super) struct AnthropicUsage {
     input_tokens: Option<i32>,
     output_tokens: Option<i32>,
+    /// Tokens served from an existing cache entry, billed at roughly 0.1x.
+    cache_read_input_tokens: Option<i32>,
+    /// Tokens written into the cache by this request, billed at 1.25x for the
+    /// five-minute TTL and 2x for the hour.
+    cache_creation_input_tokens: Option<i32>,
+}
+
+/// Turn Anthropic's three-part input count into one whole prompt.
+///
+/// `usage.input_tokens` on the Messages API is the *uncached remainder*, not the
+/// prompt: the prompt is that plus what was read from cache plus what was
+/// written to it. Passing `input_tokens` through as `prompt_tokens` would tell
+/// `calibrate_from_usage` that a 60k-token prompt was 1k as soon as caching
+/// starts working, and the correction factor derived from that lie is applied to
+/// every later estimate until it hits the 0.5 clamp — so the compaction
+/// threshold would fire on a window that was already full.
+///
+/// Reported as `Some` only when `input_tokens` is: adding two cache counts to a
+/// prompt we never learned would produce a confident number for a request whose
+/// size the provider declined to state.
+///
+/// Nothing sends `cache_control` today, so both cache figures are absent on
+/// every real response and this is arithmetic on zero. That is exactly why it
+/// has to land *before* caching is switched on — turning it on first would write
+/// a stretch of history where the same column means two different things, with
+/// nothing to tell them apart afterwards.
+pub(super) fn normalise_anthropic_usage(u: &AnthropicUsage) -> TokenUsage {
+    let read = u.cache_read_input_tokens.unwrap_or(0);
+    let write = u.cache_creation_input_tokens.unwrap_or(0);
+    TokenUsage {
+        prompt_tokens: u.input_tokens.map(|uncached| uncached + read + write),
+        completion_tokens: u.output_tokens,
+        // Anthropic states no total. Deriving one would invent a field the wire
+        // did not carry — see the note on `TokenUsage::total_tokens`.
+        total_tokens: None,
+        cache_read_tokens: u.cache_read_input_tokens,
+        cache_write_tokens: u.cache_creation_input_tokens,
+    }
+}
+
+/// Combine the halves of one streamed usage record.
+///
+/// `message_start` carries the prompt side — the uncached remainder and both
+/// cache figures — and `message_delta` carries the output count. Later API
+/// versions restate the prompt side on the delta as well; take it when it is
+/// there and keep what `message_start` said otherwise.
+///
+/// The three prompt figures are replaced together or not at all. Overwriting the
+/// total while keeping an older read would leave a cache count that no longer
+/// belongs to the prompt it is a subset of, and every query over those columns
+/// assumes that relation holds.
+fn merge_stop_usage(prompt_side: Option<&TokenUsage>, delta: Option<&AnthropicUsage>) -> TokenUsage {
+    let mut usage = prompt_side.cloned().unwrap_or_default();
+    let Some(d) = delta.map(normalise_anthropic_usage) else {
+        return usage;
+    };
+    if d.completion_tokens.is_some() {
+        usage.completion_tokens = d.completion_tokens;
+    }
+    if d.prompt_tokens.is_some() {
+        usage.prompt_tokens = d.prompt_tokens;
+        usage.cache_read_tokens = d.cache_read_tokens;
+        usage.cache_write_tokens = d.cache_write_tokens;
+    }
+    usage
 }
 
 #[async_trait]
@@ -307,10 +358,19 @@ impl ChatProvider for AnthropicProvider {
         let req = self.build_request(&messages, tools_opt, &params, true);
         let resp = transport.stream(req).await?;
 
+        // Held across events because one usage record arrives in two halves. The
+        // prompt-side counts — and with them both cache figures — come once on
+        // `message_start`; `message_delta` is only guaranteed to carry the output
+        // count. Reading usage from the delta alone is how the cache fields would
+        // have gone missing on every streamed turn while still working perfectly
+        // on the non-streaming path, which is the shape of bug that only shows up
+        // in production.
+        let mut prompt_side: Option<TokenUsage> = None;
+
         let stream = resp.bytes
             .map(|r| r.map_err(ProviderError::Transport))
             .eventsource()
-            .flat_map(|event| {
+            .flat_map(move |event| {
                 let events: Vec<Result<StreamEvent, ProviderError>> = match event {
                     Ok(ev) => {
                         let parsed = match serde_json::from_str::<AnthropicStreamEvent>(&ev.data) {
@@ -319,6 +379,11 @@ impl ChatProvider for AnthropicProvider {
                         };
                         let mut out = Vec::new();
                         match parsed.event_type.as_str() {
+                            "message_start" => {
+                                if let Some(u) = parsed.message.as_ref().and_then(|m| m.usage.as_ref()) {
+                                    prompt_side = Some(normalise_anthropic_usage(u));
+                                }
+                            }
                             "content_block_start" => {
                                 if let Some(ref cb) = parsed.content_block {
                                     if cb.block_type.as_deref() == Some("tool_use") {
@@ -372,15 +437,12 @@ impl ChatProvider for AnthropicProvider {
                             "message_delta" => {
                                 if let Some(ref delta) = parsed.delta {
                                     if let Some(ref sr) = delta.stop_reason {
-                                        let usage = parsed.usage.map(|u| TokenUsage {
-                                            prompt_tokens: u.input_tokens,
-                                            completion_tokens: u.output_tokens,
-                                            total_tokens: None,
-                                            ..Default::default()
-                                        });
                                         out.push(Ok(StreamEvent::Stop {
                                             reason: sr.clone(),
-                                            usage,
+                                            usage: Some(merge_stop_usage(
+                                                prompt_side.as_ref(),
+                                                parsed.usage.as_ref(),
+                                            )),
                                         }));
                                     }
                                 }
@@ -479,12 +541,12 @@ impl ChatProvider for AnthropicProvider {
             }
         }
 
-        let usage = parsed.get("usage").map(|u| TokenUsage {
-            prompt_tokens: u["input_tokens"].as_i64().map(|v| v as i32),
-            completion_tokens: u["output_tokens"].as_i64().map(|v| v as i32),
-            total_tokens: None,
-            ..Default::default()
-        });
+        // Through the same struct and the same normaliser as the streaming path,
+        // so the two cannot disagree about what `input_tokens` means.
+        let usage = parsed
+            .get("usage")
+            .and_then(|u| serde_json::from_value::<AnthropicUsage>(u.clone()).ok())
+            .map(|u| normalise_anthropic_usage(&u));
 
         let reasoning = if reasoning_content.is_empty() { None } else { Some(reasoning_content) };
         Ok(AgentResponse { text, reasoning_content: reasoning, tool_calls, usage })
@@ -494,6 +556,105 @@ impl ChatProvider for AnthropicProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn usage_from(json: &str) -> AnthropicUsage {
+        serde_json::from_str(json).expect("a usage body from the wire")
+    }
+
+    /// The one thing about Anthropic that is unlike every other provider.
+    ///
+    /// `usage.input_tokens` is the part of the prompt that *missed* cache, not
+    /// the prompt. If this assertion fails, someone has read it as OpenAI's
+    /// `prompt_tokens` again — and the damage is silent: the cost falls, the
+    /// tokenizer calibrates against a number that shrinks as caching improves,
+    /// and the compaction threshold starts firing on a window that is already
+    /// full.
+    #[test]
+    fn input_tokens_are_the_uncached_remainder_not_the_prompt() {
+        let u = normalise_anthropic_usage(&usage_from(
+            r#"{"input_tokens":1200,"output_tokens":300,
+                "cache_read_input_tokens":40000,"cache_creation_input_tokens":800}"#,
+        ));
+        assert_eq!(u.prompt_tokens, Some(42_000), "1200 + 40000 + 800");
+        assert_eq!(u.completion_tokens, Some(300));
+        assert_eq!(u.cache_read_tokens, Some(40_000));
+        assert_eq!(u.cache_write_tokens, Some(800));
+        assert_eq!(u.uncached_prompt_tokens(), 1_200, "back to what the wire said");
+    }
+
+    /// A write is not a miss. Anthropic charges a premium for one and nothing
+    /// extra for the other, so they must not land in the same field.
+    #[test]
+    fn a_cache_write_is_not_a_cache_read() {
+        let u = normalise_anthropic_usage(&usage_from(
+            r#"{"input_tokens":500,"output_tokens":10,"cache_creation_input_tokens":900}"#,
+        ));
+        assert_eq!(u.cache_write_tokens, Some(900));
+        assert_eq!(u.cache_read_tokens, None, "nothing was read from cache");
+        assert_eq!(u.prompt_tokens, Some(1_400));
+    }
+
+    /// Anthropic states no total, and inventing one would make "the upstream
+    /// told us" indistinguishable from "we added two numbers up".
+    #[test]
+    fn no_total_is_reported_because_the_wire_carries_none() {
+        let u = normalise_anthropic_usage(&usage_from(
+            r#"{"input_tokens":10,"output_tokens":20}"#,
+        ));
+        assert_eq!(u.total_tokens, None);
+    }
+
+    /// A response that named no prompt size gets no prompt size — not the sum of
+    /// two cache counts, which would be a confident number for a request whose
+    /// size the provider declined to state.
+    #[test]
+    fn a_usage_without_input_tokens_reports_no_prompt() {
+        let u = normalise_anthropic_usage(&usage_from(
+            r#"{"output_tokens":20,"cache_read_input_tokens":900}"#,
+        ));
+        assert_eq!(u.prompt_tokens, None);
+        assert_eq!(u.cache_read_tokens, Some(900));
+    }
+
+    /// The prompt side arrives on `message_start` and the output count on
+    /// `message_delta`. Reading usage from the delta alone — which is what this
+    /// adapter did before — loses both cache figures on every streamed turn while
+    /// the non-streaming path goes on working, so nothing catches it until a bill
+    /// arrives.
+    #[test]
+    fn the_stream_merges_message_start_and_message_delta() {
+        let start = normalise_anthropic_usage(&usage_from(
+            r#"{"input_tokens":1200,"output_tokens":1,
+                "cache_read_input_tokens":40000,"cache_creation_input_tokens":800}"#,
+        ));
+        let delta = usage_from(r#"{"output_tokens":300}"#);
+
+        let merged = merge_stop_usage(Some(&start), Some(&delta));
+        assert_eq!(merged.prompt_tokens, Some(42_000), "kept from message_start");
+        assert_eq!(merged.cache_read_tokens, Some(40_000));
+        assert_eq!(merged.cache_write_tokens, Some(800));
+        assert_eq!(merged.completion_tokens, Some(300), "taken from message_delta");
+    }
+
+    /// When a later API version restates the prompt side on the delta, all three
+    /// prompt figures move together — a read left over from `message_start`
+    /// beside a new total would no longer be a subset of it.
+    #[test]
+    fn a_restated_prompt_side_replaces_all_three_figures() {
+        let start = normalise_anthropic_usage(&usage_from(
+            r#"{"input_tokens":100,"output_tokens":1,"cache_read_input_tokens":900}"#,
+        ));
+        let delta = usage_from(
+            r#"{"input_tokens":50,"output_tokens":7,"cache_read_input_tokens":10,
+                "cache_creation_input_tokens":40}"#,
+        );
+
+        let merged = merge_stop_usage(Some(&start), Some(&delta));
+        assert_eq!(merged.prompt_tokens, Some(100));
+        assert_eq!(merged.cache_read_tokens, Some(10));
+        assert_eq!(merged.cache_write_tokens, Some(40));
+        assert_eq!(merged.uncached_prompt_tokens(), 50);
+    }
 
     #[test]
     fn test_serialize_thinking_block_precedes_tool_use() {
@@ -639,7 +800,7 @@ mod multimodal_sender_tests {
 
         let msg = ChatMessage::user_from(
             &parts,
-            SenderRef { user_id: 999, nickname: Some("Attacker".into()), role: None },
+            SenderRef { user_id: 999, nickname: Some("Attacker".into()) },
         );
 
         let out = AnthropicProvider::serialize_messages(&[msg]);

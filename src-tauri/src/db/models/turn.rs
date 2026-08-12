@@ -121,7 +121,16 @@ pub struct Turn {
     /// model. `None` means it still owes the telling — which is not the same as
     /// "this turn is the most recent one", because a turn that dies before
     /// reaching a provider carries nothing and therefore consumes nothing.
+    ///
+    /// "Delivered" here means delivered to *this turn's own conversation*. A
+    /// delegated run owes two tellings; the other one is below.
     pub reported_at: Option<i64>,
+    /// When the conversation that *spawned* this turn was told about it. Only
+    /// ever set on a sub-agent's turn, and kept apart from `reported_at` because
+    /// the two audiences are independent: the user opening the child and saying
+    /// one thing must not decide that the parent has heard about a half-written
+    /// file.
+    pub parent_reported_at: Option<i64>,
 }
 
 impl Turn {

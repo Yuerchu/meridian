@@ -136,11 +136,32 @@ export function useGlobalEventListener() {
         store.handleToolApproval(
           convId, p.message_id!, p.approval_id, p.call_id, p.tool_name!,
           p.retry_reason, p.origin_call_id,
+          // Routed here rather than to the sub-agent's own conversation, which
+          // is where the call is: nobody is necessarily looking at that one.
+          p.parent_call_id
+            ? {
+              parentCallId: p.parent_call_id,
+              arguments: p.arguments ?? '{}',
+              subConversationId: p.sub_conversation_id,
+            }
+            : undefined,
         )
         if (shouldNotify(convId)) {
           const toolName = p.tool_name === 'ask_user' ? 'Question' : p.tool_name!
           trySendNotification(getConversationTitle(convId), `Action required: ${toolName}`)
         }
+        return
+      }
+
+      if (
+        p.type === 'sub_agent_started'
+        && p.call_id && p.sub_conversation_id && p.spawned_turn_id
+      ) {
+        store.handleSubAgentStarted(convId, p.message_id!, p.call_id, {
+          conversationId: p.sub_conversation_id,
+          turnId: p.spawned_turn_id,
+          kind: p.kind,
+        })
         return
       }
 

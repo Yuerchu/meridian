@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, StarFill, Check, SquareDashedText } from '@gravity-ui/icons'
 import { Button, Checkbox, Disclosure, DisclosureGroup, Input, ListBox, Select, TextArea, Tooltip } from '@heroui/react'
 import { api } from '@/api'
+import { SubAgentSettings } from './sub-agent-settings'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
 
 function AssistantEditor({
@@ -573,6 +574,11 @@ export function AssistantSettings() {
           )
         })}
       </DisclosureGroup>
+
+      {/* Shares this tab's provider list rather than fetching its own: it is the
+          same question — which model runs this — asked about a different kind
+          of agent. */}
+      <SubAgentSettings providers={providers} />
     </div>
   )
 }

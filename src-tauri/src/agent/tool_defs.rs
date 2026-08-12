@@ -11,6 +11,7 @@ use crate::tools::ToolRegistry;
 
 use super::modes::Modes;
 use super::skills::{is_valid_slug, MAX_AVAILABLE_SKILLS};
+use super::sub_agents::{SubAgentCatalog, RUN_AGENT_TOOL};
 
 pub const LOAD_SKILL_TOOL: &str = "load_skill";
 
@@ -138,6 +139,49 @@ pub(crate) fn apply_skill_catalog(defs: &mut Vec<ToolDefinition>, skills: &[Skil
     }
 }
 
+/// Decide whether `run_agent` is offered at all, and if so which models it may
+/// name.
+///
+/// Three outcomes, and the middle one is the reason this is not a boolean:
+///
+/// * `None` — this runner has no way to run a sub-agent. The tool goes. Left
+///   in, the model calls it and gets the registry entry's refusal back as a
+///   tool result, which is the shape of the `enter_plan` leak that reached
+///   OneBot for a whole release.
+/// * `Some`, empty — delegation works, but no model has been configured well
+///   enough to name. The tool stays and the `model` property is **removed**:
+///   an unconstrained free-text field is worse than none, because a model with
+///   nowhere to look up names will invent them.
+/// * `Some`, populated — the roster goes into the description and the qualified
+///   names become an `enum`, the same shape `load_skill` uses.
+pub(crate) fn apply_sub_agent_catalog(
+    defs: &mut Vec<ToolDefinition>,
+    catalog: Option<&SubAgentCatalog>,
+) {
+    let Some(idx) = defs.iter().position(|d| d.name == RUN_AGENT_TOOL) else { return };
+
+    let Some(catalog) = catalog else {
+        defs.remove(idx);
+        return;
+    };
+
+    let def = &mut defs[idx];
+    let Some(props) = def.parameters.get_mut("properties").and_then(|p| p.as_object_mut()) else {
+        return;
+    };
+
+    if catalog.models.is_empty() {
+        props.remove("model");
+        return;
+    }
+
+    let names = catalog.names();
+    if let Some(field) = props.get_mut("model").and_then(|f| f.as_object_mut()) {
+        field.insert("enum".into(), serde_json::json!(names));
+    }
+    def.description.push_str(catalog.describe().trim_end());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,6 +219,96 @@ mod tests {
 
     fn names_of(defs: &[ToolDefinition]) -> Vec<String> {
         defs.iter().map(|d| d.name.clone()).collect()
+    }
+
+    /// `run_agent` as the registry hands it over, so the tests act on the real
+    /// schema rather than a stand-in that happens to have a `model` property.
+    fn run_agent_defs() -> Vec<ToolDefinition> {
+        let tool = registry().get(RUN_AGENT_TOOL).expect("registered");
+        vec![
+            ToolDefinition {
+                name: "read_file".into(),
+                description: "d".into(),
+                parameters: serde_json::json!({}),
+            },
+            ToolDefinition {
+                name: tool.name().into(),
+                description: tool.description().into(),
+                parameters: tool.parameters_schema(),
+            },
+        ]
+    }
+
+    fn model_property(defs: &[ToolDefinition]) -> Option<&serde_json::Value> {
+        defs.iter()
+            .find(|d| d.name == RUN_AGENT_TOOL)?
+            .parameters
+            .get("properties")?
+            .get("model")
+    }
+
+    fn catalog(names: &[&str]) -> SubAgentCatalog {
+        SubAgentCatalog {
+            models: names
+                .iter()
+                .map(|n| crate::agent::sub_agents::AgentModel {
+                    provider_id: "p".into(),
+                    provider_name: "P".into(),
+                    model_id: (*n).into(),
+                    display_name: None,
+                    context_window: Some(64_000),
+                    input_price: Some(0.5),
+                    output_price: Some(1.0),
+                    supports_thinking: false,
+                })
+                .collect(),
+        }
+    }
+
+    /// A runner with nowhere to run a sub-agent must not be shown the tool. Left
+    /// in, the model calls it and the registry entry answers with its refusal to
+    /// be called outside the loop — as this turn's tool result, in its own
+    /// transcript. That is exactly how `enter_plan` leaked onto OneBot.
+    #[test]
+    fn a_runner_that_cannot_delegate_is_not_offered_the_tool() {
+        let mut defs = run_agent_defs();
+        apply_sub_agent_catalog(&mut defs, None);
+        assert_eq!(names_of(&defs), ["read_file"]);
+    }
+
+    /// Delegation works but nothing has been configured well enough to name. The
+    /// tool stays — the default still resolves — and the free-text field goes,
+    /// because a model with no list to choose from invents names.
+    #[test]
+    fn an_empty_roster_keeps_the_tool_and_takes_away_the_choice() {
+        let mut defs = run_agent_defs();
+        apply_sub_agent_catalog(&mut defs, Some(&SubAgentCatalog { models: Vec::new() }));
+
+        assert!(names_of(&defs).contains(&RUN_AGENT_TOOL.to_string()));
+        assert!(model_property(&defs).is_none(), "an unconstrained model field is worse than none");
+    }
+
+    #[test]
+    fn a_roster_becomes_an_enum_and_a_readable_list() {
+        let mut defs = run_agent_defs();
+        apply_sub_agent_catalog(&mut defs, Some(&catalog(&["cheap", "dear"])));
+
+        let field = model_property(&defs).unwrap();
+        assert_eq!(field.get("enum").unwrap(), &serde_json::json!(["p:cheap", "p:dear"]));
+
+        let description = &defs.iter().find(|d| d.name == RUN_AGENT_TOOL).unwrap().description;
+        assert!(description.contains("p:cheap"), "{description}");
+        assert!(description.contains("64K context"), "{description}");
+    }
+
+    /// The function is only ever handed a whole tool set, and most of them do not
+    /// contain this tool.
+    #[test]
+    fn a_tool_set_without_it_is_left_alone() {
+        let mut defs = named(&["read_file"]);
+        apply_sub_agent_catalog(&mut defs, None);
+        apply_sub_agent_catalog(&mut defs, Some(&catalog(&["m"])));
+        assert_eq!(names_of(&defs), ["read_file"]);
     }
 
     #[test]

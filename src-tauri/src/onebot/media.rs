@@ -176,8 +176,9 @@ async fn resolve_supports_images(
             .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, &aid).ok());
         drop(conn);
 
-        let (provider_type, _base_url, _api_key, resolved_model, api_format) =
-            crate::agent::resolve_provider_config(&secrets, &pool, assistant.as_ref()).ok()?;
+        let crate::agent::ResolvedProvider {
+            provider_type, model: resolved_model, api_format, ..
+        } = crate::agent::resolve_provider_config(&secrets, &pool, assistant.as_ref()).ok()?;
         let model = override_model
             .or_else(|| assistant.as_ref().and_then(|a| a.model_id.clone()))
             .unwrap_or(resolved_model);

@@ -144,14 +144,8 @@ fn serialize_responses_input(messages: &[ChatMessage]) -> (Option<String>, Vec<s
         }
     }
 
-    if super::needs_sender_note(messages, super::SenderRendering::Prefix) {
-        let note = super::SENDER_PREFIX_NOTE;
-        instructions = Some(match instructions {
-            Some(existing) => format!("{existing}\n\n{note}"),
-            None => note.to_string(),
-        });
-    }
-
+    // The sender note arrives inside the system prompt; every format renders the
+    // marker now, so explaining it is no longer a per-adapter concern.
     (instructions, input)
 }
 
@@ -167,10 +161,39 @@ struct ResponseCompletedPayload {
 }
 
 #[derive(Deserialize)]
-struct ResponseUsage {
+pub(super) struct ResponseUsage {
     input_tokens: Option<i64>,
     output_tokens: Option<i64>,
     total_tokens: Option<i64>,
+    /// The Responses API's equivalent of chat-completions'
+    /// `prompt_tokens_details`. Same nesting, same reason for a struct of its
+    /// own: serde cannot reach into a nested object from a flat field.
+    input_tokens_details: Option<ResponseInputTokensDetails>,
+}
+
+#[derive(Deserialize)]
+struct ResponseInputTokensDetails {
+    cached_tokens: Option<i64>,
+}
+
+/// `input_tokens` here is the whole prompt, as in chat-completions — only the
+/// field names differ. `output_tokens` already includes reasoning tokens
+/// (`output_tokens_details.reasoning_tokens` is a subset of it, not an addition
+/// to it), so there is nothing to add on and nothing extra to bill.
+pub(super) fn normalise_responses_usage(u: &ResponseUsage) -> TokenUsage {
+    TokenUsage {
+        prompt_tokens: u.input_tokens.map(|v| v as i32),
+        completion_tokens: u.output_tokens.map(|v| v as i32),
+        total_tokens: u.total_tokens.map(|v| v as i32),
+        cache_read_tokens: u
+            .input_tokens_details
+            .as_ref()
+            .and_then(|d| d.cached_tokens)
+            .map(|v| v as i32),
+        // The Responses API bills no premium for putting a prefix into cache,
+        // so there is no figure to report — not a zero it never mentioned.
+        cache_write_tokens: None,
+    }
 }
 
 #[derive(Deserialize)]
@@ -313,12 +336,7 @@ fn parse_responses_event(
                     let response = &v["response"];
                     let usage = response.get("usage").and_then(|u| {
                         serde_json::from_value::<ResponseUsage>(u.clone()).ok()
-                    }).map(|u| TokenUsage {
-                        prompt_tokens: u.input_tokens.map(|v| v as i32),
-                        completion_tokens: u.output_tokens.map(|v| v as i32),
-                        total_tokens: u.total_tokens.map(|v| v as i32),
-                        ..Default::default()
-                    });
+                    }).map(|u| normalise_responses_usage(&u));
                     let mut events = Vec::new();
                     if let Some(u) = usage {
                         events.push(Ok(StreamEvent::UsageUpdate { usage: u }));
@@ -356,12 +374,7 @@ fn parse_responses_event(
                         .unwrap_or("unknown");
                     let usage = v["response"].get("usage").and_then(|u| {
                         serde_json::from_value::<ResponseUsage>(u.clone()).ok()
-                    }).map(|u| TokenUsage {
-                        prompt_tokens: u.input_tokens.map(|v| v as i32),
-                        completion_tokens: u.output_tokens.map(|v| v as i32),
-                        total_tokens: u.total_tokens.map(|v| v as i32),
-                        ..Default::default()
-                    });
+                    }).map(|u| normalise_responses_usage(&u));
                     let mut events = Vec::new();
                     if let Some(u) = usage {
                         events.push(Ok(StreamEvent::UsageUpdate { usage: u }));
@@ -505,12 +518,7 @@ impl ChatProvider for OpenAIResponsesProvider {
 
         let usage = parsed.get("usage").and_then(|u| {
             serde_json::from_value::<ResponseUsage>(u.clone()).ok()
-        }).map(|u| TokenUsage {
-            prompt_tokens: u.input_tokens.map(|v| v as i32),
-            completion_tokens: u.output_tokens.map(|v| v as i32),
-            total_tokens: u.total_tokens.map(|v| v as i32),
-            ..Default::default()
-        });
+        }).map(|u| normalise_responses_usage(&u));
 
         Ok(AgentResponse { text, reasoning_content, tool_calls, usage })
     }

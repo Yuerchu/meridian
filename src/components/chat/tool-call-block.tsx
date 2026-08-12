@@ -760,7 +760,17 @@ function ToolResult({ toolName, result, args }: { toolName: string; result: stri
   }
 }
 
-function PendingApproval({ approvalId, retryReason }: { approvalId: string; retryReason?: string }) {
+function PendingApproval(
+  { approvalId, retryReason, onAnswered }: {
+    approvalId: string
+    retryReason?: string
+    /** Called once an answer is accepted. Ordinary approvals need nothing here —
+     *  the tool result that follows retires the card — but a delegated run's
+     *  result is emitted on its own conversation, which the card's session
+     *  never hears about. */
+    onAnswered?: () => void
+  },
+) {
   const { t } = useTranslation()
   // One state, not two booleans: the pair had combinations that mean nothing
   // ("sent" and "typing a reason" at once) and no way to express "sending
@@ -775,10 +785,13 @@ function PendingApproval({ approvalId, retryReason }: { approvalId: string; retr
   const decide = (send: () => Promise<void>) => {
     const previous = ui
     setUi('sent')
-    send().catch(() => {
-      setUi(previous)
-      markOrphaned(approvalId)
-    })
+    send().then(
+      () => onAnswered?.(),
+      () => {
+        setUi(previous)
+        markOrphaned(approvalId)
+      },
+    )
   }
 
   if (ui === 'sent') {
@@ -1269,6 +1282,101 @@ function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<st
   }
 }
 
+/**
+ * A run handed to another agent.
+ *
+ * Its transcript is a conversation of its own, hidden from the sidebar and
+ * reachable only from here, so this card is the whole of what the reader knows
+ * about it until they go in: what it was asked to do, how far it has got, and
+ * anything it needs permission for.
+ *
+ * The step count comes from the store keyed by the run's turn, not from the
+ * sub-agent's message list — that list also holds whatever the user typed into
+ * the run after it finished, and this card is reporting on one delegation.
+ */
+function SubAgentBlock(
+  { data, description, kind, prompt }: {
+    data: ToolCallDisplay
+    description: string
+    kind: string
+    prompt?: string
+  },
+) {
+  const { t } = useTranslation()
+  const openConversation = useConversationStore((s) => s.openConversation)
+  const resolveNested = useConversationStore((s) => s.resolveNestedApproval)
+  const activeId = useConversationStore((s) => s.activeId)
+  // Live while it runs; the snapshot's count is what survives a reload.
+  const live = useConversationStore((s) =>
+    data.sub_agent ? s.subAgentSteps[data.sub_agent.turn_id] : undefined,
+  )
+  const steps = Math.max(live ?? 0, data.sub_agent?.steps ?? 0)
+  const nested = data.nested_approval
+  const readOnly = kind === 'explore'
+
+  return (
+    <ChatTool state={mapChatToolState(data.status)} defaultExpanded className="my-3">
+      <ChatToolTrigger>
+        {readOnly
+          ? <Compass aria-hidden className="size-3.5 shrink-0 text-muted" />
+          : <ForwardStep aria-hidden className="size-3.5 shrink-0 text-muted" />}
+        <span className="font-medium text-foreground shrink-0">
+          {t(`chat.subAgent.${readOnly ? 'explore' : 'agent'}`)}
+        </span>
+        <span className="truncate text-muted">{description}</span>
+        {steps > 0 && (
+          <span className="ml-auto shrink-0 text-xs text-muted tabular-nums">
+            {t('chat.subAgent.steps', { count: steps })}
+          </span>
+        )}
+      </ChatToolTrigger>
+      <ChatToolContent>
+        {prompt && (
+          <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap px-0.5 text-xs text-muted">
+            {prompt}
+          </pre>
+        )}
+
+        {/* The question the run raised. Asked here because this is where
+            somebody is looking — its own conversation may never be opened. */}
+        {nested && (
+          <div className="space-y-2 rounded-lg border border-border p-2">
+            <div className="flex items-start gap-1.5 px-0.5 text-xs text-muted">
+              <CircleQuestion className="w-3.5 h-3.5 shrink-0" />
+              <span>{t('chat.subAgent.asksFor', { tool: nested.tool_name })}</span>
+            </div>
+            <ChatToolArgs text={nested.arguments} />
+            <PendingApproval
+              key={nested.approval_id}
+              approvalId={nested.approval_id}
+              retryReason={nested.retry_reason}
+              onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
+            />
+          </div>
+        )}
+
+        {data.sub_agent && (
+          <Button
+            variant="ghost"
+            className="text-xs"
+            onClick={() => openConversation(data.sub_agent!.conversation_id)}
+          >
+            {t('chat.subAgent.viewProcess')}
+          </Button>
+        )}
+
+        {data.status === 'orphaned' && <OrphanedNotice />}
+
+        {data.result && (
+          data.status === 'error'
+            ? <ChatToolError>{data.result}</ChatToolError>
+            : <ChatToolResult>{data.result}</ChatToolResult>
+        )}
+      </ChatToolContent>
+    </ChatTool>
+  )
+}
+
 function mapChatToolState(status: ToolCallDisplay['status']): ChatToolState {
   switch (status) {
     case 'pending':
@@ -1278,6 +1386,10 @@ function mapChatToolState(status: ToolCallDisplay['status']): ChatToolState {
       return 'input-available'
     case 'queued':
       return 'queued'
+    // Not `requires-action`: nothing here can act on it. It is a wait like any
+    // other wait, and the card says who it is waiting on.
+    case 'awaiting_parent':
+      return 'input-available'
     case 'completed':
       return 'output-available'
     // Explicit rather than left to the default: an orphaned call really did
@@ -1368,6 +1480,11 @@ function CardOutcome({ status, detail }: { status: ToolCallDisplay['status']; de
     // happening, and for this one nothing is.
     case 'queued':
       return notice(<Clock className="w-3.5 h-3.5 shrink-0" />, t('chat.tool.queued'))
+    // Waiting on a person, but not on whoever is reading this. The question was
+    // put on the card that spawned the run, and saying so is the point — a card
+    // that simply sat there would read as hung.
+    case 'awaiting_parent':
+      return notice(<Clock className="w-3.5 h-3.5 shrink-0" />, t('chat.tool.awaitingParent'))
     default: {
       const unhandled: never = status
       throw new Error(`unhandled tool call status: ${String(unhandled)}`)
@@ -1429,6 +1546,23 @@ export function ToolCallBlock(
     const plan = typeof parsedArgs.plan === 'string' ? parsedArgs.plan.trim() : ''
     if (plan) {
       return <ExitPlanBlock data={data} plan={plan} />
+    }
+  }
+
+  // Mid-stream the description is not there yet, so the delegation renders as a
+  // plain tool card until the model has finished writing the call.
+  if (data.tool_name === 'run_agent') {
+    const description = typeof parsedArgs.description === 'string' ? parsedArgs.description.trim() : ''
+    const kind = typeof parsedArgs.agent === 'string' ? parsedArgs.agent : ''
+    if (description) {
+      return (
+        <SubAgentBlock
+          data={data}
+          description={description}
+          kind={kind}
+          prompt={typeof parsedArgs.prompt === 'string' ? parsedArgs.prompt.trim() : undefined}
+        />
+      )
     }
   }
 

@@ -229,6 +229,7 @@ async fn handle_text_message(
         user_id,
         nickname: (nickname != "Unknown").then(|| nickname.to_string()),
         role: event.sender.as_ref().and_then(|s| s.role.clone()),
+        title: event.sender.as_ref().and_then(|s| s.title.clone()),
         is_admin,
         is_group,
     };
@@ -1141,7 +1142,7 @@ async fn dispatch_memory(
              /memory forget N — 删除第 N 条(支持 2 3 5 或 2-5)\n\
              /memory forget all yes — 删除全部\n\
              /memory undo — 撤销 5 分钟内的删除\n\
-             /memory optout — 不再记住我 · /memory optin — 恢复\n\
+             /memory optout — 不再记住我(仅记忆,不含聊天记录) · /memory optin — 恢复\n\
              /memory group — 查看本群记忆(任何成员可删)",
             reply_to,
         ),
@@ -1296,10 +1297,19 @@ async fn dispatch_memory(
             .ok()
             .flatten()
             .unwrap_or(0);
+            // The second line is not decoration. This command used to promise to
+            // "stop remembering you" while the operator's audit log went on
+            // recording every message regardless, which made the promise false
+            // for the one thing people opting out most likely mean by it. What
+            // it does control is real and worth keeping — memories, and the
+            // personalisation built on them — so the fix is to say which of the
+            // two it is rather than to quietly stop keeping the record.
             build_reply(
                 event,
                 &format!(
-                    "已删除 {n} 条并停止记住你。管理员另行记录的备注不受影响。\n随时可用 /memory optin 恢复。"
+                    "已删除 {n} 条并停止记住你。管理员另行记录的备注不受影响。\n\
+                     这管的是记忆和个性化。聊天记录本身由管理员的留存设置决定,不受此开关影响。\n\
+                     随时可用 /memory optin 恢复。"
                 ),
                 reply_to,
             )
@@ -1879,6 +1889,7 @@ mod tests {
             user_id,
             nickname: Some(nick.into()),
             role: None,
+            title: None,
             is_admin: false,
             is_group: true,
         }

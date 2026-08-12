@@ -58,6 +58,10 @@ pub struct Sender {
     pub nickname: Option<String>,
     pub card: Option<String>,
     pub role: Option<String>,
+    /// The group's bespoke honorific for this member, when one was awarded.
+    /// Often a joke or a standing the room granted, which reads very differently
+    /// from the flat `role` — worth passing on for that reason.
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

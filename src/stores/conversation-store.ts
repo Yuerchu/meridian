@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { produce } from 'immer'
 import { api } from '@/api'
 import { parseTodoArgs, toDrafts, type TodoArgs } from '@/components/chat/todo-list'
-import type { BranchPoint, Conversation, Message, PendingApprovalInfo, Project, ContentBlock, OpenAIToolCall, TodoListView, ToolCallDisplay, TurnRecord } from '@/types'
+import type { BranchPoint, Conversation, Message, PendingApprovalInfo, Project, ContentBlock, OpenAIToolCall, SubAgentRunView, TodoListView, ToolCallDisplay, TurnRecord } from '@/types'
 
 /**
  * Read a checklist out of an `update_todos` call. A list whose steps are all
@@ -70,17 +70,42 @@ function toolRowsByAssistant(msgs: Message[]): Map<string, Message[]> {
  */
 type ApprovalIndex = Map<string, Map<string, PendingApprovalInfo[]>>
 
-function indexApprovals(pending: PendingApprovalInfo[]): ApprovalIndex {
+/** `bubbled` picks which call id places the card.
+ *
+ * A delegated run's approval names two: the tool it wants to run, which lives
+ * in the sub-agent's conversation, and the `run_agent` call it hangs under
+ * here. Indexing it by the former would look for a call this row never made. */
+function indexApprovals(pending: PendingApprovalInfo[], nested: boolean): ApprovalIndex {
   const out: ApprovalIndex = new Map()
   for (const p of pending) {
+    const key = nested ? p.parent_call_id : p.provider_call_id
+    if (nested !== (p.parent_call_id !== undefined) || !key) continue
     let byCall = out.get(p.assistant_message_id)
     if (!byCall) {
       byCall = new Map()
       out.set(p.assistant_message_id, byCall)
     }
-    const bucket = byCall.get(p.provider_call_id)
+    const bucket = byCall.get(key)
     if (bucket) bucket.push(p)
-    else byCall.set(p.provider_call_id, [p])
+    else byCall.set(key, [p])
+  }
+  return out
+}
+
+/** The delegated runs of one conversation, under the call that started each. */
+function indexRuns(runs: SubAgentRunView[]): Map<string, Map<string, SubAgentRunView>> {
+  const out = new Map<string, Map<string, SubAgentRunView>>()
+  for (const r of runs) {
+    // Both halves or nothing: a run that cannot say which call made it has no
+    // card to attach to, and guessing by call id alone puts a second delegation
+    // on the first one's card.
+    if (!r.spawned_by_message_id || !r.spawned_by_call_id) continue
+    let byCall = out.get(r.spawned_by_message_id)
+    if (!byCall) {
+      byCall = new Map()
+      out.set(r.spawned_by_message_id, byCall)
+    }
+    byCall.set(r.spawned_by_call_id, r)
   }
   return out
 }
@@ -153,11 +178,14 @@ export function hydrateBlocks(
   msgs: Message[],
   pending: PendingApprovalInfo[] = [],
   turns: TurnRecord[] = [],
+  runs: SubAgentRunView[] = [],
 ): Message[] {
   const answers = toolRowsByAssistant(msgs)
   // Consumed as they match, so two calls sharing an id cannot both claim the
   // same approval.
-  const waiting = indexApprovals(pending)
+  const waiting = indexApprovals(pending, false)
+  const bubbled = indexApprovals(pending, true)
+  const delegated = indexRuns(runs)
   const byTurn = new Map(turns.map((t) => [t.id, t]))
 
   return msgs.map((m) => {
@@ -180,6 +208,11 @@ export function hydrateBlocks(
             const answered = owned.findIndex((tm) => tm.tool_call_id === tc.id)
             const toolMsg = answered >= 0 ? owned.splice(answered, 1)[0] : undefined
             const stillWaiting = toolMsg ? undefined : waiting.get(m.id)?.get(tc.id)?.shift()
+            // A question raised inside a delegated run, waiting on whoever is
+            // reading this. Independent of the card's own status: `run_agent`
+            // is still running, and that is what the card says.
+            const nested = toolMsg ? undefined : bubbled.get(m.id)?.get(tc.id)?.shift()
+            const run = delegated.get(m.id)?.get(tc.id)
             blocks.push({
               type: 'tool_call',
               data: {
@@ -191,11 +224,31 @@ export function hydrateBlocks(
                 status: toolMsg
                   ? outcomeOf(toolMsg)
                   : stillWaiting
-                    ? 'pending'
+                    ? stillWaiting.bubbled ? 'awaiting_parent' : 'pending'
                     : unansweredStatus(m.turn_id, byTurn),
                 result: toolMsg?.content,
-                approval_id: stillWaiting?.approval_id,
+                // Left off when the answer has to come from elsewhere, so that
+                // "has an id" and "can be answered here" stay the same thing.
+                approval_id: stillWaiting?.bubbled ? undefined : stillWaiting?.approval_id,
                 retry_reason: stillWaiting?.retry_reason,
+                sub_agent: run?.spawned_turn_id
+                  ? {
+                    conversation_id: run.conversation_id,
+                    turn_id: run.spawned_turn_id,
+                    kind: run.agent_kind ?? undefined,
+                    steps: run.steps,
+                  }
+                  : undefined,
+                nested_approval: nested
+                  ? {
+                    approval_id: nested.approval_id,
+                    call_id: nested.provider_call_id,
+                    tool_name: nested.tool_name,
+                    arguments: nested.arguments,
+                    retry_reason: nested.retry_reason,
+                    sub_conversation_id: nested.sub_conversation_id,
+                  }
+                  : undefined,
               },
             })
           }
@@ -492,7 +545,27 @@ export interface ConversationStore {
 
   sessions: Record<string, ConversationSession>
 
+  /** How many iterations each delegated run has taken, keyed by the run's turn.
+   *
+   *  Not per session, and not counted off the sub-agent's message list: that
+   *  list also holds whatever the user typed into the run afterwards, and the
+   *  card is reporting on one delegation rather than on a conversation. Keyed
+   *  by turn, only runs that have announced themselves are counted, so this
+   *  cannot fill up with every turn in the app. */
+  subAgentSteps: Record<string, number>
+
+  /** Where the reader came from, innermost last. Empty whenever they are
+   *  looking at something they picked from the sidebar.
+   *
+   *  An explicit stack rather than following `parent_conversation_id` back up:
+   *  the two answer different questions. The parent link says who spawned this,
+   *  which is not necessarily who was on screen a moment ago. */
+  navigationStack: string[]
+
   setActiveId: (id: string | null) => void
+  /** Drill into a conversation, remembering the way back. */
+  openConversation: (id: string) => void
+  goBack: () => void
   setActiveProjectId: (id: string | null) => void
   refreshConversations: () => Promise<Conversation[]>
   refreshProjects: () => Promise<void>
@@ -525,7 +598,24 @@ export interface ConversationStore {
     toolName: string,
     retryReason?: string,
     originCallId?: string,
+    /** Set when a delegated run is asking. The card is the `run_agent` block
+     *  named by this, and the question goes inside it — `callId` names a tool
+     *  in the sub-agent's conversation, which this row never called. */
+    bubble?: { parentCallId: string; arguments: string; subConversationId?: string },
   ) => void
+  /** A delegated run now exists. Arrives as soon as its conversation is
+   *  written, not when it finishes, because the card has to be able to link to
+   *  it and count its steps for the whole time it is running. */
+  handleSubAgentStarted: (
+    convId: string,
+    messageId: string,
+    callId: string,
+    run: { conversationId: string; turnId: string; kind?: string },
+  ) => void
+  /** The nested question has an answer, or can no longer get one. Cross-
+   *  conversation events cannot do this: the sub-agent's tool result is emitted
+   *  on its own conversation, which the parent's session never sees. */
+  resolveNestedApproval: (convId: string, approvalId: string) => void
   handleToolResult: (convId: string, messageId: string, callId: string, result: string, outcome?: string) => void
   /** The answer never landed — the backend has forgotten this request. Drops
    *  the buttons rather than leaving one that cannot work. Takes no
@@ -560,16 +650,37 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   conversations: [],
   activeId: null,
   projects: [],
+  subAgentSteps: {},
+  navigationStack: [],
   activeProjectId: null,
   sessions: {},
 
   setActiveId: (id) => {
-    set({ activeId: id })
+    // A sideways move, so the way back to wherever the reader had drilled down
+    // from no longer means anything.
+    set({ activeId: id, navigationStack: [] })
     if (id) get().markSeen(id)
   },
 
+  openConversation: (id) => {
+    const { activeId } = get()
+    set((s) => ({
+      activeId: id,
+      navigationStack: activeId ? [...s.navigationStack, activeId] : s.navigationStack,
+    }))
+    get().markSeen(id)
+  },
+
+  goBack: () => {
+    const stack = get().navigationStack
+    const to = stack[stack.length - 1]
+    if (!to) return
+    set({ activeId: to, navigationStack: stack.slice(0, -1) })
+    get().markSeen(to)
+  },
+
   setActiveProjectId: (id) => {
-    set({ activeProjectId: id, activeId: null })
+    set({ activeProjectId: id, activeId: null, navigationStack: [] })
   },
 
   refreshConversations: async () => {
@@ -612,7 +723,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // references against plain ones.
     const snapshot = reconcileMessages(
       get().sessions[convId]?.messages ?? [],
-      hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns),
+      hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
     )
     set(produce((state: ConversationStore) => {
       if (!state.sessions[convId]) {
@@ -650,7 +761,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       const snap = await api.conversationSnapshot(convId)
       const snapshot = reconcileMessages(
         get().sessions[convId]?.messages ?? [],
-        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns),
+        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
       )
       set(produce((state: ConversationStore) => {
         const session = state.sessions[convId]
@@ -730,6 +841,12 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
   handleMessageStart: (convId, messageId, turnId) => {
     set(produce((state: ConversationStore) => {
+      // One iteration of a delegated run. Only runs that announced themselves
+      // have a key here, so ordinary turns are not counted and the map stays
+      // the size of the delegations this session has seen.
+      if (turnId && state.subAgentSteps[turnId] !== undefined) {
+        state.subAgentSteps[turnId] += 1
+      }
       if (!state.sessions[convId]) {
         state.sessions[convId] = defaultSession()
       }
@@ -860,7 +977,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     }))
   },
 
-  handleToolApproval: (convId, messageId, approvalId, callId, toolName, retryReason, originCallId) => {
+  handleToolApproval: (convId, messageId, approvalId, callId, toolName, retryReason, originCallId, bubble) => {
     set(produce((state: ConversationStore) => {
       const session = state.sessions[convId]
       if (!session) return
@@ -875,6 +992,26 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         session.pendingAsks[approvalId] = entry
       } else {
         session.pendingApprovals[approvalId] = entry
+      }
+      // A delegated run's question. It goes inside the `run_agent` card rather
+      // than onto one of its own: the call it names happened in another
+      // conversation, and this row has no block for it.
+      if (bubble) {
+        const parent = session.messages.find((m) => m.id === messageId)
+        const host = (parent?._blocks ?? []).find(
+          (b) => b.type === 'tool_call' && b.data.call_id === bubble.parentCallId,
+        )
+        if (host?.type === 'tool_call') {
+          host.data.nested_approval = {
+            approval_id: approvalId,
+            call_id: callId,
+            tool_name: toolName,
+            arguments: bubble.arguments,
+            retry_reason: retryReason,
+            sub_conversation_id: bubble.subConversationId,
+          }
+        }
+        return
       }
       // Only under the assistant row that asked, and only a card still
       // outstanding — scanning the whole transcript, which this used to do,
@@ -907,6 +1044,45 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         card.data.status = 'pending'
         card.data.approval_id = approvalId
         card.data.retry_reason = retryReason
+      }
+    }))
+  },
+
+  handleSubAgentStarted: (convId, messageId, callId, run) => {
+    set(produce((state: ConversationStore) => {
+      // Seeded even when there is no session to draw into: the counter is keyed
+      // by turn and read by whichever card ends up rendering, and a run whose
+      // parent is not open still writes rows the moment it starts.
+      state.subAgentSteps[run.turnId] = state.subAgentSteps[run.turnId] ?? 0
+      const session = state.sessions[convId]
+      if (!session) return
+      const target = session.messages.find((m) => m.id === messageId)
+      const card = (target?._blocks ?? []).find(
+        (b) => b.type === 'tool_call' && b.data.call_id === callId,
+      )
+      if (card?.type === 'tool_call') {
+        card.data.sub_agent = {
+          conversation_id: run.conversationId,
+          turn_id: run.turnId,
+          kind: run.kind,
+          steps: 0,
+        }
+      }
+    }))
+  },
+
+  resolveNestedApproval: (convId, approvalId) => {
+    set(produce((state: ConversationStore) => {
+      const session = state.sessions[convId]
+      if (!session) return
+      delete session.pendingApprovals[approvalId]
+      delete session.pendingAsks[approvalId]
+      for (const m of session.messages) {
+        for (const b of m._blocks ?? []) {
+          if (b.type === 'tool_call' && b.data.nested_approval?.approval_id === approvalId) {
+            b.data.nested_approval = undefined
+          }
+        }
       }
     }))
   },
@@ -972,9 +1148,16 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // next time the transcript reloads.
         const target = session.messages.find((m) => m.id === entry.messageId)
         for (const block of target?._blocks ?? []) {
-          if (block.type === 'tool_call' && block.data.approval_id === approvalId) {
+          if (block.type !== 'tool_call') continue
+          if (block.data.approval_id === approvalId) {
             block.data.status = 'orphaned'
             block.data.approval_id = undefined
+          }
+          // A delegated run's question. The card it sits in is the `run_agent`
+          // call, which is not itself orphaned — only the question is, so it
+          // goes and the card carries on saying what it is doing.
+          if (block.data.nested_approval?.approval_id === approvalId) {
+            block.data.nested_approval = undefined
           }
         }
         return
@@ -1089,7 +1272,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     api.conversationSnapshot(convId).then((snap) => {
       const snapshot = reconcileMessages(
         get().sessions[convId]?.messages ?? [],
-        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns),
+        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
       )
       set(produce((state: ConversationStore) => {
         const session = state.sessions[convId]
@@ -1123,7 +1306,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     api.conversationSnapshot(convId).then((snap) => {
       const snapshot = reconcileMessages(
         get().sessions[convId]?.messages ?? [],
-        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns),
+        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
       )
       set(produce((state: ConversationStore) => {
         const session = state.sessions[convId]

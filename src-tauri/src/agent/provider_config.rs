@@ -56,7 +56,7 @@ pub(crate) fn resolve_provider_config(
     secrets: &SecretsManager,
     pool: &DbPool,
     assistant: Option<&Assistant>,
-) -> Result<(String, String, String, String, String), String> {
+) -> Result<ResolvedProvider, String> {
     if let Some(provider_id) = assistant.and_then(|a| a.provider_id.as_deref()) {
         let mut conn = get_conn(pool)?;
         let provider = db::ops::provider::get_provider(&mut conn, provider_id)
@@ -67,7 +67,15 @@ pub(crate) fn resolve_provider_config(
             .and_then(|a| a.model_id.clone())
             .ok_or("No model configured. Go to Settings → Assistant to set a model.")?;
         let base_url = provider.base_url.trim_end_matches('/').to_string();
-        return Ok((provider.provider_type, base_url, api_key, model, provider.api_format));
+        return Ok(ResolvedProvider {
+            provider_id: provider.id,
+            provider_name: provider.name,
+            provider_type: provider.provider_type,
+            base_url,
+            api_key,
+            model,
+            api_format: provider.api_format,
+        });
     }
 
     // Fallback: first enabled provider
@@ -79,12 +87,86 @@ pub(crate) fn resolve_provider_config(
                     .and_then(|a| a.model_id.clone())
                     .ok_or("No model configured. Go to Settings → Assistant to set a model.")?;
                 let base_url = p.base_url.trim_end_matches('/').to_string();
-                return Ok((p.provider_type, base_url, api_key, model, p.api_format));
+                return Ok(ResolvedProvider {
+                    provider_id: p.id,
+                    provider_name: p.name,
+                    provider_type: p.provider_type,
+                    base_url,
+                    api_key,
+                    model,
+                    api_format: p.api_format,
+                });
             }
         }
     }
 
     Err("No provider configured. Go to Settings → Provider to add one.".into())
+}
+
+/// Where a request is going, once the caller's overrides have had their say.
+pub(crate) struct ResolvedProvider {
+    /// Which configured provider row this resolved to, and what it was called.
+    ///
+    /// Carried out rather than discarded, because the rows a turn writes record
+    /// it: `messages.provider_id` has existed since migration 1 and was never
+    /// filled in on a reply, so no report could say which upstream produced
+    /// what. The fallback branch made that worse — it picks the first enabled
+    /// provider and used to return only its settings, so a turn that took that
+    /// path had no id to record even in principle.
+    ///
+    /// The name travels beside the id because `messages.provider_id` is
+    /// `ON DELETE SET NULL`: deleting a provider silently un-attributes every
+    /// reply it ever produced.
+    pub provider_id: String,
+    pub provider_name: String,
+    pub provider_type: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+    pub api_format: String,
+}
+
+/// The assistant's provider and model, with a caller's choices layered on top.
+///
+/// Two overrides that do not compose the way they look like they might. A model
+/// override replaces only the name — the endpoint and the key stay whatever the
+/// assistant resolved. A provider override replaces the endpoint, the key and
+/// the wire format together, because a key is meaningless against a different
+/// host, and it leaves the model name alone. So "same model, different endpoint"
+/// and "same endpoint, different model" are both expressible, which is what the
+/// model picker in the composer actually offers.
+///
+/// Synchronous: every read here is a pooled connection or the OS credential
+/// store, both of which block. Callers put it in `spawn_blocking`.
+pub(crate) fn resolve_with_overrides(
+    secrets: &SecretsManager,
+    pool: &DbPool,
+    assistant: Option<&Assistant>,
+    model_override: Option<String>,
+    provider_override: Option<&str>,
+) -> Result<ResolvedProvider, String> {
+    let mut resolved = resolve_provider_config(secrets, pool, assistant)?;
+    if let Some(m) = model_override {
+        resolved.model = m;
+    }
+
+    if let Some(pid) = provider_override {
+        let mut conn = get_conn(pool)?;
+        let p = db::ops::provider::get_provider(&mut conn, pid).map_err(|e| e.to_string())?;
+        let api_key = get_provider_api_key(secrets, pid)
+            .ok_or_else(|| format!("API Key not set for provider '{}'", p.name))?;
+        // The identity moves with the endpoint. A row attributed to the
+        // assistant's standing choice while the request went somewhere else
+        // would be worse than no attribution at all — it would look measured.
+        resolved.provider_id = p.id;
+        resolved.provider_name = p.name;
+        resolved.provider_type = p.provider_type;
+        resolved.base_url = p.base_url.trim_end_matches('/').to_string();
+        resolved.api_key = api_key;
+        resolved.api_format = p.api_format;
+    }
+
+    Ok(resolved)
 }
 
 /// For the passes that only read a conversation and write prose about it —

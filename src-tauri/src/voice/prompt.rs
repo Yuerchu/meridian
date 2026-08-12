@@ -71,6 +71,9 @@ mod tests {
             source: source.map(String::from),
             turn_id: None,
             tool_outcome: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            provider_name: None,
         }
     }
 

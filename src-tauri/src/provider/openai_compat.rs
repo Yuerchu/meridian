@@ -148,8 +148,52 @@ pub struct ChunkUsage {
     pub prompt_tokens: Option<i32>,
     pub completion_tokens: Option<i32>,
     pub total_tokens: Option<i32>,
+    /// DeepSeek's flat split of the prompt, where `hit + miss == prompt_tokens`.
     pub prompt_cache_hit_tokens: Option<i32>,
     pub prompt_cache_miss_tokens: Option<i32>,
+    /// OpenAI's own chat-completions shape for the same information, one object
+    /// deeper. It needs a struct rather than another `Option<i32>` because serde
+    /// cannot reach into a nested object from a flat field, and a
+    /// `serde_json::Value` here would push "is this key present" down into the
+    /// normaliser where it is easy to get wrong.
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
+}
+
+/// Only the field we price on. Everything else OpenAI puts here — audio token
+/// counts, future additions — is ignored rather than rejected, because a
+/// compatible gateway adding a key must not turn a working response into a parse
+/// error.
+#[derive(Deserialize)]
+pub struct PromptTokensDetails {
+    pub cached_tokens: Option<i32>,
+}
+
+/// The one place both chat-completions dialects become the same thing.
+///
+/// They spell the cached prefix differently — DeepSeek puts
+/// `prompt_cache_hit_tokens` at the top level, OpenAI nests `cached_tokens`
+/// under `prompt_tokens_details` — but they agree that `prompt_tokens` is
+/// already the whole prompt, so only the cache field has to be reconciled.
+///
+/// Neither dialect has a notion of a *paid* cache write, so `cache_write_tokens`
+/// stays `None`: writing `Some(0)` would claim the endpoint reported a zero it
+/// never mentioned, and the cost formula would then have no way to tell a
+/// provider without caching apart from one whose cache was merely cold.
+///
+/// The DeepSeek field wins when both are present. A gateway emitting both is
+/// almost certainly a DeepSeek proxy padding its response into OpenAI's shape,
+/// and its native field is the one its own billing derives from.
+pub fn normalise_openai_usage(u: &ChunkUsage) -> TokenUsage {
+    let cache_read = u
+        .prompt_cache_hit_tokens
+        .or_else(|| u.prompt_tokens_details.as_ref().and_then(|d| d.cached_tokens));
+    TokenUsage {
+        prompt_tokens: u.prompt_tokens,
+        completion_tokens: u.completion_tokens,
+        total_tokens: u.total_tokens,
+        cache_read_tokens: cache_read,
+        cache_write_tokens: None,
+    }
 }
 
 pub fn parse_openai_sse_events(chunk: &ChatChunk) -> (Vec<StreamEvent>, Option<String>, Option<TokenUsage>) {
@@ -158,13 +202,7 @@ pub fn parse_openai_sse_events(chunk: &ChatChunk) -> (Vec<StreamEvent>, Option<S
     let mut usage = None;
 
     if let Some(ref u) = chunk.usage {
-        usage = Some(TokenUsage {
-            prompt_tokens: u.prompt_tokens,
-            completion_tokens: u.completion_tokens,
-            total_tokens: u.total_tokens,
-            cache_hit_tokens: u.prompt_cache_hit_tokens,
-            cache_miss_tokens: u.prompt_cache_miss_tokens,
-        });
+        usage = Some(normalise_openai_usage(u));
     }
 
     if let Some(choice) = chunk.choices.first() {
@@ -303,13 +341,13 @@ impl ChatProvider for OpenAICompatProvider {
             Vec::new()
         };
 
-        let usage = parsed.get("usage").map(|u| TokenUsage {
-            prompt_tokens: u["prompt_tokens"].as_i64().map(|v| v as i32),
-            completion_tokens: u["completion_tokens"].as_i64().map(|v| v as i32),
-            total_tokens: u["total_tokens"].as_i64().map(|v| v as i32),
-            cache_hit_tokens: u["prompt_cache_hit_tokens"].as_i64().map(|v| v as i32),
-            cache_miss_tokens: u["prompt_cache_miss_tokens"].as_i64().map(|v| v as i32),
-        });
+        // Parsed through the same struct the streaming path uses, so the two
+        // cannot drift: a field added to `ChunkUsage` reaches both, and a
+        // normalisation rule fixed in one is fixed in both.
+        let usage = parsed
+            .get("usage")
+            .and_then(|u| serde_json::from_value::<ChunkUsage>(u.clone()).ok())
+            .map(|u| normalise_openai_usage(&u));
 
         Ok(AgentResponse { text, reasoning_content, tool_calls, usage })
     }
