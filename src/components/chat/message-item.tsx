@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowsRotateRight, Check, Copy, FileText, Microphone, Pencil, ThumbsDown, ThumbsUp, TrashBin, Xmark } from '@gravity-ui/icons'
+import { ArrowsRotateRight, Check, Copy, FileText, Microphone, Pencil, SquareDashedText, ThumbsDown, ThumbsUp, TrashBin, Xmark } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
@@ -39,7 +39,8 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { convertFileSrc } from '@tauri-apps/api/core'
-import { isSubmitKey } from '@/hooks/use-coarse-pointer'
+import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
+import { SelectTextModal } from './select-text-modal'
 import { markQueued } from '@/lib/turns'
 import { ToolCallBlock } from './tool-call-block'
 import { renderEmojisInText } from './emoji-renderer'
@@ -398,6 +399,10 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
   const editRef = useRef<HTMLTextAreaElement>(null)
   const [selectedText, setSelectedText] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showSelectText, setShowSelectText] = useState(false)
+  // Evaluated once per render rather than stored: `matchMedia` is synchronous
+  // and a device does not grow a mouse mid-conversation.
+  const coarse = isCoarsePointer()
   // `AlertDialog.Body` is a plain div: only a `Heading slot="title"` is wired up
   // for us, so without this the dialog announces its title and nothing else.
   // Generated, because every message in the list has one of these.
@@ -456,7 +461,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
 
     const userContent = (
       <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-        <ContextMenuTrigger render={<Message align="end" />}>
+        <ContextMenuTrigger render={<Message align="end" className="pointer-coarse:select-none" />}>
           <MessageContent>
             {speaker && (
               <MessageHeader className="justify-end text-muted font-normal">{speaker}</MessageHeader>
@@ -577,6 +582,12 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
             <Copy />
             {t('chat.copy')}
           </ContextMenuItem>
+          {coarse && (
+            <ContextMenuItem onClick={() => setShowSelectText(true)}>
+              <SquareDashedText />
+              {t('contextMenu.selectText')}
+            </ContextMenuItem>
+          )}
           <ContextMenuSeparator />
           {onDelete && (
             <ContextMenuItem variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
@@ -591,6 +602,13 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
     return (
       <>
         {userContent}
+        {coarse && (
+          <SelectTextModal
+            text={message.content}
+            isOpen={showSelectText}
+            onOpenChange={setShowSelectText}
+          />
+        )}
         {onDelete && (
           <AlertDialog.Backdrop isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
             <AlertDialog.Container>
@@ -617,7 +635,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
 
   const assistantContent = (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-      <ContextMenuTrigger render={<Message align="start" />}>
+      <ContextMenuTrigger render={<Message align="start" className="pointer-coarse:select-none" />}>
         {(showAvatar ?? isFirstInGroup) ? (
           <AssistantAvatar src={assistantAvatar} modelId={message.model_id} />
         ) : (
@@ -712,6 +730,12 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
           <Copy />
           {t('chat.copy')}
         </ContextMenuItem>
+        {coarse && (
+          <ContextMenuItem onClick={() => setShowSelectText(true)}>
+            <SquareDashedText />
+            {t('contextMenu.selectText')}
+          </ContextMenuItem>
+        )}
         {onRate && !isStreaming && (
           <>
             <ContextMenuItem onClick={() => onRate(message.id, message.rating === 1 ? null : 1)}>
@@ -744,6 +768,13 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
   return (
     <>
       {assistantContent}
+      {coarse && (
+        <SelectTextModal
+          text={message.content}
+          isOpen={showSelectText}
+          onOpenChange={setShowSelectText}
+        />
+      )}
       {onDelete && (
         <AlertDialog.Backdrop isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
           <AlertDialog.Container>

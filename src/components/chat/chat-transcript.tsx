@@ -108,7 +108,7 @@ export function ChatTranscript({
       <AnswerSettle streaming={streaming} anchorId={lastTurn ? answerAnchorId(lastTurn.id) : null} />
       <MessageScroller className="flex-1 min-h-0">
         <MessageScrollerViewport>
-          <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6">
+          <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
             {leading}
             {turns.map((turn, i) => {
               const isLastTurn = i === turns.length - 1

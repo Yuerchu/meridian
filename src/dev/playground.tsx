@@ -44,9 +44,10 @@ import { TurnSteps } from '@/components/chat/turn-steps'
 import { TodoBarView } from '@/components/chat/todo-bar'
 import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
+import { ConversationListPage } from '@/components/layout/conversation-list-page'
 import { buildTurns, formatDuration, type TurnStep } from '@/lib/turns'
 import { useAppTheme } from '@/lib/theme'
-import type { ChatMode, ContentBlock, Message, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
+import type { ChatMode, ContentBlock, Conversation, Message, Project, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -948,7 +949,63 @@ function Gallery() {
             ))}
           </div>
         </Section>
+
+        <Section title="会话列表行 / 360px 宽度下的各态">
+          {/* Boxed at 360px because that is where the row is tightest: the
+              last case below is the one that decides whether the title
+              truncates or the timestamp gets pushed off the edge. */}
+          <div className="w-[360px] rounded-xl border border-border bg-surface p-2">
+            <ConversationListPage
+              conversations={LIST_ROWS}
+              activeId="active"
+              projects={LIST_PROJECTS}
+              activeProjectId={null}
+              onSelect={() => {}}
+              onCreate={() => {}}
+              onSelectProject={() => {}}
+              onDelete={() => {}}
+              onRename={() => {}}
+              onTogglePin={() => {}}
+              onDeleteProject={() => {}}
+              onRenameProject={() => {}}
+              onBack={() => {}}
+              onOpenSettings={() => {}}
+            />
+          </div>
+        </Section>
       </div>
     </div>
   )
 }
+
+const HOUR = 3600_000
+
+function listRow(over: Partial<Conversation> & { id: string }): Conversation {
+  return {
+    title: null, project_id: null, is_pinned: 0, is_archived: 0,
+    message_count: 3, created_at: Date.now() - HOUR, updated_at: Date.now() - HOUR,
+    assistant_id: null, compact_cursor: null, thinking_level: null,
+    fast_mode: 0, mode: null, head_message_id: null,
+    ...over,
+  } as Conversation
+}
+
+const LIST_ROWS: Conversation[] = [
+  listRow({ id: 'active', title: '当前会话' }),
+  listRow({ id: 'untitled' }),
+  listRow({ id: 'pinned', title: '置顶的会话', is_pinned: 1 }),
+  listRow({ id: 'archived', title: '已归档的会话', is_archived: 1, updated_at: Date.now() - 40 * 24 * HOUR }),
+  listRow({ id: 'yesterday', title: '昨天的会话', updated_at: Date.now() - 26 * HOUR }),
+  listRow({ id: 'lastyear', title: '去年的会话', updated_at: Date.now() - 400 * 24 * HOUR }),
+  // The worst case: pinned, plus a status dot, plus a title with nowhere to go.
+  listRow({
+    id: 'crowded',
+    title: '重构 tauri 命令注册表并把所有工具调用迁移到新的审批模型上',
+    is_pinned: 1,
+  }),
+]
+
+const LIST_PROJECTS: Project[] = [
+  { id: 'p1', name: 'meridian', path: 'C:/code/meridian', source_type: 'local', source_id: null, assistant_id: null, description: null, created_at: 0, updated_at: 0 },
+  { id: 'p2', name: '某个群聊', path: null, source_type: 'onebot_group', source_id: '123', assistant_id: null, description: null, created_at: 0, updated_at: 0 },
+]

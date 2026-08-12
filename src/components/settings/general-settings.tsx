@@ -7,6 +7,7 @@ import { useAppTheme, type ThemePreference } from '@/lib/theme'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { AndroidFileAccess } from './android-file-access'
+import { SettingsHeader, SettingsPane } from './primitives'
 
 const LANGUAGE_OPTIONS = LANGUAGES.map((lang) => ({ value: lang.code, label: lang.label }))
 
@@ -95,10 +96,8 @@ export function GeneralSettings() {
   }
 
   return (
-    <div className="max-w-lg space-y-6">
-      <div>
-        <h2 className="text-lg font-medium">{t('settings.general.title')}</h2>
-      </div>
+    <SettingsPane>
+      <SettingsHeader title={t('settings.general.title')} />
 
       <div className="space-y-1.5">
         <label className="block text-xs font-medium text-muted">
@@ -241,6 +240,6 @@ export function GeneralSettings() {
       </div>
 
       {platform === 'android' && <AndroidFileAccess />}
-    </div>
+    </SettingsPane>
   )
 }

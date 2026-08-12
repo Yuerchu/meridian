@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
 import { Button, Checkbox, Input, ListBox, Select } from '@heroui/react'
 import type { Assistant } from '@/types'
+import { SettingsHeader, SettingsPane } from './primitives'
 
 interface OneBotConfig {
   enabled: boolean
@@ -124,10 +125,8 @@ export function OneBotSettings() {
   ]
 
   return (
-    <div className="max-w-lg space-y-6">
-      <div>
-        <h2 className="text-lg font-medium">{t('settings.onebot.title')}</h2>
-      </div>
+    <SettingsPane>
+      <SettingsHeader title={t('settings.onebot.title')} />
 
       <div className="flex items-start gap-2">
         {/* Label stays outside because a description sits under it; the id is
@@ -284,6 +283,6 @@ export function OneBotSettings() {
           )}
         </div>
       )}
-    </div>
+    </SettingsPane>
   )
 }

@@ -298,11 +298,14 @@ export function SkillSettings() {
               data-slot="skill-item"
               className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
             >
-              <div data-slot="skill-item-header" className="flex items-center gap-2 pr-3">
+              {/* Wraps on a narrow screen: the two labelled checkboxes take
+                  about 130px between them, which left the skill name a couple
+                  of characters wide on a phone. */}
+              <div data-slot="skill-item-header" className="flex flex-wrap items-center gap-2 pr-3">
                 {/* The checkboxes stay outside the trigger: it is a `<button>`,
                     and a nested one would be invalid markup and swallow the
                     click. */}
-                <Disclosure.Heading className="min-w-0 flex-1">
+                <Disclosure.Heading className="min-w-0 flex-1 basis-full md:basis-auto">
                   {/* `flex` is not optional: HeroUI styles the indicator with
                       `ms-auto` and `shrink-0`, which only mean anything inside a
                       flex container. `text-start` undoes the button element's

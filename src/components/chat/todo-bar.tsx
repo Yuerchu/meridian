@@ -22,7 +22,13 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
   const { done, total, current } = todoProgress(todos.todos)
 
   return (
-    <div data-slot="todo-bar-shell" className={cn('px-4 pt-2', className)}>
+    <div
+      data-slot="todo-bar-shell"
+      className={cn(
+        'px-4 pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]',
+        className,
+      )}
+    >
       <div className="mx-auto max-w-2xl">
         {/* Same card as the tool cards: HeroUI's `.card` values (24px radius,
             opaque `bg-surface`, `shadow-surface`) and no border. */}

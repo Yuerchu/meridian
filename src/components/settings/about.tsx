@@ -3,7 +3,9 @@ import { useTranslation } from 'react-i18next'
 import { getVersion } from '@tauri-apps/api/app'
 import { ChevronRight, FileText } from '@gravity-ui/icons'
 import { Button, Card } from '@heroui/react'
+import { useHistoryLevel } from '@/hooks/use-nav'
 import { LogViewer } from './logs/log-viewer'
+import { SettingsHeader, SettingsPane } from './primitives'
 
 export function About() {
   const { t } = useTranslation()
@@ -14,21 +16,25 @@ export function About() {
     getVersion().then(setVersion)
   }, [])
 
+  // So the back gesture leaves the log list before it leaves settings.
+  useHistoryLevel(showLogs, () => setShowLogs(false))
+
   // A view swap rather than a dialog: the log list needs the full width, and
   // About is deliberately narrow.
   if (showLogs) {
+    // `h-full` rather than a viewport calculation: the old `100vh - 8rem`
+    // guessed at a header height that grows by the status bar on a phone, and
+    // the surrounding scroller already bounds this.
     return (
-      <div className="h-[calc(100vh-8rem)]">
+      <div className="h-full">
         <LogViewer onBack={() => setShowLogs(false)} />
       </div>
     )
   }
 
   return (
-    <div className="max-w-lg space-y-6">
-      <div>
-        <h2 className="text-lg font-medium">{t('settings.about.title')}</h2>
-      </div>
+    <SettingsPane>
+      <SettingsHeader title={t('settings.about.title')} />
 
       <div className="space-y-4 text-sm text-foreground">
         <div>
@@ -61,6 +67,6 @@ export function About() {
           <p>{t('settings.about.notice')}</p>
         </div>
       </div>
-    </div>
+    </SettingsPane>
   )
 }
