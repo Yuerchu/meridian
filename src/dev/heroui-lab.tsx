@@ -159,7 +159,24 @@ function PromptInputProbe() {
         ariaLabel="探测输入框"
         placeholder="打几个字，试 Enter / Shift+Enter / 组词中的 Enter"
         toolbarStart={<span data-testid="slot-start" className="text-xs text-muted">工具槽</span>}
-        toolbarEnd={<span data-testid="slot-end" className="text-xs text-muted">右槽</span>}
+        toolbarEnd={
+          <>
+            <span data-testid="slot-end" className="text-xs text-muted">右槽</span>
+            {/* Same shape as the composer's context gauge, which went missing
+                after the move. */}
+            <HPopover>
+              <HPopover.Trigger aria-label="上下文用量" className="inline-flex items-center rounded-full outline-none">
+                <HProgressCircle aria-hidden value={40} maxValue={100} className="[--progress-circle-stroke:var(--muted)]">
+                  <HProgressCircle.Track className="size-4.5">
+                    <HProgressCircle.TrackCircle />
+                    <HProgressCircle.FillCircle />
+                  </HProgressCircle.Track>
+                </HProgressCircle>
+              </HPopover.Trigger>
+              <HPopover.Content placement="top" className="p-3 text-xs">用量面板</HPopover.Content>
+            </HPopover>
+          </>
+        }
       />
       <p className="text-xs text-muted">
         提交 <span data-testid="submit-count">{submits}</span> · 停止 <span data-testid="stop-count">{stops}</span>

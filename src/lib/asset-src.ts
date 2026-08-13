@@ -38,6 +38,9 @@ export function isImageName(name: string): boolean {
 export function localPreviewSrc(path: string, name: string): string | undefined {
   if (!isImageName(name)) return undefined
   if (path.startsWith('file://')) return assetSrc(path)
-  if (/^[a-z][a-z0-9+.-]*:/i.test(path)) return undefined
+  // Two characters at least, or `C:\Users\…` reads as a scheme and every
+  // Windows path is turned away at the door. A drive letter is one character;
+  // no scheme is.
+  if (/^[a-z][a-z0-9+.-]+:/i.test(path)) return undefined
   return convertFileSrc(path)
 }
