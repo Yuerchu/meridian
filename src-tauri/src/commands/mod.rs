@@ -4,6 +4,7 @@ pub mod assistant;
 pub mod audit;
 pub mod chat;
 pub mod conversation;
+pub mod dev;
 pub mod edit_session;
 pub mod emoji;
 pub mod logs;
@@ -22,5 +23,4 @@ pub mod skill;
 pub mod sub_agent;
 pub mod todo;
 pub mod tool_system;
-#[cfg(not(target_os = "android"))]
 pub mod voice;

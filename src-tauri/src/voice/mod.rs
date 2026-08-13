@@ -1,21 +1,17 @@
 //! Offline voice input: capture PCM from the microphone, transcribe it with a
 //! local sherpa-onnx model, and clean up disfluencies before sending.
 //!
-//! The engine only consumes PCM samples and never touches an audio device —
-//! that boundary is what lets Android reuse it later with JNI-delivered
-//! buffers instead of cpal.
+//! The engine only consumes PCM samples and never touches an audio device. That
+//! boundary is what lets Android share everything below: there the samples come
+//! from the WebView over base64, and only the recording session is different.
 
-// Capture and inference are desktop-only for now (Android reuses engine.rs in
-// a later round); the filter and prompt layers are platform-neutral, and
-// chat.rs needs `prompt` on every target.
+/// Desktop only — cpal. Android records in the WebView and hands the samples to
+/// `engine` directly, so it has no session to hold.
 #[cfg(not(target_os = "android"))]
 pub mod capture;
-#[cfg(not(target_os = "android"))]
 pub mod download;
-#[cfg(not(target_os = "android"))]
 pub mod engine;
 pub mod filter;
-#[cfg(not(target_os = "android"))]
 pub mod model;
 pub mod prompt;
 

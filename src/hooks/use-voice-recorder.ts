@@ -28,7 +28,9 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
    *  number on screen is the audio the model will receive. */
   const captureAtRef = useRef(0)
   const stateRef = useRef(state)
-  stateRef.current = state
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
   /** A very fast tap can try to stop before the start call has resolved;
    *  awaiting this in `finish`/`cancel` keeps the calls strictly ordered. */
   const startPromiseRef = useRef<Promise<void> | null>(null)

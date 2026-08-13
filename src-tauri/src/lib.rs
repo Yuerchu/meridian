@@ -324,7 +324,6 @@ pub fn run() {
             app.manage(state::CompactBreakers(Mutex::new(HashMap::new())));
             app.manage(AppMcp(mcp::McpRegistry::new()));
             app.manage(sleep_inhibitor::AppSleepInhibitor::new());
-            #[cfg(not(target_os = "android"))]
             app.manage(state::VoiceState::new());
 
             #[cfg(target_os = "android")]
@@ -539,8 +538,17 @@ pub fn run() {
             commands::onebot::start_onebot,
             #[cfg(not(target_os = "android"))]
             commands::onebot::stop_onebot,
-            #[cfg(not(target_os = "android"))]
+            commands::dev::voice_probe_echo,
+            // Model management and prewarming are the same on both platforms.
             commands::voice::voice_prewarm,
+            commands::voice::voice_model_status,
+            commands::voice::voice_download_model,
+            commands::voice::voice_cancel_download,
+            commands::voice::voice_import_model,
+            commands::voice::voice_delete_model,
+            // Capture lives in Rust only on the desktop. Android records in the
+            // WebView, so these have no caller there and are left unregistered
+            // rather than answering with an error nobody would ask for.
             #[cfg(not(target_os = "android"))]
             commands::voice::voice_release_prewarm,
             #[cfg(not(target_os = "android"))]
@@ -549,16 +557,8 @@ pub fn run() {
             commands::voice::voice_stop_and_transcribe,
             #[cfg(not(target_os = "android"))]
             commands::voice::voice_cancel_recording,
-            #[cfg(not(target_os = "android"))]
-            commands::voice::voice_model_status,
-            #[cfg(not(target_os = "android"))]
-            commands::voice::voice_download_model,
-            #[cfg(not(target_os = "android"))]
-            commands::voice::voice_cancel_download,
-            #[cfg(not(target_os = "android"))]
-            commands::voice::voice_import_model,
-            #[cfg(not(target_os = "android"))]
-            commands::voice::voice_delete_model,
+            #[cfg(target_os = "android")]
+            commands::voice::voice_transcribe_pcm,
             commands::prompt_template::list_prompt_templates,
             commands::prompt_template::create_prompt_template,
             commands::prompt_template::update_prompt_template,

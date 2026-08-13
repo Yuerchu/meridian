@@ -10,8 +10,26 @@
         android:maxSdkVersion="29" />
     <uses-permission android:name="android.permission.CAMERA" />
 
+    <!-- Voice input. Capture happens inside the WebView, and Tauri's generated
+         RustWebChromeClient asks for both of these at runtime when the page
+         calls getUserMedia — but a permission absent from the manifest is
+         refused outright, without even showing a prompt. MODIFY_AUDIO_SETTINGS
+         is not optional: the WebView is handed the microphone only once the
+         audio subsystem has been reconfigured for capture. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- The haptic tick that says recording has actually started. Opening the
+         microphone takes anywhere from 140ms to 2.6s, so the buzz — not the
+         press — is what tells someone to start talking. navigator.vibrate()
+         fails silently without this. -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
+    <!-- Not required: declaring a microphone as mandatory would drop the app
+         from the store listing on devices without one, including the TVs the
+         line above is asking for. -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 
     <application
         android:icon="@mipmap/ic_launcher"
