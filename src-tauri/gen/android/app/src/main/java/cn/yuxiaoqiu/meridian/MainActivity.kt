@@ -199,9 +199,22 @@ class MainActivity : TauriActivity() {
         WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout())
       val ime = insets.getInsets(WindowInsetsCompat.Type.ime())
       val d = resources.displayMetrics.density
-      val imeExtra = maxOf(0f, (ime.bottom - bars.bottom) / d)
+
+      // The two bottom values are exclusive, never summed. While the keyboard
+      // is up it covers the navigation bar, so the bar no longer costs the
+      // layout anything and reporting both would reserve that strip twice.
+      //
+      // The previous split — a bar inset that stayed put and a keyboard inset
+      // measured net of it — only added up while both halves read the same
+      // `bars.bottom`, and Android 15 does not report it consistently once the
+      // keyboard is over it. The composer ended up short by roughly the height
+      // of the navigation bar.
+      val keyboardUp = ime.bottom > 0
+      val bottom = if (keyboardUp) 0f else bars.bottom / d
+      val imeExtra = if (keyboardUp) ime.bottom / d else 0f
+
       nativeOnInsetsChanged(
-        bars.top / d, bars.right / d, bars.bottom / d, bars.left / d, imeExtra)
+        bars.top / d, bars.right / d, bottom, bars.left / d, imeExtra)
       insets
     }
     ViewCompat.requestApplyInsets(content)

@@ -58,12 +58,9 @@ export function useMasterDetail<Aux extends string = never>(): MasterDetailNav<A
 
   const back = useCallback(() => {
     // Aux sits on top of a selection when both are set, so it unwinds first.
-    setAux((current) => {
-      if (current !== null) return null
-      setSelectedId(null)
-      return null
-    })
-  }, [])
+    if (aux !== null) setAux(null)
+    else setSelectedId(null)
+  }, [aux])
 
   const showsDetail = isMobile && (selectedId !== null || aux !== null)
 

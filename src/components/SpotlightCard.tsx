@@ -17,24 +17,27 @@ const SpotlightCard: React.FC<SpotlightCardProps> = ({
   spotlightColor = 'color-mix(in oklab, var(--foreground) 8%, transparent)'
 }) => {
   const divRef = useRef<HTMLDivElement>(null);
-  const [isFocused, setIsFocused] = useState<boolean>(false);
+  // Only ever read back inside the pointer handler, to pin the spotlight where
+  // focus put it. Nothing renders from it, so a ref keeps focus/blur from
+  // costing a render.
+  const isFocusedRef = useRef(false);
   const [position, setPosition] = useState<Position>({ x: 0, y: 0 });
   const [opacity, setOpacity] = useState<number>(0);
 
   const handleMouseMove: React.MouseEventHandler<HTMLDivElement> = e => {
-    if (!divRef.current || isFocused) return;
+    if (!divRef.current || isFocusedRef.current) return;
 
     const rect = divRef.current.getBoundingClientRect();
     setPosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
   };
 
   const handleFocus = () => {
-    setIsFocused(true);
+    isFocusedRef.current = true;
     setOpacity(0.6);
   };
 
   const handleBlur = () => {
-    setIsFocused(false);
+    isFocusedRef.current = false;
     setOpacity(0);
   };
 

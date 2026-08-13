@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Input, ListBox, Select } from '@heroui/react'
+import { Button, Input, Label, ListBox, Select } from '@heroui/react'
 import { Check } from '@gravity-ui/icons'
 import { LANGUAGES, setLocale } from '@/i18n'
 import { useAppTheme, type ThemePreference } from '@/lib/theme'
@@ -100,10 +100,10 @@ export function GeneralSettings() {
       <SettingsHeader title={t('settings.general.title')} />
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted">
-          {t('settings.general.language')}
-        </label>
         <Select fullWidth value={i18n.language} onChange={(v) => v && setLocale(String(v))}>
+          <Label className="block text-xs font-medium text-muted">
+            {t('settings.general.language')}
+          </Label>
           <Select.Trigger className="max-w-xs">
             <Select.Value />
             <Select.Indicator />
@@ -122,10 +122,10 @@ export function GeneralSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted">
-          {t('settings.general.theme')}
-        </label>
         <Select fullWidth value={theme} onChange={(v) => v && setTheme(String(v) as ThemePreference)}>
+          <Label className="block text-xs font-medium text-muted">
+            {t('settings.general.theme')}
+          </Label>
           <Select.Trigger className="max-w-xs">
             <Select.Value />
             <Select.Indicator />
@@ -145,10 +145,10 @@ export function GeneralSettings() {
 
       {platform !== null && platform !== 'android' && (
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-muted">
-            {t('settings.general.shell')}
-          </label>
           <Select fullWidth value={shell} onChange={(v) => v && handleShellChange(String(v))}>
+            <Label className="block text-xs font-medium text-muted">
+              {t('settings.general.shell')}
+            </Label>
             <Select.Trigger className="max-w-xs">
               <Select.Value />
               <Select.Indicator />
@@ -172,10 +172,10 @@ export function GeneralSettings() {
 
       {platform === 'windows' && (
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-muted">
-            {t('settings.general.sandbox')}
-          </label>
           <Select fullWidth value={sandboxEnabled ? 'on' : 'off'} onChange={(v) => v && handleSandboxChange(String(v))}>
+            <Label className="block text-xs font-medium text-muted">
+              {t('settings.general.sandbox')}
+            </Label>
             <Select.Trigger className="max-w-xs">
               <Select.Value />
               <Select.Indicator />
@@ -198,11 +198,14 @@ export function GeneralSettings() {
       )}
 
       <div className="space-y-3">
-        <label className="block text-xs font-medium text-muted">
+        <p className="block text-xs font-medium text-muted">
           {t('settings.general.webSearch')}
-        </label>
+        </p>
+        {/* The heading above names the whole section, not this control, so both
+            the picker and the key field carry their own name. Without them a
+            screen reader announces the trigger by its current value alone. */}
         <Select fullWidth value={searchProvider} onChange={(v) => v && handleSearchProviderChange(String(v))}>
-          <Select.Trigger className="max-w-xs">
+          <Select.Trigger className="max-w-xs" aria-label={t('settings.general.webSearch')}>
             <Select.Value />
             <Select.Indicator />
           </Select.Trigger>
@@ -220,9 +223,13 @@ export function GeneralSettings() {
         <div className="flex items-center gap-2">
           <Input fullWidth
             type="password"
+            aria-label={t('settings.provider.apiKey')}
             value={searchApiKey}
             onChange={(e) => setSearchApiKey(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleSaveSearchKey() }}
+            onKeyDown={(e) => {
+              if (e.nativeEvent.isComposing) return
+              if (e.key === 'Enter') handleSaveSearchKey()
+            }}
             placeholder={searchKeyExists ? t('settings.general.searchKeySet') : 'API Key'}
             className="max-w-xs"
           />

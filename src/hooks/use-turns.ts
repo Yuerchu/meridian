@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 import { buildTurns, type Turn } from '@/lib/turns'
 import type { Message, TurnRecord } from '@/types'
 
@@ -38,7 +38,9 @@ export function useTurns(
   )
   const prevRef = useRef<Turn[]>(built)
   const stable = reconcileTurns(prevRef.current, built)
-  prevRef.current = stable
+  useLayoutEffect(() => {
+    prevRef.current = stable
+  }, [stable])
   return stable
 }
 

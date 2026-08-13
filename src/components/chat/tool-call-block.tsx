@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 import { diffLines, parsePatch } from 'diff'
 import hljs from 'highlight.js/lib/common'
 import { fileIconUrl } from '@/lib/file-icon'
-import { AnimatePresence, motion } from 'motion/react'
 import {
   ArrowUturnCcwLeft, Ban, Check, ChevronUp, Circle, CircleCheck, CircleDashed,
   CircleQuestion, Clock, Compass, FileText, ForwardStep, Globe, ListCheck,
@@ -187,13 +186,14 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   const [sending, setSending] = useState(false)
   const markOrphaned = useConversationStore((s) => s.markApprovalOrphaned)
 
-  let questions: AskQuestion[] = []
-  try {
-    const parsed = JSON.parse(data.arguments)
-    questions = parsed.questions || []
-  } catch {
-    // ignore
-  }
+  const questions = useMemo<AskQuestion[]>(() => {
+    try {
+      const parsed = JSON.parse(data.arguments)
+      return parsed.questions || []
+    } catch {
+      return []
+    }
+  }, [data.arguments])
 
   const getAnswer = (id: string, q: AskQuestion) => answers[id] ?? emptyAnswer(q)
 
@@ -838,7 +838,10 @@ function PendingApproval(
         type="text"
         value={feedback}
         onChange={(e) => setFeedback(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter') deny() }}
+        onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing) return
+          if (e.key === 'Enter') deny()
+        }}
         placeholder={t('chat.tool.denyReasonPlaceholder')}
         className="text-xs"
         autoFocus
@@ -989,15 +992,8 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
         <span>{t('chat.tool.webSearch.sources', { count: sources.length })}</span>
         <ChevronUp className={`w-3.5 h-3.5 transition-transform ${expanded ? '' : 'rotate-180'}`} />
       </Button>
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="overflow-hidden"
-          >
+      {expanded && (
+          <div className="overflow-hidden">
             <div className="flex flex-wrap gap-1.5 pt-1">
               {sources.map((src, i) => (
                 <a
@@ -1020,9 +1016,8 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
                 </a>
               ))}
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+      )}
     </div>
   )
 }
@@ -1171,7 +1166,10 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                 type="text"
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') sendBack() }}
+                onKeyDown={(e) => {
+                  if (e.nativeEvent.isComposing) return
+                  if (e.key === 'Enter') sendBack()
+                }}
                 placeholder={t('chat.plan.feedbackPlaceholder')}
                 className="text-xs"
                 autoFocus

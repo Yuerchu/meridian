@@ -10,6 +10,7 @@ src-tauri/*_dev.db
 *.idsig
 *.jks
 *.keystore
+build_release_apk.ps1
 icon.png
 *.log
 .DS_Store

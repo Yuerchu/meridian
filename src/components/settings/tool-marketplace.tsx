@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Wrench, Terminal, Check } from '@gravity-ui/icons'
-import { Button, Card, Disclosure, DisclosureGroup, Input, ListBox, Select } from '@heroui/react'
+import { Button, Card, Disclosure, DisclosureGroup, Input, Label, ListBox, Select } from '@heroui/react'
 import { api } from '@/api'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
 import { SettingsHeader, SettingsPane } from './primitives'
@@ -24,6 +24,11 @@ function CustomToolEditor({
   const [permission, setPermission] = useState(tool?.permission ?? 'ask')
   const [timeoutMs, setTimeoutMs] = useState(tool?.timeout_ms?.toString() ?? '30000')
   const [saved, setSaved] = useState(false)
+  const nameId = useId()
+  const descriptionId = useId()
+  const commandId = useId()
+  const argsTemplateId = useId()
+  const timeoutId = useId()
 
   async function handleSave() {
     if (!name.trim() || !description.trim() || !command.trim()) return
@@ -63,12 +68,12 @@ function CustomToolEditor({
     <div data-slot="custom-tool-editor" className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
-          <label className="text-xs text-muted">{t('settings.tools.name')}</label>
-          <Input fullWidth value={name} onChange={(e) => setName(e.target.value)} placeholder="my_tool" className="font-mono text-xs" />
+          <label htmlFor={nameId} className="text-xs text-muted">{t('settings.tools.name')}</label>
+          <Input fullWidth id={nameId} value={name} onChange={(e) => setName(e.target.value)} placeholder="my_tool" className="font-mono text-xs" />
         </div>
         <div className="space-y-1">
-          <label className="text-xs text-muted">{t('settings.tools.permission')}</label>
           <Select value={permission} onChange={(v) => { if (v) setPermission(String(v)) }}>
+            <Label className="text-xs text-muted">{t('settings.tools.permission')}</Label>
             <Select.Trigger>
               <Select.Value />
               <Select.Indicator />
@@ -87,21 +92,21 @@ function CustomToolEditor({
         </div>
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted">{t('settings.tools.description')}</label>
-        <Input fullWidth value={description} onChange={(e) => setDescription(e.target.value)} />
+        <label htmlFor={descriptionId} className="text-xs text-muted">{t('settings.tools.description')}</label>
+        <Input fullWidth id={descriptionId} value={description} onChange={(e) => setDescription(e.target.value)} />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted">{t('settings.tools.command')}</label>
-        <Input fullWidth value={command} onChange={(e) => setCommand(e.target.value)} placeholder="python script.py" className="font-mono text-xs" />
+        <label htmlFor={commandId} className="text-xs text-muted">{t('settings.tools.command')}</label>
+        <Input fullWidth id={commandId} value={command} onChange={(e) => setCommand(e.target.value)} placeholder="python script.py" className="font-mono text-xs" />
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted">{t('settings.tools.argsTemplate')}</label>
-        <Input fullWidth value={argsTemplate} onChange={(e) => setArgsTemplate(e.target.value)} placeholder="--input {{input}} --output {{output}}" className="font-mono text-xs" />
+        <label htmlFor={argsTemplateId} className="text-xs text-muted">{t('settings.tools.argsTemplate')}</label>
+        <Input fullWidth id={argsTemplateId} value={argsTemplate} onChange={(e) => setArgsTemplate(e.target.value)} placeholder="--input {{input}} --output {{output}}" className="font-mono text-xs" />
         <p className="text-xs text-muted">{t('settings.tools.argsTemplateHint')}</p>
       </div>
       <div className="space-y-1">
-        <label className="text-xs text-muted">{t('settings.tools.timeout')}</label>
-        <Input fullWidth type="number" value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} className="w-32" />
+        <label htmlFor={timeoutId} className="text-xs text-muted">{t('settings.tools.timeout')}</label>
+        <Input fullWidth id={timeoutId} type="number" value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} className="w-32" />
       </div>
       <div className="flex items-center gap-2">
         <Button onClick={handleSave} isDisabled={!name.trim() || !command.trim()}>

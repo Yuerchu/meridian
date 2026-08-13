@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { MotionConfig } from 'motion/react'
 import App from './App'
 import { ErrorBoundary } from './components/error-boundary'
 import { ThemeProvider } from './lib/theme'
@@ -41,7 +42,9 @@ if (isDev && window.location.hash.startsWith('#playground')) {
     root.render(
       <StrictMode>
         <ThemeProvider>
-          <Playground />
+          <MotionConfig reducedMotion="user">
+            <Playground />
+          </MotionConfig>
         </ThemeProvider>
       </StrictMode>,
     )
@@ -50,16 +53,18 @@ if (isDev && window.location.hash.startsWith('#playground')) {
   root.render(
     <StrictMode>
       <ThemeProvider>
-        <ErrorBoundary
-          fallback={(error) => (
-            <div className="flex h-screen flex-col items-center justify-center gap-2 p-8 text-center">
-              <p className="text-sm font-medium">Something went wrong</p>
-              <p className="text-xs text-muted break-all max-w-md">{String(error)}</p>
-            </div>
-          )}
-        >
-          <App />
-        </ErrorBoundary>
+        <MotionConfig reducedMotion="user">
+          <ErrorBoundary
+            fallback={(error) => (
+              <div className="flex h-screen flex-col items-center justify-center gap-2 p-8 text-center">
+                <p className="text-sm font-medium">Something went wrong</p>
+                <p className="text-xs text-muted break-all max-w-md">{String(error)}</p>
+              </div>
+            )}
+          >
+            <App />
+          </ErrorBoundary>
+        </MotionConfig>
       </ThemeProvider>
     </StrictMode>,
   )

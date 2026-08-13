@@ -282,10 +282,12 @@ function useScrollerState({
   const edgeThresholdRef = React.useRef(scrollEdgeThreshold)
   const marginRef = React.useRef(scrollMargin)
   const peekRef = React.useRef(scrollPreviousItemPeek)
-  autoScrollRef.current = autoScroll
-  edgeThresholdRef.current = scrollEdgeThreshold
-  marginRef.current = scrollMargin
-  peekRef.current = scrollPreviousItemPeek
+  React.useLayoutEffect(() => {
+    autoScrollRef.current = autoScroll
+    edgeThresholdRef.current = scrollEdgeThreshold
+    marginRef.current = scrollMargin
+    peekRef.current = scrollPreviousItemPeek
+  }, [autoScroll, scrollEdgeThreshold, scrollMargin, scrollPreviousItemPeek])
 
   const modeRef = React.useRef<ScrollMode>(autoScroll ? 'follow' : 'idle')
   const itemCountRef = React.useRef(0)
@@ -320,10 +322,11 @@ function useScrollerState({
 
   // A default position the caller changes is a new instruction, not a re-run.
   const defaultPositionRef = React.useRef(defaultScrollPosition)
-  if (defaultPositionRef.current !== defaultScrollPosition) {
+  React.useLayoutEffect(() => {
+    if (defaultPositionRef.current === defaultScrollPosition) return
     defaultPositionRef.current = defaultScrollPosition
     defaultAppliedRef.current = false
-  }
+  }, [defaultScrollPosition])
 
   /* -- primitives ------------------------------------------------------- */
 
@@ -1092,7 +1095,9 @@ function Button({
 }: MessageScrollerButtonProps) {
   const { scrollToEnd, scrollToStart, stateStore } = useScrollerContext()
   const onClickRef = React.useRef(onClick)
-  onClickRef.current = onClick
+  React.useLayoutEffect(() => {
+    onClickRef.current = onClick
+  }, [onClick])
 
   const active = React.useSyncExternalStore(
     React.useCallback((listener) => stateStore.subscribe(listener), [stateStore]),

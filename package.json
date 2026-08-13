@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build --configLoader native",
     "preview": "vite preview",
     "tauri": "tauri",
     "lint": "eslint src",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test": "vitest run --configLoader native --pool threads",
+    "test:watch": "vitest --configLoader native --pool threads",
+    "test:coverage": "vitest run --configLoader native --pool threads --coverage",
+    "doctor": "react-doctor"
   },
   "license": "LicenseRef-Proprietary-Yuerchu",
   "author": "于小丘 Yuerchu <admin@yuxiaoqiu.cn>",
@@ -36,6 +37,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
     "jsdom": "^29.1.1",
+    "react-doctor": "0.9.11",
     "shadcn": "^4.15.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3",

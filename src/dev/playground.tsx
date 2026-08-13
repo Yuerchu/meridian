@@ -1,7 +1,7 @@
 // Dev-only component playground. Reachable at #playground from a plain browser
 // (vite dev without the Tauri backend); never included in production builds.
 import { useState } from 'react'
-import { Moon, Sun } from '@gravity-ui/icons'
+import { Bars, Gear, Moon, Plus, Sun } from '@gravity-ui/icons'
 
 import { Button, Tooltip } from '@heroui/react'
 import {
@@ -45,6 +45,7 @@ import { TodoBarView } from '@/components/chat/todo-bar'
 import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
 import { ConversationListPage } from '@/components/layout/conversation-list-page'
+import { MobileAppBar } from '@/components/layout/mobile-app-bar'
 import { buildTurns, formatDuration, type TurnStep } from '@/lib/turns'
 import { useAppTheme } from '@/lib/theme'
 import type { ChatMode, ContentBlock, Conversation, Message, Project, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
@@ -947,6 +948,38 @@ function Gallery() {
                 <span className="text-xs text-muted">{s}</span>
               </div>
             ))}
+          </div>
+        </Section>
+
+        <Section title="MobileAppBar / 三种形态">
+          {/* 56px 高、48px 触摸目标、16px 文字边距 —— Android bar 的度量。
+              导航控件一律在左，右侧留给当前屏幕自己的操作。 */}
+          <div className="w-[360px] space-y-3 rounded-xl border border-border bg-surface p-2">
+            <MobileAppBar
+              title="当前对话的标题"
+              backLabel="返回"
+              leading={
+                <Button isIconOnly variant="ghost" aria-label="对话列表" className="size-12 shrink-0 rounded-xl">
+                  <Bars className="size-5" />
+                </Button>
+              }
+            />
+            <MobileAppBar
+              title="对话"
+              backLabel="返回"
+              onBack={() => {}}
+              actions={
+                <>
+                  <Button isIconOnly variant="ghost" aria-label="新对话" className="size-12 rounded-xl">
+                    <Plus className="size-5" />
+                  </Button>
+                  <Button isIconOnly variant="ghost" aria-label="设置" className="size-12 rounded-xl">
+                    <Gear className="size-5" />
+                  </Button>
+                </>
+              }
+            />
+            <MobileAppBar title="一个长到必须截断的设置分区标题名称" backLabel="返回" onBack={() => {}} />
           </div>
         </Section>
 

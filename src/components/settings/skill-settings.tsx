@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, BookOpen, Check, ArrowsRotateRight } from '@gravity-ui/icons'
 import { Button, Card, Checkbox, Disclosure, DisclosureGroup, Input, TextArea } from '@heroui/react'
@@ -27,6 +27,10 @@ function SkillEditor({
   const [bodyLoading, setBodyLoading] = useState(skill != null)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const dirNameId = useId()
+  const displayNameId = useId()
+  const descriptionId = useId()
+  const bodyId = useId()
 
   // The body is not part of the index row: it lives in SKILL.md and is read
   // on demand so that listing skills stays a pure database hit.
@@ -81,10 +85,11 @@ function SkillEditor({
     <div data-slot="skill-editor" className="space-y-3">
       {!skill && (
         <div data-slot="skill-editor-field" className="space-y-1">
-          <label data-slot="skill-editor-label" className="text-xs text-muted">
+          <label htmlFor={dirNameId} data-slot="skill-editor-label" className="text-xs text-muted">
             {t('settings.skills.dirName')}
           </label>
           <Input fullWidth
+            id={dirNameId}
             value={dirName}
             onChange={(e) => setDirName(e.target.value)}
             placeholder="my-skill"
@@ -102,10 +107,11 @@ function SkillEditor({
       )}
 
       <div data-slot="skill-editor-field" className="space-y-1">
-        <label data-slot="skill-editor-label" className="text-xs text-muted">
+        <label htmlFor={displayNameId} data-slot="skill-editor-label" className="text-xs text-muted">
           {t('settings.skills.displayName')}
         </label>
         <Input fullWidth
+          id={displayNameId}
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder={skill?.llm_name ?? dirName}
@@ -113,10 +119,11 @@ function SkillEditor({
       </div>
 
       <div data-slot="skill-editor-field" className="space-y-1">
-        <label data-slot="skill-editor-label" className="text-xs text-muted">
+        <label htmlFor={descriptionId} data-slot="skill-editor-label" className="text-xs text-muted">
           {t('settings.skills.description')}
         </label>
         <TextArea fullWidth
+          id={descriptionId}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           disabled={isBuiltin}
@@ -129,7 +136,7 @@ function SkillEditor({
       </div>
 
       <div data-slot="skill-editor-field" className="space-y-1">
-        <label data-slot="skill-editor-label" className="text-xs text-muted">
+        <label htmlFor={bodyId} data-slot="skill-editor-label" className="text-xs text-muted">
           {t('settings.skills.body')}
         </label>
         {bodyLoading ? (
@@ -138,6 +145,7 @@ function SkillEditor({
           </p>
         ) : (
           <TextArea fullWidth
+            id={bodyId}
             value={body}
             onChange={(e) => setBody(e.target.value)}
             disabled={isBuiltin}

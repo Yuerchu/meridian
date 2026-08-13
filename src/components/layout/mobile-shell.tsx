@@ -71,18 +71,20 @@ function Screens(props: ShellProps) {
   return (
     <main className="relative flex-1 min-h-0 overflow-hidden">
       <div className="flex h-full flex-col" inert={covered || undefined}>
+        {/* The list opens from the left, matching the desktop sidebar trigger.
+            The right side is left free for actions on the conversation itself. */}
         <MobileAppBar
           title={headerTitle}
           backLabel={t('common.back')}
-          actions={
+          leading={
             <Button
               isIconOnly
               variant="ghost"
               aria-label={t('sidebar.conversations')}
               onClick={() => nav.push({ name: 'conversations' })}
-              className="size-10 rounded-xl"
+              className="size-12 shrink-0 rounded-xl"
             >
-              <Bars className="size-4" />
+              <Bars className="size-5" />
             </Button>
           }
         />

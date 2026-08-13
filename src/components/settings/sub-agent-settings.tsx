@@ -75,11 +75,12 @@ function KindRow({ kind, providers }: { kind: Kind; providers: Provider[] }) {
 
   return (
     <div className="space-y-1.5">
-      <label className="block text-xs text-muted">{t(`settings.subAgent.${kind}`)}</label>
+      <p className="block text-xs text-muted">{t(`settings.subAgent.${kind}`)}</p>
       <p className="text-xs text-muted">{t(`settings.subAgent.${kind}Hint`)}</p>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <Select
           fullWidth
+          aria-label={t('settings.assistant.provider')}
           value={providerId || '_default'}
           onChange={(v) => handleProvider(String(v ?? ''))}
         >
@@ -104,6 +105,7 @@ function KindRow({ kind, providers }: { kind: Kind; providers: Provider[] }) {
         {models.length > 0 ? (
           <Select
             fullWidth
+            aria-label={t('settings.assistant.model')}
             value={modelId || '_none'}
             onChange={(v) => handleModel(String(v ?? ''))}
             placeholder={t('settings.assistant.selectModel')}
@@ -127,6 +129,7 @@ function KindRow({ kind, providers }: { kind: Kind; providers: Provider[] }) {
         ) : (
           <Input
             fullWidth
+            aria-label={t('settings.assistant.model')}
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
             onBlur={() => persist(providerId, modelId)}

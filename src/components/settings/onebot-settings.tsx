@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useId, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '@/api'
-import { Button, Checkbox, Input, ListBox, Select } from '@heroui/react'
+import { Button, Checkbox, Input, Label, ListBox, Select } from '@heroui/react'
 import type { Assistant } from '@/types'
 import { SettingsHeader, SettingsPane } from './primitives'
 
@@ -37,6 +37,11 @@ export function OneBotSettings() {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hostId = useId()
+  const portId = useId()
+  const accessTokenId = useId()
+  const adminUsersId = useId()
+  const ackEmojiId = useId()
 
   useEffect(() => () => {
     if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
@@ -154,20 +159,22 @@ export function OneBotSettings() {
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-muted">
+          <label htmlFor={hostId} className="block text-xs font-medium text-muted">
             {t('settings.onebot.host')}
           </label>
           <Input fullWidth
+            id={hostId}
             value={config.host}
             onChange={(e) => setConfig({ ...config, host: e.target.value })}
             placeholder="127.0.0.1"
           />
         </div>
         <div className="space-y-1.5">
-          <label className="block text-xs font-medium text-muted">
+          <label htmlFor={portId} className="block text-xs font-medium text-muted">
             {t('settings.onebot.port')}
           </label>
           <Input fullWidth
+            id={portId}
             type="number"
             min={1}
             max={65535}
@@ -179,10 +186,11 @@ export function OneBotSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted">
+        <label htmlFor={accessTokenId} className="block text-xs font-medium text-muted">
           {t('settings.onebot.accessToken')}
         </label>
         <Input fullWidth
+          id={accessTokenId}
           type="password"
           value={config.access_token ?? ''}
           onChange={(e) => setConfig({ ...config, access_token: e.target.value || null })}
@@ -191,14 +199,14 @@ export function OneBotSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted">
-          {t('settings.onebot.assistant')}
-        </label>
         <Select
           fullWidth
           value={config.assistant_id ?? '_default'}
           onChange={(v) => { if (v) setConfig({ ...config, assistant_id: v === '_default' ? null : String(v) }) }}
         >
+          <Label className="block text-xs font-medium text-muted">
+            {t('settings.onebot.assistant')}
+          </Label>
           <Select.Trigger>
             <Select.Value />
             <Select.Indicator />
@@ -220,10 +228,11 @@ export function OneBotSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted">
+        <label htmlFor={adminUsersId} className="block text-xs font-medium text-muted">
           {t('settings.onebot.adminUsers')}
         </label>
         <Input fullWidth
+          id={adminUsersId}
           value={adminInput}
           onChange={(e) => setAdminInput(e.target.value)}
           placeholder="12345, 67890"
@@ -234,10 +243,11 @@ export function OneBotSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted">
+        <label htmlFor={ackEmojiId} className="block text-xs font-medium text-muted">
           {t('settings.onebot.ackEmoji')}
         </label>
         <Input fullWidth
+          id={ackEmojiId}
           value={config.ack_emoji_id}
           onChange={(e) => setConfig({ ...config, ack_emoji_id: e.target.value })}
           placeholder="76"

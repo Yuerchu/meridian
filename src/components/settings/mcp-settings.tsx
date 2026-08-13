@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useId } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } from '@gravity-ui/icons'
 import { Button, Input, Switch, TextArea, Tooltip } from '@heroui/react'
@@ -98,6 +98,12 @@ function McpServerEditor({
   const [autoConnect, setAutoConnect] = useState(server.is_enabled === 1)
   const [tools, setTools] = useState<McpToolDef[]>([])
   const [error, setError] = useState<string | null>(null)
+  const nameId = useId()
+  const urlId = useId()
+  const headersId = useId()
+  const commandId = useId()
+  const argsId = useId()
+  const envId = useId()
 
   useEffect(() => {
     setName(server.name)
@@ -118,7 +124,10 @@ function McpServerEditor({
         setConnected(statuses.some((s) => s.server_id === server.id && s.state === 'connected'))
       })
       .catch(() => { /* the card still renders; the buttons say what to try */ })
-  }, [server.id])
+  }, [
+    server.id, server.name, server.transport_type, server.command, server.args,
+    server.env, server.url, server.headers, server.is_enabled,
+  ])
 
   const handleSave = useCallback(async () => {
     const updates: Parameters<typeof api.updateMcpServer>[1] = {
@@ -185,12 +194,12 @@ function McpServerEditor({
   return (
     <div className="space-y-4">
       <div>
-        <label className="text-sm font-medium">{t('settings.mcp.name')}</label>
-        <Input fullWidth value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
+        <label htmlFor={nameId} className="text-sm font-medium">{t('settings.mcp.name')}</label>
+        <Input fullWidth id={nameId} value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
       </div>
 
       <div>
-        <label className="text-sm font-medium">{t('settings.mcp.transport')}</label>
+        <p className="text-sm font-medium">{t('settings.mcp.transport')}</p>
         <div className="flex gap-2 mt-1">
           <Button
             variant="ghost"
@@ -222,27 +231,27 @@ function McpServerEditor({
       {isHttp ? (
         <>
           <div>
-            <label className="text-sm font-medium">{t('settings.mcp.url')}</label>
-            <Input fullWidth value={url} onChange={(e) => setUrl(e.target.value)} className="mt-1" placeholder="https://example.com/mcp" />
+            <label htmlFor={urlId} className="text-sm font-medium">{t('settings.mcp.url')}</label>
+            <Input fullWidth id={urlId} value={url} onChange={(e) => setUrl(e.target.value)} className="mt-1" placeholder="https://example.com/mcp" />
           </div>
           <div>
-            <label className="text-sm font-medium">{t('settings.mcp.headers')}</label>
-            <Input fullWidth value={headers} onChange={(e) => setHeaders(e.target.value)} className="mt-1" placeholder='{"Authorization": "Bearer ..."}' />
+            <label htmlFor={headersId} className="text-sm font-medium">{t('settings.mcp.headers')}</label>
+            <Input fullWidth id={headersId} value={headers} onChange={(e) => setHeaders(e.target.value)} className="mt-1" placeholder='{"Authorization": "Bearer ..."}' />
           </div>
         </>
       ) : (
         <>
           <div>
-            <label className="text-sm font-medium">{t('settings.mcp.command')}</label>
-            <Input fullWidth value={command} onChange={(e) => setCommand(e.target.value)} className="mt-1" placeholder="npx" />
+            <label htmlFor={commandId} className="text-sm font-medium">{t('settings.mcp.command')}</label>
+            <Input fullWidth id={commandId} value={command} onChange={(e) => setCommand(e.target.value)} className="mt-1" placeholder="npx" />
           </div>
           <div>
-            <label className="text-sm font-medium">{t('settings.mcp.args')}</label>
-            <Input fullWidth value={args} onChange={(e) => setArgs(e.target.value)} className="mt-1" placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]' />
+            <label htmlFor={argsId} className="text-sm font-medium">{t('settings.mcp.args')}</label>
+            <Input fullWidth id={argsId} value={args} onChange={(e) => setArgs(e.target.value)} className="mt-1" placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]' />
           </div>
           <div>
-            <label className="text-sm font-medium">{t('settings.mcp.env')}</label>
-            <Input fullWidth value={env} onChange={(e) => setEnv(e.target.value)} className="mt-1" placeholder='{}' />
+            <label htmlFor={envId} className="text-sm font-medium">{t('settings.mcp.env')}</label>
+            <Input fullWidth id={envId} value={env} onChange={(e) => setEnv(e.target.value)} className="mt-1" placeholder='{}' />
           </div>
         </>
       )}
@@ -282,7 +291,7 @@ function McpServerEditor({
 
       {tools.length > 0 && (
         <div>
-          <label className="text-sm font-medium">{t('settings.mcp.tools')} ({tools.length})</label>
+          <p className="text-sm font-medium">{t('settings.mcp.tools')} ({tools.length})</p>
           <div className="mt-1 space-y-1">
             {tools.map((tool) => (
               <div key={tool.qualified_name} className="flex items-center gap-2 px-2 py-1 rounded bg-default/50 text-xs">
@@ -309,7 +318,7 @@ export function McpSettings() {
   // Never auto-selects: unlike providers, an MCP server list is often empty on
   // first open, and there is nothing to fall back to.
   const nav = useMasterDetail<'import'>()
-  const { selectedId } = nav
+  const { selectedId, openItem, openAux, select, back } = nav
   const [servers, setServers] = useState<McpServer[]>([])
   const showImport = nav.aux === 'import'
 
@@ -322,14 +331,14 @@ export function McpSettings() {
   const handleAdd = useCallback(async () => {
     const server = await api.createMcpServer('New Server', 'stdio')
     refresh()
-    nav.openItem(server.id)
-  }, [refresh])
+    openItem(server.id)
+  }, [refresh, openItem])
 
   const handleDelete = useCallback(async (id: string) => {
     await api.deleteMcpServer(id)
-    if (selectedId === id) nav.select(null)
+    if (selectedId === id) select(null)
     refresh()
-  }, [selectedId, refresh])
+  }, [selectedId, select, refresh])
 
   const handleImport = useCallback(async (data: McpServersJson) => {
     if (!data.mcpServers) return
@@ -345,10 +354,10 @@ export function McpSettings() {
       })
       lastId = server.id
     }
-    nav.back()
+    back()
     refresh()
-    if (lastId) nav.openItem(lastId)
-  }, [refresh])
+    if (lastId) openItem(lastId)
+  }, [back, openItem, refresh])
 
   const selected = servers.find((s) => s.id === selectedId)
 
@@ -384,13 +393,13 @@ export function McpSettings() {
         <Button
           aria-label={t('settings.mcp.importJson')}
           variant="outline"
-          onClick={() => nav.openAux('import')}
+          onClick={() => openAux('import')}
         >
           <ArrowDownToSquare className="w-4 h-4" />
         </Button>
         <Tooltip.Content placement="top">{t('settings.mcp.importJson')}</Tooltip.Content>
       </Tooltip>
-      <Button variant="outline" onClick={handleAdd}>
+      <Button aria-label={t('settings.mcp.addServer')} variant="outline" onClick={handleAdd}>
         <Plus className="w-4 h-4" />
       </Button>
     </div>
@@ -424,7 +433,7 @@ export function McpSettings() {
       // back out of it; on a desktop it opens above a list that stays put.
       auxTitle={t('settings.mcp.importJson')}
       aux={showImport ? (
-        <JsonImportDialog onImport={handleImport} onCancel={nav.back} />
+        <JsonImportDialog onImport={handleImport} onCancel={back} />
       ) : undefined}
       emptyState={servers.length === 0 && !showImport ? (
         <p className="text-sm text-muted">{t('settings.mcp.noServers')}</p>
