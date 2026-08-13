@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowsRotateRight, Check, Copy, FileText, Microphone, Pencil, SquareDashedText, ThumbsDown, ThumbsUp, TrashBin, Xmark } from '@gravity-ui/icons'
+import { ArrowsRotateRight, Check, Copy, Microphone, Pencil, SquareDashedText, ThumbsDown, ThumbsUp, TrashBin, Xmark } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
@@ -14,13 +14,9 @@ import {
   MessageHeader,
 } from '@/components/ui/message'
 import { Bubble, BubbleContent, BubbleGroup } from '@/components/ui/bubble'
-import {
-  Attachment,
-  AttachmentContent,
-  AttachmentGroup,
-  AttachmentMedia,
-  AttachmentTitle,
-} from '@/components/ui/attachment'
+import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
+
+import { assetSrc } from '@/lib/asset-src'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -38,7 +34,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { convertFileSrc } from '@tauri-apps/api/core'
 import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { SelectTextModal } from './select-text-modal'
 import { markQueued } from '@/lib/turns'
@@ -47,16 +42,6 @@ import { renderEmojisInText } from './emoji-renderer'
 import type { ContentBlock, Message as MessageData } from '@/types'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { EmojiMap } from './emoji-renderer'
-
-// Attachment URLs are stored as file:// URIs, but the WebView runs on an http
-// origin and blocks file:// subresources. Map them through the asset protocol.
-function assetSrc(url?: string): string | undefined {
-  if (!url) return undefined
-  if (!url.startsWith('file://')) return url
-  let path = url.slice('file://'.length)
-  if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1)
-  return convertFileSrc(decodeURIComponent(path))
-}
 
 function useRelativeTime() {
   const { t } = useTranslation()
@@ -467,25 +452,19 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
               <MessageHeader className="justify-end text-muted font-normal">{speaker}</MessageHeader>
             )}
             {hasAttachments && (
-              <AttachmentGroup className="items-start max-w-[80%]">
+              <ChatAttachmentGroup className="max-w-[80%] justify-end">
                 {contentParts!.filter((p) => p.type === 'image_url').map((p, i) => (
-                  <Attachment key={`img-${i}`} orientation="vertical">
-                    <AttachmentMedia variant="image">
-                      <img src={assetSrc(p.image_url?.url)} alt="" />
-                    </AttachmentMedia>
-                  </Attachment>
+                  <ChatAttachment
+                    key={`img-${i}`}
+                    mediaType="image"
+                    name={t('chat.attachedImage')}
+                    src={assetSrc(p.image_url?.url)}
+                  />
                 ))}
                 {contentParts!.filter((p) => p.type === 'file').map((p, i) => (
-                  <Attachment key={`file-${i}`}>
-                    <AttachmentMedia>
-                      <FileText />
-                    </AttachmentMedia>
-                    <AttachmentContent>
-                      <AttachmentTitle>{p.file?.name ?? 'file'}</AttachmentTitle>
-                    </AttachmentContent>
-                  </Attachment>
+                  <ChatAttachment key={`file-${i}`} name={p.file?.name ?? 'file'} />
                 ))}
-              </AttachmentGroup>
+              </ChatAttachmentGroup>
             )}
             {editing ? (
               <Bubble align="end" variant="outline">

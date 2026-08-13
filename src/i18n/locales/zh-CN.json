@@ -13,6 +13,7 @@
   "chat.renderError": "此消息渲染失败",
   "chat.scrollToBottom": "滚动到最新消息",
   "chat.removeAttachment": "移除 {{name}}",
+  "chat.attachedImage": "图片",
   "chat.noConversation": "未选择对话",
   "chat.newChat": "新对话",
   "chat.time.justNow": "刚刚",

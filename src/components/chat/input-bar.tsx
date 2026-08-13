@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToSquare, Copy, Microphone, Paperclip, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
+import { ArrowDownToSquare, Copy, Microphone, Scissors, SquareDashedText } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button, Popover, ProgressCircle, Tooltip } from '@heroui/react'
@@ -12,15 +12,9 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import {
-  Attachment,
-  AttachmentAction,
-  AttachmentActions,
-  AttachmentContent,
-  AttachmentGroup,
-  AttachmentMedia,
-  AttachmentTitle,
-} from '@/components/ui/attachment'
+import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
+
+import { localPreviewSrc } from '@/lib/asset-src'
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
 import { useAndroidVoiceRecorder } from '@/hooks/use-android-voice-recorder'
@@ -349,29 +343,24 @@ export function InputBar({
             <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>
           )}
           attachments={attachedFiles.length > 0 && (
-            <AttachmentGroup>
+            <ChatAttachmentGroup>
               {attachedFiles.map((f, i) => (
-                <Attachment key={i} state="done">
-                  <AttachmentMedia>
-                    <Paperclip />
-                  </AttachmentMedia>
-                  <AttachmentContent>
-                    <AttachmentTitle className="max-w-[120px]">{f.name}</AttachmentTitle>
-                  </AttachmentContent>
+                // An image gets a thumbnail rather than the paperclip everything
+                // used to get: the path is already on disk, so this costs one
+                // asset-protocol URL. Anything else falls back to the icon the
+                // extension implies.
+                <ChatAttachment key={i} name={f.name} src={localPreviewSrc(f.path, f.name)}>
+                  <ChatAttachment.Preview />
+                  <ChatAttachment.Info />
                   {onRemoveFile && (
-                    <AttachmentActions>
-                      <AttachmentAction
-                        aria-label={t('chat.removeAttachment', { name: f.name })}
-                        onClick={() => onRemoveFile(i)}
-                        className="hover:text-danger"
-                      >
-                        <Xmark />
-                      </AttachmentAction>
-                    </AttachmentActions>
+                    <ChatAttachment.Remove
+                      aria-label={t('chat.removeAttachment', { name: f.name })}
+                      onPress={() => onRemoveFile(i)}
+                    />
                   )}
-                </Attachment>
+                </ChatAttachment>
               ))}
-            </AttachmentGroup>
+            </ChatAttachmentGroup>
           )}
           /* Hold-to-talk, as a layer rather than as handlers on the field.
              While it is up the textarea sees no touches at all, so there is no

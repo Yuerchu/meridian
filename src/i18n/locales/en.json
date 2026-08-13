@@ -13,6 +13,7 @@
   "chat.renderError": "Failed to render this message",
   "chat.scrollToBottom": "Scroll to latest message",
   "chat.removeAttachment": "Remove {{name}}",
+  "chat.attachedImage": "Image",
   "chat.noConversation": "No conversation selected",
   "chat.newChat": "New Chat",
   "chat.time.justNow": "just now",
