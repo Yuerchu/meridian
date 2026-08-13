@@ -14,12 +14,18 @@ jobs:
   test:
     strategy:
       fail-fast: false
+      # No macOS. A macOS minute bills at ten, and it was buying coverage of a
+      # platform this project does not ship: the bundle links sherpa-onnx
+      # dynamically and carries none of it, so it builds cleanly into something
+      # that cannot start — see the Packaging section in CLAUDE.md. Release
+      # still has it behind an explicit choice, for working on exactly that.
+      #
+      # Linux stays. It bills at one, it is the only place the Rust tests run
+      # off Windows, and it is the AppImage's platform.
       matrix:
         include:
           - os: windows-latest
             label: windows-x64
-          - os: macos-latest
-            label: macos-arm64
           - os: ubuntu-latest
             label: linux-x64
 
