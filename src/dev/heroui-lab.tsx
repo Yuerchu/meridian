@@ -38,12 +38,12 @@ import {
 
 // Subpath, never the barrel: the barrel reaches recharts, tiptap and maplibre,
 // none of which are installed — importing it fails the build outright.
-import { CodeBlock as ProCodeBlock } from '@heroui-pro/react/code-block'
 import { ContextMenu as ProContextMenu } from '@heroui-pro/react/context-menu'
 import { Markdown as ProMarkdown } from '@heroui-pro/react/markdown'
 
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { MarkdownContent } from '@/components/chat/markdown-content'
+import { ShikiCode } from '@/components/chat/shiki-code'
 import { languageIconUrl } from '@/lib/file-icon'
 
 /** Feature detections, each phrased so `true` means "WebView2 will render it". */
@@ -388,14 +388,13 @@ export default function HeroUiLab() {
             ].map(({ lang, code }) => {
               const icon = languageIconUrl(lang)
               return (
-                <ProCodeBlock key={lang}>
-                  <ProCodeBlock.Header>
+                <div key={lang} className="code-block rounded-xl">
+                  <div className="code-block__header">
                     {icon && <img src={icon} alt="" aria-hidden className="size-4" />}
                     <span className="text-xs text-muted">{lang}</span>
-                    <ProCodeBlock.CopyButton code={code} className="ms-auto" />
-                  </ProCodeBlock.Header>
-                  <ProCodeBlock.Code code={code} language={lang} />
-                </ProCodeBlock>
+                  </div>
+                  <ShikiCode code={code} language={lang} />
+                </div>
               )
             })}
           </div>

@@ -4,12 +4,12 @@ import { open as openExternal } from '@tauri-apps/plugin-shell'
 import { Check, Copy } from '@gravity-ui/icons'
 import type { Components } from 'react-markdown'
 
-import { CodeBlock as ProCodeBlock } from '@heroui-pro/react/code-block'
 import { Markdown as ProMarkdown } from '@heroui-pro/react/markdown'
 
 import { ActionButton } from '@/components/ui/action-button'
 import { languageIconUrl } from '@/lib/file-icon'
 import { cn } from '@/lib/utils'
+import { ShikiCode } from './shiki-code'
 import type { EmojiMap } from './emoji-renderer'
 
 export function CopyButton({ text, className }: { text: string; className?: string }) {
@@ -60,16 +60,21 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
   const icon = languageIconUrl(language)
 
   return (
-    // Pro's own radius is 16px, which is the composer's — one rung above what a
-    // card inside the transcript may take.
-    <ProCodeBlock className="my-3 rounded-xl">
-      <ProCodeBlock.Header>
+    // Pro's classes without Pro's components: importing `CodeBlock` for its
+    // header would drag in `CodeBlock.Code`, and with it Shiki's full entry
+    // point — the whole reason `lib/shiki` exists. The stylesheet is already
+    // loaded, so the markup below looks the same either way.
+    //
+    // The radius is ours: Pro's own is 16px, the composer's rung, one above
+    // what a card inside the transcript may take.
+    <div data-slot="markdown-code-block" className="code-block my-3 rounded-xl">
+      <div data-slot="markdown-code-header" className="code-block__header">
         {icon && <img src={icon} alt="" aria-hidden className="size-4 shrink-0" />}
         <span className="text-xs text-muted">{language}</span>
-        <ProCodeBlock.CopyButton code={code} className="ms-auto" />
-      </ProCodeBlock.Header>
-      <ProCodeBlock.Code code={code} language={language} />
-    </ProCodeBlock>
+        <CopyButton text={code} className="ms-auto size-6 rounded-md" />
+      </div>
+      <ShikiCode code={code} language={language} />
+    </div>
   )
 }
 
