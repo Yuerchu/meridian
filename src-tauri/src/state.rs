@@ -159,7 +159,39 @@ pub(crate) struct SubAgentInbox {
     queue: std::sync::Mutex<Option<Vec<crate::agent::engine::Steered>>>,
 }
 
+/// What became of a message handed to an inbox.
+///
+/// The two are decided under the same lock as the close that races them, which
+/// is the point: without that, a command can look the inbox up, find it, append
+/// to it, and return `Ok` to somebody whose message nobody will ever read. Every
+/// message is therefore either queued — and then owed an account of itself — or
+/// refused with its own text handed straight back.
+pub(crate) enum Accept {
+    Queued,
+    /// Nobody is reading any more. The text comes back so the caller can say so
+    /// rather than pretend it went somewhere.
+    Closed(String),
+}
+
 impl SubAgentInbox {
+    /// Hand a message to a run, if there is still a run to hand it to.
+    pub(crate) fn append(&self, text: String) -> Accept {
+        let mut guard = self.queue.lock().unwrap_or_else(|e| e.into_inner());
+        match guard.as_mut() {
+            Some(queue) => {
+                queue.push(crate::agent::engine::Steered {
+                    text,
+                    // Typed into the window by the person watching. They have no
+                    // chat identity, which is not the same as there being nobody
+                    // — see `SteeredOrigin`.
+                    origin: crate::agent::engine::SteeredOrigin::User(None),
+                });
+                Accept::Queued
+            }
+            None => Accept::Closed(text),
+        }
+    }
+
     /// Everything still waiting, and no more will be taken.
     ///
     /// Whatever comes back was accepted from the user and never delivered, so
@@ -167,6 +199,18 @@ impl SubAgentInbox {
     /// one outcome that must not happen.
     pub(crate) fn close(&self) -> Vec<crate::agent::engine::Steered> {
         self.queue.lock().unwrap_or_else(|e| e.into_inner()).take().unwrap_or_default()
+    }
+
+}
+
+/// The inbox *is* the port. A wrapper type would only exist to hold a reference
+/// to this one and forward a single method.
+impl crate::agent::engine::Steering for SubAgentInbox {
+    fn drain(&self) -> Vec<crate::agent::engine::Steered> {
+        match self.queue.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            Some(queue) => std::mem::take(queue),
+            None => Vec::new(),
+        }
     }
 }
 
@@ -190,6 +234,20 @@ impl AppSubAgentInboxes {
         match self.lock().remove(conversation_id) {
             Some(inbox) => inbox.close(),
             None => Vec::new(),
+        }
+    }
+
+    /// Give a message to whatever is running on this conversation.
+    ///
+    /// The `Arc` is taken under the map's lock and the decision made under the
+    /// inbox's own, so a run that ends in between refuses rather than accepting
+    /// into something nobody will read. A conversation with no run at all is the
+    /// same answer: there is nothing to steer.
+    pub(crate) fn append(&self, conversation_id: &str, text: String) -> Accept {
+        let inbox = self.lock().get(conversation_id).map(Arc::clone);
+        match inbox {
+            Some(inbox) => inbox.append(text),
+            None => Accept::Closed(text),
         }
     }
 }
@@ -266,6 +324,62 @@ mod tests {
             .map(|(id, _)| id.clone())
             .collect();
         assert_eq!(mine, vec!["appr-1".to_string()]);
+    }
+
+    /// The two answers are mutually exclusive under one lock, which is the
+    /// whole point: a message is either queued — and then owed an account of
+    /// itself — or handed straight back. What must not exist is a third state
+    /// where the command says `Ok` and nobody is reading.
+    #[test]
+    fn a_message_is_either_taken_or_handed_back() {
+        let inboxes = AppSubAgentInboxes::default();
+        inboxes.open("sub-1");
+
+        assert!(matches!(inboxes.append("sub-1", "keep going".into()), Accept::Queued));
+        // A conversation with no run at all is the same answer as one that ended.
+        assert!(matches!(inboxes.append("nowhere", "hello".into()), Accept::Closed(t) if t == "hello"));
+
+        let leftover = inboxes.close("sub-1");
+        assert_eq!(leftover.len(), 1, "what was taken comes back rather than vanishing");
+        assert_eq!(leftover[0].text, "keep going");
+
+        // And after closing, the same conversation refuses.
+        assert!(matches!(
+            inboxes.append("sub-1", "too late".into()),
+            Accept::Closed(t) if t == "too late",
+        ));
+    }
+
+    /// Typed into the window by the person watching. They have no chat
+    /// identity, which is not the same as there being nobody — as
+    /// `system_context` would have said.
+    #[test]
+    fn what_a_desktop_user_types_is_a_user_talking() {
+        let inbox = SubAgentInbox { queue: std::sync::Mutex::new(Some(Vec::new())) };
+        inbox.append("use the other approach".into());
+
+        let taken = inbox.close();
+        assert!(matches!(
+            taken[0].origin,
+            crate::agent::engine::SteeredOrigin::User(None),
+        ));
+    }
+
+    /// Draining is what the loop does between rounds; closing is the end. A
+    /// drained inbox still takes messages, a closed one never does again.
+    #[test]
+    fn draining_is_not_closing() {
+        use crate::agent::engine::Steering;
+        let inbox = SubAgentInbox { queue: std::sync::Mutex::new(Some(Vec::new())) };
+        inbox.append("first".into());
+
+        assert_eq!(inbox.drain().len(), 1);
+        assert!(inbox.drain().is_empty());
+        assert!(matches!(inbox.append("second".into()), Accept::Queued));
+
+        assert_eq!(inbox.close().len(), 1);
+        assert!(matches!(inbox.append("third".into()), Accept::Closed(_)));
+        assert!(inbox.drain().is_empty(), "a closed inbox has nothing left to give the loop");
     }
 
     /// One turn panicking while holding the lock must not take every later

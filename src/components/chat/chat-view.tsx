@@ -38,6 +38,21 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     const project = conv?.project_id ? s.projects.find((p) => p.id === conv.project_id) : undefined
     return project?.source_type.startsWith('onebot') ?? false
   })
+  // TODO: every read below goes to `s.conversations`, which is the sidebar's
+  // list — and a sub-agent's conversation is filtered out of it on purpose
+  // (`db::ops::conversation::list_conversations`). Opened from a `run_agent`
+  // card, this view therefore reads null for all of them and runs on defaults:
+  // no assistant, work mode, accept-edits off. The snapshot already carries the
+  // whole conversation and `loadMessages` keeps only `compact_cursor`.
+  //
+  // Fix is a `conversationDetails: Record<string, Conversation>` filled from the
+  // snapshot plus a `conversationById` selector these fall back through — and
+  // the same selector at `App.tsx`'s `activeConversation` (header title) and
+  // `use-global-event-listener.ts`'s notification title, which have the same
+  // hole. Not `conversations.push(...)`: that array *is* the sidebar.
+  //
+  // Deferred with the rest of the navigation work until the HeroUI Pro change
+  // lands, since it is the layer that will move.
   const conversationAssistantId = useConversationStore(
     (s) => s.conversations.find((c) => c.id === conversationId)?.assistant_id ?? null,
   )
@@ -465,6 +480,8 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     autoCompactEnabled: boolean
     autoCompactThreshold: number
     compactBreaker: string
+    model: string
+    agentKind?: string
   }>({
     messageCount: 0,
     estimatedTokens: 0,
@@ -472,6 +489,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     autoCompactEnabled: selectedAssistant?.auto_compact_enabled === 1,
     autoCompactThreshold: 0,
     compactBreaker: 'closed',
+    model: '',
   })
 
   useEffect(() => {
@@ -486,6 +504,8 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
           autoCompactEnabled: info.auto_compact_enabled,
           autoCompactThreshold: info.compact_threshold,
           compactBreaker: info.circuit_breaker_state,
+          model: info.model,
+          agentKind: info.agent_kind,
         })
       }).catch(() => {})
     }, 100)

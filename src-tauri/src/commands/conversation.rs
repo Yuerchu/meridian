@@ -41,7 +41,9 @@ pub async fn compact(
             let assistant = conv.assistant_id.as_deref()
                 .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok());
             let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
-            Ok::<_, String>((assistant, keep_recent))
+            // Summarised by the model that wrote the transcript, and against
+            // that model's window.
+            Ok::<_, String>((conv.pin_model(assistant), keep_recent))
         }).await.map_err(|e| e.to_string())??
     };
 
@@ -199,18 +201,53 @@ pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Resul
 /// until then this refuses rather than races.
 #[tauri::command]
 pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let _lease = app.state::<AppTurns>().0.clone()
-        .try_acquire_mutation(&id, "a delete")
-        .map_err(|busy| busy.to_string())?;
+    let coordinator = app.state::<AppTurns>().0.clone();
     let pool = app.state::<AppDb>().0.clone();
-    let attachments_dir = app.path().app_data_dir().ok()
-        .map(|d| crate::files::conversation_files_dir(&d, &id));
+
+    // This one first, and on its own. A delegated run is started from inside a
+    // turn on this conversation, and a turn cannot exist while a mutation holds
+    // it — so from here the set of children is fixed, and reading it next cannot
+    // miss one that appears in between.
+    let _parent = coordinator
+        .try_acquire_mutations(std::slice::from_ref(&id), "a delete")
+        .map_err(|busy| busy.to_string())?;
+
+    let doomed = {
+        let (pool, id) = (pool.clone(), id.clone());
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| e.to_string())?;
+            db::ops::conversation::descendants(&mut conn, &id).map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())??
+    };
+    // All of them or none. Any one can have a sub-agent running on it, and
+    // taking them one at a time would mean holding part of a tree while being
+    // refused the rest.
+    let _children = coordinator
+        .try_acquire_mutations(&doomed, "a delete")
+        .map_err(|busy| busy.to_string())?;
+
+    let attachment_dirs: Vec<std::path::PathBuf> = app
+        .path()
+        .app_data_dir()
+        .ok()
+        .map(|d| {
+            std::iter::once(&id)
+                .chain(doomed.iter())
+                .map(|c| crate::files::conversation_files_dir(&d, c))
+                .collect()
+        })
+        .unwrap_or_default();
+
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::delete_conversation(&mut conn, &id).map_err(|e| e.to_string())?;
-        // Remove the conversation's on-disk attachments (best-effort); the DB row
-        // is the source of truth, so a failed cleanup must not fail the delete.
-        if let Some(dir) = attachments_dir {
+        // Best-effort, and every run's directory as well as the parent's: the
+        // rows are the source of truth, so a failed cleanup must not fail the
+        // delete — but a directory nobody deletes is one nothing will ever come
+        // back for either.
+        for dir in attachment_dirs {
             if dir.exists() {
                 let _ = std::fs::remove_dir_all(&dir);
             }
@@ -227,6 +264,14 @@ pub struct ContextInfo {
     pub auto_compact_enabled: bool,
     pub circuit_breaker_state: String,
     pub message_count: usize,
+    /// Whose window this is. A number on its own cannot say, and a delegated run
+    /// routinely has a different one from the conversation that started it.
+    pub model: String,
+    /// `explore` | `agent` when this conversation is a delegated run, `None`
+    /// when it is somebody's own. Read off the row rather than inferred from the
+    /// sidebar, which cannot see these at all.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_kind: Option<String>,
 }
 
 /// Test scaffolding only. Production assembly lives in
@@ -370,7 +415,7 @@ pub async fn get_context_info(
     let pool = app.state::<AppDb>().0.clone();
     let secrets = app.state::<AppSecrets>();
 
-    let (assistant, ctx, project_path, project_id, conv_mode) = {
+    let (assistant, ctx, project_path, project_id, conv_mode, agent_kind) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
         tokio::task::spawn_blocking(move || {
@@ -386,7 +431,17 @@ pub async fn get_context_info(
             let project_path = project.as_ref().and_then(|p| p.path.clone());
             let project_id = project.as_ref().map(|p| p.id.clone());
             let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
-            Ok::<_, String>((assistant, ctx, project_path, project_id, conv.mode.clone()))
+            // The indicator has to describe the window a request from *this*
+            // conversation would go into, which for a delegated run is its own
+            // model's rather than the parent assistant's.
+            Ok::<_, String>((
+                conv.pin_model(assistant),
+                ctx,
+                project_path,
+                project_id,
+                conv.mode.clone(),
+                conv.agent_kind.clone(),
+            ))
         }).await.map_err(|e| e.to_string())??
     };
 
@@ -478,6 +533,8 @@ pub async fn get_context_info(
         auto_compact_enabled,
         circuit_breaker_state: cb_state,
         message_count,
+        model,
+        agent_kind,
     })
 }
 

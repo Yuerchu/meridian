@@ -298,12 +298,53 @@ pub fn sub_agent_runs(
         .collect())
 }
 
+/// Every conversation that hangs off this one, nearest first.
+///
+/// `parent_conversation_id` carries no foreign key, so SQLite will not cascade
+/// down it — see migration 27, and `messages.parent_id` before it. Deleting
+/// without this leaves conversations nothing can reach: the sidebar filters them
+/// out by design, and the card that could have opened them went with its parent.
+///
+/// Walks rather than assuming one level. Depth is one today because a delegated
+/// run is handed no way to delegate, but that is a property of the tool set, not
+/// of this column, and a query that quietly depended on it is what would be left
+/// behind if the tool set ever changed. `seen` is not only for efficiency: a
+/// cycle written by some future bug would otherwise loop here for as long as the
+/// process lives.
+pub fn descendants(conn: &mut SqliteConnection, id: &str) -> QueryResult<Vec<String>> {
+    let mut seen: std::collections::HashSet<String> = [id.to_string()].into_iter().collect();
+    let mut out: Vec<String> = Vec::new();
+    let mut frontier = vec![id.to_string()];
+    while !frontier.is_empty() {
+        let children: Vec<String> = conversations::table
+            .filter(conversations::parent_conversation_id.eq_any(&frontier))
+            .order(conversations::created_at.asc())
+            .select(conversations::id)
+            .load(conn)?;
+        frontier = children.into_iter().filter(|c| seen.insert(c.clone())).collect();
+        out.extend_from_slice(&frontier);
+    }
+    Ok(out)
+}
+
+/// Delete a conversation and every delegated run under it.
+///
+/// One transaction, because half a tree is worse than either outcome: what
+/// survives is unreachable, and what went was the only record of what the
+/// survivors were for.
 pub fn delete_conversation(
     conn: &mut SqliteConnection,
     id: &str,
 ) -> QueryResult<()> {
-    diesel::delete(conversations::table.find(id)).execute(conn)?;
-    Ok(())
+    conn.transaction(|conn| {
+        let mut doomed = descendants(conn, id)?;
+        doomed.push(id.to_string());
+        // Everything inside each one — messages, turns, todo lists, plans — is
+        // reached by the foreign keys those do have.
+        diesel::delete(conversations::table.filter(conversations::id.eq_any(&doomed)))
+            .execute(conn)?;
+        Ok(())
+    })
 }
 
 #[cfg(test)]
@@ -544,5 +585,120 @@ mod tests {
         assert!(conv.agent_provider_id.is_none());
         assert!(conv.agent_model_id.is_none(), "it goes on resolving from the assistant");
         assert_eq!(list_conversations(&mut conn, false).unwrap().len(), 1);
+    }
+
+    /// Three paths ask what model a conversation runs on — the next turn, the
+    /// context indicator, and manual compaction — and a delegated run has to
+    /// give all three the model its transcript was written by. Getting this
+    /// wrong is not visible as an error: a run on a 64K model reports how full
+    /// a 200K window is, and compaction waits for a threshold no request will
+    /// ever reach.
+    #[test]
+    fn a_delegated_run_pins_the_model_its_transcript_was_written_by() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "parent", Some("t"), None, None, 1).unwrap();
+        spawn(&mut conn, "child", "parent", "m1", "0", "t-a");
+        diesel::update(conversations::table.find("child"))
+            .set((
+                conversations::agent_provider_id.eq("deepseek"),
+                conversations::agent_model_id.eq("deepseek-chat"),
+            ))
+            .execute(&mut conn)
+            .unwrap();
+
+        let big = crate::db::models::assistant::Assistant {
+            provider_id: Some("anthropic".into()),
+            model_id: Some("mythos".into()),
+            context_limit: 200_000,
+            ..assistant()
+        };
+
+        let parent = get_conversation(&mut conn, "parent").unwrap();
+        let unchanged = parent.pin_model(Some(big.clone())).unwrap();
+        assert_eq!(unchanged.model_id.as_deref(), Some("mythos"));
+        assert_eq!(unchanged.context_limit, 200_000, "an ordinary conversation keeps its own");
+
+        let child = get_conversation(&mut conn, "child").unwrap();
+        let pinned = child.pin_model(Some(big)).unwrap();
+        assert_eq!(pinned.provider_id.as_deref(), Some("deepseek"));
+        assert_eq!(pinned.model_id.as_deref(), Some("deepseek-chat"));
+        // The part that is easy to miss: a non-zero limit here outranks
+        // everything the model says, so leaving it would make the swap look
+        // done while changing nothing that matters.
+        assert_eq!(pinned.context_limit, 0, "the window comes from the model now");
+    }
+
+    fn assistant() -> crate::db::models::assistant::Assistant {
+        crate::db::models::assistant::Assistant {
+            id: "a1".into(),
+            name: "A".into(),
+            description: None,
+            avatar: None,
+            system_prompt: String::new(),
+            provider_id: None,
+            model_id: None,
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            is_default: 0,
+            sort_order: 0,
+            created_at: 0,
+            updated_at: 0,
+            context_limit: 0,
+            compact_keep_recent: 10,
+            enabled_tools: None,
+            thinking_enabled: 0,
+            thinking_budget: None,
+            tool_preset_id: None,
+            auto_compact_enabled: 0,
+        }
+    }
+
+    /// A delegated run has no independent existence. Left behind it is a
+    /// conversation nothing can reach — the sidebar filters it out, and the card
+    /// that could have opened it went with its parent.
+    #[test]
+    fn deleting_a_conversation_takes_its_delegated_runs_with_it() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "parent", Some("t"), None, None, 1).unwrap();
+        create_conversation(&mut conn, "bystander", Some("t"), None, None, 1).unwrap();
+        spawn(&mut conn, "child-a", "parent", "m1", "0", "t-a");
+        spawn(&mut conn, "child-b", "parent", "m2", "0", "t-b");
+        spawn(&mut conn, "theirs", "bystander", "m1", "0", "t-c");
+
+        delete_conversation(&mut conn, "parent").unwrap();
+
+        let left: Vec<String> = conversations::table
+            .order(conversations::id.asc())
+            .select(conversations::id)
+            .load(&mut conn)
+            .unwrap();
+        assert_eq!(left, ["bystander", "theirs"], "and nobody else's run went with it");
+    }
+
+    /// The column has no foreign key, so nothing below it cascades on its own —
+    /// which is the whole reason this walk exists. Written as a walk rather than
+    /// one query because depth is a property of the tool set, not of the schema.
+    #[test]
+    fn descendants_walks_and_cannot_be_trapped_by_a_cycle() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "parent", Some("t"), None, None, 1).unwrap();
+        spawn(&mut conn, "child", "parent", "m1", "0", "t-a");
+        spawn(&mut conn, "grandchild", "child", "m1", "0", "t-b");
+
+        assert_eq!(descendants(&mut conn, "parent").unwrap(), ["child", "grandchild"]);
+        assert_eq!(descendants(&mut conn, "child").unwrap(), ["grandchild"]);
+        assert!(descendants(&mut conn, "grandchild").unwrap().is_empty());
+
+        // Nothing writes this today. If something ever does, this must return
+        // rather than walk for as long as the process lives.
+        diesel::update(conversations::table.find("parent"))
+            .set(conversations::parent_conversation_id.eq("grandchild"))
+            .execute(&mut conn)
+            .unwrap();
+        assert_eq!(descendants(&mut conn, "parent").unwrap(), ["child", "grandchild"]);
     }
 }

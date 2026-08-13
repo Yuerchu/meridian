@@ -372,6 +372,7 @@
   "settings.model.capOn": "On",
   "settings.model.capOff": "Off",
   "settings.model.capReset": "Reset to catalog",
+  "chat.context.forSubAgent": "Sub-agent ({{kind}}) · {{model}}",
   "chat.context.messages": "{{count}} messages",
   "chat.context.tokens": "~{{used}} / {{limit}} tokens",
   "chat.thinking": "Thinking",

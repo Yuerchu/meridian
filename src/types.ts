@@ -583,6 +583,13 @@ export interface ContextInfo {
   auto_compact_enabled: boolean
   circuit_breaker_state: string
   message_count: number
+  /** Whose window this is. A percentage on its own cannot say, and a delegated
+   *  run routinely runs on a different model from the conversation that started
+   *  it — so the same fraction means a different number of tokens. */
+  model: string
+  /** `explore` | `agent` when this conversation is a delegated run. Absent for
+   *  an ordinary one. */
+  agent_kind?: string
 }
 
 export type LogLevel = 'ERROR' | 'WARN' | 'INFO' | 'DEBUG' | 'TRACE' | 'UNKNOWN'

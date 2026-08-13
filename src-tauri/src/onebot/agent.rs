@@ -212,7 +212,10 @@ impl crate::agent::engine::Steering for InboxSteering<'_> {
                 // A notice is something the system generated rather than
                 // something a person said, and it travels as context instead of
                 // as a user message.
-                speaker: item.sender.as_ref().map(|s| s.into()),
+                origin: match item.sender.as_ref() {
+                    Some(s) => crate::agent::engine::SteeredOrigin::User(Some(s.into())),
+                    None => crate::agent::engine::SteeredOrigin::System,
+                },
             })
             .collect()
     }

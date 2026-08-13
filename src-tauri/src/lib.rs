@@ -518,6 +518,7 @@ pub fn run() {
             commands::approval::approve_tool_call,
             commands::approval::deny_tool_call,
             commands::approval::respond_to_ask,
+            commands::sub_agent::steer_conversation,
             platform::get_platform,
             platform::get_window_insets,
             platform::get_manage_storage_status,

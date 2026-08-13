@@ -43,7 +43,19 @@ use crate::provider::{ChatMessage, ChatParams, ChatProvider, ToolDefinition};
 use crate::tools::{self, ToolContext, ToolRegistry};
 
 use super::compaction::{Compacting, CompactionPolicy};
-use super::ports::{SubAgentReport, SubAgentSpec, SubAgentStatus, TurnPorts};
+use super::ports::{
+    Steered, SteeredOrigin, SubAgentReport, SubAgentSpec, SubAgentStatus, TurnPorts,
+};
+
+/// How many times a finished answer may be reopened by something that arrived
+/// while it was being written.
+///
+/// Small on purpose. Each continuation is a whole extra round trip started by
+/// somebody typing rather than by the model needing one, and the point is to
+/// catch the message sent a second before the answer landed — not to turn a
+/// turn into a chat session. Past it the messages stay in the inbox and the
+/// caller accounts for them.
+const MAX_TAIL_CONTINUATIONS: usize = 3;
 use super::{
     append_steering, append_tool_result, begin_assistant, complete_assistant, consume_stream,
     in_phase, transitions, ApprovalDecision,
@@ -115,11 +127,30 @@ fn sub_agent_result(report: &SubAgentReport) -> String {
             format!("Sub-agent failed after {steps} steps.")
         }
     };
+    // Said plainly, because the likeliest content of a message that missed the
+    // run is the correction the user is about to ask why it ignored.
+    let missed = if report.stranded.is_empty() {
+        String::new()
+    } else {
+        let n = report.stranded.accepted;
+        let lost = report.stranded.unrecorded;
+        let where_to_read = if lost == 0 {
+            "They are in its transcript.".to_string()
+        } else if lost == n {
+            "None of them could be written down, so they are nowhere but here.".to_string()
+        } else {
+            format!("{} of them could not be written down.", lost)
+        };
+        format!(
+            "\n\nThe user sent {n} message(s) to the sub-agent after it had stopped reading, so it \
+             never saw them. {where_to_read} Read them before acting on the answer above."
+        )
+    };
     let body = report.reply.trim();
     if body.is_empty() {
-        format!("{head} It returned no text.")
+        format!("{head} It returned no text.{missed}")
     } else {
-        format!("{head}\n\n{body}")
+        format!("{head}\n\n{body}{missed}")
     }
 }
 
@@ -262,6 +293,15 @@ pub struct TurnProgress {
     /// calls: a round that made three is still one step, and a round that made
     /// none still cost a request.
     pub steps: usize,
+    /// The last row this turn wrote that is still on the active path.
+    ///
+    /// Not `message_id`. That is the last *assistant* row, and a turn's last
+    /// reachable row is routinely something else — a tool result when the work
+    /// ended on a call, or a steering row that was drained. Anything the caller
+    /// appends afterwards has to hang off this one; hanging it off the assistant
+    /// row opens a branch and pushes whatever came after it off the path, which
+    /// the reader sees as an answer disappearing.
+    pub final_cursor: Option<String>,
 }
 
 /// A turn's reply, plus what the caller needs to close it out.
@@ -358,6 +398,11 @@ async fn run(
     let mut last_assistant_text = String::new();
     let mut loop_guard = crate::agent::ToolLoopGuard::default();
     let mut turn_aborted = false;
+    // How many times a finished answer has been reopened by something that
+    // arrived while it was being written. Bounded because otherwise anyone
+    // holding down Enter keeps a turn alive indefinitely, and the loop guard
+    // does not cover this: it counts tool calls, and these rounds have none.
+    let mut continuations: usize = 0;
 
     // What the reply may cost, before it is trimmed to what each request has
     // left. Held apart from `params` because the trimming is per request and
@@ -605,7 +650,41 @@ async fn run(
         last_assistant_text = result.text.clone();
 
         if !has_tool_calls {
-            break;
+            // The answer is written. Anything typed while it was being written
+            // is still in the inbox, and the drain at the bottom of this loop is
+            // past the tool dispatch — unreachable from here. Without this, a
+            // message sent during the last few seconds of a reply is accepted,
+            // acknowledged, and then never read by anyone.
+            //
+            // The cap is not a drain: reaching it must leave the messages where
+            // they are, so `close()` can hand them back and the caller can say
+            // what happened to them. Draining and then stopping would make them
+            // vanish.
+            let steered = match ports.steering {
+                Some(s) if continuations < MAX_TAIL_CONTINUATIONS => s.drain(),
+                _ => Vec::new(),
+            };
+            if steered.is_empty() {
+                break;
+            }
+            continuations += 1;
+            // Before the steering, and this is the whole reason the tail case
+            // cannot just reuse the code below: the push that puts a reply in
+            // front of the next request lives in the tool branch. Skipping it
+            // would have the model answer as though it had said nothing.
+            chat_messages.push(ChatMessage::assistant(&result.text));
+            inject_steering(
+                pool,
+                &conversation_id,
+                &turn_id,
+                steered,
+                &mut parent_cursor,
+                &mut chat_messages,
+                files_root.as_deref(),
+            )
+            .await;
+            whisper("conversation-updated", serde_json::json!({ "id": &conversation_id }));
+            continue;
         }
 
         // Only the final iteration's text is returned to the caller, so on a
@@ -917,30 +996,17 @@ async fn run(
         // the prompt prefix the cache is keyed on stays exactly where it was.
         if let Some(steering) = ports.steering {
             let items = steering.drain();
-            let injected_any = !items.is_empty();
-            for item in items {
-                if let Some(id) = append_steering(
+            if !items.is_empty() {
+                inject_steering(
                     pool,
                     &conversation_id,
                     &turn_id,
-                    &item.text,
-                    item.speaker.as_ref().map(|s| s.user_id),
-                    parent_cursor.as_deref(),
+                    items,
+                    &mut parent_cursor,
+                    &mut chat_messages,
+                    files_root.as_deref(),
                 )
-                .await
-                {
-                    parent_cursor = Some(id);
-                }
-                // The turn's first resolve pass ran before this existed, so any
-                // image parts inside it need their own.
-                let mut injected = vec![match item.speaker {
-                    Some(s) => ChatMessage::user_from(&item.text, s),
-                    None => ChatMessage::system_context(&item.text),
-                }];
-                crate::agent::resolve_file_uris_in_messages(&mut injected, files_root.as_deref());
-                chat_messages.extend(injected);
-            }
-            if injected_any {
+                .await;
                 whisper(
                     "conversation-updated",
                     serde_json::json!({ "id": &conversation_id }),
@@ -963,7 +1029,54 @@ async fn run(
     }
 
     progress.aborted = turn_aborted;
+    progress.final_cursor = parent_cursor;
     Ok(last_assistant_text)
+}
+
+/// Write what arrived mid-turn, and put it in front of the model.
+///
+/// Both callers advance `parent_cursor` through it, which is what keeps the
+/// rows on one path. A write that fails leaves the cursor alone and the message
+/// still goes to the model: losing a row is worse than losing a turn, but not
+/// worse than ignoring what somebody said.
+async fn inject_steering(
+    pool: &crate::db::DbPool,
+    conversation_id: &str,
+    turn_id: &str,
+    items: Vec<Steered>,
+    parent_cursor: &mut Option<String>,
+    chat_messages: &mut Vec<ChatMessage>,
+    files_root: Option<&std::path::Path>,
+) {
+    for item in items {
+        let sender = match &item.origin {
+            SteeredOrigin::User(Some(s)) => Some(s.user_id),
+            _ => None,
+        };
+        if let Some(id) = append_steering(
+            pool,
+            conversation_id,
+            turn_id,
+            &item.text,
+            sender,
+            parent_cursor.as_deref(),
+        )
+        .await
+        {
+            *parent_cursor = Some(id);
+        }
+        // The turn's first resolve pass ran before this existed, so any image
+        // parts inside it need their own.
+        let mut injected = vec![match item.origin {
+            SteeredOrigin::User(Some(s)) => ChatMessage::user_from(&item.text, s),
+            // A person with no chat identity is still a person. Sending this as
+            // context would have the model weigh it as ambient noise.
+            SteeredOrigin::User(None) => ChatMessage::user(&item.text),
+            SteeredOrigin::System => ChatMessage::system_context(&item.text),
+        }];
+        crate::agent::resolve_file_uris_in_messages(&mut injected, files_root);
+        chat_messages.extend(injected);
+    }
 }
 
 #[cfg(test)]
@@ -1353,14 +1466,30 @@ mod tests {
     struct Delegate {
         seen: Mutex<Vec<SubAgentSpec>>,
         reply: Result<(SubAgentStatus, &'static str, usize), String>,
+        stranded: super::super::ports::Stranded,
     }
 
     impl Delegate {
         fn returning(status: SubAgentStatus, text: &'static str, steps: usize) -> Self {
-            Self { seen: Mutex::new(Vec::new()), reply: Ok((status, text, steps)) }
+            Self {
+                seen: Mutex::new(Vec::new()),
+                reply: Ok((status, text, steps)),
+                stranded: Default::default(),
+            }
         }
         fn failing(error: &str) -> Self {
-            Self { seen: Mutex::new(Vec::new()), reply: Err(error.to_string()) }
+            Self {
+                seen: Mutex::new(Vec::new()),
+                reply: Err(error.to_string()),
+                stranded: Default::default(),
+            }
+        }
+        /// A run that was sent messages after it stopped reading.
+        fn stranding(accepted: usize, unrecorded: usize) -> Self {
+            Self {
+                stranded: super::super::ports::Stranded { accepted, unrecorded },
+                ..Self::returning(SubAgentStatus::Done, "had a look", 2)
+            }
         }
         fn asked(&self) -> usize {
             self.seen.lock().unwrap().len()
@@ -1372,9 +1501,12 @@ mod tests {
         async fn run(&self, spec: SubAgentSpec) -> Result<SubAgentReport, String> {
             self.seen.lock().unwrap().push(spec);
             match &self.reply {
-                Ok((status, text, steps)) => {
-                    Ok(SubAgentReport { status: *status, reply: (*text).to_string(), steps: *steps })
-                }
+                Ok((status, text, steps)) => Ok(SubAgentReport {
+                    status: *status,
+                    reply: (*text).to_string(),
+                    steps: *steps,
+                    stranded: self.stranded,
+                }),
                 Err(e) => Err(e.clone()),
             }
         }
@@ -1847,9 +1979,9 @@ mod tests {
         let inbox = Inbox(Mutex::new(vec![
             Steered {
                 text: "one more thing".into(),
-                speaker: Some(SenderRef { user_id: 7, nickname: None }),
+                origin: SteeredOrigin::User(Some(SenderRef { user_id: 7, nickname: None })),
             },
-            Steered { text: "they left the group".into(), speaker: None },
+            Steered { text: "they left the group".into(), origin: SteeredOrigin::System },
         ]));
 
         run_turn(
@@ -1876,6 +2008,196 @@ mod tests {
             crate::provider::MessageOrigin::User(_)
         ));
         assert_eq!(rows(&pool).iter().filter(|r| r.sender_id == Some(7)).count(), 1);
+    }
+
+    /// The window the drain at the bottom of the loop cannot cover.
+    ///
+    /// The model stops calling tools and the loop breaks — and that `break` is
+    /// above the drain, so a message typed during the last seconds of an answer
+    /// was accepted, acknowledged, and then read by nobody. It has to reopen the
+    /// turn instead.
+    #[tokio::test]
+    async fn a_message_that_lands_on_the_last_round_still_gets_an_answer() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![says("here is the answer"), says("and about that")]);
+        let approvals = Answers::nobody();
+        // No tool call anywhere: the turn ends the moment the first reply lands.
+        let inbox = Inbox(Mutex::new(vec![Steered {
+            text: "wait, use the other approach".into(),
+            origin: SteeredOrigin::User(None),
+        }]));
+
+        let outcome = run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &[]),
+            TurnPorts { steering: Some(&inbox), ..ports(&approvals, None) },
+        )
+        .await;
+
+        assert_eq!(outcome.reply.as_deref(), Ok("and about that"));
+        assert_eq!(provider.rounds(), 2, "the finished answer was reopened");
+
+        let second = &provider.requests()[1].0;
+        // The reply it had just written is in front of it. Without this the
+        // model answers the follow-up as though it had said nothing yet.
+        assert!(
+            second.iter().any(|m| m.content == "here is the answer"),
+            "{:?}",
+            second.iter().map(|m| m.content.as_str()).collect::<Vec<_>>(),
+        );
+        // And a person typed it, so it arrives as a person talking — as the
+        // desktop's implicit single speaker, since they have no chat identity.
+        // `SystemContext` here is the bug `SteeredOrigin` exists to stop: the
+        // model weighs that as ambient noise rather than as an instruction.
+        let last = second.last().unwrap();
+        assert_eq!(last.content, "wait, use the other approach");
+        assert!(
+            matches!(last.origin, crate::provider::MessageOrigin::LegacyUser),
+            "{:?}",
+            last.origin,
+        );
+    }
+
+    /// The cap is not a drain. Reaching it has to leave the messages where they
+    /// are, so whoever closes the inbox can hand them back and say what happened
+    /// to them — draining and then stopping would make them disappear.
+    #[tokio::test]
+    async fn the_continuation_cap_leaves_the_inbox_alone() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        // Enough replies for every continuation plus the one that stops.
+        let provider =
+            Scripted::of((0..MAX_TAIL_CONTINUATIONS + 1).map(|_| says("ok")).collect::<Vec<_>>());
+        let approvals = Answers::nobody();
+        // Never empties: something new is waiting every single time.
+        struct Endless(Mutex<usize>);
+        impl Steering for Endless {
+            fn drain(&self) -> Vec<Steered> {
+                *self.0.lock().unwrap() += 1;
+                vec![Steered { text: "and another".into(), origin: SteeredOrigin::User(None) }]
+            }
+        }
+        let endless = Endless(Mutex::new(0));
+
+        let outcome = run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &[]),
+            TurnPorts { steering: Some(&endless), ..ports(&approvals, None) },
+        )
+        .await;
+
+        assert!(outcome.reply.is_ok());
+        assert_eq!(
+            provider.rounds(),
+            MAX_TAIL_CONTINUATIONS + 1,
+            "it stops rather than being kept alive by whoever is typing",
+        );
+        // The round that gives up must not have taken anything with it. One
+        // drain per continuation, and none for the round that stops.
+        assert_eq!(
+            *endless.0.lock().unwrap(),
+            MAX_TAIL_CONTINUATIONS,
+            "the last round took messages it was never going to deliver",
+        );
+    }
+
+    /// The cursor a caller has to hang anything else off.
+    ///
+    /// Not the assistant row: a turn that ended on a tool call has that result
+    /// as its last reachable row, and attaching to the assistant row above it
+    /// opens a branch that pushes the result off the active path.
+    #[tokio::test]
+    async fn the_final_cursor_is_the_last_row_that_landed_not_the_last_reply() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![calls("call-1", "fixture", "{}"), says("never asked")]);
+        let approvals = Answers::nobody();
+        // Stopped while the tool was running, so the turn's last reachable row
+        // is the tool result rather than an assistant row. This is the shape
+        // that tells the two candidates apart.
+        let stopper = cancel.clone();
+        let fixture = Fixture::returning("ok").doing(move || stopper.cancel());
+
+        let outcome = run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &["fixture"]),
+            TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, None) },
+        )
+        .await;
+
+        let rows = rows(&pool);
+        let last = rows.last().unwrap();
+        assert_eq!(
+            outcome.progress.final_cursor.as_deref(),
+            Some(last.id.as_str()),
+            "rows: {:?}",
+            rows.iter().map(|r| r.role.as_str()).collect::<Vec<_>>(),
+        );
+        // And every row hangs off the one before it, so there is one path.
+        for pair in rows.windows(2) {
+            assert_eq!(pair[1].parent_id.as_deref(), Some(pair[0].id.as_str()));
+        }
+    }
+
+    /// Something the user said and the run never saw is the likeliest thing the
+    /// parent is about to be asked why it ignored. It gets told.
+    #[tokio::test]
+    async fn what_a_run_never_saw_is_reported_to_the_parent() {
+        for (accepted, unrecorded, expect) in [
+            (2usize, 0usize, "They are in its transcript."),
+            (2, 2, "None of them could be written down"),
+            (3, 1, "1 of them could not be written down"),
+        ] {
+            let pool = test_db();
+            conversation(&pool);
+            let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+            let provider = Scripted::of(vec![
+                run_agent_call("call-1", ERRAND),
+                says("understood"),
+            ]);
+            let approvals = Answers::nobody();
+            let delegate = Delegate::stranding(accepted, unrecorded);
+
+            run_turn(
+                &services(&pool, &tools, &mcp),
+                setup(&provider, &pool, &cancel, &[crate::agent::sub_agents::RUN_AGENT_TOOL]),
+                delegating(&approvals, &delegate),
+            )
+            .await;
+
+            let result = provider.requests()[1].0.last().unwrap().content.clone();
+            assert!(result.contains(&format!("sent {accepted} message(s)")), "{result}");
+            assert!(result.contains(expect), "{result}");
+            assert!(result.contains("never saw them"), "{result}");
+        }
+    }
+
+    /// The ordinary case says nothing about it, because there is nothing to say.
+    #[tokio::test]
+    async fn a_run_that_saw_everything_is_not_reported_as_having_missed_something() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![
+            run_agent_call("call-1", ERRAND),
+            says("understood"),
+        ]);
+        let approvals = Answers::nobody();
+        let delegate = Delegate::returning(SubAgentStatus::Done, "had a look", 2);
+
+        run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &[crate::agent::sub_agents::RUN_AGENT_TOOL]),
+            delegating(&approvals, &delegate),
+        )
+        .await;
+
+        let result = provider.requests()[1].0.last().unwrap().content.clone();
+        assert!(!result.contains("never saw"), "{result}");
     }
 
     fn owed(pool: &DbPool, asking: &str) -> Option<crate::agent::interrupted::Report> {

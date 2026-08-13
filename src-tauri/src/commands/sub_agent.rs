@@ -14,7 +14,7 @@ use diesel::Connection;
 use tauri::{Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::engine::{self, SubAgentReport, SubAgentSpec, SubAgentStatus};
+use crate::agent::engine::{self, Stranded, SubAgentReport, SubAgentSpec, SubAgentStatus};
 use crate::agent::sub_agents::SubAgentKind;
 use crate::agent::turn_record;
 use crate::db;
@@ -49,6 +49,35 @@ const EXPLORE_TOOLS: &[&str] = &[
 /// Which model each kind runs on when the caller does not say.
 fn default_model_preference(kind: SubAgentKind) -> String {
     format!("sub_agent.{}.model", kind.as_str())
+}
+
+/// Say something to a run that is already going.
+///
+/// Not a turn: it starts nothing, takes no lease and writes no row here. The
+/// message goes into the run's inbox and the loop picks it up between rounds,
+/// which is what keeps a request from being assembled out of a history
+/// something else is appending to.
+///
+/// `Err` means nobody is reading — the run ended, or there never was one on this
+/// conversation. The text is not written anywhere in that case, deliberately:
+/// this command holds no lease and no cursor, and a message that was refused
+/// should not turn up in the transcript as though it had been received. The
+/// caller has it and can say so.
+#[tauri::command]
+pub async fn steer_conversation(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    text: String,
+) -> Result<(), String> {
+    if text.trim().is_empty() {
+        return Err("There is nothing to send.".to_string());
+    }
+    match app.state::<AppSubAgentInboxes>().append(&conversation_id, text) {
+        crate::state::Accept::Queued => Ok(()),
+        crate::state::Accept::Closed(_) => {
+            Err("This run has already finished, so it did not see that.".to_string())
+        }
+    }
 }
 
 /// Everything a delegated run needs that the loop does not carry.
@@ -118,7 +147,7 @@ impl DesktopSubAgents {
             .open_conversation(&sub_conversation_id, &turn_id, &spec, &assistant)
             .await?;
 
-        let inbox = self.app.state::<AppSubAgentInboxes>().open(&sub_conversation_id);
+        let inbox_handle = self.app.state::<AppSubAgentInboxes>().open(&sub_conversation_id);
         let mut guard = ChildTurnGuard {
             app: self.app.clone(),
             conversation_id: sub_conversation_id.clone(),
@@ -126,7 +155,7 @@ impl DesktopSubAgents {
             message_id: None,
             armed: true,
             lease: Some(lease),
-            inbox: Some(inbox),
+            inbox: Some(Arc::clone(&inbox_handle)),
         };
 
         // Straight away, not when the run ends: without it the card has no
@@ -156,6 +185,7 @@ impl DesktopSubAgents {
                 &turn_id,
                 &user_message_id,
                 &cancel,
+                &inbox_handle,
             )
             .await;
 
@@ -174,6 +204,17 @@ impl DesktopSubAgents {
             }
         };
         turn_record::finish(&self.pool, &turn_id, stored, error.as_deref()).await;
+
+        // Whatever was typed at the run and never reached it. Closing the inbox
+        // is what makes this the last word: nothing can be added after it, so
+        // nothing can go missing between here and the report.
+        let stranded = self
+            .persist_stranded(
+                &sub_conversation_id,
+                &turn_id,
+                outcome.progress.final_cursor.as_deref(),
+            )
+            .await;
 
         // Sent even when no assistant row was ever written. Anyone with the
         // child's conversation open is sitting on the streaming flag the
@@ -196,7 +237,53 @@ impl DesktopSubAgents {
             status,
             reply: outcome.reply.unwrap_or_else(|e| e),
             steps: outcome.progress.steps,
+            stranded,
         })
+    }
+
+    /// Write down what the user typed at a run that had already stopped reading.
+    ///
+    /// These were accepted: the command said `Ok` and the sender watched their
+    /// message go. So they belong in the transcript whatever else happened, and
+    /// the parent is told how many there were — a message that was taken and
+    /// then silently dropped is the one outcome nobody can act on.
+    ///
+    /// Hung off `final_cursor` rather than the last assistant row. A turn that
+    /// ended on a tool call has that result as its last reachable row, and
+    /// attaching here to the assistant row above it would open a branch that
+    /// pushes the result off the active path.
+    async fn persist_stranded(
+        &self,
+        sub_conversation_id: &str,
+        turn_id: &str,
+        final_cursor: Option<&str>,
+    ) -> Stranded {
+        let leftover = self.app.state::<AppSubAgentInboxes>().close(sub_conversation_id);
+        let mut stranded = Stranded { accepted: leftover.len(), unrecorded: 0 };
+        let mut cursor = final_cursor.map(str::to_string);
+        for item in leftover {
+            match engine::write_steering(
+                &self.pool,
+                sub_conversation_id,
+                turn_id,
+                &item.text,
+                None,
+                cursor.as_deref(),
+            )
+            .await
+            {
+                Ok(id) => cursor = Some(id),
+                Err(e) => {
+                    stranded.unrecorded += 1;
+                    tracing::warn!(
+                        conversation_id = %sub_conversation_id,
+                        error = %e,
+                        "a message accepted for a sub-agent could not be written down",
+                    );
+                }
+            }
+        }
+        stranded
     }
 
     /// Which provider and model this run uses, and everything derived from it.
@@ -384,6 +471,7 @@ impl DesktopSubAgents {
         turn_id: &str,
         user_message_id: &str,
         cancel: &CancellationToken,
+        inbox: &SubAgentInbox,
     ) -> engine::TurnOutcome {
         let config = match self.build_config(assistant, sub_conversation_id, turn_params).await {
             Ok(c) => c,
@@ -483,7 +571,10 @@ impl DesktopSubAgents {
                 approvals: &approvals,
                 interim: None,
                 surface_tools: None,
-                steering: None,
+                // The sub-agent's conversation is open and writable while it
+                // runs, and what gets typed there is meant for the run rather
+                // than for a turn after it.
+                steering: Some(inbox),
                 transitions: None,
                 // The one that matters: a delegated run is handed no way to
                 // delegate, so nesting is not something anyone has to remember
