@@ -15,6 +15,7 @@
 @import '@heroui-pro/react/css/components/sidebar.css' layer(components);
 @import '@heroui-pro/react/css/components/markdown.css' layer(components);
 @import '@heroui-pro/react/css/components/code-block.css' layer(components);
+@import '@heroui-pro/react/css/components/prompt-input.css' layer(components);
 @import '@fontsource-variable/geist';
 
 /* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.

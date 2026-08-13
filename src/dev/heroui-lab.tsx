@@ -40,6 +40,9 @@ import {
 // none of which are installed — importing it fails the build outright.
 import { ContextMenu as ProContextMenu } from '@heroui-pro/react/context-menu'
 import { Markdown as ProMarkdown } from '@heroui-pro/react/markdown'
+import { PromptInput as ProPromptInput } from '@heroui-pro/react/prompt-input'
+
+import { isSubmitKey } from '@/hooks/use-coarse-pointer'
 
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { MarkdownContent } from '@/components/chat/markdown-content'
@@ -137,6 +140,43 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
       </h2>
       {children}
     </section>
+  )
+}
+
+function PromptInputProbe() {
+  const [value, setValue] = useState('')
+  const [submits, setSubmits] = useState(0)
+
+  return (
+    <div className="space-y-2">
+      <ProPromptInput
+        value={value}
+        onValueChange={setValue}
+        onSubmit={() => { setSubmits((n) => n + 1); setValue('') }}
+      >
+        <ProPromptInput.Shell>
+          <ProPromptInput.Content>
+            <ProPromptInput.TextArea
+              placeholder="打几个字，试 Enter / Shift+Enter / 组词中的 Enter"
+              // Capture, not bubble: the built-in handler runs first and has
+              // already submitted by the time a bubble handler would see it.
+              onKeyDownCapture={(e) => {
+                if (e.key !== 'Enter' || e.shiftKey) return
+                if (!isSubmitKey(e)) e.stopPropagation()
+              }}
+            />
+          </ProPromptInput.Content>
+          <ProPromptInput.Toolbar>
+            <ProPromptInput.ToolbarEnd>
+              <ProPromptInput.Send />
+            </ProPromptInput.ToolbarEnd>
+          </ProPromptInput.Toolbar>
+        </ProPromptInput.Shell>
+      </ProPromptInput>
+      <p data-slot="probe-submits" className="text-xs text-muted">
+        提交次数：<span data-testid="submit-count">{submits}</span> · 当前值长度：{value.length}
+      </p>
+    </div>
   )
 }
 
@@ -368,6 +408,22 @@ export default function HeroUiLab() {
               </HDisclosure.Content>
             </HDisclosure>
           </div>
+        </Section>
+
+        {/* Whether Pro's PromptInput can be given an IME guard at all.
+
+            Its TextArea submits from a built-in `onKeyDown` that fires *before*
+            any handler passed in — by then it has already called
+            `preventDefault` and `onSubmit`. So the guard has to run in the
+            capture phase and stop the event there, which only works if React
+            treats a capture-phase `stopPropagation` as ending the dispatch for
+            the same element's bubble handler too. That is the assumption this
+            probe exists to check; if it does not hold, a Chinese candidate
+            string would submit itself halfway through being typed.
+
+            Counter goes up only when a submit actually happened. */}
+        <Section title="PromptInput 的输入法守卫" hint="Enter 该发送；组词中的 Enter 不该发送">
+          <PromptInputProbe />
         </Section>
 
         {/* Pro's CodeBlock ships a header slot but no language label of its own —
