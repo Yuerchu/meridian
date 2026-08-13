@@ -302,6 +302,64 @@ impl TurnCoordinator {
         })
     }
 
+    /// Take several conversations for one write, or none of them.
+    ///
+    /// Deleting a conversation takes its delegated runs with it, and each of
+    /// those is a conversation something may be running on. Acquiring them one
+    /// at a time would mean either holding some while another is refused — which
+    /// then has to be unwound in the right order — or picking an order at all,
+    /// which is where lock inversions come from. One critical section has
+    /// neither problem: every id is checked and taken before anyone else can see
+    /// a partial result, and a refusal leaves the table exactly as it was.
+    ///
+    /// Duplicates in `ids` are taken once. A conversation cannot conflict with
+    /// itself, and the caller assembling a tree should not have to prove it
+    /// listed each node only once.
+    pub fn try_acquire_mutations(
+        self: &Arc<Self>,
+        ids: &[String],
+        kind: &'static str,
+    ) -> Result<Vec<MutationLease>, Busy> {
+        let mut map = self.lock();
+        let mut taken: Vec<(String, String)> = Vec::new();
+        for id in ids {
+            if taken.iter().any(|(held, _)| held == id) {
+                continue;
+            }
+            if let Some(occupant) = map.by_conversation.get(id) {
+                let busy = occupant.busy();
+                // Nothing outside this lock has seen any of them, so undoing is
+                // just removing what we put in.
+                for (id, operation_id) in &taken {
+                    if matches!(
+                        map.by_conversation.get(id),
+                        Some(Occupant::Mutation { operation_id: held, .. }) if held == operation_id
+                    ) {
+                        map.by_conversation.remove(id);
+                        map.bump(id);
+                    }
+                }
+                return Err(busy);
+            }
+            let operation_id = uuid::Uuid::new_v4().to_string();
+            map.by_conversation.insert(
+                id.clone(),
+                Occupant::Mutation { operation_id: operation_id.clone(), kind },
+            );
+            map.bump(id);
+            taken.push((id.clone(), operation_id));
+        }
+        drop(map);
+        Ok(taken
+            .into_iter()
+            .map(|(conversation_id, operation_id)| MutationLease {
+                coordinator: Arc::clone(self),
+                conversation_id,
+                operation_id,
+            })
+            .collect())
+    }
+
     /// Signal the turn running for this conversation to stop.
     ///
     /// `turn_id` names which run the caller meant. A stop aimed at a turn that
@@ -453,6 +511,63 @@ mod tests {
             c.try_acquire_turn("conv-1", TurnOrigin::Desktop).err(),
             Some(Busy::Turn(TurnOrigin::OneBot)),
         );
+    }
+
+    /// All of a tree or none of it. A refusal partway through must leave the
+    /// table exactly as it was — otherwise a delete that was turned down still
+    /// blocks half the conversations it was going to remove, and nothing is left
+    /// holding a lease that would ever release them.
+    #[test]
+    fn a_batch_that_cannot_be_completed_takes_nothing() {
+        let c = coordinator();
+        let busy = c.try_acquire_turn("child-b", TurnOrigin::SubAgent).expect("free");
+
+        let refused = c.try_acquire_mutations(
+            &["parent".into(), "child-a".into(), "child-b".into()],
+            "a delete",
+        );
+        assert_eq!(refused.err(), Some(Busy::Turn(TurnOrigin::SubAgent)));
+
+        // The two it did take on the way are free again, and free for anyone.
+        let _turn = c.try_acquire_turn("parent", TurnOrigin::Desktop).expect("released");
+        let _other = c.try_acquire_turn("child-a", TurnOrigin::Desktop).expect("released");
+        drop(busy);
+    }
+
+    /// The successful case holds every one of them, and gives them all back
+    /// together.
+    #[test]
+    fn a_batch_holds_the_whole_tree_until_it_is_dropped() {
+        let c = coordinator();
+        let leases = c
+            .try_acquire_mutations(&["parent".into(), "child".into()], "a delete")
+            .expect("all free");
+        assert_eq!(leases.len(), 2);
+
+        for id in ["parent", "child"] {
+            assert_eq!(
+                c.try_acquire_turn(id, TurnOrigin::SubAgent).err(),
+                Some(Busy::Mutation("a delete")),
+                "{id}",
+            );
+        }
+
+        drop(leases);
+        let _reused = c.try_acquire_turn("parent", TurnOrigin::Desktop).expect("free again");
+        let _also = c.try_acquire_turn("child", TurnOrigin::SubAgent).expect("free again");
+    }
+
+    /// A tree assembled from a walk can name the same node twice; being asked to
+    /// prove otherwise would push that job onto every caller.
+    #[test]
+    fn a_repeated_id_in_a_batch_is_not_a_conflict_with_itself() {
+        let c = coordinator();
+        let leases = c
+            .try_acquire_mutations(&["same".into(), "same".into()], "a delete")
+            .expect("a conversation does not conflict with itself");
+        assert_eq!(leases.len(), 1);
+        drop(leases);
+        let _free = c.try_acquire_turn("same", TurnOrigin::Desktop).expect("released once");
     }
 
     /// The whole reason turns and non-turn writes share one table. Two tables

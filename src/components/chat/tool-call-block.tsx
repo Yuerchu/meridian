@@ -1355,6 +1355,23 @@ function SubAgentBlock(
           </div>
         )}
 
+        {/* TODO: this opens, but half-furnished. `ChatView` and the header read
+            their conversation out of `s.conversations` (six reads in
+            `chat-view.tsx`, one in `App.tsx`), and a sub-agent's is filtered out
+            of that list — it is the sidebar's data source and these are hidden
+            on purpose. So `assistant_id`, `mode`, `accept_edits`,
+            `thinking_level` and `fast_mode` all come back null and the header
+            shows the app name. The snapshot already carries the whole
+            conversation; `loadMessages` takes `compact_cursor` off it and drops
+            the rest. Fix is a `conversationDetails` cache with a
+            `conversationById` selector those seven reads fall back through —
+            deferred with the rest of the navigation work until the HeroUI Pro
+            change lands, since that is the layer it sits in.
+
+            The second half of the same deferral: this keeps its own stack in
+            `conversation-store` while `stores/nav-store.ts` owns the real one.
+            Two truths for one back gesture; only the system back key on mobile
+            can tell, which is why it can wait. */}
         {data.sub_agent && (
           <Button
             variant="ghost"

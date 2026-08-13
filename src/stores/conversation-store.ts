@@ -560,6 +560,21 @@ export interface ConversationStore {
    *  An explicit stack rather than following `parent_conversation_id` back up:
    *  the two answer different questions. The parent link says who spawned this,
    *  which is not necessarily who was on screen a moment ago. */
+  // TODO: this is a second navigation stack. `stores/nav-store.ts` owns the
+  // real one — routes plus in-screen guards, with `lib/history-bridge.ts` as
+  // the only writer of `window.history` and the only listener of `popstate`,
+  // tied together by `depth === stack.length - 1 + guards.length`. Two stacks
+  // means one back gesture with two truths: the system back key on mobile
+  // unwinds nav-store's and leaves this one where it was.
+  //
+  // Fix is to drill in through nav-store — most likely a `NavEntry` variant
+  // carrying the conversation id — and delete these three. Read the depth
+  // invariant before adding a level to it: getting that wrong is a back key
+  // that goes somewhere nobody asked for.
+  //
+  // Left standing for now because the only way to notice is the system back key
+  // on a phone, and the whole navigation layer is about to be rewritten with
+  // HeroUI Pro.
   navigationStack: string[]
 
   setActiveId: (id: string | null) => void

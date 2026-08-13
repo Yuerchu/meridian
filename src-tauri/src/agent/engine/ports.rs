@@ -154,15 +154,51 @@ pub(crate) struct SubAgentReport {
     pub reply: String,
     /// Assistant iterations — how many times the model was asked.
     pub steps: usize,
+    pub stranded: Stranded,
+}
+
+/// Messages the user typed at a run that had already stopped reading.
+///
+/// Told to the model rather than dropped, because they were *accepted*: the
+/// command returned `Ok` and the sender watched the message go. Whoever is
+/// waiting on the run has to know that something was said to it that it never
+/// saw — most likely the correction they are now wondering why it ignored.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Stranded {
+    /// Taken in and never delivered.
+    pub accepted: usize,
+    /// Of those, how many could not even be written to the transcript. Said out
+    /// loud rather than hidden: the alternative is the user believing their
+    /// words are on record somewhere they are not.
+    pub unrecorded: usize,
+}
+
+impl Stranded {
+    pub(crate) fn is_empty(&self) -> bool {
+        self.accepted == 0
+    }
 }
 
 /// Something that arrived while the turn was running.
 pub(crate) struct Steered {
     pub text: String,
-    /// Who said it. `None` is a notice the system generated — a recall, a
-    /// membership change — rather than something a person typed, and it travels
-    /// as injected context instead of as a user message.
-    pub speaker: Option<SenderRef>,
+    pub origin: SteeredOrigin,
+}
+
+/// Who put it there, which decides what the model reads it as.
+///
+/// An `Option<SenderRef>` used to carry this, with `None` meaning "the system
+/// generated it". That worked while the only person who could steer was a chat
+/// user, and stopped working the moment a desktop user could: they have no chat
+/// identity, so they would have been `None` too, and what they typed would have
+/// reached the model as environment noise instead of as an instruction.
+pub(crate) enum SteeredOrigin {
+    /// Somebody typed it. `None` is a desktop user — no chat identity, still a
+    /// person talking.
+    User(Option<SenderRef>),
+    /// A notice we generated: a recall, a membership change. Travels as
+    /// injected context rather than as a message anyone sent.
+    System,
 }
 
 /// Messages that turned up mid-turn.

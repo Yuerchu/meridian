@@ -366,8 +366,15 @@ async fn chat_inner(
                 .map_err(|e| e.to_string())?;
             let effective_aid = aid_override.as_deref()
                 .or(conv.assistant_id.as_deref());
-            let assistant = effective_aid
-                .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok());
+            // Pinned before anything derives from it. A delegated run stays
+            // writable after it ends, and a follow-up has to go to the model the
+            // transcript was written by — one conversation spanning two models
+            // with no record of where it changed is not something anyone can
+            // read afterwards. An explicit override from the model picker still
+            // wins; this is the fallback, not a lock.
+            let assistant = conv.pin_model(
+                effective_aid.and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok()),
+            );
             let history = db::ops::message::list_messages(&mut conn, &conv_id)
                 .map_err(|e| e.to_string())?;
             let project = conv.project_id.as_deref()

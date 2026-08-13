@@ -249,6 +249,29 @@ pub(crate) async fn append_steering(
     sender_id: Option<i64>,
     parent: Option<&str>,
 ) -> Option<String> {
+    match write_steering(pool, conversation_id, turn_id, content, sender_id, parent).await {
+        Ok(id) => Some(id),
+        Err(e) => {
+            tracing::error!("failed to persist steered message: {e}");
+            None
+        }
+    }
+}
+
+/// The same write, with the failure handed back instead of logged.
+///
+/// For the one caller that has already promised something. A message accepted
+/// into an inbox and never delivered has to be either written down or accounted
+/// for out loud, and it can be neither if the failure was swallowed on the way
+/// past.
+pub(crate) async fn write_steering(
+    pool: &DbPool,
+    conversation_id: &str,
+    turn_id: &str,
+    content: &str,
+    sender_id: Option<i64>,
+    parent: Option<&str>,
+) -> Result<String, String> {
     let pool = pool.clone();
     let conv_id = conversation_id.to_string();
     let message_id = uuid::Uuid::new_v4().to_string();
@@ -280,15 +303,9 @@ pub(crate) async fn append_steering(
     .await;
 
     match written {
-        Ok(Ok(())) => Some(message_id),
-        Ok(Err(e)) => {
-            tracing::error!("failed to persist steered message: {e}");
-            None
-        }
-        Err(e) => {
-            tracing::error!("steered message write panicked: {e}");
-            None
-        }
+        Ok(Ok(())) => Ok(message_id),
+        Ok(Err(e)) => Err(e),
+        Err(e) => Err(format!("the write panicked: {e}")),
     }
 }
 

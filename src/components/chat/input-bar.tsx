@@ -4,7 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowDownToSquare, ArrowUp, Copy, Paperclip, Scissors, SquareDashedText, StopFill, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, InputGroup, ProgressCircle, TextField, Tooltip } from '@heroui/react'
+import { Button, InputGroup, Popover, ProgressCircle, TextField, Tooltip } from '@heroui/react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -39,6 +39,11 @@ interface ContextInfo {
    *  summarisations failed in a row that it has stopped trying — the setting is
    *  still on, and the count will only keep climbing, so it has to be said. */
   compactBreaker: string
+  /** Whose window the numbers above describe. */
+  model: string
+  /** Set when this conversation is a delegated run, so the panel can say that
+   *  the window it is reporting is not the one next door. */
+  agentKind?: string
 }
 
 export interface AttachedFile {
@@ -452,14 +457,24 @@ export function InputBar({
                 // reading — quieter than `color="default"`, which is a
                 // foreground shade.
                 const color = ratio > 0.95 ? 'danger' : ratio > 0.8 ? 'warning' : undefined
+                // A popover rather than a tooltip. This panel has a button in
+                // it, and a tooltip is not a place a button can live: it is
+                // announced as a description, it closes when the pointer leaves
+                // on the way to what it contains, and nothing in it is
+                // reachable from the keyboard. That was already true of the
+                // manual-compact link, which is why it needed a hand-rolled
+                // `<button>` with a lint exemption to look right in there.
                 return (
-                  <Tooltip delay={0}>
-                    <Tooltip.Trigger>
+                  <Popover>
+                    <Popover.Trigger
+                      aria-label={t('chat.context.tokens', {
+                        used: contextInfo.estimatedTokens.toLocaleString(),
+                        limit: contextInfo.contextLimit.toLocaleString(),
+                      })}
+                      className="inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    >
                       <ProgressCircle
-                        aria-label={t('chat.context.tokens', {
-                          used: contextInfo.estimatedTokens.toLocaleString(),
-                          limit: contextInfo.contextLimit.toLocaleString(),
-                        })}
+                        aria-hidden
                         value={contextInfo.estimatedTokens}
                         maxValue={contextInfo.contextLimit}
                         isIndeterminate={compacting}
@@ -473,39 +488,76 @@ export function InputBar({
                           <ProgressCircle.FillCircle />
                         </ProgressCircle.Track>
                       </ProgressCircle>
-                    </Tooltip.Trigger>
-                    <Tooltip.Content placement="top" className="flex flex-col gap-1 text-xs tabular-nums">
-                      {compacting ? (
-                        <span>{t('chat.compact.inProgress')}</span>
-                      ) : (
-                        <>
-                          <span>{t('chat.context.messages', { count: contextInfo.messageCount })}</span>
-                          <span>{t('chat.context.tokens', { used: contextInfo.estimatedTokens.toLocaleString(), limit: contextInfo.contextLimit.toLocaleString() })}</span>
-                          {contextInfo.autoCompactEnabled && contextInfo.compactBreaker !== 'closed' ? (
-                            // Before the countdown, and instead of it: "0% until
-                            // auto-compact" next to a number that never moves
-                            // reads as a bug in the indicator rather than as
-                            // compaction having given up.
-                            <span className="text-warning">{t('chat.compact.circuitBreakerOpen')}</span>
-                          ) : contextInfo.autoCompactEnabled && contextInfo.autoCompactThreshold > 0 && (
-                            <span>{Math.max(0, Math.round((1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100))}% {t('chat.compact.untilAutoCompact')}</span>
-                          )}
-                          {onCompact && !streaming && (
-                            // eslint-disable-next-line no-restricted-syntax -- a text link inside the tooltip: HeroUI's .button base sets height, padding and background outside the utility layer, so no className can undo them
-                            <button
-                              type="button"
-                              className="mt-0.5 inline-flex h-auto shrink-0 items-center justify-start p-0 text-xs font-normal text-overlay-foreground/70 underline underline-offset-2 outline-none transition-colors hover:text-overlay-foreground"
-                              onClick={onCompact}
-                            >
-                              {t('chat.compact.manual')}
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </Tooltip.Content>
-                  </Tooltip>
+                    </Popover.Trigger>
+                    <Popover.Content placement="top" className="max-w-64">
+                      <Popover.Dialog className="flex flex-col gap-1 text-xs tabular-nums">
+                        {compacting ? (
+                          <span>{t('chat.compact.inProgress')}</span>
+                        ) : (
+                          <>
+                            {/* Whose window this is. A delegated run has its own
+                                model and its own limit, so the same percentage
+                                means a different number of tokens — and the
+                                conversation it was started from is one tap away,
+                                which is exactly when that gets confusing. */}
+                            <span className="text-muted">
+                              {contextInfo.agentKind
+                                ? t('chat.context.forSubAgent', {
+                                  kind: t(`chat.subAgent.${contextInfo.agentKind === 'explore' ? 'explore' : 'agent'}`),
+                                  model: contextInfo.model,
+                                })
+                                : contextInfo.model}
+                            </span>
+                            <span>{t('chat.context.messages', { count: contextInfo.messageCount })}</span>
+                            <span>{t('chat.context.tokens', { used: contextInfo.estimatedTokens.toLocaleString(), limit: contextInfo.contextLimit.toLocaleString() })}</span>
+                            {contextInfo.autoCompactEnabled && contextInfo.compactBreaker !== 'closed' ? (
+                              // Before the countdown, and instead of it: "0% until
+                              // auto-compact" next to a number that never moves
+                              // reads as a bug in the indicator rather than as
+                              // compaction having given up.
+                              <span className="text-warning">{t('chat.compact.circuitBreakerOpen')}</span>
+                            ) : contextInfo.autoCompactEnabled && contextInfo.autoCompactThreshold > 0 && (
+                              <span>{Math.max(0, Math.round((1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100))}% {t('chat.compact.untilAutoCompact')}</span>
+                            )}
+                            {onCompact && !streaming && (
+                              <Button
+                                variant="ghost"
+                                className="mt-1 h-auto justify-start px-0 py-0 text-xs font-normal underline underline-offset-2"
+                                onPress={onCompact}
+                              >
+                                {t('chat.compact.manual')}
+                              </Button>
+                            )}
+                          </>
+                        )}
+                      </Popover.Dialog>
+                    </Popover.Content>
+                  </Popover>
                 )
               })()}
+              {/* TODO: a running sub-agent can be talked to, and this cannot say
+                  it. `steer_conversation` and the whole queue protocol behind it
+                  are done — a message goes into the run's inbox and the loop
+                  takes it between rounds, including one typed while the last
+                  words of an answer are being written. What is missing is a way
+                  to send it: while `streaming` this swaps Send *out* for Stop,
+                  so even with `disabled={false}` there is no submit control at
+                  all.
+
+                  Needs a `steerable` prop that renders both (Stop stops the run,
+                  Send steers it), `sendMessage` routing to `steer_conversation`
+                  when the conversation has a live turn — without touching
+                  `submittingRef`, `streaming` or the optimistic assistant
+                  bubble, since it starts no turn — an optimistic user bubble
+                  that a later snapshot reconciles, and marking that bubble
+                  undelivered when the command answers `Err` (the run had already
+                  stopped reading). Attachments, voice and slash commands stay
+                  hidden in that mode: each needs a turn's context, and steering
+                  is precisely what does not create one.
+
+                  The main conversation must keep the current behaviour — locked
+                  composer, Stop only. Deferred with the rest of the composer
+                  work until the HeroUI Pro change lands. */}
               {streaming ? (
                 <Button
                   isIconOnly
