@@ -1,13 +1,5 @@
 import { createContext, useContext, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
 import { useTheme } from '@heroui/react'
-// highlight.js ships one stylesheet per theme, both writing bare `.hljs*`
-// selectors with no way to scope them from the outside — `@import`ing both into
-// index.css would leave the last one winning in either theme. Pulled in as text
-// so the pair can be swapped at runtime instead, which keeps the rules upstream's
-// rather than copied into ours. Under the dark sheet a light code block renders
-// pale blue on near-white: a contrast ratio of 1.0.
-import hljsLight from 'highlight.js/styles/github.css?inline'
-import hljsDark from 'highlight.js/styles/github-dark.css?inline'
 
 export type ThemePreference = 'system' | 'light' | 'dark'
 export type ResolvedTheme = 'light' | 'dark'
@@ -16,9 +8,11 @@ export type ResolvedTheme = 'light' | 'dark'
 // through `(prefers-color-scheme: dark)`. The inline script in index.html reads
 // the same two — change one and the other has to follow.
 
-const SCHEMES: readonly ResolvedTheme[] = ['light', 'dark']
-
-const HLJS_STYLES: Record<ResolvedTheme, string> = { light: hljsLight, dark: hljsDark }
+// Code highlighting used to be swapped here: highlight.js ships one stylesheet
+// per theme, both writing unscopable `.hljs*` selectors, so the pair had to be
+// held in the document and flipped with `media`. Shiki writes both colours onto
+// every token as custom properties and a single rule picks the side, so the
+// theme change costs nothing and there is nothing left to swap.
 
 /**
  * Narrows whatever is in storage to the three settings the app offers. The hook
@@ -27,25 +21,6 @@ const HLJS_STYLES: Record<ResolvedTheme, string> = { light: hljsLight, dark: hlj
  */
 function asPreference(value: string | undefined): ThemePreference {
   return value === 'light' || value === 'dark' || value === 'system' ? value : 'system'
-}
-
-/**
- * Keeps both highlight.js sheets parsed and flips which one applies. `media`
- * rather than adding and removing the element: switching back is then a flag
- * change, not a re-parse, and neither sheet can win by insertion order.
- */
-function applyHighlightTheme(resolved: ResolvedTheme) {
-  for (const scheme of SCHEMES) {
-    const id = `hljs-theme-${scheme}`
-    let style = document.getElementById(id) as HTMLStyleElement | null
-    if (!style) {
-      style = document.createElement('style')
-      style.id = id
-      style.textContent = HLJS_STYLES[scheme]
-      document.head.append(style)
-    }
-    style.media = scheme === resolved ? 'all' : 'not all'
-  }
 }
 
 type ThemeContextValue = {
@@ -85,8 +60,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       strandedClassCleared.current = true
       document.documentElement.classList.remove(resolved === 'dark' ? 'light' : 'dark')
     }
-
-    applyHighlightTheme(resolved)
   }, [resolved])
 
   const value = useMemo<ThemeContextValue>(

@@ -1,7 +1,9 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { diffLines, parsePatch } from 'diff'
-import hljs from 'highlight.js/lib/common'
+import { useShikiLanguage } from '@/hooks/use-shiki-language'
+import { highlightInline } from '@/lib/shiki'
+import { ShikiCode } from './shiki-code'
 import { fileIconUrl } from '@/lib/file-icon'
 import {
   ArrowUturnCcwLeft, Ban, Check, ChevronUp, Circle, CircleCheck, CircleDashed,
@@ -295,26 +297,6 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   )
 }
 
-function getFileExtension(filePath: string): string {
-  const dot = filePath.lastIndexOf('.')
-  if (dot === -1) return ''
-  return filePath.slice(dot + 1).toLowerCase()
-}
-
-function getHljsLang(ext: string): string | null {
-  const map: Record<string, string> = {
-    js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
-    py: 'python', rb: 'ruby', rs: 'rust', go: 'go', java: 'java',
-    kt: 'kotlin', swift: 'swift', c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
-    cs: 'csharp', php: 'php', sh: 'bash', bash: 'bash', zsh: 'bash',
-    sql: 'sql', html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml',
-    css: 'css', scss: 'scss', less: 'less', json: 'json', yaml: 'yaml',
-    yml: 'yaml', toml: 'ini', ini: 'ini', md: 'markdown', lua: 'lua',
-    r: 'r', dart: 'dart', vue: 'xml', svelte: 'xml',
-  }
-  return map[ext] ?? null
-}
-
 // ---- Diff rendering for file-editing tools (write_file / edit_file / apply_patch) ----
 
 type DiffLineKind = 'add' | 'remove' | 'context' | 'hunk'
@@ -515,36 +497,11 @@ function diffSignClass(kind: DiffLineKind): string | undefined {
   return undefined
 }
 
-/** Extensions highlight.js does not already know by that name. Everything else
- *  (`ts`, `py`, `rs`, `json`, `yml`, …) is an alias it resolves on its own. */
-const EXT_ALIASES: Record<string, string> = {
-  tsx: 'typescript',
-  jsx: 'javascript',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  h: 'c',
-  hpp: 'cpp',
-  vue: 'xml',
-  svelte: 'xml',
-}
-
-function diffLanguage(path: string): string | undefined {
+/** The extension a path ends in, or nothing when it has none. */
+function pathExtension(path: string): string | undefined {
   const ext = path.split('.').pop()?.toLowerCase()
   if (!ext || ext === path.toLowerCase()) return undefined
-  const name = EXT_ALIASES[ext] ?? ext
-  return hljs.getLanguage(name) ? name : undefined
-}
-
-/**
- * Highlights each line on its own rather than the file as a whole.
- *
- * A diff is not a program: its lines come from two versions at once and the
- * context between them is missing, so there is no whole to parse. Line by line
- * a template literal or block comment spanning several lines loses its colour
- * after the first — the price of colouring the other 99%.
- */
-function highlightDiffLine(text: string, language: string): string {
-  return hljs.highlight(text, { language, ignoreIllegals: true }).value
+  return ext
 }
 
 function diffLinePrefix(kind: DiffLineKind): string {
@@ -574,7 +531,12 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
   const fileName = diff.path.split(/[/\\]/).pop() ?? diff.path
   const shown = diff.lines.slice(0, MAX_DIFF_LINES)
   const hidden = diff.lines.length - shown.length
-  const language = diffLanguage(diff.path)
+  // One grammar for the whole card, then every line colours from it. A diff is
+  // not a program — its lines come from two versions with the context between
+  // them missing — so there is nothing to parse as a whole anyway: a template
+  // literal spanning several lines loses its colour after the first, which is
+  // the price of colouring the other 99%.
+  const { language, ready } = useShikiLanguage(pathExtension(diff.path))
 
   return (
     <div data-slot="file-diff" className="rounded-lg bg-default/40 overflow-hidden">
@@ -604,12 +566,12 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
               key={i}
               data-slot="file-diff-line"
               data-kind={line.kind}
-              className={cn('px-3 whitespace-pre', diffLineClass(line.kind, !!language))}
+              className={cn('px-3 whitespace-pre', diffLineClass(line.kind, ready))}
             >
               <span className={diffSignClass(line.kind)}>{diffLinePrefix(line.kind)}</span>
-              {language && line.kind !== 'hunk' && line.text
-                // hljs escapes what it emits, and the sign beside it is ours.
-                ? <span dangerouslySetInnerHTML={{ __html: highlightDiffLine(line.text, language) }} />
+              {ready && line.kind !== 'hunk' && line.text
+                // Shiki escapes what it emits, and the sign beside it is ours.
+                ? <span dangerouslySetInnerHTML={{ __html: highlightInline(line.text, language) }} />
                 : line.text || ' '}
             </div>
           ))}
@@ -625,9 +587,11 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
 }
 
 function ReadFileResult({ result, path }: { result: string; path: string }) {
-  const ext = getFileExtension(path)
-  const lang = getHljsLang(ext)
   const fileName = path.split(/[/\\]/).pop() ?? path
+  // Previously this only *claimed* to be highlighted: it put `language-x hljs`
+  // on the element and never ran a highlighter, so the class bought a
+  // background colour and nothing else.
+  const body = result.length > 2000 ? `${result.slice(0, 2000)}...` : result
 
   return (
     <div className="rounded-lg bg-default/40 overflow-hidden">
@@ -636,11 +600,7 @@ function ReadFileResult({ result, path }: { result: string; path: string }) {
         <span className="font-mono truncate">{fileName}</span>
       </div>
       <div className="max-h-60 overflow-auto">
-        <pre className="text-xs leading-relaxed px-3 py-2">
-          <code className={lang ? `language-${lang} hljs` : ''}>
-            {result.length > 2000 ? `${result.slice(0, 2000)}...` : result}
-          </code>
-        </pre>
+        <ShikiCode code={body} language={pathExtension(path)} />
       </div>
     </div>
   )

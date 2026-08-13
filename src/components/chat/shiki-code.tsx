@@ -1,13 +1,12 @@
-import { useEffect, useState } from 'react'
-
+import { useShikiLanguage } from '@/hooks/use-shiki-language'
+import { highlight } from '@/lib/shiki'
 import { cn } from '@/lib/utils'
-import { PLAIN, ensureLanguage, highlight, isReady, resolveLanguage } from '@/lib/shiki'
 
 /**
  * The highlighted body of a code block.
  *
  * Stands in for Pro's `CodeBlock.Code`, which imports Shiki's full entry point
- * — every grammar it ships, a chunk apiece, plus the oniguruma WASM. This one
+ * — every grammar it ships as a chunk apiece, plus the oniguruma WASM. This one
  * goes through `lib/shiki`, where the grammar list is ours.
  *
  * It keeps Pro's `code-block__code` class: that is where the font, the
@@ -21,23 +20,9 @@ import { PLAIN, ensureLanguage, highlight, isReady, resolveLanguage } from '@/li
  * while this resolves.
  */
 export function ShikiCode({ code, language, className }: { code: string; language?: string | null; className?: string }) {
-  const lang = resolveLanguage(language)
-  const [ready, setReady] = useState(() => isReady(lang))
+  const { language: lang, ready } = useShikiLanguage(language)
 
-  useEffect(() => {
-    if (isReady(lang)) {
-      setReady(true)
-      return
-    }
-    setReady(false)
-    let alive = true
-    void ensureLanguage(lang).then(() => {
-      if (alive) setReady(isReady(lang))
-    })
-    return () => { alive = false }
-  }, [lang])
-
-  if (!ready || lang === PLAIN) {
+  if (!ready) {
     return (
       <div className={cn('code-block__code', className)}>
         <pre><code>{code}</code></pre>

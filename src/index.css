@@ -15,9 +15,6 @@
 @import '@heroui-pro/react/css/components/sidebar.css' layer(components);
 @import '@heroui-pro/react/css/components/markdown.css' layer(components);
 @import '@heroui-pro/react/css/components/code-block.css' layer(components);
-/* highlight.js' themes are not imported here: only one of the pair may apply at
-   a time and neither can be scoped from outside, so `src/lib/theme.tsx` swaps
-   them at runtime. */
 @import '@fontsource-variable/geist';
 
 /* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.
@@ -25,7 +22,6 @@
    darken an app the user asked to keep light. Declared after the import so it
    wins. */
 @custom-variant dark (&:is(.dark *));
-@plugin '@tailwindcss/typography';
 
 /* HeroUI already maps every one of its own tokens to a Tailwind colour utility
    (`themes/shared/theme.css`), including the whole radius scale. Only what the
