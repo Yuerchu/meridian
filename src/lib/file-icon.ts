@@ -53,6 +53,34 @@ function urlFor(iconId: string | undefined): string | undefined {
   return fileName ? urlByFileName[fileName] : undefined
 }
 
+/**
+ * Fence languages whose name is not already an extension the pack knows.
+ *
+ * A markdown fence is labelled by language (`typescript`, `bash`), the icon
+ * pack is keyed by file name (`.ts`, `.sh`) — for most of them the fence label
+ * already *is* an extension and falls through. Only the ones that differ are
+ * listed. A value with a dot is a whole file name rather than an extension,
+ * which is how the pack keys the ones that have no extension at all.
+ */
+const LANGUAGE_FILES: Record<string, string> = {
+  typescript: 'ts', javascript: 'js', python: 'py', ruby: 'rb', rust: 'rs',
+  golang: 'go', csharp: 'cs', 'c++': 'cpp', 'c#': 'cs', shell: 'sh',
+  bash: 'sh', zsh: 'sh', console: 'sh', powershell: 'ps1', markdown: 'md',
+  yml: 'yaml', kotlin: 'kt', objectivec: 'm', dockerfile: '.dockerfile',
+  docker: '.dockerfile', makefile: '.makefile', text: 'txt', plaintext: 'txt',
+  patch: 'diff',
+}
+
+/** The icon for a fenced block's language, by way of the file it would live in. */
+export function languageIconUrl(language: string | null | undefined): string | undefined {
+  if (!language) return undefined
+  const key = language.toLowerCase()
+  const mapped = LANGUAGE_FILES[key] ?? key
+  // A leading dot means the pack keys it by file name, so ask about that name
+  // directly instead of inventing a stem for it.
+  return fileIconUrl(mapped.startsWith('.') ? mapped.slice(1) : `code.${mapped}`)
+}
+
 /** The icon for a path, falling back to the pack's generic file icon. */
 export function fileIconUrl(filePath: string): string | undefined {
   const name = filePath.split(/[/\\]/).pop()?.toLowerCase()

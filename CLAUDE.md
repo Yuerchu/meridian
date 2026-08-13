@@ -105,6 +105,22 @@ pnpm install
 pnpm tauri dev        # Start dev (needs MERIDIAN_API_KEY env var)
 ```
 
+**`@heroui-pro/react` is a stub on npm.** The package published to the registry
+contains nothing but a `postinstall`; the components are staged into it
+afterwards by `hpsetup`, out of band. So any install that *rebuilds*
+`node_modules` — rather than adding to it — leaves the package empty, and every
+Pro import fails at once. Re-run the setup after one:
+
+```bash
+HEROUI_KEY=<key> pnpm dlx hpsetup@latest react --auto
+```
+
+`ls node_modules/@heroui-pro/react/dist/components | wc -l` says which state it
+is in: 68-ish directories means staged, `dist/postinstall` alone means stub.
+Incremental installs are unaffected. `ERR_PNPM_IGNORED_BUILDS` on every install
+is expected — those two build scripts are declined on purpose (see
+`pnpm-workspace.yaml`), and the exit code is 0.
+
 ## Environment Variables
 
 | Variable | Default | Description |

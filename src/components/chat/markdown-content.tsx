@@ -1,11 +1,14 @@
 import React, { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import rehypeHighlight from 'rehype-highlight'
+import { open as openExternal } from '@tauri-apps/plugin-shell'
 import { Check, Copy } from '@gravity-ui/icons'
+import type { Components } from 'react-markdown'
+
+import { CodeBlock as ProCodeBlock } from '@heroui-pro/react/code-block'
+import { Markdown as ProMarkdown } from '@heroui-pro/react/markdown'
 
 import { ActionButton } from '@/components/ui/action-button'
+import { languageIconUrl } from '@/lib/file-icon'
 import { cn } from '@/lib/utils'
 import type { EmojiMap } from './emoji-renderer'
 
@@ -29,57 +32,56 @@ export function CopyButton({ text, className }: { text: string; className?: stri
   )
 }
 
-// After rehype-highlight, children is a tree of React elements, so the code
-// text has to be collected recursively rather than via String(children).
-function extractText(node: React.ReactNode): string {
-  if (typeof node === 'string' || typeof node === 'number') return String(node)
-  if (Array.isArray(node)) return node.map(extractText).join('')
-  if (React.isValidElement(node)) return extractText((node.props as { children?: React.ReactNode }).children)
-  return ''
+function fenceLanguage(className: string | undefined): string {
+  return /language-(\w+)/.exec(className ?? '')?.[1] ?? 'plaintext'
 }
 
-function CodeBlock({ className, children, ...props }: React.HTMLAttributes<HTMLElement>) {
-  const match = /language-(\w+)/.exec(className || '')
-  const lang = match ? match[1] : null
-  const rawCode = extractText(children)
-  const code = rawCode.replace(/\n$/, '')
-
-  // Fenced blocks without a language get no className; they still contain a
-  // trailing newline, while inline code never contains one.
-  if (!className && !rawCode.includes('\n')) {
-    return <code className="px-1.5 py-0.5 bg-default rounded text-xs" {...props}>{children}</code>
+/**
+ * A fenced block, or inline code when it fits on one line.
+ *
+ * The line test comes from Pro's own renderer, and is what the old
+ * `!className && !code.includes('\n')` guess was standing in for: a fence
+ * without a language has no className either, so the two cases were only ever
+ * distinguishable by their newline. The position is exact.
+ *
+ * The header carries the language's file icon rather than spelling the name in
+ * capitals — the icon pack is already loaded for the file tree, and a shape is
+ * quicker to read than `TYPESCRIPT`. The name stays next to it for the
+ * languages whose icon is generic.
+ */
+const CodeBlock: Components['code'] = ({ className, children, node, ...props }) => {
+  const start = node?.position?.start.line
+  if (!start || start === node?.position?.end.line) {
+    return <code className={cn('rounded bg-default px-1.5 py-0.5 text-xs', className)} {...props}>{children}</code>
   }
 
+  const language = fenceLanguage(className)
+  const code = String(children ?? '').replace(/\n$/, '')
+  const icon = languageIconUrl(language)
+
   return (
-    <div className="group relative my-3 rounded-lg overflow-hidden bg-surface border border-border">
-      {/* The copy button is sized down from the default 36px: at full size it
-          sets the height of this strip, and its 24px radius reads as a pill
-          inside an 8px-cornered block. */}
-      <div className="flex items-center justify-between px-3 py-1.5 bg-default/50 text-xs text-muted">
-        <span>{lang ?? 'code'}</span>
-        <CopyButton text={code} className="size-6 rounded-md" />
-      </div>
-      <div className="w-full overflow-x-auto">
-        <pre className="p-3 text-xs leading-relaxed !bg-transparent !m-0 w-fit min-w-full">
-          <code className={className} {...props}>{children}</code>
-        </pre>
-      </div>
-    </div>
+    // Pro's own radius is 16px, which is the composer's — one rung above what a
+    // card inside the transcript may take.
+    <ProCodeBlock className="my-3 rounded-xl">
+      <ProCodeBlock.Header>
+        {icon && <img src={icon} alt="" aria-hidden className="size-4 shrink-0" />}
+        <span className="text-xs text-muted">{language}</span>
+        <ProCodeBlock.CopyButton code={code} className="ms-auto" />
+      </ProCodeBlock.Header>
+      <ProCodeBlock.Code code={code} language={language} />
+    </ProCodeBlock>
   )
 }
 
-export const proseClasses = cn(
-  "text-sm leading-relaxed prose dark:prose-invert prose-sm max-w-none",
-  "prose-p:my-1.5 prose-headings:mt-4 prose-headings:mb-2",
-  // Typography's own first/last reset loses to the heading rules above, so an
-  // answer opening on a heading pushes itself away from whatever introduced it.
-  "[&>:first-child]:mt-0 [&>:last-child]:mb-0",
-  "prose-pre:p-0 prose-pre:bg-transparent prose-pre:my-0",
-  "prose-code:before:content-none prose-code:after:content-none",
-  "prose-table:text-sm prose-th:px-3 prose-th:py-1.5 prose-td:px-3 prose-td:py-1.5",
-  "prose-table:border prose-table:border-border",
-  "prose-th:border prose-th:border-border prose-th:bg-default/50",
-  "prose-td:border prose-td:border-border",
+/**
+ * Pro sets `list-inside`, which tucks a wrapped list item under its own marker,
+ * and sizes `h3` at the body size. Both are fine for a short answer and wrong
+ * for a long one, which is most of what lands here.
+ */
+const markdownClasses = cn(
+  'text-sm leading-relaxed',
+  '[&_ul]:list-outside [&_ul]:ps-5 [&_ol]:list-outside [&_ol]:ps-5',
+  '[&_h3]:text-base',
 )
 
 function preprocessEmojis(content: string, emojiMap?: EmojiMap): string {
@@ -95,16 +97,16 @@ function preprocessMentions(content: string): string {
   return content.replace(/\[@([^\]]*)\((\d+)\)\]/g, '**@$1**')
 }
 
-export const MarkdownContent = React.memo(function MarkdownContent({ content, isStreaming, oneBot, emojiMap, className }: { content: string; isStreaming?: boolean; oneBot?: boolean; emojiMap?: EmojiMap; className?: string }) {
+export const MarkdownContent = React.memo(function MarkdownContent({ content, isStreaming, oneBot, emojiMap, className, blockId }: { content: string; isStreaming?: boolean; oneBot?: boolean; emojiMap?: EmojiMap; className?: string; blockId?: string }) {
   const processed = useMemo(() => {
     let result = preprocessEmojis(content, emojiMap)
     if (oneBot) result = preprocessMentions(result)
     return result
   }, [content, emojiMap, oneBot])
 
-  const components = useMemo(() => ({
-    code: CodeBlock as never,
-    img: ({ alt, src, ...props }: React.ImgHTMLAttributes<HTMLImageElement>) => {
+  const components = useMemo<Partial<Components>>(() => ({
+    code: CodeBlock,
+    img: ({ alt, src, ...props }) => {
       if (alt?.startsWith('sticker:')) {
         return (
           <img
@@ -118,13 +120,31 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, is
       }
       return <img alt={alt} src={src} {...props} />
     },
+    // A link in an answer is a link to the web, and this is a WebView: left
+    // alone it would navigate the app itself to the page, with no way back.
+    a: ({ href, children, ...props }) => {
+      const external = !!href && /^https?:/i.test(href)
+      return (
+        <a
+          href={href}
+          rel="noreferrer noopener"
+          onClick={external ? (e) => { e.preventDefault(); void openExternal(href) } : undefined}
+          {...props}
+        >
+          {children}
+        </a>
+      )
+    },
   }), [])
 
   return (
-    <div className={cn(proseClasses, className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeHighlight]} components={components}>
+    <div className={cn(markdownClasses, className)}>
+      {/* `id` seeds the keys of the memoised blocks, so it only has to be unique
+          between renderers on screen — the key itself already hashes the block's
+          own content. Falls back to a generated one. */}
+      <ProMarkdown components={components} id={blockId}>
         {processed}
-      </ReactMarkdown>
+      </ProMarkdown>
       {isStreaming && (
         <span className="inline-block w-2 h-4 ml-0.5 bg-muted animate-pulse" />
       )}

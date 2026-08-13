@@ -5,6 +5,16 @@
 /* Kept for `shimmer`, `no-scrollbar` and the `data-*` variants; it defines no
    colour tokens of its own, so it cannot collide with the theme above. */
 @import 'shadcn/tailwind.css';
+/* Pro ships its styles per component, and those files are *unlayered* — only
+   the full `@heroui-pro/react/css` bundle declares `@layer components`, and it
+   carries all seventy components. An unlayered rule outranks every layered one,
+   so without the explicit `layer()` here `.context-menu__trigger`'s
+   `display: inline-block` would beat any utility we put on the same element,
+   silently. One line per component we actually use. */
+@import '@heroui-pro/react/css/components/context-menu.css' layer(components);
+@import '@heroui-pro/react/css/components/sidebar.css' layer(components);
+@import '@heroui-pro/react/css/components/markdown.css' layer(components);
+@import '@heroui-pro/react/css/components/code-block.css' layer(components);
 /* highlight.js' themes are not imported here: only one of the pair may apply at
    a time and neither can be scoped from outside, so `src/lib/theme.tsx` swaps
    them at runtime. */

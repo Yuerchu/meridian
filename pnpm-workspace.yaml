@@ -10,7 +10,19 @@ blockExoticSubdeps: true
 strictDepBuilds: true
 ignoredBuiltDependencies:
   - msw
+  # Its postinstall authenticates against the official CDN, which our licence
+  # cannot answer — the component code is staged by `hpsetup` instead, so
+  # letting the script run would only ever fail. Re-run hpsetup after any
+  # install that rebuilds node_modules, or the package is back to a stub.
+  #
+  # hpsetup appends an `allowBuilds` block to this file on every run: it takes
+  # the presence of a pnpm-workspace.yaml to mean a monorepo, and this one only
+  # exists to hold the settings above. pnpm reads no such key, so the block is
+  # inert — delete it when it reappears.
+  - "@heroui-pro/react"
+  # Pulled in by the official `heroui-pro` CLI to keep a GitHub login in the OS
+  # keychain. We never log in that way, so the native build buys nothing.
+  - "@zowe/secrets-for-zowe-sdk"
 trustPolicy: no-downgrade
 trustPolicyIgnoreAfter: 10080
 trustPolicyExclude: []
-allowBuilds: {}
