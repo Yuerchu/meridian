@@ -40,9 +40,8 @@ import {
 // none of which are installed — importing it fails the build outright.
 import { ContextMenu as ProContextMenu } from '@heroui-pro/react/context-menu'
 import { Markdown as ProMarkdown } from '@heroui-pro/react/markdown'
-import { PromptInput as ProPromptInput } from '@heroui-pro/react/prompt-input'
 
-import { isSubmitKey } from '@/hooks/use-coarse-pointer'
+import { Composer } from '@/components/chat/composer'
 
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { MarkdownContent } from '@/components/chat/markdown-content'
@@ -146,35 +145,28 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 function PromptInputProbe() {
   const [value, setValue] = useState('')
   const [submits, setSubmits] = useState(0)
+  const [stops, setStops] = useState(0)
+  const [streaming, setStreaming] = useState(false)
 
   return (
     <div className="space-y-2">
-      <ProPromptInput
+      <Composer
         value={value}
-        onValueChange={setValue}
+        onChange={setValue}
         onSubmit={() => { setSubmits((n) => n + 1); setValue('') }}
-      >
-        <ProPromptInput.Shell>
-          <ProPromptInput.Content>
-            <ProPromptInput.TextArea
-              placeholder="打几个字，试 Enter / Shift+Enter / 组词中的 Enter"
-              // Capture, not bubble: the built-in handler runs first and has
-              // already submitted by the time a bubble handler would see it.
-              onKeyDownCapture={(e) => {
-                if (e.key !== 'Enter' || e.shiftKey) return
-                if (!isSubmitKey(e)) e.stopPropagation()
-              }}
-            />
-          </ProPromptInput.Content>
-          <ProPromptInput.Toolbar>
-            <ProPromptInput.ToolbarEnd>
-              <ProPromptInput.Send />
-            </ProPromptInput.ToolbarEnd>
-          </ProPromptInput.Toolbar>
-        </ProPromptInput.Shell>
-      </ProPromptInput>
-      <p data-slot="probe-submits" className="text-xs text-muted">
-        提交次数：<span data-testid="submit-count">{submits}</span> · 当前值长度：{value.length}
+        onStop={() => { setStops((n) => n + 1); setStreaming(false) }}
+        streaming={streaming}
+        ariaLabel="探测输入框"
+        placeholder="打几个字，试 Enter / Shift+Enter / 组词中的 Enter"
+        toolbarStart={<span data-testid="slot-start" className="text-xs text-muted">工具槽</span>}
+        toolbarEnd={<span data-testid="slot-end" className="text-xs text-muted">右槽</span>}
+      />
+      <p className="text-xs text-muted">
+        提交 <span data-testid="submit-count">{submits}</span> · 停止 <span data-testid="stop-count">{stops}</span>
+        {' · '}
+        <HButton size="sm" variant="ghost" onPress={() => setStreaming((s) => !s)}>
+          {streaming ? '结束流式' : '模拟流式'}
+        </HButton>
       </p>
     </div>
   )
