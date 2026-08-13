@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToSquare, ArrowUp, Copy, Microphone, Paperclip, Scissors, SquareDashedText, StopFill, Xmark } from '@gravity-ui/icons'
+import { ArrowDownToSquare, Copy, Microphone, Paperclip, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, InputGroup, Popover, ProgressCircle, TextField, Tooltip } from '@heroui/react'
+import { Button, Popover, ProgressCircle, Tooltip } from '@heroui/react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -21,11 +21,12 @@ import {
   AttachmentMedia,
   AttachmentTitle,
 } from '@/components/ui/attachment'
-import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
+import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
 import { useAndroidVoiceRecorder } from '@/hooks/use-android-voice-recorder'
 import { useHistoryLevel } from '@/hooks/use-nav'
 import { VoiceButton } from '@/components/ui/voice-button'
+import { Composer } from './composer'
 import { VoiceOverlay } from './voice-overlay'
 import { MobileOptionsMenu } from './toolbar'
 import { ComposerMenu } from './composer-menu'
@@ -152,7 +153,9 @@ export function InputBar({
   const { t } = useTranslation()
   const platform = usePlatform()
   const isAndroid = platform === 'android'
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Filled by Composer once the field exists: Pro spreads incoming props after
+  // its own ref, so one passed down would displace theirs.
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [selectedText, setSelectedText] = useState('')
 
   // Transient one-line notice above the composer ("too short", model missing…)
@@ -193,11 +196,16 @@ export function InputBar({
   // A pinyin or kana candidate lives in the textarea before it has been chosen.
   // Enter is already guarded by `isSubmitKey`, but on a phone the send button is
   // what gets pressed, and it sits next to the candidate bar.
-  const composingRef = useRef(false)
+  // Composer holds Enter back mid-composition and disables Send on an empty
+  // field; what stays here is the caller's own precondition.
   const handleSubmit = useCallback(() => {
-    if (composingRef.current) return
+    if (disabled || !value.trim()) return
     onSubmit()
-  }, [onSubmit])
+  }, [disabled, value, onSubmit])
+
+  const handleFieldReady = useCallback((el: HTMLTextAreaElement | null) => {
+    textareaRef.current = el
+  }, [])
 
   const handleContextMenuOpen = useCallback((open: boolean) => {
     if (open) {
@@ -245,29 +253,6 @@ export function InputBar({
     if (!el) return
     el.select()
   }, [])
-
-  const adjustHeight = useCallback(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
-  }, [])
-
-  useEffect(() => {
-    adjustHeight()
-  }, [value, adjustHeight])
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (isSubmitKey(e)) {
-        e.preventDefault()
-        if (!disabled && value.trim()) {
-          onSubmit()
-        }
-      }
-    },
-    [disabled, value, onSubmit],
-  )
 
   const handleTakePhoto = useCallback(async () => {
     const uri = await api.takePhoto()
@@ -343,79 +328,76 @@ export function InputBar({
             peak={androidVoice.peak}
           />
         )}
-        {voiceNotice && (
-          <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>
-        )}
         <ComposerContextMenu
           enabled={!isCoarsePointer()}
           onOpenChange={handleContextMenuOpen}
           items={menuItems}
         >
-        <TextField fullWidth aria-label={t('chat.placeholder')}>
-        <InputGroup fullWidth className="flex flex-col gap-2 rounded-2xl py-2">
-          {attachedFiles.length > 0 && (
-            <InputGroup.Prefix className="w-full justify-start border-0 px-3.5 py-0">
-              <AttachmentGroup>
-                {attachedFiles.map((f, i) => (
-                  <Attachment key={i} state="done">
-                    <AttachmentMedia>
-                      <Paperclip />
-                    </AttachmentMedia>
-                    <AttachmentContent>
-                      <AttachmentTitle className="max-w-[120px]">{f.name}</AttachmentTitle>
-                    </AttachmentContent>
-                    {onRemoveFile && (
-                      <AttachmentActions>
-                        <AttachmentAction
-                          aria-label={t('chat.removeAttachment', { name: f.name })}
-                          onClick={() => onRemoveFile(i)}
-                          className="hover:text-danger"
-                        >
-                          <Xmark />
-                        </AttachmentAction>
-                      </AttachmentActions>
-                    )}
-                  </Attachment>
-                ))}
-              </AttachmentGroup>
-            </InputGroup.Prefix>
+        <Composer
+          value={value}
+          onChange={onChange}
+          onSubmit={handleSubmit}
+          // Not simply `disabled`: while a reply streams the field stays live,
+          // and only Send turns into Stop.
+          disabled={disabled && !streaming}
+          streaming={streaming}
+          onStop={onStop}
+          ariaLabel={t('chat.placeholder')}
+          placeholder={isAndroid && !value ? t('chat.placeholderVoice') : t('chat.placeholder')}
+          onFieldReady={handleFieldReady}
+          notice={voiceNotice && (
+            <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>
           )}
-          <div className="relative w-full">
-            <InputGroup.TextArea
-              ref={textareaRef}
-              value={value}
-              onChange={(e) => {
-                onChange(e.target.value)
-              }}
-              onKeyDown={handleKeyDown}
-              onCompositionStart={() => { composingRef.current = true }}
-              onCompositionEnd={() => { composingRef.current = false }}
-              placeholder={isAndroid && !value ? t('chat.placeholderVoice') : t('chat.placeholder')}
-              disabled={disabled && !streaming}
-              rows={1}
-              // `flex-none`: the input slot ships `flex-1`, which in this column
-              // layout makes flex-basis, not `adjustHeight`, decide the height.
-              className="min-h-6 max-h-[200px] w-full flex-none resize-none px-3.5 py-0"
+          attachments={attachedFiles.length > 0 && (
+            <AttachmentGroup>
+              {attachedFiles.map((f, i) => (
+                <Attachment key={i} state="done">
+                  <AttachmentMedia>
+                    <Paperclip />
+                  </AttachmentMedia>
+                  <AttachmentContent>
+                    <AttachmentTitle className="max-w-[120px]">{f.name}</AttachmentTitle>
+                  </AttachmentContent>
+                  {onRemoveFile && (
+                    <AttachmentActions>
+                      <AttachmentAction
+                        aria-label={t('chat.removeAttachment', { name: f.name })}
+                        onClick={() => onRemoveFile(i)}
+                        className="hover:text-danger"
+                      >
+                        <Xmark />
+                      </AttachmentAction>
+                    </AttachmentActions>
+                  )}
+                </Attachment>
+              ))}
+            </AttachmentGroup>
+          )}
+          /* Hold-to-talk, as a layer rather than as handlers on the field.
+             While it is up the textarea sees no touches at all, so there is no
+             race with focus, the keyboard, or the text-selection action mode —
+             and an empty field has nothing to select anyway. It disappears the
+             moment there is text, leaving editing untouched.
+
+             `role="button"` is load-bearing beyond semantics: Pro's Shell
+             focuses the field when clicked anywhere that is not a control, and
+             that is the attribute its allowlist looks for. Without it a press
+             here would summon the keyboard. */
+          pressLayer={isAndroid && !value && !disabled && !streaming && onVoiceSend && (
+            <div
+              data-slot="voice-press-layer"
+              role="button"
+              aria-label={t('chat.voice.holdToTalk')}
+              className="absolute inset-0 touch-none select-none"
+              onPointerDown={androidVoice.handlePointerDown}
+              onPointerMove={androidVoice.handlePointerMove}
+              onPointerUp={androidVoice.handlePointerUp}
+              onPointerCancel={androidVoice.handlePointerCancel}
+              onContextMenu={(e) => e.preventDefault()}
             />
-            {/* Hold-to-talk, as a layer rather than as handlers on the field.
-                While it is up the textarea sees no touches at all, so there is
-                no race with focus, the keyboard, or the text-selection action
-                mode — and an empty field has nothing to select anyway. It
-                disappears the moment there is text, leaving editing untouched. */}
-            {isAndroid && !value && !disabled && !streaming && onVoiceSend && (
-              <div
-                data-slot="voice-press-layer"
-                className="absolute inset-0 touch-none select-none"
-                onPointerDown={androidVoice.handlePointerDown}
-                onPointerMove={androidVoice.handlePointerMove}
-                onPointerUp={androidVoice.handlePointerUp}
-                onPointerCancel={androidVoice.handlePointerCancel}
-                onContextMenu={(e) => e.preventDefault()}
-              />
-            )}
-          </div>
-          <InputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
-            {isAndroid ? (
+          )}
+          toolbarStart={
+            isAndroid ? (
               <MobileOptionsMenu
                 assistants={assistants}
                 providers={providers}
@@ -462,8 +444,10 @@ export function InputBar({
                     : undefined
                 }
               />
-            )}
-            <div className="ms-auto flex items-center gap-2 shrink-0">
+            )
+          }
+          toolbarEnd={
+            <>
               <EmojiPicker
                 assistantId={currentAssistantId}
                 onSelect={(syntax) => onChange(value + syntax)}
@@ -600,50 +584,30 @@ export function InputBar({
                   are done — a message goes into the run's inbox and the loop
                   takes it between rounds, including one typed while the last
                   words of an answer are being written. What is missing is a way
-                  to send it: while `streaming` this swaps Send *out* for Stop,
-                  so even with `disabled={false}` there is no submit control at
-                  all.
+                  to send it: while `streaming` Send becomes Stop, so there is no
+                  submit control at all.
 
-                  Needs a `steerable` prop that renders both (Stop stops the run,
-                  Send steers it), `sendMessage` routing to `steer_conversation`
-                  when the conversation has a live turn — without touching
-                  `submittingRef`, `streaming` or the optimistic assistant
-                  bubble, since it starts no turn — an optimistic user bubble
-                  that a later snapshot reconciles, and marking that bubble
-                  undelivered when the command answers `Err` (the run had already
-                  stopped reading). Attachments, voice and slash commands stay
-                  hidden in that mode: each needs a turn's context, and steering
-                  is precisely what does not create one.
+                  Pro has done half of it. `allowSubmitWhileRunning` makes Enter
+                  submit mid-run and keeps Send as Send while there is text — but
+                  then nothing is left to stop the run with, so a steerable
+                  composer also needs its own Stop next to it.
 
-                  The main conversation must keep the current behaviour — locked
-                  composer, Stop only. Deferred with the rest of the composer
-                  work until the HeroUI Pro change lands. */}
-              {streaming ? (
-                <Button
-                  isIconOnly
-                  size="sm"
-                  aria-label={t('chat.stop')}
-                  onClick={onStop}
-                  className="rounded-full"
-                >
-                  <StopFill className="size-3.5" />
-                </Button>
-              ) : (
-                <Button
-                  isIconOnly
-                  size="sm"
-                  aria-label={t('chat.send')}
-                  onClick={handleSubmit}
-                  isDisabled={disabled || !value.trim()}
-                  className="rounded-full"
-                >
-                  <ArrowUp className="size-4" />
-                </Button>
-              )}
-            </div>
-          </InputGroup.Suffix>
-        </InputGroup>
-        </TextField>
+                  What remains is ours: `sendMessage` routing to
+                  `steer_conversation` when the conversation has a live turn —
+                  without touching `submittingRef`, `streaming` or the optimistic
+                  assistant bubble, since it starts no turn — an optimistic user
+                  bubble that a later snapshot reconciles, and marking that
+                  bubble undelivered when the command answers `Err` (the run had
+                  already stopped reading). Attachments, voice and slash commands
+                  stay hidden in that mode: each needs a turn's context, and
+                  steering is precisely what does not create one.
+
+                  The main conversation keeps the current behaviour — Stop only,
+                  which is what `allowSubmitWhileRunning` being off already
+                  gives. */}
+            </>
+          }
+        />
         </ComposerContextMenu>
       </div>
     </div>
