@@ -374,6 +374,16 @@ export const api = {
   voiceDeleteModel: () =>
     invoke<void>('voice_delete_model'),
 
+  /** Decodes and counts the samples, nothing more. Measures what a base64 PCM
+   *  payload actually costs over the bridge — Android has no raw IPC. */
+  voiceProbeEcho: (sampleRate: number, pcm: string) =>
+    invoke<number>('voice_probe_echo', { sampleRate, pcm }),
+
+  /** Android's transcription entry point: capture happens in the WebView, so
+   *  the samples arrive as base64 16-bit PCM rather than from a Rust session. */
+  voiceTranscribePcm: (sampleRate: number, pcm: string) =>
+    invoke<VoiceTranscript>('voice_transcribe_pcm', { sampleRate, pcm }),
+
   // Platform / Android file access
   getPlatform: () =>
     invoke<string>('get_platform'),

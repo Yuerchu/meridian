@@ -84,9 +84,9 @@ export function AndroidFileAccess() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted">
+        <p className="block text-xs font-medium text-muted">
           {t('settings.fileAccess.safDirs')}
-        </label>
+        </p>
         {safRoots.length === 0 ? (
           <p className="text-xs text-muted">
             {t('settings.fileAccess.safEmpty')}

@@ -16,6 +16,16 @@ val tauriProperties = Properties().apply {
 android {
     compileSdk = 36
     namespace = "cn.yuxiaoqiu.meridian"
+
+    // Prebuilt sherpa-onnx libraries for offline voice input, fetched by
+    // scripts/fetch-sherpa-android.sh. A second source directory rather than
+    // src/main/jniLibs, which Tauri writes libmeridian_lib.so into — mixing
+    // downloaded artefacts with build output there leaves stale .so files
+    // nobody can attribute. AGP merges the directories and skips this one when
+    // it is absent, so a build without the fetch still succeeds; it just has no
+    // speech recognition. Only arm64-v8a is populated: SHERPA_ONNX_LIB_DIR is a
+    // single path, so a multi-ABI build would link the others wrongly.
+    sourceSets["main"].jniLibs.srcDir("../../../target/sherpa-onnx-android/jniLibs")
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
         applicationId = "cn.yuxiaoqiu.meridian"

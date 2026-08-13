@@ -1,6 +1,6 @@
 import {
   Bulb, BroadcastSignal, CircleInfo, Cloud, FaceRobot, FaceSmile, LogoMcp,
-  Microphone, Sliders, Sparkles, Wrench,
+  Flask, Microphone, Sliders, Sparkles, Wrench,
 } from '@gravity-ui/icons'
 
 /**
@@ -14,7 +14,7 @@ import {
  */
 export type SettingsTab =
   | 'provider' | 'assistants' | 'emoji' | 'tools' | 'skills' | 'mcp'
-  | 'memories' | 'voice' | 'onebot' | 'general' | 'about'
+  | 'memories' | 'voice' | 'onebot' | 'general' | 'developer' | 'about'
 
 export interface SettingsTabDef {
   id: SettingsTab
@@ -33,19 +33,22 @@ export const settingsTabs: SettingsTabDef[] = [
   { id: 'voice', labelKey: 'settings.voice', icon: Microphone },
   { id: 'onebot', labelKey: 'settings.onebot', icon: BroadcastSignal },
   { id: 'general', labelKey: 'settings.general', icon: Sliders },
+  { id: 'developer', labelKey: 'settings.developer', icon: Flask },
   { id: 'about', labelKey: 'settings.about', icon: CircleInfo },
 ]
 
 /**
- * Android has neither a OneBot connection nor microphone capture, so those two
- * panels would open onto nothing there.
+ * Android has no OneBot connection, so that panel would open onto nothing
+ * there. Voice input is not in the same position: recording happens in the
+ * WebView, and the model has to be downloaded from this screen before anything
+ * can be transcribed.
  *
  * `platform` is null for the first frame — `usePlatform` resolves over IPC — and
- * that frame shows the full list. Filtering on an unknown platform would hide
- * two rows and then pop them back in, which reads worse than one frame of a
- * list nobody has looked at yet.
+ * that frame shows the full list. Filtering on an unknown platform would hide a
+ * row and then pop it back in, which reads worse than one frame of a list
+ * nobody has looked at yet.
  */
 export function visibleSettingsTabs(platform: string | null): SettingsTabDef[] {
   if (platform !== 'android') return settingsTabs
-  return settingsTabs.filter((tab) => tab.id !== 'onebot' && tab.id !== 'voice')
+  return settingsTabs.filter((tab) => tab.id !== 'onebot')
 }

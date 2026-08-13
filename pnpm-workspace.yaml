@@ -1,0 +1,16 @@
+nodeLinker: hoisted
+
+minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  - react-doctor
+  - deslop-js
+  - oxlint-plugin-react-doctor
+
+blockExoticSubdeps: true
+strictDepBuilds: true
+ignoredBuiltDependencies:
+  - msw
+trustPolicy: no-downgrade
+trustPolicyIgnoreAfter: 10080
+trustPolicyExclude: []
+allowBuilds: {}

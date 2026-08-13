@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AnimatePresence, motion } from 'motion/react'
 import { Bulb, ChevronRight, ChevronsRight, Compass, Cpu, FaceRobot, Hammer, Paperclip, Plus, Thunderbolt } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 
@@ -404,15 +403,10 @@ export function ComposerMenu(props: ComposerMenuProps) {
             })}
           </div>
 
-          <AnimatePresence initial={false}>
-            {showSubPanel && (
-              <motion.div
+          {showSubPanel && (
+              <div
                 data-slot="composer-menu-detail"
-                initial={{ width: 0, opacity: 0 }}
-                animate={{ width: 'auto', opacity: 1 }}
-                exit={{ width: 0, opacity: 0 }}
-                transition={{ duration: 0.12 }}
-                className="overflow-hidden border-l border-border"
+                className="w-60 overflow-hidden border-l border-border"
               >
                 <div className="w-60 h-full overflow-y-auto p-1">
                   {hoveredEntry?.loading ? (
@@ -464,9 +458,8 @@ export function ComposerMenu(props: ComposerMenuProps) {
                     })
                   )}
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              </div>
+          )}
         </div>
       </Popover.Content>
     </Popover>

@@ -1,4 +1,4 @@
-import { useEffect, useSyncExternalStore } from 'react'
+import { useEffect, useState, useSyncExternalStore } from 'react'
 import { listen } from '@tauri-apps/api/event'
 import { api } from '@/api'
 
@@ -40,23 +40,41 @@ export function useImeBottom(): number {
 }
 
 export function useAndroidInsets() {
+  const [platform, setPlatform] = useState<string | null>(null)
+
   useEffect(() => {
     let disposed = false
-    let removeScrollLock: (() => void) | null = null
+    void (async () => {
+      const p = await api.getPlatform().catch(() => null)
+      if (!disposed) setPlatform(p)
+    })()
+    return () => { disposed = true }
+  }, [])
 
-    api.getPlatform().then((p) => {
-      if (p !== 'android' || disposed) return
-      api.getWindowInsets().then((i) => { if (!disposed) applyInsets(i) }).catch(() => {})
+  useEffect(() => {
+    if (platform !== 'android') return
+    let disposed = false
+    let unlistenInsets: (() => void) | null = null
 
-      const resetScroll = () => { window.scrollTo(0, 0) }
-      window.addEventListener('scroll', resetScroll, { passive: true })
-      removeScrollLock = () => window.removeEventListener('scroll', resetScroll)
-    })
-    const un = listen<NativeInsets>('insets-changed', (e) => applyInsets(e.payload))
+    void (async () => {
+      const unlisten = await listen<NativeInsets>('insets-changed', (e) => applyInsets(e.payload))
+        .catch(() => null)
+      if (disposed) {
+        unlisten?.()
+        return
+      }
+      unlistenInsets = unlisten
+
+      const insets = await api.getWindowInsets().catch(() => null)
+      if (insets && !disposed) applyInsets(insets)
+    })()
+
+    const resetScroll = () => { window.scrollTo(0, 0) }
+    window.addEventListener('scroll', resetScroll, { passive: true })
     return () => {
       disposed = true
-      un.then((fn) => fn())
-      removeScrollLock?.()
+      unlistenInsets?.()
+      window.removeEventListener('scroll', resetScroll)
     }
-  }, [])
+  }, [platform])
 }

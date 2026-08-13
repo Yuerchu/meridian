@@ -114,20 +114,20 @@ impl ApprovalWaiters {
 /// load (~3.6s) naturally deduplicates: the prewarm task holds the lock while
 /// loading and a concurrent transcribe call just waits on it, then hits the
 /// cache instead of loading again.
-#[cfg(not(target_os = "android"))]
 pub(crate) struct VoiceState {
     pub(crate) inner: Arc<Mutex<VoiceInner>>,
     pub(crate) engine: Arc<Mutex<Option<Arc<crate::voice::engine::Engine>>>>,
 }
 
-#[cfg(not(target_os = "android"))]
 #[derive(Default)]
 pub(crate) struct VoiceInner {
+    /// Desktop only: Android records in the WebView and posts the finished
+    /// samples over, so there is no open capture session to hold on to.
+    #[cfg(not(target_os = "android"))]
     pub(crate) session: Option<crate::voice::capture::RecordingSession>,
     pub(crate) download: Option<CancellationToken>,
 }
 
-#[cfg(not(target_os = "android"))]
 impl VoiceState {
     pub(crate) fn new() -> Self {
         VoiceState {

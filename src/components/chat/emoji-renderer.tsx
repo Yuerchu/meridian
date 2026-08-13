@@ -14,24 +14,22 @@ export function useEmojiMap(assistantId: string | null) {
     let cancelled = false
 
     async function load() {
-      const packs = await api.listAssistantEmojiPacks(assistantId!)
-      if (cancelled || packs.length === 0) { setMap({}); return }
-
-      const allEmojis: Emoji[] = []
-      for (const pack of packs) {
-        const emojis = await api.listEmojis(pack.id)
-        allEmojis.push(...emojis)
+      try {
+        const packs = await api.listAssistantEmojiPacks(assistantId!)
+        if (cancelled) return
+        const emojiGroups = await Promise.all(packs.map((pack) => api.listEmojis(pack.id)))
+        if (cancelled) return
+        const allEmojis = emojiGroups.flat()
+        const entries = await Promise.all(allEmojis.map(async (emoji) => (
+          [emoji.name, { emoji, url: await api.getEmojiFileUrl(emoji.id) }] as const
+        )))
+        if (!cancelled) setMap(Object.fromEntries(entries))
+      } catch {
+        if (!cancelled) setMap({})
       }
-
-      const newMap: EmojiMap = {}
-      for (const e of allEmojis) {
-        const url = await api.getEmojiFileUrl(e.id)
-        newMap[e.name] = { emoji: e, url }
-      }
-      if (!cancelled) setMap(newMap)
     }
 
-    load()
+    void load()
     return () => { cancelled = true }
   }, [assistantId])
 

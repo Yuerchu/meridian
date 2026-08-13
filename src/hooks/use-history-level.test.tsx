@@ -128,6 +128,30 @@ describe('useHistoryLevel', () => {
     unmount()
   })
 
+  it('uses the latest close callback without pushing another history level', async () => {
+    const first = vi.fn()
+    const latest = vi.fn()
+    const { rerender, unmount } = render(
+      <NavProvider value={STACK_NAV}>
+        <Level open onClose={first} />
+      </NavProvider>,
+    )
+    expect(useNavStore.getState().depth).toBe(1)
+
+    rerender(
+      <NavProvider value={STACK_NAV}>
+        <Level open onClose={latest} />
+      </NavProvider>,
+    )
+    expect(useNavStore.getState().depth).toBe(1)
+
+    await act(async () => { history.fake.go(-1) })
+
+    expect(first).not.toHaveBeenCalled()
+    expect(latest).toHaveBeenCalledTimes(1)
+    unmount()
+  })
+
   it('releases the level on unmount without dismissing', async () => {
     const onClosed = vi.fn()
     const { getByTestId, unmount } = render(<Harness onClosed={onClosed} />)

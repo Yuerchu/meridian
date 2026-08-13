@@ -1,10 +1,12 @@
 import fs from 'node:fs'
 import path from 'path'
+import { fileURLToPath } from 'node:url'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 
 const host = process.env.TAURI_DEV_HOST
+const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
 /**
  * Drops the parts of the Material Icon Theme manifest this app cannot use.
@@ -26,7 +28,7 @@ function trimIconManifest(): Plugin {
     load(id) {
       if (id !== virtualId) return null
       const manifest = JSON.parse(
-        fs.readFileSync(path.resolve(__dirname, 'node_modules', source), 'utf8'),
+        fs.readFileSync(path.resolve(rootDir, 'node_modules', source), 'utf8'),
       )
       const { iconDefinitions, fileExtensions, fileNames, file } = manifest
       return `export default ${JSON.stringify({ iconDefinitions, fileExtensions, fileNames, file })}`
@@ -39,7 +41,7 @@ export default defineConfig({
   clearScreen: false,
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
+      '@': path.resolve(rootDir, './src'),
     },
   },
   build: {

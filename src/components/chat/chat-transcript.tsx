@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
-import { motion } from 'motion/react'
+import { LazyMotion, domAnimation } from 'motion/react'
+import * as m from 'motion/react-m'
 
 import { useImeBottom } from '@/hooks/use-android-insets'
 import {
@@ -16,7 +17,10 @@ import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import { answerAnchorId, type Turn } from '@/lib/turns'
 
-const MotionMessageScrollerItem = motion.create(MessageScrollerItem)
+// `m.create`, not `motion.create`: the full `motion` proxy drags every DOM
+// feature into the bundle. The reveal below only tweens opacity and y, which
+// `domAnimation` covers -- no layout projection, drag or gestures here.
+const MotionMessageScrollerItem = m.create(MessageScrollerItem)
 
 function ImeScrollSync() {
   const ime = useImeBottom()
@@ -103,59 +107,61 @@ export function ChatTranscript({
   const lastTurn = turns[turns.length - 1]
 
   return (
-    <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={48}>
-      <ImeScrollSync />
-      <AnswerSettle streaming={streaming} anchorId={lastTurn ? answerAnchorId(lastTurn.id) : null} />
-      <MessageScroller className="flex-1 min-h-0">
-        <MessageScrollerViewport>
-          <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
-            {leading}
-            {turns.map((turn, i) => {
-              const isLastTurn = i === turns.length - 1
-              const turnEl = (
-                <TurnItem
-                  turn={turn}
-                  conversationId={conversationId}
-                  isLastTurn={isLastTurn}
-                  streaming={streaming}
-                  onDelete={onDelete}
-                  onRegenerate={onRegenerate}
-                  onEdit={onEdit}
-                  onRate={onRate}
-                  isOneBot={isOneBot}
-                  emojiMap={emojiMap}
-                  senderNames={senderNames}
-                  assistantAvatar={assistantAvatar}
-                />
-              )
-              // Turns hold many messages each, so the reveal animation covers fewer
-              // items than the old per-message window did.
-              if (i >= turns.length - 2) {
-                return (
-                  <MotionMessageScrollerItem
-                    key={turn.id}
-                    messageId={turn.id}
-                    scrollAnchor={turn.userMessage != null}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
-                  >
-                    {turnEl}
-                  </MotionMessageScrollerItem>
+    <LazyMotion features={domAnimation}>
+      <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor" scrollPreviousItemPeek={48}>
+        <ImeScrollSync />
+        <AnswerSettle streaming={streaming} anchorId={lastTurn ? answerAnchorId(lastTurn.id) : null} />
+        <MessageScroller className="flex-1 min-h-0">
+          <MessageScrollerViewport>
+            <MessageScrollerContent className="max-w-4xl mx-auto px-4 py-6 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
+              {leading}
+              {turns.map((turn, i) => {
+                const isLastTurn = i === turns.length - 1
+                const turnEl = (
+                  <TurnItem
+                    turn={turn}
+                    conversationId={conversationId}
+                    isLastTurn={isLastTurn}
+                    streaming={streaming}
+                    onDelete={onDelete}
+                    onRegenerate={onRegenerate}
+                    onEdit={onEdit}
+                    onRate={onRate}
+                    isOneBot={isOneBot}
+                    emojiMap={emojiMap}
+                    senderNames={senderNames}
+                    assistantAvatar={assistantAvatar}
+                  />
                 )
-              }
-              return (
-                <MessageScrollerItem key={turn.id} messageId={turn.id} scrollAnchor={turn.userMessage != null}>
-                  {turnEl}
-                </MessageScrollerItem>
-              )
-            })}
-            {trailing}
-            {emptyState}
-          </MessageScrollerContent>
-        </MessageScrollerViewport>
-        <MessageScrollerButton aria-label={scrollToBottomLabel} />
-      </MessageScroller>
-    </MessageScrollerProvider>
+                // Turns hold many messages each, so the reveal animation covers fewer
+                // items than the old per-message window did.
+                if (i >= turns.length - 2) {
+                  return (
+                    <MotionMessageScrollerItem
+                      key={turn.id}
+                      messageId={turn.id}
+                      scrollAnchor={turn.userMessage != null}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.28, ease: [0.23, 1, 0.32, 1] }}
+                    >
+                      {turnEl}
+                    </MotionMessageScrollerItem>
+                  )
+                }
+                return (
+                  <MessageScrollerItem key={turn.id} messageId={turn.id} scrollAnchor={turn.userMessage != null}>
+                    {turnEl}
+                  </MessageScrollerItem>
+                )
+              })}
+              {trailing}
+              {emptyState}
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <MessageScrollerButton aria-label={scrollToBottomLabel} />
+        </MessageScroller>
+      </MessageScrollerProvider>
+    </LazyMotion>
   )
 }

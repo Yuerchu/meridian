@@ -268,6 +268,11 @@ jobs:
         run: |
           NDK=$ANDROID_NDK_LATEST_HOME
           TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin
+          # Both the build script and the packaging step read this: gradle
+          # forwards nothing to cargo but the environment it was given, and the
+          # jniLibs source directory added in app/build.gradle.kts points at the
+          # same place. Only arm64-v8a — the variable holds one path.
+          export SHERPA_ONNX_LIB_DIR=$(bash scripts/fetch-sherpa-android.sh arm64-v8a)
           export CC_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android34-clang
           export CXX_aarch64_linux_android=$TOOLCHAIN/aarch64-linux-android34-clang++
           export AR_aarch64_linux_android=$TOOLCHAIN/llvm-ar

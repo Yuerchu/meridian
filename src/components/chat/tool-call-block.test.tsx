@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ToolCallBlock } from './tool-call-block'
 import { expectExpanded } from '@/test/disclosure'
 import i18n from '@/i18n'
+import { api } from '@/api'
 import type { ToolCallDisplay } from '@/types'
 
 // Resolved rather than bare: the cards attach a `.catch` to turn a rejected
@@ -166,6 +167,10 @@ describe('ToolCallBlock file-edit diff rendering', () => {
 /// written off. An empty card would leave the user reading a question with no
 /// form, no answer, and no reason given.
 describe('the interactive cards say what became of them', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   const CARDS = [
     { name: 'ask_user', args: { questions: [{ id: 'q1', question: 'Which one?' }] } },
     { name: 'enter_plan', args: { reason: 'this is a big change' } },
@@ -295,5 +300,31 @@ describe('the interactive cards say what became of them', () => {
       />,
     )
     expect(container.querySelectorAll('.animate-spin')).toHaveLength(1)
+  })
+
+  it('does not deny a tool while Enter is confirming IME composition', async () => {
+    const user = userEvent.setup()
+    render(<ToolCallBlock data={toolCall('run_command', { command: 'rm -rf build' })} />)
+    await user.click(screen.getByRole('button', { name: i18n.t('chat.tool.deny') }))
+
+    const input = screen.getByPlaceholderText(i18n.t('chat.tool.denyReasonPlaceholder'))
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    expect(api.denyToolCall).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: false })
+    expect(api.denyToolCall).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not send plan feedback while Enter is confirming IME composition', async () => {
+    const user = userEvent.setup()
+    render(<ToolCallBlock data={toolCall('exit_plan', { plan: '# Plan' })} />)
+    await user.click(screen.getByRole('button', { name: i18n.t('chat.plan.revise') }))
+
+    const input = screen.getByPlaceholderText(i18n.t('chat.plan.feedbackPlaceholder'))
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: true })
+    expect(api.denyToolCall).not.toHaveBeenCalled()
+
+    fireEvent.keyDown(input, { key: 'Enter', isComposing: false })
+    expect(api.denyToolCall).toHaveBeenCalledTimes(1)
   })
 })

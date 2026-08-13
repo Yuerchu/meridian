@@ -148,8 +148,7 @@ export default function ScrollLab() {
   const { resolvedTheme, setTheme } = useAppTheme()
   const [messages, setMessages] = useState<Message[]>([])
   const [streaming, setStreaming] = useState(false)
-  // Only ever read through the updater, so the value itself is never rendered.
-  const [, setChunk] = useState(0)
+  const chunkRef = useRef(0)
   const rootRef = useRef<HTMLDivElement>(null)
   const [readout, setReadout] = useState('')
   const [results, setResults] = useState<ScenarioResult[] | null>(null)
@@ -168,7 +167,7 @@ export default function ScrollLab() {
   const reset = useCallback(() => {
     setMessages([])
     setStreaming(false)
-    setChunk(0)
+    chunkRef.current = 0
     setGeneration((g) => g + 1)
   }, [])
 
@@ -186,19 +185,20 @@ export default function ScrollLab() {
     }
     setMessages(seeded)
     setStreaming(false)
-    setChunk(0)
+    chunkRef.current = 0
   }, [])
 
   /** `long` may be a repeat count: 1 is roughly one screen, 3 is well past it,
    *  which is the case where the anchored viewport has no room left to give. */
   const sendUser = useCallback((long: boolean | number = false) => {
     const repeat = long === true ? 1 : long === false ? 0 : long
+    const id = nextId('temp-user')
     setMessages((prev) => [
       ...prev,
       message({
         // Same shape as the optimistic row `chat-view` inserts before the
         // backend has persisted anything.
-        id: `temp-user-${seq += 1}`,
+        id,
         role: 'user',
         content: repeat === 0
           ? SHORT_QUESTION
@@ -207,7 +207,7 @@ export default function ScrollLab() {
       }),
     ])
     setStreaming(true)
-    setChunk(0)
+    chunkRef.current = 0
   }, [])
 
   const startAssistant = useCallback(() => {
@@ -219,19 +219,17 @@ export default function ScrollLab() {
   }, [])
 
   const streamChunk = useCallback((index?: number) => {
-    setChunk((c) => {
-      const at = index ?? c
-      const text = ANSWER_CHUNKS[at % ANSWER_CHUNKS.length]
-      setMessages((prev) => withLastAssistant(prev, (m) => {
-        const blocks = m._blocks ?? []
-        const last = blocks[blocks.length - 1]
-        if (last?.type === 'text') {
-          return { ...m, _blocks: [...blocks.slice(0, -1), { type: 'text', text: last.text + text }] }
-        }
-        return appendBlock(m, { type: 'text', text })
-      }))
-      return at + 1
-    })
+    const at = index ?? chunkRef.current
+    chunkRef.current = at + 1
+    const text = ANSWER_CHUNKS[at % ANSWER_CHUNKS.length]
+    setMessages((prev) => withLastAssistant(prev, (m) => {
+      const blocks = m._blocks ?? []
+      const last = blocks[blocks.length - 1]
+      if (last?.type === 'text') {
+        return { ...m, _blocks: [...blocks.slice(0, -1), { type: 'text', text: last.text + text }] }
+      }
+      return appendBlock(m, { type: 'text', text })
+    }))
   }, [])
 
   const streamAll = useCallback(() => {

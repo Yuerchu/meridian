@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef } from 'react'
+import { createContext, useCallback, useContext, useEffect, useEffectEvent, useId, useMemo, useRef } from 'react'
 import { useStore } from 'zustand'
 
 import { goBack, pushHistoryLevel } from '@/lib/history-bridge'
@@ -116,10 +116,9 @@ export function useHistoryLevel(isOpen: boolean, onClose: () => void): void {
   const id = useId()
 
   const registeredRef = useRef(false)
-  // Read through refs so that a caller passing an inline arrow does not make
-  // this effect re-run and re-push on every render.
-  const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
+  // An inline callback must stay fresh without becoming an effect dependency:
+  // re-running this effect while open would re-push the same history level.
+  const closeCurrent = useEffectEvent(onClose)
 
   useEffect(() => {
     if (mode !== 'stack') return
@@ -131,7 +130,7 @@ export function useHistoryLevel(isOpen: boolean, onClose: () => void): void {
         id,
         dismiss: () => {
           registeredRef.current = false
-          onCloseRef.current()
+          closeCurrent()
         },
       })
       pushHistoryLevel(useNavStore.getState().depth)

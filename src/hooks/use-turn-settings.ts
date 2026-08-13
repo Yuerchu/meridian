@@ -1,0 +1,237 @@
+import { useCallback, useEffect, useState } from 'react'
+import { api } from '@/api'
+import { useConversationStore } from '@/stores/conversation-store'
+import { coerceThinkingLevel } from '@/lib/thinking'
+import type { Assistant, ChatMode, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
+
+export interface TurnSettings {
+  assistants: Assistant[]
+  providers: Provider[]
+  selectedAssistant: Assistant | undefined
+  selectedAssistantId: string | null
+  selectedModelId: string | null
+  selectedProviderId: string | null
+  thinkingLevel: ThinkingLevel
+  fastMode: boolean
+  mode: ChatMode
+  acceptEdits: boolean
+  capabilities: ProviderCapabilities | null
+  onSelectAssistant: (id: string) => void
+  onSelectModel: (modelId: string, providerId: string) => void
+  onSelectThinkingLevel: (level: ThinkingLevel) => void
+  onToggleFast: (next: boolean) => void
+  onSelectMode: (next: ChatMode) => void
+  onToggleAcceptEdits: (next: boolean) => void
+}
+
+/**
+ * Everything the toolbar decides about *how* the next turn is sent: which
+ * assistant and model answer it, how hard they think, and what they are allowed
+ * to touch.
+ *
+ * These live together because they are not independent — the model decides
+ * which thinking tiers exist, and the conversation decides the model. Splitting
+ * them apart would mean re-deriving that chain in three places.
+ */
+export function useTurnSettings(conversationId: string): TurnSettings {
+  // TODO: every read below goes to `s.conversations`, which is the sidebar's
+  // list — and a sub-agent's conversation is filtered out of it on purpose
+  // (`db::ops::conversation::list_conversations`). Opened from a `run_agent`
+  // card, this view therefore reads null for all of them and runs on defaults:
+  // no assistant, work mode, accept-edits off. The snapshot already carries the
+  // whole conversation and `loadMessages` keeps only `compact_cursor`.
+  //
+  // Fix is a `conversationDetails: Record<string, Conversation>` filled from the
+  // snapshot plus a `conversationById` selector these fall back through — and
+  // the same selector at `App.tsx`'s `activeConversation` (header title) and
+  // `use-global-event-listener.ts`'s notification title, which have the same
+  // hole. Not `conversations.push(...)`: that array *is* the sidebar.
+  //
+  // Deferred with the rest of the navigation work until the HeroUI Pro change
+  // lands, since it is the layer that will move.
+  const conversationAssistantId = useConversationStore(
+    (s) => s.conversations.find((c) => c.id === conversationId)?.assistant_id ?? null,
+  )
+  // Kept as two primitive selectors: returning an object here would allocate a
+  // fresh reference on every store update and re-render on each one.
+  const conversationThinkingLevel = useConversationStore(
+    (s) => s.conversations.find((c) => c.id === conversationId)?.thinking_level ?? null,
+  )
+  const conversationFastMode = useConversationStore(
+    (s) => (s.conversations.find((c) => c.id === conversationId)?.fast_mode ?? 0) !== 0,
+  )
+  const conversationMode = useConversationStore(
+    (s) => (s.conversations.find((c) => c.id === conversationId)?.mode ?? 'work') as ChatMode,
+  )
+  const conversationAcceptEdits = useConversationStore(
+    (s) => (s.conversations.find((c) => c.id === conversationId)?.accept_edits ?? 0) !== 0,
+  )
+  const refreshConversations = useConversationStore((s) => s.refreshConversations)
+  const storeSetError = useConversationStore((s) => s.setError)
+
+  const [assistants, setAssistants] = useState<Assistant[]>([])
+  const [providers, setProviders] = useState<Provider[]>([])
+  const [selectedAssistantId, setSelectedAssistantId] = useState<string | null>(null)
+  const [selectedModelId, setSelectedModelId] = useState<string | null>(null)
+  const [selectedProviderId, setSelectedProviderId] = useState<string | null>(null)
+  const [thinkingLevel, setThinkingLevel] = useState<ThinkingLevel>('default')
+  const [fastMode, setFastMode] = useState(false)
+  const [mode, setMode] = useState<ChatMode>('work')
+  const [acceptEdits, setAcceptEdits] = useState(false)
+  const [capabilities, setCapabilities] = useState<ProviderCapabilities | null>(null)
+
+  useEffect(() => {
+    Promise.all([api.listAssistants(), api.listProviders()]).then(([a, p]) => {
+      setAssistants(a)
+      setProviders(p)
+    })
+  }, [])
+
+  // Selection follows the conversation's bound assistant; falls back to the
+  // global default only when the conversation has no (or a dangling) binding.
+  useEffect(() => {
+    if (assistants.length === 0) return
+    const bound = conversationAssistantId
+      ? assistants.find((x) => x.id === conversationAssistantId)
+      : undefined
+    const effective = bound ?? assistants.find((x) => x.is_default === 1) ?? assistants[0]
+    if (effective) {
+      setSelectedAssistantId(effective.id)
+      setSelectedModelId(effective.model_id ?? null)
+      setSelectedProviderId(effective.provider_id ?? null)
+    }
+  }, [conversationId, conversationAssistantId, assistants])
+
+  const onSelectAssistant = useCallback(
+    (id: string) => {
+      setSelectedAssistantId(id)
+      const a = assistants.find((x) => x.id === id)
+      if (a?.model_id) setSelectedModelId(a.model_id)
+      if (a?.provider_id) setSelectedProviderId(a.provider_id)
+      // Persist the explicit switch so the binding survives conversation changes
+      api.setConversationAssistant(conversationId, id)
+        .then(() => refreshConversations())
+        .catch(() => { /* selection still applies locally for this session */ })
+    },
+    [assistants, conversationId, refreshConversations],
+  )
+
+  const onSelectModel = useCallback((modelId: string, providerId: string) => {
+    setSelectedModelId(modelId)
+    setSelectedProviderId(providerId)
+  }, [])
+
+  useEffect(() => {
+    if (!selectedProviderId || !selectedModelId) {
+      // Clearing matters: keeping the previous model's capabilities would leave
+      // the toolbar offering tiers the current selection may not support.
+      setCapabilities(null)
+      return
+    }
+    api.getProviderCapabilities(selectedProviderId, selectedModelId)
+      .then(setCapabilities)
+      .catch(() => setCapabilities(null))
+  }, [selectedProviderId, selectedModelId])
+
+  // Seed from the conversation's stored preferences on switch only. Keyed on
+  // conversationId alone so a background refreshConversations() can't clobber
+  // an edit the user just made.
+  useEffect(() => {
+    setThinkingLevel((conversationThinkingLevel as ThinkingLevel | null) ?? 'default')
+    setFastMode(conversationFastMode)
+    // `mode` is deliberately absent: unlike the two above it tracks the stored
+    // value continuously (see below), because the backend changes it on its own
+    // when a plan is approved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed-on-switch; see comment
+  }, [conversationId])
+
+  // Model switch: drop to a tier the new model actually accepts. In-memory
+  // only -- the stored preference keeps the user's original intent so switching
+  // back to a more capable model restores it.
+  useEffect(() => {
+    if (!capabilities) return
+    setThinkingLevel((cur) => coerceThinkingLevel(cur, capabilities))
+    if (capabilities.supports_fast !== true) setFastMode(false)
+  }, [capabilities])
+
+  const onSelectThinkingLevel = useCallback((level: ThinkingLevel) => {
+    setThinkingLevel(level)
+    api.setConversationReasoningPrefs(conversationId, level === 'default' ? null : level, fastMode)
+      .then(() => refreshConversations())
+      .catch(() => { /* selection still applies locally for this session */ })
+  }, [conversationId, fastMode, refreshConversations])
+
+  const onToggleFast = useCallback((next: boolean) => {
+    setFastMode(next)
+    api.setConversationReasoningPrefs(
+      conversationId,
+      thinkingLevel === 'default' ? null : thinkingLevel,
+      next,
+    )
+      .then(() => refreshConversations())
+      .catch(() => { /* toggle still applies locally for this session */ })
+  }, [conversationId, thinkingLevel, refreshConversations])
+
+  const onSelectMode = useCallback((next: ChatMode) => {
+    const previous = mode
+    setMode(next)
+    api.setConversationMode(conversationId, next === 'work' ? null : next)
+      .then(() => refreshConversations())
+      .catch((err) => {
+        // Rolled back rather than kept locally, unlike the other two toggles.
+        // The mode decides whether the model can edit files at all, so a
+        // toolbar showing a mode that did not take effect is worse than an
+        // error: the user would think they were in a read-only conversation.
+        setMode(previous)
+        storeSetError(conversationId, String(err))
+      })
+  }, [conversationId, mode, refreshConversations, storeSetError])
+
+  const onToggleAcceptEdits = useCallback((next: boolean) => {
+    const previous = acceptEdits
+    setAcceptEdits(next)
+    api.setConversationAcceptEdits(conversationId, next)
+      .then(() => refreshConversations())
+      .catch((err) => {
+        // Rolled back rather than kept locally, for the same reason as the mode:
+        // a toolbar claiming edits are pre-approved when the backend never
+        // recorded it would have the user expecting silence and getting prompts
+        // — or worse, the reverse.
+        setAcceptEdits(previous)
+        storeSetError(conversationId, String(err))
+      })
+  }, [conversationId, acceptEdits, refreshConversations, storeSetError])
+
+  // Tracks the stored value continuously: approving a plan switches the mode on
+  // the backend, which emits `conversation-updated`, and the toolbar has to
+  // follow rather than keep claiming the conversation is still planning.
+  useEffect(() => {
+    setMode(conversationMode)
+  }, [conversationMode])
+
+  // Same reason, plus one of its own: switching conversations must not carry a
+  // standing approval over from the one before it.
+  useEffect(() => {
+    setAcceptEdits(conversationAcceptEdits)
+  }, [conversationAcceptEdits])
+
+  return {
+    assistants,
+    providers,
+    selectedAssistant: assistants.find((a) => a.id === selectedAssistantId),
+    selectedAssistantId,
+    selectedModelId,
+    selectedProviderId,
+    thinkingLevel,
+    fastMode,
+    mode,
+    acceptEdits,
+    capabilities,
+    onSelectAssistant,
+    onSelectModel,
+    onSelectThinkingLevel,
+    onToggleFast,
+    onSelectMode,
+    onToggleAcceptEdits,
+  }
+}

@@ -8,6 +8,7 @@ import { ToolMarketplace } from './tool-marketplace'
 import { SkillSettings } from './skill-settings'
 import { MemorySettings } from './memory-settings'
 import { VoiceSettings } from './voice-settings'
+import { DeveloperSettings } from './developer-settings'
 import { About } from './about'
 
 // Re-exported so existing type-only importers keep working. The list itself now
@@ -38,6 +39,7 @@ export default function SettingsPage({ activeTab }: { activeTab: SettingsTab }) 
         {activeTab === 'voice' && <VoiceSettings />}
         {activeTab === 'onebot' && <OneBotSettings />}
         {activeTab === 'general' && <GeneralSettings />}
+        {activeTab === 'developer' && <DeveloperSettings />}
         {activeTab === 'about' && <About />}
       </div>
     </div>

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToSquare, ArrowUp, Copy, Paperclip, Scissors, SquareDashedText, StopFill, Xmark } from '@gravity-ui/icons'
+import { ArrowDownToSquare, ArrowUp, Copy, Microphone, Paperclip, Scissors, SquareDashedText, StopFill, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button, InputGroup, Popover, ProgressCircle, TextField, Tooltip } from '@heroui/react'
@@ -23,7 +23,10 @@ import {
 } from '@/components/ui/attachment'
 import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
+import { useAndroidVoiceRecorder } from '@/hooks/use-android-voice-recorder'
+import { useHistoryLevel } from '@/hooks/use-nav'
 import { VoiceButton } from '@/components/ui/voice-button'
+import { VoiceOverlay } from './voice-overlay'
 import { MobileOptionsMenu } from './toolbar'
 import { ComposerMenu } from './composer-menu'
 import { EmojiPicker } from './emoji-picker'
@@ -165,6 +168,18 @@ export function InputBar({
     onSend: (text) => onVoiceSend?.(text),
     onNotice: showVoiceNotice,
   })
+  // Hold-to-talk on the field itself. Both hooks are called unconditionally —
+  // hooks cannot be conditional — but only one of them is ever reachable: the
+  // desktop has no press layer, and Android does not render the mic button.
+  const androidVoice = useAndroidVoiceRecorder({
+    onSend: (text) => onVoiceSend?.(text),
+    onNotice: showVoiceNotice,
+    onTap: () => textareaRef.current?.focus(),
+  })
+  // The back gesture cancels a recording instead of leaving the screen. Only
+  // while capturing: transcription is over in well under a second, and a
+  // history entry that brief is worse than none.
+  useHistoryLevel(androidVoice.isActive, androidVoice.cancel)
 
   useEffect(() => {
     // Not on a touch screen, where focus summons the keyboard over half the
@@ -321,6 +336,13 @@ export function InputBar({
     // edge, and the send button is in the corner it lands on.
     <div className="px-4 pb-[max(1rem,var(--safe-bottom))] pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
       <div className="max-w-2xl mx-auto">
+        {isAndroid && (
+          <VoiceOverlay
+            state={androidVoice.state}
+            elapsed={androidVoice.elapsed}
+            peak={androidVoice.peak}
+          />
+        )}
         {voiceNotice && (
           <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>
         )}
@@ -358,22 +380,40 @@ export function InputBar({
               </AttachmentGroup>
             </InputGroup.Prefix>
           )}
-          <InputGroup.TextArea
-            ref={textareaRef}
-            value={value}
-            onChange={(e) => {
-              onChange(e.target.value)
-            }}
-            onKeyDown={handleKeyDown}
-            onCompositionStart={() => { composingRef.current = true }}
-            onCompositionEnd={() => { composingRef.current = false }}
-            placeholder={t('chat.placeholder')}
-            disabled={disabled && !streaming}
-            rows={1}
-            // `flex-none`: the input slot ships `flex-1`, which in this column
-            // layout makes flex-basis, not `adjustHeight`, decide the height.
-            className="min-h-6 max-h-[200px] w-full flex-none resize-none px-3.5 py-0"
-          />
+          <div className="relative w-full">
+            <InputGroup.TextArea
+              ref={textareaRef}
+              value={value}
+              onChange={(e) => {
+                onChange(e.target.value)
+              }}
+              onKeyDown={handleKeyDown}
+              onCompositionStart={() => { composingRef.current = true }}
+              onCompositionEnd={() => { composingRef.current = false }}
+              placeholder={isAndroid && !value ? t('chat.placeholderVoice') : t('chat.placeholder')}
+              disabled={disabled && !streaming}
+              rows={1}
+              // `flex-none`: the input slot ships `flex-1`, which in this column
+              // layout makes flex-basis, not `adjustHeight`, decide the height.
+              className="min-h-6 max-h-[200px] w-full flex-none resize-none px-3.5 py-0"
+            />
+            {/* Hold-to-talk, as a layer rather than as handlers on the field.
+                While it is up the textarea sees no touches at all, so there is
+                no race with focus, the keyboard, or the text-selection action
+                mode — and an empty field has nothing to select anyway. It
+                disappears the moment there is text, leaving editing untouched. */}
+            {isAndroid && !value && !disabled && !streaming && onVoiceSend && (
+              <div
+                data-slot="voice-press-layer"
+                className="absolute inset-0 touch-none select-none"
+                onPointerDown={androidVoice.handlePointerDown}
+                onPointerMove={androidVoice.handlePointerMove}
+                onPointerUp={androidVoice.handlePointerUp}
+                onPointerCancel={androidVoice.handlePointerCancel}
+                onContextMenu={(e) => e.preventDefault()}
+              />
+            )}
+          </div>
           <InputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
             {isAndroid ? (
               <MobileOptionsMenu
@@ -428,6 +468,26 @@ export function InputBar({
                 assistantId={currentAssistantId}
                 onSelect={(syntax) => onChange(value + syntax)}
               />
+              {/* A press target of its own. Holding the field works too, but an
+                  empty composer is one line tall, which is a poor thing to aim
+                  a thumb at — and nothing about it says it can be held. */}
+              {isAndroid && onVoiceSend && !value && (
+                <Button
+                  isIconOnly
+                  variant="ghost"
+                  size="sm"
+                  aria-label={t('chat.voice.holdToTalk')}
+                  isDisabled={disabled || streaming}
+                  className="touch-hitbox touch-none select-none text-muted"
+                  onPointerDown={androidVoice.handlePointerDown}
+                  onPointerMove={androidVoice.handlePointerMove}
+                  onPointerUp={androidVoice.handlePointerUp}
+                  onPointerCancel={androidVoice.handlePointerCancel}
+                  onContextMenu={(e) => e.preventDefault()}
+                >
+                  <Microphone className="size-5" />
+                </Button>
+              )}
               {!isAndroid && onVoiceSend && (
                 <Tooltip delay={0}>
                   {/* The button inside picks the tooltip's trigger props up from

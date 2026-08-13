@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
-import { Button, Card, Input, ListBox, ProgressCircle, Select } from '@heroui/react'
+import { Button, Card, Input, Label, ListBox, ProgressCircle, Select } from '@heroui/react'
 import { api } from '@/api'
+import { usePlatform } from '@/hooks/use-platform'
 import type { VoiceModelStatus } from '@/types'
 import { SettingsHeader, SettingsPane } from './primitives'
 
@@ -21,43 +22,47 @@ function formatSize(bytes: number): string {
 
 export function VoiceSettings() {
   const { t } = useTranslation()
+  const isAndroid = usePlatform() === 'android'
   const [status, setStatus] = useState<VoiceModelStatus | null>(null)
   const [progress, setProgress] = useState<DownloadProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [filterLevel, setFilterLevel] = useState('standard')
   const [mirrorUrl, setMirrorUrl] = useState('')
   const [importing, setImporting] = useState(false)
-  const statusRef = useRef<() => void>(() => {})
+  const mirrorUrlId = useId()
 
-  const refreshStatus = () => {
-    api.voiceModelStatus().then(setStatus).catch(console.error)
-  }
-  statusRef.current = refreshStatus
+  const refreshStatus = useCallback(async () => {
+    const next = await api.voiceModelStatus()
+    setStatus(next)
+  }, [])
 
   useEffect(() => {
-    refreshStatus()
-    api.getPreference('voice.filter_level').then((v) => {
-      if (v) setFilterLevel(v)
+    let disposed = false
+    void refreshStatus().catch(console.error)
+    void api.getPreference('voice.filter_level').then((v) => {
+      if (v && !disposed) setFilterLevel(v)
     })
-    api.getPreference('voice.download_url').then((v) => {
-      if (v) setMirrorUrl(v)
+    void api.getPreference('voice.download_url').then((v) => {
+      if (v && !disposed) setMirrorUrl(v)
     })
 
     const unlistenProgress = listen<DownloadProgress>('voice-model-download', (e) => {
-      setProgress(e.payload)
+      if (!disposed) setProgress(e.payload)
     })
     const unlistenDone = listen<{ ok: boolean; error?: string }>('voice-model-download-done', (e) => {
+      if (disposed) return
       setProgress(null)
       if (!e.payload.ok && e.payload.error !== 'cancelled') {
         setError(e.payload.error ?? 'Download failed')
       }
-      statusRef.current()
+      void refreshStatus().catch(console.error)
     })
     return () => {
+      disposed = true
       unlistenProgress.then((fn) => fn())
       unlistenDone.then((fn) => fn())
     }
-  }, [])
+  }, [refreshStatus])
 
   const handleDownload = async () => {
     setError(null)
@@ -68,7 +73,7 @@ export function VoiceSettings() {
       setProgress(null)
       setError(String(e))
     }
-    refreshStatus()
+    void refreshStatus().catch(console.error)
   }
 
   const handleCancelDownload = async () => {
@@ -77,9 +82,13 @@ export function VoiceSettings() {
 
   const handleImport = async () => {
     // Cancelling the picker rejects on Android instead of resolving to null.
+    //
+    // No extension filter there either: Android turns it into a SAF MIME
+    // filter, and .tar.bz2 is registered on few enough devices that the picker
+    // would open onto an empty list with the archive sitting right there.
     const file = await open({
       multiple: false,
-      filters: [{ name: 'Model archive', extensions: ['bz2', 'tar'] }],
+      ...(isAndroid ? {} : { filters: [{ name: 'Model archive', extensions: ['bz2', 'tar'] }] }),
     }).catch(() => null)
     if (typeof file !== 'string') return
     setError(null)
@@ -97,7 +106,7 @@ export function VoiceSettings() {
     setError(null)
     try {
       await api.voiceDeleteModel()
-      refreshStatus()
+      await refreshStatus()
     } catch (e) {
       setError(String(e))
     }
@@ -121,9 +130,9 @@ export function VoiceSettings() {
       <SettingsHeader title={t('settings.voice.title')} subtitle={t('settings.voice.intro')} />
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted">
+        <p className="block text-xs font-medium text-muted">
           {t('settings.voice.model')}
-        </label>
+        </p>
         <Card>
           {status?.installed ? (
             <div className="flex items-center justify-between gap-2">
@@ -180,10 +189,11 @@ export function VoiceSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted">
+        <label htmlFor={mirrorUrlId} className="block text-xs font-medium text-muted">
           {t('settings.voice.mirror')}
         </label>
         <Input fullWidth
+          id={mirrorUrlId}
           value={mirrorUrl}
           onChange={(e) => handleMirrorChange(e.target.value)}
           placeholder={t('settings.voice.mirrorPlaceholder')}
@@ -194,10 +204,10 @@ export function VoiceSettings() {
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted">
-          {t('settings.voice.filterLevel')}
-        </label>
         <Select fullWidth value={filterLevel} onChange={(v) => v && handleFilterChange(String(v))}>
+          <Label className="block text-xs font-medium text-muted">
+            {t('settings.voice.filterLevel')}
+          </Label>
           <Select.Trigger className="max-w-xs">
             <Select.Value />
             <Select.Indicator />

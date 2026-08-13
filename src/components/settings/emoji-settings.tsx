@@ -90,19 +90,22 @@ function PackCard({
                               setEditingId(null)
                             }}
                             onKeyDown={(ev) => {
+                              if (ev.nativeEvent.isComposing) return
                               if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur()
                               if (ev.key === 'Escape') setEditingId(null)
                             }}
                             className="w-full h-auto text-xs text-center bg-transparent border-0 border-b border-default rounded-none px-0 py-0 mt-0.5 focus-visible:ring-0"
                           />
                         ) : (
-                          <p
-                            className="text-xs text-muted text-center truncate mt-0.5 cursor-pointer hover:text-foreground"
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="w-full h-auto min-w-0 rounded-lg px-0 py-0 mt-0.5 text-xs font-normal text-muted hover:text-foreground"
                             onClick={() => { setEditingId(e.id); setEditName(e.name) }}
-                            title={t('settings.emoji.clickToRename')}
+                            aria-label={`${t('settings.emoji.clickToRename')}: ${e.name}`}
                           >
-                            {e.name}
-                          </p>
+                            <span className="truncate">{e.name}</span>
+                          </Button>
                         )}
                         {detail.pack.is_builtin === 0 && (
                           <Button
@@ -225,7 +228,10 @@ export function EmojiSettings() {
           onChange={(e) => setNewPackName(e.target.value)}
           placeholder={t('settings.emoji.packName')}
           className="flex-1"
-          onKeyDown={(e) => { if (e.key === 'Enter') handleCreate() }}
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return
+            if (e.key === 'Enter') handleCreate()
+          }}
         />
         <Button variant="outline" onClick={handleCreate} isDisabled={!newPackName.trim()}>
           <Plus className="w-3.5 h-3.5" />

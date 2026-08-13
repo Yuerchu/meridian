@@ -96,18 +96,18 @@ export function ConversationListPage({
               variant="ghost"
               aria-label={t('sidebar.newChat')}
               onClick={() => { onCreate(); onBack() }}
-              className="size-10 rounded-xl"
+              className="size-12 rounded-xl"
             >
-              <Plus className="size-4" />
+              <Plus className="size-5" />
             </Button>
             <Button
               isIconOnly
               variant="ghost"
               aria-label={t('sidebar.settings')}
               onClick={onOpenSettings}
-              className="size-10 rounded-xl"
+              className="size-12 rounded-xl"
             >
-              <Gear className="size-4" />
+              <Gear className="size-5" />
             </Button>
           </>
         }

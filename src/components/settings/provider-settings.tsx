@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useId, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Check, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
-import { Button, Disclosure, Input, ListBox, Select, Spinner, Tooltip } from '@heroui/react'
+import { Button, Disclosure, Input, Label, ListBox, Select, Spinner, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { MasterDetail } from './master-detail'
@@ -72,8 +72,8 @@ function CapabilityTriRow({
   ]
   return (
     <div data-slot="capability-tri-row" className="flex items-center justify-between gap-2">
-      <label className="text-xs text-muted">{label}</label>
-      <Select value={value} onChange={(v) => v && onChange(String(v) as Tri)}>
+      <p className="text-xs text-muted">{label}</p>
+      <Select aria-label={label} value={value} onChange={(v) => v && onChange(String(v) as Tri)}>
         <Select.Trigger className="h-7 w-32 text-xs">
           <Select.Value />
           <Select.Indicator />
@@ -108,6 +108,12 @@ function ModelConfigEditor({
 }) {
   const { t } = useTranslation()
   const [caps, setCaps] = useState<ProviderCapabilities | null>(null)
+  const contextWindowId = useId()
+  const compactThresholdId = useId()
+  const maxOutputId = useId()
+  const inputPriceId = useId()
+  const outputPriceId = useId()
+  const cachePriceId = useId()
 
   useEffect(() => {
     api.getProviderCapabilities(providerId, modelId).then(setCaps).catch(() => {})
@@ -128,7 +134,9 @@ function ModelConfigEditor({
   const [efforts, setEfforts] = useState<ThinkingEffort[]>([])
   // Tracks whether the whitelist was touched. Untouched means the key is left
   // out of the patch entirely, so the model keeps following catalog updates.
-  const [effortsDirty, setEffortsDirty] = useState(false)
+  // A ref, not state: it is only ever read back when the patch is built on
+  // save, so flipping it has nothing to redraw.
+  const effortsDirty = useRef(false)
   const [capThinking, setCapThinking] = useState<Tri>('auto')
   const [capFast, setCapFast] = useState<Tri>('auto')
 
@@ -148,7 +156,7 @@ function ModelConfigEditor({
     if (!caps) return
     const saved = parseOverrides(existing?.capability_overrides)
     setEfforts(EFFORT_LADDER.filter((e) => (caps.supported_efforts ?? EFFORT_LADDER).includes(e)))
-    setEffortsDirty(saved.supported_efforts !== undefined)
+    effortsDirty.current = saved.supported_efforts !== undefined
     setCapThinking(triFrom(saved.supports_thinking))
     setCapFast(triFrom(saved.supports_fast))
   }, [caps, existing])
@@ -161,14 +169,14 @@ function ModelConfigEditor({
       if (value === undefined) delete next[key]
       else next[key] = value
     }
-    put('supported_efforts', effortsDirty ? efforts : undefined)
+    put('supported_efforts', effortsDirty.current ? efforts : undefined)
     put('supports_thinking', triTo(capThinking))
     put('supports_fast', triTo(capFast))
     return Object.keys(next).length > 0 ? JSON.stringify(next) : null
   }
 
   const resetOverrides = () => {
-    setEffortsDirty(false)
+    effortsDirty.current = false
     setCapThinking('auto')
     setCapFast('auto')
     if (caps) setEfforts(EFFORT_LADDER.filter((e) => (caps.supported_efforts ?? EFFORT_LADDER).includes(e)))
@@ -192,30 +200,30 @@ function ModelConfigEditor({
     <div className="px-3 pb-3 space-y-2 bg-default/30">
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-xs text-muted">{t('settings.model.contextWindow')}</label>
-          <Input fullWidth value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
+          <label htmlFor={contextWindowId} className="text-xs text-muted">{t('settings.model.contextWindow')}</label>
+          <Input fullWidth id={contextWindowId} value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
         </div>
         <div>
-          <label className="text-xs text-muted">{t('settings.model.compactThreshold')}</label>
-          <Input fullWidth value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
+          <label htmlFor={compactThresholdId} className="text-xs text-muted">{t('settings.model.compactThreshold')}</label>
+          <Input fullWidth id={compactThresholdId} value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
         </div>
       </div>
       <div>
-        <label className="text-xs text-muted">{t('settings.model.maxOutput')}</label>
-        <Input fullWidth value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
+        <label htmlFor={maxOutputId} className="text-xs text-muted">{t('settings.model.maxOutput')}</label>
+        <Input fullWidth id={maxOutputId} value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div>
-          <label className="text-xs text-muted">{t('settings.model.inputPrice')}</label>
-          <Input fullWidth value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
+          <label htmlFor={inputPriceId} className="text-xs text-muted">{t('settings.model.inputPrice')}</label>
+          <Input fullWidth id={inputPriceId} value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
         </div>
         <div>
-          <label className="text-xs text-muted">{t('settings.model.outputPrice')}</label>
-          <Input fullWidth value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
+          <label htmlFor={outputPriceId} className="text-xs text-muted">{t('settings.model.outputPrice')}</label>
+          <Input fullWidth id={outputPriceId} value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
         </div>
         <div>
-          <label className="text-xs text-muted">{t('settings.model.cachePrice')}</label>
-          <Input fullWidth value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
+          <label htmlFor={cachePriceId} className="text-xs text-muted">{t('settings.model.cachePrice')}</label>
+          <Input fullWidth id={cachePriceId} value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
         </div>
       </div>
       <Disclosure
@@ -238,7 +246,7 @@ function ModelConfigEditor({
               so without it the overrides never collapse. */}
           <Disclosure.Body className="space-y-2">
             <div data-slot="effort-whitelist" className="space-y-1.5">
-              <label className="text-xs text-muted">{t('settings.model.supportedEfforts')}</label>
+              <p className="text-xs text-muted">{t('settings.model.supportedEfforts')}</p>
               <div className="flex flex-wrap gap-1">
                 {EFFORT_LADDER.map((tier) => {
                   const on = efforts.includes(tier)
@@ -254,7 +262,7 @@ function ModelConfigEditor({
                         // Rebuild from the ladder so the stored array stays in
                         // ascending order -- the median coercion ranks on position.
                         setEfforts(EFFORT_LADDER.filter((x) => (x === tier ? !on : efforts.includes(x))))
-                        setEffortsDirty(true)
+                        effortsDirty.current = true
                       }}
                     >
                       {t(`toolbar.thinking.${tier}`)}
@@ -319,6 +327,9 @@ function ProviderEditor({
   const [modelConfigs, setModelConfigs] = useState<Map<string, ModelConfig>>(new Map())
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const nameId = useId()
+  const baseUrlId = useId()
+  const apiKeyId = useId()
 
   // Deletion clears secrets and cached models before the list reloads, so the
   // button has to stay disabled and say what it is doing — otherwise a slow
@@ -424,13 +435,13 @@ function ProviderEditor({
   return (
     <div className="space-y-5">
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted">{t('settings.provider.name')}</label>
-        <Input fullWidth value={name} onChange={(e) => setName(e.target.value)} />
+        <label htmlFor={nameId} className="block text-xs text-muted">{t('settings.provider.name')}</label>
+        <Input fullWidth id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted">{t('settings.provider.type')}</label>
         <Select fullWidth value={providerType} onChange={(v) => v && setProviderType(String(v))}>
+          <Label className="block text-xs text-muted">{t('settings.provider.type')}</Label>
           <Select.Trigger>
             <Select.Value />
             <Select.Indicator />
@@ -449,8 +460,9 @@ function ProviderEditor({
       </div>
 
       <div className="space-y-1.5">
-        <label className="block text-xs text-muted">{t('settings.provider.baseUrl')}</label>
+        <label htmlFor={baseUrlId} className="block text-xs text-muted">{t('settings.provider.baseUrl')}</label>
         <Input fullWidth
+          id={baseUrlId}
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder={providerType === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
@@ -459,8 +471,8 @@ function ProviderEditor({
 
       {providerType !== 'anthropic' && (
         <div className="space-y-1.5">
-          <label className="block text-xs text-muted">{t('settings.provider.apiFormat')}</label>
           <Select fullWidth value={apiFormat} onChange={(v) => v && setApiFormat(String(v))}>
+            <Label className="block text-xs text-muted">{t('settings.provider.apiFormat')}</Label>
             <Select.Trigger>
               <Select.Value />
               <Select.Indicator />
@@ -489,9 +501,10 @@ function ProviderEditor({
       </div>
 
       <div className="border-t border-border pt-4 space-y-3">
-        <label className="block text-xs text-muted">{t('settings.provider.apiKey')}</label>
+        <label htmlFor={apiKeyId} className="block text-xs text-muted">{t('settings.provider.apiKey')}</label>
         <div className="flex gap-2">
           <Input fullWidth
+            id={apiKeyId}
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
@@ -530,7 +543,7 @@ function ProviderEditor({
 
       <div className="border-t border-border pt-4 space-y-3">
         <div className="flex items-center justify-between">
-          <label className="text-xs text-muted">{t('settings.provider.models')}</label>
+          <p className="text-xs text-muted">{t('settings.provider.models')}</p>
           <Button
             variant="outline"
             onClick={handleFetchModels}

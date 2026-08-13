@@ -84,6 +84,7 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
         className="text-xs"
         autoFocus
         onKeyDown={(e) => {
+          if (e.nativeEvent.isComposing) return
           if (e.key === 'Enter' && name.trim() && path.trim()) onSubmit(name.trim(), path.trim())
           else if (e.key === 'Escape') onCancel()
         }}
@@ -135,6 +136,7 @@ function InlineRenameInput({ value, onSubmit, onCancel }: { value: string; onSub
       value={text}
       onChange={(e) => setText(e.target.value)}
       onKeyDown={(e) => {
+        if (e.nativeEvent.isComposing) return
         if (e.key === 'Enter' && text.trim()) onSubmit(text.trim())
         else if (e.key === 'Escape') onCancel()
       }}
@@ -237,6 +239,7 @@ export function AppSidebar({
               isIconOnly
               size="sm"
               variant="ghost"
+              aria-label={t('sidebar.newProject')}
               onClick={() => setShowNewProject(true)}
               className="ml-auto size-8 text-muted"
             >
