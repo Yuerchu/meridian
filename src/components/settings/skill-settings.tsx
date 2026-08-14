@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, BookOpen, Check, ArrowsRotateRight } from '@gravity-ui/icons'
 import { Button, Card, Checkbox, Description, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField } from '@heroui/react'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { Skill } from '@/types'
@@ -26,7 +27,7 @@ function SkillEditor({
   const [description, setDescription] = useState(skill?.llm_description ?? '')
   const [body, setBody] = useState('')
   const [bodyLoading, setBodyLoading] = useState(skill != null)
-  const [saved, setSaved] = useState(false)
+  const [saved, markSaved] = useTemporaryFlag()
   const [error, setError] = useState<string | null>(null)
 
   // The body is not part of the index row: it lives in SKILL.md and is read
@@ -68,8 +69,7 @@ function SkillEditor({
           displayName.trim() || undefined,
         )
       }
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      markSaved()
       await onSave()
     } catch (e) {
       setError(String(e))

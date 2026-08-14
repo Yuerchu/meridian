@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open as openExternal } from '@tauri-apps/plugin-shell'
 import { Check, Copy } from '@gravity-ui/icons'
@@ -6,6 +6,7 @@ import type { Components } from 'react-markdown'
 
 import { Markdown as ProMarkdown } from '@heroui-pro/react/markdown'
 
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { ActionButton } from '@/components/ui/action-button'
 import { languageIconUrl } from '@/lib/file-icon'
 import { cn } from '@/lib/utils'
@@ -14,12 +15,11 @@ import type { EmojiMap } from './emoji-renderer'
 
 export function CopyButton({ text, className }: { text: string; className?: string }) {
   const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
+  const [copied, markCopied] = useTemporaryFlag()
   const handleCopy = useCallback(() => {
     navigator.clipboard.writeText(text)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }, [text])
+    markCopied()
+  }, [text, markCopied])
 
   return (
     <ActionButton

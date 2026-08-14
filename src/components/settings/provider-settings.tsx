@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Check, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
 import { Button, Disclosure, Input, Label, ListBox, Select, Spinner, TextField, Tooltip } from '@heroui/react'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -315,8 +316,8 @@ function ProviderEditor({
   // under a fresh passphrase, which is how the *other* providers' keys get lost.
   const [keyStatus, setKeyStatus] = useState<'loading' | 'set' | 'unset' | 'error'>('loading')
   const [savingKey, setSavingKey] = useState(false)
-  const [keySaved, setKeySaved] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [keySaved, markKeySaved] = useTemporaryFlag()
+  const [saved, markSaved] = useTemporaryFlag()
   const [models, setModels] = useState<ModelInfo[]>([])
   const [fetchingModels, setFetchingModels] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
@@ -355,10 +356,9 @@ function ProviderEditor({
 
   const handleSave = useCallback(async () => {
     await api.updateProvider(provider.id, { name, providerType, baseUrl, apiFormat })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    markSaved()
     onUpdate()
-  }, [provider.id, name, providerType, baseUrl, apiFormat, onUpdate])
+  }, [provider.id, name, providerType, baseUrl, apiFormat, onUpdate, markSaved])
 
   const handleSaveKey = useCallback(async () => {
     if (!apiKey.trim()) return
@@ -367,15 +367,14 @@ function ProviderEditor({
       await api.setProviderKey(provider.id, apiKey.trim())
       setKeyStatus('set')
       setApiKey('')
-      setKeySaved(true)
-      setTimeout(() => setKeySaved(false), 2000)
+      markKeySaved()
     } catch (err) {
       console.error('Failed to save key:', err)
       alert(String(err))
     } finally {
       setSavingKey(false)
     }
-  }, [provider.id, apiKey])
+  }, [provider.id, apiKey, markKeySaved])
 
   const loadModelConfigs = useCallback(async () => {
     try {

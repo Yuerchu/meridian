@@ -1,7 +1,8 @@
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Check, Copy } from '@gravity-ui/icons'
 import { Button } from '@heroui/react'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import type { LogEntry } from '@/types'
 import { LogLevelBadge } from './log-level-badge'
@@ -30,13 +31,12 @@ function formatLocalTime(tsMs: number): string {
 
 function LogRowImpl({ entry }: { entry: LogEntry }) {
   const { t } = useTranslation()
-  const [copied, setCopied] = useState(false)
+  const [copied, markCopied] = useTemporaryFlag()
 
   const onCopy = useCallback(() => {
     navigator.clipboard.writeText(JSON.stringify(entry, null, 2))
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }, [entry])
+    markCopied()
+  }, [entry, markCopied])
 
   // Span fields first: they say which conversation or request this belongs to,
   // which is what a reader is usually scanning for.

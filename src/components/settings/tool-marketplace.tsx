@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Wrench, Terminal, Check } from '@gravity-ui/icons'
 import { Button, Card, Description, Disclosure, DisclosureGroup, Input, Label, ListBox, Select, TextField } from '@heroui/react'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
@@ -24,7 +25,7 @@ function CustomToolEditor({
   const [argsTemplate, setArgsTemplate] = useState(tool?.args_template ?? '')
   const [permission, setPermission] = useState(tool?.permission ?? 'ask')
   const [timeoutMs, setTimeoutMs] = useState(tool?.timeout_ms?.toString() ?? '30000')
-  const [saved, setSaved] = useState(false)
+  const [saved, markSaved] = useTemporaryFlag()
 
   async function handleSave() {
     if (!name.trim() || !description.trim() || !command.trim()) return
@@ -47,8 +48,7 @@ function CustomToolEditor({
         timeoutMs: timeoutMs ? parseInt(timeoutMs) : undefined,
       })
     }
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    markSaved()
     onSave()
   }
 

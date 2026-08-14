@@ -1,7 +1,8 @@
-import { useCallback, useState } from 'react'
+import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { ChevronLeft, ArrowDownToLine, ArrowsRotateRight, Magnifier } from '@gravity-ui/icons'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { Button, InputGroup, ListBox, Select, Skeleton, Spinner } from '@heroui/react'
 import { LogRow } from './log-row'
@@ -10,7 +11,7 @@ import { MAX_RENDERED, useAppLogs, type LevelFilter, type RangeFilter } from './
 export function LogViewer({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation()
   const logs = useAppLogs()
-  const [exported, setExported] = useState(false)
+  const [exported, markExported] = useTemporaryFlag(3000)
 
   const onExport = useCallback(async () => {
     // The webview has no filesystem access; the dialog picks a path and Rust
@@ -22,9 +23,8 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
     }).catch(() => null)
     if (!path) return
     await api.exportLogs(path)
-    setExported(true)
-    setTimeout(() => setExported(false), 3000)
-  }, [])
+    markExported()
+  }, [markExported])
 
   const unavailable = logs.settings !== null && !logs.settings.available
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Description, Input, Label, ListBox, Select } from '@heroui/react'
 import { Check } from '@gravity-ui/icons'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { LANGUAGES, setLocale } from '@/i18n'
 import { useAppTheme, type ThemePreference } from '@/lib/theme'
 import { api } from '@/api'
@@ -31,7 +32,7 @@ export function GeneralSettings() {
   const [searchProvider, setSearchProvider] = useState('tavily')
   const [searchApiKey, setSearchApiKey] = useState('')
   const [searchKeyExists, setSearchKeyExists] = useState(false)
-  const [searchKeySaved, setSearchKeySaved] = useState(false)
+  const [searchKeySaved, markSearchKeySaved, clearSearchKeySaved] = useTemporaryFlag()
 
   useEffect(() => {
     api.getPreference('shell').then((v) => {
@@ -52,8 +53,8 @@ export function GeneralSettings() {
       api.getServiceKeyExists(provider.keyService).then(setSearchKeyExists)
     }
     setSearchApiKey('')
-    setSearchKeySaved(false)
-  }, [searchProvider])
+    clearSearchKeySaved()
+  }, [searchProvider, clearSearchKeySaved])
 
   const handleShellChange = (value: string) => {
     setShell(value)
@@ -91,8 +92,7 @@ export function GeneralSettings() {
     await api.setServiceKey(provider.keyService, searchApiKey.trim())
     setSearchKeyExists(true)
     setSearchApiKey('')
-    setSearchKeySaved(true)
-    setTimeout(() => setSearchKeySaved(false), 2000)
+    markSearchKeySaved()
   }
 
   return (

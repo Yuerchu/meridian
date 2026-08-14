@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } from '@gravity-ui/icons'
 import { Button, Input, Label, Switch, TextArea, TextField, Tooltip } from '@heroui/react'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -92,7 +93,7 @@ function McpServerEditor({
   const [env, setEnv] = useState(server.env ?? '{}')
   const [url, setUrl] = useState(server.url ?? '')
   const [headers, setHeaders] = useState(server.headers ?? '{}')
-  const [saved, setSaved] = useState(false)
+  const [saved, markSaved] = useTemporaryFlag(1500)
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
   /** Whether this one comes up on its own at launch — `is_enabled` in the row. */
@@ -143,10 +144,9 @@ function McpServerEditor({
       updates.env = null
     }
     await api.updateMcpServer(server.id, updates)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
+    markSaved()
     onUpdate()
-  }, [server.id, name, transportType, command, args, env, url, headers, onUpdate])
+  }, [server.id, name, transportType, command, args, env, url, headers, onUpdate, markSaved])
 
   const handleConnect = useCallback(async () => {
     setConnecting(true)

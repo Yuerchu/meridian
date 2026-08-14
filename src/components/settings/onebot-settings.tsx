@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { Button, Checkbox, Description, Input, Label, ListBox, Select, TextField } from '@heroui/react'
 import type { Assistant } from '@/types'
@@ -34,13 +35,8 @@ export function OneBotSettings() {
   const [assistants, setAssistants] = useState<Assistant[]>([])
   const [adminInput, setAdminInput] = useState('')
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [saved, markSaved] = useTemporaryFlag()
   const [error, setError] = useState<string | null>(null)
-  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  useEffect(() => () => {
-    if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
-  }, [])
 
   const loadData = useCallback(async () => {
     try {
@@ -84,9 +80,7 @@ export function OneBotSettings() {
       const newConfig = { ...config, admin_users: adminUsers }
       await api.saveOneBotConfig(newConfig)
       setConfig(newConfig)
-      setSaved(true)
-      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
-      savedTimerRef.current = setTimeout(() => setSaved(false), 2000)
+      markSaved()
       return true
     } catch (err) {
       setError(String(err))

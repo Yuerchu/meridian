@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, StarFill, Check, SquareDashedText } from '@gravity-ui/icons'
 import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, ListBox, Select, TextArea, TextField, Tooltip } from '@heroui/react'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SubAgentSettings } from './sub-agent-settings'
@@ -30,7 +31,7 @@ function AssistantEditor({
   const [thinkingEnabled, setThinkingEnabled] = useState(assistant.thinking_enabled !== 0)
   const [thinkingBudget, setThinkingBudget] = useState(assistant.thinking_budget?.toString() ?? '')
   const [models, setModels] = useState<ModelInfo[]>([])
-  const [saved, setSaved] = useState(false)
+  const [saved, markSaved] = useTemporaryFlag()
   const [allTools, setAllTools] = useState<ToolInfo[]>([])
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
   const [templateVars, setTemplateVars] = useState<TemplateVariable[]>([])
@@ -95,8 +96,7 @@ function AssistantEditor({
       toolPresetId,
       autoCompactEnabled: autoCompactEnabled ? 1 : 0,
     })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    markSaved()
   }
 
   const providerOptions = [
