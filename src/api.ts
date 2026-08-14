@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ChatMode, ContextInfo, Conversation, ConversationSnapshot, CustomTool, Emoji, EmojiPack, LogFileInfo, LogPage, LogQuery, LogSettings, McpConnectionStatus, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, VoiceModelStatus, VoiceTranscript } from './types'
+import type { Assistant, ChatMode, ContextInfo, Conversation, ConversationSnapshot, CustomTool, Emoji, EmojiPack, HooksConfig, HooksStatus, LogFileInfo, LogPage, LogQuery, LogSettings, McpConnectionStatus, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, VoiceModelStatus, VoiceTranscript } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -484,6 +484,27 @@ export const api = {
 
   stopOneBot: () =>
     invoke<void>('stop_onebot'),
+
+  // Claude Code hook endpoint
+  getHooksStatus: () =>
+    invoke<HooksStatus>('get_hooks_status'),
+
+  getHooksConfig: () =>
+    invoke<HooksConfig>('get_hooks_config'),
+
+  // Returns the stored config, which is how the caller learns the token the
+  // backend minted on first save.
+  saveHooksConfig: (config: HooksConfig) =>
+    invoke<HooksConfig>('save_hooks_config', { config }),
+
+  regenerateHooksToken: () =>
+    invoke<string>('regenerate_hooks_token'),
+
+  startHooks: () =>
+    invoke<void>('start_hooks'),
+
+  stopHooks: () =>
+    invoke<void>('stop_hooks'),
 
   // Prompt Templates
   listPromptTemplates: () =>

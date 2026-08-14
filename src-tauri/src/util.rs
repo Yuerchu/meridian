@@ -28,6 +28,64 @@ pub(crate) fn get_conn(pool: &DbPool) -> Result<db::PooledConn, String> {
     pool.get().map_err(|e| format!("db connection error: {e}"))
 }
 
+/// The balanced `{...}` starting at `start`, or `None` if it never closes.
+fn balanced_object_at(text: &str, start: usize) -> Option<String> {
+    let bytes = text.as_bytes();
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (i, &b) in bytes.iter().enumerate().skip(start) {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match b {
+            b'\\' if in_string => escaped = true,
+            b'"' => in_string = !in_string,
+            b'{' if !in_string => depth += 1,
+            b'}' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(text[start..=i].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Pull the first balanced `{...}` out of a reply, tolerating fenced code blocks
+/// and the odd sentence of preamble.
+pub(crate) fn extract_json_object(text: &str) -> Option<String> {
+    balanced_object_at(text, text.find('{')?)
+}
+
+/// The *last* balanced `{...}`, for protocols that put the answer at the end.
+///
+/// A reviewer asked to finish with a verdict object will happily quote another
+/// JSON fragment earlier as evidence — a snippet of the config it is objecting
+/// to, an example of the shape it wants. Taking the first `{` gets that one.
+/// Scanning candidate openings from the back and keeping the first that parses
+/// is what makes "the verdict is the last thing you write" enforceable.
+///
+/// `accept` decides whether a candidate is the object being looked for, so the
+/// caller's own deserialiser is the test rather than mere well-formedness. A
+/// candidate that closes but fails the predicate is passed over rather than
+/// returned: handing it back would make "found the wrong object" indistinguish-
+/// able from "found the right one" at the call site.
+pub(crate) fn extract_last_json_object(
+    text: &str,
+    accept: impl Fn(&str) -> bool,
+) -> Option<String> {
+    let mut openings: Vec<usize> = text.match_indices('{').map(|(i, _)| i).collect();
+    openings.reverse();
+    openings
+        .into_iter()
+        .filter_map(|start| balanced_object_at(text, start))
+        .find(|candidate| accept(candidate))
+}
+
 pub(crate) fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
 where
     T: serde::Deserialize<'de>,
@@ -63,5 +121,50 @@ mod tests {
     #[test]
     fn test_take_bytes_zero() {
         assert_eq!(take_bytes_at_char_boundary("hello", 0), "");
+    }
+
+    #[test]
+    fn extracts_object_past_preamble_and_fence() {
+        let text = "Sure, here it is:\n```json\n{\"a\": 1}\n```\n";
+        assert_eq!(extract_json_object(text).as_deref(), Some("{\"a\": 1}"));
+    }
+
+    #[test]
+    fn braces_inside_strings_do_not_close_the_object() {
+        let text = r#"{"a": "} not the end {", "b": 2}"#;
+        assert_eq!(extract_json_object(text).as_deref(), Some(text));
+    }
+
+    #[test]
+    fn unclosed_object_is_not_an_object() {
+        assert!(extract_json_object("{\"a\": 1").is_none());
+        assert!(extract_json_object("no braces here").is_none());
+    }
+
+    /// The whole reason `extract_last_json_object` exists: a reviewer quotes a
+    /// fragment as evidence and then states its verdict.
+    #[test]
+    fn last_object_wins_over_a_quoted_example() {
+        let text = concat!(
+            "The config you wrote is `{\"verdict\": \"approve\"}` which is not\n",
+            "what the schema says. My own answer:\n",
+            "```json\n{\"verdict\": \"revise\", \"summary\": \"schema mismatch\"}\n```\n",
+        );
+        let found = extract_last_json_object(text, |c| c.contains("summary")).unwrap();
+        assert!(found.contains("revise"), "{found}");
+        assert!(found.contains("schema mismatch"), "{found}");
+    }
+
+    #[test]
+    fn nested_objects_do_not_confuse_the_scan() {
+        let text = "{\"outer\": {\"inner\": 1}, \"verdict\": \"approve\"}";
+        let found = extract_last_json_object(text, |c| c.contains("verdict")).unwrap();
+        assert_eq!(found, text);
+    }
+
+    #[test]
+    fn a_candidate_that_fails_the_predicate_is_not_returned() {
+        let text = "{\"unrelated\": 1}";
+        assert!(extract_last_json_object(text, |c| c.contains("verdict")).is_none());
     }
 }

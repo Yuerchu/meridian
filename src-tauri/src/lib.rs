@@ -5,6 +5,10 @@ mod db;
 mod edit_session;
 mod emoji;
 mod files;
+/// The endpoint another coding agent's hooks call into. Desktop only: it is a
+/// listening socket, and Android has nothing to point at it.
+#[cfg(not(target_os = "android"))]
+mod hooks;
 mod keyring;
 mod logging;
 mod mcp;
@@ -339,6 +343,14 @@ pub fn run() {
                 });
             }
 
+            #[cfg(not(target_os = "android"))]
+            {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    hooks::maybe_start(handle).await;
+                });
+            }
+
             // Reconnect whatever the user marked for auto-connect. Detached, so
             // a server that takes ten seconds to start does not hold up the
             // window, and concurrent, so the slowest one does not decide when
@@ -538,6 +550,18 @@ pub fn run() {
             commands::onebot::start_onebot,
             #[cfg(not(target_os = "android"))]
             commands::onebot::stop_onebot,
+            #[cfg(not(target_os = "android"))]
+            commands::hooks::get_hooks_status,
+            #[cfg(not(target_os = "android"))]
+            commands::hooks::get_hooks_config,
+            #[cfg(not(target_os = "android"))]
+            commands::hooks::save_hooks_config,
+            #[cfg(not(target_os = "android"))]
+            commands::hooks::regenerate_hooks_token,
+            #[cfg(not(target_os = "android"))]
+            commands::hooks::start_hooks,
+            #[cfg(not(target_os = "android"))]
+            commands::hooks::stop_hooks,
             commands::dev::voice_probe_echo,
             // Model management and prewarming are the same on both platforms.
             commands::voice::voice_prewarm,

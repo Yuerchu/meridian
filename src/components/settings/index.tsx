@@ -3,6 +3,7 @@ import { AssistantSettings } from './assistant-settings'
 import { GeneralSettings } from './general-settings'
 import { McpSettings } from './mcp-settings'
 import { OneBotSettings } from './onebot-settings'
+import { HooksSettings } from './hooks-settings'
 import { EmojiSettings } from './emoji-settings'
 import { ToolMarketplace } from './tool-marketplace'
 import { SkillSettings } from './skill-settings'
@@ -38,6 +39,7 @@ export default function SettingsPage({ activeTab }: { activeTab: SettingsTab }) 
         {activeTab === 'memories' && <MemorySettings />}
         {activeTab === 'voice' && <VoiceSettings />}
         {activeTab === 'onebot' && <OneBotSettings />}
+        {activeTab === 'hooks' && <HooksSettings />}
         {activeTab === 'general' && <GeneralSettings />}
         {activeTab === 'developer' && <DeveloperSettings />}
         {activeTab === 'about' && <About />}

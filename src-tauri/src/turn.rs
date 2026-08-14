@@ -39,6 +39,12 @@ pub enum TurnOrigin {
     /// interruption report say "a sub-agent was partway through" instead of
     /// naming a conversation the user has never seen.
     SubAgent,
+    /// A turn some other agent's plan asked for, arriving over the hook
+    /// endpoint rather than from anything inside this app. Like `SubAgent` it
+    /// runs in a conversation of its own, so it contends with nobody; unlike
+    /// it, nobody here started it, which is why an interruption report must not
+    /// word it as work the user asked for.
+    PlanReview,
 }
 
 impl TurnOrigin {
@@ -49,6 +55,7 @@ impl TurnOrigin {
             TurnOrigin::Desktop => "desktop",
             TurnOrigin::OneBot => "onebot",
             TurnOrigin::SubAgent => "sub_agent",
+            TurnOrigin::PlanReview => "plan_review",
         }
     }
 
@@ -58,6 +65,7 @@ impl TurnOrigin {
             "desktop" => Ok(TurnOrigin::Desktop),
             "onebot" => Ok(TurnOrigin::OneBot),
             "sub_agent" => Ok(TurnOrigin::SubAgent),
+            "plan_review" => Ok(TurnOrigin::PlanReview),
             other => Err(format!("unknown turn origin '{other}'")),
         }
     }
@@ -113,6 +121,11 @@ impl std::fmt::Display for Busy {
             // occupies a conversation nobody else is writing to.
             Busy::Turn(TurnOrigin::SubAgent) => {
                 write!(f, "A sub-agent is working in this conversation. Wait for it to finish, or stop it first.")
+            }
+            // Two hooks firing for one session, most likely because the plan
+            // was resubmitted before the first review came back.
+            Busy::Turn(TurnOrigin::PlanReview) => {
+                write!(f, "A plan review is already running for this session. Wait for it to finish.")
             }
             Busy::Mutation(kind) => {
                 write!(f, "This conversation is busy: {kind} is in progress.")
