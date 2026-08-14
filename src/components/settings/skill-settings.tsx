@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, BookOpen, Check, ArrowsRotateRight } from '@gravity-ui/icons'
 import { Button, Card, Checkbox, Disclosure, DisclosureGroup, Input, TextArea } from '@heroui/react'
 import { api } from '@/api'
+import { useConfirm } from '@/hooks/use-confirm'
 import type { Skill } from '@/types'
 
 /** The directory name doubles as the LLM-facing skill name, so it has to be a
@@ -196,6 +197,7 @@ export function SkillSettings() {
   const [rescanning, setRescanning] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
     const [list, bound] = await Promise.all([
@@ -383,6 +385,7 @@ export function SkillSettings() {
                         skill={skill}
                         onSave={refresh}
                         onDelete={isBuiltin ? undefined : async () => {
+                          if (!await confirm({ body: t('settings.confirmDelete.skill') })) return
                           setError(null)
                           try {
                             await api.deleteSkill(skill.dir_name)
@@ -410,6 +413,7 @@ export function SkillSettings() {
       <p data-slot="skill-settings-global-hint" className="text-xs text-muted">
         {t('settings.skills.globalBindingHint')}
       </p>
+      {confirmDialog}
     </div>
   )
 }

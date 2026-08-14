@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, ArrowUpFromLine, Sticker } from '@gravity-ui/icons'
 import { Button, Disclosure, Input } from '@heroui/react'
 import { api } from '@/api'
+import { useConfirm } from '@/hooks/use-confirm'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import type { Emoji, EmojiPack } from '@/types'
 
@@ -156,6 +157,7 @@ export function EmojiSettings() {
   const [details, setDetails] = useState<PackDetail[]>([])
   const [loading, setLoading] = useState(true)
   const [newPackName, setNewPackName] = useState('')
+  const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
     const packs = await api.listEmojiPacks()
@@ -184,9 +186,10 @@ export function EmojiSettings() {
   }, [newPackName, refresh])
 
   const handleDelete = useCallback(async (id: string) => {
+    if (!await confirm({ body: t('settings.confirmDelete.emojiPack') })) return
     await api.deleteEmojiPack(id)
     await refresh()
-  }, [refresh])
+  }, [confirm, t, refresh])
 
   const handleImport = useCallback(async (packId: string) => {
     // Cancelling the picker rejects on Android instead of resolving to null.
@@ -202,9 +205,10 @@ export function EmojiSettings() {
   }, [refresh])
 
   const handleDeleteEmoji = useCallback(async (id: string) => {
+    if (!await confirm({ body: t('settings.confirmDelete.emoji') })) return
     await api.deleteEmoji(id)
     await refresh()
-  }, [refresh])
+  }, [confirm, t, refresh])
 
   const handleRenameEmoji = useCallback(async (id: string, newName: string) => {
     await api.renameEmoji(id, newName)
@@ -256,6 +260,7 @@ export function EmojiSettings() {
           </p>
         )}
       </div>
+      {confirmDialog}
     </div>
   )
 }

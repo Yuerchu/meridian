@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, StarFill, Check, SquareDashedText } from '@gravity-ui/icons'
 import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, ListBox, Select, TextArea, Tooltip } from '@heroui/react'
 import { api } from '@/api'
+import { useConfirm } from '@/hooks/use-confirm'
 import { SubAgentSettings } from './sub-agent-settings'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
 import { SettingsDrilldown } from './settings-drilldown'
@@ -483,6 +484,7 @@ export function AssistantSettings() {
   const [providers, setProviders] = useState<Provider[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
     const [aList, pList] = await Promise.all([
@@ -513,11 +515,12 @@ export function AssistantSettings() {
 
   const handleDelete = useCallback(
     async (id: string) => {
+      if (!await confirm({ body: t('settings.confirmDelete.assistant') })) return
       await api.deleteAssistant(id)
       if (expandedId === id) setExpandedId(null)
       await refresh()
     },
-    [expandedId, refresh],
+    [confirm, t, expandedId, refresh],
   )
 
   if (loading) {
@@ -602,6 +605,7 @@ export function AssistantSettings() {
           same question — which model runs this — asked about a different kind
           of agent. */}
       <SubAgentSettings providers={providers} />
+      {confirmDialog}
     </div>
   )
 }

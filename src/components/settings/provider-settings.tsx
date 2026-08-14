@@ -4,6 +4,7 @@ import { Plus, Check, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } 
 import { Button, Disclosure, Input, Label, ListBox, Select, Spinner, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
+import { useConfirm } from '@/hooks/use-confirm'
 import { MasterDetail } from './master-detail'
 import { useMasterDetail } from './use-master-detail'
 import { EFFORT_LADDER } from '@/lib/thinking'
@@ -313,6 +314,7 @@ function ProviderEditor({
   const [baseUrl, setBaseUrl] = useState(provider.base_url)
   const [apiFormat, setApiFormat] = useState(provider.api_format || 'chat_completions')
   const [apiKey, setApiKey] = useState('')
+  const { confirm, confirmDialog } = useConfirm()
   // Not a boolean: while the lookup is in flight `false` renders exactly like
   // "no key configured", and so does a lookup that failed. Both would invite the
   // user to enter a key they already have — and saving one rewrites the store
@@ -336,13 +338,14 @@ function ProviderEditor({
   // delete looks like a click that did not register, and a second click races
   // the first.
   const handleDelete = useCallback(async () => {
+    if (!await confirm({ body: t('settings.confirmDelete.provider') })) return
     setDeleting(true)
     try {
       await onDelete(provider.id)
     } finally {
       setDeleting(false)
     }
-  }, [onDelete, provider.id])
+  }, [confirm, t, onDelete, provider.id])
 
   useEffect(() => {
     let cancelled = false
@@ -414,10 +417,11 @@ function ProviderEditor({
   }, [loadModelConfigs])
 
   const handleDeleteModelConfig = useCallback(async (id: string) => {
+    if (!await confirm({ body: t('settings.confirmDelete.modelConfig') })) return
     await api.deleteModelConfig(id)
     await loadModelConfigs()
     setEditingModelId(null)
-  }, [loadModelConfigs])
+  }, [confirm, t, loadModelConfigs])
 
   const typeOptions = [
     { value: 'openai', label: t('settings.provider.typeOpenAI') },
@@ -610,6 +614,7 @@ function ProviderEditor({
           {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
         </Button>
       </div>
+      {confirmDialog}
     </div>
   )
 }

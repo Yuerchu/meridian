@@ -4,8 +4,9 @@ import { ArrowsRotateRight, Check, Copy, Microphone, Pencil, SquareDashedText, T
 import { ModelIcon } from '@/components/ui/model-icon'
 import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
+import { useConfirm } from '@/hooks/use-confirm'
 import { CopyButton, MarkdownContent } from './markdown-content'
-import { AlertDialog, Avatar, Button, TextArea } from '@heroui/react'
+import { Avatar, TextArea } from '@heroui/react'
 import {
   Message,
   MessageAvatar,
@@ -383,15 +384,15 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
   const [editText, setEditText] = useState('')
   const editRef = useRef<HTMLTextAreaElement>(null)
   const [selectedText, setSelectedText] = useState('')
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showSelectText, setShowSelectText] = useState(false)
   // Evaluated once per render rather than stored: `matchMedia` is synchronous
   // and a device does not grow a mouse mid-conversation.
   const coarse = isCoarsePointer()
-  // `AlertDialog.Body` is a plain div: only a `Heading slot="title"` is wired up
-  // for us, so without this the dialog announces its title and nothing else.
-  // Generated, because every message in the list has one of these.
-  const deleteDescId = React.useId()
+
+  const { confirm, confirmDialog } = useConfirm()
+  const requestDelete = useCallback(async () => {
+    if (await confirm({ body: t('confirm.deleteMessage') })) onDelete?.(message.id)
+  }, [confirm, t, onDelete, message.id])
 
   const handleContextMenuOpenChange = useCallback((open: boolean) => {
     if (open) {
@@ -530,7 +531,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                   {onDelete && (
                     <ActionButton
                       label={t('chat.delete')}
-                      onClick={() => setShowDeleteConfirm(true)}
+                      onClick={requestDelete}
                       className="text-muted hover:text-danger"
                     >
                       <TrashBin className="w-3.5 h-3.5" />
@@ -569,7 +570,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
           )}
           <ContextMenuSeparator />
           {onDelete && (
-            <ContextMenuItem variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
+            <ContextMenuItem variant="destructive" onClick={requestDelete}>
               <TrashBin />
               {t('chat.delete')}
             </ContextMenuItem>
@@ -588,26 +589,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
             onOpenChange={setShowSelectText}
           />
         )}
-        {onDelete && (
-          <AlertDialog.Backdrop isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-            <AlertDialog.Container>
-              <AlertDialog.Dialog aria-describedby={deleteDescId}>
-                <AlertDialog.Header>
-                  <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
-                </AlertDialog.Header>
-                <AlertDialog.Body id={deleteDescId}>{t('confirm.deleteMessage')}</AlertDialog.Body>
-                <AlertDialog.Footer>
-                  <Button slot="close" variant="tertiary">
-                    {t('common.cancel')}
-                  </Button>
-                  <Button slot="close" variant="danger" onClick={() => onDelete(message.id)}>
-                    {t('common.confirm')}
-                  </Button>
-                </AlertDialog.Footer>
-              </AlertDialog.Dialog>
-            </AlertDialog.Container>
-          </AlertDialog.Backdrop>
-        )}
+        {confirmDialog}
       </>
     )
   }
@@ -684,7 +666,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
               {onDelete && (
                 <ActionButton
                   label={t('chat.delete')}
-                  onClick={() => setShowDeleteConfirm(true)}
+                  onClick={requestDelete}
                   className="text-muted hover:text-danger"
                 >
                   <TrashBin className="w-3.5 h-3.5" />
@@ -735,7 +717,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
         )}
         <ContextMenuSeparator />
         {onDelete && (
-          <ContextMenuItem variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
+          <ContextMenuItem variant="destructive" onClick={requestDelete}>
             <TrashBin />
             {t('chat.delete')}
           </ContextMenuItem>
@@ -754,26 +736,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
           onOpenChange={setShowSelectText}
         />
       )}
-      {onDelete && (
-        <AlertDialog.Backdrop isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-          <AlertDialog.Container>
-            <AlertDialog.Dialog aria-describedby={deleteDescId}>
-              <AlertDialog.Header>
-                <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
-              </AlertDialog.Header>
-              <AlertDialog.Body id={deleteDescId}>{t('confirm.deleteMessage')}</AlertDialog.Body>
-              <AlertDialog.Footer>
-                <Button slot="close" variant="tertiary">
-                  {t('common.cancel')}
-                </Button>
-                <Button slot="close" variant="danger" onClick={() => onDelete(message.id)}>
-                  {t('common.confirm')}
-                </Button>
-              </AlertDialog.Footer>
-            </AlertDialog.Dialog>
-          </AlertDialog.Container>
-        </AlertDialog.Backdrop>
-      )}
+      {confirmDialog}
     </>
   )
 })

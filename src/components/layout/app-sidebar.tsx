@@ -13,10 +13,10 @@
  * runs `ConversationListPage`, not this — but a mobile sheet that stays open
  * after a tap is where to look first.
  */
-import { Fragment, useCallback, useId, useRef, useState } from 'react'
+import { Fragment, useCallback, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { AlertDialog, Button, Input } from '@heroui/react'
+import { Button, Input } from '@heroui/react'
 import { Sidebar } from '@heroui-pro/react/sidebar'
 import { Archive, ArrowLeft, Comment, FolderOpen, FolderPlus, Gear, Plus } from '@gravity-ui/icons'
 
@@ -33,6 +33,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { useConfirm } from '@/hooks/use-confirm'
 import { ConversationIndicator } from './conversation-indicator'
 import { ProjectIcon } from './project-icon'
 import { RenameDialog } from './rename-dialog'
@@ -176,10 +177,7 @@ export function AppSidebar({
   const platform = usePlatform()
   const [showNewProject, setShowNewProject] = useState(false)
   const [renameTarget, setRenameTarget] = useState<{ type: 'conversation' | 'project'; id: string } | null>(null)
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'conversation' | 'project'; id: string } | null>(null)
-  // `AlertDialog.Body` is a plain div — only a `Heading slot="title"` is wired
-  // up for us, so without this the dialog announces its title and nothing else.
-  const deleteDescId = useId()
+  const { confirm, confirmDialog } = useConfirm()
 
   // One menu per list rather than one per row. A row cannot be the trigger:
   // `Sidebar.Menu` is a React Aria `Tree`, whose items pass only a fixed set of
@@ -202,12 +200,16 @@ export function AppSidebar({
     conversation: (menu?.kind === 'conversation' && conversations.find((c) => c.id === menu.id)) || null,
     onTogglePin,
     onRequestRename: (id) => setRenameTarget({ type: 'conversation', id }),
-    onRequestDelete: (id) => setDeleteTarget({ type: 'conversation', id }),
+    onRequestDelete: async (id) => {
+      if (await confirm({ body: t('confirm.deleteConversation') })) onDelete(id)
+    },
   })
   const projectActions = useProjectActions({
     project: (menu?.kind === 'project' && projects.find((p) => p.id === menu.id)) || null,
     onRequestRename: (id) => setRenameTarget({ type: 'project', id }),
-    onRequestDelete: (id) => setDeleteTarget({ type: 'project', id }),
+    onRequestDelete: async (id) => {
+      if (await confirm({ body: t('confirm.deleteProject') })) onDeleteProject(id)
+    },
   })
 
   // base-ui reads the cursor position off the Root, so the Root has to enclose
@@ -404,36 +406,7 @@ export function AppSidebar({
         }}
       />
 
-      <AlertDialog.Backdrop
-        isOpen={deleteTarget !== null}
-        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
-      >
-        <AlertDialog.Container>
-          <AlertDialog.Dialog aria-describedby={deleteDescId}>
-            <AlertDialog.Header>
-              <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
-            </AlertDialog.Header>
-            <AlertDialog.Body id={deleteDescId}>
-              {deleteTarget?.type === 'project' ? t('confirm.deleteProject') : t('confirm.deleteConversation')}
-            </AlertDialog.Body>
-            <AlertDialog.Footer>
-              <Button slot="close" variant="tertiary">
-                {t('common.cancel')}
-              </Button>
-              <Button
-                slot="close"
-                variant="danger"
-                onClick={() => {
-                  if (deleteTarget?.type === 'conversation') onDelete(deleteTarget.id)
-                  else if (deleteTarget?.type === 'project') onDeleteProject(deleteTarget.id)
-                }}
-              >
-                {t('common.confirm')}
-              </Button>
-            </AlertDialog.Footer>
-          </AlertDialog.Dialog>
-        </AlertDialog.Container>
-      </AlertDialog.Backdrop>
+      {confirmDialog}
     </>
   )
 }

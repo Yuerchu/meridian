@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertDialog, Button, Disclosure } from '@heroui/react'
+import { Button, Disclosure } from '@heroui/react'
 import { Archive, Comment, Ellipsis, FolderOpen, Gear, Pin, Plus } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'
 import { formatListTimestamp } from '@/lib/format-time'
 import type { Conversation, Project } from '@/types'
+import { useConfirm } from '@/hooks/use-confirm'
 import { ActionSheet } from './action-sheet'
 import { ConversationIndicator } from './conversation-indicator'
 import { MobileAppBar } from './mobile-app-bar'
@@ -62,16 +63,19 @@ export function ConversationListPage({
   const { t, i18n } = useTranslation()
   const [sheetTarget, setSheetTarget] = useState<Target>(null)
   const [renameTarget, setRenameTarget] = useState<Target>(null)
-  const [deleteTarget, setDeleteTarget] = useState<Target>(null)
+  const { confirm, confirmDialog } = useConfirm()
 
   const activeProject = projects.find((p) => p.id === activeProjectId)
 
   const requestRename = useCallback((type: 'conversation' | 'project') => (id: string) => {
     setRenameTarget({ type, id })
   }, [])
-  const requestDelete = useCallback((type: 'conversation' | 'project') => (id: string) => {
-    setDeleteTarget({ type, id })
-  }, [])
+  const requestDelete = useCallback((type: 'conversation' | 'project') => async (id: string) => {
+    const body = type === 'project' ? t('confirm.deleteProject') : t('confirm.deleteConversation')
+    if (!await confirm({ body })) return
+    if (type === 'project') onDeleteProject(id)
+    else onDelete(id)
+  }, [confirm, t, onDelete, onDeleteProject])
 
   const renameSubject = useMemo(() => {
     if (!renameTarget) return null
@@ -202,37 +206,7 @@ export function ConversationListPage({
         }}
       />
 
-      <AlertDialog.Backdrop
-        isOpen={deleteTarget !== null}
-        onOpenChange={(open) => { if (!open) setDeleteTarget(null) }}
-      >
-        <AlertDialog.Container>
-          <AlertDialog.Dialog>
-            <AlertDialog.Header>
-              <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
-            </AlertDialog.Header>
-            <AlertDialog.Body>
-              {deleteTarget?.type === 'project'
-                ? t('confirm.deleteProject')
-                : t('confirm.deleteConversation')}
-            </AlertDialog.Body>
-            <AlertDialog.Footer>
-              <Button slot="close" variant="secondary">{t('common.cancel')}</Button>
-              <Button
-                variant="danger"
-                onClick={() => {
-                  if (!deleteTarget) return
-                  if (deleteTarget.type === 'project') onDeleteProject(deleteTarget.id)
-                  else onDelete(deleteTarget.id)
-                  setDeleteTarget(null)
-                }}
-              >
-                {t('common.confirm')}
-              </Button>
-            </AlertDialog.Footer>
-          </AlertDialog.Dialog>
-        </AlertDialog.Container>
-      </AlertDialog.Backdrop>
+      {confirmDialog}
     </div>
   )
 }

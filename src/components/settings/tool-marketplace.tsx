@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Wrench, Terminal, Check } from '@gravity-ui/icons'
 import { Button, Card, Disclosure, DisclosureGroup, Input, Label, ListBox, Select } from '@heroui/react'
 import { api } from '@/api'
+import { useConfirm } from '@/hooks/use-confirm'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
 import { SettingsHeader, SettingsPane } from './primitives'
 import { SettingsDrilldown } from './settings-drilldown'
@@ -135,6 +136,7 @@ export function ToolMarketplace() {
   const [showCreate, setShowCreate] = useState(false)
   const [expandedToolId, setExpandedToolId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
     const [tools, custom, cats, pres] = await Promise.all([
@@ -272,6 +274,7 @@ export function ToolMarketplace() {
                         tool={ct}
                         onSave={refresh}
                         onDelete={async () => {
+                          if (!await confirm({ body: t('settings.confirmDelete.customTool') })) return
                           await api.deleteCustomTool(ct.id)
                           setExpandedToolId(null)
                           refresh()
@@ -306,6 +309,7 @@ export function ToolMarketplace() {
           })}
         </div>
       </div>
+      {confirmDialog}
     </SettingsPane>
   )
 }

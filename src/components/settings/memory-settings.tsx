@@ -1,8 +1,9 @@
-import { useId, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { AlertDialog, Button, Card, DisclosureGroup, Input, ListBox, Select, TextArea } from '@heroui/react'
+import { Button, Card, DisclosureGroup, Input, ListBox, Select, TextArea } from '@heroui/react'
+import { useConfirm } from '@/hooks/use-confirm'
 import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
 import { ScopeNav } from './memory/scope-nav'
@@ -13,13 +14,10 @@ export function MemorySettings() {
   const browser = useMemoryBrowser()
   const [trashOpen, setTrashOpen] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
-  const [confirmBulk, setConfirmBulk] = useState(false)
   const [newKey, setNewKey] = useState('')
   const [newContent, setNewContent] = useState('')
   const [newType, setNewType] = useState('general')
-  // `AlertDialog.Body` is a plain div — only a `Heading slot="title"` is wired
-  // up for us, so without this the dialog announces its title and nothing else.
-  const bulkDeleteDescId = useId()
+  const { confirm, confirmDialog } = useConfirm()
 
   const typeOptions = (browser.enums?.memory_types ?? ['general']).map((v) => ({
     value: v,
@@ -205,46 +203,29 @@ export function MemorySettings() {
               <Button variant="ghost" onClick={browser.clearSelection}>
                 {t('settings.memory.clearSelection')}
               </Button>
-              <Button variant="ghost" onClick={() => setConfirmBulk(true)}>
+              <Button
+                variant="ghost"
+                onClick={async () => {
+                  const ok = await confirm({
+                    title: t('settings.memory.deleteConfirmTitle'),
+                    body: t('settings.memory.deleteConfirmBody'),
+                  })
+                  if (!ok) return
+                  await api.deleteMemories([...browser.selected])
+                  browser.clearSelection()
+                  browser.refresh()
+                }}
+              >
                 <TrashBin className="text-danger" />
                 {t('settings.memory.deleteSelected')}
               </Button>
-              <AlertDialog.Backdrop isOpen={confirmBulk} onOpenChange={setConfirmBulk}>
-                <AlertDialog.Container>
-                  <AlertDialog.Dialog aria-describedby={bulkDeleteDescId}>
-                    <AlertDialog.Header>
-                      <AlertDialog.Heading>
-                        {t('settings.memory.deleteConfirmTitle')}
-                      </AlertDialog.Heading>
-                    </AlertDialog.Header>
-                    <AlertDialog.Body id={bulkDeleteDescId}>
-                      {t('settings.memory.deleteConfirmBody')}
-                    </AlertDialog.Body>
-                    <AlertDialog.Footer>
-                      <Button slot="close" variant="tertiary">
-                        {t('common.cancel')}
-                      </Button>
-                      <Button
-                        slot="close"
-                        variant="danger"
-                        onClick={async () => {
-                          await api.deleteMemories([...browser.selected])
-                          browser.clearSelection()
-                          browser.refresh()
-                        }}
-                      >
-                        {t('common.confirm')}
-                      </Button>
-                    </AlertDialog.Footer>
-                  </AlertDialog.Dialog>
-                </AlertDialog.Container>
-              </AlertDialog.Backdrop>
             </div>
           )}
         </div>
       </div>
 
       <MemoryTrash open={trashOpen} onOpenChange={setTrashOpen} onChanged={browser.refresh} />
+      {confirmDialog}
     </div>
   )
 }

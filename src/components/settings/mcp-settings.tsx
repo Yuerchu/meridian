@@ -4,6 +4,7 @@ import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } 
 import { Button, Input, Switch, TextArea, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
+import { useConfirm } from '@/hooks/use-confirm'
 import type { McpServer, McpToolDef } from '@/types'
 import { MasterDetail } from './master-detail'
 import { useMasterDetail } from './use-master-detail'
@@ -321,6 +322,7 @@ export function McpSettings() {
   const { selectedId, openItem, openAux, select, back } = nav
   const [servers, setServers] = useState<McpServer[]>([])
   const showImport = nav.aux === 'import'
+  const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(() => {
     api.listMcpServers().then(setServers)
@@ -335,10 +337,11 @@ export function McpSettings() {
   }, [refresh, openItem])
 
   const handleDelete = useCallback(async (id: string) => {
+    if (!await confirm({ body: t('settings.confirmDelete.mcpServer') })) return
     await api.deleteMcpServer(id)
     if (selectedId === id) select(null)
     refresh()
-  }, [selectedId, select, refresh])
+  }, [confirm, t, selectedId, select, refresh])
 
   const handleImport = useCallback(async (data: McpServersJson) => {
     if (!data.mcpServers) return
@@ -406,6 +409,7 @@ export function McpSettings() {
   )
 
   return (
+    <>
     <MasterDetail
       nav={nav}
       title={t('settings.mcp.title')}
@@ -439,5 +443,7 @@ export function McpSettings() {
         <p className="text-sm text-muted">{t('settings.mcp.noServers')}</p>
       ) : undefined}
     />
+    {confirmDialog}
+    </>
   )
 }
