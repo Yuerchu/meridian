@@ -379,7 +379,17 @@ export function AppSidebar({
     </>
   )
 
-  const side = page === 'settings' ? settingsSide : chatSide
+  // Keyed, so that switching pages remounts the panel instead of reconciling
+  // it. Both sides open with a `Sidebar.Menu` holding a single item, and React
+  // would keep that menu and hand it an item with a different id — which a
+  // React Aria collection refuses outright ("Cannot change the id of an item"),
+  // taking the whole screen down with it. The two sides share no state, so
+  // there is nothing a remount costs.
+  const side = (prefix: string) => (
+    <Fragment key={page === 'settings' ? 'settings' : 'chat'}>
+      {page === 'settings' ? settingsSide(prefix) : chatSide(prefix)}
+    </Fragment>
+  )
 
   return (
     <>
