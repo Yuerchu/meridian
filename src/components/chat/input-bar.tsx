@@ -58,6 +58,15 @@ interface InputBarProps {
   onStop?: () => void
   disabled?: boolean
   streaming?: boolean
+  /**
+   * This conversation is a delegated run that can be talked to mid-flight.
+   *
+   * Enter submits while the answer is still coming, and a Stop of its own
+   * appears beside Send. The tool menu goes away with it: what it holds — the
+   * model, the mode, the standing yes, the attachments — describes a turn about
+   * to start, and steering starts none.
+   */
+  steerable?: boolean
   attachedFiles?: AttachedFile[]
   onAttachFiles?: (files: AttachedFile[]) => void
   onRemoveFile?: (index: number) => void
@@ -121,6 +130,7 @@ export function InputBar({
   onStop,
   disabled,
   streaming,
+  steerable,
   assistants,
   providers,
   currentAssistantId,
@@ -264,21 +274,27 @@ export function InputBar({
     }
   }, [onAttachFiles])
 
+  // A path is all either the picker or a drop hands over; the name is asked for
+  // separately because on Android a `content://` URI has no readable last
+  // segment, and the tail of the path is only a fallback for when that fails.
+  const attachPaths = useCallback(async (paths: string[]) => {
+    if (!onAttachFiles || paths.length === 0) return
+    const files = await Promise.all(paths.map(async (p) => ({
+      path: p,
+      name: await api.resolveFileName(p).catch(() => p.replace(/\\/g, '/').split('/').pop() ?? 'file'),
+    })))
+    onAttachFiles(files)
+  }, [onAttachFiles])
+
   const handlePickFile = useCallback(async () => {
     // Cancelling rejects on Android rather than resolving to null, so a tap on
     // Back out of the picker would otherwise surface as an unhandled rejection.
     // Every caller here already treats null as "nothing chosen".
     const paths = await open({ multiple: true }).catch(() => null)
-    if (paths && onAttachFiles) {
-      const files = await Promise.all(
-        (Array.isArray(paths) ? paths : [paths]).map(async (p) => ({
-          path: p,
-          name: await api.resolveFileName(p).catch(() => p.replace(/\\/g, '/').split('/').pop() ?? 'file'),
-        }))
-      )
-      onAttachFiles(files)
-    }
-  }, [onAttachFiles])
+    if (paths) await attachPaths(Array.isArray(paths) ? paths : [paths])
+  }, [attachPaths])
+
+  const handleDropFiles = useCallback((paths: string[]) => { void attachPaths(paths) }, [attachPaths])
 
   const menuItems = (
     <>
@@ -336,9 +352,15 @@ export function InputBar({
           disabled={disabled && !streaming}
           streaming={streaming}
           onStop={onStop}
+          steerable={steerable}
           ariaLabel={t('chat.placeholder')}
-          placeholder={isAndroid && !value ? t('chat.placeholderVoice') : t('chat.placeholder')}
+          placeholder={
+            steerable && streaming
+              ? t('chat.placeholderSteer')
+              : isAndroid && !value ? t('chat.placeholderVoice') : t('chat.placeholder')
+          }
           onFieldReady={handleFieldReady}
+          onDropFiles={onAttachFiles ? handleDropFiles : undefined}
           notice={voiceNotice && (
             <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>
           )}
@@ -385,7 +407,7 @@ export function InputBar({
               onContextMenu={(e) => e.preventDefault()}
             />
           )}
-          toolbarStart={
+          toolbarStart={steerable && streaming ? null : (
             isAndroid ? (
               <MobileOptionsMenu
                 assistants={assistants}
@@ -434,7 +456,7 @@ export function InputBar({
                 }
               />
             )
-          }
+          )}
           toolbarEnd={
             <>
               <EmojiPicker
@@ -568,32 +590,6 @@ export function InputBar({
                   </Popover>
                 )
               })()}
-              {/* TODO: a running sub-agent can be talked to, and this cannot say
-                  it. `steer_conversation` and the whole queue protocol behind it
-                  are done — a message goes into the run's inbox and the loop
-                  takes it between rounds, including one typed while the last
-                  words of an answer are being written. What is missing is a way
-                  to send it: while `streaming` Send becomes Stop, so there is no
-                  submit control at all.
-
-                  Pro has done half of it. `allowSubmitWhileRunning` makes Enter
-                  submit mid-run and keeps Send as Send while there is text — but
-                  then nothing is left to stop the run with, so a steerable
-                  composer also needs its own Stop next to it.
-
-                  What remains is ours: `sendMessage` routing to
-                  `steer_conversation` when the conversation has a live turn —
-                  without touching `submittingRef`, `streaming` or the optimistic
-                  assistant bubble, since it starts no turn — an optimistic user
-                  bubble that a later snapshot reconciles, and marking that
-                  bubble undelivered when the command answers `Err` (the run had
-                  already stopped reading). Attachments, voice and slash commands
-                  stay hidden in that mode: each needs a turn's context, and
-                  steering is precisely what does not create one.
-
-                  The main conversation keeps the current behaviour — Stop only,
-                  which is what `allowSubmitWhileRunning` being off already
-                  gives. */}
             </>
           }
         />

@@ -65,7 +65,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     storeLoadActiveTodos(conversationId)
   }, [conversationId, storeEnsureSession, storeLoadMessages, storeLoadActiveTodos])
 
-  const { sendMessage, handleRegenerate, handleEdit, handleVoiceSend } = useSendMessage(conversationId, {
+  const { sendMessage, steerMessage, handleRegenerate, handleEdit, handleVoiceSend } = useSendMessage(conversationId, {
     streaming,
     selectedAssistantId: settings.selectedAssistantId,
     selectedModelId: settings.selectedModelId,
@@ -114,23 +114,6 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     }
   }, [conversationId, initialMessage, onInitialMessageConsumed, sendMessage])
 
-  const handleSubmit = useCallback(() => {
-    const text = input.trim()
-    if (!text) return
-
-    if (text.startsWith('/compact')) {
-      const instructions = text.slice('/compact'.length).trim() || undefined
-      setInput('')
-      handleCompact(instructions)
-      return
-    }
-
-    const files = [...attachedFiles]
-    setInput('')
-    setAttachedFiles([])
-    sendMessage(text, true, files.length > 0 ? files : undefined)
-  }, [input, sendMessage, attachedFiles, handleCompact])
-
   // Memoised because useTurns keys its work on this array's identity; a fresh
   // filter() on every render would rebuild every turn on every stream chunk.
   const visibleMessages = useMemo(
@@ -165,6 +148,39 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     compactBoundary,
     compacting,
   })
+
+  // Only a delegated run keeps an inbox open, and only while it is going. The
+  // main conversation is unchanged: nothing can be submitted until the answer
+  // is finished, because there is nowhere for it to go. Below `contextInfo`,
+  // which is where the answer comes from.
+  const steerable = !!contextInfo.agentKind
+  const steering = steerable && streaming
+
+  const handleSubmit = useCallback(() => {
+    const text = input.trim()
+    if (!text) return
+
+    // Before the slash commands, which all ask for a turn to be started or
+    // reshaped and so have nowhere to land mid-run. The field is cleared only
+    // once the run has taken the text: a refusal means it was written down
+    // nowhere, and retyping it would be the user paying for that.
+    if (steering) {
+      void steerMessage(text).then((sent) => { if (sent) setInput('') })
+      return
+    }
+
+    if (text.startsWith('/compact')) {
+      const instructions = text.slice('/compact'.length).trim() || undefined
+      setInput('')
+      handleCompact(instructions)
+      return
+    }
+
+    const files = [...attachedFiles]
+    setInput('')
+    setAttachedFiles([])
+    sendMessage(text, true, files.length > 0 ? files : undefined)
+  }, [input, sendMessage, attachedFiles, handleCompact, steering, steerMessage])
 
   return (
     <div className="flex flex-col h-full">
@@ -212,6 +228,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         onStop={handleStop}
         disabled={streaming}
         streaming={streaming}
+        steerable={steerable}
         assistants={settings.assistants}
         providers={settings.providers}
         currentAssistantId={settings.selectedAssistantId}

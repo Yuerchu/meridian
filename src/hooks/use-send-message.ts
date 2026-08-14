@@ -27,9 +27,54 @@ export interface SendMessage {
     replaces?: string,
     voice?: boolean,
   ) => Promise<void>
+  /** Says something to the run already going; false when nobody was reading. */
+  steerMessage: (text: string) => Promise<boolean>
   handleRegenerate: (messageId: string) => void
   handleEdit: (id: string, content: string) => void
   handleVoiceSend: (text: string) => void
+}
+
+/**
+ * The user's words on screen before any row exists for them.
+ *
+ * The id is temporary and the reload that follows the turn replaces the whole
+ * list, so nothing here has to match what the backend will write — only to read
+ * as what was typed.
+ */
+function appendTempUser(conversationId: string, content: string, now: number) {
+  useConversationStore.setState((state) => {
+    const session = state.sessions[conversationId]
+    if (!session) return state
+    return {
+      sessions: {
+        ...state.sessions,
+        [conversationId]: {
+          ...session,
+          messages: [
+            ...session.messages,
+            {
+              id: `temp-user-${now}`,
+              conversation_id: conversationId,
+              role: 'user' as const,
+              content,
+              provider_id: null,
+              model_id: null,
+              input_tokens: null,
+              output_tokens: null,
+              tool_calls: null,
+              tool_call_id: null,
+              sort_order: session.messages.length,
+              created_at: now,
+              reasoning_content: null,
+              rating: null,
+              schema_version: 2,
+              is_compact_summary: 0,
+            },
+          ],
+        },
+      },
+    }
+  })
 }
 
 /**
@@ -44,6 +89,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
   const storeBeginTurn = useConversationStore((s) => s.beginTurn)
   const storeAbortTurn = useConversationStore((s) => s.abortTurn)
   const storeLoadMessages = useConversationStore((s) => s.loadMessages)
+  const storeSetError = useConversationStore((s) => s.setError)
   const submittingRef = useRef(false)
 
   const { streaming, selectedAssistantId, selectedModelId, selectedProviderId, thinkingLevel, fastMode, mode } = opts
@@ -104,39 +150,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
     }
 
     if (addUserBubble && messageContent !== null) {
-      useConversationStore.setState((state) => {
-        const session = state.sessions[conversationId]
-        if (!session) return state
-        return {
-          sessions: {
-            ...state.sessions,
-            [conversationId]: {
-              ...session,
-              messages: [
-                ...session.messages,
-                {
-                  id: `temp-user-${now}`,
-                  conversation_id: conversationId,
-                  role: 'user' as const,
-                  content: messageContent,
-                  provider_id: null,
-                  model_id: null,
-                  input_tokens: null,
-                  output_tokens: null,
-                  tool_calls: null,
-                  tool_call_id: null,
-                  sort_order: session.messages.length,
-                  created_at: now,
-                  reasoning_content: null,
-                  rating: null,
-                  schema_version: 2,
-                  is_compact_summary: 0,
-                },
-              ],
-            },
-          },
-        }
-      })
+      appendTempUser(conversationId, messageContent, now)
     }
 
     api
@@ -160,6 +174,36 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
         storeLoadMessages(conversationId)
       })
   }, [conversationId, streaming, selectedModelId, selectedProviderId, thinkingLevel, fastMode, mode, selectedAssistantId, storeBeginTurn, storeAbortTurn, storeLoadMessages])
+
+  /**
+   * Say something to a run that is already going.
+   *
+   * Not a turn, and so not `sendMessage`: it starts nothing, takes no lease and
+   * leaves `submittingRef`, the streaming flag and the assistant bubble exactly
+   * where they were. The backend drops the text into the run's inbox and the
+   * loop takes it between rounds.
+   *
+   * The bubble waits for the answer rather than going up first. A refusal means
+   * nobody was reading — the run had already stopped — and the backend
+   * deliberately writes nothing in that case, so a bubble put up optimistically
+   * would be a message on screen that exists nowhere and will not come back
+   * after a reload. The round trip is local and the text stays in the field
+   * until it lands, which is what makes resending it a matter of pressing Enter
+   * again.
+   */
+  const steerMessage = useCallback(async (text: string) => {
+    const trimmed = text.trim()
+    if (!trimmed) return false
+    try {
+      await api.steerConversation(conversationId, trimmed)
+    } catch (err) {
+      storeSetError(conversationId, String(err))
+      return false
+    }
+    storeSetError(conversationId, null)
+    appendTempUser(conversationId, trimmed, Date.now())
+    return true
+  }, [conversationId, storeSetError])
 
   // Reset submittingRef when streaming ends
   useEffect(() => {
@@ -187,5 +231,5 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
     if (text.trim()) sendMessage(text, true, undefined, undefined, true)
   }, [sendMessage])
 
-  return { sendMessage, handleRegenerate, handleEdit, handleVoiceSend }
+  return { sendMessage, steerMessage, handleRegenerate, handleEdit, handleVoiceSend }
 }

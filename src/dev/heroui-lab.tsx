@@ -232,6 +232,7 @@ function PromptInputProbe() {
   const [submits, setSubmits] = useState(0)
   const [stops, setStops] = useState(0)
   const [streaming, setStreaming] = useState(false)
+  const [steerable, setSteerable] = useState(false)
 
   return (
     <div className="space-y-2">
@@ -241,6 +242,7 @@ function PromptInputProbe() {
         onSubmit={() => { setSubmits((n) => n + 1); setValue('') }}
         onStop={() => { setStops((n) => n + 1); setStreaming(false) }}
         streaming={streaming}
+        steerable={steerable}
         ariaLabel="探测输入框"
         placeholder="打几个字，试 Enter / Shift+Enter / 组词中的 Enter"
         toolbarStart={<span data-testid="slot-start" className="text-xs text-muted">工具槽</span>}
@@ -269,6 +271,14 @@ function PromptInputProbe() {
         <HButton size="sm" variant="ghost" onPress={() => setStreaming((s) => !s)}>
           {streaming ? '结束流式' : '模拟流式'}
         </HButton>
+        {' · '}
+        <HButton size="sm" variant="ghost" onPress={() => setSteerable((s) => !s)}>
+          {steerable ? '关掉可插话' : '开可插话'}
+        </HButton>
+      </p>
+      <p className="text-xs text-muted">
+        「可插话」是子 agent 的模式：流式中 Enter 仍然提交，Send 保持 Send，Stop 单独出现在它左边——
+        但只在框里有字的时候，框空了 Pro 会把 Stop 的行为还给 Send。
       </p>
     </div>
   )

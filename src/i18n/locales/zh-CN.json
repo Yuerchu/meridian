@@ -569,6 +569,7 @@
   "chat.voice.error": "录音出错",
   "chat.voice.badge": "语音输入",
   "chat.placeholderVoice": "发送消息，或长按说话…",
+  "chat.placeholderSteer": "对正在进行的运行说点什么…",
   "chat.voice.preparing": "准备中…",
   "chat.voice.transcribing": "识别中…",
   "chat.voice.holdToTalk": "按住说话",
