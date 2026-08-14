@@ -44,6 +44,18 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
   useEffect(() => { stateRef.current = state }, [state])
 
   const handleRef = useRef<CaptureHandle | null>(null)
+  /**
+   * Whether a finger is currently down, set synchronously.
+   *
+   * `stateRef` cannot answer this: it is updated from an effect, so it trails
+   * the render by a commit. Opening the device takes anywhere from 141ms to
+   * 2.6s and blocks that commit, so a tap could arrive at `pointerup` with the
+   * state still reading `idle` — the release returned early, neither cancelling
+   * nor handing the field to the keyboard, and the hold timer then promoted a
+   * press that was already over. That is a recording nobody started and nothing
+   * would stop.
+   */
+  const pressActiveRef = useRef(false)
   const pressedAtRef = useRef(0)
   const captureAtRef = useRef(0)
   const startYRef = useRef(0)
@@ -57,6 +69,7 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
   /** Every exit runs through here. A leaked stream leaves the system microphone
    *  indicator lit, which reads as spying. */
   const release = useCallback(() => {
+    pressActiveRef.current = false
     if (holdTimerRef.current) {
       clearTimeout(holdTimerRef.current)
       holdTimerRef.current = null
@@ -112,8 +125,9 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
   }, [onNotice, onSend, release])
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (stateRef.current !== 'idle') return
+    if (stateRef.current !== 'idle' || pressActiveRef.current) return
     e.currentTarget.setPointerCapture(e.pointerId)
+    pressActiveRef.current = true
     cancelledRef.current = false
     pressedAtRef.current = Date.now()
     startYRef.current = e.clientY
@@ -147,7 +161,9 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
 
     holdTimerRef.current = setTimeout(() => {
       holdTimerRef.current = null
-      if (cancelledRef.current || stateRef.current !== 'starting') return
+      // `pressActiveRef` and not the state: a release that beat the state into
+      // place must not be promoted into a recording behind the user's back.
+      if (cancelledRef.current || !pressActiveRef.current) return
       setState('recording-hold')
       navigator.vibrate?.(15)
       captureAtRef.current = Date.now()
@@ -168,14 +184,16 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
   }, [])
 
   const handlePointerUp = useCallback(() => {
-    const s = stateRef.current
-    if (s === 'idle' || s === 'transcribing') return
+    if (!pressActiveRef.current) return
+    pressActiveRef.current = false
 
-    if (s === 'cancelling') {
+    if (stateRef.current === 'cancelling') {
       cancel()
       return
     }
     // Short press: never became a recording. Hand the field to the keyboard.
+    // Measured against the clock rather than the state, which may not have
+    // caught up with the press yet.
     if (Date.now() - pressedAtRef.current < HOLD_THRESHOLD_MS) {
       cancel()
       onTap()

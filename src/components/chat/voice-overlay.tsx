@@ -43,9 +43,22 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
       data-slot="voice-overlay"
       // Covers the lower half rather than floating a small card: the thumb is
       // down there, and the feedback has to be readable around it.
+      //
+      // A gradient rather than a fill, fading out towards the top: a hard edge
+      // across the middle of the screen is a lot of light to raise at night,
+      // and the words only need to be legible where they are.
+      //
+      // Not `--accent`. That is the *action* colour, and it inverts between
+      // themes so a button fill stays contrasty — near-black on light, near
+      // *white* on dark. Half a phone screen of it at 2am is a flashbang. The
+      // danger red does not invert, being a hue rather than a lightness, which
+      // is why cancelling was never the complaint.
       className={cn(
         'pointer-events-none fixed inset-x-0 bottom-0 z-50 flex h-1/2 flex-col items-center justify-end gap-6 pb-24',
-        cancelling ? 'bg-danger text-white' : 'bg-accent text-accent-foreground',
+        'bg-gradient-to-t',
+        cancelling
+          ? 'from-danger via-danger/80 to-transparent text-white'
+          : 'from-overlay via-overlay/85 to-transparent text-overlay-foreground',
       )}
       aria-live="polite"
     >
