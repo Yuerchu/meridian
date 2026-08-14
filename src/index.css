@@ -115,6 +115,13 @@
   --field-foreground: oklch(0.145 0 0);
   --field-border: oklch(0.922 0 0);
   --field-placeholder: oklch(0.556 0 0);
+  /* HeroUI defaults this to 0 and tells a field apart by its fill and a soft
+     shadow instead. That reads on their surfaces; here the page is grey, panels
+     are white and so are fields, which leaves the shadow doing the work alone —
+     and `--field-border` was already set to a colour nothing was drawing.
+     Everything that reads it follows: Input, TextArea, Select's trigger, and
+     Pro's PromptInput shell. */
+  --field-border-width: 1px;
 
   --scrollbar-thumb: oklch(0.922 0 0);
   --scrollbar-track: transparent;
