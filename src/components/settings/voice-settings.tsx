@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
-import { Button, Card, Input, Label, ListBox, ProgressCircle, Select } from '@heroui/react'
+import { Button, Card, Description, Input, Label, ListBox, ProgressCircle, Select, TextField } from '@heroui/react'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import type { VoiceModelStatus } from '@/types'
@@ -29,7 +29,6 @@ export function VoiceSettings() {
   const [filterLevel, setFilterLevel] = useState('standard')
   const [mirrorUrl, setMirrorUrl] = useState('')
   const [importing, setImporting] = useState(false)
-  const mirrorUrlId = useId()
 
   const refreshStatus = useCallback(async () => {
     const next = await api.voiceModelStatus()
@@ -188,43 +187,36 @@ export function VoiceSettings() {
         </Card>
       </div>
 
-      <div className="space-y-1.5">
-        <label htmlFor={mirrorUrlId} className="block text-xs font-medium text-muted">
-          {t('settings.voice.mirror')}
-        </label>
-        <Input fullWidth
-          id={mirrorUrlId}
+      <TextField fullWidth>
+        <Label>{t('settings.voice.mirror')}</Label>
+        <Input
           value={mirrorUrl}
           onChange={(e) => handleMirrorChange(e.target.value)}
           placeholder={t('settings.voice.mirrorPlaceholder')}
           className="w-full"
           disabled={downloading}
         />
-        <p className="text-xs text-muted">{t('settings.voice.mirrorHint')}</p>
-      </div>
+        <Description>{t('settings.voice.mirrorHint')}</Description>
+      </TextField>
 
-      <div className="space-y-1.5">
-        <Select fullWidth value={filterLevel} onChange={(v) => v && handleFilterChange(String(v))}>
-          <Label className="block text-xs font-medium text-muted">
-            {t('settings.voice.filterLevel')}
-          </Label>
-          <Select.Trigger className="max-w-xs">
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {filterOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
-        </Select>
-        <p className="text-xs text-muted">{t('settings.voice.filterHint')}</p>
-      </div>
+      <Select fullWidth value={filterLevel} onChange={(v) => v && handleFilterChange(String(v))}>
+        <Label>{t('settings.voice.filterLevel')}</Label>
+        <Select.Trigger className="max-w-xs">
+          <Select.Value />
+          <Select.Indicator />
+        </Select.Trigger>
+        <Select.Popover>
+          <ListBox>
+            {filterOptions.map((o) => (
+              <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                {o.label}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+            ))}
+          </ListBox>
+        </Select.Popover>
+        <Description>{t('settings.voice.filterHint')}</Description>
+      </Select>
     </SettingsPane>
   )
 }

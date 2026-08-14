@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useId } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, StarFill, Check, SquareDashedText } from '@gravity-ui/icons'
-import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, ListBox, Select, TextArea, Tooltip } from '@heroui/react'
+import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, ListBox, Select, TextArea, TextField, Tooltip } from '@heroui/react'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SubAgentSettings } from './sub-agent-settings'
@@ -51,11 +51,6 @@ function AssistantEditor({
     }
     return new Set<string>()
   })
-  const nameId = useId()
-  const systemPromptId = useId()
-  const modelInputId = useId()
-  const temperatureId = useId()
-  const contextLimitId = useId()
 
   useEffect(() => {
     if (providerId) {
@@ -119,14 +114,16 @@ function AssistantEditor({
 
   return (
     <div className="space-y-4 px-1 pb-4">
-      <div className="space-y-1.5">
-        <label htmlFor={nameId} className="block text-xs text-muted">{t('settings.assistant.name')}</label>
-        <Input fullWidth id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
-      </div>
+      <TextField fullWidth>
+        <Label>{t('settings.assistant.name')}</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} />
+      </TextField>
 
-      <div className="space-y-1.5">
+      {/* The label shares its line with a button, so it is nested rather than a
+          direct child. React Aria wires it through context either way. */}
+      <TextField fullWidth>
         <div className="flex items-center justify-between">
-          <label htmlFor={systemPromptId} className="block text-xs text-muted">{t('settings.assistant.systemPrompt')}</label>
+          <Label>{t('settings.assistant.systemPrompt')}</Label>
           <Button
             variant="ghost"
             className="text-xs gap-1"
@@ -156,8 +153,7 @@ function AssistantEditor({
             ))}
           </div>
         )}
-        <TextArea fullWidth
-          id={systemPromptId}
+        <TextArea
           value={systemPrompt}
           onChange={(e) => setSystemPrompt(e.target.value)}
           rows={6}
@@ -179,32 +175,30 @@ function AssistantEditor({
             ))}
           </div>
         )}
-      </div>
+      </TextField>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Select
-            fullWidth
-            value={providerId || '_default'}
-            onChange={(v) => { setProviderId(!v || v === '_default' ? '' : String(v)); setModelId('') }}
-          >
-            <Label className="block text-xs text-muted">{t('settings.assistant.provider')}</Label>
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {providerOptions.map((o) => (
-                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                    {o.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-        </div>
+        <Select
+          fullWidth
+          value={providerId || '_default'}
+          onChange={(v) => { setProviderId(!v || v === '_default' ? '' : String(v)); setModelId('') }}
+        >
+          <Label>{t('settings.assistant.provider')}</Label>
+          <Select.Trigger>
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              {providerOptions.map((o) => (
+                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                  {o.label}
+                  <ListBox.ItemIndicator />
+                </ListBox.Item>
+              ))}
+            </ListBox>
+          </Select.Popover>
+        </Select>
         <div className="space-y-1.5">
           {models.length > 0 ? (
             <Select
@@ -213,7 +207,7 @@ function AssistantEditor({
               onChange={(v) => setModelId(!v || v === '_none' ? '' : String(v))}
               placeholder={t('settings.assistant.selectModel')}
             >
-              <Label className="block text-xs text-muted">{t('settings.assistant.model')}</Label>
+              <Label>{t('settings.assistant.model')}</Label>
               <Select.Trigger>
                 <Select.Value />
                 <Select.Indicator />
@@ -230,25 +224,22 @@ function AssistantEditor({
               </Select.Popover>
             </Select>
           ) : (
-            <>
-              <label htmlFor={modelInputId} className="block text-xs text-muted">{t('settings.assistant.model')}</label>
-              <Input fullWidth
-                id={modelInputId}
+            <TextField fullWidth>
+              <Label>{t('settings.assistant.model')}</Label>
+              <Input
                 value={modelId}
                 onChange={(e) => setModelId(e.target.value)}
                 placeholder={t('settings.assistant.modelPlaceholder')}
               />
-            </>
+            </TextField>
           )}
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label htmlFor={temperatureId} className="block text-xs text-muted">{t('settings.assistant.temperature')}</label>
-          <Input fullWidth
-            id={temperatureId}
-            type="number"
+        <TextField fullWidth type="number">
+          <Label>{t('settings.assistant.temperature')}</Label>
+          <Input
             value={temperature}
             onChange={(e) => setTemperature(e.target.value)}
             placeholder={t('settings.assistant.providerDefault')}
@@ -256,16 +247,11 @@ function AssistantEditor({
             max={2}
             step={0.1}
           />
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor={contextLimitId} className="block text-xs text-muted">{t('settings.assistant.contextLimit')}</label>
-          <Input fullWidth
-            id={contextLimitId}
-            type="number"
-            value={contextLimit}
-            onChange={(e) => setContextLimit(e.target.value)}
-          />
-        </div>
+        </TextField>
+        <TextField fullWidth type="number">
+          <Label>{t('settings.assistant.contextLimit')}</Label>
+          <Input value={contextLimit} onChange={(e) => setContextLimit(e.target.value)} />
+        </TextField>
       </div>
 
       <div className="space-y-1.5">

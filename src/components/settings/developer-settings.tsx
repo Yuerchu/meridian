@@ -293,9 +293,9 @@ export function DeveloperSettings() {
       />
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted">
-          {t('settings.developer.micProbe')}
-        </label>
+        {/* Names the section, not a control — there is no field under it, only a
+            card that titles itself. It was a `<label>` pointing at nothing. */}
+        <p className="text-xs font-medium text-muted">{t('settings.developer.micProbe')}</p>
         <Card>
           <Card.Header>
             <Card.Title>{t('settings.developer.micProbeTitle')}</Card.Title>

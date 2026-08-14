@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useId, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Check, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
-import { Button, Disclosure, Input, Label, ListBox, Select, Spinner, Tooltip } from '@heroui/react'
+import { Button, Disclosure, Input, Label, ListBox, Select, Spinner, TextField, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -109,12 +109,6 @@ function ModelConfigEditor({
 }) {
   const { t } = useTranslation()
   const [caps, setCaps] = useState<ProviderCapabilities | null>(null)
-  const contextWindowId = useId()
-  const compactThresholdId = useId()
-  const maxOutputId = useId()
-  const inputPriceId = useId()
-  const outputPriceId = useId()
-  const cachePriceId = useId()
 
   useEffect(() => {
     api.getProviderCapabilities(providerId, modelId).then(setCaps).catch(() => {})
@@ -200,32 +194,32 @@ function ModelConfigEditor({
   return (
     <div className="px-3 pb-3 space-y-2 bg-default/30">
       <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label htmlFor={contextWindowId} className="text-xs text-muted">{t('settings.model.contextWindow')}</label>
-          <Input fullWidth id={contextWindowId} value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
-        </div>
-        <div>
-          <label htmlFor={compactThresholdId} className="text-xs text-muted">{t('settings.model.compactThreshold')}</label>
-          <Input fullWidth id={compactThresholdId} value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
-        </div>
+        <TextField fullWidth>
+          <Label>{t('settings.model.contextWindow')}</Label>
+          <Input value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
+        </TextField>
+        <TextField fullWidth>
+          <Label>{t('settings.model.compactThreshold')}</Label>
+          <Input value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
+        </TextField>
       </div>
-      <div>
-        <label htmlFor={maxOutputId} className="text-xs text-muted">{t('settings.model.maxOutput')}</label>
-        <Input fullWidth id={maxOutputId} value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
-      </div>
+      <TextField fullWidth>
+        <Label>{t('settings.model.maxOutput')}</Label>
+        <Input value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
+      </TextField>
       <div className="grid grid-cols-3 gap-2">
-        <div>
-          <label htmlFor={inputPriceId} className="text-xs text-muted">{t('settings.model.inputPrice')}</label>
-          <Input fullWidth id={inputPriceId} value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
-        </div>
-        <div>
-          <label htmlFor={outputPriceId} className="text-xs text-muted">{t('settings.model.outputPrice')}</label>
-          <Input fullWidth id={outputPriceId} value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
-        </div>
-        <div>
-          <label htmlFor={cachePriceId} className="text-xs text-muted">{t('settings.model.cachePrice')}</label>
-          <Input fullWidth id={cachePriceId} value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
-        </div>
+        <TextField fullWidth>
+          <Label>{t('settings.model.inputPrice')}</Label>
+          <Input value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
+        </TextField>
+        <TextField fullWidth>
+          <Label>{t('settings.model.outputPrice')}</Label>
+          <Input value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
+        </TextField>
+        <TextField fullWidth>
+          <Label>{t('settings.model.cachePrice')}</Label>
+          <Input value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
+        </TextField>
       </div>
       <Disclosure
         data-slot="capability-overrides"
@@ -329,9 +323,6 @@ function ProviderEditor({
   const [modelConfigs, setModelConfigs] = useState<Map<string, ModelConfig>>(new Map())
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const nameId = useId()
-  const baseUrlId = useId()
-  const apiKeyId = useId()
 
   // Deletion clears secrets and cached models before the list reloads, so the
   // button has to stay disabled and say what it is doing — otherwise a slow
@@ -438,21 +429,48 @@ function ProviderEditor({
 
   return (
     <div className="space-y-5">
-      <div className="space-y-1.5">
-        <label htmlFor={nameId} className="block text-xs text-muted">{t('settings.provider.name')}</label>
-        <Input fullWidth id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
-      </div>
+      <TextField fullWidth>
+        <Label>{t('settings.provider.name')}</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} />
+      </TextField>
 
-      <div className="space-y-1.5">
-        <Select fullWidth value={providerType} onChange={(v) => v && setProviderType(String(v))}>
-          <Label className="block text-xs text-muted">{t('settings.provider.type')}</Label>
+      <Select fullWidth value={providerType} onChange={(v) => v && setProviderType(String(v))}>
+        <Label>{t('settings.provider.type')}</Label>
+        <Select.Trigger>
+          <Select.Value />
+          <Select.Indicator />
+        </Select.Trigger>
+        <Select.Popover>
+          <ListBox>
+            {typeOptions.map((o) => (
+              <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                {o.label}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+            ))}
+          </ListBox>
+        </Select.Popover>
+      </Select>
+
+      <TextField fullWidth>
+        <Label>{t('settings.provider.baseUrl')}</Label>
+        <Input
+          value={baseUrl}
+          onChange={(e) => setBaseUrl(e.target.value)}
+          placeholder={providerType === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
+        />
+      </TextField>
+
+      {providerType !== 'anthropic' && (
+        <Select fullWidth value={apiFormat} onChange={(v) => v && setApiFormat(String(v))}>
+          <Label>{t('settings.provider.apiFormat')}</Label>
           <Select.Trigger>
             <Select.Value />
             <Select.Indicator />
           </Select.Trigger>
           <Select.Popover>
             <ListBox>
-              {typeOptions.map((o) => (
+              {formatOptions.map((o) => (
                 <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
                   {o.label}
                   <ListBox.ItemIndicator />
@@ -461,38 +479,6 @@ function ProviderEditor({
             </ListBox>
           </Select.Popover>
         </Select>
-      </div>
-
-      <div className="space-y-1.5">
-        <label htmlFor={baseUrlId} className="block text-xs text-muted">{t('settings.provider.baseUrl')}</label>
-        <Input fullWidth
-          id={baseUrlId}
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder={providerType === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
-        />
-      </div>
-
-      {providerType !== 'anthropic' && (
-        <div className="space-y-1.5">
-          <Select fullWidth value={apiFormat} onChange={(v) => v && setApiFormat(String(v))}>
-            <Label className="block text-xs text-muted">{t('settings.provider.apiFormat')}</Label>
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {formatOptions.map((o) => (
-                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                    {o.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-        </div>
       )}
 
       <div className="flex items-center gap-2">
@@ -505,32 +491,32 @@ function ProviderEditor({
       </div>
 
       <div className="border-t border-border pt-4 space-y-3">
-        <label htmlFor={apiKeyId} className="block text-xs text-muted">{t('settings.provider.apiKey')}</label>
-        <div className="flex gap-2">
-          <Input fullWidth
-            id={apiKeyId}
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            disabled={keyStatus === 'loading' || savingKey}
-            placeholder={
-              keyStatus === 'loading'
-                ? t('settings.provider.apiKeyChecking')
-                : keyStatus === 'set'
-                  ? t('settings.provider.apiKeyPlaceholderSet')
-                  : t('settings.provider.apiKeyPlaceholder')
-            }
-            className="flex-1"
-          />
-          <Button
-            variant="outline"
-            onClick={handleSaveKey}
-            isDisabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
-          >
-            {savingKey ? <Spinner className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
-            {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
-          </Button>
-        </div>
+        <TextField fullWidth type="password">
+          <Label>{t('settings.provider.apiKey')}</Label>
+          <div className="flex gap-2">
+            <Input
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              disabled={keyStatus === 'loading' || savingKey}
+              placeholder={
+                keyStatus === 'loading'
+                  ? t('settings.provider.apiKeyChecking')
+                  : keyStatus === 'set'
+                    ? t('settings.provider.apiKeyPlaceholderSet')
+                    : t('settings.provider.apiKeyPlaceholder')
+              }
+              className="flex-1"
+            />
+            <Button
+              variant="outline"
+              onClick={handleSaveKey}
+              isDisabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
+            >
+              {savingKey ? <Spinner className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
+              {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
+            </Button>
+          </div>
+        </TextField>
         {keyStatus === 'loading' && (
           <p className="flex items-center gap-1.5 text-xs text-muted">
             <Spinner className="w-3.5 h-3.5" />

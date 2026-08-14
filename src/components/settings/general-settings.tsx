@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Input, Label, ListBox, Select } from '@heroui/react'
+import { Button, Description, Input, Label, ListBox, Select } from '@heroui/react'
 import { Check } from '@gravity-ui/icons'
 import { LANGUAGES, setLocale } from '@/i18n'
 import { useAppTheme, type ThemePreference } from '@/lib/theme'
@@ -99,40 +99,73 @@ export function GeneralSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.general.title')} />
 
-      <div className="space-y-1.5">
-        <Select fullWidth value={i18n.language} onChange={(v) => v && setLocale(String(v))}>
-          <Label className="block text-xs font-medium text-muted">
-            {t('settings.general.language')}
-          </Label>
+      <Select fullWidth value={i18n.language} onChange={(v) => v && setLocale(String(v))}>
+        <Label>{t('settings.general.language')}</Label>
+        <Select.Trigger className="max-w-xs">
+          <Select.Value />
+          <Select.Indicator />
+        </Select.Trigger>
+        <Select.Popover>
+          <ListBox>
+            {LANGUAGE_OPTIONS.map((lang) => (
+              <ListBox.Item key={lang.value} id={lang.value} textValue={lang.label}>
+                {lang.label}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+            ))}
+          </ListBox>
+        </Select.Popover>
+      </Select>
+
+      <Select fullWidth value={theme} onChange={(v) => v && setTheme(String(v) as ThemePreference)}>
+        <Label>{t('settings.general.theme')}</Label>
+        <Select.Trigger className="max-w-xs">
+          <Select.Value />
+          <Select.Indicator />
+        </Select.Trigger>
+        <Select.Popover>
+          <ListBox>
+            {themeOptions.map((o) => (
+              <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
+                {o.label}
+                <ListBox.ItemIndicator />
+              </ListBox.Item>
+            ))}
+          </ListBox>
+        </Select.Popover>
+      </Select>
+
+      {platform !== null && platform !== 'android' && (
+        <Select fullWidth value={shell} onChange={(v) => v && handleShellChange(String(v))}>
+          <Label>{t('settings.general.shell')}</Label>
           <Select.Trigger className="max-w-xs">
             <Select.Value />
             <Select.Indicator />
           </Select.Trigger>
           <Select.Popover>
             <ListBox>
-              {LANGUAGE_OPTIONS.map((lang) => (
-                <ListBox.Item key={lang.value} id={lang.value} textValue={lang.label}>
-                  {lang.label}
+              {SHELLS.map((s) => (
+                <ListBox.Item key={s.value} id={s.value} textValue={s.label}>
+                  {s.label}
                   <ListBox.ItemIndicator />
                 </ListBox.Item>
               ))}
             </ListBox>
           </Select.Popover>
+          <Description>{t('settings.general.shellHint')}</Description>
         </Select>
-      </div>
+      )}
 
-      <div className="space-y-1.5">
-        <Select fullWidth value={theme} onChange={(v) => v && setTheme(String(v) as ThemePreference)}>
-          <Label className="block text-xs font-medium text-muted">
-            {t('settings.general.theme')}
-          </Label>
+      {platform === 'windows' && (
+        <Select fullWidth value={sandboxEnabled ? 'on' : 'off'} onChange={(v) => v && handleSandboxChange(String(v))}>
+          <Label>{t('settings.general.sandbox')}</Label>
           <Select.Trigger className="max-w-xs">
             <Select.Value />
             <Select.Indicator />
           </Select.Trigger>
           <Select.Popover>
             <ListBox>
-              {themeOptions.map((o) => (
+              {sandboxOptions.map((o) => (
                 <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
                   {o.label}
                   <ListBox.ItemIndicator />
@@ -140,61 +173,8 @@ export function GeneralSettings() {
               ))}
             </ListBox>
           </Select.Popover>
+          <Description>{t('settings.general.sandboxHint')}</Description>
         </Select>
-      </div>
-
-      {platform !== null && platform !== 'android' && (
-        <div className="space-y-1.5">
-          <Select fullWidth value={shell} onChange={(v) => v && handleShellChange(String(v))}>
-            <Label className="block text-xs font-medium text-muted">
-              {t('settings.general.shell')}
-            </Label>
-            <Select.Trigger className="max-w-xs">
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {SHELLS.map((s) => (
-                  <ListBox.Item key={s.value} id={s.value} textValue={s.label}>
-                    {s.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-          <p className="text-xs text-muted">
-            {t('settings.general.shellHint')}
-          </p>
-        </div>
-      )}
-
-      {platform === 'windows' && (
-        <div className="space-y-1.5">
-          <Select fullWidth value={sandboxEnabled ? 'on' : 'off'} onChange={(v) => v && handleSandboxChange(String(v))}>
-            <Label className="block text-xs font-medium text-muted">
-              {t('settings.general.sandbox')}
-            </Label>
-            <Select.Trigger className="max-w-xs">
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {sandboxOptions.map((o) => (
-                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                    {o.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-          <p className="text-xs text-muted">
-            {t('settings.general.sandboxHint')}
-          </p>
-        </div>
       )}
 
       <div className="space-y-3">

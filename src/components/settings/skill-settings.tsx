@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useId } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, BookOpen, Check, ArrowsRotateRight } from '@gravity-ui/icons'
-import { Button, Card, Checkbox, Disclosure, DisclosureGroup, Input, TextArea } from '@heroui/react'
+import { Button, Card, Checkbox, Description, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField } from '@heroui/react'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { Skill } from '@/types'
@@ -28,10 +28,6 @@ function SkillEditor({
   const [bodyLoading, setBodyLoading] = useState(skill != null)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const dirNameId = useId()
-  const displayNameId = useId()
-  const descriptionId = useId()
-  const bodyId = useId()
 
   // The body is not part of the index row: it lives in SKILL.md and is read
   // on demand so that listing skills stays a pure database hit.
@@ -85,68 +81,52 @@ function SkillEditor({
   return (
     <div data-slot="skill-editor" className="space-y-3">
       {!skill && (
-        <div data-slot="skill-editor-field" className="space-y-1">
-          <label htmlFor={dirNameId} data-slot="skill-editor-label" className="text-xs text-muted">
-            {t('settings.skills.dirName')}
-          </label>
-          <Input fullWidth
-            id={dirNameId}
+        <TextField fullWidth>
+          <Label>{t('settings.skills.dirName')}</Label>
+          <Input
             value={dirName}
             onChange={(e) => setDirName(e.target.value)}
             placeholder="my-skill"
             className="font-mono text-xs"
           />
-          <p data-slot="skill-editor-hint" className="text-xs text-muted">
-            {t('settings.skills.dirNameHint')}
-          </p>
+          <Description>{t('settings.skills.dirNameHint')}</Description>
           {dirName.trim().length > 0 && !dirNameValid && (
             <p data-slot="skill-editor-error" className="text-xs text-danger">
               {t('settings.skills.dirNameInvalid')}
             </p>
           )}
-        </div>
+        </TextField>
       )}
 
-      <div data-slot="skill-editor-field" className="space-y-1">
-        <label htmlFor={displayNameId} data-slot="skill-editor-label" className="text-xs text-muted">
-          {t('settings.skills.displayName')}
-        </label>
-        <Input fullWidth
-          id={displayNameId}
+      <TextField fullWidth>
+        <Label>{t('settings.skills.displayName')}</Label>
+        <Input
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder={skill?.llm_name ?? dirName}
         />
-      </div>
+      </TextField>
 
-      <div data-slot="skill-editor-field" className="space-y-1">
-        <label htmlFor={descriptionId} data-slot="skill-editor-label" className="text-xs text-muted">
-          {t('settings.skills.description')}
-        </label>
-        <TextArea fullWidth
-          id={descriptionId}
+      <TextField fullWidth>
+        <Label>{t('settings.skills.description')}</Label>
+        <TextArea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           disabled={isBuiltin}
           rows={2}
           className="resize-none text-xs"
         />
-        <p data-slot="skill-editor-hint" className="text-xs text-muted">
-          {t('settings.skills.descriptionHint')}
-        </p>
-      </div>
+        <Description>{t('settings.skills.descriptionHint')}</Description>
+      </TextField>
 
-      <div data-slot="skill-editor-field" className="space-y-1">
-        <label htmlFor={bodyId} data-slot="skill-editor-label" className="text-xs text-muted">
-          {t('settings.skills.body')}
-        </label>
+      <TextField fullWidth>
+        <Label>{t('settings.skills.body')}</Label>
         {bodyLoading ? (
           <p data-slot="skill-editor-hint" className="text-xs text-muted">
             {t('common.loading')}
           </p>
         ) : (
-          <TextArea fullWidth
-            id={bodyId}
+          <TextArea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             disabled={isBuiltin}
@@ -154,10 +134,8 @@ function SkillEditor({
             className="resize-none font-mono text-xs"
           />
         )}
-        <p data-slot="skill-editor-hint" className="text-xs text-muted">
-          {t('settings.skills.bodyHint')}
-        </p>
-      </div>
+        <Description>{t('settings.skills.bodyHint')}</Description>
+      </TextField>
 
       {isBuiltin && (
         <p data-slot="skill-editor-builtin-notice" className="text-xs text-info-soft-foreground">

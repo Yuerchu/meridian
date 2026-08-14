@@ -8,10 +8,14 @@ import { cn } from '@/lib/utils'
  *
  * Extracted for one reason above tidiness: "narrow screens go full width" and
  * "a settings row is 44px tall" are single edits here and a dozen edits spread
- * across eleven files otherwise. Deliberately small — there is no
- * `SettingsField` here, because HeroUI's `TextField`/`Label`/`Description`
- * already are one, and the existing hand-rolled `<label>`s lack `htmlFor`
- * entirely. Migrating to those is an accessibility change with its own diff.
+ * across eleven files otherwise.
+ *
+ * There is deliberately no `SettingsField`: HeroUI's `TextField` is one, and
+ * the panels use it directly. It wires the label to its control itself, which
+ * is what retired the `useId` that every field used to carry, and its label is
+ * left at HeroUI's own weight rather than pushed back down to `text-xs` — the
+ * four slightly different ways that override had been written are what made
+ * the case for stopping.
  */
 
 const pane = tv({

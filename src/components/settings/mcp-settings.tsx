@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback, useId } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } from '@gravity-ui/icons'
-import { Button, Input, Switch, TextArea, Tooltip } from '@heroui/react'
+import { Button, Input, Label, Switch, TextArea, TextField, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -99,12 +99,6 @@ function McpServerEditor({
   const [autoConnect, setAutoConnect] = useState(server.is_enabled === 1)
   const [tools, setTools] = useState<McpToolDef[]>([])
   const [error, setError] = useState<string | null>(null)
-  const nameId = useId()
-  const urlId = useId()
-  const headersId = useId()
-  const commandId = useId()
-  const argsId = useId()
-  const envId = useId()
 
   useEffect(() => {
     setName(server.name)
@@ -194,10 +188,10 @@ function McpServerEditor({
 
   return (
     <div className="space-y-4">
-      <div>
-        <label htmlFor={nameId} className="text-sm font-medium">{t('settings.mcp.name')}</label>
-        <Input fullWidth id={nameId} value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
-      </div>
+      <TextField fullWidth>
+        <Label>{t('settings.mcp.name')}</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} />
+      </TextField>
 
       <div>
         <p className="text-sm font-medium">{t('settings.mcp.transport')}</p>
@@ -231,29 +225,29 @@ function McpServerEditor({
 
       {isHttp ? (
         <>
-          <div>
-            <label htmlFor={urlId} className="text-sm font-medium">{t('settings.mcp.url')}</label>
-            <Input fullWidth id={urlId} value={url} onChange={(e) => setUrl(e.target.value)} className="mt-1" placeholder="https://example.com/mcp" />
-          </div>
-          <div>
-            <label htmlFor={headersId} className="text-sm font-medium">{t('settings.mcp.headers')}</label>
-            <Input fullWidth id={headersId} value={headers} onChange={(e) => setHeaders(e.target.value)} className="mt-1" placeholder='{"Authorization": "Bearer ..."}' />
-          </div>
+          <TextField fullWidth>
+            <Label>{t('settings.mcp.url')}</Label>
+            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/mcp" />
+          </TextField>
+          <TextField fullWidth>
+            <Label>{t('settings.mcp.headers')}</Label>
+            <Input value={headers} onChange={(e) => setHeaders(e.target.value)} placeholder='{"Authorization": "Bearer ..."}' />
+          </TextField>
         </>
       ) : (
         <>
-          <div>
-            <label htmlFor={commandId} className="text-sm font-medium">{t('settings.mcp.command')}</label>
-            <Input fullWidth id={commandId} value={command} onChange={(e) => setCommand(e.target.value)} className="mt-1" placeholder="npx" />
-          </div>
-          <div>
-            <label htmlFor={argsId} className="text-sm font-medium">{t('settings.mcp.args')}</label>
-            <Input fullWidth id={argsId} value={args} onChange={(e) => setArgs(e.target.value)} className="mt-1" placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]' />
-          </div>
-          <div>
-            <label htmlFor={envId} className="text-sm font-medium">{t('settings.mcp.env')}</label>
-            <Input fullWidth id={envId} value={env} onChange={(e) => setEnv(e.target.value)} className="mt-1" placeholder='{}' />
-          </div>
+          <TextField fullWidth>
+            <Label>{t('settings.mcp.command')}</Label>
+            <Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="npx" />
+          </TextField>
+          <TextField fullWidth>
+            <Label>{t('settings.mcp.args')}</Label>
+            <Input value={args} onChange={(e) => setArgs(e.target.value)} placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]' />
+          </TextField>
+          <TextField fullWidth>
+            <Label>{t('settings.mcp.env')}</Label>
+            <Input value={env} onChange={(e) => setEnv(e.target.value)} placeholder='{}' />
+          </TextField>
         </>
       )}
 
