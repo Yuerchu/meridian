@@ -1,6 +1,6 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useState } from 'react'
 
-import { SidebarInset, SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar'
+import { Sidebar } from '@heroui-pro/react/sidebar'
 import { ChatView } from '@/components/chat/chat-view'
 import { EmptyState } from '@/components/chat/empty-state'
 import { AppSidebar } from './app-sidebar'
@@ -25,8 +25,23 @@ export function DesktopShell(props: ShellProps) {
     onInitialMessageConsumed,
   } = props
 
+  // Controlled on purpose. Left uncontrolled, Pro writes the state to a
+  // `sidebar_state` cookie on every toggle — a Next.js convention, useless here
+  // (nothing reads it back) and one more thing to have an opinion about under a
+  // custom protocol. Persisting the state is a store field if we ever want it.
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+
   return (
-    <SidebarProvider>
+    <Sidebar.Provider
+      open={sidebarOpen}
+      onOpenChange={setSidebarOpen}
+      variant="inset"
+      collapsible="icon"
+      // Pro's provider is `min-h-svh`: a page that grows. This one is a fixed
+      // viewport with its own scrollers inside, and the transcript's scroller
+      // needs a container that does not move to measure against.
+      className="h-svh overflow-hidden pb-[var(--ime-bottom,0px)]"
+    >
       <AppSidebar
         conversations={conversations}
         activeId={activeId}
@@ -47,12 +62,12 @@ export function DesktopShell(props: ShellProps) {
         onDeleteProject={onDeleteProject}
         onRenameProject={onRenameProject}
       />
-      <SidebarInset className="flex flex-col overflow-hidden">
+      <Sidebar.Main className="overflow-hidden">
         <header
           className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] border-b border-border select-none shrink-0"
           data-tauri-drag-region={canDragWindow ? '' : undefined}
         >
-          <SidebarTrigger className="-ml-1" />
+          <Sidebar.Trigger className="-ml-1" />
           <span className="text-sm font-medium">{headerTitle}</span>
         </header>
 
@@ -74,7 +89,7 @@ export function DesktopShell(props: ShellProps) {
             <EmptyState onSubmit={onCreateWithMessage} />
           )}
         </main>
-      </SidebarInset>
-    </SidebarProvider>
+      </Sidebar.Main>
+    </Sidebar.Provider>
   )
 }

@@ -1,33 +1,31 @@
-import { useState, useCallback, useId, useRef, useEffect } from 'react'
+/**
+ * The desktop sidebar, on HeroUI Pro's.
+ *
+ * No row is given an `href`, and no `navigate` is configured. There is no URL
+ * here to map a route onto: `lib/history-bridge.ts` writes a depth and nothing
+ * else, deliberately, and an href without a `navigate` falls through to the
+ * browser's own navigation — which under a custom protocol reloads the document
+ * or trips the `hashchange` listener in `main.tsx`. `onAction` touches history
+ * not at all, which is also what keeps the Android back key predictable.
+ *
+ * The consequence to know about: `closeMobileOnAction` hangs off the href
+ * branch, so it is unreachable from here. It costs nothing today — the phone
+ * runs `ConversationListPage`, not this — but a mobile sheet that stays open
+ * after a tap is where to look first.
+ */
+import { Fragment, useCallback, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { open, save } from '@tauri-apps/plugin-dialog'
-import {
-  Comment, Plus, Gear, TrashBin, FolderOpen, FolderPlus,
-  Archive, ArrowDownToLine, ArrowLeft, Pin, PinSlash, Pencil,
-} from '@gravity-ui/icons'
-import SpotlightCard from '@/components/SpotlightCard'
+import { open } from '@tauri-apps/plugin-dialog'
+import { AlertDialog, Button, Input } from '@heroui/react'
+import { Sidebar } from '@heroui-pro/react/sidebar'
+import { Archive, ArrowLeft, Comment, FolderOpen, FolderPlus, Gear, Plus } from '@gravity-ui/icons'
+
 import type { Conversation, Project } from '@/types'
 import type { Page } from '@/lib/nav'
 // Not from the settings barrel: this is a value import, and the barrel would
 // pull the whole lazily-loaded settings chunk into the main bundle.
 import { visibleSettingsTabs, type SettingsTab } from '@/components/settings/tabs'
-import { ConversationIndicator } from './conversation-indicator'
-import { ProjectIcon } from './project-icon'
-import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { AlertDialog, Button, Input } from '@heroui/react'
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-} from '@/components/ui/sidebar'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -35,6 +33,10 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { ConversationIndicator } from './conversation-indicator'
+import { ProjectIcon } from './project-icon'
+import { RenameDialog } from './rename-dialog'
+import { useConversationActions, useProjectActions, type RowAction } from './row-actions'
 
 interface AppSidebarProps {
   conversations: Conversation[]
@@ -117,35 +119,36 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
   )
 }
 
-function InlineRenameInput({ value, onSubmit, onCancel }: { value: string; onSubmit: (v: string) => void; onCancel: () => void }) {
-  const [text, setText] = useState(value)
-  const inputRef = useRef<HTMLInputElement>(null)
+/**
+ * Where a rule is drawn above an entry, given the flat list `row-actions` hands
+ * over. The phone renders the same actions as one ungrouped sheet, so this
+ * belongs here rather than in the shared module.
+ */
+const GROUP_STARTS = new Set<RowAction['key']>(['export-sft', 'delete'])
 
-  useEffect(() => {
-    const el = inputRef.current
-    if (el) {
-      el.focus()
-      el.select()
-    }
-  }, [])
+/** Which list was right-clicked, in which copy of the sidebar, and on what row. */
+interface MenuHit {
+  scope: string
+  kind: 'conversation' | 'project'
+  id: string
+}
 
+function RowActionItems({ actions }: { actions: RowAction[] }) {
   return (
-    <Input fullWidth
-      ref={inputRef}
-      type="text"
-      value={text}
-      onChange={(e) => setText(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.nativeEvent.isComposing) return
-        if (e.key === 'Enter' && text.trim()) onSubmit(text.trim())
-        else if (e.key === 'Escape') onCancel()
-      }}
-      onBlur={() => {
-        if (text.trim() && text.trim() !== value) onSubmit(text.trim())
-        else onCancel()
-      }}
-      className="h-auto px-1 py-0 text-sm rounded"
-    />
+    <>
+      {actions.map((action, i) => (
+        <Fragment key={action.key}>
+          {i > 0 && GROUP_STARTS.has(action.key) && <ContextMenuSeparator />}
+          <ContextMenuItem
+            variant={action.variant === 'destructive' ? 'destructive' : undefined}
+            onClick={() => void action.run()}
+          >
+            <action.icon />
+            {action.label}
+          </ContextMenuItem>
+        </Fragment>
+      ))}
+    </>
   )
 }
 
@@ -172,215 +175,234 @@ export function AppSidebar({
   const { t } = useTranslation()
   const platform = usePlatform()
   const [showNewProject, setShowNewProject] = useState(false)
-  const [renamingConvId, setRenamingConvId] = useState<string | null>(null)
-  const [renamingProjectId, setRenamingProjectId] = useState<string | null>(null)
+  const [renameTarget, setRenameTarget] = useState<{ type: 'conversation' | 'project'; id: string } | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'conversation' | 'project'; id: string } | null>(null)
   // `AlertDialog.Body` is a plain div — only a `Heading slot="title"` is wired
   // up for us, so without this the dialog announces its title and nothing else.
   const deleteDescId = useId()
 
-  if (page === 'settings') {
-    return (
-      <Sidebar variant="inset" collapsible="icon">
-        <SidebarHeader>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton onClick={onCloseSettings}>
-                <ArrowLeft />
-                <span>{t('settings.backToApp')}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarHeader>
+  // One menu per list rather than one per row. A row cannot be the trigger:
+  // `Sidebar.Menu` is a React Aria `Tree`, whose items pass only a fixed set of
+  // DOM props through — `onContextMenu` is not among them — and anything
+  // inserted between the tree and its items is not a collection item at all.
+  // So the trigger wraps the whole list and the row is read back off the event,
+  // which also leaves one popover behind where there used to be one per
+  // conversation.
+  //
+  // `open` is controlled because a click that lands between rows has to be
+  // refused, and the hit is a ref because that decision is taken inside
+  // `onOpenChange`, which runs before a state update from the same event is
+  // visible. The scope is part of it because the tree below is rendered twice —
+  // once for the panel, once for the mobile sheet — and only the copy that was
+  // right-clicked may open.
+  const hitRef = useRef<MenuHit | null>(null)
+  const [menu, setMenu] = useState<MenuHit | null>(null)
 
-        <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>{t('settings.title')}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {visibleSettingsTabs(platform).map((tab) => (
-                  <SidebarMenuItem key={tab.id}>
-                    <SidebarMenuButton
-                      isActive={settingsTab === tab.id}
-                      onClick={() => onSettingsTabChange(tab.id)}
-                    >
-                      <tab.icon />
-                      <span>{t(tab.labelKey)}</span>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        </SidebarContent>
-      </Sidebar>
-    )
-  }
+  const conversationActions = useConversationActions({
+    conversation: (menu?.kind === 'conversation' && conversations.find((c) => c.id === menu.id)) || null,
+    onTogglePin,
+    onRequestRename: (id) => setRenameTarget({ type: 'conversation', id }),
+    onRequestDelete: (id) => setDeleteTarget({ type: 'conversation', id }),
+  })
+  const projectActions = useProjectActions({
+    project: (menu?.kind === 'project' && projects.find((p) => p.id === menu.id)) || null,
+    onRequestRename: (id) => setRenameTarget({ type: 'project', id }),
+    onRequestDelete: (id) => setDeleteTarget({ type: 'project', id }),
+  })
+
+  // base-ui reads the cursor position off the Root, so the Root has to enclose
+  // its own Trigger — a Root parked next to the dialogs at the bottom of this
+  // component throws `ContextMenuRootContext is missing` at render, which
+  // neither the type checker nor the build notices.
+  const rowMenu = useCallback((
+    scope: string,
+    kind: MenuHit['kind'],
+    actions: RowAction[],
+    children: React.ReactNode,
+  ) => (
+    <ContextMenu
+      open={menu?.scope === scope && menu.kind === kind}
+      onOpenChange={(open) => setMenu(open ? hitRef.current : null)}
+    >
+      <ContextMenuTrigger
+        onContextMenu={(e: React.MouseEvent) => {
+          const id = (e.target as HTMLElement).closest('[data-row-id]')?.getAttribute('data-row-id')
+          hitRef.current = id ? { scope, kind, id } : null
+        }}
+      >
+        {children}
+      </ContextMenuTrigger>
+      <ContextMenuContent>
+        <RowActionItems actions={actions} />
+      </ContextMenuContent>
+    </ContextMenu>
+  ), [menu])
+
+  const renaming = renameTarget?.type === 'project'
+    ? projects.find((p) => p.id === renameTarget.id)?.name
+    : conversations.find((c) => c.id === renameTarget?.id)?.title ?? ''
+
+  const settingsSide = (prefix: string) => (
+    <>
+      <Sidebar.Header>
+        <Sidebar.Menu aria-label={t('settings.backToApp')}>
+          <Sidebar.MenuItem id={`${prefix}back`} textValue={t('settings.backToApp')} onAction={onCloseSettings}>
+            <Sidebar.MenuIcon><ArrowLeft /></Sidebar.MenuIcon>
+            <Sidebar.MenuLabel>{t('settings.backToApp')}</Sidebar.MenuLabel>
+          </Sidebar.MenuItem>
+        </Sidebar.Menu>
+      </Sidebar.Header>
+
+      <Sidebar.Content>
+        <Sidebar.Group>
+          <Sidebar.GroupLabel>{t('settings.title')}</Sidebar.GroupLabel>
+          <Sidebar.Menu aria-label={t('settings.title')}>
+            {visibleSettingsTabs(platform).map((tab) => (
+              <Sidebar.MenuItem
+                key={tab.id}
+                id={`${prefix}${tab.id}`}
+                textValue={t(tab.labelKey)}
+                isCurrent={settingsTab === tab.id}
+                onAction={() => onSettingsTabChange(tab.id)}
+              >
+                <Sidebar.MenuIcon><tab.icon /></Sidebar.MenuIcon>
+                <Sidebar.MenuLabel>{t(tab.labelKey)}</Sidebar.MenuLabel>
+              </Sidebar.MenuItem>
+            ))}
+          </Sidebar.Menu>
+        </Sidebar.Group>
+      </Sidebar.Content>
+    </>
+  )
+
+  const chatSide = (prefix: string) => (
+    <>
+      <Sidebar.Header>
+        <Sidebar.Menu aria-label={t('sidebar.newChat')}>
+          <Sidebar.MenuItem id={`${prefix}new`} textValue={t('sidebar.newChat')} onAction={onCreate}>
+            <Sidebar.MenuIcon><Plus /></Sidebar.MenuIcon>
+            <Sidebar.MenuLabel>{t('sidebar.newChat')}</Sidebar.MenuLabel>
+          </Sidebar.MenuItem>
+        </Sidebar.Menu>
+      </Sidebar.Header>
+
+      <Sidebar.Content>
+        <Sidebar.Group>
+          <Sidebar.GroupLabel>
+            <span className="flex flex-1 items-center justify-between">
+              {t('sidebar.projects')}
+              <Button
+                isIconOnly
+                size="sm"
+                variant="ghost"
+                aria-label={t('sidebar.newProject')}
+                onClick={() => setShowNewProject(true)}
+                className="size-6 rounded-md text-muted"
+              >
+                <FolderPlus />
+              </Button>
+            </span>
+          </Sidebar.GroupLabel>
+          {rowMenu(prefix, 'project', projectActions, (
+            <Sidebar.Menu aria-label={t('sidebar.projects')}>
+              <Sidebar.MenuItem
+                id={`${prefix}all-projects`}
+                textValue={t('sidebar.allProjects')}
+                isCurrent={activeProjectId === null}
+                onAction={() => onSelectProject(null)}
+              >
+                <Sidebar.MenuIcon><FolderOpen /></Sidebar.MenuIcon>
+                <Sidebar.MenuLabel>{t('sidebar.allProjects')}</Sidebar.MenuLabel>
+              </Sidebar.MenuItem>
+              {projects.map((project) => (
+                <Sidebar.MenuItem
+                  key={project.id}
+                  id={`${prefix}project-${project.id}`}
+                  data-row-id={project.id}
+                  textValue={project.name}
+                  isCurrent={project.id === activeProjectId}
+                  onAction={() => onSelectProject(project.id)}
+                >
+                  <Sidebar.MenuIcon><ProjectIcon sourceType={project.source_type} /></Sidebar.MenuIcon>
+                  <Sidebar.MenuLabel>{project.name}</Sidebar.MenuLabel>
+                </Sidebar.MenuItem>
+              ))}
+            </Sidebar.Menu>
+          ))}
+          {showNewProject && (
+            <NewProjectForm
+              onSubmit={(name, path) => {
+                onCreateProject(name, path)
+                setShowNewProject(false)
+              }}
+              onCancel={() => setShowNewProject(false)}
+            />
+          )}
+        </Sidebar.Group>
+
+        <Sidebar.Group>
+          <Sidebar.GroupLabel>{t('sidebar.conversations')}</Sidebar.GroupLabel>
+          {rowMenu(prefix, 'conversation', conversationActions, (
+            <Sidebar.Menu aria-label={t('sidebar.conversations')}>
+              {conversations.map((conv) => (
+                <Sidebar.MenuItem
+                  key={conv.id}
+                  id={`${prefix}conv-${conv.id}`}
+                  data-row-id={conv.id}
+                  textValue={conv.title ?? t('sidebar.newChat')}
+                  isCurrent={conv.id === activeId}
+                  onAction={() => onSelect(conv.id)}
+                  className={conv.is_archived ? 'opacity-50' : undefined}
+                >
+                  <Sidebar.MenuIcon>{conv.is_archived ? <Archive /> : <Comment />}</Sidebar.MenuIcon>
+                  <Sidebar.MenuLabel>{conv.title ?? t('sidebar.newChat')}</Sidebar.MenuLabel>
+                  <Sidebar.MenuChip>
+                    <ConversationIndicator conversationId={conv.id} activeId={activeId} />
+                  </Sidebar.MenuChip>
+                </Sidebar.MenuItem>
+              ))}
+            </Sidebar.Menu>
+          ))}
+        </Sidebar.Group>
+      </Sidebar.Content>
+
+      <Sidebar.Footer>
+        <Sidebar.Menu aria-label={t('sidebar.settings')}>
+          <Sidebar.MenuItem id={`${prefix}settings`} textValue={t('sidebar.settings')} onAction={onOpenSettings}>
+            <Sidebar.MenuIcon><Gear /></Sidebar.MenuIcon>
+            <Sidebar.MenuLabel>{t('sidebar.settings')}</Sidebar.MenuLabel>
+          </Sidebar.MenuItem>
+        </Sidebar.Menu>
+      </Sidebar.Footer>
+    </>
+  )
+
+  const side = page === 'settings' ? settingsSide : chatSide
 
   return (
-    <Sidebar variant="inset" collapsible="icon">
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={onCreate}>
-              <Plus />
-              <span>{t('sidebar.newChat')}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
+    <>
+      {/* The safe-area padding sits on the panel rather than on its header and
+          footer: `[data-state=collapsed] .sidebar__header` sets its own inline
+          padding at a specificity a utility cannot reach, so a cutout would be
+          honoured until the sidebar was collapsed and then quietly stop being. */}
+      <Sidebar className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]">
+        {side('d-')}
+      </Sidebar>
+      {/* Renders nothing above 768px. Below it Pro hides the panel outright, so
+          without this a narrow window would have a toggle that toggles nothing. */}
+      <Sidebar.Mobile>{side('m-')}</Sidebar.Mobile>
 
-      <SidebarContent>
-        {/* Project selector */}
-        <SidebarGroup>
-          <SidebarGroupLabel>
-            <span>{t('sidebar.projects')}</span>
-            <Button
-              isIconOnly
-              size="sm"
-              variant="ghost"
-              aria-label={t('sidebar.newProject')}
-              onClick={() => setShowNewProject(true)}
-              className="ml-auto size-8 text-muted"
-            >
-              <FolderPlus />
-            </Button>
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  isActive={activeProjectId === null}
-                  onClick={() => onSelectProject(null)}
-                >
-                  <FolderOpen />
-                  <span>{t('sidebar.allProjects')}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              {projects.map((project) => (
-                <ContextMenu key={project.id}>
-                  <ContextMenuTrigger render={<SidebarMenuItem />}>
-                    <SidebarMenuButton
-                      isActive={project.id === activeProjectId}
-                      onClick={() => onSelectProject(project.id)}
-                    >
-                      <ProjectIcon sourceType={project.source_type} />
-                      {renamingProjectId === project.id ? (
-                        <InlineRenameInput
-                          value={project.name}
-                          onSubmit={(v) => { onRenameProject(project.id, v); setRenamingProjectId(null) }}
-                          onCancel={() => setRenamingProjectId(null)}
-                        />
-                      ) : (
-                        <span>{project.name}</span>
-                      )}
-                    </SidebarMenuButton>
-                  </ContextMenuTrigger>
-                  <ContextMenuContent>
-                    <ContextMenuItem onClick={() => setRenamingProjectId(project.id)}>
-                      <Pencil />
-                      {t('contextMenu.rename')}
-                    </ContextMenuItem>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem variant="destructive" onClick={() => setDeleteTarget({ type: 'project', id: project.id })}>
-                      <TrashBin />
-                      {t('sidebar.delete')}
-                    </ContextMenuItem>
-                  </ContextMenuContent>
-                </ContextMenu>
-              ))}
-              {showNewProject && (
-                <NewProjectForm
-                  onSubmit={(name, path) => {
-                    onCreateProject(name, path)
-                    setShowNewProject(false)
-                  }}
-                  onCancel={() => setShowNewProject(false)}
-                />
-              )}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        {/* Conversations */}
-        <SidebarGroup>
-          <SidebarGroupLabel>{t('sidebar.conversations')}</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {conversations.map((conv) => {
-                const exportSft = async () => {
-                  const path = await save({ defaultPath: `${conv.title ?? 'chat'}_sft.jsonl`, filters: [{ name: 'JSONL', extensions: ['jsonl'] }] }).catch(() => null)
-                  if (path) await api.exportConversation(conv.id, 'sft', path)
-                }
-                const exportDpo = async () => {
-                  const path = await save({ defaultPath: `${conv.title ?? 'chat'}_dpo.jsonl`, filters: [{ name: 'JSONL', extensions: ['jsonl'] }] }).catch(() => null)
-                  if (path) await api.exportConversation(conv.id, 'dpo', path)
-                }
-                return (
-                  <ContextMenu key={conv.id}>
-                    <ContextMenuTrigger render={<SidebarMenuItem />}>
-                      <SpotlightCard className="rounded-md">
-                        <SidebarMenuButton
-                          isActive={conv.id === activeId}
-                          onClick={() => onSelect(conv.id)}
-                          className={conv.is_archived ? 'opacity-50' : undefined}
-                        >
-                          {conv.is_archived ? <Archive /> : <Comment />}
-                          {renamingConvId === conv.id ? (
-                            <InlineRenameInput
-                              value={conv.title ?? ''}
-                              onSubmit={(v) => { onRename(conv.id, v); setRenamingConvId(null) }}
-                              onCancel={() => setRenamingConvId(null)}
-                            />
-                          ) : (
-                            <span className="flex-1 truncate">{conv.title ?? t('sidebar.newChat')}</span>
-                          )}
-                          <ConversationIndicator conversationId={conv.id} activeId={activeId} />
-                        </SidebarMenuButton>
-                      </SpotlightCard>
-                    </ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuItem onClick={() => onTogglePin(conv.id)}>
-                        {conv.is_pinned ? <PinSlash /> : <Pin />}
-                        {conv.is_pinned ? t('contextMenu.unpin') : t('contextMenu.pin')}
-                      </ContextMenuItem>
-                      <ContextMenuItem onClick={() => setRenamingConvId(conv.id)}>
-                        <Pencil />
-                        {t('contextMenu.rename')}
-                      </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem onClick={exportSft}>
-                        <ArrowDownToLine />
-                        {t('sidebar.exportSft')}
-                      </ContextMenuItem>
-                      <ContextMenuItem onClick={exportDpo}>
-                        <ArrowDownToLine />
-                        {t('sidebar.exportDpo')}
-                      </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem variant="destructive" onClick={() => setDeleteTarget({ type: 'conversation', id: conv.id })}>
-                        <TrashBin />
-                        {t('sidebar.delete')}
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
-                )
-              })}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton onClick={onOpenSettings}>
-              <Gear />
-              <span>{t('sidebar.settings')}</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
+      <RenameDialog
+        isOpen={renameTarget !== null}
+        onOpenChange={(open) => { if (!open) setRenameTarget(null) }}
+        initialValue={renaming ?? ''}
+        heading={t('contextMenu.rename')}
+        onSubmit={(value) => {
+          if (!renameTarget) return
+          if (renameTarget.type === 'project') onRenameProject(renameTarget.id, value)
+          else onRename(renameTarget.id, value)
+        }}
+      />
 
       <AlertDialog.Backdrop
         isOpen={deleteTarget !== null}
@@ -412,6 +434,6 @@ export function AppSidebar({
           </AlertDialog.Dialog>
         </AlertDialog.Container>
       </AlertDialog.Backdrop>
-    </Sidebar>
+    </>
   )
 }

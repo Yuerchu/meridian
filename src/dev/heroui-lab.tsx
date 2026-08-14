@@ -40,9 +40,11 @@ import {
 // none of which are installed — importing it fails the build outright.
 import { ContextMenu as ProContextMenu } from '@heroui-pro/react/context-menu'
 import { Markdown as ProMarkdown } from '@heroui-pro/react/markdown'
+import { Sidebar as ProSidebar } from '@heroui-pro/react/sidebar'
 
 import { Composer } from '@/components/chat/composer'
 
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { Bubble, BubbleContent } from '@/components/ui/bubble'
 import { MarkdownContent } from '@/components/chat/markdown-content'
 import { ShikiCode } from '@/components/chat/shiki-code'
@@ -139,6 +141,89 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
       </h2>
       {children}
     </section>
+  )
+}
+
+/**
+ * The two assumptions the sidebar rewrite rests on, made visible.
+ *
+ * `Sidebar.Menu` is a React Aria `Tree`, and a `TreeItem` passes only a fixed
+ * set of props down to the DOM. The rewrite needs two things to survive that
+ * filter: `onAction`, which is how a row is chosen now that no row is a button,
+ * and `data-row-id`, which is how a right-click anywhere in the list is traced
+ * back to the row it landed on. Neither is documented as passed through; both
+ * read as working right up until they silently are not.
+ */
+function SidebarProbe() {
+  const [acted, setActed] = useState<string | null>(null)
+  const [attrs, setAttrs] = useState<string[] | null>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
+  // The same shape `app-sidebar` uses: the id is written to a ref during the
+  // event so that `onOpenChange` — which runs before any state from the same
+  // event is visible — can refuse a click that landed between rows.
+  const hitRef = useRef<string | null>(null)
+  const [hit, setHit] = useState<string | null>(null)
+
+  const rows = ['alpha', 'beta', 'gamma']
+
+  return (
+    <div className="space-y-2">
+      <div ref={rootRef} className="h-64 overflow-hidden rounded-lg border [&_.sidebar]:h-full [&_.sidebar\_\_provider]:h-full">
+        <ProSidebar.Provider open collapsible="none" onOpenChange={() => {}}>
+          <ProSidebar>
+            <ProSidebar.Content>
+              <ProSidebar.Group>
+                <ProSidebar.GroupLabel>行</ProSidebar.GroupLabel>
+                {/* Root 必须包住自己的 Trigger：把 Root 挪到别处去，base-ui 会在
+                    渲染时抛 ContextMenuRootContext is missing，而 tsc 和 build
+                    都看不见。 */}
+                <ContextMenu open={hit !== null} onOpenChange={(open) => setHit(open ? hitRef.current : null)}>
+                  <ContextMenuTrigger
+                    data-slot="probe-trigger"
+                    onContextMenu={(e: React.MouseEvent) => {
+                      hitRef.current = (e.target as HTMLElement).closest('[data-row-id]')?.getAttribute('data-row-id') ?? null
+                    }}
+                  >
+                    <ProSidebar.Menu aria-label="行">
+                      {rows.map((id) => (
+                        <ProSidebar.MenuItem
+                          key={id}
+                          id={id}
+                          data-row-id={id}
+                          textValue={id}
+                          onAction={() => setActed(id)}
+                        >
+                          <ProSidebar.MenuLabel>{id}</ProSidebar.MenuLabel>
+                        </ProSidebar.MenuItem>
+                      ))}
+                    </ProSidebar.Menu>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem onClick={() => {}}>对 {hit} 做点什么</ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
+              </ProSidebar.Group>
+            </ProSidebar.Content>
+          </ProSidebar>
+          <ProSidebar.Main><span /></ProSidebar.Main>
+        </ProSidebar.Provider>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <HButton
+          size="sm"
+          variant="secondary"
+          onClick={() => setAttrs(
+            Array.from(rootRef.current?.querySelectorAll('[data-row-id]') ?? [])
+              .map((el) => el.getAttribute('data-row-id') ?? '?'),
+          )}
+        >
+          读 data-row-id
+        </HButton>
+      </div>
+      <p className="font-mono text-xs" data-slot="probe-readout">
+        onAction: {acted ?? '(未点)'} ／ 菜单开在: {hit ?? '(关着)'} ／ DOM 上的 row id: {attrs ? (attrs.length ? attrs.join(',') : '一个都没有') : '(未读)'}
+      </p>
+    </div>
   )
 }
 
@@ -514,6 +599,13 @@ export default function HeroUiLab() {
 
             Keep this around: it is what verifies the fix if either lands
             upstream. */}
+        <Section title="Sidebar 的 Tree 能不能带私货" hint="点一行、右键一行，再按「读 data-row-id」">
+          <SidebarProbe />
+          <p className="text-xs text-muted">
+            三个读数都要有值。任何一个空，侧栏的选中或右键菜单就是坏的——而坏法是安静的，不报错也不掉类型。
+          </p>
+        </Section>
+
         <Section title="Composer 同构复现" hint="右键输入框；滚动一下看菜单是否消失">
           <div ref={proRef} className="rounded-lg border">
             <div className="px-4 pb-4 pt-2">
