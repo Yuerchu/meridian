@@ -20,9 +20,9 @@ type Target = { type: 'conversation' | 'project'; id: string } | null
 /**
  * The conversation list as a screen of its own.
  *
- * Self-contained on purpose: it borrows nothing from `ui/sidebar` and nothing
- * from `ui/context-menu`, both of which are on their way out. It also leaves
- * `SpotlightCard` behind — that one follows a mouse, and there is no mouse here.
+ * Self-contained on purpose: it shares no chrome with the desktop sidebar, which
+ * is a React Aria tree with a right-click menu and keyboard navigation — none of
+ * which a phone has any use for.
  *
  * Every row is a `div` holding two buttons rather than a button holding
  * everything, which is what makes an ⋮ target legal beside a tappable row, and
