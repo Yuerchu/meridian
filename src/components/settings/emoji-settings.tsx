@@ -4,6 +4,7 @@ import { Plus, TrashBin, ArrowUpFromLine, Sticker } from '@gravity-ui/icons'
 import { Button, Disclosure, Input } from '@heroui/react'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
+import { SettingsHeader, SettingsPane } from './primitives'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import type { Emoji, EmojiPack } from '@/types'
 
@@ -220,11 +221,11 @@ export function EmojiSettings() {
   }
 
   return (
-    <div className="max-w-lg space-y-6">
-      <div>
-        <h2 className="text-lg font-medium">{t('settings.emoji.title')}</h2>
-        <p className="text-xs text-muted mt-1">{t('settings.emoji.subtitle')}</p>
-      </div>
+    <SettingsPane>
+      <SettingsHeader
+        title={t('settings.emoji.title')}
+        subtitle={t('settings.emoji.subtitle')}
+      />
 
       <div className="flex gap-2">
         <Input fullWidth
@@ -261,6 +262,6 @@ export function EmojiSettings() {
         )}
       </div>
       {confirmDialog}
-    </div>
+    </SettingsPane>
   )
 }

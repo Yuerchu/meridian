@@ -5,6 +5,7 @@ import { Button, Card, Checkbox, Description, Disclosure, DisclosureGroup, Input
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
+import { SettingsHeader, SettingsPane } from './primitives'
 import type { Skill } from '@/types'
 
 /** The directory name doubles as the LLM-facing skill name, so it has to be a
@@ -235,25 +236,23 @@ export function SkillSettings() {
   }
 
   return (
-    <div data-slot="skill-settings" className="max-w-lg space-y-6">
-      <div data-slot="skill-settings-header" className="flex items-start justify-between gap-2">
-        <div data-slot="skill-settings-heading">
-          <h2 data-slot="skill-settings-title" className="text-lg font-medium">{t('settings.skills.title')}</h2>
-          <p data-slot="skill-settings-subtitle" className="text-xs text-muted mt-1">
-            {t('settings.skills.subtitle')}
-          </p>
-        </div>
-        <div data-slot="skill-settings-actions" className="flex items-center gap-1 shrink-0">
-          <Button variant="outline" onClick={handleRescan} isDisabled={rescanning}>
-            <ArrowsRotateRight className={rescanning ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />
-            {t('settings.skills.rescan')}
-          </Button>
-          <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
-            <Plus className="w-3.5 h-3.5" />
-            {t('settings.skills.new')}
-          </Button>
-        </div>
-      </div>
+    <SettingsPane>
+      <SettingsHeader
+        title={t('settings.skills.title')}
+        subtitle={t('settings.skills.subtitle')}
+        actions={
+          <>
+            <Button variant="outline" onClick={handleRescan} isDisabled={rescanning}>
+              <ArrowsRotateRight className={rescanning ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />
+              {t('settings.skills.rescan')}
+            </Button>
+            <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
+              <Plus className="w-3.5 h-3.5" />
+              {t('settings.skills.new')}
+            </Button>
+          </>
+        }
+      />
 
       {error && (
         <p data-slot="skill-settings-error" className="text-xs text-danger">{error}</p>
@@ -392,6 +391,6 @@ export function SkillSettings() {
         {t('settings.skills.globalBindingHint')}
       </p>
       {confirmDialog}
-    </div>
+    </SettingsPane>
   )
 }

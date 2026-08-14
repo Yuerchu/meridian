@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Input, ListBox, Select } from '@heroui/react'
 import { api } from '@/api'
+import { SettingsHeader } from './primitives'
 import type { ModelInfo, Provider } from '@/types'
 
 /** The two built-in kinds. A third one is a settings feature, not a loop one. */
@@ -154,10 +155,10 @@ export function SubAgentSettings({ providers }: { providers: Provider[] }) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-medium">{t('settings.subAgent.title')}</h2>
-        <p className="text-xs text-muted mt-1">{t('settings.subAgent.subtitle')}</p>
-      </div>
+      <SettingsHeader
+        title={t('settings.subAgent.title')}
+        subtitle={t('settings.subAgent.subtitle')}
+      />
       {KINDS.map((kind) => (
         <KindRow key={kind} kind={kind} providers={providers} />
       ))}

@@ -5,6 +5,7 @@ import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, ListBox, S
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
+import { SettingsHeader, SettingsPane } from './primitives'
 import { SubAgentSettings } from './sub-agent-settings'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
 import { SettingsDrilldown } from './settings-drilldown'
@@ -514,17 +515,17 @@ export function AssistantSettings() {
   }
 
   return (
-    <div className="max-w-lg space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-medium">{t('settings.assistant.title')}</h2>
-          <p className="text-xs text-muted mt-1">{t('settings.assistant.subtitle')}</p>
-        </div>
-        <Button variant="outline" onClick={handleCreate}>
-          <Plus className="w-3.5 h-3.5" />
-          {t('settings.assistant.new')}
-        </Button>
-      </div>
+    <SettingsPane>
+      <SettingsHeader
+        title={t('settings.assistant.title')}
+        subtitle={t('settings.assistant.subtitle')}
+        actions={
+          <Button variant="outline" onClick={handleCreate}>
+            <Plus className="w-3.5 h-3.5" />
+            {t('settings.assistant.new')}
+          </Button>
+        }
+      />
 
       {/* One open at a time is the group's own default (`allowsMultipleExpanded`
           is off), so the single-open rule lives in the primitive rather than in
@@ -592,6 +593,6 @@ export function AssistantSettings() {
           of agent. */}
       <SubAgentSettings providers={providers} />
       {confirmDialog}
-    </div>
+    </SettingsPane>
   )
 }
