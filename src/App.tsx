@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { DesktopShell } from '@/components/layout/desktop-shell'
-import { MobileShell } from '@/components/layout/mobile-shell'
+import { AppShell } from '@/components/layout/app-shell'
+import type { Page, ShellProps } from '@/components/layout/shell-props'
 import type { SettingsTab } from '@/components/settings/tabs'
 import { api } from '@/api'
 import { useContextMenuGuard } from '@/hooks/use-context-menu-guard'
@@ -9,7 +9,6 @@ import { useAndroidInsets } from '@/hooks/use-android-insets'
 import { usePlatform } from '@/hooks/use-platform'
 import { useGlobalEventListener } from '@/hooks/use-global-event-listener'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { Page } from '@/lib/nav'
 
 
 /** How long to wait for a stopped turn to let go of its conversation before
@@ -44,12 +43,6 @@ function App() {
   const platform = usePlatform()
   const canDragWindow = platform !== null && platform !== 'android' && platform !== 'ios'
 
-  // Read once, at startup, and never again. A stack is what a device with a
-  // hardware back key needs, not what a narrow viewport needs — and a phone in
-  // landscape is routinely wider than the 768px breakpoint, so re-reading this
-  // would swap the whole shell on rotation and take the composer draft with it.
-  // Panels inside still use `useIsMobile` for layout, which stays responsive.
-  const [stackMode] = useState(() => window.innerWidth < 768)
   const [page, setPage] = useState<Page>('chat')
   const [settingsTab, setSettingsTab] = useState<SettingsTab>('provider')
   const [pendingMessage, setPendingMessage] = useState<string | null>(null)
@@ -153,7 +146,7 @@ function App() {
   const activeConversation = conversations.find((c) => c.id === activeId)
   const activeProject = projects.find((p) => p.id === activeProjectId)
 
-  const shellProps = {
+  const shellProps: ShellProps = {
     conversations,
     activeId,
     projects,
@@ -181,7 +174,7 @@ function App() {
     onInitialMessageConsumed: () => setPendingMessage(null),
   }
 
-  return stackMode ? <MobileShell {...shellProps} /> : <DesktopShell {...shellProps} />
+  return <AppShell {...shellProps} />
 }
 
 export default App
