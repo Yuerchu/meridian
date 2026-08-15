@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, TrashBin, BookOpen, Check, ArrowsRotateRight } from '@gravity-ui/icons'
-import { Button, Card, Checkbox, Description, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField } from '@heroui/react'
+import { Plus, TrashBin, BookOpen, ArrowsRotateRight } from '@gravity-ui/icons'
+import { Button, Card, Checkbox, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import { SettingsHeader, SettingsPane } from './primitives'
+import { SavedHint, SettingsHeader, SettingsPane } from './primitives'
 import type { Skill } from '@/types'
 
 /** The directory name doubles as the LLM-facing skill name, so it has to be a
@@ -153,9 +154,7 @@ function SkillEditor({
           {t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="skill-editor-saved" className="flex items-center gap-1 text-xs text-success-soft-foreground">
-            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
-          </span>
+          <SavedHint data-slot="skill-editor-saved" />
         )}
         {onDelete && !isBuiltin && (
           <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
@@ -285,14 +284,26 @@ export function SkillSettings() {
               data-slot="skill-item"
               className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
             >
-              {/* Wraps on a narrow screen: the two labelled checkboxes take
-                  about 130px between them, which left the skill name a couple
-                  of characters wide on a phone. */}
-              <div data-slot="skill-item-header" className="flex flex-wrap items-center gap-2 pr-3">
+              {/* A container query, not a viewport one. The row wraps when the
+                  two labelled checkboxes (about 130px between them) would leave
+                  the skill name a couple of characters wide — and that depends
+                  on how wide this row is, not on how wide the screen is. Keyed
+                  to the viewport it wrapped a 770px-wide card in a window that
+                  had merely fallen under the breakpoint. */}
+              <div
+                data-slot="skill-item-header"
+                className="@container/skill-row flex flex-wrap items-center gap-2 pr-3"
+              >
                 {/* The checkboxes stay outside the trigger: it is a `<button>`,
                     and a nested one would be invalid markup and swallow the
                     click. */}
-                <Disclosure.Heading className="min-w-0 flex-1 basis-full md:basis-auto">
+                {/* `basis-0`, not `basis-auto`: wrapping is decided from the
+                    hypothetical size, and shrinking only happens once a line is
+                    settled. At `auto` a long skill name counted at full length
+                    and pushed the last checkbox onto a line of its own, while a
+                    shorter one beside it fit. From 0 the row grows into whatever
+                    is left and truncates instead. */}
+                <Disclosure.Heading className="min-w-0 flex-1 basis-full @sm/skill-row:basis-0">
                   {/* `flex` is not optional: HeroUI styles the indicator with
                       `ms-auto` and `shrink-0`, which only mean anything inside a
                       flex container. `text-start` undoes the button element's
@@ -308,9 +319,9 @@ export function SkillSettings() {
                         {skill.llm_name}
                       </span>
                     </div>
-                    <span data-slot="skill-item-source" className="text-xs px-1.5 py-0.5 rounded bg-default text-muted shrink-0">
+                    <Chip data-slot="skill-item-source" className="shrink-0 text-muted">
                       {t(`settings.skills.source.${skill.source}`)}
-                    </span>
+                    </Chip>
                     <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
                   </Disclosure.Trigger>
                 </Disclosure.Heading>
@@ -381,9 +392,11 @@ export function SkillSettings() {
           )
         })}
         {skills.length === 0 && !showCreate && (
-          <p data-slot="skill-settings-empty" className="text-xs text-muted text-center py-4">
-            {t('settings.skills.noSkills')}
-          </p>
+          <EmptyState data-slot="skill-settings-empty" size="sm">
+            <EmptyState.Header>
+              <EmptyState.Title>{t('settings.skills.noSkills')}</EmptyState.Title>
+            </EmptyState.Header>
+          </EmptyState>
         )}
       </DisclosureGroup>
 

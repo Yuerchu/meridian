@@ -7,7 +7,7 @@ import {
   ChainOfThought,
   ChainOfThoughtContent,
   ChainOfThoughtTrigger,
-} from '@/components/ui/chain-of-thought'
+} from '@heroui-pro/react/chain-of-thought'
 import { markQueued, type TurnStep } from '@/lib/turns'
 import type { EmojiMap } from './emoji-renderer'
 

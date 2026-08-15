@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, StarFill, Check, SquareDashedText } from '@gravity-ui/icons'
-import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, ListBox, Select, TextArea, TextField, Tooltip } from '@heroui/react'
+import { Plus, StarFill, SquareDashedText } from '@gravity-ui/icons'
+import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField, Tooltip } from '@heroui/react'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import { SettingsHeader, SettingsPane } from './primitives'
+import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
+import { ProviderModelPicker } from './provider-model-picker'
 import { SubAgentSettings } from './sub-agent-settings'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
 import { SettingsDrilldown } from './settings-drilldown'
@@ -100,14 +101,6 @@ function AssistantEditor({
     markSaved()
   }
 
-  const providerOptions = [
-    { value: '_default', label: t('settings.assistant.providerDefault') },
-    ...providers.map((p) => ({ value: p.id, label: p.name })),
-  ]
-  const modelOptions = [
-    { value: '_none', label: t('settings.assistant.selectModel') },
-    ...models.map((m) => ({ value: m.id, label: m.name })),
-  ]
   const presetOptions = [
     { value: '_none', label: t('settings.assistant.selectModel') },
     ...toolPresets.map((p) => ({ value: p.id, label: `${p.name}${p.description ? ` — ${p.description}` : ''}` })),
@@ -178,64 +171,14 @@ function AssistantEditor({
         )}
       </TextField>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Select
-          fullWidth
-          value={providerId || '_default'}
-          onChange={(v) => { setProviderId(!v || v === '_default' ? '' : String(v)); setModelId('') }}
-        >
-          <Label>{t('settings.assistant.provider')}</Label>
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {providerOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
-        </Select>
-        <div className="space-y-1.5">
-          {models.length > 0 ? (
-            <Select
-              fullWidth
-              value={modelId || '_none'}
-              onChange={(v) => setModelId(!v || v === '_none' ? '' : String(v))}
-              placeholder={t('settings.assistant.selectModel')}
-            >
-              <Label>{t('settings.assistant.model')}</Label>
-              <Select.Trigger>
-                <Select.Value />
-                <Select.Indicator />
-              </Select.Trigger>
-              <Select.Popover>
-                <ListBox>
-                  {modelOptions.map((o) => (
-                    <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                      {o.label}
-                      <ListBox.ItemIndicator />
-                    </ListBox.Item>
-                  ))}
-                </ListBox>
-              </Select.Popover>
-            </Select>
-          ) : (
-            <TextField fullWidth>
-              <Label>{t('settings.assistant.model')}</Label>
-              <Input
-                value={modelId}
-                onChange={(e) => setModelId(e.target.value)}
-                placeholder={t('settings.assistant.modelPlaceholder')}
-              />
-            </TextField>
-          )}
-        </div>
-      </div>
+      <ProviderModelPicker
+        providers={providers}
+        models={models}
+        providerId={providerId}
+        modelId={modelId}
+        onChange={(provider, model) => { setProviderId(provider); setModelId(model) }}
+        emptyProviderLabel={t('settings.assistant.providerDefault')}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <TextField fullWidth type="number">
@@ -317,26 +260,13 @@ function AssistantEditor({
           >{t('settings.assistant.toolsCustom')}</Button>
         </div>
         {toolMode === 'preset' && (
-          <Select
-            fullWidth
+          <SettingsSelect
+            ariaLabel={t('settings.tools.preset')}
             value={selectedPresetId || '_none'}
-            onChange={(v) => { if (v) setSelectedPresetId(v === '_none' ? '' : String(v)) }}
-          >
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {presetOptions.map((o) => (
-                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                    {o.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
+            options={presetOptions}
+            onChange={(v) => setSelectedPresetId(v === '_none' ? '' : v)}
+            fullWidth
+          />
         )}
         {toolMode === 'custom' && (
           <div
@@ -468,9 +398,7 @@ function AssistantEditor({
       <div className="flex items-center gap-2 pt-1">
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
-            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
-          </span>
+          <SavedHint />
         )}
         {onDelete && (
           <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={() => onDelete(assistant.id)}>

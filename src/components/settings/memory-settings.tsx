@@ -2,13 +2,15 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button, Card, DisclosureGroup, Input, ListBox, Select, TextArea } from '@heroui/react'
+import { Button, Card, DisclosureGroup, Input, TextArea } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
+import { ActionBar } from '@heroui-pro/react/action-bar'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
 import { ScopeNav } from './memory/scope-nav'
 import { useMemoryBrowser } from './memory/use-memory-browser'
-import { SettingsHeader } from './primitives'
+import { SettingsHeader, SettingsSelect } from './primitives'
 
 export function MemorySettings() {
   const { t } = useTranslation()
@@ -93,25 +95,13 @@ export function MemorySettings() {
               placeholder={t('settings.memory.search')}
               className="flex-1"
             />
-            <Select
+            <SettingsSelect
+              ariaLabel={t('settings.memory.originFilter')}
               value={browser.originFilter}
-              onChange={(v) => { if (v) browser.setOriginFilter(String(v)) }}
-            >
-              <Select.Trigger className="w-auto">
-                <Select.Value />
-                <Select.Indicator />
-              </Select.Trigger>
-              <Select.Popover>
-                <ListBox>
-                  {originOptions.map((o) => (
-                    <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                      {o.label}
-                      <ListBox.ItemIndicator />
-                    </ListBox.Item>
-                  ))}
-                </ListBox>
-              </Select.Popover>
-            </Select>
+              options={originOptions}
+              onChange={browser.setOriginFilter}
+              triggerClassName="w-auto"
+            />
           </div>
 
           {showAdd && (
@@ -131,25 +121,13 @@ export function MemorySettings() {
                 className="resize-y"
               />
               <div className="flex items-center gap-2">
-                <Select
+                <SettingsSelect
+                  ariaLabel={t('settings.memory.type')}
                   value={newType}
-                  onChange={(v) => { if (v) setNewType(String(v)) }}
-                >
-                  <Select.Trigger className="w-auto">
-                    <Select.Value />
-                    <Select.Indicator />
-                  </Select.Trigger>
-                  <Select.Popover>
-                    <ListBox>
-                      {typeOptions.map((o) => (
-                        <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                          {o.label}
-                          <ListBox.ItemIndicator />
-                        </ListBox.Item>
-                      ))}
-                    </ListBox>
-                  </Select.Popover>
-                </Select>
+                  options={typeOptions}
+                  onChange={setNewType}
+                  triggerClassName="w-auto"
+                />
                 <div className="flex-1" />
                 <Button variant="ghost" isIconOnly onClick={() => setShowAdd(false)}>
                   <Xmark />
@@ -167,9 +145,11 @@ export function MemorySettings() {
           )}
 
           {browser.visible.length === 0 && !showAdd && (
-            <p className="py-6 text-center text-sm text-muted">
-              {t('settings.memory.empty')}
-            </p>
+            <EmptyState size="sm">
+              <EmptyState.Header>
+                <EmptyState.Title>{t('settings.memory.empty')}</EmptyState.Title>
+              </EmptyState.Header>
+            </EmptyState>
           )}
 
           {/* One open at a time is the group's own default
@@ -192,17 +172,24 @@ export function MemorySettings() {
             ))}
           </DisclosureGroup>
 
-          {browser.selected.size > 0 && (
-            <div
-              data-slot="memory-bulk-bar"
-              className="flex items-center gap-2 rounded-lg border border-border bg-default/30 p-3"
-            >
-              <span className="text-sm text-muted">
+          {/* Fixed to the bottom of the viewport rather than appended below the
+              list, which is where it used to be — on a long list you had to
+              scroll to the end to reach the actions for rows at the top. */}
+          <ActionBar data-slot="memory-bulk-bar" isOpen={browser.selected.size > 0}>
+            <ActionBar.Prefix>
+              {/* The count is the only thing that says a selection exists, so
+                  it announces itself rather than only appearing. */}
+              <span aria-live="polite" className="text-sm text-muted">
                 {t('settings.memory.selectedCount', { count: browser.selected.size })}
               </span>
-              <div className="flex-1" />
-              <Button variant="ghost" onClick={browser.clearSelection}>
-                {t('settings.memory.clearSelection')}
+            </ActionBar.Prefix>
+            <ActionBar.Content>
+              <Button
+                variant="ghost"
+                onClick={browser.selectAllVisible}
+                isDisabled={browser.selected.size === browser.visible.length}
+              >
+                {t('settings.memory.selectAll')}
               </Button>
               <Button
                 variant="ghost"
@@ -220,8 +207,18 @@ export function MemorySettings() {
                 <TrashBin className="text-danger" />
                 {t('settings.memory.deleteSelected')}
               </Button>
-            </div>
-          )}
+            </ActionBar.Content>
+            <ActionBar.Suffix>
+              <Button
+                isIconOnly
+                variant="ghost"
+                aria-label={t('settings.memory.clearSelection')}
+                onClick={browser.clearSelection}
+              >
+                <Xmark />
+              </Button>
+            </ActionBar.Suffix>
+          </ActionBar>
         </div>
       </div>
 

@@ -2,10 +2,10 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
-import { Button, Checkbox, Description, Input, Label, ListBox, Select, TextField } from '@heroui/react'
+import { Button, Checkbox, Description, Input, Label, TextField } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import type { Assistant } from '@/types'
-import { SettingsHeader, SettingsPane } from './primitives'
+import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
 
 interface OneBotConfig {
   enabled: boolean
@@ -177,28 +177,14 @@ export function OneBotSettings() {
         />
       </TextField>
 
-      <Select
-        fullWidth
+      <SettingsSelect
+        label={t('settings.onebot.assistant')}
         value={config.assistant_id ?? '_default'}
-        onChange={(v) => { if (v) setConfig({ ...config, assistant_id: v === '_default' ? null : String(v) }) }}
-      >
-        <Label>{t('settings.onebot.assistant')}</Label>
-        <Select.Trigger>
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {assistantOptions.map((o) => (
-              <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                {o.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
-        <Description>{t('settings.onebot.assistantHint')}</Description>
-      </Select>
+        options={assistantOptions}
+        onChange={(v) => setConfig({ ...config, assistant_id: v === '_default' ? null : v })}
+        description={t('settings.onebot.assistantHint')}
+        fullWidth
+      />
 
       <TextField fullWidth>
         <Label>{t('settings.onebot.adminUsers')}</Label>

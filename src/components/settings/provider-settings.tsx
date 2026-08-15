@@ -1,12 +1,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Check, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
-import { Button, Disclosure, Input, Label, ListBox, Select, Spinner, TextField, Tooltip } from '@heroui/react'
+import { Plus, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
+import { Button, Disclosure, Input, Label, Spinner, TextField, Tooltip } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MasterDetail } from './master-detail'
+import { SavedHint, SettingsRow, SettingsSelect } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import type { ModelConfig, ModelConfigInput, Provider, ModelInfo, ProviderCapabilities, ThinkingEffort } from '@/types'
@@ -75,22 +77,14 @@ function CapabilityTriRow({
   return (
     <div data-slot="capability-tri-row" className="flex items-center justify-between gap-2">
       <p className="text-xs text-muted">{label}</p>
-      <Select aria-label={label} value={value} onChange={(v) => v && onChange(String(v) as Tri)}>
-        <Select.Trigger className="h-7 w-32 text-xs">
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {options.map((o) => (
-              <ListBox.Item key={o.value} id={o.value} textValue={o.label} className="text-xs">
-                {o.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
-      </Select>
+      <SettingsSelect
+        ariaLabel={label}
+        value={value}
+        options={options}
+        onChange={onChange}
+        triggerClassName="h-7 w-32 text-xs"
+        itemClassName="text-xs"
+      />
     </div>
   )
 }
@@ -433,23 +427,13 @@ function ProviderEditor({
         <Input value={name} onChange={(e) => setName(e.target.value)} />
       </TextField>
 
-      <Select fullWidth value={providerType} onChange={(v) => v && setProviderType(String(v))}>
-        <Label>{t('settings.provider.type')}</Label>
-        <Select.Trigger>
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {typeOptions.map((o) => (
-              <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                {o.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
-      </Select>
+      <SettingsSelect
+        label={t('settings.provider.type')}
+        value={providerType}
+        options={typeOptions}
+        onChange={setProviderType}
+        fullWidth
+      />
 
       <TextField fullWidth>
         <Label>{t('settings.provider.baseUrl')}</Label>
@@ -461,31 +445,19 @@ function ProviderEditor({
       </TextField>
 
       {providerType !== 'anthropic' && (
-        <Select fullWidth value={apiFormat} onChange={(v) => v && setApiFormat(String(v))}>
-          <Label>{t('settings.provider.apiFormat')}</Label>
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {formatOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
-        </Select>
+        <SettingsSelect
+          label={t('settings.provider.apiFormat')}
+          value={apiFormat}
+          options={formatOptions}
+          onChange={setApiFormat}
+          fullWidth
+        />
       )}
 
       <div className="flex items-center gap-2">
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
-            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
-          </span>
+          <SavedHint />
         )}
       </div>
 
@@ -663,23 +635,31 @@ export function ProviderSettings() {
   const providerList = (
     <>
       {providers.map((p) => (
-        <Button
+        <SettingsRow
           key={p.id}
-          variant="ghost"
+          icon={<Cloud />}
+          label={p.name}
+          isActive={selectedId === p.id}
+          // A list of peers, not a row that opens something else.
+          trailing={null}
           onClick={() => nav.openItem(p.id)}
-          className={cn(
-            'w-full justify-start h-auto px-3 py-2 text-sm',
-            selectedId === p.id
-              ? 'bg-default text-default-foreground'
-              : 'text-muted hover:text-foreground hover:bg-default/50',
-          )}
-        >
-          <Cloud className="w-4 h-4" />
-          <span className="truncate">{p.name}</span>
-        </Button>
+        />
       ))}
       {providers.length === 0 && (
-        <p className="text-xs text-muted px-3">{t('settings.provider.noProviders')}</p>
+        // The text used to point at the "+" in the header, which is what an
+        // empty state has an action slot for.
+        <EmptyState size="sm">
+          <EmptyState.Media variant="icon"><Cloud /></EmptyState.Media>
+          <EmptyState.Header>
+            <EmptyState.Title>{t('settings.provider.noProviders')}</EmptyState.Title>
+          </EmptyState.Header>
+          <EmptyState.Content>
+            <Button variant="outline" onClick={handleCreate}>
+              <Plus className="w-4 h-4" />
+              {t('settings.provider.addProvider')}
+            </Button>
+          </EmptyState.Content>
+        </EmptyState>
       )}
     </>
   )
@@ -702,6 +682,7 @@ export function ProviderSettings() {
         </Tooltip>
       }
       list={providerList}
+      detailTitle={selected?.name}
       detail={selected ? (
         <ProviderEditor
           key={selected.id}
