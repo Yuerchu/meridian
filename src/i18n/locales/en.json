@@ -136,7 +136,7 @@
   "sidebar.exportSft": "Export SFT training data",
   "sidebar.exportDpo": "Export DPO preference data",
   "sidebar.delete": "Delete",
-  "sidebar.moreActions": "More actions",
+  "sidebar.moreActions": "Actions for {{name}}",
   "sidebar.renameConversation": "Rename conversation",
   "sidebar.renameProject": "Rename project",
   "contextMenu.copySelection": "Copy Selection",

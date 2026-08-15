@@ -18,7 +18,7 @@ import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Button, Input } from '@heroui/react'
 import { Sidebar } from '@heroui-pro/react/sidebar'
-import { Archive, ArrowLeft, Comment, FolderOpen, FolderPlus, Gear, Plus } from '@gravity-ui/icons'
+import { Archive, ArrowLeft, Comment, FolderOpen, FolderPlus, Gear, Pin, Plus } from '@gravity-ui/icons'
 
 import type { Conversation, Project } from '@/types'
 import type { Page } from '@/lib/nav'
@@ -37,6 +37,7 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { ConversationIndicator } from './conversation-indicator'
 import { ProjectIcon } from './project-icon'
 import { RenameDialog } from './rename-dialog'
+import { RowActionsMenu } from './row-actions-menu'
 import { useConversationActions, useProjectActions, type RowAction } from './row-actions'
 
 interface AppSidebarProps {
@@ -359,8 +360,18 @@ export function AppSidebar({
                   <Sidebar.MenuIcon>{conv.is_archived ? <Archive /> : <Comment />}</Sidebar.MenuIcon>
                   <Sidebar.MenuLabel>{conv.title ?? t('sidebar.newChat')}</Sidebar.MenuLabel>
                   <Sidebar.MenuChip>
+                    {/* Pinned rows were sorted to the top and said nothing about
+                        why they were there. */}
+                    {conv.is_pinned === 1 && (
+                      <Pin aria-label={t('contextMenu.pin')} className="size-3 text-muted" />
+                    )}
                     <ConversationIndicator conversationId={conv.id} activeId={activeId} />
                   </Sidebar.MenuChip>
+                  <RowActionsMenu
+                    label={conv.title ?? t('sidebar.newChat')}
+                    actions={conversationActions}
+                    onOpen={() => setMenu({ scope: prefix, kind: 'conversation', id: conv.id })}
+                  />
                 </Sidebar.MenuItem>
               ))}
             </Sidebar.Menu>
