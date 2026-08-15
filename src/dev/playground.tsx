@@ -42,6 +42,8 @@ import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { TurnItem } from '@/components/chat/turn-item'
 import { TurnSteps } from '@/components/chat/turn-steps'
 import { TodoBarView } from '@/components/chat/todo-bar'
+import TodoBoard from '@/components/chat/todo-board'
+import type { TodoDraft } from '@/components/chat/todo-list'
 import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
 import { CommandPalette } from '@/components/layout/command-palette'
@@ -936,6 +938,20 @@ function Gallery() {
             <TodoBarView todos={JSON.parse(TODO_RUNNING)} />
             <TodoBarView todos={JSON.parse(TODO_SINGLE)} />
             <TodoBarView todos={JSON.parse(TODO_NO_CURRENT)} />
+          </div>
+        </Section>
+
+        <Section title="TodoBoard / 三列看板">
+          {/* Rendered directly as well as through the bar's own toggle: the
+              cases worth looking at are an empty column and a card long enough
+              to wrap, and both are two clicks deep otherwise. Boxed at 672px —
+              the composer's width — because that is what decides whether three
+              columns fit or the grid turns into a horizontal scroller. */}
+          <div className="w-full max-w-2xl rounded-2xl bg-surface p-4 shadow-surface">
+            <TodoBoard todos={(JSON.parse(TODO_RUNNING) as { todos: TodoDraft[] }).todos} />
+          </div>
+          <div className="w-[360px] rounded-2xl bg-surface p-4 shadow-surface">
+            <TodoBoard todos={(JSON.parse(TODO_NO_CURRENT) as { todos: TodoDraft[] }).todos} />
           </div>
         </Section>
 
