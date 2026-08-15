@@ -268,7 +268,7 @@
   "settings.provider.fetchModelsHint": "Click \"Fetch Models\" to load available models.",
   "settings.provider.deleteProvider": "Delete Provider",
   "settings.provider.selectProvider": "Select a provider to configure.",
-  "settings.provider.noProviders": "No providers yet. Click + to add one.",
+  "settings.provider.noProviders": "No providers yet",
   "settings.assistant.title": "Assistants",
   "settings.assistant.subtitle": "Manage AI assistants with custom system prompts.",
   "settings.assistant.new": "New",

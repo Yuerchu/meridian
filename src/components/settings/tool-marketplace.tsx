@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Wrench, Terminal } from '@gravity-ui/icons'
 import { Button, Card, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextField } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -267,7 +268,11 @@ export function ToolMarketplace() {
             )
           })}
           {customTools.length === 0 && !showCreate && (
-            <p className="text-xs text-muted text-center py-4">{t('settings.tools.noCustom')}</p>
+            <EmptyState size="sm">
+              <EmptyState.Header>
+                <EmptyState.Title>{t('settings.tools.noCustom')}</EmptyState.Title>
+              </EmptyState.Header>
+            </EmptyState>
           )}
         </DisclosureGroup>
       </div>

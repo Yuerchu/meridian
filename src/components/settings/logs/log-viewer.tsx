@@ -5,6 +5,7 @@ import { ChevronLeft, ArrowDownToLine, ArrowsRotateRight, Magnifier } from '@gra
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { Button, InputGroup, Skeleton, Spinner } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { LogRow } from './log-row'
 import { SettingsSelect, type SettingsSelectOption } from '../primitives'
 import { MAX_RENDERED, useAppLogs, type LevelFilter, type RangeFilter } from './use-app-logs'
@@ -109,9 +110,11 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain rounded-lg border border-border outline-none focus-visible:ring-2 focus-visible:ring-focus/50"
       >
         {unavailable ? (
-          <p className="p-6 text-sm text-muted">
-            {t('settings.about.logs.unavailable')}
-          </p>
+          <EmptyState size="sm">
+            <EmptyState.Header>
+              <EmptyState.Title>{t('settings.about.logs.unavailable')}</EmptyState.Title>
+            </EmptyState.Header>
+          </EmptyState>
         ) : logs.error ? (
           <p className="p-6 text-sm text-danger">{t('settings.about.logs.loadError')}</p>
         ) : logs.loading ? (
@@ -121,11 +124,17 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             ))}
           </div>
         ) : logs.entries.length === 0 ? (
-          <p className="p-6 text-sm text-muted">
-            {logs.isFiltered
-              ? t('settings.about.logs.empty')
-              : t('settings.about.logs.emptyRange')}
-          </p>
+          // Two different nothings: a filter that matched none, and a window
+          // with nothing in it. Only the first has anything to undo.
+          <EmptyState size="sm">
+            <EmptyState.Header>
+              <EmptyState.Title>
+                {logs.isFiltered
+                  ? t('settings.about.logs.empty')
+                  : t('settings.about.logs.emptyRange')}
+              </EmptyState.Title>
+            </EmptyState.Header>
+          </EmptyState>
         ) : (
           <>
             {logs.entries.map((entry) => (

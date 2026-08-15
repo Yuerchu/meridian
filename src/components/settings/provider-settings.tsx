@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
 import { Button, Disclosure, Input, Label, Spinner, TextField, Tooltip } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
@@ -650,7 +651,20 @@ export function ProviderSettings() {
         </Button>
       ))}
       {providers.length === 0 && (
-        <p className="text-xs text-muted px-3">{t('settings.provider.noProviders')}</p>
+        // The text used to point at the "+" in the header, which is what an
+        // empty state has an action slot for.
+        <EmptyState size="sm">
+          <EmptyState.Media variant="icon"><Cloud /></EmptyState.Media>
+          <EmptyState.Header>
+            <EmptyState.Title>{t('settings.provider.noProviders')}</EmptyState.Title>
+          </EmptyState.Header>
+          <EmptyState.Content>
+            <Button variant="outline" onClick={handleCreate}>
+              <Plus className="w-4 h-4" />
+              {t('settings.provider.addProvider')}
+            </Button>
+          </EmptyState.Content>
+        </EmptyState>
       )}
     </>
   )

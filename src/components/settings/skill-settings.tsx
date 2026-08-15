@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, BookOpen, ArrowsRotateRight } from '@gravity-ui/icons'
 import { Button, Card, Checkbox, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -379,9 +380,11 @@ export function SkillSettings() {
           )
         })}
         {skills.length === 0 && !showCreate && (
-          <p data-slot="skill-settings-empty" className="text-xs text-muted text-center py-4">
-            {t('settings.skills.noSkills')}
-          </p>
+          <EmptyState data-slot="skill-settings-empty" size="sm">
+            <EmptyState.Header>
+              <EmptyState.Title>{t('settings.skills.noSkills')}</EmptyState.Title>
+            </EmptyState.Header>
+          </EmptyState>
         )}
       </DisclosureGroup>
 

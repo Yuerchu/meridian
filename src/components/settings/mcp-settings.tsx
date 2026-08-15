@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } from '@gravity-ui/icons'
 import { Button, Input, Label, Switch, TextArea, TextField, Tooltip } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
@@ -437,7 +438,11 @@ export function McpSettings() {
         <JsonImportDialog onImport={handleImport} onCancel={back} />
       ) : undefined}
       emptyState={servers.length === 0 && !showImport ? (
-        <p className="text-sm text-muted">{t('settings.mcp.noServers')}</p>
+        <EmptyState size="sm">
+          <EmptyState.Header>
+            <EmptyState.Title>{t('settings.mcp.noServers')}</EmptyState.Title>
+          </EmptyState.Header>
+        </EmptyState>
       ) : undefined}
     />
     {confirmDialog}

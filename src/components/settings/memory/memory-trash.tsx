@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { TrashBin, ArrowUturnCcwLeft } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { Button, Card, Chip, Drawer } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { INFO_CHIP } from './memory-row'
 import type { Memory } from '@/types'
 import { useHistoryLevel } from '@/hooks/use-nav'
@@ -67,9 +68,11 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
 
           <Drawer.Body className="space-y-2">
             {rows.length === 0 && (
-              <p className="py-6 text-center text-sm text-muted">
-                {t('settings.memory.trash.empty')}
-              </p>
+              <EmptyState size="sm">
+                <EmptyState.Header>
+                  <EmptyState.Title>{t('settings.memory.trash.empty')}</EmptyState.Title>
+                </EmptyState.Header>
+              </EmptyState>
             )}
             {/* Secondary, not the default surface: the drawer itself is
                 `--overlay`, which is the same colour as `--surface`, so only the

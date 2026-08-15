@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, ArrowUpFromLine, Sticker } from '@gravity-ui/icons'
 import { Button, Chip, Disclosure, Input } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SettingsHeader, SettingsPane } from './primitives'
@@ -256,9 +257,11 @@ export function EmojiSettings() {
           />
         ))}
         {details.length === 0 && (
-          <p className="text-sm text-muted text-center py-6">
-            {t('settings.emoji.noPacks')}
-          </p>
+          <EmptyState size="sm">
+            <EmptyState.Header>
+              <EmptyState.Title>{t('settings.emoji.noPacks')}</EmptyState.Title>
+            </EmptyState.Header>
+          </EmptyState>
         )}
       </div>
       {confirmDialog}

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { Button, Card, DisclosureGroup, Input, TextArea } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
@@ -143,9 +144,11 @@ export function MemorySettings() {
           )}
 
           {browser.visible.length === 0 && !showAdd && (
-            <p className="py-6 text-center text-sm text-muted">
-              {t('settings.memory.empty')}
-            </p>
+            <EmptyState size="sm">
+              <EmptyState.Header>
+                <EmptyState.Title>{t('settings.memory.empty')}</EmptyState.Title>
+              </EmptyState.Header>
+            </EmptyState>
           )}
 
           {/* One open at a time is the group's own default
