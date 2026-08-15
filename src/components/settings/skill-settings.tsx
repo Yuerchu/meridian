@@ -284,14 +284,26 @@ export function SkillSettings() {
               data-slot="skill-item"
               className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
             >
-              {/* Wraps on a narrow screen: the two labelled checkboxes take
-                  about 130px between them, which left the skill name a couple
-                  of characters wide on a phone. */}
-              <div data-slot="skill-item-header" className="flex flex-wrap items-center gap-2 pr-3">
+              {/* A container query, not a viewport one. The row wraps when the
+                  two labelled checkboxes (about 130px between them) would leave
+                  the skill name a couple of characters wide — and that depends
+                  on how wide this row is, not on how wide the screen is. Keyed
+                  to the viewport it wrapped a 770px-wide card in a window that
+                  had merely fallen under the breakpoint. */}
+              <div
+                data-slot="skill-item-header"
+                className="@container/skill-row flex flex-wrap items-center gap-2 pr-3"
+              >
                 {/* The checkboxes stay outside the trigger: it is a `<button>`,
                     and a nested one would be invalid markup and swallow the
                     click. */}
-                <Disclosure.Heading className="min-w-0 flex-1 basis-full md:basis-auto">
+                {/* `basis-0`, not `basis-auto`: wrapping is decided from the
+                    hypothetical size, and shrinking only happens once a line is
+                    settled. At `auto` a long skill name counted at full length
+                    and pushed the last checkbox onto a line of its own, while a
+                    shorter one beside it fit. From 0 the row grows into whatever
+                    is left and truncates instead. */}
+                <Disclosure.Heading className="min-w-0 flex-1 basis-full @sm/skill-row:basis-0">
                   {/* `flex` is not optional: HeroUI styles the indicator with
                       `ms-auto` and `shrink-0`, which only mean anything inside a
                       flex container. `text-start` undoes the button element's

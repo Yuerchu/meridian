@@ -14,7 +14,10 @@ function BubbleGroup({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 const bubbleVariants = tv({
-  base: "group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1 group-data-[align=end]/message:self-end data-[align=end]:self-end data-[variant=ghost]:max-w-full",
+  // `data-[align=end]` only. There used to be a `group-data-[align=end]/message`
+  // beside it saying the same thing through the parent, and both call sites set
+  // the prop anyway — the group half never decided anything.
+  base: "group/bubble relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1 data-[align=end]:self-end data-[variant=ghost]:max-w-full",
   variants: {
     variant: {
       default:
