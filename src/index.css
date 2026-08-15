@@ -51,6 +51,22 @@
   }
 }
 
+/* Pro hides the sidebar panel outright below 768px and offers it as a drawer
+   instead, but the inset look on the main area is keyed on the panel merely
+   being in the DOM (`:has(.sidebar--inset)`), which a hidden element still
+   satisfies. So a narrow window got a rounded, bordered card floating inside
+   its own frame with nothing beside it to be inset from.
+
+   Unlayered on purpose, to outrank the import. */
+@media (max-width: 768px) {
+  .sidebar__provider:has(.sidebar--inset) .sidebar__main {
+    margin: 0;
+    border-width: 0;
+    border-radius: 0;
+    min-height: 100svh;
+  }
+}
+
 /* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.
    Ours is deliberate: the theme is an explicit setting, and a dark OS must not
    darken an app the user asked to keep light. Declared after the import so it
