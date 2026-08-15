@@ -5,6 +5,24 @@ import { api } from '@/api'
 const KEY = 'android.hold_to_talk'
 
 /**
+ * Shared across every caller rather than one `useState` each.
+ *
+ * The switch lives in Settings and the layer it governs lives in the composer,
+ * and those are mounted at the same time — `chat-view` does not unmount because
+ * someone opened Settings. With per-hook state the composer would keep whatever
+ * it read when it mounted, so turning the switch off changed nothing until the
+ * app was restarted, which reads as the switch not working at all.
+ */
+let value = true
+let loaded = false
+const listeners = new Set<(v: boolean) => void>()
+
+function publish(next: boolean) {
+  value = next
+  for (const l of listeners) l(next)
+}
+
+/**
  * Whether holding the composer itself starts a recording.
  *
  * A switch rather than a decision because the decision needs a phone to make.
@@ -18,18 +36,21 @@ const KEY = 'android.hold_to_talk'
  * Absent means on, which is what it has been since it was written.
  */
 export function useHoldToTalk(): [boolean, (next: boolean) => void] {
-  const [enabled, setEnabled] = useState(true)
+  const [enabled, setEnabled] = useState(value)
 
   useEffect(() => {
-    let cancelled = false
-    api.getPreference(KEY)
-      .then((v) => { if (!cancelled) setEnabled(v !== 'false') })
-      .catch(() => {})
-    return () => { cancelled = true }
+    listeners.add(setEnabled)
+    if (!loaded) {
+      loaded = true
+      api.getPreference(KEY)
+        .then((v) => publish(v !== 'false'))
+        .catch(() => {})
+    }
+    return () => { listeners.delete(setEnabled) }
   }, [])
 
   const set = useCallback((next: boolean) => {
-    setEnabled(next)
+    publish(next)
     api.setPreference(KEY, next ? 'true' : 'false').catch(() => {})
   }, [])
 

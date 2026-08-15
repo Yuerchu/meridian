@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CircleCheck, CircleXmark, Play } from '@gravity-ui/icons'
-import { Button, Card, Label, Switch } from '@heroui/react'
+import { Button, Card, Switch } from '@heroui/react'
 
 import { api } from '@/api'
 import { useHoldToTalk } from '@/hooks/use-hold-to-talk'
@@ -330,9 +330,14 @@ export function DeveloperSettings() {
               <Card.Description>{t('settings.developer.holdToTalkHint')}</Card.Description>
             </Card.Header>
             <Card.Footer>
+              {/* `Switch.Content` is the clickable element — the root is a
+                  plain field wrapper and `Switch.Control` a bare span, so a
+                  control parked outside Content has nothing to press. */}
               <Switch isSelected={holdToTalk} onChange={setHoldToTalk}>
-                <Switch.Control><Switch.Thumb /></Switch.Control>
-                <Label>{t('settings.developer.holdToTalkLabel')}</Label>
+                <Switch.Content>
+                  <Switch.Control><Switch.Thumb /></Switch.Control>
+                  {t('settings.developer.holdToTalkLabel')}
+                </Switch.Content>
               </Switch>
             </Card.Footer>
           </Card>
