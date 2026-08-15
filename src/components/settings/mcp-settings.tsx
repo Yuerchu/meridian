@@ -9,6 +9,7 @@ import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { McpServer, McpToolDef } from '@/types'
 import { MasterDetail } from './master-detail'
+import { SettingsRow } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 
 interface McpServersJson {
@@ -365,25 +366,16 @@ export function McpSettings() {
   const serverList = (
     <div className="space-y-1">
       {servers.map((s) => (
-        <Button
+        <SettingsRow
           key={s.id}
-          variant="ghost"
+          icon={<LogoMcp />}
+          label={s.name}
+          // The transport was already sitting where the value slot puts it.
+          value={s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
+          isActive={selectedId === s.id}
+          trailing={null}
           onClick={() => nav.openItem(s.id)}
-          className={cn(
-            'w-full justify-start h-auto px-3 py-2',
-            selectedId === s.id
-              ? 'bg-default text-default-foreground'
-              : 'text-muted',
-          )}
-        >
-          <div className="flex items-center gap-2 w-full">
-            <LogoMcp className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="truncate">{s.name}</span>
-            <span className="text-xs text-muted ml-auto flex-shrink-0">
-              {s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
-            </span>
-          </div>
-        </Button>
+        />
       ))}
     </div>
   )

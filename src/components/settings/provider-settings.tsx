@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MasterDetail } from './master-detail'
-import { SavedHint, SettingsSelect } from './primitives'
+import { SavedHint, SettingsRow, SettingsSelect } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import type { ModelConfig, ModelConfigInput, Provider, ModelInfo, ProviderCapabilities, ThinkingEffort } from '@/types'
@@ -635,20 +635,15 @@ export function ProviderSettings() {
   const providerList = (
     <>
       {providers.map((p) => (
-        <Button
+        <SettingsRow
           key={p.id}
-          variant="ghost"
+          icon={<Cloud />}
+          label={p.name}
+          isActive={selectedId === p.id}
+          // A list of peers, not a row that opens something else.
+          trailing={null}
           onClick={() => nav.openItem(p.id)}
-          className={cn(
-            'w-full justify-start h-auto px-3 py-2 text-sm',
-            selectedId === p.id
-              ? 'bg-default text-default-foreground'
-              : 'text-muted hover:text-foreground hover:bg-default/50',
-          )}
-        >
-          <Cloud className="w-4 h-4" />
-          <span className="truncate">{p.name}</span>
-        </Button>
+        />
       ))}
       {providers.length === 0 && (
         // The text used to point at the "+" in the header, which is what an

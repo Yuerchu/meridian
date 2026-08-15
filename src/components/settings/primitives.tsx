@@ -101,6 +101,10 @@ export function SettingsRow({
     <Button
       data-slot="settings-row"
       data-active={isActive || undefined}
+      // The background says which row is selected to anyone looking at it, and
+      // said it to nobody else. Both places that had built this by hand were
+      // missing it.
+      aria-current={isActive || undefined}
       variant="ghost"
       className={cn(
         'h-auto min-h-11 w-full justify-start gap-3 rounded-lg px-3 py-2 font-normal',
