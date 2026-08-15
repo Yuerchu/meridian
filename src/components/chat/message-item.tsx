@@ -8,11 +8,12 @@ import { useConfirm } from '@/hooks/use-confirm'
 import { CopyButton, MarkdownContent } from './markdown-content'
 import { Avatar, TextArea } from '@heroui/react'
 import {
-  Message,
+  MessageAssistant,
   MessageAvatar,
   MessageContent,
   MessageFooter,
   MessageHeader,
+  MessageUser,
 } from '@/components/ui/message'
 import { Bubble, BubbleContent, BubbleGroup } from '@/components/ui/bubble'
 import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
@@ -447,8 +448,10 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
 
     const userContent = (
       <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-        <ContextMenuTrigger render={<Message align="end" className="pointer-coarse:select-none" />}>
-          <MessageContent>
+        {/* No `MessageContent` here: with nothing beside it, the message's own
+            parts are the column. */}
+        <ContextMenuTrigger render={<MessageUser className="pointer-coarse:select-none" />}>
+          <>
             {speaker && (
               <MessageHeader className="justify-end text-muted font-normal">{speaker}</MessageHeader>
             )}
@@ -540,7 +543,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                 </MessageFooter>
               </>
             )}
-          </MessageContent>
+          </>
         </ContextMenuTrigger>
         <ContextMenuContent>
           {selectedText && (
@@ -596,7 +599,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
 
   const assistantContent = (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-      <ContextMenuTrigger render={<Message align="start" className="pointer-coarse:select-none" />}>
+      <ContextMenuTrigger render={<MessageAssistant className="pointer-coarse:select-none" />}>
         {(showAvatar ?? isFirstInGroup) ? (
           <AssistantAvatar src={assistantAvatar} modelId={message.model_id} />
         ) : (
