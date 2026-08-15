@@ -46,6 +46,7 @@ import TodoBoard from '@/components/chat/todo-board'
 import type { TodoDraft } from '@/components/chat/todo-list'
 import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
+import { ChatTranscript } from '@/components/chat/chat-transcript'
 import { CommandPalette } from '@/components/layout/command-palette'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { buildTurns, formatDuration, type TurnStep } from '@/lib/turns'
@@ -967,6 +968,21 @@ function Gallery() {
           </div>
         </Section>
 
+        <Section title="AnswerToc / 长回答的浮动目录">
+          {/* Needs the real transcript: the contents are read back off the DOM
+              the transcript produced, and pinned to the scroller's own box. A
+              stand-in would answer none of the questions worth asking here —
+              whether the bars land beside the text or on top of it, and whether
+              the active one tracks while scrolling.
+
+              The container is deliberately wider than `lg`, which is where the
+              TOC starts rendering; narrow the window to check it disappears
+              rather than overlapping the answer. */}
+          <div className="h-[520px] w-full overflow-hidden rounded-xl border border-dashed border-border/60">
+            <ChatTranscript turns={TOC_TURNS} conversationId="pg" streaming={false} />
+          </div>
+        </Section>
+
         <Section title="快捷键 / 命令面板">
           {/* Two things this is here to answer, neither of which a unit test
               can: whether the WebView hands us Ctrl+K at all (Edge binds it to
@@ -1029,6 +1045,41 @@ function HotkeyProbe() {
     </div>
   )
 }
+
+// Six headings at three depths, with a fence in the middle: the fence is the
+// case that would need special handling if the contents were parsed out of the
+// markdown source, and needs none when they are read off the rendered DOM —
+// `# 这一行不是标题` never becomes an `<h1>`.
+const TOC_ANSWER = [
+  '先说结论下面分三块。',
+  '',
+  '## 现象',
+  '视口停在提问顶部，助手明明在写但屏幕不动。',
+  '',
+  '### 复现',
+  '打开旧会话，粘一段超过一屏的内容，发送。',
+  '',
+  '## 原因',
+  '锚定状态下尺寸变更做的事是重新锚定回原位。',
+  '',
+  '```md',
+  '# 这一行不是标题，它在代码块里',
+  '```',
+  '',
+  '### 解除条件为什么不成立',
+  '`spacerBefore` 一开始就是 0。',
+  '',
+  '## 建议',
+  '把跟随策略反过来：默认跟随底部，主动上滚才停。',
+  '',
+  '## 影响面',
+  '只动 message-scroller，调用方不用改。',
+].join('\n')
+
+const TOC_TURNS = buildTurns([
+  msg({ id: 'toc-u', role: 'user', content: '这段滚动逻辑该怎么改？', sort_order: 0 }),
+  msg({ id: 'toc-a', role: 'assistant', content: TOC_ANSWER, sort_order: 1, _blocks: [{ type: 'text', text: TOC_ANSWER }] }),
+])
 
 function paletteRow(id: string, title: string | null, over: Partial<Conversation> = {}): Conversation {
   return {

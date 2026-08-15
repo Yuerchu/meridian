@@ -13,6 +13,7 @@
    silently. One line per component we actually use. */
 @import '@heroui-pro/react/css/components/command.css' layer(components);
 @import '@heroui-pro/react/css/components/kanban.css' layer(components);
+@import '@heroui-pro/react/css/components/floating-toc.css' layer(components);
 @import '@heroui-pro/react/css/components/context-menu.css' layer(components);
 @import '@heroui-pro/react/css/components/sidebar.css' layer(components);
 /* `Sidebar.Mobile` is a Pro `Sheet` underneath, and below 768px it is the only

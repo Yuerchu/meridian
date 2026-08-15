@@ -12,6 +12,7 @@ import {
   MessageScrollerViewport,
   useMessageScroller,
 } from '@/components/ui/message-scroller'
+import { AnswerToc } from './answer-toc'
 import { TurnItem } from './turn-item'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
@@ -159,6 +160,10 @@ export function ChatTranscript({
               {emptyState}
             </MessageScrollerContent>
           </MessageScrollerViewport>
+          {/* Outside the viewport, inside the scroller root — which is the
+              `relative` box, so the contents can pin to the window's edge
+              rather than the text column's, and do not scroll with it. */}
+          <AnswerToc />
           <MessageScrollerButton aria-label={scrollToBottomLabel} />
         </MessageScroller>
       </MessageScrollerProvider>

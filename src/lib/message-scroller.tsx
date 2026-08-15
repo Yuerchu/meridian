@@ -229,6 +229,7 @@ interface ScrollerContextValue {
   handleResize: () => void
   syncAfterScroll: () => void
   userScrollIntent: () => void
+  scrollToElement: (element: HTMLElement, options?: ScrollCommandOptions) => boolean
   scrollToEnd: (options?: ScrollCommandOptions) => boolean
   scrollToStart: (options?: ScrollCommandOptions) => boolean
   scrollToMessage: (messageId: string, options?: ScrollCommandOptions) => boolean
@@ -878,6 +879,7 @@ function useScrollerState({
     handleResize,
     syncAfterScroll,
     userScrollIntent,
+    scrollToElement,
     scrollToEnd,
     scrollToStart,
     scrollToMessage,
@@ -887,10 +889,10 @@ function useScrollerState({
     observeVisibility,
     unobserveVisibility,
   }), [
-    handleContentChange, handleResize, isFollowing, observeVisibility, scrollToEnd,
-    scrollToMessage, scrollToStart, setContentElement, setRootElement, setSpacerElement,
-    setViewportElement, stateStore, syncAfterScroll, unobserveVisibility, userScrollIntent,
-    visibilityStore,
+    handleContentChange, handleResize, isFollowing, observeVisibility, scrollToElement,
+    scrollToEnd, scrollToMessage, scrollToStart, setContentElement, setRootElement,
+    setSpacerElement, setViewportElement, stateStore, syncAfterScroll, unobserveVisibility,
+    userScrollIntent, visibilityStore,
   ])
 
   return { context, registerMessage }
@@ -1133,10 +1135,16 @@ function Button({
 /* ------------------------------------------------------------------ hooks */
 
 export function useMessageScroller() {
-  const { isFollowing, scrollToEnd, scrollToMessage, scrollToStart } = useScrollerContext()
+  const { isFollowing, scrollToElement, scrollToEnd, scrollToMessage, scrollToStart } = useScrollerContext()
+  // `scrollToElement` is exposed for destinations that are not rows: a heading
+  // inside an answer has no id in the item registry, and nothing should be
+  // registered there just to be scrolled to. It is the same call
+  // `scrollToMessage` makes once it has resolved an id, so the spacer growth and
+  // the drop out of follow mode come along with it — which is the whole reason
+  // not to reach for `scrollIntoView` instead.
   return React.useMemo(
-    () => ({ isFollowing, scrollToEnd, scrollToMessage, scrollToStart }),
-    [isFollowing, scrollToEnd, scrollToMessage, scrollToStart],
+    () => ({ isFollowing, scrollToElement, scrollToEnd, scrollToMessage, scrollToStart }),
+    [isFollowing, scrollToElement, scrollToEnd, scrollToMessage, scrollToStart],
   )
 }
 
