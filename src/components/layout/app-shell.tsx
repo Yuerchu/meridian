@@ -116,8 +116,11 @@ export function AppShell(props: ShellProps) {
             )}
           </div>
 
+          {/* `bg-surface`, not `bg-background`: this covers `Sidebar.Main`,
+              which Pro paints `--surface`, and the two are different colours in
+              both themes. */}
           {page === 'settings' && (
-            <div data-slot="settings-layer" className="absolute inset-0 z-20 bg-background">
+            <div data-slot="settings-layer" className="absolute inset-0 z-20 bg-surface">
               {/* No spinner: the chunk is on local disk and resolves within a
                   frame or two, where a flash of "loading" would read as jank. */}
               <Suspense fallback={null}>

@@ -22,22 +22,19 @@ import type { RowAction } from './row-actions'
 export function RowActionsMenu({
   label,
   actions,
-  onOpen,
 }: {
   /** Names the button for a screen reader — the row's own title. */
   label: string
+  /** This row's actions, already built. Nothing here reads "the open row":
+      the popover renders on the press that opens it, so a list that only
+      arrives with the next state update arrives empty. */
   actions: RowAction[]
-  /** Runs before the menu opens, so the caller can say which row was hit. */
-  onOpen: () => void
 }) {
   const { t } = useTranslation()
   return (
     <Sidebar.MenuActions>
       <Dropdown>
-        <Sidebar.MenuAction
-          aria-label={t('sidebar.moreActions', { name: label })}
-          onPress={onOpen}
-        >
+        <Sidebar.MenuAction aria-label={t('sidebar.moreActions', { name: label })}>
           <EllipsisVertical />
         </Sidebar.MenuAction>
         <Dropdown.Popover placement="bottom end">

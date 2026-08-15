@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
 import { ArrowDownToLine, Pencil, Pin, PinSlash, TrashBin } from '@gravity-ui/icons'
@@ -38,17 +38,25 @@ async function exportConversation(conv: Conversation, format: 'sft' | 'dpo') {
   await api.exportConversation(conv.id, format, path).catch(() => {})
 }
 
-/** Null when no row is open — hooks cannot be called conditionally. */
+/**
+ * Returns a builder rather than a list.
+ *
+ * There are two menus per row — a right-click one anchored at the cursor and a
+ * button-anchored one for touch — and they open on different events. Handing
+ * back a list for "whichever row is open" made them share that state: pressing
+ * the button set it, which is also what the right-click menu reads to decide
+ * whether *it* should be open, so one press produced two menus and the first
+ * render of the popover had nothing in it. A builder has no state to share.
+ */
 export function useConversationActions(args: {
-  conversation: Conversation | null
   onTogglePin: (id: string) => void
   onRequestRename: (id: string) => void
   onRequestDelete: (id: string) => void
-}): RowAction[] {
+}): (conversation: Conversation) => RowAction[] {
   const { t } = useTranslation()
-  const { conversation, onTogglePin, onRequestRename, onRequestDelete } = args
+  const { onTogglePin, onRequestRename, onRequestDelete } = args
 
-  return useMemo(() => !conversation ? [] : [
+  return useCallback((conversation: Conversation) => [
     {
       key: 'pin',
       icon: conversation.is_pinned ? PinSlash : Pin,
@@ -80,18 +88,18 @@ export function useConversationActions(args: {
       variant: 'destructive',
       run: () => onRequestDelete(conversation.id),
     },
-  ], [conversation, t, onTogglePin, onRequestRename, onRequestDelete])
+  ], [t, onTogglePin, onRequestRename, onRequestDelete])
 }
 
+/** Same shape as {@link useConversationActions}, and for the same reason. */
 export function useProjectActions(args: {
-  project: Project | null
   onRequestRename: (id: string) => void
   onRequestDelete: (id: string) => void
-}): RowAction[] {
+}): (project: Project) => RowAction[] {
   const { t } = useTranslation()
-  const { project, onRequestRename, onRequestDelete } = args
+  const { onRequestRename, onRequestDelete } = args
 
-  return useMemo(() => !project ? [] : [
+  return useCallback((project: Project) => [
     {
       key: 'rename',
       icon: Pencil,
@@ -105,5 +113,5 @@ export function useProjectActions(args: {
       variant: 'destructive',
       run: () => onRequestDelete(project.id),
     },
-  ], [project, t, onRequestRename, onRequestDelete])
+  ], [t, onRequestRename, onRequestDelete])
 }

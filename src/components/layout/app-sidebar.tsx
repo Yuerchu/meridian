@@ -230,7 +230,6 @@ export function AppSidebar({
   const [menu, setMenu] = useState<MenuHit | null>(null)
 
   const conversationActions = useConversationActions({
-    conversation: (menu?.kind === 'conversation' && conversations.find((c) => c.id === menu.id)) || null,
     onTogglePin,
     onRequestRename: (id) => setRenameTarget({ type: 'conversation', id }),
     onRequestDelete: async (id) => {
@@ -238,12 +237,16 @@ export function AppSidebar({
     },
   })
   const projectActions = useProjectActions({
-    project: (menu?.kind === 'project' && projects.find((p) => p.id === menu.id)) || null,
     onRequestRename: (id) => setRenameTarget({ type: 'project', id }),
     onRequestDelete: async (id) => {
       if (await confirm({ body: t('confirm.deleteProject') })) onDeleteProject(id)
     },
   })
+
+  // Only the right-click menu needs to know which row was hit; the button on a
+  // row already knows.
+  const hitConversation = menu?.kind === 'conversation' ? conversations.find((c) => c.id === menu.id) : undefined
+  const hitProject = menu?.kind === 'project' ? projects.find((p) => p.id === menu.id) : undefined
 
   // base-ui reads the cursor position off the Root, so the Root has to enclose
   // its own Trigger — a Root parked next to the dialogs at the bottom of this
@@ -338,7 +341,7 @@ export function AppSidebar({
               </Button>
             </span>
           </Sidebar.GroupLabel>
-          {rowMenu(prefix, 'project', projectActions, (
+          {rowMenu(prefix, 'project', hitProject ? projectActions(hitProject) : [], (
             <Sidebar.Menu aria-label={t('sidebar.projects')}>
               <Sidebar.MenuItem
                 id={`${prefix}all-projects`}
@@ -360,6 +363,7 @@ export function AppSidebar({
                 >
                   <Sidebar.MenuIcon><ProjectIcon sourceType={project.source_type} /></Sidebar.MenuIcon>
                   <Sidebar.MenuLabel>{project.name}</Sidebar.MenuLabel>
+                  <RowActionsMenu label={project.name} actions={projectActions(project)} />
                 </Sidebar.MenuItem>
               ))}
             </Sidebar.Menu>
@@ -377,7 +381,7 @@ export function AppSidebar({
 
         <Sidebar.Group>
           <Sidebar.GroupLabel>{t('sidebar.conversations')}</Sidebar.GroupLabel>
-          {rowMenu(prefix, 'conversation', conversationActions, (
+          {rowMenu(prefix, 'conversation', hitConversation ? conversationActions(hitConversation) : [], (
             <Sidebar.Menu aria-label={t('sidebar.conversations')}>
               {conversations.map((conv) => (
                 <Sidebar.MenuItem
@@ -401,8 +405,7 @@ export function AppSidebar({
                   </Sidebar.MenuChip>
                   <RowActionsMenu
                     label={conv.title ?? t('sidebar.newChat')}
-                    actions={conversationActions}
-                    onOpen={() => setMenu({ scope: prefix, kind: 'conversation', id: conv.id })}
+                    actions={conversationActions(conv)}
                   />
                 </Sidebar.MenuItem>
               ))}
