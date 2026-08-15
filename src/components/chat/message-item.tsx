@@ -471,7 +471,11 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
               </ChatAttachmentGroup>
             )}
             {editing ? (
-              <Bubble align="end" variant="outline">
+              // Full width while editing. A bubble is sized to what it says, but
+              // an edit box is sized to what you are about to say — and the
+              // 80% cap turned a message being rewritten into a narrow column
+              // with the text reflowing under the caret.
+              <Bubble align="end" variant="outline" className="w-full max-w-full">
                 <BubbleContent>
                   <TextArea fullWidth
                     ref={editRef}

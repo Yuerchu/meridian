@@ -291,7 +291,13 @@ export function SkillSettings() {
                 {/* The checkboxes stay outside the trigger: it is a `<button>`,
                     and a nested one would be invalid markup and swallow the
                     click. */}
-                <Disclosure.Heading className="min-w-0 flex-1 basis-full md:basis-auto">
+                {/* `basis-0` above the breakpoint, not `basis-auto`: wrapping is
+                    decided from the hypothetical size, and shrinking only
+                    happens once a line is settled. At `auto` a long skill name
+                    counted at full length and pushed the last checkbox onto a
+                    line of its own, while a shorter one beside it fit. From 0
+                    the row grows into whatever is left and truncates instead. */}
+                <Disclosure.Heading className="min-w-0 flex-1 basis-full md:basis-0">
                   {/* `flex` is not optional: HeroUI styles the indicator with
                       `ms-auto` and `shrink-0`, which only mean anything inside a
                       flex container. `text-start` undoes the button element's
