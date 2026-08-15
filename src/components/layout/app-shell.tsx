@@ -1,10 +1,15 @@
 import { Suspense, lazy, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
+import { Button, Tooltip } from '@heroui/react'
 import { Sidebar } from '@heroui-pro/react/sidebar'
+import { Magnifier } from '@gravity-ui/icons'
 import { ChatView } from '@/components/chat/chat-view'
 import { EmptyState } from '@/components/chat/empty-state'
 import { useBackGesture, useHistoryLevel } from '@/hooks/use-history-level'
+import { useHotkey } from '@/hooks/use-hotkey'
 import { AppSidebar } from './app-sidebar'
+import { CommandPalette } from './command-palette'
 import type { ShellProps } from './shell-props'
 
 const SettingsPage = lazy(() => import('@/components/settings'))
@@ -44,6 +49,13 @@ export function AppShell(props: ShellProps) {
   // (nothing reads it back) and one more thing to have an opinion about under a
   // custom protocol. Persisting the state is a store field if we ever want it.
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const { t } = useTranslation()
+
+  // `ignoreInInput: false` on purpose, and it is the only shortcut that gets
+  // it: wanting to jump somewhere else in the middle of writing a message is
+  // exactly the moment this exists for.
+  useHotkey('mod+k', () => setPaletteOpen(true), { ignoreInInput: false })
 
   useBackGesture()
   // Settings was a screen in the stack, and the back key left it. It is a page
@@ -90,6 +102,24 @@ export function AppShell(props: ShellProps) {
               is sized for a thumb rather than for a pointer. */}
           <Sidebar.Trigger className="-ml-1 size-10 md:size-8" />
           <span className="text-sm font-medium truncate">{headerTitle}</span>
+          {/* The palette's other door. A phone has no `mod` key to press, and
+              on a desktop a shortcut nobody has written down is a shortcut
+              nobody uses — the tooltip is where it gets written down. */}
+          <Tooltip>
+            <Button
+              isIconOnly
+              variant="ghost"
+              aria-label={t('palette.title')}
+              onClick={() => setPaletteOpen(true)}
+              className="ml-auto size-10 shrink-0 md:size-8"
+            >
+              <Magnifier />
+            </Button>
+            <Tooltip.Content placement="bottom">
+              {t('palette.title')}
+              <kbd className="ml-2 text-xs opacity-70">⌘K</kbd>
+            </Tooltip.Content>
+          </Tooltip>
         </header>
 
         {/* The conversation stays mounted under the settings page rather than
@@ -130,6 +160,17 @@ export function AppShell(props: ShellProps) {
           )}
         </main>
       </Sidebar.Main>
+
+      <CommandPalette
+        isOpen={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        conversations={conversations}
+        projects={projects}
+        onSelectConversation={onSelect}
+        onSelectProject={onSelectProject}
+        onOpenSettingsTab={(tab) => { onSettingsTabChange(tab); onOpenSettings() }}
+        onCreate={onCreate}
+      />
     </Sidebar.Provider>
   )
 }

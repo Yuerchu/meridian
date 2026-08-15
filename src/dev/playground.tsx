@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Moon, Sun } from '@gravity-ui/icons'
 
-import { Button, Tooltip } from '@heroui/react'
+import { Button, Input, Tooltip } from '@heroui/react'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
@@ -44,9 +44,11 @@ import { TurnSteps } from '@/components/chat/turn-steps'
 import { TodoBarView } from '@/components/chat/todo-bar'
 import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
+import { CommandPalette } from '@/components/layout/command-palette'
+import { useHotkey } from '@/hooks/use-hotkey'
 import { buildTurns, formatDuration, type TurnStep } from '@/lib/turns'
 import { useAppTheme } from '@/lib/theme'
-import type { ChatMode, ContentBlock, Message, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
+import type { ChatMode, ContentBlock, Conversation, Message, Project, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -949,6 +951,16 @@ function Gallery() {
           </div>
         </Section>
 
+        <Section title="快捷键 / 命令面板">
+          {/* Two things this is here to answer, neither of which a unit test
+              can: whether the WebView hands us Ctrl+K at all (Edge binds it to
+              the address bar, and WebView2 has been known to keep bindings the
+              app never asked for), and whether the palette still opens while a
+              text field has focus. Run this one under `pnpm tauri dev`, not in
+              a browser — the browser is not the environment in question. */}
+          <HotkeyProbe />
+        </Section>
+
         {/* The conversation list and the mobile app bar used to be probed here.
             Both are gone: the list is `Sidebar.Mobile` now, which is the same
             tree the panel renders, so narrowing the window is the probe. */}
@@ -956,3 +968,70 @@ function Gallery() {
     </div>
   )
 }
+
+function HotkeyProbe() {
+  const [log, setLog] = useState<string[]>([])
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [chosen, setChosen] = useState('（还没有选过）')
+
+  const note = (what: string) => setLog((prev) => [what, ...prev].slice(0, 6))
+
+  useHotkey('mod+k', () => { note('mod+k'); setPaletteOpen(true) }, { ignoreInInput: false })
+  useHotkey('mod+shift+k', () => note('mod+shift+k'))
+  useHotkey('escape', () => note('escape'))
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="outline" onClick={() => setPaletteOpen(true)}>打开面板</Button>
+        <Input
+          type="text"
+          aria-label="焦点测试用输入框"
+          placeholder="在这里打字，再按 mod+k / mod+shift+k"
+          className="min-w-64 flex-1"
+        />
+      </div>
+      <p className="text-xs text-muted">
+        预期：<code>mod+k</code> 在输入框里也触发，<code>mod+shift+k</code> 不触发（<code>ignoreInInput</code> 默认开），
+        且 <code>mod+shift+k</code> 不会连带触发 <code>mod+k</code>。
+      </p>
+      <div className="rounded-lg border border-border bg-surface p-3 text-xs">
+        <div className="text-muted">最近命中：{log.length ? log.join(' · ') : '（无）'}</div>
+        <div className="mt-1">面板选中：{chosen}</div>
+      </div>
+
+      <CommandPalette
+        isOpen={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        conversations={PALETTE_ROWS}
+        projects={PALETTE_PROJECTS}
+        onSelectConversation={(id) => setChosen(`会话 ${id}`)}
+        onSelectProject={(id) => setChosen(`项目 ${id ?? '全部'}`)}
+        onOpenSettingsTab={(tab) => setChosen(`设置 ${tab}`)}
+        onCreate={() => setChosen('新建对话')}
+      />
+    </div>
+  )
+}
+
+function paletteRow(id: string, title: string | null, over: Partial<Conversation> = {}): Conversation {
+  return {
+    id, title, project_id: null, is_pinned: 0, is_archived: 0,
+    message_count: 3, created_at: 0, updated_at: 0,
+    assistant_id: null, compact_cursor: null, thinking_level: null,
+    fast_mode: 0, mode: null, head_message_id: null,
+    ...over,
+  } as Conversation
+}
+
+const PALETTE_ROWS: Conversation[] = [
+  paletteRow('a', '英语学习入门指南'),
+  paletteRow('b', null),
+  paletteRow('c', '重构 tauri 命令注册表并把所有工具调用迁移到新的审批模型上'),
+  paletteRow('d', '已归档的会话', { is_archived: 1 }),
+]
+
+const PALETTE_PROJECTS: Project[] = [
+  { id: 'p1', name: 'meridian', path: 'C:/code/meridian', source_type: 'local', source_id: null, assistant_id: null, description: null, created_at: 0, updated_at: 0 },
+  { id: 'p2', name: '某个群聊', path: null, source_type: 'onebot_group', source_id: '123', assistant_id: null, description: null, created_at: 0, updated_at: 0 },
+]
