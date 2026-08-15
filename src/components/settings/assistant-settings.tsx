@@ -5,7 +5,7 @@ import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, ListBox, S
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import { SettingsHeader, SettingsPane } from './primitives'
+import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
 import { SubAgentSettings } from './sub-agent-settings'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
 import { SettingsDrilldown } from './settings-drilldown'
@@ -317,26 +317,13 @@ function AssistantEditor({
           >{t('settings.assistant.toolsCustom')}</Button>
         </div>
         {toolMode === 'preset' && (
-          <Select
-            fullWidth
+          <SettingsSelect
+            ariaLabel={t('settings.tools.preset')}
             value={selectedPresetId || '_none'}
-            onChange={(v) => { if (v) setSelectedPresetId(v === '_none' ? '' : String(v)) }}
-          >
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {presetOptions.map((o) => (
-                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                    {o.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
+            options={presetOptions}
+            onChange={(v) => setSelectedPresetId(v === '_none' ? '' : v)}
+            fullWidth
+          />
         )}
         {toolMode === 'custom' && (
           <div

@@ -1,4 +1,4 @@
-import { Button, tv } from '@heroui/react'
+import { Button, Description, Label, ListBox, Select, tv } from '@heroui/react'
 import { ChevronRight } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'
@@ -118,5 +118,93 @@ export function SettingsRow({
       {value && <span className="shrink-0 truncate text-xs text-muted">{value}</span>}
       {trailing ?? <ChevronRight className="size-4 shrink-0 text-muted" />}
     </Button>
+  )
+}
+
+export interface SettingsSelectOption<T extends string> {
+  value: T
+  label: string
+}
+
+type SettingsSelectBase<T extends string> = {
+  value: T
+  options: readonly SettingsSelectOption<T>[]
+  onChange: (value: T) => void
+  description?: React.ReactNode
+  placeholder?: string
+  fullWidth?: boolean
+  isDisabled?: boolean
+  className?: string
+  triggerClassName?: string
+  /** Only the one caller that shrinks its rows needs this. */
+  itemClassName?: string
+}
+
+/**
+ * A named dropdown, either way of naming it — but one of the two.
+ *
+ * The union is the point: a `Select` with neither a `Label` nor an
+ * `aria-label` renders fine and is anonymous to a screen reader, and two of the
+ * twenty this replaces were exactly that. Here it does not compile.
+ */
+export type SettingsSelectProps<T extends string> = SettingsSelectBase<T> &
+  ({ label: React.ReactNode; ariaLabel?: never } | { label?: never; ariaLabel: string })
+
+/**
+ * The seven-layer `Select` every panel was writing out by hand.
+ *
+ * The lines saved are not the reason. HeroUI hands `onChange` a `Key | null`,
+ * and the twenty call sites had five different ways of narrowing it back —
+ * `String(v)`, `if (v)`, `?? ''`, a cast, or some pair of those. A caller here
+ * gets its own value type back and never sees the null: an empty selection is
+ * not a value this control can produce, since every option carries one.
+ */
+export function SettingsSelect<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+  ariaLabel,
+  description,
+  placeholder,
+  fullWidth,
+  isDisabled,
+  className,
+  triggerClassName,
+  itemClassName,
+}: SettingsSelectProps<T>) {
+  return (
+    <Select
+      data-slot="settings-select"
+      aria-label={ariaLabel}
+      className={className}
+      fullWidth={fullWidth}
+      isDisabled={isDisabled}
+      placeholder={placeholder}
+      value={value}
+      onChange={(key) => { if (key != null) onChange(String(key) as T) }}
+    >
+      {label && <Label>{label}</Label>}
+      <Select.Trigger className={triggerClassName}>
+        <Select.Value />
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover>
+        <ListBox>
+          {options.map((option) => (
+            <ListBox.Item
+              key={option.value}
+              id={option.value}
+              textValue={option.label}
+              className={itemClassName}
+            >
+              {option.label}
+              <ListBox.ItemIndicator />
+            </ListBox.Item>
+          ))}
+        </ListBox>
+      </Select.Popover>
+      {description && <Description>{description}</Description>}
+    </Select>
   )
 }

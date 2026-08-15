@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Wrench, Terminal, Check } from '@gravity-ui/icons'
-import { Button, Card, Description, Disclosure, DisclosureGroup, Input, Label, ListBox, Select, TextField } from '@heroui/react'
+import { Button, Card, Description, Disclosure, DisclosureGroup, Input, Label, TextField } from '@heroui/react'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
-import { SettingsHeader, SettingsPane } from './primitives'
+import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
 import { SettingsDrilldown } from './settings-drilldown'
 
 function CustomToolEditor({
@@ -67,23 +67,12 @@ function CustomToolEditor({
           <Label>{t('settings.tools.name')}</Label>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="my_tool" className="font-mono text-xs" />
         </TextField>
-        <Select value={permission} onChange={(v) => { if (v) setPermission(String(v)) }}>
-          <Label>{t('settings.tools.permission')}</Label>
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {permissionOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
-        </Select>
+        <SettingsSelect
+          label={t('settings.tools.permission')}
+          value={permission}
+          options={permissionOptions}
+          onChange={setPermission}
+        />
       </div>
       <TextField fullWidth>
         <Label>{t('settings.tools.description')}</Label>

@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button, Card, DisclosureGroup, Input, ListBox, Select, TextArea } from '@heroui/react'
+import { Button, Card, DisclosureGroup, Input, TextArea } from '@heroui/react'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
 import { ScopeNav } from './memory/scope-nav'
 import { useMemoryBrowser } from './memory/use-memory-browser'
-import { SettingsHeader } from './primitives'
+import { SettingsHeader, SettingsSelect } from './primitives'
 
 export function MemorySettings() {
   const { t } = useTranslation()
@@ -93,25 +93,13 @@ export function MemorySettings() {
               placeholder={t('settings.memory.search')}
               className="flex-1"
             />
-            <Select
+            <SettingsSelect
+              ariaLabel={t('settings.memory.originFilter')}
               value={browser.originFilter}
-              onChange={(v) => { if (v) browser.setOriginFilter(String(v)) }}
-            >
-              <Select.Trigger className="w-auto">
-                <Select.Value />
-                <Select.Indicator />
-              </Select.Trigger>
-              <Select.Popover>
-                <ListBox>
-                  {originOptions.map((o) => (
-                    <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                      {o.label}
-                      <ListBox.ItemIndicator />
-                    </ListBox.Item>
-                  ))}
-                </ListBox>
-              </Select.Popover>
-            </Select>
+              options={originOptions}
+              onChange={browser.setOriginFilter}
+              triggerClassName="w-auto"
+            />
           </div>
 
           {showAdd && (
@@ -131,25 +119,13 @@ export function MemorySettings() {
                 className="resize-y"
               />
               <div className="flex items-center gap-2">
-                <Select
+                <SettingsSelect
+                  ariaLabel={t('settings.memory.type')}
                   value={newType}
-                  onChange={(v) => { if (v) setNewType(String(v)) }}
-                >
-                  <Select.Trigger className="w-auto">
-                    <Select.Value />
-                    <Select.Indicator />
-                  </Select.Trigger>
-                  <Select.Popover>
-                    <ListBox>
-                      {typeOptions.map((o) => (
-                        <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                          {o.label}
-                          <ListBox.ItemIndicator />
-                        </ListBox.Item>
-                      ))}
-                    </ListBox>
-                  </Select.Popover>
-                </Select>
+                  options={typeOptions}
+                  onChange={setNewType}
+                  triggerClassName="w-auto"
+                />
                 <div className="flex-1" />
                 <Button variant="ghost" isIconOnly onClick={() => setShowAdd(false)}>
                   <Xmark />

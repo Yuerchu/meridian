@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Check, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
-import { Button, Disclosure, Input, Label, ListBox, Select, Spinner, TextField, Tooltip } from '@heroui/react'
+import { Button, Disclosure, Input, Label, Spinner, TextField, Tooltip } from '@heroui/react'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MasterDetail } from './master-detail'
+import { SettingsSelect } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import type { ModelConfig, ModelConfigInput, Provider, ModelInfo, ProviderCapabilities, ThinkingEffort } from '@/types'
@@ -75,22 +76,14 @@ function CapabilityTriRow({
   return (
     <div data-slot="capability-tri-row" className="flex items-center justify-between gap-2">
       <p className="text-xs text-muted">{label}</p>
-      <Select aria-label={label} value={value} onChange={(v) => v && onChange(String(v) as Tri)}>
-        <Select.Trigger className="h-7 w-32 text-xs">
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {options.map((o) => (
-              <ListBox.Item key={o.value} id={o.value} textValue={o.label} className="text-xs">
-                {o.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
-      </Select>
+      <SettingsSelect
+        ariaLabel={label}
+        value={value}
+        options={options}
+        onChange={onChange}
+        triggerClassName="h-7 w-32 text-xs"
+        itemClassName="text-xs"
+      />
     </div>
   )
 }
@@ -433,23 +426,13 @@ function ProviderEditor({
         <Input value={name} onChange={(e) => setName(e.target.value)} />
       </TextField>
 
-      <Select fullWidth value={providerType} onChange={(v) => v && setProviderType(String(v))}>
-        <Label>{t('settings.provider.type')}</Label>
-        <Select.Trigger>
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {typeOptions.map((o) => (
-              <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                {o.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
-      </Select>
+      <SettingsSelect
+        label={t('settings.provider.type')}
+        value={providerType}
+        options={typeOptions}
+        onChange={setProviderType}
+        fullWidth
+      />
 
       <TextField fullWidth>
         <Label>{t('settings.provider.baseUrl')}</Label>
@@ -461,23 +444,13 @@ function ProviderEditor({
       </TextField>
 
       {providerType !== 'anthropic' && (
-        <Select fullWidth value={apiFormat} onChange={(v) => v && setApiFormat(String(v))}>
-          <Label>{t('settings.provider.apiFormat')}</Label>
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {formatOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
-        </Select>
+        <SettingsSelect
+          label={t('settings.provider.apiFormat')}
+          value={apiFormat}
+          options={formatOptions}
+          onChange={setApiFormat}
+          fullWidth
+        />
       )}
 
       <div className="flex items-center gap-2">

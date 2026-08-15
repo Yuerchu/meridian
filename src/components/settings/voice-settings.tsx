@@ -3,11 +3,11 @@ import { useTranslation } from 'react-i18next'
 import { listen } from '@tauri-apps/api/event'
 import { open } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
-import { Button, Card, Description, Input, Label, ListBox, ProgressCircle, Select, TextField } from '@heroui/react'
+import { Button, Card, Description, Input, Label, ProgressCircle, TextField } from '@heroui/react'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import type { VoiceModelStatus } from '@/types'
-import { SettingsHeader, SettingsPane } from './primitives'
+import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
 
 const FILTER_LEVELS = ['off', 'standard', 'aggressive'] as const
 
@@ -199,24 +199,15 @@ export function VoiceSettings() {
         <Description>{t('settings.voice.mirrorHint')}</Description>
       </TextField>
 
-      <Select fullWidth value={filterLevel} onChange={(v) => v && handleFilterChange(String(v))}>
-        <Label>{t('settings.voice.filterLevel')}</Label>
-        <Select.Trigger className="max-w-xs">
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {filterOptions.map((o) => (
-              <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                {o.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
-        <Description>{t('settings.voice.filterHint')}</Description>
-      </Select>
+      <SettingsSelect
+        label={t('settings.voice.filterLevel')}
+        value={filterLevel}
+        options={filterOptions}
+        onChange={handleFilterChange}
+        description={t('settings.voice.filterHint')}
+        fullWidth
+        triggerClassName="max-w-xs"
+      />
     </SettingsPane>
   )
 }

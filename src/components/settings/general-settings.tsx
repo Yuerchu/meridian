@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Input, Label, ListBox, Select } from '@heroui/react'
+import { Button, Input } from '@heroui/react'
 import { Check } from '@gravity-ui/icons'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { LANGUAGES, setLocale } from '@/i18n'
@@ -8,7 +8,7 @@ import { useAppTheme, type ThemePreference } from '@/lib/theme'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { AndroidFileAccess } from './android-file-access'
-import { SettingsHeader, SettingsPane } from './primitives'
+import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
 
 const LANGUAGE_OPTIONS = LANGUAGES.map((lang) => ({ value: lang.code, label: lang.label }))
 
@@ -99,82 +99,46 @@ export function GeneralSettings() {
     <SettingsPane>
       <SettingsHeader title={t('settings.general.title')} />
 
-      <Select fullWidth value={i18n.language} onChange={(v) => v && setLocale(String(v))}>
-        <Label>{t('settings.general.language')}</Label>
-        <Select.Trigger className="max-w-xs">
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {LANGUAGE_OPTIONS.map((lang) => (
-              <ListBox.Item key={lang.value} id={lang.value} textValue={lang.label}>
-                {lang.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
-      </Select>
+      <SettingsSelect
+        label={t('settings.general.language')}
+        value={i18n.language}
+        options={LANGUAGE_OPTIONS}
+        onChange={setLocale}
+        fullWidth
+        triggerClassName="max-w-xs"
+      />
 
-      <Select fullWidth value={theme} onChange={(v) => v && setTheme(String(v) as ThemePreference)}>
-        <Label>{t('settings.general.theme')}</Label>
-        <Select.Trigger className="max-w-xs">
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {themeOptions.map((o) => (
-              <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                {o.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
-      </Select>
+      <SettingsSelect
+        label={t('settings.general.theme')}
+        value={theme}
+        options={themeOptions}
+        onChange={setTheme}
+        fullWidth
+        triggerClassName="max-w-xs"
+      />
 
       {platform !== null && platform !== 'android' && (
-        <Select fullWidth value={shell} onChange={(v) => v && handleShellChange(String(v))}>
-          <Label>{t('settings.general.shell')}</Label>
-          <Select.Trigger className="max-w-xs">
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {SHELLS.map((s) => (
-                <ListBox.Item key={s.value} id={s.value} textValue={s.label}>
-                  {s.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
-          <Description>{t('settings.general.shellHint')}</Description>
-        </Select>
+        <SettingsSelect
+          label={t('settings.general.shell')}
+          value={shell}
+          options={SHELLS}
+          onChange={handleShellChange}
+          description={t('settings.general.shellHint')}
+          fullWidth
+          triggerClassName="max-w-xs"
+        />
       )}
 
       {platform === 'windows' && (
-        <Select fullWidth value={sandboxEnabled ? 'on' : 'off'} onChange={(v) => v && handleSandboxChange(String(v))}>
-          <Label>{t('settings.general.sandbox')}</Label>
-          <Select.Trigger className="max-w-xs">
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {sandboxOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
-          <Description>{t('settings.general.sandboxHint')}</Description>
-        </Select>
+        <SettingsSelect
+          label={t('settings.general.sandbox')}
+          value={sandboxEnabled ? 'on' : 'off'}
+          options={sandboxOptions}
+          onChange={handleSandboxChange}
+          description={t('settings.general.sandboxHint')}
+          fullWidth
+          triggerClassName="max-w-xs"
+        />
       )}
 
       <div className="space-y-3">
@@ -184,22 +148,14 @@ export function GeneralSettings() {
         {/* The heading above names the whole section, not this control, so both
             the picker and the key field carry their own name. Without them a
             screen reader announces the trigger by its current value alone. */}
-        <Select fullWidth value={searchProvider} onChange={(v) => v && handleSearchProviderChange(String(v))}>
-          <Select.Trigger className="max-w-xs" aria-label={t('settings.general.webSearch')}>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {SEARCH_PROVIDERS.map((p) => (
-                <ListBox.Item key={p.value} id={p.value} textValue={p.label}>
-                  {p.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
-        </Select>
+        <SettingsSelect
+          ariaLabel={t('settings.general.webSearch')}
+          value={searchProvider}
+          options={SEARCH_PROVIDERS}
+          onChange={handleSearchProviderChange}
+          fullWidth
+          triggerClassName="max-w-xs"
+        />
         <div className="flex items-center gap-2">
           <Input fullWidth
             type="password"

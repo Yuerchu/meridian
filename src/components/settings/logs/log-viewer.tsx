@@ -4,14 +4,28 @@ import { save } from '@tauri-apps/plugin-dialog'
 import { ChevronLeft, ArrowDownToLine, ArrowsRotateRight, Magnifier } from '@gravity-ui/icons'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
-import { Button, InputGroup, ListBox, Select, Skeleton, Spinner } from '@heroui/react'
+import { Button, InputGroup, Skeleton, Spinner } from '@heroui/react'
 import { LogRow } from './log-row'
+import { SettingsSelect, type SettingsSelectOption } from '../primitives'
 import { MAX_RENDERED, useAppLogs, type LevelFilter, type RangeFilter } from './use-app-logs'
 
 export function LogViewer({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation()
   const logs = useAppLogs()
   const [exported, markExported] = useTemporaryFlag(3000)
+
+  // The only two that were written out as literal items rather than a list.
+  const levelOptions: SettingsSelectOption<LevelFilter>[] = [
+    { value: 'all', label: t('settings.about.logs.levelAll') },
+    { value: 'warn', label: t('settings.about.logs.levelWarn') },
+    { value: 'error', label: t('settings.about.logs.levelError') },
+  ]
+  const rangeOptions: SettingsSelectOption<RangeFilter>[] = [
+    { value: '15m', label: t('settings.about.logs.range15m') },
+    { value: '1h', label: t('settings.about.logs.range1h') },
+    { value: '24h', label: t('settings.about.logs.range24h') },
+    { value: 'all', label: t('settings.about.logs.rangeAll') },
+  ]
 
   const onExport = useCallback(async () => {
     // The webview has no filesystem access; the dialog picks a path and Rust
@@ -51,28 +65,13 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
       <p className="text-xs text-muted">{t('settings.about.logs.exportHint')}</p>
 
       <div data-slot="log-toolbar" className="flex flex-wrap items-center gap-2">
-        <Select value={logs.level} onChange={(v) => { if (v) logs.setLevel(String(v) as LevelFilter) }}>
-          <Select.Trigger className="w-44">
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              <ListBox.Item id="all" textValue={t('settings.about.logs.levelAll')}>
-                {t('settings.about.logs.levelAll')}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              <ListBox.Item id="warn" textValue={t('settings.about.logs.levelWarn')}>
-                {t('settings.about.logs.levelWarn')}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              <ListBox.Item id="error" textValue={t('settings.about.logs.levelError')}>
-                {t('settings.about.logs.levelError')}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            </ListBox>
-          </Select.Popover>
-        </Select>
+        <SettingsSelect
+          ariaLabel={t('settings.about.logs.levelFilter')}
+          value={logs.level}
+          options={levelOptions}
+          onChange={logs.setLevel}
+          triggerClassName="w-44"
+        />
 
         <InputGroup className="max-w-xs flex-1">
           <InputGroup.Prefix>
@@ -85,32 +84,13 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           />
         </InputGroup>
 
-        <Select value={logs.range} onChange={(v) => { if (v) logs.setRange(String(v) as RangeFilter) }}>
-          <Select.Trigger className="w-40">
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              <ListBox.Item id="15m" textValue={t('settings.about.logs.range15m')}>
-                {t('settings.about.logs.range15m')}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              <ListBox.Item id="1h" textValue={t('settings.about.logs.range1h')}>
-                {t('settings.about.logs.range1h')}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              <ListBox.Item id="24h" textValue={t('settings.about.logs.range24h')}>
-                {t('settings.about.logs.range24h')}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-              <ListBox.Item id="all" textValue={t('settings.about.logs.rangeAll')}>
-                {t('settings.about.logs.rangeAll')}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            </ListBox>
-          </Select.Popover>
-        </Select>
+        <SettingsSelect
+          ariaLabel={t('settings.about.logs.rangeFilter')}
+          value={logs.range}
+          options={rangeOptions}
+          onChange={logs.setRange}
+          triggerClassName="w-40"
+        />
 
         {logs.entries.length > 0 && (
           // Only what is on screen. The reader stops as soon as it has a page,
