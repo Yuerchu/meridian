@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, StarFill, Check, SquareDashedText } from '@gravity-ui/icons'
+import { Plus, StarFill, SquareDashedText } from '@gravity-ui/icons'
 import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField, Tooltip } from '@heroui/react'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
+import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
 import { ProviderModelPicker } from './provider-model-picker'
 import { SubAgentSettings } from './sub-agent-settings'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
@@ -398,9 +398,7 @@ function AssistantEditor({
       <div className="flex items-center gap-2 pt-1">
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
-            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
-          </span>
+          <SavedHint />
         )}
         {onDelete && (
           <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={() => onDelete(assistant.id)}>

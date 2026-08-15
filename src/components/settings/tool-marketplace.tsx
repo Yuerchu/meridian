@@ -1,12 +1,12 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, TrashBin, Wrench, Terminal, Check } from '@gravity-ui/icons'
-import { Button, Card, Description, Disclosure, DisclosureGroup, Input, Label, TextField } from '@heroui/react'
+import { Plus, TrashBin, Wrench, Terminal } from '@gravity-ui/icons'
+import { Button, Card, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextField } from '@heroui/react'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
-import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
+import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
 import { SettingsDrilldown } from './settings-drilldown'
 
 function CustomToolEditor({
@@ -96,9 +96,7 @@ function CustomToolEditor({
           {t('common.save')}
         </Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
-            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
-          </span>
+          <SavedHint />
         )}
         {onDelete && (
           <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
@@ -175,16 +173,16 @@ export function ToolMarketplace() {
                   {t(`settings.tools.qq.${tool.name}`)}
                 </span>
                 {tool.scope === 'group' && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.tools.qqGroupOnly')}</span>
+                  <Chip className="text-muted">{t('settings.tools.qqGroupOnly')}</Chip>
                 )}
                 {tool.scope === 'private' && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.tools.qqPrivateOnly')}</span>
+                  <Chip className="text-muted">{t('settings.tools.qqPrivateOnly')}</Chip>
                 )}
                 {tool.admin_only === true && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.tools.qqAdminOnly')}</span>
+                  <Chip className="text-muted">{t('settings.tools.qqAdminOnly')}</Chip>
                 )}
                 {tool.needs_approval === true && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.tools.qqApproval')}</span>
+                  <Chip className="text-muted">{t('settings.tools.qqApproval')}</Chip>
                 )}
               </div>
             ))}
@@ -286,7 +284,7 @@ export function ToolMarketplace() {
                   {t('settings.tools.presetCount', { count: toolNames.length })}
                 </span>
                 {preset.is_builtin === 1 && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.template.builtin')}</span>
+                  <Chip className="text-muted">{t('settings.template.builtin')}</Chip>
                 )}
               </div>
             )

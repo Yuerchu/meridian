@@ -2,8 +2,8 @@ import { useCallback, useEffect, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrashBin, ArrowUturnCcwLeft } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button, Card, Drawer } from '@heroui/react'
-import { MemoryBadge } from './memory-badge'
+import { Button, Card, Chip, Drawer } from '@heroui/react'
+import { INFO_CHIP } from './memory-row'
 import type { Memory } from '@/types'
 import { useHistoryLevel } from '@/hooks/use-nav'
 
@@ -78,7 +78,7 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
               <Card key={m.id} data-slot="memory-trash-row" variant="secondary">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-sm">{m.key}</span>
-                  <MemoryBadge tone="info">{deletedByLabel(m.deleted_by)}</MemoryBadge>
+                  <Chip className={INFO_CHIP}>{deletedByLabel(m.deleted_by)}</Chip>
                   <div className="flex-1" />
                   <Button
                     variant="ghost"

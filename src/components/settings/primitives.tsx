@@ -1,5 +1,6 @@
+import { useTranslation } from 'react-i18next'
 import { Button, Description, Label, ListBox, Select, tv } from '@heroui/react'
-import { ChevronRight } from '@gravity-ui/icons'
+import { Check, ChevronRight } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'
 
@@ -118,6 +119,28 @@ export function SettingsRow({
       {value && <span className="shrink-0 truncate text-xs text-muted">{value}</span>}
       {trailing ?? <ChevronRight className="size-4 shrink-0 text-muted" />}
     </Button>
+  )
+}
+
+/**
+ * "Saved", for the second or two after it happens.
+ *
+ * Four panels drew this identically. `role="status"` is the one thing none of
+ * them had: the whole point is to confirm something, and a confirmation that
+ * only exists as green text confirms nothing to a screen reader.
+ */
+export function SavedHint({ className, ...props }: React.ComponentProps<'span'>) {
+  const { t } = useTranslation()
+  return (
+    <span
+      data-slot="saved-hint"
+      role="status"
+      className={cn('flex items-center gap-1 text-xs text-success-soft-foreground', className)}
+      {...props}
+    >
+      <Check className="size-3.5" />
+      {t('common.saved')}
+    </span>
   )
 }
 

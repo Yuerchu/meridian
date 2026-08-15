@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, TrashBin, BookOpen, Check, ArrowsRotateRight } from '@gravity-ui/icons'
-import { Button, Card, Checkbox, Description, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField } from '@heroui/react'
+import { Plus, TrashBin, BookOpen, ArrowsRotateRight } from '@gravity-ui/icons'
+import { Button, Card, Checkbox, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField } from '@heroui/react'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import { SettingsHeader, SettingsPane } from './primitives'
+import { SavedHint, SettingsHeader, SettingsPane } from './primitives'
 import type { Skill } from '@/types'
 
 /** The directory name doubles as the LLM-facing skill name, so it has to be a
@@ -153,9 +153,7 @@ function SkillEditor({
           {t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="skill-editor-saved" className="flex items-center gap-1 text-xs text-success-soft-foreground">
-            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
-          </span>
+          <SavedHint data-slot="skill-editor-saved" />
         )}
         {onDelete && !isBuiltin && (
           <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
@@ -308,9 +306,9 @@ export function SkillSettings() {
                         {skill.llm_name}
                       </span>
                     </div>
-                    <span data-slot="skill-item-source" className="text-xs px-1.5 py-0.5 rounded bg-default text-muted shrink-0">
+                    <Chip data-slot="skill-item-source" className="shrink-0 text-muted">
                       {t(`settings.skills.source.${skill.source}`)}
-                    </span>
+                    </Chip>
                     <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
                   </Disclosure.Trigger>
                 </Disclosure.Heading>

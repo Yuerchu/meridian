@@ -1,13 +1,13 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Check, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
+import { Plus, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
 import { Button, Disclosure, Input, Label, Spinner, TextField, Tooltip } from '@heroui/react'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MasterDetail } from './master-detail'
-import { SettingsSelect } from './primitives'
+import { SavedHint, SettingsSelect } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import type { ModelConfig, ModelConfigInput, Provider, ModelInfo, ProviderCapabilities, ThinkingEffort } from '@/types'
@@ -456,9 +456,7 @@ function ProviderEditor({
       <div className="flex items-center gap-2">
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
-            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
-          </span>
+          <SavedHint />
         )}
       </div>
 
