@@ -24,7 +24,32 @@
 @import '@heroui-pro/react/css/components/hover-card.css' layer(components);
 @import '@heroui-pro/react/css/components/empty-state.css' layer(components);
 @import '@heroui-pro/react/css/components/action-bar.css' layer(components);
+@import '@heroui-pro/react/css/components/chain-of-thought.css' layer(components);
+/* `ChainOfThought` renders `TextShimmer` while reasoning streams, so its styles
+   come along whether or not anything imports the component directly. */
+@import '@heroui-pro/react/css/components/text-shimmer.css' layer(components);
 @import '@fontsource-variable/geist';
+
+/* TextShimmer paints its text with a moving gradient and sets
+   `-webkit-text-fill-color: transparent` so the gradient shows through. Those
+   are independent declarations: where `tan()` is unsupported the gradient's
+   width cannot be resolved and the whole `background` shorthand is dropped —
+   but the transparent fill still applies, and the text disappears rather than
+   degrading. Pro ships a fallback for `prefers-reduced-motion` and nothing
+   else, so this is the same set of declarations keyed on the feature instead.
+   Deliberately unlayered, to outrank the import above.
+
+   Android WebView tracks the system, so a device old enough to lack `tan()` is
+   a device this would otherwise show blank labels on. Settings → Developer
+   probes for both this and `oklch(from …)`. */
+@supports not (width: calc(1px * tan(45deg))) {
+  .text-shimmer {
+    -webkit-text-fill-color: unset;
+    color: currentColor;
+    background: none;
+    animation: none;
+  }
+}
 
 /* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.
    Ours is deliberate: the theme is an explicit setting, and a dark OS must not
