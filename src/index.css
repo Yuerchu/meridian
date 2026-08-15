@@ -17,6 +17,11 @@
 @import '@heroui-pro/react/css/components/code-block.css' layer(components);
 @import '@heroui-pro/react/css/components/prompt-input.css' layer(components);
 @import '@heroui-pro/react/css/components/chat-attachment.css' layer(components);
+@import '@heroui-pro/react/css/components/chat-source.css' layer(components);
+/* `ChatSource` renders its hover preview through Pro's HoverCard, and styles
+   only the trigger side of it (`.chat-source .hover-card__trigger`). Without
+   this the preview opens as unstyled text over the page. */
+@import '@heroui-pro/react/css/components/hover-card.css' layer(components);
 @import '@fontsource-variable/geist';
 
 /* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.

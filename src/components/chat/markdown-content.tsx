@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { open as openExternal } from '@tauri-apps/plugin-shell'
+import { openExternally } from '@/lib/external-link'
 import { Check, Copy } from '@gravity-ui/icons'
 import type { Components } from 'react-markdown'
 
@@ -127,19 +127,16 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, is
     },
     // A link in an answer is a link to the web, and this is a WebView: left
     // alone it would navigate the app itself to the page, with no way back.
-    a: ({ href, children, ...props }) => {
-      const external = !!href && /^https?:/i.test(href)
-      return (
-        <a
-          href={href}
-          rel="noreferrer noopener"
-          onClick={external ? (e) => { e.preventDefault(); void openExternal(href) } : undefined}
-          {...props}
-        >
-          {children}
-        </a>
-      )
-    },
+    a: ({ href, children, ...props }) => (
+      <a
+        href={href}
+        rel="noreferrer noopener"
+        onClick={(e) => openExternally(href, e)}
+        {...props}
+      >
+        {children}
+      </a>
+    ),
   }), [])
 
   return (

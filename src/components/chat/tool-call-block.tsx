@@ -6,7 +6,7 @@ import { highlightInline } from '@/lib/shiki'
 import { ShikiCode } from './shiki-code'
 import { fileIconUrl } from '@/lib/file-icon'
 import {
-  ArrowUturnCcwLeft, Ban, Check, ChevronUp, Circle, CircleCheck, CircleDashed,
+  ArrowUturnCcwLeft, Ban, Check, Circle, CircleCheck, CircleDashed,
   CircleQuestion, Clock, Compass, FileText, ForwardStep, Globe, ListCheck,
   PaperPlane, Square, SquareCheck, SquareListUl, TriangleExclamation, Xmark,
 } from '@gravity-ui/icons'
@@ -25,6 +25,9 @@ import {
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { parseTodoArgs, todoProgress, TodoItemList, type TodoDraft } from './todo-list'
+import { ChatSource, ChatSources } from '@heroui-pro/react/chat-source'
+
+import { openExternally } from '@/lib/external-link'
 import { MarkdownContent } from './markdown-content'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { ToolCallDisplay } from '@/types'
@@ -842,7 +845,6 @@ function parseWebSearchResult(result: string): WebSearchSource[] | null {
 
 function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
 
   const query = useMemo(() => {
     try {
@@ -943,42 +945,35 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   }
 
   return (
-    <div className="my-2 space-y-1.5">
-      <Button
-        variant="ghost"
-        onClick={() => setExpanded(!expanded)}
-        className="h-auto justify-start rounded-none p-0 gap-1.5 text-xs font-normal text-muted hover:text-foreground hover:bg-transparent dark:hover:bg-transparent transition-colors"
-      >
-        <span>{t('chat.tool.webSearch.sources', { count: sources.length })}</span>
-        <ChevronUp className={`w-3.5 h-3.5 transition-transform ${expanded ? '' : 'rotate-180'}`} />
-      </Button>
-      {expanded && (
-          <div className="overflow-hidden">
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {sources.map((src, i) => (
-                <a
-                  key={i}
-                  href={src.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-default/50 px-2.5 py-1 text-xs text-muted hover:bg-default hover:text-foreground transition-colors"
-                  title={src.title}
-                >
-                  {src.favicon && (
-                    <img
-                      src={src.favicon}
-                      alt=""
-                      className="w-3.5 h-3.5 rounded-sm"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                    />
-                  )}
-                  <span className="truncate max-w-32">{src.site_name || src.title}</span>
-                </a>
-              ))}
-            </div>
-          </div>
-      )}
-    </div>
+    <ChatSources className="my-2" defaultExpanded={false}>
+      <ChatSources.Trigger>
+        {t('chat.tool.webSearch.sources', { count: sources.length })}
+      </ChatSources.Trigger>
+      <ChatSources.Content>
+        <ChatSources.List>
+          {sources.map((src, i) => (
+            // `description` is what mounts the hover preview, so the page title
+            // moves out of a native `title` tooltip and into something that can
+            // hold more than one line.
+            <ChatSource
+              key={i}
+              description={src.title}
+              faviconUrl={src.favicon ?? undefined}
+              href={src.url}
+              title={src.site_name || src.title}
+            >
+              <ChatSource.Trigger
+                rel="noreferrer noopener"
+                onClick={(e) => openExternally(src.url, e)}
+              >
+                <ChatSource.Icon faviconUrl={src.favicon ?? undefined} />
+                <ChatSource.Title>{src.site_name || src.title}</ChatSource.Title>
+              </ChatSource.Trigger>
+            </ChatSource>
+          ))}
+        </ChatSources.List>
+      </ChatSources.Content>
+    </ChatSources>
   )
 }
 
