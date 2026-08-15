@@ -68,6 +68,38 @@ describe('useAndroidVoiceRecorder', () => {
     expect(ref.current!.isActive).toBe(false)
   })
 
+  /**
+   * The overlay is drawn for every state but `idle` and covers half the screen.
+   * Announcing the press on the way down meant every reach for the keyboard
+   * flashed "Preparing…" first.
+   */
+  it('says nothing until the press has lasted long enough to be a hold', async () => {
+    const { ref } = mount()
+    act(() => { press(ref.current!) })
+    expect(ref.current!.isActive).toBe(false)
+
+    await act(async () => { openResolve!(capture) })
+    // The device is open, but the finger has not been down long enough.
+    expect(ref.current!.isActive).toBe(false)
+    expect(capture.beginCollecting).not.toHaveBeenCalled()
+
+    act(() => { vi.advanceTimersByTime(400) })
+    expect(ref.current!.state).toBe('recording-hold')
+  })
+
+  /** The other order: held past the threshold before the device finished
+   *  opening, which on the same phone has taken anywhere up to 2.6s. */
+  it('waits on a slow microphone without losing the hold', async () => {
+    const { ref } = mount()
+    act(() => { press(ref.current!) })
+    act(() => { vi.advanceTimersByTime(400) })
+    expect(ref.current!.state).toBe('starting')
+
+    await act(async () => { openResolve!(capture) })
+    expect(ref.current!.state).toBe('recording-hold')
+    expect(capture.beginCollecting).toHaveBeenCalled()
+  })
+
   it('starts recording once the press outlasts the threshold', async () => {
     const { ref, onTap } = mount()
     act(() => { press(ref.current!) })

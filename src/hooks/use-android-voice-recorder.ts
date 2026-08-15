@@ -131,25 +131,32 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
     cancelledRef.current = false
     pressedAtRef.current = Date.now()
     startYRef.current = e.clientY
-    setState('starting')
 
-    // Both slow things start now: the device, and the 149MB encoder behind the
-    // first transcription. Talking covers them.
+    // Deliberately no `setState` here. The overlay is drawn for every state but
+    // `idle`, so announcing the press on the way down put "Preparing…" over
+    // half the screen for every tap on the composer — including the taps that
+    // were only ever going to be someone reaching for the keyboard. Nothing is
+    // said until the press has lasted long enough to be a hold.
+    //
+    // Both slow things still start now: the device, and the 149MB encoder
+    // behind the first transcription. Talking covers them.
     api.voicePrewarm().catch(() => {})
     const opening = openCapture({ onPeak: (p) => { peakRef.current = p } })
     opening.then(
       (handle) => {
         // The press may already be over, or cancelled, by the time this lands.
-        if (cancelledRef.current || stateRef.current === 'idle') {
+        if (cancelledRef.current || !pressActiveRef.current) {
           handle.cancel()
           return
         }
         handleRef.current = handle
         // Only now does audio start being kept: whatever the device produced
-        // while it was warming up belongs to nobody.
-        if (stateRef.current === 'recording-hold' || stateRef.current === 'cancelling') {
-          handle.beginCollecting()
+        // while it was warming up belongs to nobody. If the hold threshold has
+        // already passed, the recording has been waiting for this.
+        if (stateRef.current === 'starting') {
+          setState('recording-hold')
           captureAtRef.current = Date.now()
+          handle.beginCollecting()
         }
       },
       (err) => {
@@ -164,10 +171,17 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
       // `pressActiveRef` and not the state: a release that beat the state into
       // place must not be promoted into a recording behind the user's back.
       if (cancelledRef.current || !pressActiveRef.current) return
-      setState('recording-hold')
       navigator.vibrate?.(15)
-      captureAtRef.current = Date.now()
-      handleRef.current?.beginCollecting()
+      // The device usually wins this race, but not always — it has taken 2.6s
+      // on the same phone that managed 141ms a minute earlier. `starting` is
+      // what the overlay says while the two are out of step.
+      if (handleRef.current) {
+        setState('recording-hold')
+        captureAtRef.current = Date.now()
+        handleRef.current.beginCollecting()
+      } else {
+        setState('starting')
+      }
     }, HOLD_THRESHOLD_MS)
   }, [onNotice, release])
 

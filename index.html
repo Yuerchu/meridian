@@ -2,7 +2,15 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- `user-scalable=no` because this is an application, not a page: pinching
+         it scales the chrome away from the edges it is anchored to, and the
+         safe-area insets are computed against a viewport that is no longer the
+         screen. Text size is a setting, not a gesture. `maximum-scale` is there
+         for the WebViews that ignore the former and honour the latter. -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
     <title>Meridian</title>
     <!-- Settles the theme before anything paints. React cannot: the preference
          lives in localStorage precisely because it has to be readable
