@@ -11,6 +11,98 @@
 
 use serde::{Deserialize, Serialize};
 
+/// What is being reviewed. The two differ in what the reviewer is told to look
+/// for, where the transcript is filed, and nothing else — which is why they
+/// share a runner.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Kind {
+    /// A plan, before anything has been written.
+    Plan,
+    /// A diff, after it has.
+    Implementation,
+}
+
+impl Kind {
+    /// Stamped on the conversation, and the only thing that makes a
+    /// client-supplied conversation id acceptable. Also what keeps the two
+    /// kinds from being handed each other's transcripts.
+    pub(crate) fn agent_kind(self) -> &'static str {
+        match self {
+            Kind::Plan => "plan_review",
+            Kind::Implementation => "impl_review",
+        }
+    }
+
+    pub(crate) fn title_prefix(self) -> &'static str {
+        match self {
+            Kind::Plan => "计划审查",
+            Kind::Implementation => "改动审查",
+        }
+    }
+}
+
+/// One review, after the wire format has been read.
+///
+/// Both routes build this; the runner below knows nothing about which one it
+/// came from beyond [`Kind`].
+pub(crate) struct ReviewJob {
+    pub kind: Kind,
+    pub session_id: String,
+    pub cwd: String,
+    pub conversation_id: Option<String>,
+    /// The text under review — a plan, or a diff.
+    pub subject: String,
+    /// What the writer said it had done. Only implementation reviews have one,
+    /// and it is a claim to check rather than evidence: the diff is evidence.
+    pub note: Option<String>,
+    pub round: u32,
+    pub max_rounds: Option<u32>,
+    pub stagnant: bool,
+    pub history: Vec<HistoryEntry>,
+}
+
+/// One `Stop` submission: the code as it now stands, and what the agent
+/// claims it did.
+#[derive(Debug, Deserialize)]
+pub(crate) struct StopReviewRequest {
+    #[serde(rename = "sessionId")]
+    pub session_id: String,
+    pub cwd: String,
+    #[serde(rename = "conversationId", default)]
+    pub conversation_id: Option<String>,
+    /// Everything not committed, as the plugin computed it. Sent rather than
+    /// fetched because the reviewer has no shell — it reads files, it does not
+    /// run `git`.
+    pub diff: String,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub round: u32,
+    #[serde(default)]
+    pub max_rounds: Option<u32>,
+    #[serde(default)]
+    pub stagnant: bool,
+    #[serde(default)]
+    pub history: Vec<HistoryEntry>,
+}
+
+impl StopReviewRequest {
+    pub(crate) fn into_job(self) -> ReviewJob {
+        ReviewJob {
+            kind: Kind::Implementation,
+            session_id: self.session_id,
+            cwd: self.cwd,
+            conversation_id: self.conversation_id,
+            subject: self.diff,
+            note: self.note.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()),
+            round: self.round,
+            max_rounds: self.max_rounds,
+            stagnant: self.stagnant,
+            history: self.history,
+        }
+    }
+}
+
 /// One `ExitPlanMode` submission, as the plugin describes it.
 #[derive(Debug, Deserialize)]
 pub(crate) struct ReviewRequest {
@@ -40,6 +132,23 @@ pub(crate) struct ReviewRequest {
     pub stagnant: bool,
     #[serde(default)]
     pub history: Vec<HistoryEntry>,
+}
+
+impl ReviewRequest {
+    pub(crate) fn into_job(self) -> ReviewJob {
+        ReviewJob {
+            kind: Kind::Plan,
+            session_id: self.session_id,
+            cwd: self.cwd,
+            conversation_id: self.conversation_id,
+            subject: self.plan,
+            note: None,
+            round: self.round,
+            max_rounds: self.max_rounds,
+            stagnant: self.stagnant,
+            history: self.history,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]

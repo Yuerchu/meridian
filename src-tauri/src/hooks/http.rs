@@ -18,7 +18,7 @@ use hyper::header::{AUTHORIZATION, CONTENT_TYPE};
 use hyper::http::request::Parts;
 use hyper::{Method, Request, Response, StatusCode};
 
-use super::protocol::{ErrorBody, ReviewRequest};
+use super::protocol::{ErrorBody, Kind, ReviewRequest, StopReviewRequest};
 use super::{review, SharedState};
 
 /// A plan is markdown a model wrote; a couple of megabytes is already far past
@@ -86,22 +86,31 @@ fn healthz() -> Response<Full<Bytes>> {
 async fn route(req: Request<Incoming>, state: Arc<SharedState>) -> Response<Full<Bytes>> {
     let (parts, body) = req.into_parts();
 
-    match (&parts.method, parts.uri.path()) {
+    // Which gate is being asked, decided before the body is read so an unknown
+    // path costs nothing.
+    let gate = match (&parts.method, parts.uri.path()) {
         (&Method::GET, "/healthz") => return healthz(),
-        (&Method::POST, "/hooks/exit-plan") => {}
+        (&Method::POST, "/hooks/exit-plan") => Kind::Plan,
+        (&Method::POST, "/hooks/stop-review") => Kind::Implementation,
         (&Method::GET, _) | (&Method::POST, _) => {
             return fail(StatusCode::NOT_FOUND, "no such hook endpoint");
         }
         _ => return fail(StatusCode::METHOD_NOT_ALLOWED, "method not allowed"),
-    }
+    };
 
     let bytes = match Limited::new(body, MAX_BODY).collect().await {
         Ok(collected) => collected.to_bytes(),
         Err(_) => return fail(StatusCode::PAYLOAD_TOO_LARGE, "request body too large"),
     };
 
-    let request = match classify(&parts, &bytes, &state.config) {
-        Ok(r) => r,
+    let job = match gate {
+        Kind::Plan => classify(&parts, &bytes, &state.config).map(ReviewRequest::into_job),
+        Kind::Implementation => {
+            classify_stop(&parts, &bytes, &state.config).map(StopReviewRequest::into_job)
+        }
+    };
+    let job = match job {
+        Ok(j) => j,
         Err((status, message)) => return fail(status, message),
     };
 
@@ -113,7 +122,7 @@ async fn route(req: Request<Incoming>, state: Arc<SharedState>) -> Response<Full
     // was already failing open by then.
     let (tx, rx) = tokio::sync::oneshot::channel();
     tokio::spawn(async move {
-        let _ = tx.send(review::run(state, request).await);
+        let _ = tx.send(review::run(state, job).await);
     });
 
     match rx.await {
@@ -133,6 +142,43 @@ pub(crate) fn classify(
     body: &[u8],
     config: &super::HookConfig,
 ) -> Result<ReviewRequest, (StatusCode, String)> {
+    guard(parts, config)?;
+
+    let request: ReviewRequest = serde_json::from_slice(body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("malformed request body: {e}")))?;
+
+    if request.plan.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "the plan is empty".into()));
+    }
+    who_and_where(&request.session_id, &request.cwd)?;
+    Ok(request)
+}
+
+/// The same, for the route that reviews what was written rather than what was
+/// proposed.
+pub(crate) fn classify_stop(
+    parts: &Parts,
+    body: &[u8],
+    config: &super::HookConfig,
+) -> Result<StopReviewRequest, (StatusCode, String)> {
+    guard(parts, config)?;
+
+    let request: StopReviewRequest = serde_json::from_slice(body)
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("malformed request body: {e}")))?;
+
+    // An empty diff is not an error, but it is not reviewable either, and the
+    // plugin is supposed to have skipped it. Say so rather than spending a model
+    // call proving there is nothing to say.
+    if request.diff.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "there are no changes to review".into()));
+    }
+    who_and_where(&request.session_id, &request.cwd)?;
+    Ok(request)
+}
+
+/// Whether this request is allowed to cost anything, before looking at what it
+/// asks for.
+fn guard(parts: &Parts, config: &super::HookConfig) -> Result<(), (StatusCode, String)> {
     // A page in the user's browser can POST to loopback. It cannot read the
     // reply, but it does not need to: getting here at all spends a model call
     // and puts attacker-chosen text in front of an agent that reads this
@@ -162,21 +208,18 @@ pub(crate) fn classify(
             return Err((StatusCode::UNAUTHORIZED, "bad or missing token".into()));
         }
     }
+    Ok(())
+}
 
-    let request: ReviewRequest = serde_json::from_slice(body)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("malformed request body: {e}")))?;
-
-    if request.plan.trim().is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "the plan is empty".into()));
-    }
-    if request.session_id.trim().is_empty() {
+/// Both routes need to know who is asking and which repository they mean.
+fn who_and_where(session_id: &str, cwd: &str) -> Result<(), (StatusCode, String)> {
+    if session_id.trim().is_empty() {
         return Err((StatusCode::BAD_REQUEST, "sessionId is required".into()));
     }
-    if request.cwd.trim().is_empty() {
+    if cwd.trim().is_empty() {
         return Err((StatusCode::BAD_REQUEST, "cwd is required".into()));
     }
-
-    Ok(request)
+    Ok(())
 }
 
 /// Comparison that does not return early on the first differing byte.

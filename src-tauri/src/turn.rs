@@ -45,6 +45,10 @@ pub enum TurnOrigin {
     /// it, nobody here started it, which is why an interruption report must not
     /// word it as work the user asked for.
     PlanReview,
+    /// The same, for a review of what was written rather than what was
+    /// proposed. Its own variant because a report that cannot tell the two
+    /// apart would name the wrong gate.
+    ImplReview,
 }
 
 impl TurnOrigin {
@@ -56,6 +60,7 @@ impl TurnOrigin {
             TurnOrigin::OneBot => "onebot",
             TurnOrigin::SubAgent => "sub_agent",
             TurnOrigin::PlanReview => "plan_review",
+            TurnOrigin::ImplReview => "impl_review",
         }
     }
 
@@ -66,6 +71,7 @@ impl TurnOrigin {
             "onebot" => Ok(TurnOrigin::OneBot),
             "sub_agent" => Ok(TurnOrigin::SubAgent),
             "plan_review" => Ok(TurnOrigin::PlanReview),
+            "impl_review" => Ok(TurnOrigin::ImplReview),
             other => Err(format!("unknown turn origin '{other}'")),
         }
     }
@@ -126,6 +132,9 @@ impl std::fmt::Display for Busy {
             // was resubmitted before the first review came back.
             Busy::Turn(TurnOrigin::PlanReview) => {
                 write!(f, "A plan review is already running for this session. Wait for it to finish.")
+            }
+            Busy::Turn(TurnOrigin::ImplReview) => {
+                write!(f, "A review of these changes is already running. Wait for it to finish.")
             }
             Busy::Mutation(kind) => {
                 write!(f, "This conversation is busy: {kind} is in progress.")

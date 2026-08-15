@@ -34,7 +34,7 @@ use crate::tools::{FileAccess, ShellType, ToolContext};
 use crate::turn::TurnOrigin;
 use crate::util::{get_conn, now_ms};
 
-use super::protocol::{ReviewRequest, ReviewResponse};
+use super::protocol::{Kind, ReviewJob, ReviewResponse};
 use super::verdict::{self, Outcome, REVIEW_TOOLS};
 use super::SharedState;
 
@@ -103,12 +103,6 @@ fn announce(state: &SharedState, conversation_id: &str) {
     }
 }
 
-/// Stamped on every conversation this endpoint opens, and the only thing that
-/// makes a client-supplied conversation id acceptable. Changing it orphans the
-/// conversations already stamped with the old value — they stay readable, but a
-/// running Claude Code session would start a new one.
-const AGENT_KIND: &str = "plan_review";
-
 /// Why no review happened. Every one of these is a non-200, and every non-200
 /// lets the plan through — so these are explanations, not refusals of service.
 pub(crate) struct Refused {
@@ -154,10 +148,10 @@ impl Approvals for NoApprovals {
 /// timeout unable to fire because nothing was polling it.
 pub(crate) async fn run(
     state: Arc<SharedState>,
-    request: ReviewRequest,
+    job: ReviewJob,
 ) -> Result<ReviewResponse, Refused> {
     let state = state.as_ref();
-    let cwd = request.cwd.clone();
+    let cwd = job.cwd.clone();
     if !tokio::fs::metadata(&cwd).await.map(|m| m.is_dir()).unwrap_or(false) {
         return Err(refuse(StatusCode::BAD_REQUEST, format!("cwd is not a directory: {cwd}")));
     }
@@ -169,28 +163,32 @@ pub(crate) async fn run(
         )
     })?;
 
-    let assistant = effective_assistant(state, &model, &cwd, &request).await?;
+    let assistant = effective_assistant(state, &model, &cwd, &job).await?;
     let params = resolve_params(state, &assistant).await?;
 
-    let (conversation_id, is_new) = open_or_reuse(&state.pool, &request).await;
+    let (conversation_id, is_new) = open_or_reuse(&state.pool, &job).await;
     let turn_id = uuid::Uuid::new_v4().to_string();
     let cancel = CancellationToken::new();
 
+    let origin = match job.kind {
+        Kind::Plan => TurnOrigin::PlanReview,
+        Kind::Implementation => TurnOrigin::ImplReview,
+    };
     let _lease = Arc::clone(&state.coordinator)
-        .try_acquire_turn_with(&conversation_id, TurnOrigin::PlanReview, turn_id.clone(), cancel.clone())
+        .try_acquire_turn_with(&conversation_id, origin, turn_id.clone(), cancel.clone())
         .map_err(|busy| refuse(StatusCode::CONFLICT, busy.to_string()))?;
 
     // Nothing to undo on failure: the id was never handed out, so the client
     // still holds whatever it held before and the next round validates it the
     // same way. A half-written conversation is caught by the transaction.
     let user_message_id =
-        write_round(state, &conversation_id, &turn_id, &request, &assistant, is_new)
+        write_round(state, &conversation_id, &turn_id, &job, &assistant, is_new)
             .await
             .map_err(|e| refuse(StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
-    // Before the model is called, not after: the plan is already written, and a
-    // review that runs for minutes should be openable from the moment it starts
-    // rather than appearing once it is over.
+    // Before the model is called, not after: the subject is already written, and
+    // a review that runs for minutes should be openable from the moment it
+    // starts rather than appearing once it is over.
     announce(state, &conversation_id);
 
     let outcome = run_turn(
@@ -218,7 +216,7 @@ pub(crate) async fn run(
     let reply = match outcome.reply {
         Ok(reply) => reply,
         Err(e) => {
-            tracing::warn!(error = %e, "plan review turn failed");
+            tracing::warn!(error = %e, kind = job.kind.agent_kind(), "review turn failed");
             return Err(refuse(StatusCode::BAD_GATEWAY, e));
         }
     };
@@ -229,13 +227,14 @@ pub(crate) async fn run(
         ));
     }
 
-    // Deliberately logs a length, never the text: this reply quotes the plan
+    // Deliberately logs a length, never the text: this reply quotes the subject
     // and the repository, and exported logs leave the machine.
     tracing::info!(
-        session = %request.session_id,
-        round = request.round,
+        session = %job.session_id,
+        kind = job.kind.agent_kind(),
+        round = job.round,
         chars = reply.chars().count(),
-        "plan review finished"
+        "review finished"
     );
 
     // Every arm carries the conversation back, including the inconclusive one:
@@ -249,7 +248,7 @@ pub(crate) async fn run(
             ReviewResponse::revise(summary, message, turn_id, conversation_id)
         }
         Outcome::Inconclusive { reason } => {
-            tracing::warn!(reason, chars = reply.chars().count(), "plan review gave no usable verdict");
+            tracing::warn!(reason, chars = reply.chars().count(), "review gave no usable verdict");
             ReviewResponse::inconclusive(format!("{reason}，本次不阻断"), conversation_id)
         }
     })
@@ -266,7 +265,7 @@ async fn effective_assistant(
     state: &SharedState,
     model: &str,
     cwd: &str,
-    request: &ReviewRequest,
+    job: &ReviewJob,
 ) -> Result<Assistant, Refused> {
     let (provider_id, model_id) = model.split_once(':').ok_or_else(|| {
         refuse(
@@ -293,7 +292,14 @@ async fn effective_assistant(
     // What the client says it will allow, not what we would allow: it is the
     // side doing the counting. Falling back to our own setting keeps the
     // reviewer honest when an older plugin sends nothing.
-    let max_rounds = request.max_rounds.unwrap_or(state.config.max_rounds);
+    let max_rounds = job.max_rounds.unwrap_or(state.config.max_rounds);
+    let round = job.round.max(1);
+    let system_prompt = match job.kind {
+        Kind::Plan => verdict::prompt(cwd, round, max_rounds, job.stagnant),
+        Kind::Implementation => {
+            verdict::implementation_prompt(cwd, round, max_rounds, job.stagnant)
+        }
+    };
     Ok(Assistant {
         provider_id: Some(provider_id.to_string()),
         model_id: Some(model_id.to_string()),
@@ -301,7 +307,7 @@ async fn effective_assistant(
         max_tokens: None,
         tool_preset_id: None,
         enabled_tools: serde_json::to_string(REVIEW_TOOLS).ok(),
-        system_prompt: verdict::prompt(cwd, request.round.max(1), max_rounds, request.stagnant),
+        system_prompt,
         ..base
     })
 }
@@ -372,14 +378,19 @@ async fn resolve_params(
 /// untested: standing up `secrets`/`tools`/`mcp`/`coordinator` to check one
 /// boolean is enough friction that nobody does it. Never returns an error:
 /// an id it cannot vouch for means "open a new one", not "refuse the request".
-async fn open_or_reuse(pool: &DbPool, request: &ReviewRequest) -> (String, bool) {
-    if let Some(claimed) = request.conversation_id.clone().filter(|id| !id.trim().is_empty()) {
+async fn open_or_reuse(pool: &DbPool, job: &ReviewJob) -> (String, bool) {
+    if let Some(claimed) = job.conversation_id.clone().filter(|id| !id.trim().is_empty()) {
         let pool = pool.clone();
         let id = claimed.clone();
+        // Matched against *this* kind, so the two gates cannot be handed each
+        // other's transcripts: an implementation review continuing in a plan
+        // review's conversation would inherit an intention it was meant to
+        // judge without.
+        let wanted = job.kind.agent_kind();
         let ours = tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool).ok()?;
             let conversation = db::ops::conversation::get_conversation(&mut conn, &id).ok()?;
-            Some(conversation.agent_kind.as_deref() == Some(AGENT_KIND))
+            Some(conversation.agent_kind.as_deref() == Some(wanted))
         })
         .await
         .ok()
@@ -393,8 +404,9 @@ async fn open_or_reuse(pool: &DbPool, request: &ReviewRequest) -> (String, bool)
         // new rather than being refused: a review that runs without the earlier
         // context still beats no review.
         tracing::info!(
-            session = %request.session_id,
-            "the conversation the client named is gone or not a plan review; opening a new one"
+            session = %job.session_id,
+            kind = job.kind.agent_kind(),
+            "the conversation the client named is gone or not ours; opening a new one"
         );
     }
 
@@ -411,7 +423,7 @@ async fn write_round(
     state: &SharedState,
     conversation_id: &str,
     turn_id: &str,
-    request: &ReviewRequest,
+    job: &ReviewJob,
     assistant: &Assistant,
     is_new: bool,
 ) -> Result<String, String> {
@@ -420,9 +432,16 @@ async fn write_round(
     let turn_id = turn_id.to_string();
     let message_id = uuid::Uuid::new_v4().to_string();
     let returned = message_id.clone();
-    let prompt = round_prompt(request);
-    let title = title_for(&request.cwd);
-    let cwd = request.cwd.clone();
+    let prompt = round_prompt(job);
+    let title = title_for(job.kind, &job.cwd);
+    let agent_kind = job.kind.agent_kind();
+    // Must match the lease taken in `run`, or the row and the register disagree
+    // about what is occupying this conversation.
+    let origin = match job.kind {
+        Kind::Plan => TurnOrigin::PlanReview,
+        Kind::Implementation => TurnOrigin::ImplReview,
+    };
+    let cwd = job.cwd.clone();
     let (assistant_id, provider_id, model_id) =
         (assistant.id.clone(), assistant.provider_id.clone(), assistant.model_id.clone());
 
@@ -467,7 +486,7 @@ async fn write_round(
                         spawned_by_message_id: None,
                         spawned_by_call_id: None,
                         spawned_turn_id: None,
-                        agent_kind: Some(AGENT_KIND),
+                        agent_kind: Some(agent_kind),
                         agent_provider_id: provider_id.as_deref(),
                         agent_model_id: model_id.as_deref(),
                     },
@@ -517,7 +536,7 @@ async fn write_round(
             // The synchronous op rather than `turn_record::begin`: that one
             // opens its own blocking task and so its own connection, which
             // would put this row outside the transaction the other two are in.
-            db::ops::turn::begin(conn, &turn_id, &conversation_id, TurnOrigin::PlanReview, now)?;
+            db::ops::turn::begin(conn, &turn_id, &conversation_id, origin, now)?;
             Ok(())
         })
         .map_err(|e| e.to_string())
@@ -528,26 +547,40 @@ async fn write_round(
     Ok(returned)
 }
 
-fn title_for(cwd: &str) -> String {
+fn title_for(kind: Kind, cwd: &str) -> String {
     let leaf = cwd
         .rsplit(['/', '\\'])
         .find(|s| !s.is_empty())
         .unwrap_or("(unknown)");
-    format!("计划审查 · {leaf}")
+    format!("{} · {leaf}", kind.title_prefix())
 }
 
 /// What the reviewer is actually asked, this round.
-fn round_prompt(request: &ReviewRequest) -> String {
+fn round_prompt(job: &ReviewJob) -> String {
     let mut out = String::new();
-    if request.round > 1 && !request.history.is_empty() {
+    if job.round > 1 && !job.history.is_empty() {
         out.push_str("前几轮的结论：\n");
-        for entry in &request.history {
+        for entry in &job.history {
             out.push_str(&format!("- 第 {} 轮：{} — {}\n", entry.round, entry.verdict, entry.summary));
         }
         out.push('\n');
     }
-    out.push_str("待审查的计划：\n\n");
-    out.push_str(&request.plan);
+
+    match job.kind {
+        Kind::Plan => out.push_str("待审查的计划：\n\n"),
+        Kind::Implementation => {
+            // The claim first and the evidence second, labelled as such: the
+            // summary is what the author says it did, and half the value of
+            // this review is noticing where the two disagree.
+            if let Some(note) = &job.note {
+                out.push_str("作者对这次改动的自述（**这是主张，不是证据**）：\n\n");
+                out.push_str(note);
+                out.push_str("\n\n");
+            }
+            out.push_str("未提交的改动（`git diff`，这是证据）：\n\n");
+        }
+    }
+    out.push_str(&job.subject);
     out
 }
 
@@ -751,10 +784,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_title_names_the_repository() {
-        assert_eq!(title_for("C:/Users/x/Code/meridian"), "计划审查 · meridian");
-        assert_eq!(title_for("C:\\Users\\x\\Code\\meridian\\"), "计划审查 · meridian");
-        assert_eq!(title_for(""), "计划审查 · (unknown)");
+    fn the_title_names_the_repository_and_which_gate() {
+        assert_eq!(title_for(Kind::Plan, "C:/Users/x/Code/meridian"), "计划审查 · meridian");
+        assert_eq!(title_for(Kind::Plan, "C:\\Users\\x\\Code\\meridian\\"), "计划审查 · meridian");
+        assert_eq!(title_for(Kind::Plan, ""), "计划审查 · (unknown)");
+        // Two gates land in the same sidebar; the title is what tells them apart.
+        assert_eq!(title_for(Kind::Implementation, "C:/Code/meridian"), "改动审查 · meridian");
     }
 
     /// A conversation row with a chosen `agent_kind`, which the convenience
@@ -784,8 +819,8 @@ mod tests {
         .unwrap();
     }
 
-    fn claiming(id: Option<&str>) -> ReviewRequest {
-        ReviewRequest { conversation_id: id.map(str::to_string), ..request(1, vec![]) }
+    fn claiming(id: Option<&str>) -> ReviewJob {
+        ReviewJob { conversation_id: id.map(str::to_string), ..job(Kind::Plan, 1, vec![]) }
     }
 
     /// The property this whole check exists for. The endpoint is reachable by
@@ -815,11 +850,29 @@ mod tests {
     #[tokio::test]
     async fn a_plan_review_conversation_is_reused() {
         let pool = crate::db::test_db();
-        conversation(&pool, "ours", Some(AGENT_KIND));
+        conversation(&pool, "ours", Some(Kind::Plan.agent_kind()));
 
         let (id, is_new) = open_or_reuse(&pool, &claiming(Some("ours"))).await;
         assert_eq!(id, "ours");
         assert!(!is_new, "an existing conversation must not be written again");
+    }
+
+    /// The two gates must not inherit each other's transcripts. An
+    /// implementation review continuing where a plan review left off would be
+    /// judging code against an intention it had already agreed to — which is
+    /// exactly the independence the split was for.
+    #[tokio::test]
+    async fn the_two_gates_do_not_share_a_conversation() {
+        let pool = crate::db::test_db();
+        conversation(&pool, "planning", Some(Kind::Plan.agent_kind()));
+
+        let asking = ReviewJob {
+            conversation_id: Some("planning".into()),
+            ..job(Kind::Implementation, 1, vec![])
+        };
+        let (id, is_new) = open_or_reuse(&pool, &asking).await;
+        assert_ne!(id, "planning");
+        assert!(is_new);
     }
 
     /// The client outlived the conversation — the user deleted it. Open a new
@@ -843,12 +896,17 @@ mod tests {
         }
     }
 
-    fn request(round: u32, history: Vec<(u32, &str, &str)>) -> ReviewRequest {
-        ReviewRequest {
+    fn job(kind: Kind, round: u32, history: Vec<(u32, &str, &str)>) -> ReviewJob {
+        ReviewJob {
+            kind,
             session_id: "s".into(),
             cwd: "C:/repo".into(),
             conversation_id: None,
-            plan: "步骤一".into(),
+            subject: match kind {
+                Kind::Plan => "步骤一".into(),
+                Kind::Implementation => "--- a/foo.rs\n+++ b/foo.rs\n+fn bar() {}".into(),
+            },
+            note: None,
             round,
             max_rounds: Some(3),
             stagnant: false,
@@ -863,11 +921,38 @@ mod tests {
         }
     }
 
+    fn request(round: u32, history: Vec<(u32, &str, &str)>) -> ReviewJob {
+        job(Kind::Plan, round, history)
+    }
+
     #[test]
     fn the_first_round_is_just_the_plan() {
         let prompt = round_prompt(&request(1, vec![]));
         assert!(prompt.starts_with("待审查的计划："), "{prompt}");
         assert!(prompt.contains("步骤一"));
+    }
+
+    /// The author's summary is a claim and the diff is evidence; a reviewer
+    /// that cannot tell them apart cannot notice where they disagree, which is
+    /// half of what this gate is for.
+    #[test]
+    fn an_implementation_review_labels_the_claim_and_the_evidence() {
+        let asking =
+            ReviewJob { note: Some("加了 bar()".into()), ..job(Kind::Implementation, 1, vec![]) };
+        let prompt = round_prompt(&asking);
+
+        let claim = prompt.find("加了 bar()").expect("the summary should be there");
+        let evidence = prompt.find("+fn bar() {}").expect("the diff should be there");
+        assert!(claim < evidence, "the claim comes first, then what actually happened");
+        assert!(prompt.contains("主张"), "{prompt}");
+        assert!(prompt.contains("证据"), "{prompt}");
+    }
+
+    #[test]
+    fn an_implementation_review_without_a_summary_is_just_the_diff() {
+        let prompt = round_prompt(&job(Kind::Implementation, 1, vec![]));
+        assert!(!prompt.contains("自述"), "{prompt}");
+        assert!(prompt.contains("+fn bar() {}"), "{prompt}");
     }
 
     /// Later rounds carry what was already said, so the reviewer does not
