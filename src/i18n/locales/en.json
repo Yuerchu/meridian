@@ -577,6 +577,7 @@
   "chat.voice.model_missing": "Voice model not installed — download it in Settings → Voice Input",
   "chat.voice.error": "Recording failed",
   "chat.voice.badge": "Voice input",
+  "chat.placeholderVoice": "Send a message, or hold to talk...",
   "chat.placeholderSteer": "Say something to the run...",
   "chat.voice.preparing": "Getting ready...",
   "chat.voice.transcribing": "Transcribing...",

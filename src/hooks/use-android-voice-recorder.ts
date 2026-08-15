@@ -12,24 +12,24 @@ const MAX_DURATION_MS = 60_000
 /** Upward travel that arms the cancel. Well past the scroll slop, and about a
  *  thumb's reach so it can be done without looking. */
 const CANCEL_SLIDE_PX = 60
+/** Travel before the hold commits that means the finger was going somewhere
+ *  else. The gesture is handed back rather than held onto. */
+const SCROLL_SLOP_PX = 10
 
 export type AndroidVoiceState = VoiceButtonState | 'cancelling'
 
 interface Options {
   onSend: (text: string) => void
   onNotice: (notice: VoiceNotice, detail?: string) => void
-  /** Called on a short press, which is a miss rather than a recording. */
-  onTap: () => void
+  /** Whether holding the field starts a recording at this moment. */
+  enabled: boolean
+  /** A short press on the microphone button, which is a miss. Not called for
+   *  the field, where a short press is someone reaching for the keyboard. */
+  onButtonTap: () => void
 }
 
 /**
- * Hold-to-talk, on the microphone button beside the composer.
- *
- * On the composer itself once, as a layer over the field. That layer is why
- * Android could not type: a touch outside an input dismisses the keyboard, and
- * the field beneath never gave up DOM focus, so nothing script could do brought
- * the IME back. The button is a real press target and takes no touch the field
- * wanted.
+ * Hold-to-talk on the composer itself.
  *
  * Separate from `useVoiceRecorder` rather than a branch inside it: that one
  * drives a recording session in Rust, this one drives a MediaStream in the
@@ -40,8 +40,33 @@ interface Options {
  * wildly variable — 141ms to 2.6s on the same phone within a minute — so the
  * threshold doubles as the warm-up window, and everything captured before the
  * commit is discarded.
+ *
+ * # Why the field and not a layer over it
+ *
+ * This began as an absolutely-positioned layer, and that layer cost Android
+ * typing outright. The reason is a matter of order, not of focus: a tap's
+ * default action is dispatched *after* the handlers for the touch that produced
+ * it, because the gesture is only recognised once the touch sequence goes
+ * unconsumed. So `focus()` in `pointerup` did reach the IME — and then the tap
+ * landed on a `role="button"` div, which cannot hold focus, moved focus to the
+ * body, and Chromium reported `textInputType == NONE`, whose handling is to
+ * hide the keyboard. Every press played a keyboard opening and closing again.
+ *
+ * Doing it on the field inverts the problem. A short press is left completely
+ * alone, so the platform's own path — tap an editable element, focus it, raise
+ * the IME — runs untouched, and no script is involved in the one thing script
+ * turned out not to be able to do. Only the hold is intercepted, by cancelling
+ * the touch that would otherwise become that tap.
+ *
+ * # Why native listeners
+ *
+ * React attaches `touchstart` and `touchmove` passively at the root, where
+ * `preventDefault()` on the synthetic event is ignored — silently, with nothing
+ * for tsc or eslint to catch. `attachField` binds the real element instead.
+ * Touch also captures implicitly to the `touchstart` target, so there is no
+ * `setPointerCapture` here and no need for one.
  */
-export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
+export function useAndroidVoiceRecorder({ onSend, onNotice, enabled, onButtonTap }: Options) {
   const [state, setState] = useState<AndroidVoiceState>('idle')
   const [elapsed, setElapsed] = useState(0)
   const [peak, setPeak] = useState(0)
@@ -49,19 +74,28 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
   const stateRef = useRef(state)
   useEffect(() => { stateRef.current = state }, [state])
 
+  const enabledRef = useRef(enabled)
+  useEffect(() => { enabledRef.current = enabled }, [enabled])
+
   const handleRef = useRef<CaptureHandle | null>(null)
   /**
    * Whether a finger is currently down, set synchronously.
    *
    * `stateRef` cannot answer this: it is updated from an effect, so it trails
    * the render by a commit. Opening the device takes anywhere from 141ms to
-   * 2.6s and blocks that commit, so a tap could arrive at `pointerup` with the
-   * state still reading `idle` — the release returned early, neither cancelling
-   * nor handing the field to the keyboard, and the hold timer then promoted a
-   * press that was already over. That is a recording nobody started and nothing
-   * would stop.
+   * 2.6s and blocks that commit, so a tap could arrive at the release with the
+   * state still reading `idle` — the release returned early, and the hold timer
+   * then promoted a press that was already over. That is a recording nobody
+   * started and nothing would stop.
    */
   const pressActiveRef = useRef(false)
+  /**
+   * Whether the press has outlasted the threshold and taken the gesture.
+   *
+   * Read inside the touch listeners, which have to decide *within the event*
+   * whether to cancel it — after the handler returns it is too late.
+   */
+  const committedRef = useRef(false)
   const pressedAtRef = useRef(0)
   const captureAtRef = useRef(0)
   const startYRef = useRef(0)
@@ -76,6 +110,7 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
    *  indicator lit, which reads as spying. */
   const release = useCallback(() => {
     pressActiveRef.current = false
+    committedRef.current = false
     if (holdTimerRef.current) {
       clearTimeout(holdTimerRef.current)
       holdTimerRef.current = null
@@ -100,6 +135,8 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
     if (!handle) return release()
 
     handleRef.current = null
+    committedRef.current = false
+    pressActiveRef.current = false
     if (holdTimerRef.current) {
       clearTimeout(holdTimerRef.current)
       holdTimerRef.current = null
@@ -130,13 +167,13 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
     setElapsed(0)
   }, [onNotice, onSend, release])
 
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+  const beginPress = useCallback((clientY: number) => {
     if (stateRef.current !== 'idle' || pressActiveRef.current) return
-    e.currentTarget.setPointerCapture(e.pointerId)
     pressActiveRef.current = true
+    committedRef.current = false
     cancelledRef.current = false
     pressedAtRef.current = Date.now()
-    startYRef.current = e.clientY
+    startYRef.current = clientY
 
     // Deliberately no `setState` here. The overlay is drawn for every state but
     // `idle`, so announcing the press on the way down put "Preparing…" over
@@ -177,6 +214,7 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
       // `pressActiveRef` and not the state: a release that beat the state into
       // place must not be promoted into a recording behind the user's back.
       if (cancelledRef.current || !pressActiveRef.current) return
+      committedRef.current = true
       navigator.vibrate?.(15)
       // The device usually wins this race, but not always — it has taken 2.6s
       // on the same phone that managed 141ms a minute earlier. `starting` is
@@ -191,19 +229,26 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
     }, HOLD_THRESHOLD_MS)
   }, [onNotice, release])
 
-  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+  const movePress = useCallback((clientY: number) => {
+    if (!pressActiveRef.current) return
+    const slid = startYRef.current - clientY
+    // Before the hold commits, travel means the finger was on its way somewhere
+    // else. Give the gesture back rather than turning a scroll into a recording.
+    if (!committedRef.current) {
+      if (Math.abs(slid) > SCROLL_SLOP_PX) cancel()
+      return
+    }
     const s = stateRef.current
     if (s !== 'recording-hold' && s !== 'cancelling') return
-    const slid = startYRef.current - e.clientY
     if (slid > CANCEL_SLIDE_PX && s !== 'cancelling') {
       setState('cancelling')
       navigator.vibrate?.(10)
     } else if (slid <= CANCEL_SLIDE_PX && s === 'cancelling') {
       setState('recording-hold')
     }
-  }, [])
+  }, [cancel])
 
-  const handlePointerUp = useCallback(() => {
+  const endPress = useCallback((fromButton: boolean) => {
     if (!pressActiveRef.current) return
     pressActiveRef.current = false
 
@@ -211,12 +256,13 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
       cancel()
       return
     }
-    // Short press: never became a recording. Hand the field to the keyboard.
-    // Measured against the clock rather than the state, which may not have
-    // caught up with the press yet.
+    // Short press: never became a recording. Measured against the clock rather
+    // than the state, which may not have caught up with the press yet. On the
+    // field this is a reach for the keyboard and the platform is already
+    // handling it; on the button it is a miss worth answering.
     if (Date.now() - pressedAtRef.current < HOLD_THRESHOLD_MS) {
       cancel()
-      onTap()
+      if (fromButton) onButtonTap()
       return
     }
     // Held, but the device never opened in time — there is nothing to send.
@@ -226,8 +272,74 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
       return
     }
     finish()
-  }, [cancel, finish, onNotice, onTap])
+  }, [cancel, finish, onButtonTap, onNotice])
 
+  /**
+   * Binds the gesture to the text field.
+   *
+   * Returns nothing and is safe to call again with the same element or with
+   * `null`; the previous binding is always torn down first.
+   */
+  const detachRef = useRef<(() => void) | null>(null)
+  const attachField = useCallback((el: HTMLTextAreaElement | null) => {
+    detachRef.current?.()
+    detachRef.current = null
+    if (!el) return
+
+    const onTouchStart = (e: TouchEvent) => {
+      // One finger only: a second is a pinch, or a mis-grip.
+      if (!enabledRef.current || e.touches.length !== 1) return
+      beginPress(e.touches[0].clientY)
+      // Not prevented. The tap this may become is how the keyboard opens, and
+      // it is only worth taking away once the press has proved to be a hold.
+    }
+    const onTouchMove = (e: TouchEvent) => {
+      if (!pressActiveRef.current) return
+      movePress(e.touches[0]?.clientY ?? 0)
+      // Committed means the finger belongs to the recording: the slide up to
+      // cancel must not also scroll the transcript.
+      if (committedRef.current && e.cancelable) e.preventDefault()
+    }
+    const onTouchEnd = (e: TouchEvent) => {
+      const held = committedRef.current
+      endPress(false)
+      // Cancelling the touch is what stops it becoming a tap — no focus change,
+      // no keyboard, no text-selection handles. Only for a press that actually
+      // recorded something; anything shorter is left to the platform.
+      if (held && e.cancelable) e.preventDefault()
+    }
+    const onTouchCancel = () => cancel()
+    // The native long-press menu would arrive at ~500ms, after the hold has
+    // already committed at 300. Suppressed only while a press is live, so a
+    // field with text in it keeps the system paste bar — on a phone that is the
+    // only way to reach the clipboard.
+    const onContextMenu = (e: Event) => { if (pressActiveRef.current) e.preventDefault() }
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false })
+    el.addEventListener('touchmove', onTouchMove, { passive: false })
+    el.addEventListener('touchend', onTouchEnd, { passive: false })
+    el.addEventListener('touchcancel', onTouchCancel)
+    el.addEventListener('contextmenu', onContextMenu)
+
+    detachRef.current = () => {
+      el.removeEventListener('touchstart', onTouchStart)
+      el.removeEventListener('touchmove', onTouchMove)
+      el.removeEventListener('touchend', onTouchEnd)
+      el.removeEventListener('touchcancel', onTouchCancel)
+      el.removeEventListener('contextmenu', onContextMenu)
+    }
+  }, [beginPress, cancel, endPress, movePress])
+
+  useEffect(() => () => { detachRef.current?.() }, [])
+
+  // The microphone button keeps pointer events: it is not an editable element,
+  // so nothing about its default behaviour needs taking away.
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    e.currentTarget.setPointerCapture(e.pointerId)
+    beginPress(e.clientY)
+  }, [beginPress])
+  const handlePointerMove = useCallback((e: React.PointerEvent) => movePress(e.clientY), [movePress])
+  const handlePointerUp = useCallback(() => endPress(true), [endPress])
   const handlePointerCancel = useCallback(() => cancel(), [cancel])
 
   // The ticker drives the clock, the level meter and the hard cap.
@@ -263,6 +375,7 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, onTap }: Options) {
     peak,
     isActive: state !== 'idle',
     cancel,
+    attachField,
     handlePointerDown,
     handlePointerMove,
     handlePointerUp,

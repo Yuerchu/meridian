@@ -177,23 +177,22 @@ export function InputBar({
     onSend: (text) => onVoiceSend?.(text),
     onNotice: showVoiceNotice,
   })
-  // Hold-to-talk, driven by the microphone button below. Both recorder hooks
-  // are called unconditionally — hooks cannot be conditional — but only one is
-  // ever reachable: the button is Android's, `VoiceButton` is the desktop's.
+  // Hold-to-talk on the field, plus the microphone button as a visible way in.
+  // Both recorder hooks are called unconditionally — hooks cannot be
+  // conditional — but only one is ever reachable: this one is Android's,
+  // `VoiceButton` is the desktop's.
   //
-  // It used to be driven by a layer over the field as well, and that layer is
-  // why Android could not type. A touch landing outside an input dismisses the
-  // keyboard, and the layer was outside one; the field underneath never gave up
-  // DOM focus, so neither `focus()` nor `blur()` + `focus()` brought the IME
-  // back. Every tap on the composer played the dismissal and nothing else.
-  // Two ways in were never worth one that could not be used.
+  // Live exactly when the microphone button is offered, so the two entrances
+  // appear and disappear together. An empty field has nothing to select or
+  // scroll, which is what makes holding it free to mean something else.
+  const voicePress = Boolean(isAndroid && onVoiceSend && !value && !disabled && !streaming)
   const androidVoice = useAndroidVoiceRecorder({
     onSend: (text) => onVoiceSend?.(text),
     onNotice: showVoiceNotice,
-    // The press target is now a button, so a short one is a miss rather than a
-    // reach for the keyboard: say what it wants instead of moving focus.
-    onTap: () => showHint(t('chat.voice.holdToTalk')),
+    enabled: voicePress,
+    onButtonTap: () => showHint(t('chat.voice.holdToTalk')),
   })
+  const { attachField } = androidVoice
   // The back gesture cancels a recording instead of leaving the screen. Only
   // while capturing: transcription is over in well under a second, and a
   // history entry that brief is worse than none.
@@ -220,7 +219,11 @@ export function InputBar({
 
   const handleFieldReady = useCallback((el: HTMLTextAreaElement | null) => {
     textareaRef.current = el
-  }, [])
+    // The hold is bound here rather than through JSX: React attaches touch
+    // handlers passively at the root, where the `preventDefault()` that keeps a
+    // hold from becoming a tap is ignored without a word.
+    if (isAndroid) attachField(el)
+  }, [isAndroid, attachField])
 
   const handleContextMenuOpen = useCallback((open: boolean) => {
     if (open) {
@@ -366,7 +369,12 @@ export function InputBar({
           steerable={steerable}
           ariaLabel={t('chat.placeholder')}
           placeholder={
-            steerable && streaming ? t('chat.placeholderSteer') : t('chat.placeholder')
+            steerable && streaming
+              ? t('chat.placeholderSteer')
+              // Only promises the hold while the hold is bound.
+              : voicePress
+                ? t('chat.placeholderVoice')
+                : t('chat.placeholder')
           }
           onFieldReady={handleFieldReady}
           onDropFiles={onAttachFiles ? handleDropFiles : undefined}

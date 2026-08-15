@@ -19,14 +19,14 @@ vi.mock('@/lib/web-audio-capture', () => ({
 
 type Api = ReturnType<typeof useAndroidVoiceRecorder>
 
-function mount(onTap = vi.fn(), onSend = vi.fn(), onNotice = vi.fn()) {
+function mount(onButtonTap = vi.fn(), onSend = vi.fn(), onNotice = vi.fn()) {
   const ref: { current: Api | null } = { current: null }
   function Probe() {
-    ref.current = useAndroidVoiceRecorder({ onSend, onNotice, onTap })
+    ref.current = useAndroidVoiceRecorder({ onSend, onNotice, onButtonTap, enabled: true })
     return null
   }
   render(<Probe />)
-  return { ref, onTap, onSend, onNotice }
+  return { ref, onButtonTap, onSend, onNotice }
 }
 
 /** `setPointerCapture` does not exist in jsdom, and the hook calls it. */
@@ -35,6 +35,23 @@ const press = (api: Api, y = 0) => api.handlePointerDown({
   pointerId: 1,
   clientY: y,
 } as unknown as React.PointerEvent)
+
+/** jsdom has no `TouchEvent` constructor; the hook only reads `touches`. */
+function touch(el: HTMLElement, type: string, y = 0) {
+  const e = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperty(e, 'touches', {
+    value: type === 'touchend' ? [] : [{ clientY: y }],
+  })
+  el.dispatchEvent(e)
+  return e
+}
+
+function field(api: Api) {
+  const el = document.createElement('textarea')
+  document.body.append(el)
+  api.attachField(el)
+  return el
+}
 
 describe('useAndroidVoiceRecorder', () => {
   beforeEach(() => {
@@ -46,21 +63,70 @@ describe('useAndroidVoiceRecorder', () => {
   afterEach(() => vi.useRealTimers())
 
   /**
-   * The one that took Android typing away. `stateRef` is written from an effect,
-   * so it trails the render — and opening the microphone, which the press also
-   * kicks off, is what delays that render. A tap could therefore reach
-   * `pointerup` with the state still reading `idle`, where the old guard
-   * returned early: no cancel, no `onTap`, and a hold timer left armed that
-   * started recording 300ms after the finger had gone.
+   * The one that took Android typing away, and the reason the gesture is on the
+   * field rather than over it.
+   *
+   * A tap's default action is dispatched after the handlers for the touch that
+   * produced it, so anything the release does to focus is overwritten by where
+   * the tap lands. The field's own tap is therefore the only thing that reliably
+   * raises the keyboard — which means a short press must leave the touch alone.
    */
-  it('hands a tap to the keyboard even when the state has not caught up', () => {
-    const { ref, onTap } = mount()
+  it('leaves a short press to the platform, so the keyboard still opens', () => {
+    const { ref } = mount()
+    const el = field(ref.current!)
+
+    act(() => { touch(el, 'touchstart') })
+    let end!: Event
+    act(() => { end = touch(el, 'touchend') })
+
+    expect(end.defaultPrevented).toBe(false)
+    expect(ref.current!.state).toBe('idle')
+  })
+
+  /** The other half: once it is a recording the touch must not also become a
+   *  tap, or the field takes focus and the IME opens over the overlay. */
+  it('cancels the touch of a press that became a recording', async () => {
+    const { ref } = mount()
+    const el = field(ref.current!)
+
+    act(() => { touch(el, 'touchstart') })
+    await act(async () => { openResolve!(capture) })
+    act(() => { vi.advanceTimersByTime(400) })
+    expect(ref.current!.state).toBe('recording-hold')
+
+    let end!: Event
+    act(() => { end = touch(el, 'touchend') })
+    expect(end.defaultPrevented).toBe(true)
+  })
+
+  /** A finger on its way past the composer is not a press. */
+  it('gives the gesture back when the finger travels before the hold commits', () => {
+    const { ref } = mount()
+    const el = field(ref.current!)
+
+    act(() => { touch(el, 'touchstart', 100) })
+    act(() => { touch(el, 'touchmove', 130) })
+    // The armed timer must not promote a press that was abandoned.
+    act(() => { vi.advanceTimersByTime(400) })
+    expect(ref.current!.state).toBe('idle')
+    expect(capture.beginCollecting).not.toHaveBeenCalled()
+  })
+
+  /**
+   * `stateRef` is written from an effect, so it trails the render — and opening
+   * the microphone, which the press also kicks off, is what delays that render.
+   * A tap could therefore reach `pointerup` with the state still reading `idle`,
+   * where the old guard returned early: no cancel, no answer, and a hold timer
+   * left armed that started recording 300ms after the finger had gone.
+   */
+  it('answers a tap on the button even when the state has not caught up', () => {
+    const { ref, onButtonTap } = mount()
     act(() => { press(ref.current!) })
     // Deliberately *not* flushing effects here: this is the state the race puts
     // the hook in.
     act(() => { ref.current!.handlePointerUp() })
 
-    expect(onTap).toHaveBeenCalledTimes(1)
+    expect(onButtonTap).toHaveBeenCalledTimes(1)
 
     // And the armed timer must not resurrect the press.
     act(() => { vi.advanceTimersByTime(400) })
@@ -101,13 +167,13 @@ describe('useAndroidVoiceRecorder', () => {
   })
 
   it('starts recording once the press outlasts the threshold', async () => {
-    const { ref, onTap } = mount()
+    const { ref, onButtonTap } = mount()
     act(() => { press(ref.current!) })
     await act(async () => { openResolve!(capture) })
     act(() => { vi.advanceTimersByTime(400) })
 
     expect(ref.current!.state).toBe('recording-hold')
-    expect(onTap).not.toHaveBeenCalled()
+    expect(onButtonTap).not.toHaveBeenCalled()
     expect(capture.beginCollecting).toHaveBeenCalled()
   })
 
