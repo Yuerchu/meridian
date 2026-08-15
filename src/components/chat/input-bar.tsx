@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToSquare, Copy, Microphone, Scissors, SquareDashedText } from '@gravity-ui/icons'
+import { ArrowDownToSquare, Copy, Scissors, SquareDashedText } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button, Popover, ProgressCircle, Tooltip } from '@heroui/react'
@@ -177,20 +177,18 @@ export function InputBar({
     onSend: (text) => onVoiceSend?.(text),
     onNotice: showVoiceNotice,
   })
-  // Hold-to-talk on the field, plus the microphone button as a visible way in.
-  // Both recorder hooks are called unconditionally — hooks cannot be
-  // conditional — but only one is ever reachable: this one is Android's,
-  // `VoiceButton` is the desktop's.
+  // Hold-to-talk, on the field itself. Both recorder hooks are called
+  // unconditionally — hooks cannot be conditional — but only one is ever
+  // reachable: this one is Android's, `VoiceButton` is the desktop's.
   //
-  // Live exactly when the microphone button is offered, so the two entrances
-  // appear and disappear together. An empty field has nothing to select or
-  // scroll, which is what makes holding it free to mean something else.
+  // Only while the field is empty: then it has nothing to select and nothing to
+  // scroll, which is what leaves a hold free to mean something else. The moment
+  // there is text the gesture stands down and the field is only a field.
   const voicePress = Boolean(isAndroid && onVoiceSend && !value && !disabled && !streaming)
   const androidVoice = useAndroidVoiceRecorder({
     onSend: (text) => onVoiceSend?.(text),
     onNotice: showVoiceNotice,
     enabled: voicePress,
-    onButtonTap: () => showHint(t('chat.voice.holdToTalk')),
   })
   const { attachField } = androidVoice
   // The back gesture cancels a recording instead of leaving the screen. Only
@@ -457,25 +455,6 @@ export function InputBar({
                 assistantId={currentAssistantId}
                 onSelect={(syntax) => onChange(value + syntax)}
               />
-              {/* The only way in. It hides as soon as there is text: nothing
-                  here competes with the field for a touch. */}
-              {isAndroid && onVoiceSend && !value && (
-                <Button
-                  isIconOnly
-                  variant="ghost"
-                  size="sm"
-                  aria-label={t('chat.voice.holdToTalk')}
-                  isDisabled={disabled || streaming}
-                  className="touch-hitbox touch-none select-none text-muted"
-                  onPointerDown={androidVoice.handlePointerDown}
-                  onPointerMove={androidVoice.handlePointerMove}
-                  onPointerUp={androidVoice.handlePointerUp}
-                  onPointerCancel={androidVoice.handlePointerCancel}
-                  onContextMenu={(e) => e.preventDefault()}
-                >
-                  <Microphone className="size-5" />
-                </Button>
-              )}
               {!isAndroid && onVoiceSend && (
                 <Tooltip delay={0}>
                   {/* The button inside picks the tooltip's trigger props up from

@@ -23,9 +23,6 @@ interface Options {
   onNotice: (notice: VoiceNotice, detail?: string) => void
   /** Whether holding the field starts a recording at this moment. */
   enabled: boolean
-  /** A short press on the microphone button, which is a miss. Not called for
-   *  the field, where a short press is someone reaching for the keyboard. */
-  onButtonTap: () => void
 }
 
 /**
@@ -66,7 +63,7 @@ interface Options {
  * Touch also captures implicitly to the `touchstart` target, so there is no
  * `setPointerCapture` here and no need for one.
  */
-export function useAndroidVoiceRecorder({ onSend, onNotice, enabled, onButtonTap }: Options) {
+export function useAndroidVoiceRecorder({ onSend, onNotice, enabled }: Options) {
   const [state, setState] = useState<AndroidVoiceState>('idle')
   const [elapsed, setElapsed] = useState(0)
   const [peak, setPeak] = useState(0)
@@ -248,7 +245,7 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled, onButtonTap
     }
   }, [cancel])
 
-  const endPress = useCallback((fromButton: boolean) => {
+  const endPress = useCallback(() => {
     if (!pressActiveRef.current) return
     pressActiveRef.current = false
 
@@ -256,13 +253,13 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled, onButtonTap
       cancel()
       return
     }
-    // Short press: never became a recording. Measured against the clock rather
-    // than the state, which may not have caught up with the press yet. On the
-    // field this is a reach for the keyboard and the platform is already
-    // handling it; on the button it is a miss worth answering.
+    // Short press: never became a recording, and never said so. Someone is
+    // reaching for the keyboard and the platform is already handling it —
+    // saying anything here would answer a question nobody asked. Measured
+    // against the clock rather than the state, which may not have caught up
+    // with the press yet.
     if (Date.now() - pressedAtRef.current < HOLD_THRESHOLD_MS) {
       cancel()
-      if (fromButton) onButtonTap()
       return
     }
     // Held, but the device never opened in time — there is nothing to send.
@@ -272,7 +269,7 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled, onButtonTap
       return
     }
     finish()
-  }, [cancel, finish, onButtonTap, onNotice])
+  }, [cancel, finish, onNotice])
 
   /**
    * Binds the gesture to the text field.
@@ -302,7 +299,7 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled, onButtonTap
     }
     const onTouchEnd = (e: TouchEvent) => {
       const held = committedRef.current
-      endPress(false)
+      endPress()
       // Cancelling the touch is what stops it becoming a tap — no focus change,
       // no keyboard, no text-selection handles. Only for a press that actually
       // recorded something; anything shorter is left to the platform.
@@ -331,16 +328,6 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled, onButtonTap
   }, [beginPress, cancel, endPress, movePress])
 
   useEffect(() => () => { detachRef.current?.() }, [])
-
-  // The microphone button keeps pointer events: it is not an editable element,
-  // so nothing about its default behaviour needs taking away.
-  const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    e.currentTarget.setPointerCapture(e.pointerId)
-    beginPress(e.clientY)
-  }, [beginPress])
-  const handlePointerMove = useCallback((e: React.PointerEvent) => movePress(e.clientY), [movePress])
-  const handlePointerUp = useCallback(() => endPress(true), [endPress])
-  const handlePointerCancel = useCallback(() => cancel(), [cancel])
 
   // The ticker drives the clock, the level meter and the hard cap.
   //
@@ -376,9 +363,5 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled, onButtonTap
     isActive: state !== 'idle',
     cancel,
     attachField,
-    handlePointerDown,
-    handlePointerMove,
-    handlePointerUp,
-    handlePointerCancel,
   }
 }

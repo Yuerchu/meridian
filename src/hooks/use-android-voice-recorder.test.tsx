@@ -19,22 +19,15 @@ vi.mock('@/lib/web-audio-capture', () => ({
 
 type Api = ReturnType<typeof useAndroidVoiceRecorder>
 
-function mount(onButtonTap = vi.fn(), onSend = vi.fn(), onNotice = vi.fn()) {
+function mount(onSend = vi.fn(), onNotice = vi.fn()) {
   const ref: { current: Api | null } = { current: null }
   function Probe() {
-    ref.current = useAndroidVoiceRecorder({ onSend, onNotice, onButtonTap, enabled: true })
+    ref.current = useAndroidVoiceRecorder({ onSend, onNotice, enabled: true })
     return null
   }
   render(<Probe />)
-  return { ref, onButtonTap, onSend, onNotice }
+  return { ref, onSend, onNotice }
 }
-
-/** `setPointerCapture` does not exist in jsdom, and the hook calls it. */
-const press = (api: Api, y = 0) => api.handlePointerDown({
-  currentTarget: { setPointerCapture: () => {} },
-  pointerId: 1,
-  clientY: y,
-} as unknown as React.PointerEvent)
 
 /** jsdom has no `TouchEvent` constructor; the hook only reads `touches`. */
 function touch(el: HTMLElement, type: string, y = 0) {
@@ -115,23 +108,22 @@ describe('useAndroidVoiceRecorder', () => {
   /**
    * `stateRef` is written from an effect, so it trails the render — and opening
    * the microphone, which the press also kicks off, is what delays that render.
-   * A tap could therefore reach `pointerup` with the state still reading `idle`,
-   * where the old guard returned early: no cancel, no answer, and a hold timer
-   * left armed that started recording 300ms after the finger had gone.
+   * A release could therefore arrive with the state still reading `idle`, where
+   * the old guard returned early: no cancel, and a hold timer left armed that
+   * started recording 300ms after the finger had gone.
    */
-  it('answers a tap on the button even when the state has not caught up', () => {
-    const { ref, onButtonTap } = mount()
-    act(() => { press(ref.current!) })
+  it('does not resurrect a press that is already over', () => {
+    const { ref } = mount()
+    const el = field(ref.current!)
+    act(() => { touch(el, 'touchstart') })
     // Deliberately *not* flushing effects here: this is the state the race puts
     // the hook in.
-    act(() => { ref.current!.handlePointerUp() })
+    act(() => { touch(el, 'touchend') })
 
-    expect(onButtonTap).toHaveBeenCalledTimes(1)
-
-    // And the armed timer must not resurrect the press.
     act(() => { vi.advanceTimersByTime(400) })
     expect(ref.current!.state).toBe('idle')
     expect(ref.current!.isActive).toBe(false)
+    expect(capture.beginCollecting).not.toHaveBeenCalled()
   })
 
   /**
@@ -141,7 +133,8 @@ describe('useAndroidVoiceRecorder', () => {
    */
   it('says nothing until the press has lasted long enough to be a hold', async () => {
     const { ref } = mount()
-    act(() => { press(ref.current!) })
+    const el = field(ref.current!)
+    act(() => { touch(el, 'touchstart') })
     expect(ref.current!.isActive).toBe(false)
 
     await act(async () => { openResolve!(capture) })
@@ -157,7 +150,8 @@ describe('useAndroidVoiceRecorder', () => {
    *  opening, which on the same phone has taken anywhere up to 2.6s. */
   it('waits on a slow microphone without losing the hold', async () => {
     const { ref } = mount()
-    act(() => { press(ref.current!) })
+    const el = field(ref.current!)
+    act(() => { touch(el, 'touchstart') })
     act(() => { vi.advanceTimersByTime(400) })
     expect(ref.current!.state).toBe('starting')
 
@@ -166,38 +160,53 @@ describe('useAndroidVoiceRecorder', () => {
     expect(capture.beginCollecting).toHaveBeenCalled()
   })
 
-  it('starts recording once the press outlasts the threshold', async () => {
-    const { ref, onButtonTap } = mount()
-    act(() => { press(ref.current!) })
-    await act(async () => { openResolve!(capture) })
-    act(() => { vi.advanceTimersByTime(400) })
-
-    expect(ref.current!.state).toBe('recording-hold')
-    expect(onButtonTap).not.toHaveBeenCalled()
-    expect(capture.beginCollecting).toHaveBeenCalled()
-  })
-
   /** Sliding up past the threshold arms the cancel; releasing there sends nothing. */
   it('throws the recording away when released after sliding up', async () => {
     const { ref, onSend } = mount()
-    act(() => { press(ref.current!, 500) })
+    const el = field(ref.current!)
+    act(() => { touch(el, 'touchstart', 500) })
     await act(async () => { openResolve!(capture) })
     act(() => { vi.advanceTimersByTime(400) })
-    act(() => { ref.current!.handlePointerMove({ clientY: 400 } as React.PointerEvent) })
+    act(() => { touch(el, 'touchmove', 400) })
     expect(ref.current!.state).toBe('cancelling')
 
-    act(() => { ref.current!.handlePointerUp() })
+    act(() => { touch(el, 'touchend') })
     expect(ref.current!.state).toBe('idle')
     expect(onSend).not.toHaveBeenCalled()
     expect(capture.cancel).toHaveBeenCalled()
   })
 
-  /** A second pointerdown with no release between must not open a second device. */
-  it('ignores a press that arrives while one is already down', () => {
+  /** Rebinding must not leave the old listeners behind: two live bindings would
+   *  open two devices for one finger. */
+  it('drops the previous binding when the field is replaced', () => {
     const { ref } = mount()
-    act(() => { press(ref.current!) })
-    const first = openResolve
-    act(() => { press(ref.current!) })
-    expect(openResolve).toBe(first)
+    const first = field(ref.current!)
+    field(ref.current!)
+
+    act(() => { touch(first, 'touchstart') })
+    expect(openResolve).toBe(null)
+  })
+
+  /** The gesture stands down as soon as there is text: then the field has
+   *  something to select, and a hold belongs to the platform again. */
+  it('ignores a hold while disabled', () => {
+    const ref: { current: Api | null } = { current: null }
+    function Probe() {
+      ref.current = useAndroidVoiceRecorder({
+        onSend: vi.fn(), onNotice: vi.fn(), enabled: false,
+      })
+      return null
+    }
+    render(<Probe />)
+    const el = field(ref.current!)
+
+    let end!: Event
+    act(() => { touch(el, 'touchstart') })
+    act(() => { vi.advanceTimersByTime(400) })
+    act(() => { end = touch(el, 'touchend') })
+
+    expect(ref.current!.state).toBe('idle')
+    expect(openResolve).toBe(null)
+    expect(end.defaultPrevented).toBe(false)
   })
 })
