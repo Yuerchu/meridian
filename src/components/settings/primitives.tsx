@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Label, ListBox, Select, tv } from '@heroui/react'
+import { Button, Description, Label, ListBox, Select } from '@heroui/react'
 import { Check, ChevronRight } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'
@@ -19,25 +19,10 @@ import { cn } from '@/lib/utils'
  * the case for stopping.
  */
 
-const pane = tv({
-  base: 'space-y-6',
-  variants: {
-    width: {
-      /** A column of form controls. */
-      default: 'max-w-lg',
-      /** A list beside its detail. */
-      wide: 'max-w-3xl',
-    },
-  },
-  defaultVariants: { width: 'default' },
-})
-
-export function SettingsPane({
-  width,
-  className,
-  ...props
-}: React.ComponentProps<'div'> & { width?: 'default' | 'wide' }) {
-  return <div data-slot="settings-pane" className={cn(pane({ width }), className)} {...props} />
+export function SettingsPane({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div data-slot="settings-pane" className={cn('space-y-6 max-w-lg', className)} {...props} />
+  )
 }
 
 export function SettingsHeader({
@@ -81,7 +66,6 @@ export function SettingsHeader({
 export function SettingsRow({
   icon,
   label,
-  description,
   value,
   trailing,
   isActive,
@@ -90,7 +74,6 @@ export function SettingsRow({
 }: Omit<React.ComponentProps<typeof Button>, 'value'> & {
   icon?: React.ReactNode
   label: React.ReactNode
-  description?: React.ReactNode
   /** Current setting, shown at the end of the row. */
   value?: React.ReactNode
   /** Defaults to a chevron when the row opens something. */
@@ -114,12 +97,7 @@ export function SettingsRow({
       {...props}
     >
       {icon && <span className="flex size-4 shrink-0 items-center justify-center text-muted">{icon}</span>}
-      <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
-        <span className="w-full truncate text-start text-sm">{label}</span>
-        {description && (
-          <span className="w-full truncate text-start text-xs text-muted">{description}</span>
-        )}
-      </span>
+      <span className="min-w-0 flex-1 truncate text-start text-sm">{label}</span>
       {value && <span className="shrink-0 truncate text-xs text-muted">{value}</span>}
       {trailing ?? <ChevronRight className="size-4 shrink-0 text-muted" />}
     </Button>

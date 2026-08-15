@@ -1,9 +1,17 @@
-import * as React from "react"
 import { ContextMenu as ContextMenuPrimitive } from "@base-ui/react/context-menu"
 import { Separator } from "@base-ui/react/separator"
 
 import { cn } from "@/lib/utils"
-import { Check, ChevronRight } from "@gravity-ui/icons"
+
+/**
+ * The last thing standing on base-ui.
+ *
+ * HeroUI's menus are click-triggered and have no right-click equivalent, and
+ * Pro's ContextMenu closes on any scroll anywhere (see the plan's Phase A), so
+ * this stays until that is fixed upstream. What is here is only what four call
+ * sites use — the submenu branch, groups, labels, checkbox items and the
+ * shortcut slot were carried for two years and never rendered once.
+ */
 
 function ContextMenu({ ...props }: ContextMenuPrimitive.Root.Props) {
   return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />
@@ -33,30 +41,6 @@ function ContextMenuContent({
   )
 }
 
-function ContextMenuGroup({ ...props }: ContextMenuPrimitive.Group.Props) {
-  return <ContextMenuPrimitive.Group data-slot="context-menu-group" {...props} />
-}
-
-function ContextMenuLabel({
-  className,
-  inset,
-  ...props
-}: ContextMenuPrimitive.GroupLabel.Props & {
-  inset?: boolean
-}) {
-  return (
-    <ContextMenuPrimitive.GroupLabel
-      data-slot="context-menu-label"
-      data-inset={inset}
-      className={cn(
-        "px-1.5 py-1 text-xs font-medium text-muted data-inset:pl-7",
-        className,
-      )}
-      {...props}
-    />
-  )
-}
-
 function ContextMenuItem({
   className,
   inset,
@@ -80,87 +64,6 @@ function ContextMenuItem({
   )
 }
 
-function ContextMenuSub({ ...props }: ContextMenuPrimitive.SubmenuRoot.Props) {
-  return <ContextMenuPrimitive.SubmenuRoot data-slot="context-menu-sub" {...props} />
-}
-
-function ContextMenuSubTrigger({
-  className,
-  inset,
-  children,
-  ...props
-}: ContextMenuPrimitive.SubmenuTrigger.Props & {
-  inset?: boolean
-}) {
-  return (
-    <ContextMenuPrimitive.SubmenuTrigger
-      data-slot="context-menu-sub-trigger"
-      data-inset={inset}
-      className={cn(
-        "flex cursor-default items-center gap-1.5 rounded-md px-1.5 py-1 text-sm outline-hidden select-none focus:bg-default focus:text-default-foreground not-data-[variant=destructive]:focus:**:text-default-foreground data-inset:pl-7 data-popup-open:bg-default data-popup-open:text-default-foreground data-open:bg-default data-open:text-default-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      <ChevronRight className="ml-auto" />
-    </ContextMenuPrimitive.SubmenuTrigger>
-  )
-}
-
-function ContextMenuSubContent({
-  className,
-  ...props
-}: ContextMenuPrimitive.Popup.Props) {
-  return (
-    <ContextMenuPrimitive.Portal>
-      <ContextMenuPrimitive.Positioner className="isolate z-50 outline-none" side="right" sideOffset={0} align="start" alignOffset={-3}>
-        <ContextMenuPrimitive.Popup
-          data-slot="context-menu-sub-content"
-          className={cn(
-            "z-50 max-h-(--available-height) w-auto min-w-[96px] origin-(--transform-origin) overflow-x-hidden overflow-y-auto rounded-lg bg-overlay p-1 text-overlay-foreground shadow-lg ring-1 ring-foreground/10 duration-100 outline-none data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
-            className,
-          )}
-          {...props}
-        />
-      </ContextMenuPrimitive.Positioner>
-    </ContextMenuPrimitive.Portal>
-  )
-}
-
-function ContextMenuCheckboxItem({
-  className,
-  children,
-  checked,
-  inset,
-  ...props
-}: ContextMenuPrimitive.CheckboxItem.Props & {
-  inset?: boolean
-}) {
-  return (
-    <ContextMenuPrimitive.CheckboxItem
-      data-slot="context-menu-checkbox-item"
-      data-inset={inset}
-      className={cn(
-        "relative flex cursor-default items-center gap-1.5 rounded-md py-1 pr-8 pl-1.5 text-sm outline-hidden select-none focus:bg-default focus:text-default-foreground focus:**:text-default-foreground data-inset:pl-7 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-        className,
-      )}
-      checked={checked}
-      {...props}
-    >
-      <span
-        className="pointer-events-none absolute right-2 flex items-center justify-center"
-        data-slot="context-menu-checkbox-item-indicator"
-      >
-        <ContextMenuPrimitive.CheckboxItemIndicator>
-          <Check />
-        </ContextMenuPrimitive.CheckboxItemIndicator>
-      </span>
-      {children}
-    </ContextMenuPrimitive.CheckboxItem>
-  )
-}
-
 function ContextMenuSeparator({
   className,
   ...props
@@ -174,33 +77,10 @@ function ContextMenuSeparator({
   )
 }
 
-function ContextMenuShortcut({
-  className,
-  ...props
-}: React.ComponentProps<"span">) {
-  return (
-    <span
-      data-slot="context-menu-shortcut"
-      className={cn(
-        "ml-auto text-xs tracking-widest text-muted group-focus/context-menu-item:text-default-foreground",
-        className,
-      )}
-      {...props}
-    />
-  )
-}
-
 export {
   ContextMenu,
   ContextMenuTrigger,
   ContextMenuContent,
-  ContextMenuGroup,
-  ContextMenuLabel,
   ContextMenuItem,
-  ContextMenuCheckboxItem,
   ContextMenuSeparator,
-  ContextMenuShortcut,
-  ContextMenuSub,
-  ContextMenuSubTrigger,
-  ContextMenuSubContent,
 }

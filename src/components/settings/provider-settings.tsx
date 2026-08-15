@@ -682,6 +682,7 @@ export function ProviderSettings() {
         </Tooltip>
       }
       list={providerList}
+      detailTitle={selected?.name}
       detail={selected ? (
         <ProviderEditor
           key={selected.id}

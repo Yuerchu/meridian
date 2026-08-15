@@ -414,6 +414,7 @@ export function McpSettings() {
           {serverList}
         </div>
       }
+      detailTitle={selected?.name}
       detail={selected ? (
         <McpServerEditor
           key={selected.id}
