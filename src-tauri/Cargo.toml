@@ -75,6 +75,14 @@ bzip2 = "0.4"
 # Microphone capture, desktop only: Android records inside the WebView.
 [target.'cfg(not(target_os = "android"))'.dependencies]
 cpal = "0.15"
+# The Claude Code hook endpoint. All three already arrive under reqwest, so
+# promoting them to direct dependencies adds exactly one crate to the lock file
+# (`httpdate`, for the server's Date header) rather than a router's worth: axum
+# would have brought `matchit`, `axum-core` and `serde_path_to_error` for a
+# surface of two routes.
+hyper = { version = "1", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+http-body-util = "0.1"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 keyring = { version = "3.6", default-features = false, features = ["crypto-rust", "windows-native"] }

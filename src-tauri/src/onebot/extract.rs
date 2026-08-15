@@ -21,7 +21,7 @@ use crate::db::models::memory::{
 };
 use crate::db::ops::memory::VisibilityCtx;
 use crate::db::DbPool;
-use crate::util::now_ms;
+use crate::util::{extract_json_object, now_ms};
 
 /// How long an operator has to act on a bot-wide proposal.
 pub const PROPOSAL_TTL_MS: i64 = 24 * 3600 * 1000;
@@ -486,35 +486,6 @@ pub async fn run_extraction(
     .map_err(|e| e.to_string())?
 }
 
-/// Pull the first balanced `{...}` out of a reply, tolerating fenced code blocks
-/// and the odd sentence of preamble.
-fn extract_json_object(text: &str) -> Option<String> {
-    let start = text.find('{')?;
-    let bytes = text.as_bytes();
-    let mut depth = 0usize;
-    let mut in_string = false;
-    let mut escaped = false;
-    for (i, &b) in bytes.iter().enumerate().skip(start) {
-        if escaped {
-            escaped = false;
-            continue;
-        }
-        match b {
-            b'\\' if in_string => escaped = true,
-            b'"' => in_string = !in_string,
-            b'{' if !in_string => depth += 1,
-            b'}' if !in_string => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(text[start..=i].to_string());
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -754,17 +725,7 @@ mod tests {
         assert_eq!(rows[0].origin, Origin::Admin.as_str());
     }
 
-    #[test]
-    fn json_is_recovered_from_a_fenced_reply() {
-        let text = "Sure!\n```json\n{\"candidates\": []}\n```\n";
-        assert_eq!(extract_json_object(text).unwrap(), r#"{"candidates": []}"#);
-    }
-
-    #[test]
-    fn braces_inside_strings_do_not_confuse_the_scanner() {
-        let text = r#"{"candidates": [{"content": "a } b"}]}"#;
-        assert_eq!(extract_json_object(text).unwrap(), text);
-    }
+    // The scanner's own tests moved with it, to `util`.
 }
 
 #[cfg(test)]

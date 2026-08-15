@@ -7,6 +7,8 @@ pub mod conversation;
 pub mod dev;
 pub mod edit_session;
 pub mod emoji;
+#[cfg(not(target_os = "android"))]
+pub mod hooks;
 pub mod logs;
 pub mod mcp;
 pub mod memory;

@@ -428,6 +428,34 @@ export interface SafRootEntry {
   virtual_prefix: string
 }
 
+/** The local endpoint another coding agent's hooks post to. */
+export interface HooksConfig {
+  enabled: boolean
+  host: string
+  port: number
+  /** Minted by the backend on first save; the settings page only displays it. */
+  token: string | null
+  /** `"<provider_id>:<model_id>"`. Required — there is no sensible default for
+   *  "which model reviews plans". */
+  review_model: string | null
+  /** Supplies temperature and thinking; the persona is always the review
+   *  prompt. Null means the default assistant. */
+  assistant_id: string | null
+  timeout_secs: number
+  /** Rounds before the gate stops blocking. `0` disables that limit — the
+   *  stagnation check still ends a review that stops making progress. */
+  max_rounds: number
+}
+
+export interface HooksStatus {
+  enabled: boolean
+  running: boolean
+  host: string
+  port: number
+  /** Where the plugin looks for us. Shown so a stuck setup can be diagnosed. */
+  handshake_path: string | null
+}
+
 export interface EmojiPack {
   id: string
   name: string
