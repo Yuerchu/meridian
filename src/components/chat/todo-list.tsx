@@ -1,4 +1,5 @@
 import { Square, SquareCheck, SquareMinus } from '@gravity-ui/icons'
+import { useTranslation } from 'react-i18next'
 
 import { cn } from '@/lib/utils'
 import type { TodoItem, TodoItemStatus } from '@/types'
@@ -54,10 +55,15 @@ export function todoProgress(todos: TodoDraft[]) {
 }
 
 export function TodoStatusIcon({ status, className }: { status: TodoItemStatus; className?: string }) {
+  const { t } = useTranslation()
   const Icon = status === 'completed' ? SquareCheck : status === 'in_progress' ? SquareMinus : Square
   return (
+    // Named rather than hidden: the status is carried by this icon, by the
+    // colour and by a strikethrough, and none of the three reaches a screen
+    // reader. Hidden, the list read as a run of sentences with no state at all.
     <Icon
-      aria-hidden
+      role="img"
+      aria-label={t(`chat.todo.status.${status}`)}
       data-slot="todo-status-icon"
       data-status={status}
       className={cn(
@@ -74,6 +80,7 @@ export function TodoStatusIcon({ status, className }: { status: TodoItemStatus; 
 export function TodoItemRow({ item, className }: { item: TodoDraft; className?: string }) {
   return (
     <div
+      role="listitem"
       data-slot="todo-item"
       data-status={item.status}
       className={cn('flex items-start gap-2 text-xs', className)}
@@ -96,7 +103,10 @@ export function TodoItemRow({ item, className }: { item: TodoDraft; className?: 
 
 export function TodoItemList({ todos, className }: { todos: TodoDraft[]; className?: string }) {
   return (
-    <div data-slot="todo-item-list" className={cn('flex flex-col gap-1.5', className)}>
+    <div role="list" data-slot="todo-item-list" className={cn('flex flex-col gap-1.5', className)}>
+      {/* Index as key: a `TodoDraft` has no id — neither the streamed ones nor
+          the stored ones carry one — and the list is replaced wholesale rather
+          than reordered, so position is stable for as long as it exists. */}
       {todos.map((item, i) => (
         <TodoItemRow key={i} item={item} />
       ))}

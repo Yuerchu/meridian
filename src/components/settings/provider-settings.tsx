@@ -558,7 +558,15 @@ function ProviderEditor({
                   <div className="flex items-center justify-between px-3 py-1.5">
                     <span className={cn("text-xs", cfg ? "text-foreground" : "text-muted")}>
                       {m.name}
-                      {cfg && <span className="ml-1.5 text-xs text-success-soft-foreground">●</span>}
+                      {/* The dot is decoration; the name it carries is the
+                          part a screen reader can use. On its own it was read
+                          out as "black circle". */}
+                      {cfg && (
+                        <>
+                          <span aria-hidden className="ml-1.5 text-xs text-success-soft-foreground">●</span>
+                          <span className="sr-only">{t('settings.provider.modelConfigured')}</span>
+                        </>
+                      )}
                     </span>
                     <Button
                       isIconOnly

@@ -8,6 +8,7 @@ import { MemoryRow } from './memory/memory-row'
 import { MemoryTrash } from './memory/memory-trash'
 import { ScopeNav } from './memory/scope-nav'
 import { useMemoryBrowser } from './memory/use-memory-browser'
+import { SettingsHeader } from './primitives'
 
 export function MemorySettings() {
   const { t } = useTranslation()
@@ -55,22 +56,22 @@ export function MemorySettings() {
 
   return (
     <div data-slot="memory-settings" className="space-y-4">
-      <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">{t('settings.memory.title')}</h2>
-          <p className="mt-1 text-sm text-muted">{t('settings.memory.subtitle')}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => setTrashOpen(true)} data-slot="memory-trash-open">
-            <TrashBin />
-            {t('settings.memory.trash.title')}
-          </Button>
-          <Button variant="secondary" onClick={() => setShowAdd(true)} isDisabled={!canAdd}>
-            <Plus />
-            {t('settings.memory.new')}
-          </Button>
-        </div>
-      </div>
+      <SettingsHeader
+        title={t('settings.memory.title')}
+        subtitle={t('settings.memory.subtitle')}
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setTrashOpen(true)} data-slot="memory-trash-open">
+              <TrashBin />
+              {t('settings.memory.trash.title')}
+            </Button>
+            <Button variant="secondary" onClick={() => setShowAdd(true)} isDisabled={!canAdd}>
+              <Plus />
+              {t('settings.memory.new')}
+            </Button>
+          </>
+        }
+      />
 
       {/* Stacked until the viewport can hold two columns. */}
       <div className="flex flex-col gap-4 md:flex-row">

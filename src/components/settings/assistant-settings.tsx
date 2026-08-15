@@ -342,7 +342,16 @@ function AssistantEditor({
           <div
             data-slot="tool-list"
             className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
-          ><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
+          >{/* `role="group"` with a name, rather than `CheckboxGroup`: the
+                boxes below commit one at a time and two of the three sibling
+                grids write straight through to the backend on each toggle. A
+                group-level value would mean diffing an array back into "which
+                one changed", which is a lot of new failure for a label. */}
+          <div
+            role="group"
+            aria-label={t('settings.assistant.tools')}
+            className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2"
+          >
             {allTools.map((tool) => (
               <Checkbox
                 key={tool.name}
@@ -375,7 +384,11 @@ function AssistantEditor({
           title={t('settings.assistant.emojiPacks')}
           summary={assignedPackIds.size || undefined}
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2 border border-border rounded-lg">
+          <div
+            role="group"
+            aria-label={t('settings.assistant.emojiPacks')}
+            className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2 border border-border rounded-lg"
+          >
             {allPacks.map((pack) => (
               <Checkbox
                 key={pack.id}
@@ -416,7 +429,11 @@ function AssistantEditor({
           <div
             data-slot="skill-list"
             className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
-          ><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
+          ><div
+            role="group"
+            aria-label={t('settings.skills.assistantSection')}
+            className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2"
+          >
             {allSkills.map((skill) => (
               <Checkbox
                 key={skill.dir_name}

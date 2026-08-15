@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { Button, Checkbox, Description, Input, Label, ListBox, Select, TextField } from '@heroui/react'
+import { cn } from '@/lib/utils'
 import type { Assistant } from '@/types'
 import { SettingsHeader, SettingsPane } from './primitives'
 
@@ -114,7 +115,7 @@ export function OneBotSettings() {
   const running = status?.running ?? false
 
   const assistantOptions = [
-    { value: '_default', label: 'Default' },
+    { value: '_default', label: t('settings.assistant.providerDefault') },
     ...assistants.map((a) => ({ value: a.id, label: a.name })),
   ]
 
@@ -241,7 +242,12 @@ export function OneBotSettings() {
       {status && (
         <div className="rounded-lg border p-3 space-y-1 text-sm">
           <div className="flex items-center gap-2">
-            <span className={`inline-block w-2 h-2 rounded-full ${running ? 'bg-success' : 'bg-muted'}`} />
+            {/* Decoration: the state it stands for is spelled out beside it,
+                so announcing the dot too would only say it twice. */}
+            <span
+              aria-hidden
+              className={cn('inline-block w-2 h-2 rounded-full', running ? 'bg-success' : 'bg-muted')}
+            />
             <span className="font-medium">
               {running ? t('settings.onebot.statusRunning') : t('settings.onebot.statusStopped')}
             </span>

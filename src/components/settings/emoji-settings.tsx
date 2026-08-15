@@ -117,7 +117,7 @@ function PackCard({
                             // Always visible where there is no hover to reveal
                             // it — this is the only way to delete an emoji, and
                             // a touch screen never reaches `group-hover`.
-                            className="absolute -top-1.5 -right-1.5 !size-6 rounded-full bg-danger text-danger-foreground opacity-0 transition-opacity group-hover:opacity-100 pointer-coarse:opacity-100 touch-hitbox"
+                            className="absolute -top-1.5 -right-1.5 !size-6 rounded-full bg-danger text-danger-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 touch-hitbox"
                             onClick={() => onDeleteEmoji(e.id)}
                           >
                             <TrashBin className="!size-3" />

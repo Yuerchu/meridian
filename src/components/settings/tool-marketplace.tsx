@@ -293,7 +293,9 @@ export function ToolMarketplace() {
             return (
               <div key={preset.id} className="flex items-center gap-2 px-3 py-2 text-xs border border-border rounded-lg">
                 <span className="font-medium flex-1">{preset.name}</span>
-                <span className="text-muted">{toolNames.length} tools</span>
+                <span className="text-muted">
+                  {t('settings.tools.presetCount', { count: toolNames.length })}
+                </span>
                 {preset.is_builtin === 1 && (
                   <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.template.builtin')}</span>
                 )}
