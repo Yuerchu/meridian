@@ -1,5 +1,6 @@
-import { Button, tv } from '@heroui/react'
-import { ChevronRight } from '@gravity-ui/icons'
+import { useTranslation } from 'react-i18next'
+import { Button, Description, Label, ListBox, Select } from '@heroui/react'
+import { Check, ChevronRight } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'
 
@@ -18,25 +19,10 @@ import { cn } from '@/lib/utils'
  * the case for stopping.
  */
 
-const pane = tv({
-  base: 'space-y-6',
-  variants: {
-    width: {
-      /** A column of form controls. */
-      default: 'max-w-lg',
-      /** A list beside its detail. */
-      wide: 'max-w-3xl',
-    },
-  },
-  defaultVariants: { width: 'default' },
-})
-
-export function SettingsPane({
-  width,
-  className,
-  ...props
-}: React.ComponentProps<'div'> & { width?: 'default' | 'wide' }) {
-  return <div data-slot="settings-pane" className={cn(pane({ width }), className)} {...props} />
+export function SettingsPane({ className, ...props }: React.ComponentProps<'div'>) {
+  return (
+    <div data-slot="settings-pane" className={cn('space-y-6 max-w-lg', className)} {...props} />
+  )
 }
 
 export function SettingsHeader({
@@ -80,7 +66,6 @@ export function SettingsHeader({
 export function SettingsRow({
   icon,
   label,
-  description,
   value,
   trailing,
   isActive,
@@ -89,7 +74,6 @@ export function SettingsRow({
 }: Omit<React.ComponentProps<typeof Button>, 'value'> & {
   icon?: React.ReactNode
   label: React.ReactNode
-  description?: React.ReactNode
   /** Current setting, shown at the end of the row. */
   value?: React.ReactNode
   /** Defaults to a chevron when the row opens something. */
@@ -100,6 +84,10 @@ export function SettingsRow({
     <Button
       data-slot="settings-row"
       data-active={isActive || undefined}
+      // The background says which row is selected to anyone looking at it, and
+      // said it to nobody else. Both places that had built this by hand were
+      // missing it.
+      aria-current={isActive || undefined}
       variant="ghost"
       className={cn(
         'h-auto min-h-11 w-full justify-start gap-3 rounded-lg px-3 py-2 font-normal',
@@ -109,14 +97,119 @@ export function SettingsRow({
       {...props}
     >
       {icon && <span className="flex size-4 shrink-0 items-center justify-center text-muted">{icon}</span>}
-      <span className="flex min-w-0 flex-1 flex-col items-start gap-0.5">
-        <span className="w-full truncate text-start text-sm">{label}</span>
-        {description && (
-          <span className="w-full truncate text-start text-xs text-muted">{description}</span>
-        )}
-      </span>
+      <span className="min-w-0 flex-1 truncate text-start text-sm">{label}</span>
       {value && <span className="shrink-0 truncate text-xs text-muted">{value}</span>}
       {trailing ?? <ChevronRight className="size-4 shrink-0 text-muted" />}
     </Button>
+  )
+}
+
+/**
+ * "Saved", for the second or two after it happens.
+ *
+ * Four panels drew this identically. `role="status"` is the one thing none of
+ * them had: the whole point is to confirm something, and a confirmation that
+ * only exists as green text confirms nothing to a screen reader.
+ */
+export function SavedHint({ className, ...props }: React.ComponentProps<'span'>) {
+  const { t } = useTranslation()
+  return (
+    <span
+      data-slot="saved-hint"
+      role="status"
+      className={cn('flex items-center gap-1 text-xs text-success-soft-foreground', className)}
+      {...props}
+    >
+      <Check className="size-3.5" />
+      {t('common.saved')}
+    </span>
+  )
+}
+
+export interface SettingsSelectOption<T extends string> {
+  value: T
+  label: string
+}
+
+type SettingsSelectBase<T extends string> = {
+  value: T
+  options: readonly SettingsSelectOption<T>[]
+  onChange: (value: T) => void
+  description?: React.ReactNode
+  placeholder?: string
+  fullWidth?: boolean
+  isDisabled?: boolean
+  className?: string
+  triggerClassName?: string
+  /** Only the one caller that shrinks its rows needs this. */
+  itemClassName?: string
+}
+
+/**
+ * A named dropdown, either way of naming it — but one of the two.
+ *
+ * The union is the point: a `Select` with neither a `Label` nor an
+ * `aria-label` renders fine and is anonymous to a screen reader, and two of the
+ * twenty this replaces were exactly that. Here it does not compile.
+ */
+export type SettingsSelectProps<T extends string> = SettingsSelectBase<T> &
+  ({ label: React.ReactNode; ariaLabel?: never } | { label?: never; ariaLabel: string })
+
+/**
+ * The seven-layer `Select` every panel was writing out by hand.
+ *
+ * The lines saved are not the reason. HeroUI hands `onChange` a `Key | null`,
+ * and the twenty call sites had five different ways of narrowing it back —
+ * `String(v)`, `if (v)`, `?? ''`, a cast, or some pair of those. A caller here
+ * gets its own value type back and never sees the null: an empty selection is
+ * not a value this control can produce, since every option carries one.
+ */
+export function SettingsSelect<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+  ariaLabel,
+  description,
+  placeholder,
+  fullWidth,
+  isDisabled,
+  className,
+  triggerClassName,
+  itemClassName,
+}: SettingsSelectProps<T>) {
+  return (
+    <Select
+      data-slot="settings-select"
+      aria-label={ariaLabel}
+      className={className}
+      fullWidth={fullWidth}
+      isDisabled={isDisabled}
+      placeholder={placeholder}
+      value={value}
+      onChange={(key) => { if (key != null) onChange(String(key) as T) }}
+    >
+      {label && <Label>{label}</Label>}
+      <Select.Trigger className={triggerClassName}>
+        <Select.Value />
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover>
+        <ListBox>
+          {options.map((option) => (
+            <ListBox.Item
+              key={option.value}
+              id={option.value}
+              textValue={option.label}
+              className={itemClassName}
+            >
+              {option.label}
+              <ListBox.ItemIndicator />
+            </ListBox.Item>
+          ))}
+        </ListBox>
+      </Select.Popover>
+      {description && <Description>{description}</Description>}
+    </Select>
   )
 }

@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, ArrowUpFromLine, Sticker } from '@gravity-ui/icons'
-import { Button, Disclosure, Input } from '@heroui/react'
+import { Button, Chip, Disclosure, Input } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SettingsHeader, SettingsPane } from './primitives'
@@ -47,9 +48,9 @@ function PackCard({
               <span className="flex-1 truncate">{detail.pack.name}</span>
               <span className="text-xs text-muted">{detail.emojis.length}</span>
               {detail.pack.is_builtin === 1 && (
-                <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted shrink-0">
+                <Chip className="shrink-0 text-muted">
                   {t('settings.template.builtin')}
-                </span>
+                </Chip>
               )}
               <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
             </Disclosure.Trigger>
@@ -117,7 +118,7 @@ function PackCard({
                             // Always visible where there is no hover to reveal
                             // it — this is the only way to delete an emoji, and
                             // a touch screen never reaches `group-hover`.
-                            className="absolute -top-1.5 -right-1.5 !size-6 rounded-full bg-danger text-danger-foreground opacity-0 transition-opacity group-hover:opacity-100 pointer-coarse:opacity-100 touch-hitbox"
+                            className="absolute -top-1.5 -right-1.5 !size-6 rounded-full bg-danger text-danger-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 touch-hitbox"
                             onClick={() => onDeleteEmoji(e.id)}
                           >
                             <TrashBin className="!size-3" />
@@ -256,9 +257,11 @@ export function EmojiSettings() {
           />
         ))}
         {details.length === 0 && (
-          <p className="text-sm text-muted text-center py-6">
-            {t('settings.emoji.noPacks')}
-          </p>
+          <EmptyState size="sm">
+            <EmptyState.Header>
+              <EmptyState.Title>{t('settings.emoji.noPacks')}</EmptyState.Title>
+            </EmptyState.Header>
+          </EmptyState>
         )}
       </div>
       {confirmDialog}

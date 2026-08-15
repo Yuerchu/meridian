@@ -10,7 +10,7 @@ import {
   ChainOfThoughtStep,
   ChainOfThoughtSteps,
   ChainOfThoughtTrigger,
-} from '@/components/ui/chain-of-thought'
+} from '@heroui-pro/react/chain-of-thought'
 import {
   ChatTool,
   ChatToolApproval,

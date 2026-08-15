@@ -85,6 +85,28 @@ giving the binary an rpath that reaches wherever the bundler puts them —
 Tauri's resources land in `/usr/lib/<product>` for a deb and
 `Contents/Resources` for a `.app`, neither of which is beside the executable.
 
+**`SHERPA_ONNX_LIB_DIR` must not outlive the Android build that set it.**
+`resolve_lib_dir` in `sherpa-onnx-sys` takes the variable if it is set and
+returns it *without checking the target platform*; only when it is unset does
+it fetch the prebuilt archive for the target being built. So a desktop build
+run in a shell that still has the Android export from
+`scripts/fetch-sherpa-android.sh` links against a directory of arm64 `.so`
+files, and fails at `link.exe` with `LNK1181: cannot open input file
+'sherpa-onnx-c-api.lib'` — a message that names neither the variable nor
+Android, in a command line hundreds of arguments long.
+
+Worse, cargo caches the resolved path in
+`target/<profile>/build/sherpa-onnx-sys-*/output`. The crate does declare
+`cargo:rerun-if-env-changed=SHERPA_ONNX_LIB_DIR`, but clearing the variable has
+been seen not to trigger a re-run — so the wrong path survives into later
+builds. `cargo clean -p sherpa-onnx-sys` does not remove it either; delete that
+directory (it is a few KB, `out/` is empty) to force the script to run again.
+
+Give the export its own process rather than the session:
+`(export SHERPA_ONNX_LIB_DIR=$(bash scripts/fetch-sherpa-android.sh arm64-v8a); pnpm tauri android build --target aarch64)`.
+The variable holds one ABI at a time by design — see the header of that
+script — which is the same reason it should not hold one across two platforms.
+
 ## Android
 
 - **File access model**: tools resolve paths through `ToolContext::resolve_and_validate` (`src-tauri/src/tools/mod.rs`). Desktop = `FileAccess::Unrestricted` (legacy working_directory check). Android = `FileAccess::Roots` whitelist built in `build_file_access` (lib.rs) from preferences `android.manage_storage_enabled` / `android.saf_roots` + the system grant. SAF I/O goes through `src/android_bridge.rs` (JNI) → `FileBridge.kt`.

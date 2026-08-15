@@ -22,21 +22,18 @@ import { SettingsRow } from './primitives'
 export function SettingsDrilldown({
   title,
   summary,
-  mode,
   children,
 }: {
   title: React.ReactNode
   /** The current value, shown on the row that opens it. */
   summary?: React.ReactNode
-  /** Overrides the breakpoint, for a block that should never split out. */
-  mode?: 'inline' | 'push'
   children: React.ReactNode
 }) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
 
-  const pushes = mode === 'push' || (mode !== 'inline' && isMobile)
+  const pushes = isMobile
 
   useHistoryLevel(pushes && open, () => setOpen(false))
 

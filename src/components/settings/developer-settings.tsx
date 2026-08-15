@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CircleCheck, CircleXmark, Play } from '@gravity-ui/icons'
-import { Button, Card } from '@heroui/react'
+import { Button, Card, Meter } from '@heroui/react'
 
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
@@ -372,12 +372,18 @@ export function DeveloperSettings() {
           {recording && (
             <div className="space-y-1">
               <p className="text-xs text-danger">{t('settings.developer.probe.speakNow')}</p>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-default">
-                <div
-                  className="h-full bg-success transition-[width] duration-75"
-                  style={{ width: `${Math.min(100, peak * 140)}%` }}
-                />
-              </div>
+              {/* A meter, not a progress bar: this is a level within a known
+                  range, not a task advancing towards completion. The bare div
+                  it replaces reported nothing at all to a screen reader. */}
+              <Meter
+                aria-label={t('settings.developer.probe.level')}
+                value={Math.min(100, peak * 140)}
+                className="w-full"
+              >
+                <Meter.Track className="h-2 rounded-full bg-default">
+                  <Meter.Fill className="bg-success transition-[width] duration-75" />
+                </Meter.Track>
+              </Meter>
             </div>
           )}
 

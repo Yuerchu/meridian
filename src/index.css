@@ -13,6 +13,12 @@
    silently. One line per component we actually use. */
 @import '@heroui-pro/react/css/components/context-menu.css' layer(components);
 @import '@heroui-pro/react/css/components/sidebar.css' layer(components);
+/* `Sidebar.Mobile` is a Pro `Sheet` underneath, and below 768px it is the only
+   way to reach the sidebar at all — Pro hides the panel itself at that width.
+   `sidebar.css` only dresses the sheet (width, corners); everything that
+   positions it lives here, so without this the drawer opened correctly and drew
+   nothing. */
+@import '@heroui-pro/react/css/components/sheet.css' layer(components);
 @import '@heroui-pro/react/css/components/markdown.css' layer(components);
 @import '@heroui-pro/react/css/components/code-block.css' layer(components);
 @import '@heroui-pro/react/css/components/prompt-input.css' layer(components);
@@ -22,7 +28,50 @@
    only the trigger side of it (`.chat-source .hover-card__trigger`). Without
    this the preview opens as unstyled text over the page. */
 @import '@heroui-pro/react/css/components/hover-card.css' layer(components);
+@import '@heroui-pro/react/css/components/empty-state.css' layer(components);
+@import '@heroui-pro/react/css/components/action-bar.css' layer(components);
+@import '@heroui-pro/react/css/components/chain-of-thought.css' layer(components);
+/* `ChainOfThought` renders `TextShimmer` while reasoning streams, so its styles
+   come along whether or not anything imports the component directly. */
+@import '@heroui-pro/react/css/components/text-shimmer.css' layer(components);
 @import '@fontsource-variable/geist';
+
+/* TextShimmer paints its text with a moving gradient and sets
+   `-webkit-text-fill-color: transparent` so the gradient shows through. Those
+   are independent declarations: where `tan()` is unsupported the gradient's
+   width cannot be resolved and the whole `background` shorthand is dropped —
+   but the transparent fill still applies, and the text disappears rather than
+   degrading. Pro ships a fallback for `prefers-reduced-motion` and nothing
+   else, so this is the same set of declarations keyed on the feature instead.
+   Deliberately unlayered, to outrank the import above.
+
+   Android WebView tracks the system, so a device old enough to lack `tan()` is
+   a device this would otherwise show blank labels on. Settings → Developer
+   probes for both this and `oklch(from …)`. */
+@supports not (width: calc(1px * tan(45deg))) {
+  .text-shimmer {
+    -webkit-text-fill-color: unset;
+    color: currentColor;
+    background: none;
+    animation: none;
+  }
+}
+
+/* Pro hides the sidebar panel outright below 768px and offers it as a drawer
+   instead, but the inset look on the main area is keyed on the panel merely
+   being in the DOM (`:has(.sidebar--inset)`), which a hidden element still
+   satisfies. So a narrow window got a rounded, bordered card floating inside
+   its own frame with nothing beside it to be inset from.
+
+   Unlayered on purpose, to outrank the import. */
+@media (max-width: 768px) {
+  .sidebar__provider:has(.sidebar--inset) .sidebar__main {
+    margin: 0;
+    border-width: 0;
+    border-radius: 0;
+    min-height: 100svh;
+  }
+}
 
 /* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.
    Ours is deliberate: the theme is an explicit setting, and a dark OS must not

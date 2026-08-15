@@ -21,7 +21,6 @@ export function MasterDetail<Aux extends string = never>({
   list,
   detail,
   detailTitle,
-  detailActions,
   emptyDetail,
   aux,
   auxTitle,
@@ -42,7 +41,6 @@ export function MasterDetail<Aux extends string = never>({
   list: React.ReactNode
   detail?: React.ReactNode
   detailTitle?: React.ReactNode
-  detailActions?: React.ReactNode
   /** Shown in the right column when nothing is selected. */
   emptyDetail?: React.ReactNode
   /** Import panels and creation forms — above the columns, not instead of them. */
@@ -60,7 +58,6 @@ export function MasterDetail<Aux extends string = never>({
           <SettingsSubPage
             title={showingAux ? auxTitle : detailTitle}
             onBack={nav.back}
-            actions={showingAux ? undefined : detailActions}
           >
             {showingAux ? aux : detail}
           </SettingsSubPage>
