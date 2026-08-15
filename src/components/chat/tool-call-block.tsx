@@ -1,6 +1,13 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { diffLines, parsePatch } from 'diff'
+import { diffLines } from 'diff'
+import {
+  parsePatchText,
+  splitDiffText,
+  type DiffLine,
+  type DiffLineKind,
+  type FileDiff,
+} from '@/lib/patch-parse'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlightInline } from '@/lib/shiki'
 import { ShikiCode } from './shiki-code'
@@ -302,27 +309,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
 
 // ---- Diff rendering for file-editing tools (write_file / edit_file / apply_patch) ----
 
-type DiffLineKind = 'add' | 'remove' | 'context' | 'hunk'
-
-interface DiffLine {
-  kind: DiffLineKind
-  text: string
-}
-
-interface FileDiff {
-  path: string
-  op: 'create' | 'delete' | 'modify'
-  replaceAll?: boolean
-  lines: DiffLine[]
-}
-
 const MAX_DIFF_LINES = 300
-
-function splitDiffText(s: string): string[] {
-  const lines = s.split('\n')
-  if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop()
-  return lines
-}
 
 function writeFileDiff(args: Record<string, unknown>): FileDiff[] | null {
   const path = typeof args.path === 'string' ? args.path : null
@@ -353,108 +340,10 @@ function editFileDiff(args: Record<string, unknown>): FileDiff[] | null {
   }]
 }
 
-// Codex-style patch: *** Begin Patch / *** Update File: x / @@ ctx / +- lines / *** End Patch
-function parseCodexPatch(patch: string): FileDiff[] {
-  const files: FileDiff[] = []
-  let cur: FileDiff | null = null
-  for (const raw of patch.split('\n')) {
-    const header = raw.match(/^\*\*\* (Update|Add|Delete) File: (.+)$/)
-    if (header) {
-      cur = {
-        path: header[2].trim(),
-        op: header[1] === 'Add' ? 'create' : header[1] === 'Delete' ? 'delete' : 'modify',
-        lines: [],
-      }
-      files.push(cur)
-      continue
-    }
-    const move = raw.match(/^\*\*\* Move to: (.+)$/)
-    if (move && cur) {
-      cur.path = `${cur.path} → ${move[1].trim()}`
-      continue
-    }
-    if (raw.startsWith('*** ')) continue
-    if (!cur) continue
-    if (raw.startsWith('@@')) cur.lines.push({ kind: 'hunk', text: raw })
-    else if (raw.startsWith('+')) cur.lines.push({ kind: 'add', text: raw.slice(1) })
-    else if (raw.startsWith('-')) cur.lines.push({ kind: 'remove', text: raw.slice(1) })
-    else cur.lines.push({ kind: 'context', text: raw.startsWith(' ') ? raw.slice(1) : raw })
-  }
-  return files
-}
-
-function stripDiffPrefix(p: string): string {
-  const trimmed = p.trim()
-  return trimmed.startsWith('a/') || trimmed.startsWith('b/') ? trimmed.slice(2) : trimmed
-}
-
-// Line-scanning fallback for diffs jsdiff rejects, e.g. hunk headers whose
-// line counts are wrong — models miscount them routinely.
-function parseUnifiedPatchLoose(patch: string): FileDiff[] {
-  const files: FileDiff[] = []
-  const lines = patch.split('\n')
-  let cur: FileDiff | null = null
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line.startsWith('--- ') && lines[i + 1]?.startsWith('+++ ')) {
-      const oldPath = stripDiffPrefix(line.slice(4))
-      const newPath = stripDiffPrefix(lines[i + 1].slice(4))
-      cur = {
-        path: newPath === '/dev/null' ? oldPath : newPath,
-        op: oldPath === '/dev/null' ? 'create' : newPath === '/dev/null' ? 'delete' : 'modify',
-        lines: [],
-      }
-      files.push(cur)
-      i++
-      continue
-    }
-    if (!cur) continue
-    if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('\\')) continue
-    if (line.startsWith('@@')) cur.lines.push({ kind: 'hunk', text: line })
-    else if (line.startsWith('+')) cur.lines.push({ kind: 'add', text: line.slice(1) })
-    else if (line.startsWith('-')) cur.lines.push({ kind: 'remove', text: line.slice(1) })
-    else cur.lines.push({ kind: 'context', text: line.startsWith(' ') ? line.slice(1) : line })
-  }
-  return files
-}
-
-function parseUnifiedPatch(patch: string): FileDiff[] {
-  let parsed: ReturnType<typeof parsePatch>
-  try {
-    parsed = parsePatch(patch)
-  } catch {
-    return parseUnifiedPatchLoose(patch)
-  }
-  const files: FileDiff[] = []
-  for (const f of parsed) {
-    if (f.hunks.length === 0) continue
-    const oldPath = stripDiffPrefix(f.oldFileName ?? '')
-    const newPath = stripDiffPrefix(f.newFileName ?? '')
-    const lines: DiffLine[] = []
-    for (const h of f.hunks) {
-      lines.push({ kind: 'hunk', text: `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@` })
-      for (const l of h.lines) {
-        if (l.startsWith('+')) lines.push({ kind: 'add', text: l.slice(1) })
-        else if (l.startsWith('-')) lines.push({ kind: 'remove', text: l.slice(1) })
-        else if (l.startsWith('\\')) continue
-        else lines.push({ kind: 'context', text: l.startsWith(' ') ? l.slice(1) : l })
-      }
-    }
-    files.push({
-      path: newPath === '/dev/null' || newPath === '' ? oldPath : newPath,
-      op: oldPath === '/dev/null' ? 'create' : newPath === '/dev/null' ? 'delete' : 'modify',
-      lines,
-    })
-  }
-  return files.length > 0 ? files : parseUnifiedPatchLoose(patch)
-}
-
 function applyPatchDiff(args: Record<string, unknown>): FileDiff[] | null {
   const patch = typeof args.patch === 'string' ? args.patch : null
   if (patch === null) return null
-  const parsed = /^\*\*\* (Begin Patch|Update File|Add File|Delete File)/m.test(patch)
-    ? parseCodexPatch(patch)
-    : parseUnifiedPatch(patch)
+  const parsed = parsePatchText(patch)
   if (parsed.length > 0) return parsed
   // Unrecognized format: still show the raw patch with real newlines.
   return [{
@@ -549,7 +438,15 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
           className="flex items-center gap-2 px-3 py-1 bg-default/30 text-xs text-muted border-b border-border/50"
         >
           <FileIcon path={diff.path} />
-          <span className="font-mono truncate" title={diff.path}>{fileName}</span>
+          {/* A move used to arrive as one string with an arrow in the middle,
+              which read correctly and could not be used as a path. The parser
+              keeps the two apart now; the tooltip puts them back together. */}
+          <span
+            className="font-mono truncate"
+            title={diff.movedFrom ? `${diff.movedFrom} → ${diff.path}` : diff.path}
+          >
+            {fileName}
+          </span>
           {diff.op === 'create' && <span className="text-success-soft-foreground shrink-0">{t('chat.tool.diff.newFile')}</span>}
           {diff.op === 'delete' && <span className="text-danger shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
           {diff.replaceAll && <span className="shrink-0">{t('chat.tool.diff.replaceAll')}</span>}
