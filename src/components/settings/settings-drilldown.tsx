@@ -4,7 +4,7 @@ import { Button, Modal } from '@heroui/react'
 import { ArrowLeft } from '@gravity-ui/icons'
 
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useHistoryLevel } from '@/hooks/use-nav'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { SettingsRow } from './primitives'
 
 /**

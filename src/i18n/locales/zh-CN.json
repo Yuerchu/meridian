@@ -136,8 +136,6 @@
   "sidebar.exportDpo": "导出 DPO 偏好数据",
   "sidebar.delete": "删除",
   "sidebar.moreActions": "{{name}} 的操作",
-  "sidebar.renameConversation": "重命名对话",
-  "sidebar.renameProject": "重命名项目",
   "contextMenu.copySelection": "复制选中文本",
   "contextMenu.pin": "置顶",
   "contextMenu.unpin": "取消置顶",

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useHistoryLevel } from '@/hooks/use-nav'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 
 /**
  * A list beside its detail on a desktop, one behind the other on a phone.

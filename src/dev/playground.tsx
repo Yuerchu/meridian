@@ -1,7 +1,7 @@
 // Dev-only component playground. Reachable at #playground from a plain browser
 // (vite dev without the Tauri backend); never included in production builds.
 import { useState } from 'react'
-import { Bars, Gear, Moon, Plus, Sun } from '@gravity-ui/icons'
+import { Moon, Sun } from '@gravity-ui/icons'
 
 import { Button, Tooltip } from '@heroui/react'
 import {
@@ -44,11 +44,9 @@ import { TurnSteps } from '@/components/chat/turn-steps'
 import { TodoBarView } from '@/components/chat/todo-bar'
 import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
-import { ConversationListPage } from '@/components/layout/conversation-list-page'
-import { MobileAppBar } from '@/components/layout/mobile-app-bar'
 import { buildTurns, formatDuration, type TurnStep } from '@/lib/turns'
 import { useAppTheme } from '@/lib/theme'
-import type { ChatMode, ContentBlock, Conversation, Message, Project, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
+import type { ChatMode, ContentBlock, Message, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -951,94 +949,10 @@ function Gallery() {
           </div>
         </Section>
 
-        <Section title="MobileAppBar / 三种形态">
-          {/* 56px 高、48px 触摸目标、16px 文字边距 —— Android bar 的度量。
-              导航控件一律在左，右侧留给当前屏幕自己的操作。 */}
-          <div className="w-[360px] space-y-3 rounded-xl border border-border bg-surface p-2">
-            <MobileAppBar
-              title="当前对话的标题"
-              backLabel="返回"
-              leading={
-                <Button isIconOnly variant="ghost" aria-label="对话列表" className="size-12 shrink-0 rounded-xl">
-                  <Bars className="size-5" />
-                </Button>
-              }
-            />
-            <MobileAppBar
-              title="对话"
-              backLabel="返回"
-              onBack={() => {}}
-              actions={
-                <>
-                  <Button isIconOnly variant="ghost" aria-label="新对话" className="size-12 rounded-xl">
-                    <Plus className="size-5" />
-                  </Button>
-                  <Button isIconOnly variant="ghost" aria-label="设置" className="size-12 rounded-xl">
-                    <Gear className="size-5" />
-                  </Button>
-                </>
-              }
-            />
-            <MobileAppBar title="一个长到必须截断的设置分区标题名称" backLabel="返回" onBack={() => {}} />
-          </div>
-        </Section>
-
-        <Section title="会话列表行 / 360px 宽度下的各态">
-          {/* Boxed at 360px because that is where the row is tightest: the
-              last case below is the one that decides whether the title
-              truncates or the timestamp gets pushed off the edge. */}
-          <div className="w-[360px] rounded-xl border border-border bg-surface p-2">
-            <ConversationListPage
-              conversations={LIST_ROWS}
-              activeId="active"
-              projects={LIST_PROJECTS}
-              activeProjectId={null}
-              onSelect={() => {}}
-              onCreate={() => {}}
-              onSelectProject={() => {}}
-              onDelete={() => {}}
-              onRename={() => {}}
-              onTogglePin={() => {}}
-              onDeleteProject={() => {}}
-              onRenameProject={() => {}}
-              onBack={() => {}}
-              onOpenSettings={() => {}}
-            />
-          </div>
-        </Section>
+        {/* The conversation list and the mobile app bar used to be probed here.
+            Both are gone: the list is `Sidebar.Mobile` now, which is the same
+            tree the panel renders, so narrowing the window is the probe. */}
       </div>
     </div>
   )
 }
-
-const HOUR = 3600_000
-
-function listRow(over: Partial<Conversation> & { id: string }): Conversation {
-  return {
-    title: null, project_id: null, is_pinned: 0, is_archived: 0,
-    message_count: 3, created_at: Date.now() - HOUR, updated_at: Date.now() - HOUR,
-    assistant_id: null, compact_cursor: null, thinking_level: null,
-    fast_mode: 0, mode: null, head_message_id: null,
-    ...over,
-  } as Conversation
-}
-
-const LIST_ROWS: Conversation[] = [
-  listRow({ id: 'active', title: '当前会话' }),
-  listRow({ id: 'untitled' }),
-  listRow({ id: 'pinned', title: '置顶的会话', is_pinned: 1 }),
-  listRow({ id: 'archived', title: '已归档的会话', is_archived: 1, updated_at: Date.now() - 40 * 24 * HOUR }),
-  listRow({ id: 'yesterday', title: '昨天的会话', updated_at: Date.now() - 26 * HOUR }),
-  listRow({ id: 'lastyear', title: '去年的会话', updated_at: Date.now() - 400 * 24 * HOUR }),
-  // The worst case: pinned, plus a status dot, plus a title with nowhere to go.
-  listRow({
-    id: 'crowded',
-    title: '重构 tauri 命令注册表并把所有工具调用迁移到新的审批模型上',
-    is_pinned: 1,
-  }),
-]
-
-const LIST_PROJECTS: Project[] = [
-  { id: 'p1', name: 'meridian', path: 'C:/code/meridian', source_type: 'local', source_id: null, assistant_id: null, description: null, created_at: 0, updated_at: 0 },
-  { id: 'p2', name: '某个群聊', path: null, source_type: 'onebot_group', source_id: '123', assistant_id: null, description: null, created_at: 0, updated_at: 0 },
-]

@@ -137,8 +137,6 @@
   "sidebar.exportDpo": "Export DPO preference data",
   "sidebar.delete": "Delete",
   "sidebar.moreActions": "Actions for {{name}}",
-  "sidebar.renameConversation": "Rename conversation",
-  "sidebar.renameProject": "Rename project",
   "contextMenu.copySelection": "Copy Selection",
   "contextMenu.pin": "Pin",
   "contextMenu.unpin": "Unpin",

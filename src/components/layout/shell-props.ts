@@ -1,14 +1,21 @@
 import type { SettingsTab } from '@/components/settings/tabs'
-import type { Page } from '@/lib/nav'
 import type { Conversation, Project } from '@/types'
 
 /**
- * Everything both shells need from `App`.
+ * What fills the pane beside the sidebar.
  *
- * App stays the one place holding this state; the shells only arrange it. The
- * two of them render the same leaf components — `ChatView`, the conversation
- * list, the settings panels — and differ in the frame around them, which is
- * what keeps a phone from growing its own copy of the application.
+ * The sidebar is always there — as a panel on a wide window, as a sheet on a
+ * narrow one — so this is the only thing a screen change ever decides. There
+ * was once a second, stack-shaped answer for phones; one shell means one.
+ */
+export type Page = 'chat' | 'settings'
+
+/**
+ * Everything the shell needs from `App`.
+ *
+ * App stays the one place holding this state; the shell only arranges it. Its
+ * own file rather than the shell's, because `app-sidebar.tsx` needs {@link Page}
+ * and importing it from the shell would close a cycle.
  */
 export interface ShellProps {
   conversations: Conversation[]

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { getVersion } from '@tauri-apps/api/app'
 import { ChevronRight, FileText } from '@gravity-ui/icons'
 import { Button, Card } from '@heroui/react'
-import { useHistoryLevel } from '@/hooks/use-nav'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { LogViewer } from './logs/log-viewer'
 import { SettingsHeader, SettingsPane } from './primitives'
 

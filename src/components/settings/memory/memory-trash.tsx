@@ -6,7 +6,7 @@ import { Button, Card, Chip, Drawer } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { INFO_CHIP } from './memory-row'
 import type { Memory } from '@/types'
-import { useHistoryLevel } from '@/hooks/use-nav'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 
 interface MemoryTrashProps {
   open: boolean
