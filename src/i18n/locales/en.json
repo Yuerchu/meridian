@@ -80,7 +80,6 @@
   "chat.todo.status.pending": "Not started",
   "chat.todo.status.in_progress": "In progress",
   "chat.todo.status.completed": "Done",
-  "chat.toc.title": "Sections in this answer",
   "chat.todo.board": "Checklist by status",
   "chat.todo.emptyColumn": "Nothing here",
   "chat.todo.viewList": "List view",

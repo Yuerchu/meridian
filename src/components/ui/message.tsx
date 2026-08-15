@@ -29,11 +29,6 @@ function MessageUser({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="message"
-      // The one thing the DOM could not say about a message was who wrote it.
-      // Side of the screen is a layout consequence, not a fact anything can
-      // query — and the answer TOC has to be able to tell a heading in a reply
-      // from one in a pasted question.
-      data-role="user"
       className={cn(base, "flex-col items-end gap-2.5", className)}
       {...props}
     />
@@ -45,7 +40,6 @@ function MessageAssistant({ className, ...props }: React.ComponentProps<"div">) 
   return (
     <div
       data-slot="message"
-      data-role="assistant"
       className={cn(base, "items-start gap-2", className)}
       {...props}
     />

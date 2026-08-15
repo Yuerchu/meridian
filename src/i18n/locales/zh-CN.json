@@ -79,7 +79,6 @@
   "chat.todo.status.pending": "未开始",
   "chat.todo.status.in_progress": "进行中",
   "chat.todo.status.completed": "已完成",
-  "chat.toc.title": "这条回答的小节",
   "chat.todo.board": "按状态分列的清单",
   "chat.todo.emptyColumn": "这里是空的",
   "chat.todo.viewList": "列表视图",
