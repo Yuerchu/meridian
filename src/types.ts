@@ -442,6 +442,9 @@ export interface HooksConfig {
    *  prompt. Null means the default assistant. */
   assistant_id: string | null
   timeout_secs: number
+  /** Rounds before the gate stops blocking. `0` disables that limit — the
+   *  stagnation check still ends a review that stops making progress. */
+  max_rounds: number
 }
 
 export interface HooksStatus {

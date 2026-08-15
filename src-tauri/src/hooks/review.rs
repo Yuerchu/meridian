@@ -290,7 +290,10 @@ async fn effective_assistant(
     .map_err(|e| refuse(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
     .map_err(|e| refuse(StatusCode::SERVICE_UNAVAILABLE, e))?;
 
-    let max_rounds = request.max_rounds.unwrap_or(3);
+    // What the client says it will allow, not what we would allow: it is the
+    // side doing the counting. Falling back to our own setting keeps the
+    // reviewer honest when an older plugin sends nothing.
+    let max_rounds = request.max_rounds.unwrap_or(state.config.max_rounds);
     Ok(Assistant {
         provider_id: Some(provider_id.to_string()),
         model_id: Some(model_id.to_string()),

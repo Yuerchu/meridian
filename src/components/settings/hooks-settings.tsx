@@ -12,7 +12,8 @@ const DEFAULTS: HooksConfig = {
   token: null,
   review_model: null,
   assistant_id: null,
-  timeout_secs: 300,
+  timeout_secs: 600,
+  max_rounds: 5,
 }
 
 /**
@@ -174,6 +175,7 @@ export function HooksSettings() {
   const hostId = useId()
   const portId = useId()
   const timeoutId = useId()
+  const roundsId = useId()
 
   useEffect(() => () => {
     if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
@@ -381,6 +383,33 @@ export function HooksSettings() {
           }
         />
         <p className="text-xs text-muted">{t('settings.hooks.timeoutHint')}</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <label htmlFor={roundsId} className="block text-xs font-medium text-muted">
+          {t('settings.hooks.maxRounds')}
+        </label>
+        <Input
+          fullWidth
+          id={roundsId}
+          type="number"
+          min={0}
+          max={20}
+          value={config.max_rounds}
+          onChange={(e) =>
+            setConfig({
+              ...config,
+              // 0 is a real setting, not an empty field: it turns the round
+              // limit off. `|| 5` would swallow it, so parse explicitly.
+              max_rounds: Math.min(20, Math.max(0, parseInt(e.target.value, 10) || 0)),
+            })
+          }
+        />
+        <p className="text-xs text-muted">
+          {config.max_rounds === 0
+            ? t('settings.hooks.maxRoundsUnlimited')
+            : t('settings.hooks.maxRoundsHint')}
+        </p>
       </div>
 
       <div className="space-y-1.5">

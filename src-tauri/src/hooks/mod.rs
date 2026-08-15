@@ -77,6 +77,23 @@ const MAX_TIMEOUT_SECS: u32 = 1200;
 fn clamp_timeout(secs: u32) -> u32 {
     secs.clamp(10, MAX_TIMEOUT_SECS)
 }
+
+/// How many times a plan may be sent back before the gate gives up and lets it
+/// through. `0` means never give up on that count alone.
+///
+/// Not the mechanism that guarantees termination — that is the plugin's
+/// stagnation check, which passes a plan the moment two rounds in a row bring
+/// no material change, and which measures progress rather than counting it.
+/// This covers the narrower case of an agent that keeps producing genuinely
+/// different plans that keep failing review, where the question is not
+/// correctness but how much the user is willing to spend. So it is theirs to
+/// set, and `0` is a legitimate answer.
+const DEFAULT_MAX_ROUNDS: u32 = 5;
+const MAX_MAX_ROUNDS: u32 = 20;
+
+fn clamp_rounds(rounds: u32) -> u32 {
+    rounds.min(MAX_MAX_ROUNDS)
+}
 /// The file the plugin reads to find this server.
 const HANDSHAKE: &str = "plan-gate.json";
 
@@ -97,6 +114,9 @@ pub struct HookConfig {
     /// assistant. The persona is always replaced by the review prompt.
     pub assistant_id: Option<String>,
     pub timeout_secs: u32,
+    /// Rounds before the gate stops blocking. `0` = no limit; see
+    /// [`DEFAULT_MAX_ROUNDS`].
+    pub max_rounds: u32,
 }
 
 impl Default for HookConfig {
@@ -109,6 +129,7 @@ impl Default for HookConfig {
             review_model: None,
             assistant_id: None,
             timeout_secs: DEFAULT_TIMEOUT_SECS,
+            max_rounds: DEFAULT_MAX_ROUNDS,
         }
     }
 }
@@ -147,6 +168,11 @@ pub fn load_config(pool: &DbPool) -> HookConfig {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(DEFAULT_TIMEOUT_SECS),
         ),
+        max_rounds: clamp_rounds(
+            get("hooks.plan_review.max_rounds")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(DEFAULT_MAX_ROUNDS),
+        ),
     }
 }
 
@@ -165,6 +191,7 @@ pub fn save_config(pool: &DbPool, config: &HookConfig) -> Result<(), String> {
     set("hooks.plan_review.model", config.review_model.as_deref().unwrap_or(""))?;
     set("hooks.plan_review.assistant_id", config.assistant_id.as_deref().unwrap_or(""))?;
     set("hooks.plan_review.timeout_secs", &clamp_timeout(config.timeout_secs).to_string())?;
+    set("hooks.plan_review.max_rounds", &clamp_rounds(config.max_rounds).to_string())?;
     Ok(())
 }
 
@@ -324,6 +351,10 @@ fn write_handshake(path: &std::path::Path, config: &HookConfig, generation: u64)
         "token": config.token.as_deref().unwrap_or(""),
         "pid": std::process::id(),
         "timeoutMs": config.timeout_secs as u64 * 1000,
+        // The plugin counts the rounds, so it needs the ceiling. Carried here
+        // rather than configured on that side because this is where the user
+        // already sets the model and the timeout.
+        "maxRounds": config.max_rounds,
         "generation": generation,
     });
     if let Some(parent) = path.parent() {
@@ -476,6 +507,15 @@ mod tests {
             remove_handshake_if_ours(&path, 1);
             assert!(path.exists(), "should not delete on `{body}`");
         }
+    }
+
+    /// Zero survives, because "never give up on a count" is a real answer here
+    /// and not the same as "unset".
+    #[test]
+    fn the_round_limit_allows_no_limit_at_all() {
+        assert_eq!(clamp_rounds(0), 0);
+        assert_eq!(clamp_rounds(5), 5);
+        assert_eq!(clamp_rounds(999), MAX_MAX_ROUNDS);
     }
 
     /// A value stored before the ceiling existed (the author's own config held

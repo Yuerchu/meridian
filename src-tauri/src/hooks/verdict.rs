@@ -32,8 +32,17 @@ pub(crate) fn prompt(cwd: &str, round: u32, max_rounds: u32, stagnant: bool) -> 
         ""
     };
 
+    // `0` means the user turned the round limit off. Saying "最多 0 轮" would be
+    // worse than saying nothing: a reviewer told it has no rounds left has been
+    // handed a reason to wave the plan through.
+    let budget = if max_rounds == 0 {
+        String::new()
+    } else {
+        format!("，最多 {max_rounds} 轮")
+    };
+
     format!(
-        r#"你在审查另一个 AI agent 为仓库 `{cwd}` 写的实施计划。这是第 {round} 轮，最多 {max_rounds} 轮。
+        r#"你在审查另一个 AI agent 为仓库 `{cwd}` 写的实施计划。这是第 {round} 轮{budget}。
 {repeat}
 你有四个只读工具：read_file、search_files、glob、list_directory。你改不了任何东西，
 也不要给出改好的计划 —— 只说哪里必须改。
