@@ -202,6 +202,7 @@
   "settings.memory.selectedCount": "已选 {{count}} 条",
   "settings.memory.deleteSelected": "删除",
   "settings.memory.clearSelection": "取消选择",
+  "settings.memory.selectAll": "全选",
   "settings.memory.deleteConfirmTitle": "删除这些记忆?",
   "settings.memory.deleteConfirmBody": "它们将移入回收站，30 天内可恢复。",
   "settings.confirmDelete.assistant": "确定删除这个助手吗？它已经进行过的对话会保留。此操作不可撤销。",

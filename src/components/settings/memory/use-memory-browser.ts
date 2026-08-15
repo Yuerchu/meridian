@@ -114,6 +114,13 @@ export function useMemoryBrowser() {
 
   const clearSelection = useCallback(() => setSelected(new Set()), [])
 
+  /** Everything the current filter and search leave on screen — not every
+   *  memory in the database, which is not what the row checkboxes offered. */
+  const selectAllVisible = useCallback(
+    () => setSelected(new Set(visible.map((m) => m.id))),
+    [visible],
+  )
+
   return {
     projects,
     subjects,
@@ -129,6 +136,7 @@ export function useMemoryBrowser() {
     selected,
     toggleSelected,
     clearSelection,
+    selectAllVisible,
     loading,
     refresh,
   }

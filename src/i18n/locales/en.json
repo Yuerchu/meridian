@@ -203,6 +203,7 @@
   "settings.memory.selectedCount": "{{count}} selected",
   "settings.memory.deleteSelected": "Delete",
   "settings.memory.clearSelection": "Clear",
+  "settings.memory.selectAll": "Select all",
   "settings.memory.deleteConfirmTitle": "Delete these memories?",
   "settings.memory.deleteConfirmBody": "They move to the trash and can be restored for 30 days.",
   "settings.confirmDelete.assistant": "Delete this assistant? Conversations it has already had are kept. This cannot be undone.",
