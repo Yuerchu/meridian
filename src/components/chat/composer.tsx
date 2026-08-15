@@ -37,8 +37,6 @@ interface ComposerProps {
   toolbarStart?: ReactNode
   /** Right of the toolbar, before Send: emoji, voice, context usage. */
   toolbarEnd?: ReactNode
-  /** Sits over the field itself — Android's hold-to-talk layer. */
-  pressLayer?: ReactNode
   /** One line above the shell. Not `PromptInput.Footer`, which is below it. */
   notice?: ReactNode
   /** Absolute paths of files dropped on the window. Desktop only. */
@@ -78,7 +76,6 @@ export function Composer({
   attachments,
   toolbarStart,
   toolbarEnd,
-  pressLayer,
   notice,
   onDropFiles,
   onFieldReady,
@@ -141,17 +138,14 @@ export function Composer({
         <PromptInput.Shell data-dragging={dropping ? 'true' : undefined}>
           <PromptInput.Content>
             {attachments && <PromptInput.Attachments>{attachments}</PromptInput.Attachments>}
-            <div className="relative w-full">
-              <PromptInput.TextArea
-                aria-label={ariaLabel}
-                placeholder={placeholder}
-                autoFocus={autoFocus}
-                onKeyDownCapture={guardEnter}
-                onCompositionStart={() => { composingRef.current = true }}
-                onCompositionEnd={() => { composingRef.current = false }}
-              />
-              {pressLayer}
-            </div>
+            <PromptInput.TextArea
+              aria-label={ariaLabel}
+              placeholder={placeholder}
+              autoFocus={autoFocus}
+              onKeyDownCapture={guardEnter}
+              onCompositionStart={() => { composingRef.current = true }}
+              onCompositionEnd={() => { composingRef.current = false }}
+            />
           </PromptInput.Content>
           <PromptInput.Toolbar>
             <PromptInput.ToolbarStart>{toolbarStart}</PromptInput.ToolbarStart>

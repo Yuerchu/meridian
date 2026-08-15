@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CircleCheck, CircleXmark, Play } from '@gravity-ui/icons'
-import { Button, Card, Switch } from '@heroui/react'
+import { Button, Card } from '@heroui/react'
 
 import { api } from '@/api'
-import { useHoldToTalk } from '@/hooks/use-hold-to-talk'
 import { usePlatform } from '@/hooks/use-platform'
 import { cn } from '@/lib/utils'
 import { encodePcm16Base64, openCapture } from '@/lib/web-audio-capture'
@@ -114,7 +113,6 @@ function floatToBase64Pcm16(samples: Float32Array): string {
 export function DeveloperSettings() {
   const { t } = useTranslation()
   const isAndroid = usePlatform() === 'android'
-  const [holdToTalk, setHoldToTalk] = useHoldToTalk()
   const [lines, setLines] = useState<Line[]>([])
   const [peak, setPeak] = useState(0)
   const [recording, setRecording] = useState(false)
@@ -320,29 +318,6 @@ export function DeveloperSettings() {
         title={t('settings.developer.title')}
         subtitle={t('settings.developer.intro')}
       />
-
-      {isAndroid && (
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium text-muted">{t('settings.developer.gestures')}</p>
-          <Card>
-            <Card.Header>
-              <Card.Title>{t('settings.developer.holdToTalk')}</Card.Title>
-              <Card.Description>{t('settings.developer.holdToTalkHint')}</Card.Description>
-            </Card.Header>
-            <Card.Footer>
-              {/* `Switch.Content` is the clickable element — the root is a
-                  plain field wrapper and `Switch.Control` a bare span, so a
-                  control parked outside Content has nothing to press. */}
-              <Switch isSelected={holdToTalk} onChange={setHoldToTalk}>
-                <Switch.Content>
-                  <Switch.Control><Switch.Thumb /></Switch.Control>
-                  {t('settings.developer.holdToTalkLabel')}
-                </Switch.Content>
-              </Switch>
-            </Card.Footer>
-          </Card>
-        </div>
-      )}
 
       <div className="space-y-1.5">
         <p className="text-xs font-medium text-muted">{t('settings.developer.cssProbe')}</p>

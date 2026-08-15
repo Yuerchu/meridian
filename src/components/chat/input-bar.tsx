@@ -4,7 +4,6 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowDownToSquare, Copy, Microphone, Scissors, SquareDashedText } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { useHoldToTalk } from '@/hooks/use-hold-to-talk'
 import { Button, Popover, ProgressCircle, Tooltip } from '@heroui/react'
 import {
   ContextMenu,
@@ -158,7 +157,6 @@ export function InputBar({
   const { t } = useTranslation()
   const platform = usePlatform()
   const isAndroid = platform === 'android'
-  const [holdToTalk] = useHoldToTalk()
   // Filled by Composer once the field exists: Pro spreads incoming props after
   // its own ref, so one passed down would displace theirs.
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -167,33 +165,34 @@ export function InputBar({
   // Transient one-line notice above the composer ("too short", model missing…)
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null)
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const showVoiceNotice = useCallback((notice: VoiceNotice, detail?: string) => {
-    const text = notice === 'error' && detail ? detail : t(`chat.voice.${notice}`)
+  const showHint = useCallback((text: string) => {
     setVoiceNotice(text)
     if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
     noticeTimerRef.current = setTimeout(() => setVoiceNotice(null), 3000)
-  }, [t])
+  }, [])
+  const showVoiceNotice = useCallback((notice: VoiceNotice, detail?: string) => {
+    showHint(notice === 'error' && detail ? detail : t(`chat.voice.${notice}`))
+  }, [showHint, t])
   const voice = useVoiceRecorder({
     onSend: (text) => onVoiceSend?.(text),
     onNotice: showVoiceNotice,
   })
-  // Hold-to-talk on the field itself. Both hooks are called unconditionally —
-  // hooks cannot be conditional — but only one of them is ever reachable: the
-  // desktop has no press layer, and Android does not render the mic button.
+  // Hold-to-talk, driven by the microphone button below. Both recorder hooks
+  // are called unconditionally — hooks cannot be conditional — but only one is
+  // ever reachable: the button is Android's, `VoiceButton` is the desktop's.
+  //
+  // It used to be driven by a layer over the field as well, and that layer is
+  // why Android could not type. A touch landing outside an input dismisses the
+  // keyboard, and the layer was outside one; the field underneath never gave up
+  // DOM focus, so neither `focus()` nor `blur()` + `focus()` brought the IME
+  // back. Every tap on the composer played the dismissal and nothing else.
+  // Two ways in were never worth one that could not be used.
   const androidVoice = useAndroidVoiceRecorder({
     onSend: (text) => onVoiceSend?.(text),
     onNotice: showVoiceNotice,
-    // Not a bare `focus()`. Android hides the keyboard whenever a touch lands
-    // outside an input, and the hold-to-talk layer is outside one — but the
-    // field underneath never gave up DOM focus, so asking for it again is a
-    // no-op: no focus change, no request for an IME, and the dismissal stands.
-    // Moving focus away and back is what makes it a change the WebView answers.
-    onTap: () => {
-      const el = textareaRef.current
-      if (!el) return
-      el.blur()
-      el.focus()
-    },
+    // The press target is now a button, so a short one is a miss rather than a
+    // reach for the keyboard: say what it wants instead of moving focus.
+    onTap: () => showHint(t('chat.voice.holdToTalk')),
   })
   // The back gesture cancels a recording instead of leaving the screen. Only
   // while capturing: transcription is over in well under a second, and a
@@ -367,12 +366,7 @@ export function InputBar({
           steerable={steerable}
           ariaLabel={t('chat.placeholder')}
           placeholder={
-            steerable && streaming
-              ? t('chat.placeholderSteer')
-              // Only promises the hold while the layer that catches it is there.
-              : holdToTalk && isAndroid && !value
-                ? t('chat.placeholderVoice')
-                : t('chat.placeholder')
+            steerable && streaming ? t('chat.placeholderSteer') : t('chat.placeholder')
           }
           onFieldReady={handleFieldReady}
           onDropFiles={onAttachFiles ? handleDropFiles : undefined}
@@ -398,29 +392,6 @@ export function InputBar({
                 </ChatAttachment>
               ))}
             </ChatAttachmentGroup>
-          )}
-          /* Hold-to-talk, as a layer rather than as handlers on the field.
-             While it is up the textarea sees no touches at all, so there is no
-             race with focus, the keyboard, or the text-selection action mode —
-             and an empty field has nothing to select anyway. It disappears the
-             moment there is text, leaving editing untouched.
-
-             `role="button"` is load-bearing beyond semantics: Pro's Shell
-             focuses the field when clicked anywhere that is not a control, and
-             that is the attribute its allowlist looks for. Without it a press
-             here would summon the keyboard. */
-          pressLayer={holdToTalk && isAndroid && !value && !disabled && !streaming && onVoiceSend && (
-            <div
-              data-slot="voice-press-layer"
-              role="button"
-              aria-label={t('chat.voice.holdToTalk')}
-              className="absolute inset-0 touch-none select-none"
-              onPointerDown={androidVoice.handlePointerDown}
-              onPointerMove={androidVoice.handlePointerMove}
-              onPointerUp={androidVoice.handlePointerUp}
-              onPointerCancel={androidVoice.handlePointerCancel}
-              onContextMenu={(e) => e.preventDefault()}
-            />
           )}
           toolbarStart={steerable && streaming ? null : (
             isAndroid ? (
@@ -478,9 +449,8 @@ export function InputBar({
                 assistantId={currentAssistantId}
                 onSelect={(syntax) => onChange(value + syntax)}
               />
-              {/* A press target of its own. Holding the field works too, but an
-                  empty composer is one line tall, which is a poor thing to aim
-                  a thumb at — and nothing about it says it can be held. */}
+              {/* The only way in. It hides as soon as there is text: nothing
+                  here competes with the field for a touch. */}
               {isAndroid && onVoiceSend && !value && (
                 <Button
                   isIconOnly

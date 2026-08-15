@@ -5,7 +5,7 @@ import { encodePcm16Base64, openCapture, type CaptureHandle } from '@/lib/web-au
 import type { VoiceButtonState } from '@/components/ui/voice-button'
 import type { VoiceNotice } from './use-voice-recorder'
 
-/** Below this a press is a tap: focus the field and let the keyboard up. */
+/** Below this a press is a tap, which starts nothing. */
 const HOLD_THRESHOLD_MS = 300
 /** Hard stop, matching the familiar voice-message cap. */
 const MAX_DURATION_MS = 60_000
@@ -18,12 +18,18 @@ export type AndroidVoiceState = VoiceButtonState | 'cancelling'
 interface Options {
   onSend: (text: string) => void
   onNotice: (notice: VoiceNotice, detail?: string) => void
-  /** Called on a short press, to hand the field back to the keyboard. */
+  /** Called on a short press, which is a miss rather than a recording. */
   onTap: () => void
 }
 
 /**
- * Hold-to-talk on the composer itself.
+ * Hold-to-talk, on the microphone button beside the composer.
+ *
+ * On the composer itself once, as a layer over the field. That layer is why
+ * Android could not type: a touch outside an input dismisses the keyboard, and
+ * the field beneath never gave up DOM focus, so nothing script could do brought
+ * the IME back. The button is a real press target and takes no touch the field
+ * wanted.
  *
  * Separate from `useVoiceRecorder` rather than a branch inside it: that one
  * drives a recording session in Rust, this one drives a MediaStream in the
