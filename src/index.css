@@ -12,7 +12,9 @@
    `display: inline-block` would beat any utility we put on the same element,
    silently. One line per component we actually use. */
 @import '@heroui-pro/react/css/components/command.css' layer(components);
+@import '@heroui-pro/react/css/components/file-tree.css' layer(components);
 @import '@heroui-pro/react/css/components/floating-toc.css' layer(components);
+@import '@heroui-pro/react/css/components/resizable.css' layer(components);
 @import '@heroui-pro/react/css/components/kanban.css' layer(components);
 @import '@heroui-pro/react/css/components/context-menu.css' layer(components);
 @import '@heroui-pro/react/css/components/sidebar.css' layer(components);

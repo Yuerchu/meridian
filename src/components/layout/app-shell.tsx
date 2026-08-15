@@ -3,11 +3,14 @@ import { useTranslation } from 'react-i18next'
 
 import { Button, Tooltip } from '@heroui/react'
 import { Sidebar } from '@heroui-pro/react/sidebar'
-import { Magnifier } from '@gravity-ui/icons'
+import { Resizable } from '@heroui-pro/react/resizable'
+import { FolderTree, Magnifier } from '@gravity-ui/icons'
+import { ChangesPanel } from '@/components/chat/changes-panel'
 import { ChatView } from '@/components/chat/chat-view'
 import { EmptyState } from '@/components/chat/empty-state'
 import { useBackGesture, useHistoryLevel } from '@/hooks/use-history-level'
 import { useHotkey } from '@/hooks/use-hotkey'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { AppSidebar } from './app-sidebar'
 import { CommandPalette } from './command-palette'
 import type { ShellProps } from './shell-props'
@@ -50,12 +53,27 @@ export function AppShell(props: ShellProps) {
   // custom protocol. Persisting the state is a store field if we ever want it.
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  // Local state, not a store field. Its lifetime would be identical either way
+  // — neither survives a reload — and a width in the store would be written on
+  // every frame of a drag, with the transcript subscribed to the same store.
+  // Resizable keeps the width itself for as long as the panel is open, which is
+  // the only span over which it means anything.
+  const [changesOpen, setChangesOpen] = useState(false)
   const { t } = useTranslation()
 
   // `ignoreInInput: false` on purpose, and it is the only shortcut that gets
   // it: wanting to jump somewhere else in the middle of writing a message is
   // exactly the moment this exists for.
   useHotkey('mod+k', () => setPaletteOpen(true), { ignoreInInput: false })
+
+  // Not folded into the `&&` below: short-circuiting past a hook call is how a
+  // conditional hook gets written by accident.
+  const isMobile = useIsMobile()
+  // Nothing to list without a conversation, and no room to list it in below
+  // `md` — the panel would leave the transcript a column too narrow to read.
+  // Unmounted rather than hidden with a class: a hidden panel still builds the
+  // tree and subscribes to the session.
+  const showChanges = changesOpen && activeId !== null && !isMobile
 
   useBackGesture()
   // Settings was a screen in the stack, and the back key left it. It is a page
@@ -105,21 +123,41 @@ export function AppShell(props: ShellProps) {
           {/* The palette's other door. A phone has no `mod` key to press, and
               on a desktop a shortcut nobody has written down is a shortcut
               nobody uses — the tooltip is where it gets written down. */}
-          <Tooltip>
-            <Button
-              isIconOnly
-              variant="ghost"
-              aria-label={t('palette.title')}
-              onClick={() => setPaletteOpen(true)}
-              className="ml-auto size-10 shrink-0 md:size-8"
-            >
-              <Magnifier />
-            </Button>
-            <Tooltip.Content placement="bottom">
-              {t('palette.title')}
-              <kbd className="ml-2 text-xs opacity-70">⌘K</kbd>
-            </Tooltip.Content>
-          </Tooltip>
+          {/* One `ml-auto`, on the group. Two auto margins split the free space
+              between them and leave a gap in the middle of the pair. */}
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            {/* Only where the panel it toggles can open. */}
+            {activeId && !isMobile && page !== 'settings' && (
+              <Tooltip>
+                <Button
+                  isIconOnly
+                  variant={changesOpen ? 'secondary' : 'ghost'}
+                  aria-label={t('chat.changes.toggle')}
+                  aria-pressed={changesOpen}
+                  onClick={() => setChangesOpen((open) => !open)}
+                  className="size-10 md:size-8"
+                >
+                  <FolderTree />
+                </Button>
+                <Tooltip.Content placement="bottom">{t('chat.changes.toggle')}</Tooltip.Content>
+              </Tooltip>
+            )}
+            <Tooltip>
+              <Button
+                isIconOnly
+                variant="ghost"
+                aria-label={t('palette.title')}
+                onClick={() => setPaletteOpen(true)}
+                className="size-10 md:size-8"
+              >
+                <Magnifier />
+              </Button>
+              <Tooltip.Content placement="bottom">
+                {t('palette.title')}
+                <kbd className="ml-2 text-xs opacity-70">⌘K</kbd>
+              </Tooltip.Content>
+            </Tooltip>
+          </div>
         </header>
 
         {/* The conversation stays mounted under the settings page rather than
@@ -134,16 +172,44 @@ export function AppShell(props: ShellProps) {
             subtree out of reach of focus and pointers. */}
         <main className="relative flex-1 min-h-0 overflow-hidden">
           <div className="flex h-full flex-col" inert={page === 'settings' || undefined}>
-            {activeId ? (
-              <ChatView
-                key={activeId}
-                conversationId={activeId}
-                initialMessage={pendingMessage}
-                onInitialMessageConsumed={onInitialMessageConsumed}
-              />
-            ) : (
-              <EmptyState onSubmit={onCreateWithMessage} />
-            )}
+            {/* The split lives inside the chat branch, not around it: `<main>`
+                is the positioned box the settings layer covers, and a group
+                that enclosed both would have the settings page inside a panel
+                it has no business being in. */}
+            <Resizable orientation="horizontal" className="h-full min-h-0">
+              <Resizable.Panel id="chat" minSize={35}>
+                {/* `min-w-0` or a flex child refuses to shrink, and the
+                    transcript's `max-w-4xl mx-auto` overflows instead of
+                    narrowing. */}
+                <div className="flex h-full min-w-0 flex-col">
+                  {activeId ? (
+                    <ChatView
+                      key={activeId}
+                      conversationId={activeId}
+                      initialMessage={pendingMessage}
+                      onInitialMessageConsumed={onInitialMessageConsumed}
+                    />
+                  ) : (
+                    <EmptyState onSubmit={onCreateWithMessage} />
+                  )}
+                </div>
+              </Resizable.Panel>
+              {/* Conditional rather than `collapsible`. Collapsed-to-zero and
+                  closed are two states that look identical and can disagree,
+                  and the one that can disagree is the one that produces a panel
+                  nobody can get back. */}
+              {showChanges && activeId && (
+                <>
+                  <Resizable.Handle aria-label={t('chat.changes.title')} />
+                  <Resizable.Panel id="changes" defaultSize={30} minSize={18} maxSize={50}>
+                    <ChangesPanel
+                      conversationId={activeId}
+                      onClose={() => setChangesOpen(false)}
+                    />
+                  </Resizable.Panel>
+                </>
+              )}
+            </Resizable>
           </div>
 
           {/* `bg-surface`, not `bg-background`: this covers `Sidebar.Main`,

@@ -46,7 +46,9 @@ import TodoBoard from '@/components/chat/todo-board'
 import type { TodoDraft } from '@/components/chat/todo-list'
 import { ComposerMenu } from '@/components/chat/composer-menu'
 import { VoiceButton, type VoiceButtonState } from '@/components/ui/voice-button'
+import { ChangesPanelView } from '@/components/chat/changes-panel'
 import { CommandPalette } from '@/components/layout/command-palette'
+import type { TouchedFile } from '@/lib/touched-files'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { buildTurns, formatDuration, type TurnStep } from '@/lib/turns'
 import { useAppTheme } from '@/lib/theme'
@@ -967,6 +969,20 @@ function Gallery() {
           </div>
         </Section>
 
+        <Section title="ChangesPanel / 改动文件树">
+          {/* The three cases the tree has to get right: a collapsed run of
+              single-child directories, a branch where collapsing must stop,
+              and all three verbs side by side. Boxed at the panel's own
+              minimum width, which is where a long path decides whether it
+              truncates or pushes the marker off the edge. */}
+          <div className="h-96 w-[280px] rounded-2xl border border-border bg-surface">
+            <ChangesPanelView files={CHANGED_FILES} onClose={() => {}} />
+          </div>
+          <div className="h-48 w-[280px] rounded-2xl border border-border bg-surface">
+            <ChangesPanelView files={[]} onClose={() => {}} />
+          </div>
+        </Section>
+
         <Section title="快捷键 / 命令面板">
           {/* Two things this is here to answer, neither of which a unit test
               can: whether the WebView hands us Ctrl+K at all (Edge binds it to
@@ -1029,6 +1045,15 @@ function HotkeyProbe() {
     </div>
   )
 }
+
+const CHANGED_FILES: TouchedFile[] = [
+  { path: 'src/components/chat/changes-panel.tsx', op: 'create', count: 1 },
+  { path: 'src/lib/touched-files.ts', op: 'create', count: 3 },
+  { path: 'src/lib/patch-parse.ts', op: 'modify', count: 1 },
+  { path: 'src/lib/nav.ts', op: 'delete', count: 1 },
+  { path: 'src/i18n/locales/en.json', op: 'modify', count: 7 },
+  { path: 'README.md', op: 'modify', count: 1 },
+]
 
 function paletteRow(id: string, title: string | null, over: Partial<Conversation> = {}): Conversation {
   return {
