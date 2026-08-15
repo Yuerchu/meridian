@@ -4,6 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowDownToSquare, Copy, Microphone, Scissors, SquareDashedText } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
+import { useHoldToTalk } from '@/hooks/use-hold-to-talk'
 import { Button, Popover, ProgressCircle, Tooltip } from '@heroui/react'
 import {
   ContextMenu,
@@ -157,6 +158,7 @@ export function InputBar({
   const { t } = useTranslation()
   const platform = usePlatform()
   const isAndroid = platform === 'android'
+  const [holdToTalk] = useHoldToTalk()
   // Filled by Composer once the field exists: Pro spreads incoming props after
   // its own ref, so one passed down would displace theirs.
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -181,7 +183,17 @@ export function InputBar({
   const androidVoice = useAndroidVoiceRecorder({
     onSend: (text) => onVoiceSend?.(text),
     onNotice: showVoiceNotice,
-    onTap: () => textareaRef.current?.focus(),
+    // Not a bare `focus()`. Android hides the keyboard whenever a touch lands
+    // outside an input, and the hold-to-talk layer is outside one — but the
+    // field underneath never gave up DOM focus, so asking for it again is a
+    // no-op: no focus change, no request for an IME, and the dismissal stands.
+    // Moving focus away and back is what makes it a change the WebView answers.
+    onTap: () => {
+      const el = textareaRef.current
+      if (!el) return
+      el.blur()
+      el.focus()
+    },
   })
   // The back gesture cancels a recording instead of leaving the screen. Only
   // while capturing: transcription is over in well under a second, and a
@@ -357,7 +369,10 @@ export function InputBar({
           placeholder={
             steerable && streaming
               ? t('chat.placeholderSteer')
-              : isAndroid && !value ? t('chat.placeholderVoice') : t('chat.placeholder')
+              // Only promises the hold while the layer that catches it is there.
+              : holdToTalk && isAndroid && !value
+                ? t('chat.placeholderVoice')
+                : t('chat.placeholder')
           }
           onFieldReady={handleFieldReady}
           onDropFiles={onAttachFiles ? handleDropFiles : undefined}
@@ -394,7 +409,7 @@ export function InputBar({
              focuses the field when clicked anywhere that is not a control, and
              that is the attribute its allowlist looks for. Without it a press
              here would summon the keyboard. */
-          pressLayer={isAndroid && !value && !disabled && !streaming && onVoiceSend && (
+          pressLayer={holdToTalk && isAndroid && !value && !disabled && !streaming && onVoiceSend && (
             <div
               data-slot="voice-press-layer"
               role="button"

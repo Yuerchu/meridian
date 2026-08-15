@@ -597,5 +597,9 @@
   "common.loading": "Loading...",
   "settings.developer.cssProbe": "CSS support",
   "settings.developer.cssProbeTitle": "Does this WebView have what the shimmer needs?",
-  "settings.developer.cssProbeHint": "Both must be green before the reasoning header can use HeroUI Pro’s shimmer. Where tan() is missing the text goes invisible rather than plain."
+  "settings.developer.cssProbeHint": "Both must be green before the reasoning header can use HeroUI Pro’s shimmer. Where tan() is missing the text goes invisible rather than plain.",
+  "settings.developer.gestures": "Gestures",
+  "settings.developer.holdToTalk": "Hold the composer to talk",
+  "settings.developer.holdToTalkHint": "A layer over the text field catches the hold. Some WebViews will not raise the keyboard for a tap it has taken — turn this off and the field is a plain textarea again, with hold-to-talk left to the microphone button beside it.",
+  "settings.developer.holdToTalkLabel": "Enabled"
 }
