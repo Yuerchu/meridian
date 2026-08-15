@@ -594,5 +594,8 @@
   "common.save": "Save",
   "common.saved": "Saved",
   "common.delete": "Delete",
-  "common.loading": "Loading..."
+  "common.loading": "Loading...",
+  "settings.developer.cssProbe": "CSS support",
+  "settings.developer.cssProbeTitle": "Does this WebView have what the shimmer needs?",
+  "settings.developer.cssProbeHint": "Both must be green before the reasoning header can use HeroUI Pro’s shimmer. Where tan() is missing the text goes invisible rather than plain."
 }
