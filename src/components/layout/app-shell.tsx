@@ -111,7 +111,15 @@ export function AppShell(props: ShellProps) {
         onDeleteProject={onDeleteProject}
         onRenameProject={onRenameProject}
       />
-      <Sidebar.Main className="overflow-hidden">
+      {/* `min-h-0` is what makes the keyboard inset above actually do
+          something. `.sidebar__main` is `min-height: 100svh` (`calc(100svh -
+          1rem)` under `variant="inset"`), so shrinking the provider's content
+          box leaves this pane insisting on a full viewport regardless — the
+          composer stays under the keyboard and nothing moves. It stretches to
+          the provider either way, so removing the floor costs nothing on a
+          desktop and is the whole fix on a phone. The shell that used to serve
+          phones owned a plain `div` here, which is why this never came up. */}
+      <Sidebar.Main className="min-h-0 overflow-hidden">
         <header
           className="flex items-center min-h-12 gap-2 px-4 pt-[var(--safe-top)] pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))] border-b border-border select-none shrink-0"
           data-tauri-drag-region={canDragWindow ? '' : undefined}

@@ -75,13 +75,22 @@
    satisfies. So a narrow window got a rounded, bordered card floating inside
    its own frame with nothing beside it to be inset from.
 
-   Unlayered on purpose, to outrank the import. */
+   Unlayered on purpose, to outrank the import.
+
+   Chrome only — no height. This block used to restore `min-height: 100svh`
+   here, to undo the `- 1rem` Pro subtracts for margins that are being removed
+   two lines up. Being unlayered, that outranked every utility, including the
+   `min-h-0` on `Sidebar.Main` that lets the frame shrink when the soft keyboard
+   opens: below 768px the pane stayed a full screen tall, the keyboard inset on
+   the provider pushed the composer out through `overflow-hidden`, and the
+   keyboard covered it. Nothing needs a floor at all — the pane is a stretched
+   flex item and takes the provider's height either way. Height belongs to
+   `app-shell.tsx`, in one place, where the keyboard can reach it. */
 @media (max-width: 768px) {
   .sidebar__provider:has(.sidebar--inset) .sidebar__main {
     margin: 0;
     border-width: 0;
     border-radius: 0;
-    min-height: 100svh;
   }
 }
 
