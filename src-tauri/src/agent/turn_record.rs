@@ -27,13 +27,14 @@ pub(crate) async fn begin(
     turn_id: &str,
     conversation_id: &str,
     origin: TurnOrigin,
+    self_id: Option<i64>,
 ) -> Result<(), String> {
     let pool = pool.clone();
     let id = turn_id.to_string();
     let conv = conversation_id.to_string();
     let written = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| Failure::Unrecorded(e.to_string()))?;
-        crate::db::ops::turn::begin(&mut conn, &id, &conv, origin, now_ms()).map_err(|e| match e {
+        crate::db::ops::turn::begin(&mut conn, &id, &conv, origin, self_id, now_ms()).map_err(|e| match e {
             diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 _,
@@ -159,13 +160,13 @@ mod tests {
         let pool = test_db();
         conv(&pool, "c1");
 
-        begin(&pool, "t1", "c1", TurnOrigin::Desktop).await.expect("first");
+        begin(&pool, "t1", "c1", TurnOrigin::Desktop, None).await.expect("first");
         note_phase(&pool, "t1", TurnPhase::RunningTool, Some("edit_file")).await;
         finish(&pool, "t1", TurnStatus::Done, None).await;
         let before = stored(&pool, "t1");
 
         // The same id arrives again.
-        let replay = begin(&pool, "t1", "c1", TurnOrigin::Desktop).await;
+        let replay = begin(&pool, "t1", "c1", TurnOrigin::Desktop, None).await;
         assert!(replay.is_err(), "a turn cannot be run twice");
 
         // The caller must stop here. If it went on to close the turn out — as
@@ -184,6 +185,6 @@ mod tests {
         let pool = test_db();
         // No conversation row, so the foreign key refuses the insert. Not a
         // duplicate — the turn should be allowed to carry on regardless.
-        assert!(begin(&pool, "t1", "missing", TurnOrigin::Desktop).await.is_ok());
+        assert!(begin(&pool, "t1", "missing", TurnOrigin::Desktop, None).await.is_ok());
     }
 }

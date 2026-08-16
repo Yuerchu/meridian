@@ -38,6 +38,16 @@ if (!('ResizeObserver' in globalThis)) {
   globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
 }
 
+// jsdom implements none of the Web Animations API. React Aria's
+// `SharedElementTransition` — which is what `Tabs.Indicator` slides with —
+// calls `element.getAnimations()` in a layout effect, so without this every
+// component carrying a selection indicator throws on mount rather than
+// degrading. An empty list is the honest answer: nothing is animating, because
+// nothing here can.
+if (typeof Element.prototype.getAnimations !== 'function') {
+  Element.prototype.getAnimations = () => []
+}
+
 // `useIsMobile` calls `matchMedia` and subscribes with `addEventListener`.
 // Where jsdom has the method at all it returns a list that never matches and
 // only carries the deprecated `addListener`, so the check is for a usable one

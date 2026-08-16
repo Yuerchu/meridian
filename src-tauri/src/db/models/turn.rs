@@ -131,6 +131,14 @@ pub struct Turn {
     /// one thing must not decide that the parent has heard about a half-written
     /// file.
     pub parent_reported_at: Option<i64>,
+    /// Which bot account answered, for a turn a bot started. NULL on desktop.
+    ///
+    /// Beside `origin` because it is the same kind of fact about the same thing:
+    /// where this turn came from. The OneBot config is a single listener today,
+    /// so this is one value in practice — but it arrives on the event and is
+    /// knowable nowhere else, and a second account connecting to the same port
+    /// would otherwise split no history at all.
+    pub self_id: Option<i64>,
 }
 
 impl Turn {
@@ -156,4 +164,5 @@ pub struct NewTurn<'a> {
     pub phase: Option<&'a str>,
     pub started_at: i64,
     pub updated_at: i64,
+    pub self_id: Option<i64>,
 }

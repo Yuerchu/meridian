@@ -3,7 +3,9 @@ use diesel::sqlite::SqliteConnection;
 
 use crate::db::models::audit::{AuditMessage, NewAuditMessage};
 use crate::db::models::message::Message;
-use crate::db::schema::{audit_messages, conversations, memory_subjects, projects, turns};
+use crate::db::schema::{
+    audit_messages, conversations, memory_subjects, model_configs, projects, turns,
+};
 use crate::util::now_ms;
 
 /// What a row needs beside itself to be readable once everything it points at is
@@ -19,7 +21,53 @@ struct Snapshot {
     source_type: Option<String>,
     source_id: Option<String>,
     turn_origin: Option<String>,
+    self_id: Option<i64>,
     sender_name: Option<String>,
+    prices: Prices,
+}
+
+/// What this reply was priced at, taken now rather than looked up later.
+///
+/// `model_configs` is edited — a rate is cut, a typo is corrected, a name is
+/// re-pointed at a cheaper tier — and every one of those would otherwise rewrite
+/// what last month cost. Copied here for the same reason `provider_name` is:
+/// this table says what happened, and the price at the time is part of that.
+///
+/// All `None` for a user row, which has no tokens to price, and for a model
+/// nobody has configured. The latter is why a reader has to be able to say "this
+/// much traffic has no price" rather than quietly reporting it as free.
+#[derive(Default)]
+struct Prices {
+    input: Option<f64>,
+    output: Option<f64>,
+    cache_read: Option<f64>,
+    cache_write: Option<f64>,
+}
+
+fn prices_for(conn: &mut SqliteConnection, msg: &Message) -> Prices {
+    let (Some(provider), Some(model)) = (msg.provider_id.as_ref(), msg.model_id.as_ref()) else {
+        return Prices::default();
+    };
+    model_configs::table
+        .filter(model_configs::provider_id.eq(provider))
+        .filter(model_configs::model_id.eq(model))
+        .select((
+            model_configs::input_price,
+            model_configs::output_price,
+            model_configs::cache_price,
+            model_configs::cache_write_price,
+        ))
+        .first::<(f64, f64, Option<f64>, Option<f64>)>(conn)
+        .map(|(input, output, cache_read, cache_write)| Prices {
+            input: Some(input),
+            output: Some(output),
+            // Left as stored: a blank cache price means "priced like input", and
+            // `compute_cost` is the one place that reading belongs. Filling it in
+            // here would put the same rule in two places, to disagree later.
+            cache_read,
+            cache_write,
+        })
+        .unwrap_or_default()
 }
 
 fn snapshot(conn: &mut SqliteConnection, msg: &Message) -> Snapshot {
@@ -40,9 +88,20 @@ fn snapshot(conn: &mut SqliteConnection, msg: &Message) -> Snapshot {
                 .ok()
         });
 
-    let turn_origin = msg.turn_id.as_ref().and_then(|tid| {
-        turns::table.find(tid).select(turns::origin).first::<String>(conn).ok()
-    });
+    // Both halves of "where did this come from" in one lookup, because they are
+    // written together and reading one without the other is what leaves a bot
+    // account unattributable.
+    let (turn_origin, self_id) = msg
+        .turn_id
+        .as_ref()
+        .and_then(|tid| {
+            turns::table
+                .find(tid)
+                .select((turns::origin, turns::self_id))
+                .first::<(String, Option<i64>)>(conn)
+                .ok()
+        })
+        .map_or((None, None), |(origin, self_id)| (Some(origin), self_id));
 
     let sender_name = msg.sender_id.and_then(|uid| {
         let scope = crate::db::models::memory::onebot_user_scope_id(uid);
@@ -58,7 +117,9 @@ fn snapshot(conn: &mut SqliteConnection, msg: &Message) -> Snapshot {
         source_type: project.as_ref().map(|(t, _)| t.clone()),
         source_id: project.and_then(|(_, id)| id),
         turn_origin,
+        self_id,
         sender_name,
+        prices: prices_for(conn, msg),
     }
 }
 
@@ -99,6 +160,11 @@ pub fn record(conn: &mut SqliteConnection, msg: &Message) -> QueryResult<()> {
             cache_read_tokens: msg.cache_read_tokens,
             cache_write_tokens: msg.cache_write_tokens,
             created_at: msg.created_at,
+            input_price: snap.prices.input,
+            output_price: snap.prices.output,
+            cache_read_price: snap.prices.cache_read,
+            cache_write_price: snap.prices.cache_write,
+            self_id: snap.self_id,
         })
         .execute(conn)?;
     Ok(())
@@ -208,6 +274,97 @@ mod tests {
         let left = list_recent(&mut conn, 10).unwrap();
         assert_eq!(left.len(), 1);
         assert_eq!(left[0].message_id, "m2");
+    }
+
+    /// The write half of not repricing history. What the model cost is read once,
+    /// here, and never looked up again — so editing the price afterwards moves
+    /// nothing that has already happened.
+    #[test]
+    fn a_reply_carries_away_the_price_it_was_charged() {
+        use crate::db::models::model_config::NewModelConfig;
+        use crate::db::models::provider::NewProvider;
+
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        diesel::insert_into(crate::db::schema::providers::table)
+            .values(&NewProvider {
+                id: "p1",
+                name: "Acme",
+                provider_type: "openai",
+                base_url: "https://example.invalid",
+                is_enabled: 1,
+                sort_order: 0,
+                created_at: 0,
+                updated_at: 0,
+                api_format: "chat",
+            })
+            .execute(&mut conn)
+            .unwrap();
+        crate::db::ops::model_config::upsert(&mut conn, &NewModelConfig {
+            id: "mc1",
+            provider_id: "p1",
+            model_id: "m1",
+            display_name: None,
+            context_window: 128_000,
+            compact_threshold: 100_000,
+            max_output_tokens: None,
+            input_price: 3.0,
+            output_price: 15.0,
+            cache_price: Some(0.3),
+            cache_write_price: Some(3.75),
+            created_at: 0,
+            updated_at: 0,
+            capability_overrides: None,
+        })
+        .unwrap();
+
+        let mut reply = user_row("m1", "c1");
+        reply.role = "assistant";
+        reply.provider_id = Some("p1");
+        reply.model_id = Some("m1");
+        let reply = append_message(&mut conn, &reply, None).unwrap();
+        record(&mut conn, &reply).unwrap();
+
+        let logged = &list_recent(&mut conn, 10).unwrap()[0];
+        assert_eq!(logged.input_price, Some(3.0));
+        assert_eq!(logged.output_price, Some(15.0));
+        assert_eq!(logged.cache_read_price, Some(0.3));
+        assert_eq!(logged.cache_write_price, Some(3.75));
+
+        // The price moves; the record does not.
+        crate::db::ops::model_config::upsert(&mut conn, &NewModelConfig {
+            id: "mc1",
+            provider_id: "p1",
+            model_id: "m1",
+            display_name: None,
+            context_window: 128_000,
+            compact_threshold: 100_000,
+            max_output_tokens: None,
+            input_price: 99.0,
+            output_price: 99.0,
+            cache_price: None,
+            cache_write_price: None,
+            created_at: 0,
+            updated_at: 0,
+            capability_overrides: None,
+        })
+        .unwrap();
+        assert_eq!(list_recent(&mut conn, 10).unwrap()[0].input_price, Some(3.0));
+    }
+
+    /// A question has no model and so no price. Storing a zero would make it
+    /// indistinguishable from a reply priced at nothing.
+    #[test]
+    fn a_message_with_no_model_is_recorded_with_no_price() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        append_message(&mut conn, &user_row("m1", "c1"), None).unwrap();
+
+        let logged = &list_recent(&mut conn, 10).unwrap()[0];
+        assert_eq!(logged.input_price, None);
+        assert_eq!(logged.output_price, None);
     }
 
     /// An edit writes a second record rather than rewriting the first: the

@@ -133,7 +133,7 @@ impl TurnGuard<'_> {
     /// `Err` means the id is already on record, and the caller must not go on
     /// to close that turn out.
     async fn open_record(&self, pool: &DbPool) -> Result<(), String> {
-        turn_record::begin(pool, &self.turn_id, self.conversation_id, TurnOrigin::Desktop).await
+        turn_record::begin(pool, &self.turn_id, self.conversation_id, TurnOrigin::Desktop, None).await
     }
 
     /// Hand the conversation back. Called just before the turn's own stop event
@@ -988,7 +988,7 @@ async fn chat_inner(
                 cache_read_tokens: Some(total_cache_read),
                 cache_write_tokens: Some(total_cache_write),
             };
-            crate::agent::pricing::compute_cost(&usage, mc)
+            crate::agent::pricing::compute_cost(&usage, &crate::agent::pricing::Prices::of(mc))
         });
 
     // This is the only place that knows how the loop was left, and the three

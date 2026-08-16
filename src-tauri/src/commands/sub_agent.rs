@@ -450,7 +450,7 @@ impl DesktopSubAgents {
                 // The synchronous op, not `turn_record::begin`: that one opens
                 // its own blocking task and so its own connection, which would
                 // put this row outside the transaction the other two are in.
-                db::ops::turn::begin(conn, &turn_id, &conv_id, TurnOrigin::SubAgent, now)?;
+                db::ops::turn::begin(conn, &turn_id, &conv_id, TurnOrigin::SubAgent, None, now)?;
                 Ok(())
             })
             .map_err(|e| e.to_string())

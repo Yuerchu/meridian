@@ -536,7 +536,7 @@ async fn write_round(
             // The synchronous op rather than `turn_record::begin`: that one
             // opens its own blocking task and so its own connection, which
             // would put this row outside the transaction the other two are in.
-            db::ops::turn::begin(conn, &turn_id, &conversation_id, origin, now)?;
+            db::ops::turn::begin(conn, &turn_id, &conversation_id, origin, None, now)?;
             Ok(())
         })
         .map_err(|e| e.to_string())

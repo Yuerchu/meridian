@@ -46,6 +46,7 @@ pub fn upsert(conn: &mut SqliteConnection, new: &NewModelConfig) -> QueryResult<
                 model_configs::input_price.eq(new.input_price),
                 model_configs::output_price.eq(new.output_price),
                 model_configs::cache_price.eq(new.cache_price),
+                model_configs::cache_write_price.eq(new.cache_write_price),
                 model_configs::capability_overrides.eq(new.capability_overrides),
                 model_configs::updated_at.eq(new.updated_at),
             ))

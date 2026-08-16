@@ -303,6 +303,17 @@ export interface Message {
   model_id: string | null
   input_tokens: number | null
   output_tokens: number | null
+  /**
+   * Subsets of `input_tokens`, never additions to it — the provider layer
+   * normalises every upstream to that contract. `null` is an upstream that said
+   * nothing about caching, which is not the same as one that said nothing was
+   * cached; a hit rate that reads the first as a miss reports a silent provider
+   * as a total cache failure.
+   */
+  cache_read_tokens: number | null
+  cache_write_tokens: number | null
+  /** Which upstream answered, by the name it had at the time. */
+  provider_name: string | null
   tool_calls: string | null
   tool_call_id: string | null
   sort_order: number
@@ -584,7 +595,14 @@ export interface ModelConfig {
   max_output_tokens: number | null
   input_price: number
   output_price: number
+  /** What a cache *read* costs. Blank means "priced like input". */
   cache_price: number | null
+  /**
+   * What a cache *write* costs, when it costs more than input. Anthropic
+   * charges 1.25x for a five-minute entry and 2x for an hour; nobody else
+   * charges a premium, which is what null means.
+   */
+  cache_write_price: number | null
   created_at: number
   updated_at: number
   /** JSON patch over the built-in catalog; malformed content is ignored. */
@@ -601,7 +619,44 @@ export interface ModelConfigInput {
   input_price: number
   output_price: number
   cache_price?: number | null
+  cache_write_price?: number | null
   capability_overrides?: string | null
+}
+
+/**
+ * A usage report, grouped by one thing.
+ *
+ * Read out of the audit log, which outlives the conversations it describes — so
+ * a row here can name something that no longer exists, and that is the point
+ * rather than a bug. See `src-tauri/src/db/ops/usage.rs`.
+ */
+export type UsageDimension =
+  | 'total' | 'provider' | 'model' | 'bot' | 'source' | 'conversation' | 'day' | 'hour'
+
+export interface UsageFilter {
+  since_ms?: number | null
+  until_ms?: number | null
+  /** `desktop` or `onebot`; absent means both. */
+  origin?: string | null
+}
+
+export interface UsageBucket {
+  key: string
+  /** `null` once the thing `key` names has been deleted. */
+  label: string | null
+  /** Replies. Only assistant rows carry tokens, so questions are not counted. */
+  messages: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_write_tokens: number
+  cost: number
+  /**
+   * Replies produced by a model nobody has priced. Their tokens are in the
+   * counts above but their cost is in nobody's total, so a view that shows
+   * `cost` without showing this is claiming a bill it cannot support.
+   */
+  unpriced_messages: number
 }
 
 export interface ContextInfo {

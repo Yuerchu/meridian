@@ -262,7 +262,17 @@ async fn handle_text_message(
         serde_json::Value::Array(parts).to_string()
     };
 
-    run_agent_turn(state, conn_id, &session_key, &title, sender, user_content, event_message_id).await
+    run_agent_turn(
+        state,
+        conn_id,
+        event.self_id,
+        &session_key,
+        &title,
+        sender,
+        user_content,
+        event_message_id,
+    )
+    .await
 }
 
 // ---------------------------------------------------------------------------
@@ -405,9 +415,14 @@ fn make_interim_text_fn(state: &Arc<SharedState>, session_key: &SessionKey) -> T
 /// already active (the running loop injects it between tool rounds). At turn
 /// end, user messages that arrived too late for injection start a follow-up
 /// turn; earlier turns' replies are sent inline so ordering is preserved.
+///
+/// `self_id` is the bot account the event arrived on, kept beside `conn_id`
+/// because both say where this came in. Neither is knowable anywhere but here:
+/// the config names the listener, not whoever answered on it.
 pub(super) async fn run_agent_turn(
     state: &Arc<SharedState>,
     conn_id: u64,
+    self_id: Option<i64>,
     session_key: &SessionKey,
     title: &str,
     sender: super::SenderContext,
@@ -521,7 +536,7 @@ pub(super) async fn run_agent_turn(
     // outside, so the duplicate case is unreachable here — but it is worth
     // hearing about if it ever stops being. Returning drops `running`, which
     // announces the end and hands both claims back.
-    if let Err(e) = running.open_record(&state.pool).await {
+    if let Err(e) = running.open_record(&state.pool, self_id).await {
         tracing::error!(turn_id = %turn_id, error = %e, "OneBot turn id collided");
         return build_session_reply(session_key, "内部错误,请重试。", reply_to);
     }

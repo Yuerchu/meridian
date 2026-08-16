@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
-import { Button, Disclosure, Input, Label, Spinner, TextField, Tooltip } from '@heroui/react'
+import { Button, Description, Disclosure, Input, Label, Spinner, TextField, Tooltip } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
@@ -119,6 +119,9 @@ function ModelConfigEditor({
   const [inputPrice, setInputPrice] = useState(existing?.input_price?.toString() ?? '0')
   const [outputPrice, setOutputPrice] = useState(existing?.output_price?.toString() ?? '0')
   const [cachePrice, setCachePrice] = useState(existing?.cache_price?.toString() ?? '')
+  const [cacheWritePrice, setCacheWritePrice] = useState(
+    existing?.cache_write_price?.toString() ?? '',
+  )
 
   const [showCaps, setShowCaps] = useState(false)
   const [efforts, setEfforts] = useState<ThinkingEffort[]>([])
@@ -182,6 +185,7 @@ function ModelConfigEditor({
       input_price: parseFloat(inputPrice) || 0,
       output_price: parseFloat(outputPrice) || 0,
       cache_price: cachePrice ? parseFloat(cachePrice) : null,
+      cache_write_price: cacheWritePrice ? parseFloat(cacheWritePrice) : null,
       capability_overrides: buildOverrides(),
     })
   }
@@ -202,7 +206,10 @@ function ModelConfigEditor({
         <Label>{t('settings.model.maxOutput')}</Label>
         <Input value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
       </TextField>
-      <div className="grid grid-cols-3 gap-2">
+      {/* Four rates, all per million tokens. The two cache boxes are blank by
+          default and blank means "priced like input" — which is what every
+          provider but Anthropic does, and what the usage report bills them at. */}
+      <div className="grid grid-cols-2 gap-2">
         <TextField fullWidth>
           <Label>{t('settings.model.inputPrice')}</Label>
           <Input value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
@@ -214,6 +221,12 @@ function ModelConfigEditor({
         <TextField fullWidth>
           <Label>{t('settings.model.cachePrice')}</Label>
           <Input value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
+          <Description className="text-xs">{t('settings.model.cachePriceHint')}</Description>
+        </TextField>
+        <TextField fullWidth>
+          <Label>{t('settings.model.cacheWritePrice')}</Label>
+          <Input value={cacheWritePrice} onChange={(e) => setCacheWritePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
+          <Description className="text-xs">{t('settings.model.cacheWritePriceHint')}</Description>
         </TextField>
       </div>
       <Disclosure

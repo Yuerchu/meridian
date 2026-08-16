@@ -1,4 +1,5 @@
 import { ProviderSettings } from './provider-settings'
+import { UsageSettings } from './usage-settings'
 import { AssistantSettings } from './assistant-settings'
 import { GeneralSettings } from './general-settings'
 import { McpSettings } from './mcp-settings'
@@ -31,6 +32,7 @@ export default function SettingsPage({ activeTab }: { activeTab: SettingsTab }) 
     >
       <div className="p-4 md:p-6">
         {activeTab === 'provider' && <ProviderSettings />}
+        {activeTab === 'usage' && <UsageSettings />}
         {activeTab === 'assistants' && <AssistantSettings />}
         {activeTab === 'emoji' && <EmojiSettings />}
         {activeTab === 'tools' && <ToolMarketplace />}

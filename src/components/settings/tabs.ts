@@ -1,5 +1,5 @@
 import {
-  Bulb, BroadcastSignal, CircleInfo, Cloud, FaceRobot, FaceSmile, LogoMcp,
+  Bulb, BroadcastSignal, ChartColumn, CircleInfo, Cloud, FaceRobot, FaceSmile, LogoMcp,
   Flask, Link, Microphone, Sliders, Sparkles, Wrench,
 } from '@gravity-ui/icons'
 
@@ -13,7 +13,7 @@ import {
  * eslint rule forbids taking values from the barrel for the same reason.
  */
 export type SettingsTab =
-  | 'provider' | 'assistants' | 'emoji' | 'tools' | 'skills' | 'mcp'
+  | 'provider' | 'usage' | 'assistants' | 'emoji' | 'tools' | 'skills' | 'mcp'
   | 'memories' | 'voice' | 'onebot' | 'hooks' | 'general' | 'developer' | 'about'
 
 export interface SettingsTabDef {
@@ -24,6 +24,9 @@ export interface SettingsTabDef {
 
 export const settingsTabs: SettingsTabDef[] = [
   { id: 'provider', labelKey: 'settings.provider', icon: Cloud },
+  // Beside the providers rather than near the logs: it is priced entirely by
+  // what that page was filled in with, and the two are read together.
+  { id: 'usage', labelKey: 'settings.usage', icon: ChartColumn },
   { id: 'assistants', labelKey: 'settings.assistants', icon: FaceRobot },
   { id: 'emoji', labelKey: 'settings.emoji', icon: FaceSmile },
   { id: 'tools', labelKey: 'settings.toolsTab', icon: Wrench },

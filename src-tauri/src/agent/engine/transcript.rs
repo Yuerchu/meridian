@@ -345,7 +345,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1)
             .unwrap();
-        crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
     }
 
     fn rows(pool: &DbPool) -> Vec<crate::db::models::message::Message> {

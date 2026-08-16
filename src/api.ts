@@ -1,5 +1,5 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ChatMode, ContextInfo, Conversation, ConversationSnapshot, CustomTool, Emoji, EmojiPack, HooksConfig, HooksStatus, LogFileInfo, LogPage, LogQuery, LogSettings, McpConnectionStatus, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, VoiceModelStatus, VoiceTranscript } from './types'
+import type { Assistant, ChatMode, ContextInfo, Conversation, ConversationSnapshot, CustomTool, Emoji, EmojiPack, HooksConfig, HooksStatus, LogFileInfo, LogPage, LogQuery, LogSettings, McpConnectionStatus, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, UsageBucket, UsageDimension, UsageFilter, VoiceModelStatus, VoiceTranscript } from './types'
 
 export const api = {
   listConversations: (archived = false) =>
@@ -710,4 +710,16 @@ export const api = {
 
   getServiceKeyExists: (service: string) =>
     invoke<boolean>('get_service_key_exists', { service }),
+
+  /**
+   * Tokens and cost, grouped by `dimension`.
+   *
+   * One call per breakdown, including the headline figures — `total` is the same
+   * query with a constant key, which is what makes a breakdown add up to the
+   * summary above it rather than nearly add up to it. Never sum these in the
+   * front end: the cost of a group is not the sum of its rows' costs, because a
+   * cached token bills at the cache rate instead of the input rate.
+   */
+  usageReport: (dimension: UsageDimension, filter?: UsageFilter) =>
+    invoke<UsageBucket[]>('usage_report', { dimension, filter: filter ?? null }),
 }

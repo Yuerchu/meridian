@@ -500,9 +500,18 @@ impl RunningTurn {
     /// `await` on a pooled connection — in which a dropped task handed both
     /// claims back and announced nothing, which is the state this value was
     /// written to make unreachable.
-    pub async fn open_record(&self, pool: &crate::db::DbPool) -> Result<(), String> {
+    ///
+    /// `self_id` is the bot account the event arrived on. Taken as an argument
+    /// rather than read from the config, because the config names the listener
+    /// and the event names who answered — and those stop being the same thing
+    /// the moment a second account connects to that listener.
+    pub async fn open_record(
+        &self,
+        pool: &crate::db::DbPool,
+        self_id: Option<i64>,
+    ) -> Result<(), String> {
         crate::agent::turn_record::begin(
-            pool, &self.turn_id, &self.conversation_id, TurnOrigin::OneBot,
+            pool, &self.turn_id, &self.conversation_id, TurnOrigin::OneBot, self_id,
         )
         .await
     }

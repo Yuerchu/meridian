@@ -245,6 +245,23 @@ mod migration_tests {
         panic!("migration {version} not found");
     }
 
+    /// Everything from `version` onward, in order.
+    ///
+    /// A test that stops at the migration it is about still has to read the rows
+    /// back, and the readers select every column the schema has *today* — so
+    /// stopping short fails inside the reader rather than in anything the
+    /// migration did. Catching up to head afterwards keeps such a test about its
+    /// own migration, and stops the next column added to the same table from
+    /// breaking it for a reason it has nothing to do with.
+    fn run_migrations_from(conn: &mut SqliteConnection, version: &str) {
+        let all = MigrationSource::<diesel::sqlite::Sqlite>::migrations(&MIGRATIONS).unwrap();
+        for m in all {
+            if m.name().version().as_owned() >= version.into() {
+                m.run(conn).unwrap();
+            }
+        }
+    }
+
     fn seed_pre19(conn: &mut SqliteConnection) {
         conn.batch_execute(
             "INSERT INTO projects (id, name, path, source_type, source_id, created_at, updated_at)
@@ -537,8 +554,9 @@ mod migration_tests {
     /// was no mechanism to tell it. Backfilling a timestamp would silence
     /// exactly the warnings this whole record exists to keep.
     ///
-    /// Both are applied because `Turn` selects both columns — stopping at 26
-    /// would fail in the reader rather than in anything a migration did.
+    /// Everything from 26 is applied, not just those two: `Turn` selects every
+    /// column the table has today, so stopping short fails in the reader rather
+    /// than in anything a migration did.
     #[test]
     fn existing_turns_survive_the_reported_columns_still_owing_their_explanation() {
         let mut conn = conn_before("00000000000026");
@@ -554,8 +572,7 @@ mod migration_tests {
         )
         .unwrap();
 
-        run_migration(&mut conn, "00000000000026");
-        run_migration(&mut conn, "00000000000027");
+        run_migrations_from(&mut conn, "00000000000026");
 
         let turns = ops::turn::list_for_conversation(&mut conn, "c1").unwrap();
         assert_eq!(turns.len(), 2, "no row is lost or duplicated");
@@ -590,7 +607,7 @@ mod migration_tests {
         )
         .unwrap();
 
-        run_migration(&mut conn, "00000000000027");
+        run_migrations_from(&mut conn, "00000000000027");
 
         let listed = ops::conversation::list_conversations(&mut conn, false).unwrap();
         assert_eq!(listed.len(), 1);

@@ -1361,7 +1361,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1)
             .unwrap();
-        crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
     }
 
     fn rows(pool: &DbPool) -> Vec<crate::db::models::message::Message> {
@@ -2226,7 +2226,7 @@ mod tests {
         conversation(&pool);
         {
             let mut conn = pool.get().unwrap();
-            crate::db::ops::turn::begin(&mut conn, "t0", "c1", TurnOrigin::Desktop, 500).unwrap();
+            crate::db::ops::turn::begin(&mut conn, "t0", "c1", TurnOrigin::Desktop, None, 500).unwrap();
         }
         let report = owed(&pool, "t1")
             .expect("t0 is running and held by nobody, so it counts as cut off");
@@ -2261,7 +2261,7 @@ mod tests {
         second.turn_id = "t2".into();
         {
             let mut conn = pool.get().unwrap();
-            crate::db::ops::turn::begin(&mut conn, "t2", "c1", TurnOrigin::Desktop, 2000).unwrap();
+            crate::db::ops::turn::begin(&mut conn, "t2", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
         }
         assert!(run_turn(&services(&pool, &tools, &mcp), second, ports(&approvals, None))
             .await
