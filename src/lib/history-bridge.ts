@@ -5,10 +5,11 @@ import { useHistoryStore } from '@/stores/history-store'
  *
  * Two rules make the level stack and the browser agree:
  *
- * 1. **Nothing pops the store directly.** Every "go back" — a dismissed drawer,
- *    a detail pane closed from React, the hardware key — calls {@link goBack},
- *    and the store only changes when `popstate` comes back. One writer, so the
- *    two cannot drift apart.
+ * 1. **Nobody writes history directly.** Components change the store and then
+ *    ask {@link syncHistory} to catch up; it is the only code that calls
+ *    `pushState` or `go`. One writer, reconciling against an absolute depth,
+ *    so the two cannot drift — and so two changes in one commit cannot issue
+ *    two operations that undo each other.
  * 2. **No URL is ever written.** `pushState` takes only a state object; the
  *    address never changes. A path would have to survive Tauri's asset
  *    protocol in production, and a hash would hit the `hashchange → reload`
@@ -32,23 +33,48 @@ function readDepth(state: unknown): number {
   return 0
 }
 
-/** Adds one history entry. Call after the store has grown by one level. */
-export function pushHistoryLevel(depth: number): void {
-  window.history.pushState({ [DEPTH_KEY]: depth }, '')
-}
+let scheduled = false
 
 /**
- * Steps back `count` entries.
+ * Brings `window.history` back in line with the level stack, once per tick.
  *
- * A single `go(-n)` rather than n × `back()`: the browser coalesces them into
- * one `popstate`, which `settleTo` is written to absorb.
+ * Every caller asks for the same thing — "make history match the store" — and
+ * asks for it *after* changing the store. Nothing says how many entries to add
+ * or remove, because no single caller knows: a hand-over changes the store
+ * twice before anything runs.
  *
- * Never call this at depth 0. There is no entry of ours left to consume, so the
- * WebView would hand the gesture to Android and close the app.
+ * **Why it has to be deferred.** Tapping a row inside the mobile drawer closes
+ * the drawer and opens a page in one commit. Applied eagerly that was
+ * `go(-1)` from the drawer's effect followed by `pushState` from the page's,
+ * and those do not commute: a queued traversal resolves against the entry that
+ * was current when `go` was called, not the one current when the task runs. So
+ * the traversal skipped the entry `pushState` had just added and landed on the
+ * one *before* the drawer's, whose state is `null` — depth 0 — and `settleTo`
+ * dutifully closed the page that had just opened. It read as the page flashing
+ * and bouncing straight back.
+ *
+ * Coalesced, that pair nets to zero: one level left, one entry, nothing to do.
+ * The general rule falls out of it — history is a mirror of `levels.length`,
+ * and a mirror is only ever wrong between the change and the next microtask.
  */
-export function goBack(count = 1): void {
-  if (count <= 0) return
-  window.history.go(-count)
+export function syncHistory(): void {
+  if (scheduled) return
+  scheduled = true
+  queueMicrotask(() => {
+    scheduled = false
+    const want = useHistoryStore.getState().levels.length
+    const have = readDepth(window.history.state)
+    // One `go(-n)` rather than n × `back()`: the browser coalesces them into a
+    // single `popstate`, which `settleTo` is written to absorb. Going forward is
+    // one entry at a time because each carries its own depth.
+    if (want > have) {
+      for (let depth = have + 1; depth <= want; depth++) {
+        window.history.pushState({ [DEPTH_KEY]: depth }, '')
+      }
+    } else if (want < have) {
+      window.history.go(want - have)
+    }
+  })
 }
 
 /**
