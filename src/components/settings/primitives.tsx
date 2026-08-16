@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Button, Description, Label, ListBox, Select } from '@heroui/react'
+import { Button, Description, Label, ListBox, Select, Skeleton } from '@heroui/react'
 import { Check, ChevronRight } from '@gravity-ui/icons'
 
 import { cn } from '@/lib/utils'
@@ -123,6 +123,50 @@ export function SavedHint({ className, ...props }: React.ComponentProps<'span'>)
       <Check className="size-3.5" />
       {t('common.saved')}
     </span>
+  )
+}
+
+/**
+ * The panel, before its data arrives.
+ *
+ * Every settings panel opens the same way — a header over a list — and each of
+ * them used to say `加载中…` on one line instead, which leaves the page looking
+ * empty rather than busy and then reflows the whole thing when the rows land.
+ * Drawing the shape that is coming costs nothing and makes the wait read as
+ * part of the page.
+ *
+ * Sized to what it stands in for: the bars match `SettingsHeader`'s two lines
+ * and `SettingsRow`'s 44px, so nothing moves when the real thing replaces it.
+ *
+ * `role="status"` with a label, because a screen reader gets nothing at all
+ * from a column of grey boxes — it is the one thing the line of text it
+ * replaces did better. `aria-busy` rather than announcing every row.
+ */
+export function SettingsSkeleton({
+  rows = 4,
+  className,
+  ...props
+}: React.ComponentProps<'div'> & { rows?: number }) {
+  const { t } = useTranslation()
+  return (
+    <div
+      data-slot="settings-skeleton"
+      role="status"
+      aria-busy="true"
+      aria-label={t('common.loading')}
+      className={cn('space-y-6 max-w-lg', className)}
+      {...props}
+    >
+      <div className="space-y-2">
+        <Skeleton className="h-5 w-40 rounded-md" />
+        <Skeleton className="h-3 w-64 rounded-md" />
+      </div>
+      <div className="space-y-1">
+        {Array.from({ length: rows }, (_, i) => (
+          <Skeleton key={i} className="h-11 w-full rounded-lg" />
+        ))}
+      </div>
+    </div>
   )
 }
 

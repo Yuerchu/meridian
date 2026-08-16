@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { MasterDetail } from './master-detail'
-import { SavedHint, SettingsRow, SettingsSelect } from './primitives'
+import { SavedHint, SettingsRow, SettingsSelect, SettingsSkeleton } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import type { ModelConfig, ModelConfigInput, Provider, ModelInfo, ProviderCapabilities, ThinkingEffort } from '@/types'
@@ -640,7 +640,10 @@ export function ProviderSettings() {
   }, [selectedId, refresh, nav])
 
   if (loading) {
-    return <div className="text-muted text-sm">{t('common.loading')}</div>
+    // Wider than the default: this panel is a `MasterDetail`, which is
+    // `max-w-3xl`, and a skeleton narrower than what replaces it reflows the
+    // page at the moment it is meant to be steadying it.
+    return <SettingsSkeleton className="max-w-3xl" />
   }
 
   const selected = providers.find((p) => p.id === selectedId)

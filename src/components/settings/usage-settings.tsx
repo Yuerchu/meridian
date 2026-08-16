@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Label, Spinner, Tabs } from '@heroui/react'
+import { Label, Skeleton, Spinner, Tabs } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { KPI } from '@heroui-pro/react/kpi'
 import { AreaChart } from '@heroui-pro/react/area-chart'
@@ -202,10 +202,17 @@ export function UsageSettings() {
             t(`settings.usage.origin.${value ?? 'all'}`),
           ])}
         />
-        {loading && <Spinner size="sm" className="self-end" aria-label={t('common.loading')} />}
+        {/* Only once there is something to refresh. The first load draws the
+            skeleton below instead, and two loading indicators for one wait is
+            one too many. */}
+        {loading && report && (
+          <Spinner size="sm" className="self-end" aria-label={t('common.loading')} />
+        )}
       </div>
 
-      {report && total.messages === 0 ? (
+      {!report ? (
+        <UsageSkeleton />
+      ) : total.messages === 0 ? (
         <EmptyState size="sm">
           <EmptyState.Header>
             <EmptyState.Title>{t('settings.usage.empty')}</EmptyState.Title>
@@ -339,6 +346,35 @@ function Filter({
           </Tabs.List>
         </Tabs.ListContainer>
       </Tabs>
+    </div>
+  )
+}
+
+/**
+ * The report, before the first one arrives.
+ *
+ * Only for the first load. A filter change keeps the numbers on screen and puts
+ * a spinner beside the filters instead — replacing a page of real figures with
+ * grey boxes to fetch a slightly different set of them is a step backwards.
+ *
+ * Without this the page rendered `EMPTY_TOTAL`: four cards reading zero, then a
+ * jump to the real numbers. A zero that turns out to be wrong is worse than no
+ * number, because it is legible.
+ */
+function UsageSkeleton() {
+  const { t } = useTranslation()
+  return (
+    <div role="status" aria-busy="true" aria-label={t('common.loading')} className="space-y-6">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {Array.from({ length: 4 }, (_, i) => (
+          <Skeleton key={i} className="h-24 w-full rounded-lg" />
+        ))}
+      </div>
+      <Skeleton className="h-[200px] w-full rounded-lg" />
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Skeleton className="h-40 w-full rounded-lg" />
+        <Skeleton className="h-40 w-full rounded-lg" />
+      </div>
     </div>
   )
 }

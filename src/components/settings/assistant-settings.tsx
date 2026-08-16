@@ -5,7 +5,7 @@ import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, TextArea, 
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
+import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { ProviderModelPicker } from './provider-model-picker'
 import { SubAgentSettings } from './sub-agent-settings'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
@@ -456,7 +456,7 @@ export function AssistantSettings() {
   )
 
   if (loading) {
-    return <div className="text-muted text-sm">{t('common.loading')}</div>
+    return <SettingsSkeleton />
   }
 
   return (

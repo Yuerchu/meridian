@@ -6,7 +6,7 @@ import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import { SavedHint, SettingsHeader, SettingsPane } from './primitives'
+import { SavedHint, SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import type { Skill } from '@/types'
 
 /** The directory name doubles as the LLM-facing skill name, so it has to be a
@@ -231,7 +231,7 @@ export function SkillSettings() {
   }, [])
 
   if (loading) {
-    return <div data-slot="skill-settings-loading" className="text-muted text-sm">{t('common.loading')}</div>
+    return <SettingsSkeleton data-slot="skill-settings-loading" />
   }
 
   return (

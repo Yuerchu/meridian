@@ -5,7 +5,7 @@ import { Button, Chip, Disclosure, Input } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
-import { SettingsHeader, SettingsPane } from './primitives'
+import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
 import type { Emoji, EmojiPack } from '@/types'
 
@@ -218,7 +218,7 @@ export function EmojiSettings() {
   }, [refresh])
 
   if (loading) {
-    return <div className="text-muted text-sm">{t('common.loading')}</div>
+    return <SettingsSkeleton />
   }
 
   return (

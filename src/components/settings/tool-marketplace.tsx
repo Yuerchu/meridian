@@ -7,7 +7,7 @@ import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
-import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
+import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { SettingsDrilldown } from './settings-drilldown'
 
 function CustomToolEditor({
@@ -137,7 +137,7 @@ export function ToolMarketplace() {
   }, [refresh])
 
   if (loading) {
-    return <div className="text-muted text-sm">{t('common.loading')}</div>
+    return <SettingsSkeleton />
   }
 
   return (
