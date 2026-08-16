@@ -365,7 +365,7 @@ mod tests {
     fn a_turn_that_finished_says_nothing() {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         turn::finish(&mut conn, "t1", TurnStatus::Done, None, 1500).unwrap();
         drop(conn);
 
@@ -378,7 +378,7 @@ mod tests {
     fn a_turn_still_marked_running_but_held_by_nobody_was_cut_off() {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         turn::set_phase(&mut conn, "t1", TurnPhase::RunningTool, Some("edit_file"), 1001).unwrap();
         drop(conn);
 
@@ -395,7 +395,7 @@ mod tests {
         let (pool, c) = setup();
         let lease = c.try_acquire_turn_as("c1", TurnOrigin::Desktop, "t1".into()).unwrap();
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         drop(conn);
 
         assert!(latest(&pool, &c).is_none());
@@ -412,7 +412,7 @@ mod tests {
     fn a_newer_turn_does_not_vouch_for_an_older_one() {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         drop(conn);
         let _live = c.try_acquire_turn_as("c1", TurnOrigin::Desktop, "live".into()).unwrap();
 
@@ -434,7 +434,7 @@ mod tests {
     fn a_turn_asking_about_the_one_before_it_does_not_find_itself() {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         turn::set_phase(&mut conn, "dead", TurnPhase::RunningTool, Some("edit_file"), 1001)
             .unwrap();
         drop(conn);
@@ -443,7 +443,7 @@ mod tests {
         // the runner does before assembling its request.
         let _live = c.try_acquire_turn_as("c1", TurnOrigin::Desktop, "live".into()).unwrap();
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "live", "c1", TurnOrigin::Desktop, 2000).unwrap();
+        turn::begin(&mut conn, "live", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
         drop(conn);
 
         let told = asked_by(&pool, &c, "live").expect("the turn before this one was cut off");
@@ -460,7 +460,7 @@ mod tests {
     fn the_startup_verdict_is_believed_without_asking_again() {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         turn::set_phase(&mut conn, "t1", TurnPhase::AwaitingApproval, Some("run_command"), 1001)
             .unwrap();
         turn::reconcile_interrupted(&mut conn, 2000).unwrap();
@@ -485,7 +485,7 @@ mod tests {
         ] {
             let mut conn = pool.get().unwrap();
             let id = format!("t-{}", phase.as_str());
-            turn::begin(&mut conn, &id, "c1", TurnOrigin::Desktop, 1000).unwrap();
+            turn::begin(&mut conn, &id, "c1", TurnOrigin::Desktop, None, 1000).unwrap();
             turn::set_phase(&mut conn, &id, phase, tool, 1001).unwrap();
             drop(conn);
 
@@ -509,7 +509,7 @@ mod tests {
             ("broke", Some("API Key not set")),
         ] {
             let mut conn = pool.get().unwrap();
-            turn::begin(&mut conn, id, "c1", TurnOrigin::Desktop, 1000).unwrap();
+            turn::begin(&mut conn, id, "c1", TurnOrigin::Desktop, None, 1000).unwrap();
             turn::finish(&mut conn, id, TurnStatus::Failed, error, 1500).unwrap();
             drop(conn);
 
@@ -522,7 +522,7 @@ mod tests {
     fn a_turn_the_user_stopped_is_not_an_interruption() {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         turn::finish(&mut conn, "t1", TurnStatus::Cancelled, None, 1500).unwrap();
         drop(conn);
 
@@ -535,13 +535,13 @@ mod tests {
     fn a_turn_that_carried_the_notice_clears_it() {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         drop(conn);
 
         // The good turn opens its record, reads the notice, and gets its
         // request away.
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "good", "c1", TurnOrigin::Desktop, 2000).unwrap();
+        turn::begin(&mut conn, "good", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
         drop(conn);
         let told = asked_by(&pool, &c, "good").expect("the turn before it was cut off");
         assert!(told.text().contains("cut off"));
@@ -565,7 +565,7 @@ mod tests {
     fn a_turn_that_died_before_reaching_the_provider_settles_nothing() {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         turn::set_phase(&mut conn, "dead", TurnPhase::RunningTool, Some("edit_file"), 1001)
             .unwrap();
         drop(conn);
@@ -573,7 +573,7 @@ mod tests {
         // The next turn reads the warning and then falls over on its way out —
         // a missing key, an unreadable config. It never sent anything.
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "stillborn", "c1", TurnOrigin::Desktop, 2000).unwrap();
+        turn::begin(&mut conn, "stillborn", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
         drop(conn);
         assert!(
             asked_by(&pool, &c, "stillborn").is_some(),
@@ -586,7 +586,7 @@ mod tests {
 
         // The turn after it still has to be told.
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "next", "c1", TurnOrigin::Desktop, 3000).unwrap();
+        turn::begin(&mut conn, "next", "c1", TurnOrigin::Desktop, None, 3000).unwrap();
         drop(conn);
         let told = asked_by(&pool, &c, "next").expect("nobody has told the model yet");
         assert!(told.text().contains("edit_file"));
@@ -601,10 +601,10 @@ mod tests {
     fn every_turn_still_owed_an_explanation_gets_one() {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
-        turn::begin(&mut conn, "first", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        turn::begin(&mut conn, "first", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         turn::set_phase(&mut conn, "first", TurnPhase::RunningTool, Some("edit_file"), 1001)
             .unwrap();
-        turn::begin(&mut conn, "second", "c1", TurnOrigin::Desktop, 2000).unwrap();
+        turn::begin(&mut conn, "second", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
         turn::set_phase(&mut conn, "second", TurnPhase::Compacting, None, 2001).unwrap();
         drop(conn);
 
@@ -627,7 +627,7 @@ mod tests {
         {
             let mut conn = pool.get().unwrap();
             for n in 0..(AT_MOST as i64 + 1) {
-                turn::begin(&mut conn, &format!("t{n}"), "c1", TurnOrigin::Desktop, 1000 + n)
+                turn::begin(&mut conn, &format!("t{n}"), "c1", TurnOrigin::Desktop, None, 1000 + n)
                     .unwrap();
             }
         }
@@ -650,7 +650,7 @@ mod tests {
         let (pool, c) = setup();
         {
             let mut conn = pool.get().unwrap();
-            turn::begin(&mut conn, "wrote-a-file", "c1", TurnOrigin::Desktop, 1000).unwrap();
+            turn::begin(&mut conn, "wrote-a-file", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
             turn::set_phase(
                 &mut conn,
                 "wrote-a-file",
@@ -660,7 +660,7 @@ mod tests {
             )
             .unwrap();
             for n in 0..(AT_MOST as i64) {
-                turn::begin(&mut conn, &format!("later{n}"), "c1", TurnOrigin::Desktop, 2000 + n)
+                turn::begin(&mut conn, &format!("later{n}"), "c1", TurnOrigin::Desktop, None, 2000 + n)
                     .unwrap();
             }
         }
@@ -684,10 +684,10 @@ mod tests {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
         create_conversation(&mut conn, "c2", Some("t"), None, None, 1).unwrap();
-        turn::begin(&mut conn, "t1", "c2", TurnOrigin::Desktop, 1000).unwrap();
+        turn::begin(&mut conn, "t1", "c2", TurnOrigin::Desktop, None, 1000).unwrap();
         // And a sub-agent belonging to that other conversation.
         delegated(&mut conn, "elsewhere", "c2", Some("their errand"));
-        turn::begin(&mut conn, "theirs", "elsewhere", TurnOrigin::SubAgent, 1000).unwrap();
+        turn::begin(&mut conn, "theirs", "elsewhere", TurnOrigin::SubAgent, None, 1000).unwrap();
         drop(conn);
 
         assert!(latest(&pool, &c).is_none());
@@ -720,7 +720,7 @@ mod tests {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
         delegated(&mut conn, "sub-1", "c1", Some("check the failing test"));
-        turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, 1000).unwrap();
+        turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, None, 1000).unwrap();
         turn::set_phase(&mut conn, "run", TurnPhase::RunningTool, Some("edit_file"), 1001).unwrap();
         drop(conn);
 
@@ -739,7 +739,7 @@ mod tests {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
         delegated(&mut conn, "sub-1", "c1", None);
-        turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, 1000).unwrap();
+        turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, None, 1000).unwrap();
         drop(conn);
 
         let told = latest(&pool, &c).expect("cut off");
@@ -756,7 +756,7 @@ mod tests {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
         delegated(&mut conn, "sub-1", "c1", Some("an errand"));
-        turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, 1000).unwrap();
+        turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, None, 1000).unwrap();
         turn::set_phase(&mut conn, "run", TurnPhase::RunningTool, Some("edit_file"), 1001).unwrap();
         drop(conn);
 
@@ -788,7 +788,7 @@ mod tests {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
         delegated(&mut conn, "sub-1", "c1", Some("an errand"));
-        turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, 1000).unwrap();
+        turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, None, 1000).unwrap();
         drop(conn);
 
         delivered(&pool, latest(&pool, &c).expect("the parent is owed it"), 2000);
@@ -807,10 +807,10 @@ mod tests {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
         delegated(&mut conn, "sub-1", "c1", Some("an errand"));
-        turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, 1000).unwrap();
+        turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, None, 1000).unwrap();
         turn::finish(&mut conn, "run", TurnStatus::Done, None, 1500).unwrap();
         // The user follows up inside the sub-agent, and that turn is cut off.
-        turn::begin(&mut conn, "follow-up", "sub-1", TurnOrigin::Desktop, 2000).unwrap();
+        turn::begin(&mut conn, "follow-up", "sub-1", TurnOrigin::Desktop, None, 2000).unwrap();
         drop(conn);
 
         assert!(latest(&pool, &c).is_none(), "the parent has no business with it");
@@ -828,7 +828,7 @@ mod tests {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
         delegated(&mut conn, "sub-1", "c1", Some("an errand"));
-        turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, 1000).unwrap();
+        turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, None, 1000).unwrap();
         drop(conn);
         let lease = c.try_acquire_turn_as("sub-1", TurnOrigin::SubAgent, "run".into()).unwrap();
 

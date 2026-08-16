@@ -631,7 +631,7 @@ mod tests {
         seed(&pool);
         {
             let mut conn = pool.get().unwrap();
-            turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+            turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
             turn::set_phase(&mut conn, "t1", TurnPhase::RunningTool, Some("edit_file"), 1001)
                 .unwrap();
         }
@@ -654,8 +654,8 @@ mod tests {
         seed(&pool);
         {
             let mut conn = pool.get().unwrap();
-            turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, 1000).unwrap();
-            turn::begin(&mut conn, "live", "c1", TurnOrigin::Desktop, 2000).unwrap();
+            turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
+            turn::begin(&mut conn, "live", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
         }
 
         let turns = snapshot(&pool, Some("live"));
@@ -679,7 +679,7 @@ mod tests {
                 ("stopped", TurnStatus::Cancelled, None),
                 ("broke", TurnStatus::Failed, Some("API Key not set")),
             ] {
-                turn::begin(&mut conn, id, "c1", TurnOrigin::Desktop, 1000).unwrap();
+                turn::begin(&mut conn, id, "c1", TurnOrigin::Desktop, None, 1000).unwrap();
                 turn::finish(&mut conn, id, status, error, 1500).unwrap();
             }
         }
@@ -704,7 +704,7 @@ mod tests {
         seed(&pool);
         {
             let mut conn = pool.get().unwrap();
-            turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+            turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
             diesel::update(crate::db::schema::turns::table.find("t1"))
                 .set(crate::db::schema::turns::status.eq("from_the_future"))
                 .execute(&mut conn)
@@ -727,8 +727,8 @@ mod tests {
         seed(&pool);
         {
             let mut conn = pool.get().unwrap();
-            turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
-            turn::begin(&mut conn, "t2", "c1", TurnOrigin::Desktop, 2000).unwrap();
+            turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
+            turn::begin(&mut conn, "t2", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
             turn::finish(&mut conn, "t2", TurnStatus::Done, None, 2500).unwrap();
         }
 
@@ -749,7 +749,7 @@ mod tests {
         seed(&pool);
         {
             let mut conn = pool.get().unwrap();
-            turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+            turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
             crate::db::ops::message::append_message(
                 &mut conn,
                 &crate::db::models::message::NewMessage {
@@ -823,7 +823,7 @@ mod tests {
             },
         )
         .unwrap();
-        crate::db::ops::turn::begin(&mut conn, "t-child", "child", TurnOrigin::SubAgent, 10)
+        crate::db::ops::turn::begin(&mut conn, "t-child", "child", TurnOrigin::SubAgent, None, 10)
             .unwrap();
 
         // The parent is being read while it holds its own turn. Nobody holds the

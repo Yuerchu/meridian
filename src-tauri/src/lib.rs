@@ -511,6 +511,7 @@ pub fn run() {
             commands::memory::memory_enums,
             commands::audit::list_audit_messages,
             commands::audit::purge_audit_before,
+            commands::usage::usage_report,
             commands::preference::get_preference,
             commands::preference::set_preference,
             commands::mcp::list_mcp_servers,

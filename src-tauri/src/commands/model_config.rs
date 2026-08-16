@@ -53,6 +53,7 @@ pub async fn save_model_config(
             input_price: input.input_price,
             output_price: input.output_price,
             cache_price: input.cache_price,
+            cache_write_price: input.cache_write_price,
             created_at: now,
             updated_at: now,
             capability_overrides: input.capability_overrides.as_deref(),

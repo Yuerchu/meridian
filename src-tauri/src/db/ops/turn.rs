@@ -20,11 +20,17 @@ use crate::turn::TurnOrigin;
 
 /// Record a turn that is starting. Called once the conversation has actually
 /// been taken, so a refused turn leaves nothing behind.
+///
+/// `self_id` names the bot account for a turn a bot started, and is `None`
+/// everywhere else. It travels with `origin` rather than separately because the
+/// two are one fact — where this turn came from — and a caller that could set
+/// one without the other would eventually set only one.
 pub fn begin(
     conn: &mut SqliteConnection,
     id: &str,
     conversation_id: &str,
     origin: TurnOrigin,
+    self_id: Option<i64>,
     now: i64,
 ) -> QueryResult<usize> {
     diesel::insert_into(turns::table)
@@ -36,6 +42,7 @@ pub fn begin(
             phase: Some(TurnPhase::Streaming.as_str()),
             started_at: now,
             updated_at: now,
+            self_id,
         })
         .execute(conn)
 }
@@ -304,7 +311,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
 
-        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
 
         let t = get(&mut conn, "t1");
         assert_eq!(t.status(), Some(TurnStatus::Running));
@@ -320,7 +327,7 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
-        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
 
         set_phase(&mut conn, "t1", TurnPhase::AwaitingApproval, Some("run_command"), 1001).unwrap();
         let t = get(&mut conn, "t1");
@@ -345,7 +352,7 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
-        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         set_phase(&mut conn, "t1", TurnPhase::RunningTool, Some("edit_file"), 1001).unwrap();
 
         assert_eq!(reconcile_interrupted(&mut conn, 2000).unwrap(), 1);
@@ -371,10 +378,10 @@ mod tests {
             ("cancelled", TurnStatus::Cancelled),
             ("failed", TurnStatus::Failed),
         ] {
-            begin(&mut conn, id, "c1", TurnOrigin::Desktop, 1000).unwrap();
+            begin(&mut conn, id, "c1", TurnOrigin::Desktop, None, 1000).unwrap();
             finish(&mut conn, id, status, None, 1500).unwrap();
         }
-        begin(&mut conn, "live", "c1", TurnOrigin::OneBot, 1000).unwrap();
+        begin(&mut conn, "live", "c1", TurnOrigin::OneBot, None, 1000).unwrap();
 
         assert_eq!(reconcile_interrupted(&mut conn, 2000).unwrap(), 1);
 
@@ -391,7 +398,7 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
-        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
 
         finish(&mut conn, "t1", TurnStatus::Failed, Some("API Key not set"), 1500).unwrap();
 
@@ -410,9 +417,9 @@ mod tests {
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
         conv(&mut conn, "c2");
-        begin(&mut conn, "old", "c1", TurnOrigin::Desktop, 1000).unwrap();
-        begin(&mut conn, "new", "c1", TurnOrigin::Desktop, 2000).unwrap();
-        begin(&mut conn, "other", "c2", TurnOrigin::Desktop, 3000).unwrap();
+        begin(&mut conn, "old", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
+        begin(&mut conn, "new", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
+        begin(&mut conn, "other", "c2", TurnOrigin::Desktop, None, 3000).unwrap();
 
         assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()), [
             "new", "old"
@@ -447,11 +454,11 @@ mod tests {
             ("cancelled", TurnStatus::Cancelled),
             ("failed", TurnStatus::Failed),
         ] {
-            begin(&mut conn, id, "c1", TurnOrigin::Desktop, 1000).unwrap();
+            begin(&mut conn, id, "c1", TurnOrigin::Desktop, None, 1000).unwrap();
             finish(&mut conn, id, status, None, 1500).unwrap();
         }
-        begin(&mut conn, "cut-off", "c1", TurnOrigin::Desktop, 2000).unwrap();
-        begin(&mut conn, "reconciled", "c1", TurnOrigin::Desktop, 3000).unwrap();
+        begin(&mut conn, "cut-off", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
+        begin(&mut conn, "reconciled", "c1", TurnOrigin::Desktop, None, 3000).unwrap();
         reconcile_interrupted(&mut conn, 3500).unwrap();
 
         assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()), [
@@ -468,8 +475,8 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
-        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
-        begin(&mut conn, "t2", "c1", TurnOrigin::Desktop, 2000).unwrap();
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
+        begin(&mut conn, "t2", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
 
         assert_eq!(mark_reported(&mut conn, &["t1".to_string()], Ledger::Own, 5000).unwrap(), 1);
         assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()), ["t2"]);
@@ -492,7 +499,7 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
-        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
 
         crate::db::ops::conversation::delete_conversation(&mut conn, "c1").unwrap();
 
@@ -508,7 +515,7 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
-        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         finish(&mut conn, "t1", TurnStatus::Done, None, 1500).unwrap();
         let ended = get(&mut conn, "t1");
 
@@ -532,7 +539,7 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
-        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         finish(&mut conn, "t1", TurnStatus::Done, None, 1500).unwrap();
 
         assert_eq!(
@@ -553,7 +560,7 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
-        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
 
         finish(
             &mut conn,
@@ -580,8 +587,8 @@ mod tests {
         conv(&mut conn, "c1");
         // Ids chosen so that ordering by `id` would put them the wrong way
         // round: "aaa" sorts before "zzz" but was written second.
-        begin(&mut conn, "zzz-first", "c1", TurnOrigin::Desktop, 1000).unwrap();
-        begin(&mut conn, "aaa-second", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        begin(&mut conn, "zzz-first", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
+        begin(&mut conn, "aaa-second", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
 
         assert_eq!(
             ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()),
@@ -607,11 +614,11 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
-        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         set_phase(&mut conn, "t1", TurnPhase::RunningTool, Some("edit_file"), 1001).unwrap();
         finish(&mut conn, "t1", TurnStatus::Done, None, 1500).unwrap();
 
-        let replayed = begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 2000);
+        let replayed = begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 2000);
 
         assert!(
             matches!(
@@ -639,7 +646,7 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         conv(&mut conn, "c1");
-        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, 1000).unwrap();
+        begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         diesel::update(turns::table.find("t1"))
             .set(turns::status.eq("from_the_future"))
             .execute(&mut conn)

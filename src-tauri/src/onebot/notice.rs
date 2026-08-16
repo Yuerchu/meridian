@@ -89,7 +89,17 @@ async fn handle_poke(
         is_group: session_key.kind == SessionKind::Group,
     };
 
-    handler::run_agent_turn(state, conn_id, &session_key, &title, sender, content, None).await
+    handler::run_agent_turn(
+        state,
+        conn_id,
+        event.self_id,
+        &session_key,
+        &title,
+        sender,
+        content,
+        None,
+    )
+    .await
 }
 
 async fn handle_recall(event: &OneBotEvent, state: &Arc<SharedState>) {

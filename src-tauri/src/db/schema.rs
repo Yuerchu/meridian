@@ -226,6 +226,11 @@ diesel::table! {
         cache_read_tokens -> Nullable<Integer>,
         cache_write_tokens -> Nullable<Integer>,
         created_at -> BigInt,
+        input_price -> Nullable<Double>,
+        output_price -> Nullable<Double>,
+        cache_read_price -> Nullable<Double>,
+        cache_write_price -> Nullable<Double>,
+        self_id -> Nullable<BigInt>,
     }
 }
 
@@ -396,6 +401,7 @@ diesel::table! {
         created_at -> BigInt,
         updated_at -> BigInt,
         capability_overrides -> Nullable<Text>,
+        cache_write_price -> Nullable<Double>,
     }
 }
 
@@ -436,6 +442,7 @@ diesel::table! {
         ended_at -> Nullable<BigInt>,
         reported_at -> Nullable<BigInt>,
         parent_reported_at -> Nullable<BigInt>,
+        self_id -> Nullable<BigInt>,
     }
 }
 

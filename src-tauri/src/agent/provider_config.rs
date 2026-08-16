@@ -395,6 +395,7 @@ mod tests {
                 input_price: 0.0,
                 output_price: 0.0,
                 cache_price: None,
+                cache_write_price: None,
                 created_at: 0,
                 updated_at: 0,
                 capability_overrides: Some(r#"{"supports_tools": false}"#),

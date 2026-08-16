@@ -881,7 +881,7 @@ mod tests {
                     &mut conn, "c1", Some("t"), None, None, 1,
                 )
                 .unwrap();
-                crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::OneBot, 1000)
+                crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::OneBot, None, 1000)
                     .unwrap();
             }
             let approval_fn: ApprovalFn = Box::new(move |_, _| {

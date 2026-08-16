@@ -41,6 +41,16 @@ pub struct AuditMessage {
     pub cache_read_tokens: Option<i32>,
     pub cache_write_tokens: Option<i32>,
     pub created_at: i64,
+    /// Price per million tokens, as it stood when this row was written. NULL on
+    /// anything recorded before migration 30, where the only price that exists
+    /// is whatever `model_configs` says today.
+    pub input_price: Option<f64>,
+    pub output_price: Option<f64>,
+    pub cache_read_price: Option<f64>,
+    pub cache_write_price: Option<f64>,
+    /// The bot account that answered. NULL for desktop traffic, which is a
+    /// statement rather than a gap.
+    pub self_id: Option<i64>,
 }
 
 #[derive(Debug, Insertable)]
@@ -66,4 +76,9 @@ pub struct NewAuditMessage<'a> {
     pub cache_read_tokens: Option<i32>,
     pub cache_write_tokens: Option<i32>,
     pub created_at: i64,
+    pub input_price: Option<f64>,
+    pub output_price: Option<f64>,
+    pub cache_read_price: Option<f64>,
+    pub cache_write_price: Option<f64>,
+    pub self_id: Option<i64>,
 }

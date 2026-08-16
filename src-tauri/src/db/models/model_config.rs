@@ -21,6 +21,10 @@ pub struct ModelConfig {
     /// User-authored JSON patch over the built-in catalog. Malformed content is
     /// ignored at resolve time rather than treated as fatal.
     pub capability_overrides: Option<String>,
+    /// What a cache *write* costs per million, when it costs more than ordinary
+    /// input. Anthropic charges 1.25x for a five-minute entry and 2x for an
+    /// hour; most upstreams charge nothing extra, which is what `None` means.
+    pub cache_write_price: Option<f64>,
 }
 
 #[derive(Debug, Insertable)]
@@ -39,6 +43,7 @@ pub struct NewModelConfig<'a> {
     pub created_at: i64,
     pub updated_at: i64,
     pub capability_overrides: Option<&'a str>,
+    pub cache_write_price: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,5 +57,6 @@ pub struct ModelConfigInput {
     pub input_price: f64,
     pub output_price: f64,
     pub cache_price: Option<f64>,
+    pub cache_write_price: Option<f64>,
     pub capability_overrides: Option<String>,
 }

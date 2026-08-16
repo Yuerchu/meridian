@@ -411,7 +411,7 @@ mod tests {
             },
         )
         .unwrap();
-        crate::db::ops::turn::begin(conn, turn_id, id, crate::turn::TurnOrigin::SubAgent, 10)
+        crate::db::ops::turn::begin(conn, turn_id, id, crate::turn::TurnOrigin::SubAgent, None, 10)
             .unwrap();
     }
 
@@ -542,6 +542,7 @@ mod tests {
             "t-followup",
             "child",
             crate::turn::TurnOrigin::Desktop,
+            None,
             30,
         )
         .unwrap();

@@ -39,6 +39,13 @@
 /* `ChainOfThought` renders `TextShimmer` while reasoning streams, so its styles
    come along whether or not anything imports the component directly. */
 @import '@heroui-pro/react/css/components/text-shimmer.css' layer(components);
+/* The usage report. `kpi.css` dresses the cards; the two chart files map
+   recharts' own class names onto the theme, so without them the axes, grid and
+   tooltip cursor draw in recharts' defaults rather than in ours. */
+@import '@heroui-pro/react/css/components/kpi.css' layer(components);
+@import '@heroui-pro/react/css/components/bar-chart.css' layer(components);
+@import '@heroui-pro/react/css/components/area-chart.css' layer(components);
+@import '@heroui-pro/react/css/components/chart-tooltip.css' layer(components);
 @import '@fontsource-variable/geist';
 
 /* TextShimmer paints its text with a moving gradient and sets
@@ -68,13 +75,22 @@
    satisfies. So a narrow window got a rounded, bordered card floating inside
    its own frame with nothing beside it to be inset from.
 
-   Unlayered on purpose, to outrank the import. */
+   Unlayered on purpose, to outrank the import.
+
+   Chrome only — no height. This block used to restore `min-height: 100svh`
+   here, to undo the `- 1rem` Pro subtracts for margins that are being removed
+   two lines up. Being unlayered, that outranked every utility, including the
+   `min-h-0` on `Sidebar.Main` that lets the frame shrink when the soft keyboard
+   opens: below 768px the pane stayed a full screen tall, the keyboard inset on
+   the provider pushed the composer out through `overflow-hidden`, and the
+   keyboard covered it. Nothing needs a floor at all — the pane is a stretched
+   flex item and takes the provider's height either way. Height belongs to
+   `app-shell.tsx`, in one place, where the keyboard can reach it. */
 @media (max-width: 768px) {
   .sidebar__provider:has(.sidebar--inset) .sidebar__main {
     margin: 0;
     border-width: 0;
     border-radius: 0;
-    min-height: 100svh;
   }
 }
 
@@ -164,6 +180,23 @@
   --info: oklch(62.3% 0.214 259.815);
   --info-soft-foreground: color-mix(in oklab, var(--info) 80%, var(--foreground) 60%);
 
+  /* Project extension. Pro's charts read `--chart-1`..`--chart-4` and nothing
+     defines them here: they live in Pro's own base theme, which this project
+     does not import — only the per-component files below the layer note above.
+     Undefined they resolve to nothing and every series draws transparent.
+
+     Categorical, not a ramp of one hue: these separate series that have no
+     order between them (a provider, a model), so they have to be told apart at
+     a glance and by someone who cannot tell red from green. Kept clear of
+     `--success` / `--warning` / `--danger`, which mean something in this app —
+     a series that happened to land on the warning colour would read as a
+     warning. `--chart-3` is deliberately `--info`, so a chart of one series
+     matches the informational accent everything else uses. */
+  --chart-1: oklch(70.2% 0.183 293.5);
+  --chart-2: oklch(74.6% 0.136 196.1);
+  --chart-3: var(--info);
+  --chart-4: oklch(66.8% 0.196 330.2);
+
   --border: oklch(0.922 0 0);
   --separator: oklch(0.922 0 0);
   /* Not `var(--accent)` as HeroUI defaults it: a near-black focus ring on a
@@ -217,6 +250,13 @@
   /* Less foreground in the mix than the light theme takes, matching the ratio
      HeroUI uses for its own three: on a dark panel the hue already reads. */
   --info-soft-foreground: color-mix(in oklab, var(--info) 80%, var(--foreground) 30%);
+
+  /* Lifted and desaturated against the dark panel, the same way the four above
+     are tuned for a white one. */
+  --chart-1: oklch(76.9% 0.152 293.5);
+  --chart-2: oklch(80.4% 0.114 196.1);
+  --chart-3: var(--info);
+  --chart-4: oklch(73.1% 0.163 330.2);
 
   --border: oklch(1 0 0 / 10%);
   --separator: oklch(1 0 0 / 10%);

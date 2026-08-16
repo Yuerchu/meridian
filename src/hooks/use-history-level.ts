@@ -1,6 +1,6 @@
 import { useEffect, useEffectEvent, useId, useRef } from 'react'
 
-import { attachHistory, goBack, pushHistoryLevel } from '@/lib/history-bridge'
+import { attachHistory, syncHistory } from '@/lib/history-bridge'
 import { usePlatform } from '@/hooks/use-platform'
 import { useHistoryStore } from '@/stores/history-store'
 
@@ -46,14 +46,16 @@ export function useBackGesture(): void {
  * - **Back gesture.** `popstate` → `settleTo` drops the level and calls
  *   `dismiss`, which is `onClose`. The ref is cleared first, so the effect that
  *   then sees `isOpen === false` knows history has already moved.
- * - **Closed from React.** The effect drops the level and consumes its own
- *   entry with `goBack(1)`. The level is gone before that lands, so the
- *   resulting `popstate` cannot call `onClose` a second time.
- * - **Unmounted while open.** Drops the level but leaves the entry behind: a
- *   `history.back()` during cleanup is asynchronous and races whatever unmounted
- *   us. The cost is one back press that appears to do nothing, and it heals
- *   itself — `settleTo` converges on an absolute depth, so the stale entry is
- *   absorbed rather than accumulated.
+ * - **Closed from React.** The effect drops the level and asks history to catch
+ *   up. The level is gone before it does, so the resulting `popstate` cannot
+ *   call `onClose` a second time.
+ * - **Unmounted while open.** The same, from a cleanup.
+ *
+ * None of the three touches `window.history` itself — they change the store and
+ * call `syncHistory`, which reconciles once per tick. That is what makes a
+ * hand-over safe: a level closing and another opening in the same commit is two
+ * store writes and *no* history operation, where two eager operations would
+ * have cancelled the wrong one out. See the note in `lib/history-bridge.ts`.
  *
  * A no-op wherever {@link useBackGesture} did not claim the gesture, which is
  * every desktop and every unit test.
@@ -80,14 +82,14 @@ export function useHistoryLevel(isOpen: boolean, onClose: () => void): void {
           closeCurrent()
         },
       })
-      pushHistoryLevel(useHistoryStore.getState().levels.length)
+      syncHistory()
       return
     }
 
     if (!isOpen && registeredRef.current) {
       registeredRef.current = false
       store.drop(id)
-      goBack(1)
+      syncHistory()
     }
   }, [isOpen, enabled, id])
 
@@ -97,6 +99,13 @@ export function useHistoryLevel(isOpen: boolean, onClose: () => void): void {
       if (!registeredRef.current) return
       registeredRef.current = false
       useHistoryStore.getState().drop(id)
+      // Safe to ask from a cleanup now that it is deferred and reconciles
+      // against a depth: if this unmount is part of a swap, whatever replaces
+      // this level has already pushed by the time the microtask runs and there
+      // is nothing to do. Leaving the entry behind — which is what happened
+      // before — meant the next level found history already deep enough and
+      // silently claimed no entry of its own.
+      syncHistory()
     }
   }, [enabled, id])
 }
