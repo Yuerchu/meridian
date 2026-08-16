@@ -1,10 +1,13 @@
-import { useEffect, useState, useCallback, useId } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, TrashBin, Wrench, Terminal, Check } from '@gravity-ui/icons'
-import { Button, Card, Disclosure, DisclosureGroup, Input, Label, ListBox, Select } from '@heroui/react'
+import { Plus, TrashBin, Wrench, Terminal } from '@gravity-ui/icons'
+import { Button, Card, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextField } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
+import { useConfirm } from '@/hooks/use-confirm'
 import type { CustomTool, ToolInfo, ToolPreset } from '@/types'
-import { SettingsHeader, SettingsPane } from './primitives'
+import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
 import { SettingsDrilldown } from './settings-drilldown'
 
 function CustomToolEditor({
@@ -23,12 +26,7 @@ function CustomToolEditor({
   const [argsTemplate, setArgsTemplate] = useState(tool?.args_template ?? '')
   const [permission, setPermission] = useState(tool?.permission ?? 'ask')
   const [timeoutMs, setTimeoutMs] = useState(tool?.timeout_ms?.toString() ?? '30000')
-  const [saved, setSaved] = useState(false)
-  const nameId = useId()
-  const descriptionId = useId()
-  const commandId = useId()
-  const argsTemplateId = useId()
-  const timeoutId = useId()
+  const [saved, markSaved] = useTemporaryFlag()
 
   async function handleSave() {
     if (!name.trim() || !description.trim() || !command.trim()) return
@@ -51,8 +49,7 @@ function CustomToolEditor({
         timeoutMs: timeoutMs ? parseInt(timeoutMs) : undefined,
       })
     }
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    markSaved()
     onSave()
   }
 
@@ -67,55 +64,40 @@ function CustomToolEditor({
   return (
     <div data-slot="custom-tool-editor" className="space-y-3">
       <div className="grid grid-cols-2 gap-2">
-        <div className="space-y-1">
-          <label htmlFor={nameId} className="text-xs text-muted">{t('settings.tools.name')}</label>
-          <Input fullWidth id={nameId} value={name} onChange={(e) => setName(e.target.value)} placeholder="my_tool" className="font-mono text-xs" />
-        </div>
-        <div className="space-y-1">
-          <Select value={permission} onChange={(v) => { if (v) setPermission(String(v)) }}>
-            <Label className="text-xs text-muted">{t('settings.tools.permission')}</Label>
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {permissionOptions.map((o) => (
-                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                    {o.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-        </div>
+        <TextField fullWidth>
+          <Label>{t('settings.tools.name')}</Label>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="my_tool" className="font-mono text-xs" />
+        </TextField>
+        <SettingsSelect
+          label={t('settings.tools.permission')}
+          value={permission}
+          options={permissionOptions}
+          onChange={setPermission}
+        />
       </div>
-      <div className="space-y-1">
-        <label htmlFor={descriptionId} className="text-xs text-muted">{t('settings.tools.description')}</label>
-        <Input fullWidth id={descriptionId} value={description} onChange={(e) => setDescription(e.target.value)} />
-      </div>
-      <div className="space-y-1">
-        <label htmlFor={commandId} className="text-xs text-muted">{t('settings.tools.command')}</label>
-        <Input fullWidth id={commandId} value={command} onChange={(e) => setCommand(e.target.value)} placeholder="python script.py" className="font-mono text-xs" />
-      </div>
-      <div className="space-y-1">
-        <label htmlFor={argsTemplateId} className="text-xs text-muted">{t('settings.tools.argsTemplate')}</label>
-        <Input fullWidth id={argsTemplateId} value={argsTemplate} onChange={(e) => setArgsTemplate(e.target.value)} placeholder="--input {{input}} --output {{output}}" className="font-mono text-xs" />
-        <p className="text-xs text-muted">{t('settings.tools.argsTemplateHint')}</p>
-      </div>
-      <div className="space-y-1">
-        <label htmlFor={timeoutId} className="text-xs text-muted">{t('settings.tools.timeout')}</label>
-        <Input fullWidth id={timeoutId} type="number" value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} className="w-32" />
-      </div>
+      <TextField fullWidth>
+        <Label>{t('settings.tools.description')}</Label>
+        <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+      </TextField>
+      <TextField fullWidth>
+        <Label>{t('settings.tools.command')}</Label>
+        <Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="python script.py" className="font-mono text-xs" />
+      </TextField>
+      <TextField fullWidth>
+        <Label>{t('settings.tools.argsTemplate')}</Label>
+        <Input value={argsTemplate} onChange={(e) => setArgsTemplate(e.target.value)} placeholder="--input {{input}} --output {{output}}" className="font-mono text-xs" />
+        <Description>{t('settings.tools.argsTemplateHint')}</Description>
+      </TextField>
+      <TextField type="number">
+        <Label>{t('settings.tools.timeout')}</Label>
+        <Input value={timeoutMs} onChange={(e) => setTimeoutMs(e.target.value)} className="w-32" />
+      </TextField>
       <div className="flex items-center gap-2">
         <Button onClick={handleSave} isDisabled={!name.trim() || !command.trim()}>
           {t('common.save')}
         </Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
-            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
-          </span>
+          <SavedHint />
         )}
         {onDelete && (
           <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
@@ -135,6 +117,7 @@ export function ToolMarketplace() {
   const [showCreate, setShowCreate] = useState(false)
   const [expandedToolId, setExpandedToolId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
     const [tools, custom, cats, pres] = await Promise.all([
@@ -191,16 +174,16 @@ export function ToolMarketplace() {
                   {t(`settings.tools.qq.${tool.name}`)}
                 </span>
                 {tool.scope === 'group' && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.tools.qqGroupOnly')}</span>
+                  <Chip className="text-muted">{t('settings.tools.qqGroupOnly')}</Chip>
                 )}
                 {tool.scope === 'private' && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.tools.qqPrivateOnly')}</span>
+                  <Chip className="text-muted">{t('settings.tools.qqPrivateOnly')}</Chip>
                 )}
                 {tool.admin_only === true && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.tools.qqAdminOnly')}</span>
+                  <Chip className="text-muted">{t('settings.tools.qqAdminOnly')}</Chip>
                 )}
                 {tool.needs_approval === true && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.tools.qqApproval')}</span>
+                  <Chip className="text-muted">{t('settings.tools.qqApproval')}</Chip>
                 )}
               </div>
             ))}
@@ -272,6 +255,7 @@ export function ToolMarketplace() {
                         tool={ct}
                         onSave={refresh}
                         onDelete={async () => {
+                          if (!await confirm({ body: t('settings.confirmDelete.customTool') })) return
                           await api.deleteCustomTool(ct.id)
                           setExpandedToolId(null)
                           refresh()
@@ -284,7 +268,11 @@ export function ToolMarketplace() {
             )
           })}
           {customTools.length === 0 && !showCreate && (
-            <p className="text-xs text-muted text-center py-4">{t('settings.tools.noCustom')}</p>
+            <EmptyState size="sm">
+              <EmptyState.Header>
+                <EmptyState.Title>{t('settings.tools.noCustom')}</EmptyState.Title>
+              </EmptyState.Header>
+            </EmptyState>
           )}
         </DisclosureGroup>
       </div>
@@ -297,15 +285,18 @@ export function ToolMarketplace() {
             return (
               <div key={preset.id} className="flex items-center gap-2 px-3 py-2 text-xs border border-border rounded-lg">
                 <span className="font-medium flex-1">{preset.name}</span>
-                <span className="text-muted">{toolNames.length} tools</span>
+                <span className="text-muted">
+                  {t('settings.tools.presetCount', { count: toolNames.length })}
+                </span>
                 {preset.is_builtin === 1 && (
-                  <span className="text-xs px-1.5 py-0.5 rounded bg-default text-muted">{t('settings.template.builtin')}</span>
+                  <Chip className="text-muted">{t('settings.template.builtin')}</Chip>
                 )}
               </div>
             )
           })}
         </div>
       </div>
+      {confirmDialog}
     </SettingsPane>
   )
 }

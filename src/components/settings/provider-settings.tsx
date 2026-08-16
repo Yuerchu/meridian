@@ -1,10 +1,14 @@
-import { useEffect, useState, useCallback, useId, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, Check, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
-import { Button, Disclosure, Input, Label, ListBox, Select, Spinner, Tooltip } from '@heroui/react'
+import { Plus, ArrowsRotateRight, TrashBin, Cloud, Key, Sliders, Xmark } from '@gravity-ui/icons'
+import { Button, Disclosure, Input, Label, Spinner, TextField, Tooltip } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
+import { useConfirm } from '@/hooks/use-confirm'
 import { MasterDetail } from './master-detail'
+import { SavedHint, SettingsRow, SettingsSelect } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import type { ModelConfig, ModelConfigInput, Provider, ModelInfo, ProviderCapabilities, ThinkingEffort } from '@/types'
@@ -73,22 +77,14 @@ function CapabilityTriRow({
   return (
     <div data-slot="capability-tri-row" className="flex items-center justify-between gap-2">
       <p className="text-xs text-muted">{label}</p>
-      <Select aria-label={label} value={value} onChange={(v) => v && onChange(String(v) as Tri)}>
-        <Select.Trigger className="h-7 w-32 text-xs">
-          <Select.Value />
-          <Select.Indicator />
-        </Select.Trigger>
-        <Select.Popover>
-          <ListBox>
-            {options.map((o) => (
-              <ListBox.Item key={o.value} id={o.value} textValue={o.label} className="text-xs">
-                {o.label}
-                <ListBox.ItemIndicator />
-              </ListBox.Item>
-            ))}
-          </ListBox>
-        </Select.Popover>
-      </Select>
+      <SettingsSelect
+        ariaLabel={label}
+        value={value}
+        options={options}
+        onChange={onChange}
+        triggerClassName="h-7 w-32 text-xs"
+        itemClassName="text-xs"
+      />
     </div>
   )
 }
@@ -108,12 +104,6 @@ function ModelConfigEditor({
 }) {
   const { t } = useTranslation()
   const [caps, setCaps] = useState<ProviderCapabilities | null>(null)
-  const contextWindowId = useId()
-  const compactThresholdId = useId()
-  const maxOutputId = useId()
-  const inputPriceId = useId()
-  const outputPriceId = useId()
-  const cachePriceId = useId()
 
   useEffect(() => {
     api.getProviderCapabilities(providerId, modelId).then(setCaps).catch(() => {})
@@ -199,32 +189,32 @@ function ModelConfigEditor({
   return (
     <div className="px-3 pb-3 space-y-2 bg-default/30">
       <div className="grid grid-cols-2 gap-2">
-        <div>
-          <label htmlFor={contextWindowId} className="text-xs text-muted">{t('settings.model.contextWindow')}</label>
-          <Input fullWidth id={contextWindowId} value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
-        </div>
-        <div>
-          <label htmlFor={compactThresholdId} className="text-xs text-muted">{t('settings.model.compactThreshold')}</label>
-          <Input fullWidth id={compactThresholdId} value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
-        </div>
+        <TextField fullWidth>
+          <Label>{t('settings.model.contextWindow')}</Label>
+          <Input value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
+        </TextField>
+        <TextField fullWidth>
+          <Label>{t('settings.model.compactThreshold')}</Label>
+          <Input value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
+        </TextField>
       </div>
-      <div>
-        <label htmlFor={maxOutputId} className="text-xs text-muted">{t('settings.model.maxOutput')}</label>
-        <Input fullWidth id={maxOutputId} value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
-      </div>
+      <TextField fullWidth>
+        <Label>{t('settings.model.maxOutput')}</Label>
+        <Input value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
+      </TextField>
       <div className="grid grid-cols-3 gap-2">
-        <div>
-          <label htmlFor={inputPriceId} className="text-xs text-muted">{t('settings.model.inputPrice')}</label>
-          <Input fullWidth id={inputPriceId} value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
-        </div>
-        <div>
-          <label htmlFor={outputPriceId} className="text-xs text-muted">{t('settings.model.outputPrice')}</label>
-          <Input fullWidth id={outputPriceId} value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
-        </div>
-        <div>
-          <label htmlFor={cachePriceId} className="text-xs text-muted">{t('settings.model.cachePrice')}</label>
-          <Input fullWidth id={cachePriceId} value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
-        </div>
+        <TextField fullWidth>
+          <Label>{t('settings.model.inputPrice')}</Label>
+          <Input value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
+        </TextField>
+        <TextField fullWidth>
+          <Label>{t('settings.model.outputPrice')}</Label>
+          <Input value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
+        </TextField>
+        <TextField fullWidth>
+          <Label>{t('settings.model.cachePrice')}</Label>
+          <Input value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
+        </TextField>
       </div>
       <Disclosure
         data-slot="capability-overrides"
@@ -313,36 +303,35 @@ function ProviderEditor({
   const [baseUrl, setBaseUrl] = useState(provider.base_url)
   const [apiFormat, setApiFormat] = useState(provider.api_format || 'chat_completions')
   const [apiKey, setApiKey] = useState('')
+  const { confirm, confirmDialog } = useConfirm()
   // Not a boolean: while the lookup is in flight `false` renders exactly like
   // "no key configured", and so does a lookup that failed. Both would invite the
   // user to enter a key they already have — and saving one rewrites the store
   // under a fresh passphrase, which is how the *other* providers' keys get lost.
   const [keyStatus, setKeyStatus] = useState<'loading' | 'set' | 'unset' | 'error'>('loading')
   const [savingKey, setSavingKey] = useState(false)
-  const [keySaved, setKeySaved] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [keySaved, markKeySaved] = useTemporaryFlag()
+  const [saved, markSaved] = useTemporaryFlag()
   const [models, setModels] = useState<ModelInfo[]>([])
   const [fetchingModels, setFetchingModels] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
   const [modelConfigs, setModelConfigs] = useState<Map<string, ModelConfig>>(new Map())
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
-  const nameId = useId()
-  const baseUrlId = useId()
-  const apiKeyId = useId()
 
   // Deletion clears secrets and cached models before the list reloads, so the
   // button has to stay disabled and say what it is doing — otherwise a slow
   // delete looks like a click that did not register, and a second click races
   // the first.
   const handleDelete = useCallback(async () => {
+    if (!await confirm({ body: t('settings.confirmDelete.provider') })) return
     setDeleting(true)
     try {
       await onDelete(provider.id)
     } finally {
       setDeleting(false)
     }
-  }, [onDelete, provider.id])
+  }, [confirm, t, onDelete, provider.id])
 
   useEffect(() => {
     let cancelled = false
@@ -361,10 +350,9 @@ function ProviderEditor({
 
   const handleSave = useCallback(async () => {
     await api.updateProvider(provider.id, { name, providerType, baseUrl, apiFormat })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    markSaved()
     onUpdate()
-  }, [provider.id, name, providerType, baseUrl, apiFormat, onUpdate])
+  }, [provider.id, name, providerType, baseUrl, apiFormat, onUpdate, markSaved])
 
   const handleSaveKey = useCallback(async () => {
     if (!apiKey.trim()) return
@@ -373,15 +361,14 @@ function ProviderEditor({
       await api.setProviderKey(provider.id, apiKey.trim())
       setKeyStatus('set')
       setApiKey('')
-      setKeySaved(true)
-      setTimeout(() => setKeySaved(false), 2000)
+      markKeySaved()
     } catch (err) {
       console.error('Failed to save key:', err)
       alert(String(err))
     } finally {
       setSavingKey(false)
     }
-  }, [provider.id, apiKey])
+  }, [provider.id, apiKey, markKeySaved])
 
   const loadModelConfigs = useCallback(async () => {
     try {
@@ -414,10 +401,11 @@ function ProviderEditor({
   }, [loadModelConfigs])
 
   const handleDeleteModelConfig = useCallback(async (id: string) => {
+    if (!await confirm({ body: t('settings.confirmDelete.modelConfig') })) return
     await api.deleteModelConfig(id)
     await loadModelConfigs()
     setEditingModelId(null)
-  }, [loadModelConfigs])
+  }, [confirm, t, loadModelConfigs])
 
   const typeOptions = [
     { value: 'openai', label: t('settings.provider.typeOpenAI') },
@@ -434,99 +422,72 @@ function ProviderEditor({
 
   return (
     <div className="space-y-5">
-      <div className="space-y-1.5">
-        <label htmlFor={nameId} className="block text-xs text-muted">{t('settings.provider.name')}</label>
-        <Input fullWidth id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
-      </div>
+      <TextField fullWidth>
+        <Label>{t('settings.provider.name')}</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} />
+      </TextField>
 
-      <div className="space-y-1.5">
-        <Select fullWidth value={providerType} onChange={(v) => v && setProviderType(String(v))}>
-          <Label className="block text-xs text-muted">{t('settings.provider.type')}</Label>
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {typeOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
-        </Select>
-      </div>
+      <SettingsSelect
+        label={t('settings.provider.type')}
+        value={providerType}
+        options={typeOptions}
+        onChange={setProviderType}
+        fullWidth
+      />
 
-      <div className="space-y-1.5">
-        <label htmlFor={baseUrlId} className="block text-xs text-muted">{t('settings.provider.baseUrl')}</label>
-        <Input fullWidth
-          id={baseUrlId}
+      <TextField fullWidth>
+        <Label>{t('settings.provider.baseUrl')}</Label>
+        <Input
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder={providerType === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
         />
-      </div>
+      </TextField>
 
       {providerType !== 'anthropic' && (
-        <div className="space-y-1.5">
-          <Select fullWidth value={apiFormat} onChange={(v) => v && setApiFormat(String(v))}>
-            <Label className="block text-xs text-muted">{t('settings.provider.apiFormat')}</Label>
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {formatOptions.map((o) => (
-                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                    {o.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-        </div>
+        <SettingsSelect
+          label={t('settings.provider.apiFormat')}
+          value={apiFormat}
+          options={formatOptions}
+          onChange={setApiFormat}
+          fullWidth
+        />
       )}
 
       <div className="flex items-center gap-2">
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
-            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
-          </span>
+          <SavedHint />
         )}
       </div>
 
       <div className="border-t border-border pt-4 space-y-3">
-        <label htmlFor={apiKeyId} className="block text-xs text-muted">{t('settings.provider.apiKey')}</label>
-        <div className="flex gap-2">
-          <Input fullWidth
-            id={apiKeyId}
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            disabled={keyStatus === 'loading' || savingKey}
-            placeholder={
-              keyStatus === 'loading'
-                ? t('settings.provider.apiKeyChecking')
-                : keyStatus === 'set'
-                  ? t('settings.provider.apiKeyPlaceholderSet')
-                  : t('settings.provider.apiKeyPlaceholder')
-            }
-            className="flex-1"
-          />
-          <Button
-            variant="outline"
-            onClick={handleSaveKey}
-            isDisabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
-          >
-            {savingKey ? <Spinner className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
-            {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
-          </Button>
-        </div>
+        <TextField fullWidth type="password">
+          <Label>{t('settings.provider.apiKey')}</Label>
+          <div className="flex gap-2">
+            <Input
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              disabled={keyStatus === 'loading' || savingKey}
+              placeholder={
+                keyStatus === 'loading'
+                  ? t('settings.provider.apiKeyChecking')
+                  : keyStatus === 'set'
+                    ? t('settings.provider.apiKeyPlaceholderSet')
+                    : t('settings.provider.apiKeyPlaceholder')
+              }
+              className="flex-1"
+            />
+            <Button
+              variant="outline"
+              onClick={handleSaveKey}
+              isDisabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
+            >
+              {savingKey ? <Spinner className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
+              {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
+            </Button>
+          </div>
+        </TextField>
         {keyStatus === 'loading' && (
           <p className="flex items-center gap-1.5 text-xs text-muted">
             <Spinner className="w-3.5 h-3.5" />
@@ -569,7 +530,15 @@ function ProviderEditor({
                   <div className="flex items-center justify-between px-3 py-1.5">
                     <span className={cn("text-xs", cfg ? "text-foreground" : "text-muted")}>
                       {m.name}
-                      {cfg && <span className="ml-1.5 text-xs text-success-soft-foreground">●</span>}
+                      {/* The dot is decoration; the name it carries is the
+                          part a screen reader can use. On its own it was read
+                          out as "black circle". */}
+                      {cfg && (
+                        <>
+                          <span aria-hidden className="ml-1.5 text-xs text-success-soft-foreground">●</span>
+                          <span className="sr-only">{t('settings.provider.modelConfigured')}</span>
+                        </>
+                      )}
                     </span>
                     <Button
                       isIconOnly
@@ -610,6 +579,7 @@ function ProviderEditor({
           {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
         </Button>
       </div>
+      {confirmDialog}
     </div>
   )
 }
@@ -665,23 +635,31 @@ export function ProviderSettings() {
   const providerList = (
     <>
       {providers.map((p) => (
-        <Button
+        <SettingsRow
           key={p.id}
-          variant="ghost"
+          icon={<Cloud />}
+          label={p.name}
+          isActive={selectedId === p.id}
+          // A list of peers, not a row that opens something else.
+          trailing={null}
           onClick={() => nav.openItem(p.id)}
-          className={cn(
-            'w-full justify-start h-auto px-3 py-2 text-sm',
-            selectedId === p.id
-              ? 'bg-default text-default-foreground'
-              : 'text-muted hover:text-foreground hover:bg-default/50',
-          )}
-        >
-          <Cloud className="w-4 h-4" />
-          <span className="truncate">{p.name}</span>
-        </Button>
+        />
       ))}
       {providers.length === 0 && (
-        <p className="text-xs text-muted px-3">{t('settings.provider.noProviders')}</p>
+        // The text used to point at the "+" in the header, which is what an
+        // empty state has an action slot for.
+        <EmptyState size="sm">
+          <EmptyState.Media variant="icon"><Cloud /></EmptyState.Media>
+          <EmptyState.Header>
+            <EmptyState.Title>{t('settings.provider.noProviders')}</EmptyState.Title>
+          </EmptyState.Header>
+          <EmptyState.Content>
+            <Button variant="outline" onClick={handleCreate}>
+              <Plus className="w-4 h-4" />
+              {t('settings.provider.addProvider')}
+            </Button>
+          </EmptyState.Content>
+        </EmptyState>
       )}
     </>
   )
@@ -704,6 +682,7 @@ export function ProviderSettings() {
         </Tooltip>
       }
       list={providerList}
+      detailTitle={selected?.name}
       detail={selected ? (
         <ProviderEditor
           key={selected.id}

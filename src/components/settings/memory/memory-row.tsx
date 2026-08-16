@@ -2,9 +2,15 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { TrashBin, TriangleExclamation } from '@gravity-ui/icons'
 import { api } from '@/api'
-import { Button, Checkbox, Disclosure, TextArea, Tooltip } from '@heroui/react'
-import { MemoryBadge } from './memory-badge'
+import { Button, Checkbox, Chip, Disclosure, TextArea, Tooltip } from '@heroui/react'
 import type { Memory } from '@/types'
+
+/**
+ * `--info` is a project extension: HeroUI has no `info` colour, so the property
+ * its Chip reads is set directly. The same shape as the `--progress-circle-*`
+ * override elsewhere, and for the same reason.
+ */
+export const INFO_CHIP = '[--chip-fg:var(--info-soft-foreground)]'
 
 function formatDate(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10)
@@ -69,18 +75,24 @@ export function MemoryRow({
           </Disclosure.Trigger>
         </Disclosure.Heading>
         <span className="min-w-0 truncate font-mono text-sm">{memory.key}</span>
-        <MemoryBadge tone="accent">
+        <Chip color="default">
           {memory.scope_type.replace('onebot_', '').replace('client_global', 'client')}
-        </MemoryBadge>
-        <MemoryBadge tone="info">{memory.origin}</MemoryBadge>
-        <MemoryBadge>{memory.memory_type}</MemoryBadge>
+        </Chip>
+        {/* `--info` is a project token with no HeroUI colour behind it, so the
+            property the component reads is set directly rather than through a
+            `color` that does not exist. */}
+        <Chip className={INFO_CHIP}>{memory.origin}</Chip>
+        <Chip className="text-muted">{memory.memory_type}</Chip>
         {ownerOnly && (
           <Tooltip delay={0}>
+            {/* A Chip cannot take focus, so it needs the wrapper to become a
+                tooltip trigger — unlike a real button, which would only gain a
+                second, inert tab stop from one. */}
             <Tooltip.Trigger>
-              <MemoryBadge tone="warning">
-                <TriangleExclamation className="mr-1 size-3.5" />
-                {t('settings.memory.ownerOnly')}
-              </MemoryBadge>
+              <Chip color="warning">
+                <TriangleExclamation className="size-3.5" />
+                <Chip.Label>{t('settings.memory.ownerOnly')}</Chip.Label>
+              </Chip>
             </Tooltip.Trigger>
             <Tooltip.Content>{t('settings.memory.ownerOnlyHint')}</Tooltip.Content>
           </Tooltip>

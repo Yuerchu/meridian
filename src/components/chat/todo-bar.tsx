@@ -1,9 +1,14 @@
-import { Disclosure, ProgressCircle } from '@heroui/react'
+import { useState } from 'react'
+import { Disclosure, ProgressCircle, ToggleButton, ToggleButtonGroup } from '@heroui/react'
+import { LayoutColumns3, LayoutList } from '@gravity-ui/icons'
 import { useTranslation } from 'react-i18next'
 
 import { useConversationStore } from '@/stores/conversation-store'
 import { cn } from '@/lib/utils'
+import TodoBoard from './todo-board'
 import { TodoItemList, todoProgress, type TodoArgs } from './todo-list'
+
+type TodoView = 'list' | 'board'
 
 /**
  * The running checklist, pinned above the composer. The transcript cards show
@@ -20,6 +25,10 @@ export function TodoBar({ conversationId, className }: { conversationId: string;
 export function TodoBarView({ todos, className }: { todos: TodoArgs; className?: string }) {
   const { t } = useTranslation()
   const { done, total, current } = todoProgress(todos.todos)
+  // Component state, not a preference: which of two shapes you want to look at
+  // right now is not worth a round trip to the backend, and the panel it lives
+  // in is closed most of the time anyway.
+  const [view, setView] = useState<TodoView>('list')
 
   return (
     <div
@@ -93,7 +102,32 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
             {/* Body, not a plain wrapper: it is what keeps the panel measurable,
                 so without it the list never collapses. */}
             <Disclosure.Body>
-              <TodoItemList todos={todos.todos} className="px-4 pb-4" />
+              <div className="flex justify-end px-4 pb-2">
+                <ToggleButtonGroup
+                  size="sm"
+                  selectionMode="single"
+                  // Without this the second press on the selected option
+                  // deselects it, and the panel would have no view at all.
+                  disallowEmptySelection
+                  selectedKeys={[view]}
+                  onSelectionChange={(keys) => {
+                    const next = [...keys][0]
+                    if (next === 'list' || next === 'board') setView(next)
+                  }}
+                >
+                  <ToggleButton id="list" isIconOnly aria-label={t('chat.todo.viewList')}>
+                    <LayoutList />
+                  </ToggleButton>
+                  <ToggleButton id="board" isIconOnly aria-label={t('chat.todo.viewBoard')}>
+                    <LayoutColumns3 />
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </div>
+              {view === 'board' ? (
+                <TodoBoard todos={todos.todos} className="px-4 pb-4" />
+              ) : (
+                <TodoItemList todos={todos.todos} className="px-4 pb-4" />
+              )}
             </Disclosure.Body>
           </Disclosure.Content>
         </Disclosure>

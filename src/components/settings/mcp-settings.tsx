@@ -1,11 +1,15 @@
-import { useEffect, useState, useCallback, useId } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, PlugWire, PlugConnection, LogoMcp, TrashBin, ArrowDownToSquare } from '@gravity-ui/icons'
-import { Button, Input, Switch, TextArea, Tooltip } from '@heroui/react'
+import { Button, Input, Label, Switch, TextArea, TextField, Tooltip } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
+import { useConfirm } from '@/hooks/use-confirm'
 import type { McpServer, McpToolDef } from '@/types'
 import { MasterDetail } from './master-detail'
+import { SettingsRow } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 
 interface McpServersJson {
@@ -91,19 +95,13 @@ function McpServerEditor({
   const [env, setEnv] = useState(server.env ?? '{}')
   const [url, setUrl] = useState(server.url ?? '')
   const [headers, setHeaders] = useState(server.headers ?? '{}')
-  const [saved, setSaved] = useState(false)
+  const [saved, markSaved] = useTemporaryFlag(1500)
   const [connected, setConnected] = useState(false)
   const [connecting, setConnecting] = useState(false)
   /** Whether this one comes up on its own at launch — `is_enabled` in the row. */
   const [autoConnect, setAutoConnect] = useState(server.is_enabled === 1)
   const [tools, setTools] = useState<McpToolDef[]>([])
   const [error, setError] = useState<string | null>(null)
-  const nameId = useId()
-  const urlId = useId()
-  const headersId = useId()
-  const commandId = useId()
-  const argsId = useId()
-  const envId = useId()
 
   useEffect(() => {
     setName(server.name)
@@ -148,10 +146,9 @@ function McpServerEditor({
       updates.env = null
     }
     await api.updateMcpServer(server.id, updates)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 1500)
+    markSaved()
     onUpdate()
-  }, [server.id, name, transportType, command, args, env, url, headers, onUpdate])
+  }, [server.id, name, transportType, command, args, env, url, headers, onUpdate, markSaved])
 
   const handleConnect = useCallback(async () => {
     setConnecting(true)
@@ -193,10 +190,10 @@ function McpServerEditor({
 
   return (
     <div className="space-y-4">
-      <div>
-        <label htmlFor={nameId} className="text-sm font-medium">{t('settings.mcp.name')}</label>
-        <Input fullWidth id={nameId} value={name} onChange={(e) => setName(e.target.value)} className="mt-1" />
-      </div>
+      <TextField fullWidth>
+        <Label>{t('settings.mcp.name')}</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} />
+      </TextField>
 
       <div>
         <p className="text-sm font-medium">{t('settings.mcp.transport')}</p>
@@ -230,29 +227,29 @@ function McpServerEditor({
 
       {isHttp ? (
         <>
-          <div>
-            <label htmlFor={urlId} className="text-sm font-medium">{t('settings.mcp.url')}</label>
-            <Input fullWidth id={urlId} value={url} onChange={(e) => setUrl(e.target.value)} className="mt-1" placeholder="https://example.com/mcp" />
-          </div>
-          <div>
-            <label htmlFor={headersId} className="text-sm font-medium">{t('settings.mcp.headers')}</label>
-            <Input fullWidth id={headersId} value={headers} onChange={(e) => setHeaders(e.target.value)} className="mt-1" placeholder='{"Authorization": "Bearer ..."}' />
-          </div>
+          <TextField fullWidth>
+            <Label>{t('settings.mcp.url')}</Label>
+            <Input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://example.com/mcp" />
+          </TextField>
+          <TextField fullWidth>
+            <Label>{t('settings.mcp.headers')}</Label>
+            <Input value={headers} onChange={(e) => setHeaders(e.target.value)} placeholder='{"Authorization": "Bearer ..."}' />
+          </TextField>
         </>
       ) : (
         <>
-          <div>
-            <label htmlFor={commandId} className="text-sm font-medium">{t('settings.mcp.command')}</label>
-            <Input fullWidth id={commandId} value={command} onChange={(e) => setCommand(e.target.value)} className="mt-1" placeholder="npx" />
-          </div>
-          <div>
-            <label htmlFor={argsId} className="text-sm font-medium">{t('settings.mcp.args')}</label>
-            <Input fullWidth id={argsId} value={args} onChange={(e) => setArgs(e.target.value)} className="mt-1" placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]' />
-          </div>
-          <div>
-            <label htmlFor={envId} className="text-sm font-medium">{t('settings.mcp.env')}</label>
-            <Input fullWidth id={envId} value={env} onChange={(e) => setEnv(e.target.value)} className="mt-1" placeholder='{}' />
-          </div>
+          <TextField fullWidth>
+            <Label>{t('settings.mcp.command')}</Label>
+            <Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="npx" />
+          </TextField>
+          <TextField fullWidth>
+            <Label>{t('settings.mcp.args')}</Label>
+            <Input value={args} onChange={(e) => setArgs(e.target.value)} placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]' />
+          </TextField>
+          <TextField fullWidth>
+            <Label>{t('settings.mcp.env')}</Label>
+            <Input value={env} onChange={(e) => setEnv(e.target.value)} placeholder='{}' />
+          </TextField>
         </>
       )}
 
@@ -279,7 +276,10 @@ function McpServerEditor({
           isSelected={autoConnect}
           onChange={handleToggleAutoConnect}
         >
-          {t('settings.mcp.autoConnect')}
+          <Switch.Content>
+            <Switch.Control><Switch.Thumb /></Switch.Control>
+            {t('settings.mcp.autoConnect')}
+          </Switch.Content>
         </Switch>
       </div>
 
@@ -321,6 +321,7 @@ export function McpSettings() {
   const { selectedId, openItem, openAux, select, back } = nav
   const [servers, setServers] = useState<McpServer[]>([])
   const showImport = nav.aux === 'import'
+  const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(() => {
     api.listMcpServers().then(setServers)
@@ -335,10 +336,11 @@ export function McpSettings() {
   }, [refresh, openItem])
 
   const handleDelete = useCallback(async (id: string) => {
+    if (!await confirm({ body: t('settings.confirmDelete.mcpServer') })) return
     await api.deleteMcpServer(id)
     if (selectedId === id) select(null)
     refresh()
-  }, [selectedId, select, refresh])
+  }, [confirm, t, selectedId, select, refresh])
 
   const handleImport = useCallback(async (data: McpServersJson) => {
     if (!data.mcpServers) return
@@ -364,25 +366,16 @@ export function McpSettings() {
   const serverList = (
     <div className="space-y-1">
       {servers.map((s) => (
-        <Button
+        <SettingsRow
           key={s.id}
-          variant="ghost"
+          icon={<LogoMcp />}
+          label={s.name}
+          // The transport was already sitting where the value slot puts it.
+          value={s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
+          isActive={selectedId === s.id}
+          trailing={null}
           onClick={() => nav.openItem(s.id)}
-          className={cn(
-            'w-full justify-start h-auto px-3 py-2',
-            selectedId === s.id
-              ? 'bg-default text-default-foreground'
-              : 'text-muted',
-          )}
-        >
-          <div className="flex items-center gap-2 w-full">
-            <LogoMcp className="w-3.5 h-3.5 flex-shrink-0" />
-            <span className="truncate">{s.name}</span>
-            <span className="text-xs text-muted ml-auto flex-shrink-0">
-              {s.transport_type === 'streamablehttp' ? 'HTTP' : 'stdio'}
-            </span>
-          </div>
-        </Button>
+        />
       ))}
     </div>
   )
@@ -406,6 +399,7 @@ export function McpSettings() {
   )
 
   return (
+    <>
     <MasterDetail
       nav={nav}
       title={t('settings.mcp.title')}
@@ -420,6 +414,7 @@ export function McpSettings() {
           {serverList}
         </div>
       }
+      detailTitle={selected?.name}
       detail={selected ? (
         <McpServerEditor
           key={selected.id}
@@ -436,8 +431,14 @@ export function McpSettings() {
         <JsonImportDialog onImport={handleImport} onCancel={back} />
       ) : undefined}
       emptyState={servers.length === 0 && !showImport ? (
-        <p className="text-sm text-muted">{t('settings.mcp.noServers')}</p>
+        <EmptyState size="sm">
+          <EmptyState.Header>
+            <EmptyState.Title>{t('settings.mcp.noServers')}</EmptyState.Title>
+          </EmptyState.Header>
+        </EmptyState>
       ) : undefined}
     />
+    {confirmDialog}
+    </>
   )
 }

@@ -4,7 +4,7 @@ import { Button, Modal } from '@heroui/react'
 import { ArrowLeft } from '@gravity-ui/icons'
 
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useHistoryLevel } from '@/hooks/use-nav'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { SettingsRow } from './primitives'
 
 /**
@@ -22,21 +22,18 @@ import { SettingsRow } from './primitives'
 export function SettingsDrilldown({
   title,
   summary,
-  mode,
   children,
 }: {
   title: React.ReactNode
   /** The current value, shown on the row that opens it. */
   summary?: React.ReactNode
-  /** Overrides the breakpoint, for a block that should never split out. */
-  mode?: 'inline' | 'push'
   children: React.ReactNode
 }) {
   const { t } = useTranslation()
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
 
-  const pushes = mode === 'push' || (mode !== 'inline' && isMobile)
+  const pushes = isMobile
 
   useHistoryLevel(pushes && open, () => setOpen(false))
 

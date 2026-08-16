@@ -1,14 +1,14 @@
-import { useNavStore } from '@/stores/nav-store'
+import { useHistoryStore } from '@/stores/history-store'
 
 /**
  * The only place in the app that touches `window.history`.
  *
- * Two rules make the stack and the browser agree:
+ * Two rules make the level stack and the browser agree:
  *
- * 1. **Nothing pops the store directly.** Every "go back" — the header arrow,
- *    a dismissed drawer, the hardware key — calls {@link goBack}, and the store
- *    only changes when `popstate` comes back. One writer, so the two cannot
- *    drift apart.
+ * 1. **Nothing pops the store directly.** Every "go back" — a dismissed drawer,
+ *    a detail pane closed from React, the hardware key — calls {@link goBack},
+ *    and the store only changes when `popstate` comes back. One writer, so the
+ *    two cannot drift apart.
  * 2. **No URL is ever written.** `pushState` takes only a state object; the
  *    address never changes. A path would have to survive Tauri's asset
  *    protocol in production, and a hash would hit the `hashchange → reload`
@@ -54,12 +54,12 @@ export function goBack(count = 1): void {
 /**
  * Starts feeding `popstate` into the store. Returns the detach function.
  *
- * Only mounted on the mobile shell: on a desktop the back gesture belongs to
- * the window, not to us.
+ * Mounted only where the gesture is ours — see `useBackGesture`. On a desktop
+ * the back gesture belongs to the window, not to us.
  */
 export function attachHistory(): () => void {
   const onPopState = (e: PopStateEvent) => {
-    useNavStore.getState().settleTo(readDepth(e.state))
+    useHistoryStore.getState().settleTo(readDepth(e.state))
   }
   window.addEventListener('popstate', onPopState)
   return () => window.removeEventListener('popstate', onPopState)

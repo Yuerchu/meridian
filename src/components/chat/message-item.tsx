@@ -1,31 +1,29 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowsRotateRight, Check, Copy, FileText, Microphone, Pencil, SquareDashedText, ThumbsDown, ThumbsUp, TrashBin, Xmark } from '@gravity-ui/icons'
+import { ArrowsRotateRight, Check, Copy, Microphone, Pencil, SquareDashedText, ThumbsDown, ThumbsUp, TrashBin, Xmark } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
+import { useConfirm } from '@/hooks/use-confirm'
 import { CopyButton, MarkdownContent } from './markdown-content'
-import { AlertDialog, Avatar, Button, TextArea } from '@heroui/react'
+import { Avatar, TextArea } from '@heroui/react'
 import {
-  Message,
+  MessageAssistant,
   MessageAvatar,
   MessageContent,
   MessageFooter,
   MessageHeader,
+  MessageUser,
 } from '@/components/ui/message'
 import { Bubble, BubbleContent, BubbleGroup } from '@/components/ui/bubble'
-import {
-  Attachment,
-  AttachmentContent,
-  AttachmentGroup,
-  AttachmentMedia,
-  AttachmentTitle,
-} from '@/components/ui/attachment'
+import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
+
+import { assetSrc } from '@/lib/asset-src'
 import {
   ChainOfThought,
   ChainOfThoughtContent,
   ChainOfThoughtTrigger,
-} from '@/components/ui/chain-of-thought'
+} from '@heroui-pro/react/chain-of-thought'
 import {
   ChatToolGroup,
   ChatToolGroupContent,
@@ -38,7 +36,6 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { convertFileSrc } from '@tauri-apps/api/core'
 import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { SelectTextModal } from './select-text-modal'
 import { markQueued } from '@/lib/turns'
@@ -47,16 +44,6 @@ import { renderEmojisInText } from './emoji-renderer'
 import type { ContentBlock, Message as MessageData } from '@/types'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { EmojiMap } from './emoji-renderer'
-
-// Attachment URLs are stored as file:// URIs, but the WebView runs on an http
-// origin and blocks file:// subresources. Map them through the asset protocol.
-function assetSrc(url?: string): string | undefined {
-  if (!url) return undefined
-  if (!url.startsWith('file://')) return url
-  let path = url.slice('file://'.length)
-  if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1)
-  return convertFileSrc(decodeURIComponent(path))
-}
 
 function useRelativeTime() {
   const { t } = useTranslation()
@@ -398,15 +385,15 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
   const [editText, setEditText] = useState('')
   const editRef = useRef<HTMLTextAreaElement>(null)
   const [selectedText, setSelectedText] = useState('')
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showSelectText, setShowSelectText] = useState(false)
   // Evaluated once per render rather than stored: `matchMedia` is synchronous
   // and a device does not grow a mouse mid-conversation.
   const coarse = isCoarsePointer()
-  // `AlertDialog.Body` is a plain div: only a `Heading slot="title"` is wired up
-  // for us, so without this the dialog announces its title and nothing else.
-  // Generated, because every message in the list has one of these.
-  const deleteDescId = React.useId()
+
+  const { confirm, confirmDialog } = useConfirm()
+  const requestDelete = useCallback(async () => {
+    if (await confirm({ body: t('confirm.deleteMessage') })) onDelete?.(message.id)
+  }, [confirm, t, onDelete, message.id])
 
   const handleContextMenuOpenChange = useCallback((open: boolean) => {
     if (open) {
@@ -461,34 +448,34 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
 
     const userContent = (
       <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-        <ContextMenuTrigger render={<Message align="end" className="pointer-coarse:select-none" />}>
-          <MessageContent>
+        {/* No `MessageContent` here: with nothing beside it, the message's own
+            parts are the column. */}
+        <ContextMenuTrigger render={<MessageUser className="pointer-coarse:select-none" />}>
+          <>
             {speaker && (
               <MessageHeader className="justify-end text-muted font-normal">{speaker}</MessageHeader>
             )}
             {hasAttachments && (
-              <AttachmentGroup className="items-start max-w-[80%]">
+              <ChatAttachmentGroup className="max-w-[80%] justify-end">
                 {contentParts!.filter((p) => p.type === 'image_url').map((p, i) => (
-                  <Attachment key={`img-${i}`} orientation="vertical">
-                    <AttachmentMedia variant="image">
-                      <img src={assetSrc(p.image_url?.url)} alt="" />
-                    </AttachmentMedia>
-                  </Attachment>
+                  <ChatAttachment
+                    key={`img-${i}`}
+                    mediaType="image"
+                    name={t('chat.attachedImage')}
+                    src={assetSrc(p.image_url?.url)}
+                  />
                 ))}
                 {contentParts!.filter((p) => p.type === 'file').map((p, i) => (
-                  <Attachment key={`file-${i}`}>
-                    <AttachmentMedia>
-                      <FileText />
-                    </AttachmentMedia>
-                    <AttachmentContent>
-                      <AttachmentTitle>{p.file?.name ?? 'file'}</AttachmentTitle>
-                    </AttachmentContent>
-                  </Attachment>
+                  <ChatAttachment key={`file-${i}`} name={p.file?.name ?? 'file'} />
                 ))}
-              </AttachmentGroup>
+              </ChatAttachmentGroup>
             )}
             {editing ? (
-              <Bubble align="end" variant="outline">
+              // Full width while editing. A bubble is sized to what it says, but
+              // an edit box is sized to what you are about to say — and the
+              // 80% cap turned a message being rewritten into a narrow column
+              // with the text reflowing under the caret.
+              <Bubble align="end" variant="outline" className="w-full max-w-full">
                 <BubbleContent>
                   <TextArea fullWidth
                     ref={editRef}
@@ -551,7 +538,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                   {onDelete && (
                     <ActionButton
                       label={t('chat.delete')}
-                      onClick={() => setShowDeleteConfirm(true)}
+                      onClick={requestDelete}
                       className="text-muted hover:text-danger"
                     >
                       <TrashBin className="w-3.5 h-3.5" />
@@ -560,7 +547,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
                 </MessageFooter>
               </>
             )}
-          </MessageContent>
+          </>
         </ContextMenuTrigger>
         <ContextMenuContent>
           {selectedText && (
@@ -590,7 +577,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
           )}
           <ContextMenuSeparator />
           {onDelete && (
-            <ContextMenuItem variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
+            <ContextMenuItem variant="destructive" onClick={requestDelete}>
               <TrashBin />
               {t('chat.delete')}
             </ContextMenuItem>
@@ -609,33 +596,14 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
             onOpenChange={setShowSelectText}
           />
         )}
-        {onDelete && (
-          <AlertDialog.Backdrop isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-            <AlertDialog.Container>
-              <AlertDialog.Dialog aria-describedby={deleteDescId}>
-                <AlertDialog.Header>
-                  <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
-                </AlertDialog.Header>
-                <AlertDialog.Body id={deleteDescId}>{t('confirm.deleteMessage')}</AlertDialog.Body>
-                <AlertDialog.Footer>
-                  <Button slot="close" variant="tertiary">
-                    {t('common.cancel')}
-                  </Button>
-                  <Button slot="close" variant="danger" onClick={() => onDelete(message.id)}>
-                    {t('common.confirm')}
-                  </Button>
-                </AlertDialog.Footer>
-              </AlertDialog.Dialog>
-            </AlertDialog.Container>
-          </AlertDialog.Backdrop>
-        )}
+        {confirmDialog}
       </>
     )
   }
 
   const assistantContent = (
     <ContextMenu onOpenChange={handleContextMenuOpenChange}>
-      <ContextMenuTrigger render={<Message align="start" className="pointer-coarse:select-none" />}>
+      <ContextMenuTrigger render={<MessageAssistant className="pointer-coarse:select-none" />}>
         {(showAvatar ?? isFirstInGroup) ? (
           <AssistantAvatar src={assistantAvatar} modelId={message.model_id} />
         ) : (
@@ -705,7 +673,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
               {onDelete && (
                 <ActionButton
                   label={t('chat.delete')}
-                  onClick={() => setShowDeleteConfirm(true)}
+                  onClick={requestDelete}
                   className="text-muted hover:text-danger"
                 >
                   <TrashBin className="w-3.5 h-3.5" />
@@ -756,7 +724,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
         )}
         <ContextMenuSeparator />
         {onDelete && (
-          <ContextMenuItem variant="destructive" onClick={() => setShowDeleteConfirm(true)}>
+          <ContextMenuItem variant="destructive" onClick={requestDelete}>
             <TrashBin />
             {t('chat.delete')}
           </ContextMenuItem>
@@ -775,26 +743,7 @@ export const MessageItem = React.memo(function MessageItem({ message, isStreamin
           onOpenChange={setShowSelectText}
         />
       )}
-      {onDelete && (
-        <AlertDialog.Backdrop isOpen={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-          <AlertDialog.Container>
-            <AlertDialog.Dialog aria-describedby={deleteDescId}>
-              <AlertDialog.Header>
-                <AlertDialog.Heading>{t('confirm.title')}</AlertDialog.Heading>
-              </AlertDialog.Header>
-              <AlertDialog.Body id={deleteDescId}>{t('confirm.deleteMessage')}</AlertDialog.Body>
-              <AlertDialog.Footer>
-                <Button slot="close" variant="tertiary">
-                  {t('common.cancel')}
-                </Button>
-                <Button slot="close" variant="danger" onClick={() => onDelete(message.id)}>
-                  {t('common.confirm')}
-                </Button>
-              </AlertDialog.Footer>
-            </AlertDialog.Dialog>
-          </AlertDialog.Container>
-        </AlertDialog.Backdrop>
-      )}
+      {confirmDialog}
     </>
   )
 })

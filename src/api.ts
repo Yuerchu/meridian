@@ -90,6 +90,14 @@ export const api = {
   stopChat: (conversationId: string, turnId?: string | null) =>
     invoke<void>('stop_chat', { conversationId, turnId: turnId ?? null }),
 
+  // Says something to a run already going, rather than starting one: the text
+  // goes into the run's inbox and the loop takes it between rounds. Rejects
+  // when nobody is reading — the run has ended, or there never was one — and
+  // nothing is written down in that case, which is why the caller has to keep
+  // hold of the text until this resolves.
+  steerConversation: (conversationId: string, text: string) =>
+    invoke<void>('steer_conversation', { conversationId, text }),
+
   // `mode` is passed per-request as well as being stored on the conversation:
   // the setter is async, and a message sent right after flipping the switch
   // would otherwise race it and run under the previous mode.

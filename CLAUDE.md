@@ -33,6 +33,7 @@ src-tauri/
 - **Multi-provider**: OpenAI-compatible base, extend to Anthropic/Google/Ollama etc.
 - **Messages are a tree, read as one path.** Each row has a `parent_id`; each conversation has a `head_message_id` naming the leaf its active path ends at. Regenerating or editing writes a sibling and leaves the original reachable. Read a conversation with `db::ops::message::active_context` — `sort_order` is insertion order, not transcript position, once branches interleave. Write only through `append_message`, which links the row and moves the head in one transaction. Delete only whole subtrees: dropping a lone row strands its tool results or leaves an answer to nothing. `parent_id` carries no foreign key on purpose (see migration 21).
 - **The transcript follows the stream, then hands it back.** `src/lib/message-scroller.tsx` is a fork of `@shadcn/react/message-scroller` (the package is gone; the styled wrapper in `components/ui` is unchanged). Upstream anchors a new turn to the top of the viewport and holds it there for as long as the answer streams — with a question taller than the viewport that hold never releases, so the whole answer is written off-screen. Here there are two modes: `follow` sticks to the live edge, `idle` moves for nobody but the reader. Anchoring falls out of following instead of competing with it — a spacer re-solved every frame makes "scrolled to the end" and "question at the top" the same position until the answer outgrows the viewport. A turn that stops streaming while the reader is still following scrolls back to the top of its answer (`MessageScrollerAnchor` / `answerAnchorId`); one they had scrolled away from does not move. Row identity is not a scroll trigger: re-keying a row when its reload lands used to jump to the top of the conversation. Drive changes through the harness at `#playground/scroll` — "跑全部场景" replays every behaviour above and asserts it.
+- **One shell, on every platform.** `components/layout/app-shell.tsx` is the whole frame; there is no mobile variant and nothing branches on width. The sidebar *is* the conversation list — a panel above 768px, `Sidebar.Mobile`'s sheet below it, both rendered from the same tree — and settings is a page beside the chat rather than a screen over it. The chat stays mounted underneath, `inert`, because unmounting it loses the composer draft and the transcript's scroll position. There used to be a stack of screens for phones, selected by a width read once at startup; that seam is what made a narrow Windows window and a tablet in landscape both wrong. What survives of it is `useHistoryLevel`, which is about the back gesture and not about layout.
 - **Branches switch the transcript, not the world.** The todo list, approved plan and collaboration mode stay per-conversation and do not follow a branch switch. Files edited and commands run cannot be rewound either, so making these alone branch-aware would imply more than actually happens.
 
 ## Hook gates
@@ -93,7 +94,9 @@ Prefer HeroUI's answer over ours. Accepting a different radius or spacing is che
 - **Component style:** `data-slot` on every DOM node, `cn()` with `className` last, `tv` from `@heroui/react` for variants, `dom.*` with a `render` prop instead of `asChild`.
 - **HeroUI's state attributes live where HeroUI puts them.** `data-expanded` / `data-entering` / `data-exiting` / `data-hovered` / `data-pressed` / `data-focus-visible` / `data-selected` — and several of those only appear on the component *root*, styled from there with a descendant selector. `data-[selected=true]:` on a `Switch.Control` matches nothing.
 - **A tooltip does not name its trigger.** It contributes `aria-describedby`, so an icon-only button still needs `aria-label`. Wrap a child in `Tooltip.Trigger` only when it cannot take focus itself: around a real button that wrapper becomes a second tab stop that does nothing.
-- **base-ui is down to `ui/context-menu.tsx`** — HeroUI's menus are click-triggered and have no right-click equivalent. Don't reach for base-ui anywhere else.
+- **base-ui is down to `ui/context-menu.tsx`** — HeroUI's menus are click-triggered and have no right-click equivalent. Don't reach for base-ui anywhere else. Its `Root` must enclose its own `Trigger`; parked elsewhere it throws at render, and neither `tsc` nor `vite build` sees it coming.
+- **The sidebar is a tree, so a row is not a button.** `Sidebar.Menu` is a React Aria `Tree`: rows are chosen with `onAction` (no `href` — see the header of `app-sidebar.tsx`), every row needs `id` and `textValue`, and nothing that is not a `MenuItem` may sit between the menu and its rows. A `TreeItem` forwards only a fixed set of props to the DOM — `data-*` survives, `onContextMenu` does not — which is why the right-click menu wraps the whole list once and reads the row back off the event. Pro hides the panel outright below 768px, so `Sidebar.Mobile` renders the same tree a second time; it returns `null` above that width, but anything stateful inside it exists twice.
+- **`mod` is Command *or* Control, not whichever the platform prefers.** `useHotkey` (`hooks/use-hotkey.ts`) accepts either, because Pro's `Sidebar.Provider` does the same for its `mod+b` and two shortcuts that disagree about `mod` would be worse than either answer alone. It is one hook, not a registry — a registry buys collision resolution for collisions that do not exist yet. Everything defaults to letting a focused text field have the key; the command palette is the one caller that passes `ignoreInInput: false`, and it should stay the one.
 - **Dev playground:** `http://localhost:5173/#playground` in any dev build (tree-shaken from release). `#playground/scroll` is the scroll regression harness, `#playground/heroui` probes CSS support against the WebView. Add new component states there.
 
 ## Packaging
@@ -118,12 +121,34 @@ giving the binary an rpath that reaches wherever the bundler puts them —
 Tauri's resources land in `/usr/lib/<product>` for a deb and
 `Contents/Resources` for a `.app`, neither of which is beside the executable.
 
+**`SHERPA_ONNX_LIB_DIR` must not outlive the Android build that set it.**
+`resolve_lib_dir` in `sherpa-onnx-sys` takes the variable if it is set and
+returns it *without checking the target platform*; only when it is unset does
+it fetch the prebuilt archive for the target being built. So a desktop build
+run in a shell that still has the Android export from
+`scripts/fetch-sherpa-android.sh` links against a directory of arm64 `.so`
+files, and fails at `link.exe` with `LNK1181: cannot open input file
+'sherpa-onnx-c-api.lib'` — a message that names neither the variable nor
+Android, in a command line hundreds of arguments long.
+
+Worse, cargo caches the resolved path in
+`target/<profile>/build/sherpa-onnx-sys-*/output`. The crate does declare
+`cargo:rerun-if-env-changed=SHERPA_ONNX_LIB_DIR`, but clearing the variable has
+been seen not to trigger a re-run — so the wrong path survives into later
+builds. `cargo clean -p sherpa-onnx-sys` does not remove it either; delete that
+directory (it is a few KB, `out/` is empty) to force the script to run again.
+
+Give the export its own process rather than the session:
+`(export SHERPA_ONNX_LIB_DIR=$(bash scripts/fetch-sherpa-android.sh arm64-v8a); pnpm tauri android build --target aarch64)`.
+The variable holds one ABI at a time by design — see the header of that
+script — which is the same reason it should not hold one across two platforms.
+
 ## Android
 
 - **File access model**: tools resolve paths through `ToolContext::resolve_and_validate` (`src-tauri/src/tools/mod.rs`). Desktop = `FileAccess::Unrestricted` (legacy working_directory check). Android = `FileAccess::Roots` whitelist built in `build_file_access` (lib.rs) from preferences `android.manage_storage_enabled` / `android.saf_roots` + the system grant. SAF I/O goes through `src/android_bridge.rs` (JNI) → `FileBridge.kt`.
 - **run_command is compiled out on Android** (`#[cfg(not(target_os = "android"))]` in tools/mod.rs).
 - **Hand-maintained files inside `src-tauri/gen/android/`** (tracked in git; if `tauri android init` is ever re-run, merge these back manually): `app/src/main/AndroidManifest.xml` (storage permissions), `app/src/main/java/cn/yuxiaoqiu/meridian/MainActivity.kt` (SAF picker + `nativeOnSafResult`, window insets, and `handleBackNavigation`), `FileBridge.kt` (ContentResolver ops), `app/build.gradle.kts` (androidx.documentfile dependency).
-- **The back key is the web history.** `WryActivity` routes it through `WebView.canGoBack()`, the generated `TauriActivity` disables that, and `MainActivity` turns it back on. So a screen is reachable by the back gesture exactly when something pushed a `history` entry for it — see `lib/history-bridge.ts`, which is the only writer, and `useHistoryLevel` for the levels that live inside a screen (a detail pane, a drawer, a non-empty selection). Never call `history.back()` anywhere else: the store is updated from `popstate` alone, which is what keeps it from drifting.
+- **The back key is the web history.** `WryActivity` routes it through `WebView.canGoBack()`, the generated `TauriActivity` disables that, and `MainActivity` turns it back on. So something is undone by the back gesture exactly when it pushed a `history` entry for itself — `useHistoryLevel` is the only way to do that, and `lib/history-bridge.ts` the only writer of history. Never call `history.back()` anywhere else: the store is updated from `popstate` alone, which is what keeps it from drifting. There are no screens to go back to any more, only levels inside one — a drawer, a detail pane, a non-empty selection. `useBackGesture`, called once by the shell, decides whether the gesture is ours at all; everything below it is inert on a desktop.
 - **Build**: `pnpm tauri android build --target aarch64`. Rust-only check: `cargo check --target aarch64-linux-android` with NDK clang env vars.
 
 ## Reference Projects
@@ -138,6 +163,22 @@ Tauri's resources land in `/usr/lib/<product>` for a deb and
 pnpm install
 pnpm tauri dev        # Start dev (needs MERIDIAN_API_KEY env var)
 ```
+
+**`@heroui-pro/react` is a stub on npm.** The package published to the registry
+contains nothing but a `postinstall`; the components are staged into it
+afterwards by `hpsetup`, out of band. So any install that *rebuilds*
+`node_modules` — rather than adding to it — leaves the package empty, and every
+Pro import fails at once. Re-run the setup after one:
+
+```bash
+HEROUI_KEY=<key> pnpm dlx hpsetup@latest react --auto
+```
+
+`ls node_modules/@heroui-pro/react/dist/components | wc -l` says which state it
+is in: 68-ish directories means staged, `dist/postinstall` alone means stub.
+Incremental installs are unaffected. `ERR_PNPM_IGNORED_BUILDS` on every install
+is expected — those two build scripts are declined on purpose (see
+`pnpm-workspace.yaml`), and the exit code is 0.
 
 ## Environment Variables
 

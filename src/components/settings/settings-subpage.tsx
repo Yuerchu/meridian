@@ -22,17 +22,13 @@ import { SettingsHeader } from './primitives'
  */
 export function SettingsSubPage({
   title,
-  subtitle,
   onBack,
-  actions,
   children,
   className,
   ...props
 }: Omit<React.ComponentProps<'div'>, 'title'> & {
   title?: React.ReactNode
-  subtitle?: React.ReactNode
   onBack: () => void
-  actions?: React.ReactNode
 }) {
   const { t } = useTranslation()
 
@@ -49,9 +45,8 @@ export function SettingsSubPage({
           <ArrowLeft className="size-4" />
           {t('common.back')}
         </Button>
-        {actions && <div className="ms-auto flex shrink-0 items-center gap-1">{actions}</div>}
       </div>
-      {title && <SettingsHeader title={title} subtitle={subtitle} />}
+      {title && <SettingsHeader title={title} />}
       {children}
     </div>
   )

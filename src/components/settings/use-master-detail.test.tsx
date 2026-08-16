@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react'
 import { useMasterDetail } from './use-master-detail'
 
 vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => true }))
-vi.mock('@/hooks/use-nav', () => ({ useHistoryLevel: vi.fn() }))
+vi.mock('@/hooks/use-history-level', () => ({ useHistoryLevel: vi.fn() }))
 
 describe('useMasterDetail', () => {
   it('unwinds aux content before clearing the selected item', () => {

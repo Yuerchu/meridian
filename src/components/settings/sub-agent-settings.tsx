@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Input, ListBox, Select } from '@heroui/react'
 import { api } from '@/api'
+import { SettingsHeader } from './primitives'
+import { ProviderModelPicker } from './provider-model-picker'
 import type { ModelInfo, Provider } from '@/types'
 
 /** The two built-in kinds. A third one is a settings feature, not a loop one. */
@@ -51,93 +52,24 @@ function KindRow({ kind, providers }: { kind: Kind; providers: Provider[] }) {
     api.setPreference(preferenceKey(kind), provider && model ? `${provider}:${model}` : '')
   }
 
-  function handleProvider(value: string) {
-    const next = !value || value === '_default' ? '' : value
-    setProviderId(next)
-    setModelId('')
-    persist(next, '')
-  }
-
-  function handleModel(value: string) {
-    const next = !value || value === '_none' ? '' : value
-    setModelId(next)
-    persist(providerId, next)
-  }
-
-  const providerOptions = [
-    { value: '_default', label: t('settings.subAgent.followParent') },
-    ...providers.map((p) => ({ value: p.id, label: p.name })),
-  ]
-  const modelOptions = [
-    { value: '_none', label: t('settings.assistant.selectModel') },
-    ...models.map((m) => ({ value: m.id, label: m.name })),
-  ]
-
   return (
     <div className="space-y-1.5">
       <p className="block text-xs text-muted">{t(`settings.subAgent.${kind}`)}</p>
       <p className="text-xs text-muted">{t(`settings.subAgent.${kind}Hint`)}</p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Select
-          fullWidth
-          aria-label={t('settings.assistant.provider')}
-          value={providerId || '_default'}
-          onChange={(v) => handleProvider(String(v ?? ''))}
-        >
-          <Select.Trigger>
-            <Select.Value />
-            <Select.Indicator />
-          </Select.Trigger>
-          <Select.Popover>
-            <ListBox>
-              {providerOptions.map((o) => (
-                <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                  {o.label}
-                  <ListBox.ItemIndicator />
-                </ListBox.Item>
-              ))}
-            </ListBox>
-          </Select.Popover>
-        </Select>
-        {/* A provider whose model list has not been fetched yet still has to be
-            usable, so the picker degrades to a plain id field rather than to
-            nothing — the same fallback the assistant editor makes. */}
-        {models.length > 0 ? (
-          <Select
-            fullWidth
-            aria-label={t('settings.assistant.model')}
-            value={modelId || '_none'}
-            onChange={(v) => handleModel(String(v ?? ''))}
-            placeholder={t('settings.assistant.selectModel')}
-            isDisabled={!providerId}
-          >
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {modelOptions.map((o) => (
-                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                    {o.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-        ) : (
-          <Input
-            fullWidth
-            aria-label={t('settings.assistant.model')}
-            value={modelId}
-            onChange={(e) => setModelId(e.target.value)}
-            onBlur={() => persist(providerId, modelId)}
-            placeholder={t('settings.assistant.modelPlaceholder')}
-            disabled={!providerId}
-          />
-        )}
-      </div>
+      <ProviderModelPicker
+        providers={providers}
+        models={models}
+        providerId={providerId}
+        modelId={modelId}
+        onChange={(provider, model) => { setProviderId(provider); setModelId(model) }}
+        // No Save button here: the preference is written as soon as the pair
+        // settles. `onChange` alone would write one per keystroke in the
+        // fallback field.
+        onCommit={persist}
+        emptyProviderLabel={t('settings.subAgent.followParent')}
+        labelMode="aria"
+        isModelDisabledWithoutProvider
+      />
     </div>
   )
 }
@@ -154,10 +86,10 @@ export function SubAgentSettings({ providers }: { providers: Provider[] }) {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-medium">{t('settings.subAgent.title')}</h2>
-        <p className="text-xs text-muted mt-1">{t('settings.subAgent.subtitle')}</p>
-      </div>
+      <SettingsHeader
+        title={t('settings.subAgent.title')}
+        subtitle={t('settings.subAgent.subtitle')}
+      />
       {KINDS.map((kind) => (
         <KindRow key={kind} kind={kind} providers={providers} />
       ))}

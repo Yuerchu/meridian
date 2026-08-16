@@ -1,8 +1,12 @@
-import { useEffect, useState, useCallback, useId } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, StarFill, Check, SquareDashedText } from '@gravity-ui/icons'
-import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, ListBox, Select, TextArea, Tooltip } from '@heroui/react'
+import { Plus, StarFill, SquareDashedText } from '@gravity-ui/icons'
+import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField, Tooltip } from '@heroui/react'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
+import { useConfirm } from '@/hooks/use-confirm'
+import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
+import { ProviderModelPicker } from './provider-model-picker'
 import { SubAgentSettings } from './sub-agent-settings'
 import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
 import { SettingsDrilldown } from './settings-drilldown'
@@ -29,7 +33,7 @@ function AssistantEditor({
   const [thinkingEnabled, setThinkingEnabled] = useState(assistant.thinking_enabled !== 0)
   const [thinkingBudget, setThinkingBudget] = useState(assistant.thinking_budget?.toString() ?? '')
   const [models, setModels] = useState<ModelInfo[]>([])
-  const [saved, setSaved] = useState(false)
+  const [saved, markSaved] = useTemporaryFlag()
   const [allTools, setAllTools] = useState<ToolInfo[]>([])
   const [templates, setTemplates] = useState<PromptTemplate[]>([])
   const [templateVars, setTemplateVars] = useState<TemplateVariable[]>([])
@@ -50,11 +54,6 @@ function AssistantEditor({
     }
     return new Set<string>()
   })
-  const nameId = useId()
-  const systemPromptId = useId()
-  const modelInputId = useId()
-  const temperatureId = useId()
-  const contextLimitId = useId()
 
   useEffect(() => {
     if (providerId) {
@@ -99,18 +98,9 @@ function AssistantEditor({
       toolPresetId,
       autoCompactEnabled: autoCompactEnabled ? 1 : 0,
     })
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    markSaved()
   }
 
-  const providerOptions = [
-    { value: '_default', label: t('settings.assistant.providerDefault') },
-    ...providers.map((p) => ({ value: p.id, label: p.name })),
-  ]
-  const modelOptions = [
-    { value: '_none', label: t('settings.assistant.selectModel') },
-    ...models.map((m) => ({ value: m.id, label: m.name })),
-  ]
   const presetOptions = [
     { value: '_none', label: t('settings.assistant.selectModel') },
     ...toolPresets.map((p) => ({ value: p.id, label: `${p.name}${p.description ? ` — ${p.description}` : ''}` })),
@@ -118,14 +108,16 @@ function AssistantEditor({
 
   return (
     <div className="space-y-4 px-1 pb-4">
-      <div className="space-y-1.5">
-        <label htmlFor={nameId} className="block text-xs text-muted">{t('settings.assistant.name')}</label>
-        <Input fullWidth id={nameId} value={name} onChange={(e) => setName(e.target.value)} />
-      </div>
+      <TextField fullWidth>
+        <Label>{t('settings.assistant.name')}</Label>
+        <Input value={name} onChange={(e) => setName(e.target.value)} />
+      </TextField>
 
-      <div className="space-y-1.5">
+      {/* The label shares its line with a button, so it is nested rather than a
+          direct child. React Aria wires it through context either way. */}
+      <TextField fullWidth>
         <div className="flex items-center justify-between">
-          <label htmlFor={systemPromptId} className="block text-xs text-muted">{t('settings.assistant.systemPrompt')}</label>
+          <Label>{t('settings.assistant.systemPrompt')}</Label>
           <Button
             variant="ghost"
             className="text-xs gap-1"
@@ -155,8 +147,7 @@ function AssistantEditor({
             ))}
           </div>
         )}
-        <TextArea fullWidth
-          id={systemPromptId}
+        <TextArea
           value={systemPrompt}
           onChange={(e) => setSystemPrompt(e.target.value)}
           rows={6}
@@ -178,76 +169,21 @@ function AssistantEditor({
             ))}
           </div>
         )}
-      </div>
+      </TextField>
+
+      <ProviderModelPicker
+        providers={providers}
+        models={models}
+        providerId={providerId}
+        modelId={modelId}
+        onChange={(provider, model) => { setProviderId(provider); setModelId(model) }}
+        emptyProviderLabel={t('settings.assistant.providerDefault')}
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Select
-            fullWidth
-            value={providerId || '_default'}
-            onChange={(v) => { setProviderId(!v || v === '_default' ? '' : String(v)); setModelId('') }}
-          >
-            <Label className="block text-xs text-muted">{t('settings.assistant.provider')}</Label>
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {providerOptions.map((o) => (
-                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                    {o.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          {models.length > 0 ? (
-            <Select
-              fullWidth
-              value={modelId || '_none'}
-              onChange={(v) => setModelId(!v || v === '_none' ? '' : String(v))}
-              placeholder={t('settings.assistant.selectModel')}
-            >
-              <Label className="block text-xs text-muted">{t('settings.assistant.model')}</Label>
-              <Select.Trigger>
-                <Select.Value />
-                <Select.Indicator />
-              </Select.Trigger>
-              <Select.Popover>
-                <ListBox>
-                  {modelOptions.map((o) => (
-                    <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                      {o.label}
-                      <ListBox.ItemIndicator />
-                    </ListBox.Item>
-                  ))}
-                </ListBox>
-              </Select.Popover>
-            </Select>
-          ) : (
-            <>
-              <label htmlFor={modelInputId} className="block text-xs text-muted">{t('settings.assistant.model')}</label>
-              <Input fullWidth
-                id={modelInputId}
-                value={modelId}
-                onChange={(e) => setModelId(e.target.value)}
-                placeholder={t('settings.assistant.modelPlaceholder')}
-              />
-            </>
-          )}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <label htmlFor={temperatureId} className="block text-xs text-muted">{t('settings.assistant.temperature')}</label>
-          <Input fullWidth
-            id={temperatureId}
-            type="number"
+        <TextField fullWidth type="number">
+          <Label>{t('settings.assistant.temperature')}</Label>
+          <Input
             value={temperature}
             onChange={(e) => setTemperature(e.target.value)}
             placeholder={t('settings.assistant.providerDefault')}
@@ -255,16 +191,11 @@ function AssistantEditor({
             max={2}
             step={0.1}
           />
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor={contextLimitId} className="block text-xs text-muted">{t('settings.assistant.contextLimit')}</label>
-          <Input fullWidth
-            id={contextLimitId}
-            type="number"
-            value={contextLimit}
-            onChange={(e) => setContextLimit(e.target.value)}
-          />
-        </div>
+        </TextField>
+        <TextField fullWidth type="number">
+          <Label>{t('settings.assistant.contextLimit')}</Label>
+          <Input value={contextLimit} onChange={(e) => setContextLimit(e.target.value)} />
+        </TextField>
       </div>
 
       <div className="space-y-1.5">
@@ -329,32 +260,28 @@ function AssistantEditor({
           >{t('settings.assistant.toolsCustom')}</Button>
         </div>
         {toolMode === 'preset' && (
-          <Select
-            fullWidth
+          <SettingsSelect
+            ariaLabel={t('settings.tools.preset')}
             value={selectedPresetId || '_none'}
-            onChange={(v) => { if (v) setSelectedPresetId(v === '_none' ? '' : String(v)) }}
-          >
-            <Select.Trigger>
-              <Select.Value />
-              <Select.Indicator />
-            </Select.Trigger>
-            <Select.Popover>
-              <ListBox>
-                {presetOptions.map((o) => (
-                  <ListBox.Item key={o.value} id={o.value} textValue={o.label}>
-                    {o.label}
-                    <ListBox.ItemIndicator />
-                  </ListBox.Item>
-                ))}
-              </ListBox>
-            </Select.Popover>
-          </Select>
+            options={presetOptions}
+            onChange={(v) => setSelectedPresetId(v === '_none' ? '' : v)}
+            fullWidth
+          />
         )}
         {toolMode === 'custom' && (
           <div
             data-slot="tool-list"
             className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
-          ><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
+          >{/* `role="group"` with a name, rather than `CheckboxGroup`: the
+                boxes below commit one at a time and two of the three sibling
+                grids write straight through to the backend on each toggle. A
+                group-level value would mean diffing an array back into "which
+                one changed", which is a lot of new failure for a label. */}
+          <div
+            role="group"
+            aria-label={t('settings.assistant.tools')}
+            className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2"
+          >
             {allTools.map((tool) => (
               <Checkbox
                 key={tool.name}
@@ -387,7 +314,11 @@ function AssistantEditor({
           title={t('settings.assistant.emojiPacks')}
           summary={assignedPackIds.size || undefined}
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2 border border-border rounded-lg">
+          <div
+            role="group"
+            aria-label={t('settings.assistant.emojiPacks')}
+            className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2 border border-border rounded-lg"
+          >
             {allPacks.map((pack) => (
               <Checkbox
                 key={pack.id}
@@ -428,7 +359,11 @@ function AssistantEditor({
           <div
             data-slot="skill-list"
             className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
-          ><div className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2">
+          ><div
+            role="group"
+            aria-label={t('settings.skills.assistantSection')}
+            className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2"
+          >
             {allSkills.map((skill) => (
               <Checkbox
                 key={skill.dir_name}
@@ -463,9 +398,7 @@ function AssistantEditor({
       <div className="flex items-center gap-2 pt-1">
         <Button onClick={handleSave}>{t('common.save')}</Button>
         {saved && (
-          <span className="flex items-center gap-1 text-xs text-success-soft-foreground">
-            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
-          </span>
+          <SavedHint />
         )}
         {onDelete && (
           <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={() => onDelete(assistant.id)}>
@@ -483,6 +416,7 @@ export function AssistantSettings() {
   const [providers, setProviders] = useState<Provider[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
     const [aList, pList] = await Promise.all([
@@ -513,11 +447,12 @@ export function AssistantSettings() {
 
   const handleDelete = useCallback(
     async (id: string) => {
+      if (!await confirm({ body: t('settings.confirmDelete.assistant') })) return
       await api.deleteAssistant(id)
       if (expandedId === id) setExpandedId(null)
       await refresh()
     },
-    [expandedId, refresh],
+    [confirm, t, expandedId, refresh],
   )
 
   if (loading) {
@@ -525,17 +460,17 @@ export function AssistantSettings() {
   }
 
   return (
-    <div className="max-w-lg space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-medium">{t('settings.assistant.title')}</h2>
-          <p className="text-xs text-muted mt-1">{t('settings.assistant.subtitle')}</p>
-        </div>
-        <Button variant="outline" onClick={handleCreate}>
-          <Plus className="w-3.5 h-3.5" />
-          {t('settings.assistant.new')}
-        </Button>
-      </div>
+    <SettingsPane>
+      <SettingsHeader
+        title={t('settings.assistant.title')}
+        subtitle={t('settings.assistant.subtitle')}
+        actions={
+          <Button variant="outline" onClick={handleCreate}>
+            <Plus className="w-3.5 h-3.5" />
+            {t('settings.assistant.new')}
+          </Button>
+        }
+      />
 
       {/* One open at a time is the group's own default (`allowsMultipleExpanded`
           is off), so the single-open rule lives in the primitive rather than in
@@ -602,6 +537,7 @@ export function AssistantSettings() {
           same question — which model runs this — asked about a different kind
           of agent. */}
       <SubAgentSettings providers={providers} />
-    </div>
+      {confirmDialog}
+    </SettingsPane>
   )
 }

@@ -7,12 +7,9 @@ import {
   CircleXmark,
   Clock,
 } from "@gravity-ui/icons"
-import hljs from "highlight.js/lib/core"
-import jsonLang from "highlight.js/lib/languages/json"
-
+import { useShikiLanguage } from "@/hooks/use-shiki-language"
+import { highlightInline } from "@/lib/shiki"
 import { cn } from "@/lib/utils"
-
-hljs.registerLanguage("json", jsonLang)
 
 /**
  * The first four mirror the states an assistant-UI tool part goes through.
@@ -225,12 +222,16 @@ function ChatToolContent({
   )
 }
 
-// hljs escapes non-token text itself, so the highlighted HTML is safe to inject.
+// Shiki escapes the text it is given, so the markup it returns is safe to
+// inject. `inline` because this sits inside a `<code>` that is already styled —
+// the classic structure would nest a second `<pre><code>` inside it.
 function JsonCode({ code }: { code: string }) {
+  const { language, ready } = useShikiLanguage("json")
   const html = React.useMemo(
-    () => hljs.highlight(code, { language: "json", ignoreIllegals: true }).value,
-    [code]
+    () => (ready ? highlightInline(code, language) : null),
+    [code, language, ready]
   )
+  if (html === null) return <code>{code}</code>
   return <code dangerouslySetInnerHTML={{ __html: html }} />
 }
 

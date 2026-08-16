@@ -13,6 +13,7 @@ import {
   useMessageScroller,
 } from '@/components/ui/message-scroller'
 import { TurnItem } from './turn-item'
+import { TurnOutline } from './turn-outline'
 import type { EmojiMap } from './emoji-renderer'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import { answerAnchorId, type Turn } from '@/lib/turns'
@@ -160,6 +161,10 @@ export function ChatTranscript({
             </MessageScrollerContent>
           </MessageScrollerViewport>
           <MessageScrollerButton aria-label={scrollToBottomLabel} />
+          {/* Inside the scroller, not beside it: it reads the reading line off
+              the same context, and the root is already the positioned
+              ancestor. */}
+          <TurnOutline turns={turns} />
         </MessageScroller>
       </MessageScrollerProvider>
     </LazyMotion>

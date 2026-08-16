@@ -37,3 +37,51 @@ if (!('ResizeObserver' in globalThis)) {
   }
   globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
 }
+
+// `useIsMobile` calls `matchMedia` and subscribes with `addEventListener`.
+// Where jsdom has the method at all it returns a list that never matches and
+// only carries the deprecated `addListener`, so the check is for a usable one
+// rather than for its presence — anything that renders `useIsMobile` throws
+// otherwise, which is why every test that reaches it has been mocking this by
+// hand.
+//
+// Width comes from `window.innerWidth` on every read, so a test changes the
+// viewport by assigning it; dispatching `resize` then notifies subscribers.
+// That is the same shape the real thing has, which is what lets a test drive it
+// without knowing it is a stub.
+{
+  const probe = window.matchMedia?.('(max-width: 100px)')
+  if (typeof probe?.addEventListener !== 'function') {
+    type Listener = (e: MediaQueryListEvent) => void
+    const live = new Set<{ query: string; matches: () => boolean; listeners: Set<Listener> }>()
+
+    window.addEventListener('resize', () => {
+      for (const entry of live) {
+        const event = { matches: entry.matches(), media: entry.query } as MediaQueryListEvent
+        for (const fn of entry.listeners) fn(event)
+      }
+    })
+
+    window.matchMedia = (query: string): MediaQueryList => {
+      const max = /max-width:\s*(\d+)px/.exec(query)
+      const min = /min-width:\s*(\d+)px/.exec(query)
+      const matches = () => {
+        if (max && window.innerWidth > Number(max[1])) return false
+        if (min && window.innerWidth < Number(min[1])) return false
+        return Boolean(max || min)
+      }
+      const listeners = new Set<Listener>()
+      live.add({ query, matches, listeners })
+      return {
+        media: query,
+        get matches() { return matches() },
+        onchange: null,
+        addEventListener: (_type: string, fn: Listener) => { listeners.add(fn) },
+        removeEventListener: (_type: string, fn: Listener) => { listeners.delete(fn) },
+        addListener: (fn: Listener) => { listeners.add(fn) },
+        removeListener: (fn: Listener) => { listeners.delete(fn) },
+        dispatchEvent: () => true,
+      } as unknown as MediaQueryList
+    }
+  }
+}

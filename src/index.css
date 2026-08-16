@@ -5,17 +5,84 @@
 /* Kept for `shimmer`, `no-scrollbar` and the `data-*` variants; it defines no
    colour tokens of its own, so it cannot collide with the theme above. */
 @import 'shadcn/tailwind.css';
-/* highlight.js' themes are not imported here: only one of the pair may apply at
-   a time and neither can be scoped from outside, so `src/lib/theme.tsx` swaps
-   them at runtime. */
+/* Pro ships its styles per component, and those files are *unlayered* — only
+   the full `@heroui-pro/react/css` bundle declares `@layer components`, and it
+   carries all seventy components. An unlayered rule outranks every layered one,
+   so without the explicit `layer()` here `.context-menu__trigger`'s
+   `display: inline-block` would beat any utility we put on the same element,
+   silently. One line per component we actually use. */
+@import '@heroui-pro/react/css/components/command.css' layer(components);
+@import '@heroui-pro/react/css/components/file-tree.css' layer(components);
+@import '@heroui-pro/react/css/components/floating-toc.css' layer(components);
+@import '@heroui-pro/react/css/components/resizable.css' layer(components);
+@import '@heroui-pro/react/css/components/kanban.css' layer(components);
+@import '@heroui-pro/react/css/components/context-menu.css' layer(components);
+@import '@heroui-pro/react/css/components/sidebar.css' layer(components);
+/* `Sidebar.Mobile` is a Pro `Sheet` underneath, and below 768px it is the only
+   way to reach the sidebar at all — Pro hides the panel itself at that width.
+   `sidebar.css` only dresses the sheet (width, corners); everything that
+   positions it lives here, so without this the drawer opened correctly and drew
+   nothing. */
+@import '@heroui-pro/react/css/components/sheet.css' layer(components);
+@import '@heroui-pro/react/css/components/markdown.css' layer(components);
+@import '@heroui-pro/react/css/components/code-block.css' layer(components);
+@import '@heroui-pro/react/css/components/prompt-input.css' layer(components);
+@import '@heroui-pro/react/css/components/chat-attachment.css' layer(components);
+@import '@heroui-pro/react/css/components/chat-source.css' layer(components);
+/* `ChatSource` renders its hover preview through Pro's HoverCard, and styles
+   only the trigger side of it (`.chat-source .hover-card__trigger`). Without
+   this the preview opens as unstyled text over the page. */
+@import '@heroui-pro/react/css/components/hover-card.css' layer(components);
+@import '@heroui-pro/react/css/components/empty-state.css' layer(components);
+@import '@heroui-pro/react/css/components/action-bar.css' layer(components);
+@import '@heroui-pro/react/css/components/chain-of-thought.css' layer(components);
+/* `ChainOfThought` renders `TextShimmer` while reasoning streams, so its styles
+   come along whether or not anything imports the component directly. */
+@import '@heroui-pro/react/css/components/text-shimmer.css' layer(components);
 @import '@fontsource-variable/geist';
+
+/* TextShimmer paints its text with a moving gradient and sets
+   `-webkit-text-fill-color: transparent` so the gradient shows through. Those
+   are independent declarations: where `tan()` is unsupported the gradient's
+   width cannot be resolved and the whole `background` shorthand is dropped —
+   but the transparent fill still applies, and the text disappears rather than
+   degrading. Pro ships a fallback for `prefers-reduced-motion` and nothing
+   else, so this is the same set of declarations keyed on the feature instead.
+   Deliberately unlayered, to outrank the import above.
+
+   Android WebView tracks the system, so a device old enough to lack `tan()` is
+   a device this would otherwise show blank labels on. Settings → Developer
+   probes for both this and `oklch(from …)`. */
+@supports not (width: calc(1px * tan(45deg))) {
+  .text-shimmer {
+    -webkit-text-fill-color: unset;
+    color: currentColor;
+    background: none;
+    animation: none;
+  }
+}
+
+/* Pro hides the sidebar panel outright below 768px and offers it as a drawer
+   instead, but the inset look on the main area is keyed on the panel merely
+   being in the DOM (`:has(.sidebar--inset)`), which a hidden element still
+   satisfies. So a narrow window got a rounded, bordered card floating inside
+   its own frame with nothing beside it to be inset from.
+
+   Unlayered on purpose, to outrank the import. */
+@media (max-width: 768px) {
+  .sidebar__provider:has(.sidebar--inset) .sidebar__main {
+    margin: 0;
+    border-width: 0;
+    border-radius: 0;
+    min-height: 100svh;
+  }
+}
 
 /* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.
    Ours is deliberate: the theme is an explicit setting, and a dark OS must not
    darken an app the user asked to keep light. Declared after the import so it
    wins. */
 @custom-variant dark (&:is(.dark *));
-@plugin '@tailwindcss/typography';
 
 /* HeroUI already maps every one of its own tokens to a Tailwind colour utility
    (`themes/shared/theme.css`), including the whole radius scale. Only what the
@@ -33,12 +100,6 @@
   --color-warning-soft-foreground: var(--warning-soft-foreground);
   --color-danger-soft-foreground: var(--danger-soft-foreground);
   --color-info-soft-foreground: var(--info-soft-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-ring: var(--sidebar-ring);
 }
 
 /*
@@ -113,21 +174,16 @@
   --field-foreground: oklch(0.145 0 0);
   --field-border: oklch(0.922 0 0);
   --field-placeholder: oklch(0.556 0 0);
+  /* HeroUI defaults this to 0 and tells a field apart by its fill and a soft
+     shadow instead. That reads on their surfaces; here the page is grey, panels
+     are white and so are fields, which leaves the shadow doing the work alone —
+     and `--field-border` was already set to a colour nothing was drawing.
+     Everything that reads it follows: Input, TextArea, Select's trigger, and
+     Pro's PromptInput shell. */
+  --field-border-width: 1px;
 
   --scrollbar-thumb: oklch(0.922 0 0);
   --scrollbar-track: transparent;
-
-  /* Project extension: HeroUI has no sidebar. */
-  --sidebar-width: 16rem;
-  --sidebar-width-mobile: 18rem;
-  --sidebar-width-icon: 3rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-
 }
 
 .dark {
@@ -173,13 +229,6 @@
 
   --scrollbar-thumb: oklch(1 0 0 / 10%);
   --scrollbar-track: transparent;
-
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
 }
 
 body {
@@ -199,6 +248,11 @@ body {
     @apply font-sans overflow-hidden h-full;
     -webkit-tap-highlight-color: transparent;
     overscroll-behavior: none;
+    /* Kills double-tap-to-zoom, which the viewport meta alone does not always
+       reach, and with it the 300ms wait a WebView spends deciding whether a tap
+       was the first of two. Panning and pinching inside a scroller still work —
+       this only declines the browser's own zoom gestures. */
+    touch-action: manipulation;
   }
   body, #root {
     @apply h-full overflow-hidden;

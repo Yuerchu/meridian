@@ -1,8 +1,12 @@
-import { useEffect, useState, useCallback, useId } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, TrashBin, BookOpen, Check, ArrowsRotateRight } from '@gravity-ui/icons'
-import { Button, Card, Checkbox, Disclosure, DisclosureGroup, Input, TextArea } from '@heroui/react'
+import { Plus, TrashBin, BookOpen, ArrowsRotateRight } from '@gravity-ui/icons'
+import { Button, Card, Checkbox, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
+import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
+import { useConfirm } from '@/hooks/use-confirm'
+import { SavedHint, SettingsHeader, SettingsPane } from './primitives'
 import type { Skill } from '@/types'
 
 /** The directory name doubles as the LLM-facing skill name, so it has to be a
@@ -25,12 +29,8 @@ function SkillEditor({
   const [description, setDescription] = useState(skill?.llm_description ?? '')
   const [body, setBody] = useState('')
   const [bodyLoading, setBodyLoading] = useState(skill != null)
-  const [saved, setSaved] = useState(false)
+  const [saved, markSaved] = useTemporaryFlag()
   const [error, setError] = useState<string | null>(null)
-  const dirNameId = useId()
-  const displayNameId = useId()
-  const descriptionId = useId()
-  const bodyId = useId()
 
   // The body is not part of the index row: it lives in SKILL.md and is read
   // on demand so that listing skills stays a pure database hit.
@@ -71,8 +71,7 @@ function SkillEditor({
           displayName.trim() || undefined,
         )
       }
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
+      markSaved()
       await onSave()
     } catch (e) {
       setError(String(e))
@@ -84,68 +83,52 @@ function SkillEditor({
   return (
     <div data-slot="skill-editor" className="space-y-3">
       {!skill && (
-        <div data-slot="skill-editor-field" className="space-y-1">
-          <label htmlFor={dirNameId} data-slot="skill-editor-label" className="text-xs text-muted">
-            {t('settings.skills.dirName')}
-          </label>
-          <Input fullWidth
-            id={dirNameId}
+        <TextField fullWidth>
+          <Label>{t('settings.skills.dirName')}</Label>
+          <Input
             value={dirName}
             onChange={(e) => setDirName(e.target.value)}
             placeholder="my-skill"
             className="font-mono text-xs"
           />
-          <p data-slot="skill-editor-hint" className="text-xs text-muted">
-            {t('settings.skills.dirNameHint')}
-          </p>
+          <Description>{t('settings.skills.dirNameHint')}</Description>
           {dirName.trim().length > 0 && !dirNameValid && (
             <p data-slot="skill-editor-error" className="text-xs text-danger">
               {t('settings.skills.dirNameInvalid')}
             </p>
           )}
-        </div>
+        </TextField>
       )}
 
-      <div data-slot="skill-editor-field" className="space-y-1">
-        <label htmlFor={displayNameId} data-slot="skill-editor-label" className="text-xs text-muted">
-          {t('settings.skills.displayName')}
-        </label>
-        <Input fullWidth
-          id={displayNameId}
+      <TextField fullWidth>
+        <Label>{t('settings.skills.displayName')}</Label>
+        <Input
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
           placeholder={skill?.llm_name ?? dirName}
         />
-      </div>
+      </TextField>
 
-      <div data-slot="skill-editor-field" className="space-y-1">
-        <label htmlFor={descriptionId} data-slot="skill-editor-label" className="text-xs text-muted">
-          {t('settings.skills.description')}
-        </label>
-        <TextArea fullWidth
-          id={descriptionId}
+      <TextField fullWidth>
+        <Label>{t('settings.skills.description')}</Label>
+        <TextArea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           disabled={isBuiltin}
           rows={2}
           className="resize-none text-xs"
         />
-        <p data-slot="skill-editor-hint" className="text-xs text-muted">
-          {t('settings.skills.descriptionHint')}
-        </p>
-      </div>
+        <Description>{t('settings.skills.descriptionHint')}</Description>
+      </TextField>
 
-      <div data-slot="skill-editor-field" className="space-y-1">
-        <label htmlFor={bodyId} data-slot="skill-editor-label" className="text-xs text-muted">
-          {t('settings.skills.body')}
-        </label>
+      <TextField fullWidth>
+        <Label>{t('settings.skills.body')}</Label>
         {bodyLoading ? (
           <p data-slot="skill-editor-hint" className="text-xs text-muted">
             {t('common.loading')}
           </p>
         ) : (
-          <TextArea fullWidth
-            id={bodyId}
+          <TextArea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             disabled={isBuiltin}
@@ -153,10 +136,8 @@ function SkillEditor({
             className="resize-none font-mono text-xs"
           />
         )}
-        <p data-slot="skill-editor-hint" className="text-xs text-muted">
-          {t('settings.skills.bodyHint')}
-        </p>
-      </div>
+        <Description>{t('settings.skills.bodyHint')}</Description>
+      </TextField>
 
       {isBuiltin && (
         <p data-slot="skill-editor-builtin-notice" className="text-xs text-info-soft-foreground">
@@ -173,9 +154,7 @@ function SkillEditor({
           {t('common.save')}
         </Button>
         {saved && (
-          <span data-slot="skill-editor-saved" className="flex items-center gap-1 text-xs text-success-soft-foreground">
-            <Check className="w-3.5 h-3.5" /> {t('common.saved')}
-          </span>
+          <SavedHint data-slot="skill-editor-saved" />
         )}
         {onDelete && !isBuiltin && (
           <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
@@ -196,6 +175,7 @@ export function SkillSettings() {
   const [rescanning, setRescanning] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
     const [list, bound] = await Promise.all([
@@ -255,25 +235,23 @@ export function SkillSettings() {
   }
 
   return (
-    <div data-slot="skill-settings" className="max-w-lg space-y-6">
-      <div data-slot="skill-settings-header" className="flex items-start justify-between gap-2">
-        <div data-slot="skill-settings-heading">
-          <h2 data-slot="skill-settings-title" className="text-lg font-medium">{t('settings.skills.title')}</h2>
-          <p data-slot="skill-settings-subtitle" className="text-xs text-muted mt-1">
-            {t('settings.skills.subtitle')}
-          </p>
-        </div>
-        <div data-slot="skill-settings-actions" className="flex items-center gap-1 shrink-0">
-          <Button variant="outline" onClick={handleRescan} isDisabled={rescanning}>
-            <ArrowsRotateRight className={rescanning ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />
-            {t('settings.skills.rescan')}
-          </Button>
-          <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
-            <Plus className="w-3.5 h-3.5" />
-            {t('settings.skills.new')}
-          </Button>
-        </div>
-      </div>
+    <SettingsPane>
+      <SettingsHeader
+        title={t('settings.skills.title')}
+        subtitle={t('settings.skills.subtitle')}
+        actions={
+          <>
+            <Button variant="outline" onClick={handleRescan} isDisabled={rescanning}>
+              <ArrowsRotateRight className={rescanning ? 'w-3.5 h-3.5 animate-spin' : 'w-3.5 h-3.5'} />
+              {t('settings.skills.rescan')}
+            </Button>
+            <Button variant="outline" onClick={() => setShowCreate(!showCreate)}>
+              <Plus className="w-3.5 h-3.5" />
+              {t('settings.skills.new')}
+            </Button>
+          </>
+        }
+      />
 
       {error && (
         <p data-slot="skill-settings-error" className="text-xs text-danger">{error}</p>
@@ -306,14 +284,26 @@ export function SkillSettings() {
               data-slot="skill-item"
               className="flex w-full flex-col overflow-hidden rounded-lg border border-border"
             >
-              {/* Wraps on a narrow screen: the two labelled checkboxes take
-                  about 130px between them, which left the skill name a couple
-                  of characters wide on a phone. */}
-              <div data-slot="skill-item-header" className="flex flex-wrap items-center gap-2 pr-3">
+              {/* A container query, not a viewport one. The row wraps when the
+                  two labelled checkboxes (about 130px between them) would leave
+                  the skill name a couple of characters wide — and that depends
+                  on how wide this row is, not on how wide the screen is. Keyed
+                  to the viewport it wrapped a 770px-wide card in a window that
+                  had merely fallen under the breakpoint. */}
+              <div
+                data-slot="skill-item-header"
+                className="@container/skill-row flex flex-wrap items-center gap-2 pr-3"
+              >
                 {/* The checkboxes stay outside the trigger: it is a `<button>`,
                     and a nested one would be invalid markup and swallow the
                     click. */}
-                <Disclosure.Heading className="min-w-0 flex-1 basis-full md:basis-auto">
+                {/* `basis-0`, not `basis-auto`: wrapping is decided from the
+                    hypothetical size, and shrinking only happens once a line is
+                    settled. At `auto` a long skill name counted at full length
+                    and pushed the last checkbox onto a line of its own, while a
+                    shorter one beside it fit. From 0 the row grows into whatever
+                    is left and truncates instead. */}
+                <Disclosure.Heading className="min-w-0 flex-1 basis-full @sm/skill-row:basis-0">
                   {/* `flex` is not optional: HeroUI styles the indicator with
                       `ms-auto` and `shrink-0`, which only mean anything inside a
                       flex container. `text-start` undoes the button element's
@@ -329,9 +319,9 @@ export function SkillSettings() {
                         {skill.llm_name}
                       </span>
                     </div>
-                    <span data-slot="skill-item-source" className="text-xs px-1.5 py-0.5 rounded bg-default text-muted shrink-0">
+                    <Chip data-slot="skill-item-source" className="shrink-0 text-muted">
                       {t(`settings.skills.source.${skill.source}`)}
-                    </span>
+                    </Chip>
                     <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
                   </Disclosure.Trigger>
                 </Disclosure.Heading>
@@ -383,6 +373,7 @@ export function SkillSettings() {
                         skill={skill}
                         onSave={refresh}
                         onDelete={isBuiltin ? undefined : async () => {
+                          if (!await confirm({ body: t('settings.confirmDelete.skill') })) return
                           setError(null)
                           try {
                             await api.deleteSkill(skill.dir_name)
@@ -401,15 +392,18 @@ export function SkillSettings() {
           )
         })}
         {skills.length === 0 && !showCreate && (
-          <p data-slot="skill-settings-empty" className="text-xs text-muted text-center py-4">
-            {t('settings.skills.noSkills')}
-          </p>
+          <EmptyState data-slot="skill-settings-empty" size="sm">
+            <EmptyState.Header>
+              <EmptyState.Title>{t('settings.skills.noSkills')}</EmptyState.Title>
+            </EmptyState.Header>
+          </EmptyState>
         )}
       </DisclosureGroup>
 
       <p data-slot="skill-settings-global-hint" className="text-xs text-muted">
         {t('settings.skills.globalBindingHint')}
       </p>
-    </div>
+      {confirmDialog}
+    </SettingsPane>
   )
 }

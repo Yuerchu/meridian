@@ -36,8 +36,33 @@ function trimIconManifest(): Plugin {
   }
 }
 
+/**
+ * Cuts Shiki's full bundle out of Pro's Markdown.
+ *
+ * Pro's `Markdown` imports its `CodeBlock` statically, to use as the default
+ * `code` component. We always pass our own, so Pro's never renders — but the
+ * import still pulls in `shiki`'s full entry point: every grammar it ships as
+ * its own chunk, a duplicate of each grammar we load ourselves, and the
+ * oniguruma WASM. Roughly 8 MB of unreachable code.
+ *
+ * The redirect is scoped to imports *from inside* the Pro package, so our own
+ * code could still import the real thing if it ever needed to.
+ */
+function stubProCodeBlock(): Plugin {
+  const stub = path.resolve(rootDir, 'src/lib/pro-code-block-stub.ts')
+  return {
+    name: 'meridian:stub-pro-code-block',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (!importer?.includes('@heroui-pro')) return null
+      if (!/(^|\/)code-block(\/index\.js)?$/.test(source.replace(/\.\.?\//g, '/'))) return null
+      return stub
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), trimIconManifest()],
+  plugins: [react(), tailwindcss(), trimIconManifest(), stubProCodeBlock()],
   clearScreen: false,
   resolve: {
     alias: {

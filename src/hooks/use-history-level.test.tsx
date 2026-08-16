@@ -2,9 +2,8 @@ import { render, act } from '@testing-library/react'
 import { useState } from 'react'
 
 import { attachHistory } from '@/lib/history-bridge'
-import { ROOT } from '@/lib/nav'
-import { useNavStore } from '@/stores/nav-store'
-import { NavProvider, useHistoryLevel, type Nav } from './use-nav'
+import { useHistoryStore } from '@/stores/history-store'
+import { useHistoryLevel } from './use-history-level'
 
 /**
  * Drives `useHistoryLevel` against a fake history.
@@ -39,17 +38,6 @@ function installFakeHistory() {
   return { fake, depthNow: () => entries[index]?.__meridianDepth ?? 0 }
 }
 
-const STACK_NAV: Nav = {
-  mode: 'stack',
-  top: ROOT,
-  stack: [ROOT],
-  canGoBack: false,
-  push: () => {},
-  replaceTop: () => {},
-  back: () => {},
-  popToRoot: () => {},
-}
-
 function Level({ open, onClose }: { open: boolean; onClose: () => void }) {
   useHistoryLevel(open, onClose)
   return null
@@ -58,13 +46,15 @@ function Level({ open, onClose }: { open: boolean; onClose: () => void }) {
 function Harness({ initial = false, onClosed }: { initial?: boolean; onClosed?: () => void }) {
   const [open, setOpen] = useState(initial)
   return (
-    <NavProvider value={STACK_NAV}>
+    <>
       <button type="button" data-testid="open" onClick={() => setOpen(true)} />
       <button type="button" data-testid="close" onClick={() => setOpen(false)} />
       <Level open={open} onClose={() => { setOpen(false); onClosed?.() }} />
-    </NavProvider>
+    </>
   )
 }
+
+const depth = () => useHistoryStore.getState().levels.length
 
 describe('useHistoryLevel', () => {
   let history: ReturnType<typeof installFakeHistory>
@@ -72,7 +62,9 @@ describe('useHistoryLevel', () => {
   let detach: () => void
 
   beforeEach(() => {
-    useNavStore.setState({ stack: [ROOT], guards: [], depth: 0 })
+    // What `useBackGesture` does on a device that has a back gesture. Without
+    // it every level below is a no-op, which is the last case in this file.
+    useHistoryStore.setState({ enabled: true, levels: [] })
     history = installFakeHistory()
     // The real bridge, so popstate → readDepth → settleTo is under test too.
     detach = attachHistory()
@@ -80,6 +72,7 @@ describe('useHistoryLevel', () => {
 
   afterEach(() => {
     detach()
+    useHistoryStore.setState({ enabled: false, levels: [] })
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
@@ -88,10 +81,10 @@ describe('useHistoryLevel', () => {
     const { getByTestId, unmount } = render(<Harness />)
 
     await act(async () => { getByTestId('open').click() })
-    expect(useNavStore.getState().depth).toBe(1)
+    expect(depth()).toBe(1)
 
     await act(async () => { getByTestId('close').click() })
-    expect(useNavStore.getState().depth).toBe(0)
+    expect(depth()).toBe(0)
 
     unmount()
   })
@@ -103,7 +96,7 @@ describe('useHistoryLevel', () => {
     await act(async () => { getByTestId('open').click() })
     await act(async () => { getByTestId('close').click() })
 
-    // The guard is gone before goBack lands, so the popstate it causes finds
+    // The level is gone before goBack lands, so the popstate it causes finds
     // nothing to dismiss.
     expect(onClosed).not.toHaveBeenCalled()
     unmount()
@@ -114,13 +107,13 @@ describe('useHistoryLevel', () => {
     const { getByTestId, unmount } = render(<Harness onClosed={onClosed} />)
 
     await act(async () => { getByTestId('open').click() })
-    expect(useNavStore.getState().depth).toBe(1)
+    expect(depth()).toBe(1)
 
     // The hardware key: the WebView steps back, then announces it.
     await act(async () => { history.fake.go(-1) })
 
     expect(onClosed).toHaveBeenCalledTimes(1)
-    expect(useNavStore.getState().depth).toBe(0)
+    expect(depth()).toBe(0)
     // The entry was consumed by the gesture itself; the effect that now sees
     // `open === false` must not step back a second time.
     expect(history.depthNow()).toBe(0)
@@ -131,19 +124,11 @@ describe('useHistoryLevel', () => {
   it('uses the latest close callback without pushing another history level', async () => {
     const first = vi.fn()
     const latest = vi.fn()
-    const { rerender, unmount } = render(
-      <NavProvider value={STACK_NAV}>
-        <Level open onClose={first} />
-      </NavProvider>,
-    )
-    expect(useNavStore.getState().depth).toBe(1)
+    const { rerender, unmount } = render(<Level open onClose={first} />)
+    expect(depth()).toBe(1)
 
-    rerender(
-      <NavProvider value={STACK_NAV}>
-        <Level open onClose={latest} />
-      </NavProvider>,
-    )
-    expect(useNavStore.getState().depth).toBe(1)
+    rerender(<Level open onClose={latest} />)
+    expect(depth()).toBe(1)
 
     await act(async () => { history.fake.go(-1) })
 
@@ -157,15 +142,46 @@ describe('useHistoryLevel', () => {
     const { getByTestId, unmount } = render(<Harness onClosed={onClosed} />)
 
     await act(async () => { getByTestId('open').click() })
-    expect(useNavStore.getState().depth).toBe(1)
+    expect(depth()).toBe(1)
 
     unmount()
 
-    expect(useNavStore.getState().guards).toHaveLength(0)
+    expect(useHistoryStore.getState().levels).toHaveLength(0)
     expect(onClosed).not.toHaveBeenCalled()
   })
 
-  it('is inert without a stack, which is how the desktop and the tests run', async () => {
+  it('unwinds nested levels innermost first, in one popstate', async () => {
+    const order: string[] = []
+    function Nested() {
+      const [outer, setOuter] = useState(false)
+      const [inner, setInner] = useState(false)
+      useHistoryLevel(outer, () => { order.push('outer'); setOuter(false) })
+      useHistoryLevel(inner, () => { order.push('inner'); setInner(false) })
+      return (
+        <>
+          <button type="button" data-testid="outer" onClick={() => setOuter(true)} />
+          <button type="button" data-testid="inner" onClick={() => setInner(true)} />
+        </>
+      )
+    }
+    const { getByTestId, unmount } = render(<Nested />)
+
+    await act(async () => { getByTestId('outer').click() })
+    await act(async () => { getByTestId('inner').click() })
+    expect(depth()).toBe(2)
+
+    // One gesture, two entries: `go(-2)` is a single popstate carrying an
+    // absolute depth, which is why `settleTo` reads a target rather than a step.
+    await act(async () => { history.fake.go(-2) })
+
+    expect(order).toEqual(['inner', 'outer'])
+    expect(depth()).toBe(0)
+    unmount()
+  })
+
+  it('is inert where the gesture is not ours, which is every desktop and every test', async () => {
+    useHistoryStore.setState({ enabled: false, levels: [] })
+
     function Panes() {
       const [open, setOpen] = useState(false)
       useHistoryLevel(open, () => setOpen(false))
@@ -175,7 +191,7 @@ describe('useHistoryLevel', () => {
 
     await act(async () => { getByTestId('open').click() })
 
-    expect(useNavStore.getState().depth).toBe(0)
+    expect(depth()).toBe(0)
     unmount()
   })
 })

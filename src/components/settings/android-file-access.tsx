@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FolderOpen, Xmark } from '@gravity-ui/icons'
 import { Button, Checkbox } from '@heroui/react'
+import { EmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
 import type { SafRootEntry } from '@/types'
 
@@ -88,9 +89,11 @@ export function AndroidFileAccess() {
           {t('settings.fileAccess.safDirs')}
         </p>
         {safRoots.length === 0 ? (
-          <p className="text-xs text-muted">
-            {t('settings.fileAccess.safEmpty')}
-          </p>
+          <EmptyState size="sm">
+            <EmptyState.Header>
+              <EmptyState.Title>{t('settings.fileAccess.safEmpty')}</EmptyState.Title>
+            </EmptyState.Header>
+          </EmptyState>
         ) : (
           <ul className="space-y-1">
             {safRoots.map((root) => (

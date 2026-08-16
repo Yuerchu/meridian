@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { CircleCheck, CircleXmark, Play } from '@gravity-ui/icons'
-import { Button, Card } from '@heroui/react'
+import { Button, Card, Meter } from '@heroui/react'
 
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
@@ -56,6 +56,33 @@ class ProbeProcessor extends AudioWorkletProcessor {
 }
 registerProcessor('probe', ProbeProcessor)
 `
+
+/**
+ * The two CSS features Pro's `TextShimmer` needs, asked on the device itself.
+ *
+ * `#playground/heroui` asks the same question, but only a dev server can reach
+ * that — and the answer that matters is Android's, where the WebView ships with
+ * the system and an old phone can be years behind. This is why the probe lives
+ * in Settings: a plain release APK can open it.
+ *
+ * What rides on it: if `tan()` is missing, the shimmer's `background` shorthand
+ * fails to parse while `-webkit-text-fill-color: transparent` beside it applies
+ * regardless. The text does not fall back to plain — it goes invisible. Both
+ * green here is what would let `ChainOfThought` move onto Pro's, which pulls
+ * `TextShimmer` in with it.
+ */
+const CSS_PROBES: Array<{ name: string; note: string; test: () => boolean }> = [
+  {
+    name: 'oklch(from …)',
+    note: 'relative color',
+    test: () => CSS.supports('color', 'oklch(from red l c h)'),
+  },
+  {
+    name: 'tan()',
+    note: 'trig in calc',
+    test: () => CSS.supports('width', 'calc(1px * tan(15deg))'),
+  },
+]
 
 type Verdict = 'pass' | 'fail' | 'pending'
 
@@ -293,9 +320,33 @@ export function DeveloperSettings() {
       />
 
       <div className="space-y-1.5">
-        <label className="block text-xs font-medium text-muted">
-          {t('settings.developer.micProbe')}
-        </label>
+        <p className="text-xs font-medium text-muted">{t('settings.developer.cssProbe')}</p>
+        <Card>
+          <Card.Header>
+            <Card.Title>{t('settings.developer.cssProbeTitle')}</Card.Title>
+            <Card.Description>{t('settings.developer.cssProbeHint')}</Card.Description>
+          </Card.Header>
+          <Card.Content className="gap-1">
+            {CSS_PROBES.map((probe) => {
+              const ok = probe.test()
+              return (
+                <div key={probe.name} data-slot="css-probe-line" className="flex items-center gap-2 text-sm">
+                  {ok
+                    ? <CircleCheck className="size-4 shrink-0 text-success" />
+                    : <CircleXmark className="size-4 shrink-0 text-danger" />}
+                  <span className="font-mono text-xs">{probe.name}</span>
+                  <span className="text-xs text-muted">{probe.note}</span>
+                </div>
+              )
+            })}
+          </Card.Content>
+        </Card>
+      </div>
+
+      <div className="space-y-1.5">
+        {/* Names the section, not a control — there is no field under it, only a
+            card that titles itself. It was a `<label>` pointing at nothing. */}
+        <p className="text-xs font-medium text-muted">{t('settings.developer.micProbe')}</p>
         <Card>
           <Card.Header>
             <Card.Title>{t('settings.developer.micProbeTitle')}</Card.Title>
@@ -321,12 +372,18 @@ export function DeveloperSettings() {
           {recording && (
             <div className="space-y-1">
               <p className="text-xs text-danger">{t('settings.developer.probe.speakNow')}</p>
-              <div className="h-2 w-full overflow-hidden rounded-full bg-default">
-                <div
-                  className="h-full bg-success transition-[width] duration-75"
-                  style={{ width: `${Math.min(100, peak * 140)}%` }}
-                />
-              </div>
+              {/* A meter, not a progress bar: this is a level within a known
+                  range, not a task advancing towards completion. The bare div
+                  it replaces reported nothing at all to a screen reader. */}
+              <Meter
+                aria-label={t('settings.developer.probe.level')}
+                value={Math.min(100, peak * 140)}
+                className="w-full"
+              >
+                <Meter.Track className="h-2 rounded-full bg-default">
+                  <Meter.Fill className="bg-success transition-[width] duration-75" />
+                </Meter.Track>
+              </Meter>
             </div>
           )}
 

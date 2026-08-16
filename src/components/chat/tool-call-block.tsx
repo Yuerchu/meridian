@@ -1,10 +1,19 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { diffLines, parsePatch } from 'diff'
-import hljs from 'highlight.js/lib/common'
+import { diffLines } from 'diff'
+import {
+  parsePatchText,
+  splitDiffText,
+  type DiffLine,
+  type DiffLineKind,
+  type FileDiff,
+} from '@/lib/patch-parse'
+import { useShikiLanguage } from '@/hooks/use-shiki-language'
+import { highlightInline } from '@/lib/shiki'
+import { ShikiCode } from './shiki-code'
 import { fileIconUrl } from '@/lib/file-icon'
 import {
-  ArrowUturnCcwLeft, Ban, Check, ChevronUp, Circle, CircleCheck, CircleDashed,
+  ArrowUturnCcwLeft, Ban, Check, Circle, CircleCheck, CircleDashed,
   CircleQuestion, Clock, Compass, FileText, ForwardStep, Globe, ListCheck,
   PaperPlane, Square, SquareCheck, SquareListUl, TriangleExclamation, Xmark,
 } from '@gravity-ui/icons'
@@ -23,6 +32,9 @@ import {
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { parseTodoArgs, todoProgress, TodoItemList, type TodoDraft } from './todo-list'
+import { ChatSource, ChatSources } from '@heroui-pro/react/chat-source'
+
+import { openExternally } from '@/lib/external-link'
 import { MarkdownContent } from './markdown-content'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { ToolCallDisplay } from '@/types'
@@ -295,49 +307,9 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   )
 }
 
-function getFileExtension(filePath: string): string {
-  const dot = filePath.lastIndexOf('.')
-  if (dot === -1) return ''
-  return filePath.slice(dot + 1).toLowerCase()
-}
-
-function getHljsLang(ext: string): string | null {
-  const map: Record<string, string> = {
-    js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
-    py: 'python', rb: 'ruby', rs: 'rust', go: 'go', java: 'java',
-    kt: 'kotlin', swift: 'swift', c: 'c', cpp: 'cpp', h: 'c', hpp: 'cpp',
-    cs: 'csharp', php: 'php', sh: 'bash', bash: 'bash', zsh: 'bash',
-    sql: 'sql', html: 'xml', htm: 'xml', xml: 'xml', svg: 'xml',
-    css: 'css', scss: 'scss', less: 'less', json: 'json', yaml: 'yaml',
-    yml: 'yaml', toml: 'ini', ini: 'ini', md: 'markdown', lua: 'lua',
-    r: 'r', dart: 'dart', vue: 'xml', svelte: 'xml',
-  }
-  return map[ext] ?? null
-}
-
 // ---- Diff rendering for file-editing tools (write_file / edit_file / apply_patch) ----
 
-type DiffLineKind = 'add' | 'remove' | 'context' | 'hunk'
-
-interface DiffLine {
-  kind: DiffLineKind
-  text: string
-}
-
-interface FileDiff {
-  path: string
-  op: 'create' | 'delete' | 'modify'
-  replaceAll?: boolean
-  lines: DiffLine[]
-}
-
 const MAX_DIFF_LINES = 300
-
-function splitDiffText(s: string): string[] {
-  const lines = s.split('\n')
-  if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop()
-  return lines
-}
 
 function writeFileDiff(args: Record<string, unknown>): FileDiff[] | null {
   const path = typeof args.path === 'string' ? args.path : null
@@ -368,108 +340,10 @@ function editFileDiff(args: Record<string, unknown>): FileDiff[] | null {
   }]
 }
 
-// Codex-style patch: *** Begin Patch / *** Update File: x / @@ ctx / +- lines / *** End Patch
-function parseCodexPatch(patch: string): FileDiff[] {
-  const files: FileDiff[] = []
-  let cur: FileDiff | null = null
-  for (const raw of patch.split('\n')) {
-    const header = raw.match(/^\*\*\* (Update|Add|Delete) File: (.+)$/)
-    if (header) {
-      cur = {
-        path: header[2].trim(),
-        op: header[1] === 'Add' ? 'create' : header[1] === 'Delete' ? 'delete' : 'modify',
-        lines: [],
-      }
-      files.push(cur)
-      continue
-    }
-    const move = raw.match(/^\*\*\* Move to: (.+)$/)
-    if (move && cur) {
-      cur.path = `${cur.path} → ${move[1].trim()}`
-      continue
-    }
-    if (raw.startsWith('*** ')) continue
-    if (!cur) continue
-    if (raw.startsWith('@@')) cur.lines.push({ kind: 'hunk', text: raw })
-    else if (raw.startsWith('+')) cur.lines.push({ kind: 'add', text: raw.slice(1) })
-    else if (raw.startsWith('-')) cur.lines.push({ kind: 'remove', text: raw.slice(1) })
-    else cur.lines.push({ kind: 'context', text: raw.startsWith(' ') ? raw.slice(1) : raw })
-  }
-  return files
-}
-
-function stripDiffPrefix(p: string): string {
-  const trimmed = p.trim()
-  return trimmed.startsWith('a/') || trimmed.startsWith('b/') ? trimmed.slice(2) : trimmed
-}
-
-// Line-scanning fallback for diffs jsdiff rejects, e.g. hunk headers whose
-// line counts are wrong — models miscount them routinely.
-function parseUnifiedPatchLoose(patch: string): FileDiff[] {
-  const files: FileDiff[] = []
-  const lines = patch.split('\n')
-  let cur: FileDiff | null = null
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    if (line.startsWith('--- ') && lines[i + 1]?.startsWith('+++ ')) {
-      const oldPath = stripDiffPrefix(line.slice(4))
-      const newPath = stripDiffPrefix(lines[i + 1].slice(4))
-      cur = {
-        path: newPath === '/dev/null' ? oldPath : newPath,
-        op: oldPath === '/dev/null' ? 'create' : newPath === '/dev/null' ? 'delete' : 'modify',
-        lines: [],
-      }
-      files.push(cur)
-      i++
-      continue
-    }
-    if (!cur) continue
-    if (line.startsWith('diff ') || line.startsWith('index ') || line.startsWith('\\')) continue
-    if (line.startsWith('@@')) cur.lines.push({ kind: 'hunk', text: line })
-    else if (line.startsWith('+')) cur.lines.push({ kind: 'add', text: line.slice(1) })
-    else if (line.startsWith('-')) cur.lines.push({ kind: 'remove', text: line.slice(1) })
-    else cur.lines.push({ kind: 'context', text: line.startsWith(' ') ? line.slice(1) : line })
-  }
-  return files
-}
-
-function parseUnifiedPatch(patch: string): FileDiff[] {
-  let parsed: ReturnType<typeof parsePatch>
-  try {
-    parsed = parsePatch(patch)
-  } catch {
-    return parseUnifiedPatchLoose(patch)
-  }
-  const files: FileDiff[] = []
-  for (const f of parsed) {
-    if (f.hunks.length === 0) continue
-    const oldPath = stripDiffPrefix(f.oldFileName ?? '')
-    const newPath = stripDiffPrefix(f.newFileName ?? '')
-    const lines: DiffLine[] = []
-    for (const h of f.hunks) {
-      lines.push({ kind: 'hunk', text: `@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@` })
-      for (const l of h.lines) {
-        if (l.startsWith('+')) lines.push({ kind: 'add', text: l.slice(1) })
-        else if (l.startsWith('-')) lines.push({ kind: 'remove', text: l.slice(1) })
-        else if (l.startsWith('\\')) continue
-        else lines.push({ kind: 'context', text: l.startsWith(' ') ? l.slice(1) : l })
-      }
-    }
-    files.push({
-      path: newPath === '/dev/null' || newPath === '' ? oldPath : newPath,
-      op: oldPath === '/dev/null' ? 'create' : newPath === '/dev/null' ? 'delete' : 'modify',
-      lines,
-    })
-  }
-  return files.length > 0 ? files : parseUnifiedPatchLoose(patch)
-}
-
 function applyPatchDiff(args: Record<string, unknown>): FileDiff[] | null {
   const patch = typeof args.patch === 'string' ? args.patch : null
   if (patch === null) return null
-  const parsed = /^\*\*\* (Begin Patch|Update File|Add File|Delete File)/m.test(patch)
-    ? parseCodexPatch(patch)
-    : parseUnifiedPatch(patch)
+  const parsed = parsePatchText(patch)
   if (parsed.length > 0) return parsed
   // Unrecognized format: still show the raw patch with real newlines.
   return [{
@@ -515,36 +389,11 @@ function diffSignClass(kind: DiffLineKind): string | undefined {
   return undefined
 }
 
-/** Extensions highlight.js does not already know by that name. Everything else
- *  (`ts`, `py`, `rs`, `json`, `yml`, …) is an alias it resolves on its own. */
-const EXT_ALIASES: Record<string, string> = {
-  tsx: 'typescript',
-  jsx: 'javascript',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  h: 'c',
-  hpp: 'cpp',
-  vue: 'xml',
-  svelte: 'xml',
-}
-
-function diffLanguage(path: string): string | undefined {
+/** The extension a path ends in, or nothing when it has none. */
+function pathExtension(path: string): string | undefined {
   const ext = path.split('.').pop()?.toLowerCase()
   if (!ext || ext === path.toLowerCase()) return undefined
-  const name = EXT_ALIASES[ext] ?? ext
-  return hljs.getLanguage(name) ? name : undefined
-}
-
-/**
- * Highlights each line on its own rather than the file as a whole.
- *
- * A diff is not a program: its lines come from two versions at once and the
- * context between them is missing, so there is no whole to parse. Line by line
- * a template literal or block comment spanning several lines loses its colour
- * after the first — the price of colouring the other 99%.
- */
-function highlightDiffLine(text: string, language: string): string {
-  return hljs.highlight(text, { language, ignoreIllegals: true }).value
+  return ext
 }
 
 function diffLinePrefix(kind: DiffLineKind): string {
@@ -574,7 +423,12 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
   const fileName = diff.path.split(/[/\\]/).pop() ?? diff.path
   const shown = diff.lines.slice(0, MAX_DIFF_LINES)
   const hidden = diff.lines.length - shown.length
-  const language = diffLanguage(diff.path)
+  // One grammar for the whole card, then every line colours from it. A diff is
+  // not a program — its lines come from two versions with the context between
+  // them missing — so there is nothing to parse as a whole anyway: a template
+  // literal spanning several lines loses its colour after the first, which is
+  // the price of colouring the other 99%.
+  const { language, ready } = useShikiLanguage(pathExtension(diff.path))
 
   return (
     <div data-slot="file-diff" className="rounded-lg bg-default/40 overflow-hidden">
@@ -584,7 +438,15 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
           className="flex items-center gap-2 px-3 py-1 bg-default/30 text-xs text-muted border-b border-border/50"
         >
           <FileIcon path={diff.path} />
-          <span className="font-mono truncate" title={diff.path}>{fileName}</span>
+          {/* A move used to arrive as one string with an arrow in the middle,
+              which read correctly and could not be used as a path. The parser
+              keeps the two apart now; the tooltip puts them back together. */}
+          <span
+            className="font-mono truncate"
+            title={diff.movedFrom ? `${diff.movedFrom} → ${diff.path}` : diff.path}
+          >
+            {fileName}
+          </span>
           {diff.op === 'create' && <span className="text-success-soft-foreground shrink-0">{t('chat.tool.diff.newFile')}</span>}
           {diff.op === 'delete' && <span className="text-danger shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
           {diff.replaceAll && <span className="shrink-0">{t('chat.tool.diff.replaceAll')}</span>}
@@ -604,12 +466,12 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
               key={i}
               data-slot="file-diff-line"
               data-kind={line.kind}
-              className={cn('px-3 whitespace-pre', diffLineClass(line.kind, !!language))}
+              className={cn('px-3 whitespace-pre', diffLineClass(line.kind, ready))}
             >
               <span className={diffSignClass(line.kind)}>{diffLinePrefix(line.kind)}</span>
-              {language && line.kind !== 'hunk' && line.text
-                // hljs escapes what it emits, and the sign beside it is ours.
-                ? <span dangerouslySetInnerHTML={{ __html: highlightDiffLine(line.text, language) }} />
+              {ready && line.kind !== 'hunk' && line.text
+                // Shiki escapes what it emits, and the sign beside it is ours.
+                ? <span dangerouslySetInnerHTML={{ __html: highlightInline(line.text, language) }} />
                 : line.text || ' '}
             </div>
           ))}
@@ -625,9 +487,11 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
 }
 
 function ReadFileResult({ result, path }: { result: string; path: string }) {
-  const ext = getFileExtension(path)
-  const lang = getHljsLang(ext)
   const fileName = path.split(/[/\\]/).pop() ?? path
+  // Previously this only *claimed* to be highlighted: it put `language-x hljs`
+  // on the element and never ran a highlighter, so the class bought a
+  // background colour and nothing else.
+  const body = result.length > 2000 ? `${result.slice(0, 2000)}...` : result
 
   return (
     <div className="rounded-lg bg-default/40 overflow-hidden">
@@ -636,11 +500,7 @@ function ReadFileResult({ result, path }: { result: string; path: string }) {
         <span className="font-mono truncate">{fileName}</span>
       </div>
       <div className="max-h-60 overflow-auto">
-        <pre className="text-xs leading-relaxed px-3 py-2">
-          <code className={lang ? `language-${lang} hljs` : ''}>
-            {result.length > 2000 ? `${result.slice(0, 2000)}...` : result}
-          </code>
-        </pre>
+        <ShikiCode code={body} language={pathExtension(path)} />
       </div>
     </div>
   )
@@ -882,7 +742,6 @@ function parseWebSearchResult(result: string): WebSearchSource[] | null {
 
 function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
 
   const query = useMemo(() => {
     try {
@@ -983,42 +842,35 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   }
 
   return (
-    <div className="my-2 space-y-1.5">
-      <Button
-        variant="ghost"
-        onClick={() => setExpanded(!expanded)}
-        className="h-auto justify-start rounded-none p-0 gap-1.5 text-xs font-normal text-muted hover:text-foreground hover:bg-transparent dark:hover:bg-transparent transition-colors"
-      >
-        <span>{t('chat.tool.webSearch.sources', { count: sources.length })}</span>
-        <ChevronUp className={`w-3.5 h-3.5 transition-transform ${expanded ? '' : 'rotate-180'}`} />
-      </Button>
-      {expanded && (
-          <div className="overflow-hidden">
-            <div className="flex flex-wrap gap-1.5 pt-1">
-              {sources.map((src, i) => (
-                <a
-                  key={i}
-                  href={src.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-default/50 px-2.5 py-1 text-xs text-muted hover:bg-default hover:text-foreground transition-colors"
-                  title={src.title}
-                >
-                  {src.favicon && (
-                    <img
-                      src={src.favicon}
-                      alt=""
-                      className="w-3.5 h-3.5 rounded-sm"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                    />
-                  )}
-                  <span className="truncate max-w-32">{src.site_name || src.title}</span>
-                </a>
-              ))}
-            </div>
-          </div>
-      )}
-    </div>
+    <ChatSources className="my-2" defaultExpanded={false}>
+      <ChatSources.Trigger>
+        {t('chat.tool.webSearch.sources', { count: sources.length })}
+      </ChatSources.Trigger>
+      <ChatSources.Content>
+        <ChatSources.List>
+          {sources.map((src, i) => (
+            // `description` is what mounts the hover preview, so the page title
+            // moves out of a native `title` tooltip and into something that can
+            // hold more than one line.
+            <ChatSource
+              key={i}
+              description={src.title}
+              faviconUrl={src.favicon ?? undefined}
+              href={src.url}
+              title={src.site_name || src.title}
+            >
+              <ChatSource.Trigger
+                rel="noreferrer noopener"
+                onClick={(e) => openExternally(src.url, e)}
+              >
+                <ChatSource.Icon faviconUrl={src.favicon ?? undefined} />
+                <ChatSource.Title>{src.site_name || src.title}</ChatSource.Title>
+              </ChatSource.Trigger>
+            </ChatSource>
+          ))}
+        </ChatSources.List>
+      </ChatSources.Content>
+    </ChatSources>
   )
 }
 

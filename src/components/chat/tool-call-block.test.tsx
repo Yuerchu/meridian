@@ -1,10 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ToolCallBlock } from './tool-call-block'
-import { expectExpanded } from '@/test/disclosure'
+import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import i18n from '@/i18n'
 import { api } from '@/api'
 import type { ToolCallDisplay } from '@/types'
+
+// The sources open in the user's browser, not in the WebView.
+const shellOpen = vi.hoisted(() => vi.fn(() => Promise.resolve()))
+vi.mock('@tauri-apps/plugin-shell', () => ({ open: shellOpen }))
 
 // Resolved rather than bare: the cards attach a `.catch` to turn a rejected
 // decision into an orphaned card, and `undefined.catch` would throw.
@@ -326,5 +330,50 @@ describe('the interactive cards say what became of them', () => {
 
     fireEvent.keyDown(input, { key: 'Enter', isComposing: false })
     expect(api.denyToolCall).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('web search sources', () => {
+  const withSources = () => ({
+    ...toolCall('web_search', { query: 'heroui' }, 'completed'),
+    result: JSON.stringify({
+      sources: [
+        { url: 'https://heroui.com/docs', title: 'HeroUI documentation', site_name: 'HeroUI', favicon: 'https://heroui.com/f.ico' },
+        { url: 'https://react.dev', title: 'React', site_name: '', favicon: null },
+      ],
+    }),
+  })
+
+  it('lists the sources behind a count', async () => {
+    render(<ToolCallBlock data={withSources()} />)
+    // `ChatSources` is a HeroUI `Disclosure`, so the list is in the DOM either
+    // way — see `@/test/disclosure` for why presence cannot answer this.
+    const trigger = screen.getByRole('button', {
+      name: i18n.t('chat.tool.webSearch.sources', { count: 2 }),
+    })
+    expectCollapsed(trigger)
+
+    await userEvent.click(trigger)
+    expectExpanded(trigger)
+    expect(screen.getByText('HeroUI')).toBeInTheDocument()
+    // No `site_name`, so the title carries the pill.
+    expect(screen.getByText('React')).toBeInTheDocument()
+  })
+
+  /**
+   * This is a WebView. An anchor left to itself navigates the application to
+   * the page — no address bar, no way back — and `target="_blank"` does not
+   * save it, because there is no second tab to open into. The click has to be
+   * taken and handed to the browser.
+   */
+  it('opens a source in the browser rather than in the app', async () => {
+    render(<ToolCallBlock data={withSources()} />)
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.webSearch.sources', { count: 2 }) }))
+
+    const link = screen.getByText('HeroUI').closest('a')!
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    fireEvent(link, event)
+    expect(event.defaultPrevented).toBe(true)
+    expect(shellOpen).toHaveBeenCalledWith('https://heroui.com/docs')
   })
 })

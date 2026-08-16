@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToSquare, ArrowUp, Copy, Microphone, Paperclip, Scissors, SquareDashedText, StopFill, Xmark } from '@gravity-ui/icons'
+import { ArrowDownToSquare, Copy, Scissors, SquareDashedText } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, InputGroup, Popover, ProgressCircle, TextField, Tooltip } from '@heroui/react'
+import { Button, Popover, ProgressCircle, Tooltip } from '@heroui/react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -12,20 +12,15 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import {
-  Attachment,
-  AttachmentAction,
-  AttachmentActions,
-  AttachmentContent,
-  AttachmentGroup,
-  AttachmentMedia,
-  AttachmentTitle,
-} from '@/components/ui/attachment'
-import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
+import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
+
+import { localPreviewSrc } from '@/lib/asset-src'
+import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
 import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
 import { useAndroidVoiceRecorder } from '@/hooks/use-android-voice-recorder'
-import { useHistoryLevel } from '@/hooks/use-nav'
+import { useHistoryLevel } from '@/hooks/use-history-level'
 import { VoiceButton } from '@/components/ui/voice-button'
+import { Composer } from './composer'
 import { VoiceOverlay } from './voice-overlay'
 import { MobileOptionsMenu } from './toolbar'
 import { ComposerMenu } from './composer-menu'
@@ -63,6 +58,15 @@ interface InputBarProps {
   onStop?: () => void
   disabled?: boolean
   streaming?: boolean
+  /**
+   * This conversation is a delegated run that can be talked to mid-flight.
+   *
+   * Enter submits while the answer is still coming, and a Stop of its own
+   * appears beside Send. The tool menu goes away with it: what it holds — the
+   * model, the mode, the standing yes, the attachments — describes a turn about
+   * to start, and steering starts none.
+   */
+  steerable?: boolean
   attachedFiles?: AttachedFile[]
   onAttachFiles?: (files: AttachedFile[]) => void
   onRemoveFile?: (index: number) => void
@@ -126,6 +130,7 @@ export function InputBar({
   onStop,
   disabled,
   streaming,
+  steerable,
   assistants,
   providers,
   currentAssistantId,
@@ -152,30 +157,40 @@ export function InputBar({
   const { t } = useTranslation()
   const platform = usePlatform()
   const isAndroid = platform === 'android'
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  // Filled by Composer once the field exists: Pro spreads incoming props after
+  // its own ref, so one passed down would displace theirs.
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const [selectedText, setSelectedText] = useState('')
 
   // Transient one-line notice above the composer ("too short", model missing…)
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null)
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const showVoiceNotice = useCallback((notice: VoiceNotice, detail?: string) => {
-    const text = notice === 'error' && detail ? detail : t(`chat.voice.${notice}`)
+  const showHint = useCallback((text: string) => {
     setVoiceNotice(text)
     if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
     noticeTimerRef.current = setTimeout(() => setVoiceNotice(null), 3000)
-  }, [t])
+  }, [])
+  const showVoiceNotice = useCallback((notice: VoiceNotice, detail?: string) => {
+    showHint(notice === 'error' && detail ? detail : t(`chat.voice.${notice}`))
+  }, [showHint, t])
   const voice = useVoiceRecorder({
     onSend: (text) => onVoiceSend?.(text),
     onNotice: showVoiceNotice,
   })
-  // Hold-to-talk on the field itself. Both hooks are called unconditionally —
-  // hooks cannot be conditional — but only one of them is ever reachable: the
-  // desktop has no press layer, and Android does not render the mic button.
+  // Hold-to-talk, on the field itself. Both recorder hooks are called
+  // unconditionally — hooks cannot be conditional — but only one is ever
+  // reachable: this one is Android's, `VoiceButton` is the desktop's.
+  //
+  // Only while the field is empty: then it has nothing to select and nothing to
+  // scroll, which is what leaves a hold free to mean something else. The moment
+  // there is text the gesture stands down and the field is only a field.
+  const voicePress = Boolean(isAndroid && onVoiceSend && !value && !disabled && !streaming)
   const androidVoice = useAndroidVoiceRecorder({
     onSend: (text) => onVoiceSend?.(text),
     onNotice: showVoiceNotice,
-    onTap: () => textareaRef.current?.focus(),
+    enabled: voicePress,
   })
+  const { attachField } = androidVoice
   // The back gesture cancels a recording instead of leaving the screen. Only
   // while capturing: transcription is over in well under a second, and a
   // history entry that brief is worse than none.
@@ -193,11 +208,20 @@ export function InputBar({
   // A pinyin or kana candidate lives in the textarea before it has been chosen.
   // Enter is already guarded by `isSubmitKey`, but on a phone the send button is
   // what gets pressed, and it sits next to the candidate bar.
-  const composingRef = useRef(false)
+  // Composer holds Enter back mid-composition and disables Send on an empty
+  // field; what stays here is the caller's own precondition.
   const handleSubmit = useCallback(() => {
-    if (composingRef.current) return
+    if (disabled || !value.trim()) return
     onSubmit()
-  }, [onSubmit])
+  }, [disabled, value, onSubmit])
+
+  const handleFieldReady = useCallback((el: HTMLTextAreaElement | null) => {
+    textareaRef.current = el
+    // The hold is bound here rather than through JSX: React attaches touch
+    // handlers passively at the root, where the `preventDefault()` that keeps a
+    // hold from becoming a tap is ignored without a word.
+    if (isAndroid) attachField(el)
+  }, [isAndroid, attachField])
 
   const handleContextMenuOpen = useCallback((open: boolean) => {
     if (open) {
@@ -246,29 +270,6 @@ export function InputBar({
     el.select()
   }, [])
 
-  const adjustHeight = useCallback(() => {
-    const el = textareaRef.current
-    if (!el) return
-    el.style.height = 'auto'
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`
-  }, [])
-
-  useEffect(() => {
-    adjustHeight()
-  }, [value, adjustHeight])
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (isSubmitKey(e)) {
-        e.preventDefault()
-        if (!disabled && value.trim()) {
-          onSubmit()
-        }
-      }
-    },
-    [disabled, value, onSubmit],
-  )
-
   const handleTakePhoto = useCallback(async () => {
     const uri = await api.takePhoto()
     if (uri && onAttachFiles) {
@@ -285,21 +286,27 @@ export function InputBar({
     }
   }, [onAttachFiles])
 
+  // A path is all either the picker or a drop hands over; the name is asked for
+  // separately because on Android a `content://` URI has no readable last
+  // segment, and the tail of the path is only a fallback for when that fails.
+  const attachPaths = useCallback(async (paths: string[]) => {
+    if (!onAttachFiles || paths.length === 0) return
+    const files = await Promise.all(paths.map(async (p) => ({
+      path: p,
+      name: await api.resolveFileName(p).catch(() => p.replace(/\\/g, '/').split('/').pop() ?? 'file'),
+    })))
+    onAttachFiles(files)
+  }, [onAttachFiles])
+
   const handlePickFile = useCallback(async () => {
     // Cancelling rejects on Android rather than resolving to null, so a tap on
     // Back out of the picker would otherwise surface as an unhandled rejection.
     // Every caller here already treats null as "nothing chosen".
     const paths = await open({ multiple: true }).catch(() => null)
-    if (paths && onAttachFiles) {
-      const files = await Promise.all(
-        (Array.isArray(paths) ? paths : [paths]).map(async (p) => ({
-          path: p,
-          name: await api.resolveFileName(p).catch(() => p.replace(/\\/g, '/').split('/').pop() ?? 'file'),
-        }))
-      )
-      onAttachFiles(files)
-    }
-  }, [onAttachFiles])
+    if (paths) await attachPaths(Array.isArray(paths) ? paths : [paths])
+  }, [attachPaths])
+
+  const handleDropFiles = useCallback((paths: string[]) => { void attachPaths(paths) }, [attachPaths])
 
   const menuItems = (
     <>
@@ -343,79 +350,57 @@ export function InputBar({
             peak={androidVoice.peak}
           />
         )}
-        {voiceNotice && (
-          <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>
-        )}
         <ComposerContextMenu
           enabled={!isCoarsePointer()}
           onOpenChange={handleContextMenuOpen}
           items={menuItems}
         >
-        <TextField fullWidth aria-label={t('chat.placeholder')}>
-        <InputGroup fullWidth className="flex flex-col gap-2 rounded-2xl py-2">
-          {attachedFiles.length > 0 && (
-            <InputGroup.Prefix className="w-full justify-start border-0 px-3.5 py-0">
-              <AttachmentGroup>
-                {attachedFiles.map((f, i) => (
-                  <Attachment key={i} state="done">
-                    <AttachmentMedia>
-                      <Paperclip />
-                    </AttachmentMedia>
-                    <AttachmentContent>
-                      <AttachmentTitle className="max-w-[120px]">{f.name}</AttachmentTitle>
-                    </AttachmentContent>
-                    {onRemoveFile && (
-                      <AttachmentActions>
-                        <AttachmentAction
-                          aria-label={t('chat.removeAttachment', { name: f.name })}
-                          onClick={() => onRemoveFile(i)}
-                          className="hover:text-danger"
-                        >
-                          <Xmark />
-                        </AttachmentAction>
-                      </AttachmentActions>
-                    )}
-                  </Attachment>
-                ))}
-              </AttachmentGroup>
-            </InputGroup.Prefix>
+        <Composer
+          value={value}
+          onChange={onChange}
+          onSubmit={handleSubmit}
+          // Not simply `disabled`: while a reply streams the field stays live,
+          // and only Send turns into Stop.
+          disabled={disabled && !streaming}
+          streaming={streaming}
+          onStop={onStop}
+          steerable={steerable}
+          ariaLabel={t('chat.placeholder')}
+          placeholder={
+            steerable && streaming
+              ? t('chat.placeholderSteer')
+              // Only promises the hold while the hold is bound.
+              : voicePress
+                ? t('chat.placeholderVoice')
+                : t('chat.placeholder')
+          }
+          onFieldReady={handleFieldReady}
+          onDropFiles={onAttachFiles ? handleDropFiles : undefined}
+          notice={voiceNotice && (
+            <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>
           )}
-          <div className="relative w-full">
-            <InputGroup.TextArea
-              ref={textareaRef}
-              value={value}
-              onChange={(e) => {
-                onChange(e.target.value)
-              }}
-              onKeyDown={handleKeyDown}
-              onCompositionStart={() => { composingRef.current = true }}
-              onCompositionEnd={() => { composingRef.current = false }}
-              placeholder={isAndroid && !value ? t('chat.placeholderVoice') : t('chat.placeholder')}
-              disabled={disabled && !streaming}
-              rows={1}
-              // `flex-none`: the input slot ships `flex-1`, which in this column
-              // layout makes flex-basis, not `adjustHeight`, decide the height.
-              className="min-h-6 max-h-[200px] w-full flex-none resize-none px-3.5 py-0"
-            />
-            {/* Hold-to-talk, as a layer rather than as handlers on the field.
-                While it is up the textarea sees no touches at all, so there is
-                no race with focus, the keyboard, or the text-selection action
-                mode — and an empty field has nothing to select anyway. It
-                disappears the moment there is text, leaving editing untouched. */}
-            {isAndroid && !value && !disabled && !streaming && onVoiceSend && (
-              <div
-                data-slot="voice-press-layer"
-                className="absolute inset-0 touch-none select-none"
-                onPointerDown={androidVoice.handlePointerDown}
-                onPointerMove={androidVoice.handlePointerMove}
-                onPointerUp={androidVoice.handlePointerUp}
-                onPointerCancel={androidVoice.handlePointerCancel}
-                onContextMenu={(e) => e.preventDefault()}
-              />
-            )}
-          </div>
-          <InputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
-            {isAndroid ? (
+          attachments={attachedFiles.length > 0 && (
+            <ChatAttachmentGroup>
+              {attachedFiles.map((f, i) => (
+                // An image gets a thumbnail rather than the paperclip everything
+                // used to get: the path is already on disk, so this costs one
+                // asset-protocol URL. Anything else falls back to the icon the
+                // extension implies.
+                <ChatAttachment key={i} name={f.name} src={localPreviewSrc(f.path, f.name)}>
+                  <ChatAttachment.Preview />
+                  <ChatAttachment.Info />
+                  {onRemoveFile && (
+                    <ChatAttachment.Remove
+                      aria-label={t('chat.removeAttachment', { name: f.name })}
+                      onPress={() => onRemoveFile(i)}
+                    />
+                  )}
+                </ChatAttachment>
+              ))}
+            </ChatAttachmentGroup>
+          )}
+          toolbarStart={steerable && streaming ? null : (
+            isAndroid ? (
               <MobileOptionsMenu
                 assistants={assistants}
                 providers={providers}
@@ -462,32 +447,14 @@ export function InputBar({
                     : undefined
                 }
               />
-            )}
-            <div className="ms-auto flex items-center gap-2 shrink-0">
+            )
+          )}
+          toolbarEnd={
+            <>
               <EmojiPicker
                 assistantId={currentAssistantId}
                 onSelect={(syntax) => onChange(value + syntax)}
               />
-              {/* A press target of its own. Holding the field works too, but an
-                  empty composer is one line tall, which is a poor thing to aim
-                  a thumb at — and nothing about it says it can be held. */}
-              {isAndroid && onVoiceSend && !value && (
-                <Button
-                  isIconOnly
-                  variant="ghost"
-                  size="sm"
-                  aria-label={t('chat.voice.holdToTalk')}
-                  isDisabled={disabled || streaming}
-                  className="touch-hitbox touch-none select-none text-muted"
-                  onPointerDown={androidVoice.handlePointerDown}
-                  onPointerMove={androidVoice.handlePointerMove}
-                  onPointerUp={androidVoice.handlePointerUp}
-                  onPointerCancel={androidVoice.handlePointerCancel}
-                  onContextMenu={(e) => e.preventDefault()}
-                >
-                  <Microphone className="size-5" />
-                </Button>
-              )}
               {!isAndroid && onVoiceSend && (
                 <Tooltip delay={0}>
                   {/* The button inside picks the tooltip's trigger props up from
@@ -595,55 +562,9 @@ export function InputBar({
                   </Popover>
                 )
               })()}
-              {/* TODO: a running sub-agent can be talked to, and this cannot say
-                  it. `steer_conversation` and the whole queue protocol behind it
-                  are done — a message goes into the run's inbox and the loop
-                  takes it between rounds, including one typed while the last
-                  words of an answer are being written. What is missing is a way
-                  to send it: while `streaming` this swaps Send *out* for Stop,
-                  so even with `disabled={false}` there is no submit control at
-                  all.
-
-                  Needs a `steerable` prop that renders both (Stop stops the run,
-                  Send steers it), `sendMessage` routing to `steer_conversation`
-                  when the conversation has a live turn — without touching
-                  `submittingRef`, `streaming` or the optimistic assistant
-                  bubble, since it starts no turn — an optimistic user bubble
-                  that a later snapshot reconciles, and marking that bubble
-                  undelivered when the command answers `Err` (the run had already
-                  stopped reading). Attachments, voice and slash commands stay
-                  hidden in that mode: each needs a turn's context, and steering
-                  is precisely what does not create one.
-
-                  The main conversation must keep the current behaviour — locked
-                  composer, Stop only. Deferred with the rest of the composer
-                  work until the HeroUI Pro change lands. */}
-              {streaming ? (
-                <Button
-                  isIconOnly
-                  size="sm"
-                  aria-label={t('chat.stop')}
-                  onClick={onStop}
-                  className="rounded-full"
-                >
-                  <StopFill className="size-3.5" />
-                </Button>
-              ) : (
-                <Button
-                  isIconOnly
-                  size="sm"
-                  aria-label={t('chat.send')}
-                  onClick={handleSubmit}
-                  isDisabled={disabled || !value.trim()}
-                  className="rounded-full"
-                >
-                  <ArrowUp className="size-4" />
-                </Button>
-              )}
-            </div>
-          </InputGroup.Suffix>
-        </InputGroup>
-        </TextField>
+            </>
+          }
+        />
         </ComposerContextMenu>
       </div>
     </div>
