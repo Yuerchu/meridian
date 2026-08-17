@@ -6,6 +6,12 @@ version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
 
+[lints.clippy]
+# The unsafe FFI surface is ported verbatim; inventing `# Safety` sections here
+# would document contracts we did not author. The upstream source is the
+# reference.
+missing_safety_doc = "allow"
+
 [dev-dependencies]
 pretty_assertions = "1"
 tempfile = "3"

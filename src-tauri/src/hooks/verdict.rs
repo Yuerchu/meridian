@@ -110,19 +110,18 @@ approve 时 issues 可以为空数组，message 可以省略。"#
 ///
 /// The reviewer has not seen the plan. That is deliberate: it judges the code
 /// on the code, without being anchored by an intention it already agreed to.
-pub(crate) fn implementation_prompt(
-    cwd: &str,
-    round: u32,
-    max_rounds: u32,
-    stagnant: bool,
-) -> String {
+pub(crate) fn implementation_prompt(cwd: &str, round: u32, max_rounds: u32, stagnant: bool) -> String {
     let repeat = if stagnant {
         "\n这一版和上一版实质相同 —— 上一轮的意见没有被处理。如果你上一轮的意见仍然成立，\
          照原样重申，不要为了显得有进展而换一批新问题。\n"
     } else {
         ""
     };
-    let budget = if max_rounds == 0 { String::new() } else { format!("，最多 {max_rounds} 轮") };
+    let budget = if max_rounds == 0 {
+        String::new()
+    } else {
+        format!("，最多 {max_rounds} 轮")
+    };
 
     format!(
         r#"你在审查另一个 AI agent 刚在仓库 `{cwd}` 里写完的改动。这是第 {round} 轮{budget}。
@@ -217,10 +216,17 @@ impl Issue {
 
 /// What the endpoint does with a parsed verdict.
 pub(crate) enum Outcome {
-    Approve { summary: String },
-    Revise { summary: String, message: String },
+    Approve {
+        summary: String,
+    },
+    Revise {
+        summary: String,
+        message: String,
+    },
     /// Parsed, but not into anything that can stop a plan.
-    Inconclusive { reason: &'static str },
+    Inconclusive {
+        reason: &'static str,
+    },
 }
 
 /// Read the reviewer's answer.
@@ -228,16 +234,21 @@ pub(crate) enum Outcome {
 /// Takes the *last* JSON object, not the first: a reviewer objecting to a
 /// config will quote it, and that quote is often the earlier `{`.
 pub(crate) fn parse(reply: &str) -> Outcome {
-    let Some(raw) = extract_last_json_object(reply, |candidate| {
-        serde_json::from_str::<Verdict>(candidate).is_ok()
-    }) else {
-        return Outcome::Inconclusive { reason: "审查回复里没有可用的裁决对象" };
+    let Some(raw) = extract_last_json_object(reply, |candidate| serde_json::from_str::<Verdict>(candidate).is_ok())
+    else {
+        return Outcome::Inconclusive {
+            reason: "审查回复里没有可用的裁决对象",
+        };
     };
 
     // The predicate above already proved this parses.
     let verdict: Verdict = match serde_json::from_str(&raw) {
         Ok(v) => v,
-        Err(_) => return Outcome::Inconclusive { reason: "审查回复里没有可用的裁决对象" },
+        Err(_) => {
+            return Outcome::Inconclusive {
+                reason: "审查回复里没有可用的裁决对象",
+            };
+        }
     };
 
     let summary = if verdict.summary.trim().is_empty() {
@@ -268,7 +279,9 @@ pub(crate) fn parse(reply: &str) -> Outcome {
         Some(message) => Outcome::Revise { summary, message },
         // Said "revise" and then gave nothing to act on. Blocking a plan on
         // that would leave the planner guessing at what to change.
-        None => Outcome::Inconclusive { reason: "审查判定需要修改但没给出任何理由" },
+        None => Outcome::Inconclusive {
+            reason: "审查判定需要修改但没给出任何理由",
+        },
     }
 }
 
@@ -359,7 +372,10 @@ mod tests {
 
     #[test]
     fn prose_with_no_json_does_not_block() {
-        assert!(matches!(parse("看起来问题很大，但我不想用 JSON。"), Outcome::Inconclusive { .. }));
+        assert!(matches!(
+            parse("看起来问题很大，但我不想用 JSON。"),
+            Outcome::Inconclusive { .. }
+        ));
     }
 
     /// The reason `extract_last_json_object` exists, exercised end to end.

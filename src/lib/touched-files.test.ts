@@ -13,15 +13,17 @@ function call(
 }
 
 const msg = (...blocks: ContentBlock[]): Message =>
-  ({ id: 'm', role: 'assistant', _blocks: blocks } as unknown as Message)
+  ({ id: 'm', role: 'assistant', _blocks: blocks }) as unknown as Message
 
 describe('touchedFiles', () => {
   it('reads a path out of each file tool', () => {
-    const files = touchedFiles([msg(
-      call('write_file', { path: 'a.ts', content: 'x' }),
-      call('edit_file', { file_path: 'b.ts', old_string: 'x', new_string: 'y' }),
-      call('delete_file', { path: 'c.ts' }),
-    )])
+    const files = touchedFiles([
+      msg(
+        call('write_file', { path: 'a.ts', content: 'x' }),
+        call('edit_file', { file_path: 'b.ts', old_string: 'x', new_string: 'y' }),
+        call('delete_file', { path: 'c.ts' }),
+      ),
+    ])
     expect(files).toEqual([
       { path: 'a.ts', op: 'modify', count: 1 },
       { path: 'b.ts', op: 'modify', count: 1 },
@@ -41,18 +43,21 @@ describe('touchedFiles', () => {
   it('ignores calls that never ran', () => {
     // A denied write would otherwise put a file in the panel that is not on
     // disk, which is worse than leaving one out.
-    expect(touchedFiles([msg(
-      call('write_file', { path: 'denied.ts', content: 'x' }, 'denied'),
-      call('write_file', { path: 'failed.ts', content: 'x' }, 'error'),
-      call('write_file', { path: 'pending.ts', content: 'x' }, 'pending'),
-    )])).toEqual([])
+    expect(
+      touchedFiles([
+        msg(
+          call('write_file', { path: 'denied.ts', content: 'x' }, 'denied'),
+          call('write_file', { path: 'failed.ts', content: 'x' }, 'error'),
+          call('write_file', { path: 'pending.ts', content: 'x' }, 'pending'),
+        ),
+      ]),
+    ).toEqual([])
   })
 
   it('ignores tools that touch no file', () => {
-    expect(touchedFiles([msg(
-      call('read_file', { path: 'a.ts' }),
-      call('run_command', { command: 'rm -rf b.ts' }),
-    )])).toEqual([])
+    expect(
+      touchedFiles([msg(call('read_file', { path: 'a.ts' }), call('run_command', { command: 'rm -rf b.ts' }))]),
+    ).toEqual([])
   })
 
   it('survives arguments that are not an object', () => {
@@ -75,35 +80,49 @@ describe('touchedFiles', () => {
     })
 
     it('lets delete win over anything before it', () => {
-      expect(opOf(
-        call('write_file', { path: 'a.ts', content: 'x' }),
-        call('delete_file', { path: 'a.ts' }),
-      )).toEqual({ path: 'a.ts', op: 'delete', count: 2 })
+      expect(opOf(call('write_file', { path: 'a.ts', content: 'x' }), call('delete_file', { path: 'a.ts' }))).toEqual({
+        path: 'a.ts',
+        op: 'delete',
+        count: 2,
+      })
     })
 
     it('calls delete-then-write a modify', () => {
       // The path exists at the end and existed at the start; calling that a
       // create would claim something about a file that was already there.
-      expect(opOf(
-        call('delete_file', { path: 'a.ts' }),
-        call('write_file', { path: 'a.ts', content: 'x' }),
-      )).toEqual({ path: 'a.ts', op: 'modify', count: 2 })
+      expect(opOf(call('delete_file', { path: 'a.ts' }), call('write_file', { path: 'a.ts', content: 'x' }))).toEqual({
+        path: 'a.ts',
+        op: 'modify',
+        count: 2,
+      })
     })
 
     it('counts every call that landed on the file', () => {
-      expect(opOf(
-        call('edit_file', { file_path: 'a.ts', old_string: '1', new_string: '2' }),
-        call('edit_file', { file_path: 'a.ts', old_string: '2', new_string: '3' }),
-        call('edit_file', { file_path: 'a.ts', old_string: '3', new_string: '4' }),
-      ).count).toBe(3)
+      expect(
+        opOf(
+          call('edit_file', { file_path: 'a.ts', old_string: '1', new_string: '2' }),
+          call('edit_file', { file_path: 'a.ts', old_string: '2', new_string: '3' }),
+          call('edit_file', { file_path: 'a.ts', old_string: '3', new_string: '4' }),
+        ).count,
+      ).toBe(3)
     })
   })
 
   it('reads every file out of a unified patch', () => {
     const patch = [
-      '--- a/one.ts', '+++ b/one.ts', '@@ -1 +1 @@', '-x', '+y',
-      '--- /dev/null', '+++ b/two.ts', '@@ -0,0 +1 @@', '+new',
-      '--- a/three.ts', '+++ /dev/null', '@@ -1 +0,0 @@', '-gone',
+      '--- a/one.ts',
+      '+++ b/one.ts',
+      '@@ -1 +1 @@',
+      '-x',
+      '+y',
+      '--- /dev/null',
+      '+++ b/two.ts',
+      '@@ -0,0 +1 @@',
+      '+new',
+      '--- a/three.ts',
+      '+++ /dev/null',
+      '@@ -1 +0,0 @@',
+      '-gone',
     ].join('\n')
     expect(touchedFiles([msg(call('apply_patch', { patch }))])).toEqual([
       { path: 'one.ts', op: 'modify', count: 1 },
@@ -117,7 +136,9 @@ describe('touchedFiles', () => {
       '*** Begin Patch',
       '*** Update File: src/old.ts',
       '*** Move to: src/new.ts',
-      '@@', '-a', '+b',
+      '@@',
+      '-a',
+      '+b',
       '*** End Patch',
     ].join('\n')
     expect(touchedFiles([msg(call('apply_patch', { patch }))])).toEqual([

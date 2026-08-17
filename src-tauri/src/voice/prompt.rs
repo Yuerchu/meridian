@@ -16,8 +16,7 @@ use crate::db::models::message::Message;
 /// path yet at resolve time; the estimator catches up one call later, a
 /// one-block transient the estimate can tolerate.
 pub fn voice_context_block(path: &[Message], current_turn_is_voice: bool) -> Option<String> {
-    let has_voice = current_turn_is_voice
-        || path.iter().any(|m| m.source.as_deref() == Some("voice"));
+    let has_voice = current_turn_is_voice || path.iter().any(|m| m.source.as_deref() == Some("voice"));
     if !has_voice {
         return None;
     }

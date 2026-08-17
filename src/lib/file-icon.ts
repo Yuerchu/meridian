@@ -17,8 +17,7 @@ interface IconManifest {
   file: string
 }
 
-const { iconDefinitions, fileExtensions, fileNames, file: defaultIcon } =
-  manifest as unknown as IconManifest
+const { iconDefinitions, fileExtensions, fileNames, file: defaultIcon } = manifest as unknown as IconManifest
 
 /**
  * Every icon in the pack as a hashed asset URL.
@@ -32,10 +31,11 @@ const { iconDefinitions, fileExtensions, fileNames, file: defaultIcon } =
  * The pattern has to be a literal — Vite resolves this at build time and cannot
  * follow a variable.
  */
-const iconUrls = import.meta.glob<string>(
-  '../../node_modules/material-icon-theme/icons/*.svg',
-  { query: '?url', import: 'default', eager: true },
-)
+const iconUrls = import.meta.glob<string>('../../node_modules/material-icon-theme/icons/*.svg', {
+  query: '?url',
+  import: 'default',
+  eager: true,
+})
 
 /** Keyed by bare file name: pnpm resolves the package through a symlink, so the
  *  glob's own keys are not a path this module could reconstruct. */
@@ -63,11 +63,29 @@ function urlFor(iconId: string | undefined): string | undefined {
  * which is how the pack keys the ones that have no extension at all.
  */
 const LANGUAGE_FILES: Record<string, string> = {
-  typescript: 'ts', javascript: 'js', python: 'py', ruby: 'rb', rust: 'rs',
-  golang: 'go', csharp: 'cs', 'c++': 'cpp', 'c#': 'cs', shell: 'sh',
-  bash: 'sh', zsh: 'sh', console: 'sh', powershell: 'ps1', markdown: 'md',
-  yml: 'yaml', kotlin: 'kt', objectivec: 'm', dockerfile: '.dockerfile',
-  docker: '.dockerfile', makefile: '.makefile', text: 'txt', plaintext: 'txt',
+  typescript: 'ts',
+  javascript: 'js',
+  python: 'py',
+  ruby: 'rb',
+  rust: 'rs',
+  golang: 'go',
+  csharp: 'cs',
+  'c++': 'cpp',
+  'c#': 'cs',
+  shell: 'sh',
+  bash: 'sh',
+  zsh: 'sh',
+  console: 'sh',
+  powershell: 'ps1',
+  markdown: 'md',
+  yml: 'yaml',
+  kotlin: 'kt',
+  objectivec: 'm',
+  dockerfile: '.dockerfile',
+  docker: '.dockerfile',
+  makefile: '.makefile',
+  text: 'txt',
+  plaintext: 'txt',
   patch: 'diff',
 }
 

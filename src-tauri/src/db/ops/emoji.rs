@@ -16,9 +16,7 @@ pub fn get_emoji(conn: &mut SqliteConnection, id: &str) -> QueryResult<Emoji> {
 }
 
 pub fn create_emoji(conn: &mut SqliteConnection, new: &NewEmoji) -> QueryResult<Emoji> {
-    diesel::insert_into(emojis::table)
-        .values(new)
-        .execute(conn)?;
+    diesel::insert_into(emojis::table).values(new).execute(conn)?;
     emojis::table.find(new.id).first::<Emoji>(conn)
 }
 
@@ -37,19 +35,13 @@ pub fn delete_emoji(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
 pub fn search_emojis(conn: &mut SqliteConnection, query: &str) -> QueryResult<Vec<Emoji>> {
     let pattern = format!("%{query}%");
     emojis::table
-        .filter(
-            emojis::name.like(&pattern)
-                .or(emojis::tags.like(&pattern)),
-        )
+        .filter(emojis::name.like(&pattern).or(emojis::tags.like(&pattern)))
         .order(emojis::sort_order.asc())
         .limit(50)
         .load::<Emoji>(conn)
 }
 
-pub fn list_emojis_for_packs(
-    conn: &mut SqliteConnection,
-    pack_ids: &[String],
-) -> QueryResult<Vec<Emoji>> {
+pub fn list_emojis_for_packs(conn: &mut SqliteConnection, pack_ids: &[String]) -> QueryResult<Vec<Emoji>> {
     emojis::table
         .filter(emojis::pack_id.eq_any(pack_ids))
         .order((emojis::pack_id.asc(), emojis::sort_order.asc()))

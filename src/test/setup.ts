@@ -24,7 +24,9 @@ if (!('IntersectionObserver' in globalThis)) {
     observe() {}
     unobserve() {}
     disconnect() {}
-    takeRecords(): IntersectionObserverEntry[] { return [] }
+    takeRecords(): IntersectionObserverEntry[] {
+      return []
+    }
   }
   globalThis.IntersectionObserver = IntersectionObserverStub as unknown as typeof IntersectionObserver
 }
@@ -84,12 +86,22 @@ if (typeof Element.prototype.getAnimations !== 'function') {
       live.add({ query, matches, listeners })
       return {
         media: query,
-        get matches() { return matches() },
+        get matches() {
+          return matches()
+        },
         onchange: null,
-        addEventListener: (_type: string, fn: Listener) => { listeners.add(fn) },
-        removeEventListener: (_type: string, fn: Listener) => { listeners.delete(fn) },
-        addListener: (fn: Listener) => { listeners.add(fn) },
-        removeListener: (fn: Listener) => { listeners.delete(fn) },
+        addEventListener: (_type: string, fn: Listener) => {
+          listeners.add(fn)
+        },
+        removeEventListener: (_type: string, fn: Listener) => {
+          listeners.delete(fn)
+        },
+        addListener: (fn: Listener) => {
+          listeners.add(fn)
+        },
+        removeListener: (fn: Listener) => {
+          listeners.delete(fn)
+        },
         dispatchEvent: () => true,
       } as unknown as MediaQueryList
     }

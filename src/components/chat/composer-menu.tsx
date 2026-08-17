@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Bulb, ChevronRight, ChevronsRight, Compass, Cpu, FaceRobot, Hammer, Paperclip, Plus, Thunderbolt } from '@gravity-ui/icons'
+import {
+  Bulb,
+  ChevronRight,
+  ChevronsRight,
+  Compass,
+  Cpu,
+  FaceRobot,
+  Hammer,
+  Paperclip,
+  Plus,
+  Thunderbolt,
+} from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 
 import { Button, Popover, Spinner, Switch, Tooltip } from '@heroui/react'
@@ -8,7 +19,15 @@ import { Button, Popover, Spinner, Switch, Tooltip } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
-import type { Assistant, ChatMode, Provider, ProviderCapabilities, ModelInfo, ThinkingEffort, ThinkingLevel } from '@/types'
+import type {
+  Assistant,
+  ChatMode,
+  Provider,
+  ProviderCapabilities,
+  ModelInfo,
+  ThinkingEffort,
+  ThinkingLevel,
+} from '@/types'
 
 /**
  * Everything the composer can configure, behind one `+`.
@@ -111,10 +130,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
 
   const currentAssistant = props.assistants.find((a) => a.id === props.currentAssistantId)
   const activeMode = CHAT_MODES.find((m) => m.id === props.mode) ?? CHAT_MODES[0]
-  const efforts = useMemo(
-    () => allowedEfforts(props.capabilities ?? null),
-    [props.capabilities],
-  )
+  const efforts = useMemo(() => allowedEfforts(props.capabilities ?? null), [props.capabilities])
 
   // Fetched when the model row is first opened rather than when the menu is,
   // so opening it to flip a toggle costs nothing.
@@ -268,10 +284,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
           aria-label={t('composer.menu')}
           data-slot="composer-menu-trigger"
           variant="ghost"
-          className={cn(
-            'relative text-muted hover:text-foreground',
-            open && 'bg-default text-foreground',
-          )}
+          className={cn('relative text-muted hover:text-foreground', open && 'bg-default text-foreground')}
         >
           <Plus className="size-4" />
           {alert && (
@@ -298,10 +311,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
             features are added. A constant is the one thing neither side can
             push around. */}
         <div data-slot="composer-menu-panels" className="flex h-72">
-          <div
-            data-slot="composer-menu-list"
-            className="w-56 shrink-0 overflow-y-auto p-1"
-          >
+          <div data-slot="composer-menu-list" className="w-56 shrink-0 overflow-y-auto p-1">
             {entries.map((entry) => {
               const Icon = entry.icon
               const isHovered = hovered === entry.key
@@ -320,7 +330,7 @@ export function ComposerMenu(props: ComposerMenuProps) {
                   data-slot="composer-menu-item"
                   onMouseEnter={() => setHovered(entry.key)}
                   onFocus={() => setHovered(entry.key)}
-                  role={isToggle ? "switch" : undefined}
+                  role={isToggle ? 'switch' : undefined}
                   aria-checked={isToggle ? entry.checked : undefined}
                   onClick={() => {
                     if (entry.onSelect) {
@@ -404,61 +414,50 @@ export function ComposerMenu(props: ComposerMenuProps) {
           </div>
 
           {showSubPanel && (
-              <div
-                data-slot="composer-menu-detail"
-                className="w-60 overflow-hidden border-l border-border"
-              >
-                <div className="w-60 h-full overflow-y-auto p-1">
-                  {hoveredEntry?.loading ? (
-                    <div className="flex items-center justify-center py-6">
-                      <Spinner className="size-4" />
-                    </div>
-                  ) : (
-                    hoveredEntry?.options?.map((opt, i) => {
-                      const heading =
-                        opt.group && opt.group !== hoveredEntry.options?.[i - 1]?.group
-                          ? opt.group
-                          : null
-                      return (
-                        <div key={opt.value}>
-                          {heading && (
-                            <div
-                              data-slot="composer-menu-detail-heading"
-                              className="px-1.5 pt-2 pb-1 text-xs text-muted"
-                            >
-                              {heading}
-                            </div>
+            <div data-slot="composer-menu-detail" className="w-60 overflow-hidden border-l border-border">
+              <div className="w-60 h-full overflow-y-auto p-1">
+                {hoveredEntry?.loading ? (
+                  <div className="flex items-center justify-center py-6">
+                    <Spinner className="size-4" />
+                  </div>
+                ) : (
+                  hoveredEntry?.options?.map((opt, i) => {
+                    const heading = opt.group && opt.group !== hoveredEntry.options?.[i - 1]?.group ? opt.group : null
+                    return (
+                      <div key={opt.value}>
+                        {heading && (
+                          <div data-slot="composer-menu-detail-heading" className="px-1.5 pt-2 pb-1 text-xs text-muted">
+                            {heading}
+                          </div>
+                        )}
+                        <Button
+                          data-slot="composer-menu-detail-item"
+                          variant="ghost"
+                          onClick={() => {
+                            opt.onSelect()
+                            close()
+                          }}
+                          className={cn(
+                            'w-full h-auto justify-start gap-2 rounded-2xl px-1.5 py-1 text-sm font-normal',
+                            opt.selected
+                              ? 'bg-default text-default-foreground'
+                              : 'text-muted hover:bg-default/50 hover:text-foreground',
                           )}
-                          <Button
-                            data-slot="composer-menu-detail-item"
-                            variant="ghost"
-                            onClick={() => {
-                              opt.onSelect()
-                              close()
-                            }}
-                            className={cn(
-                              'w-full h-auto justify-start gap-2 rounded-2xl px-1.5 py-1 text-sm font-normal',
-                              opt.selected
-                                ? 'bg-default text-default-foreground'
-                                : 'text-muted hover:bg-default/50 hover:text-foreground',
+                        >
+                          {opt.icon && <span className="shrink-0">{opt.icon}</span>}
+                          <span className="flex-1 min-w-0 text-left">
+                            <span className="block truncate">{opt.label}</span>
+                            {opt.description && (
+                              <span className="block truncate text-xs text-muted">{opt.description}</span>
                             )}
-                          >
-                            {opt.icon && <span className="shrink-0">{opt.icon}</span>}
-                            <span className="flex-1 min-w-0 text-left">
-                              <span className="block truncate">{opt.label}</span>
-                              {opt.description && (
-                                <span className="block truncate text-xs text-muted">
-                                  {opt.description}
-                                </span>
-                              )}
-                            </span>
-                          </Button>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
+                          </span>
+                        </Button>
+                      </div>
+                    )
+                  })
+                )}
               </div>
+            </div>
           )}
         </div>
       </Popover.Content>

@@ -18,16 +18,22 @@ export function AndroidFileAccess() {
   const [picking, setPicking] = useState(false)
 
   const refreshGranted = useCallback(() => {
-    api.getManageStorageStatus().then(setManageGranted).catch((e) => {
-      console.error('getManageStorageStatus failed:', e)
-    })
+    api
+      .getManageStorageStatus()
+      .then(setManageGranted)
+      .catch((e) => {
+        console.error('getManageStorageStatus failed:', e)
+      })
   }, [])
 
   useEffect(() => {
     api.getPreference('android.manage_storage_enabled').then((v) => {
       setManageEnabled(v === 'true')
     })
-    api.listSafRoots().then(setSafRoots).catch(() => {})
+    api
+      .listSafRoots()
+      .then(setSafRoots)
+      .catch(() => {})
     refreshGranted()
     // Re-check the system grant when returning from the system settings page.
     // On Android WebView, window 'focus' may not fire reliably on Activity
@@ -79,15 +85,11 @@ export function AndroidFileAccess() {
     <div className="space-y-4">
       <div>
         <h3 className="text-sm font-medium">{t('settings.fileAccess.title')}</h3>
-        <p className="text-xs text-muted">
-          {t('settings.fileAccess.description')}
-        </p>
+        <p className="text-xs text-muted">{t('settings.fileAccess.description')}</p>
       </div>
 
       <div className="space-y-1.5">
-        <p className="block text-xs font-medium text-muted">
-          {t('settings.fileAccess.safDirs')}
-        </p>
+        <p className="block text-xs font-medium text-muted">{t('settings.fileAccess.safDirs')}</p>
         {safRoots.length === 0 ? (
           <EmptyState size="sm">
             <EmptyState.Header>
@@ -97,15 +99,10 @@ export function AndroidFileAccess() {
         ) : (
           <ul className="space-y-1">
             {safRoots.map((root) => (
-              <li
-                key={root.uri}
-                className="flex items-center justify-between rounded-md border px-2 py-1.5 text-xs"
-              >
+              <li key={root.uri} className="flex items-center justify-between rounded-md border px-2 py-1.5 text-xs">
                 <div className="min-w-0">
                   <div className="truncate font-medium">{root.display_name}</div>
-                  <div className="truncate text-xs text-muted">
-                    {root.virtual_prefix}
-                  </div>
+                  <div className="truncate text-xs text-muted">{root.virtual_prefix}</div>
                 </div>
                 <Button
                   variant="ghost"
@@ -142,9 +139,7 @@ export function AndroidFileAccess() {
         </p>
       </div>
 
-      <p className="text-xs text-muted">
-        {t('settings.fileAccess.approvalNote')}
-      </p>
+      <p className="text-xs text-muted">{t('settings.fileAccess.approvalNote')}</p>
     </div>
   )
 }

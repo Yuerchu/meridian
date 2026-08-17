@@ -30,15 +30,21 @@ pub(crate) const STREAM_RETRY_BASE: std::time::Duration = std::time::Duration::f
 
 pub(crate) fn is_context_window_error(err: &str) -> bool {
     let e = err.to_lowercase();
-    e.contains("context_length_exceeded") || e.contains("context window")
-        || e.contains("maximum context length") || e.contains("too many tokens")
-        || e.contains("exceeds the model") || e.contains("status: 413")
+    e.contains("context_length_exceeded")
+        || e.contains("context window")
+        || e.contains("maximum context length")
+        || e.contains("too many tokens")
+        || e.contains("exceeds the model")
+        || e.contains("status: 413")
         || e.contains("http 413")
-        || e.contains("request_too_large") || e.contains("content_too_large")
+        || e.contains("request_too_large")
+        || e.contains("content_too_large")
 }
 
 pub(crate) fn is_retryable_stream_error(err: &str) -> bool {
-    if is_context_window_error(err) { return false; }
+    if is_context_window_error(err) {
+        return false;
+    }
     let e = err.to_lowercase();
     e.contains("timeout") || e.contains("network") || e.contains("connection")
         || e.contains("status: 429") || e.contains("status: 5")
@@ -68,8 +74,7 @@ pub(crate) fn parse_retry_after(err: &str) -> Option<std::time::Duration> {
 
     static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
     let re = RE.get_or_init(|| {
-        regex::Regex::new(r"(?i)try again in\s*(\d+(?:\.\d+)?)\s*(s|ms|seconds?)")
-            .expect("static regex")
+        regex::Regex::new(r"(?i)try again in\s*(\d+(?:\.\d+)?)\s*(s|ms|seconds?)").expect("static regex")
     });
 
     let captures = re.captures(err)?;
@@ -124,8 +129,12 @@ mod tests {
     fn http_status_display_classifies() {
         assert!(is_retryable_stream_error("transport: http 429: Some(\"slow down\")"));
         assert!(is_retryable_stream_error("transport: http 503: Some(\"overloaded\")"));
-        assert!(is_context_window_error("transport: http 413: Some(\"payload too large\")"));
-        assert!(!is_retryable_stream_error("transport: http 413: Some(\"payload too large\")"));
+        assert!(is_context_window_error(
+            "transport: http 413: Some(\"payload too large\")"
+        ));
+        assert!(!is_retryable_stream_error(
+            "transport: http 413: Some(\"payload too large\")"
+        ));
         assert!(!is_retryable_stream_error("http 400: bad request"));
     }
 
@@ -135,7 +144,9 @@ mod tests {
     #[test]
     fn a_stream_that_stopped_early_is_retryable_however_it_is_worded() {
         assert!(is_retryable_stream_error("http 408 stream disconnected"));
-        assert!(is_retryable_stream_error("api error 408: {\"message\":\"gateway gave up\"}"));
+        assert!(is_retryable_stream_error(
+            "api error 408: {\"message\":\"gateway gave up\"}"
+        ));
         assert!(is_retryable_stream_error("status: 408"));
         assert!(is_retryable_stream_error(
             "stream error: stream disconnected before completion"

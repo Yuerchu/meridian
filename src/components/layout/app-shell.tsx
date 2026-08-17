@@ -39,11 +39,28 @@ const SettingsPage = lazy(() => import('@/components/settings'))
  */
 export function AppShell(props: ShellProps) {
   const {
-    conversations, activeId, projects, activeProjectId, page, settingsTab,
-    pendingMessage, headerTitle, canDragWindow,
-    onSelect, onCreate, onDelete, onRename, onTogglePin, onSelectProject,
-    onCreateProject, onDeleteProject, onRenameProject, onOpenSettings,
-    onCloseSettings, onSettingsTabChange, onCreateWithMessage,
+    conversations,
+    activeId,
+    projects,
+    activeProjectId,
+    page,
+    settingsTab,
+    pendingMessage,
+    headerTitle,
+    canDragWindow,
+    onSelect,
+    onCreate,
+    onDelete,
+    onRename,
+    onTogglePin,
+    onSelectProject,
+    onCreateProject,
+    onDeleteProject,
+    onRenameProject,
+    onOpenSettings,
+    onCloseSettings,
+    onSettingsTabChange,
+    onCreateWithMessage,
     onInitialMessageConsumed,
   } = props
 
@@ -210,10 +227,7 @@ export function AppShell(props: ShellProps) {
                 <>
                   <Resizable.Handle aria-label={t('chat.changes.title')} />
                   <Resizable.Panel id="changes" defaultSize={30} minSize={18} maxSize={50}>
-                    <ChangesPanel
-                      conversationId={activeId}
-                      onClose={() => setChangesOpen(false)}
-                    />
+                    <ChangesPanel conversationId={activeId} onClose={() => setChangesOpen(false)} />
                   </Resizable.Panel>
                 </>
               )}
@@ -242,7 +256,10 @@ export function AppShell(props: ShellProps) {
         projects={projects}
         onSelectConversation={onSelect}
         onSelectProject={onSelectProject}
-        onOpenSettingsTab={(tab) => { onSettingsTabChange(tab); onOpenSettings() }}
+        onOpenSettingsTab={(tab) => {
+          onSettingsTabChange(tab)
+          onOpenSettings()
+        }}
         onCreate={onCreate}
       />
     </Sidebar.Provider>

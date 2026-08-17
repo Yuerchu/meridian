@@ -17,9 +17,7 @@ describe('useEmojiMap', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('loads packs and file URLs in parallel while preserving emoji names', async () => {
-    mockApi.listAssistantEmojiPacks.mockResolvedValue([
-      { id: 'p1' }, { id: 'p2' },
-    ] as never)
+    mockApi.listAssistantEmojiPacks.mockResolvedValue([{ id: 'p1' }, { id: 'p2' }] as never)
     mockApi.listEmojis
       .mockResolvedValueOnce([{ id: 'e1', name: 'one' }] as never)
       .mockResolvedValueOnce([{ id: 'e2', name: 'two' }] as never)
@@ -34,7 +32,11 @@ describe('useEmojiMap', () => {
 
   it('ignores a late load after the hook unmounts', async () => {
     let resolvePacks!: (value: never[]) => void
-    mockApi.listAssistantEmojiPacks.mockReturnValue(new Promise((resolve) => { resolvePacks = resolve }))
+    mockApi.listAssistantEmojiPacks.mockReturnValue(
+      new Promise((resolve) => {
+        resolvePacks = resolve
+      }),
+    )
     const { unmount } = renderHook(() => useEmojiMap('assistant-1'))
 
     unmount()

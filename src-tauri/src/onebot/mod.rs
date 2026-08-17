@@ -10,11 +10,11 @@ mod qq_tools;
 mod session;
 
 use std::collections::{HashMap, VecDeque};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use tokio::net::TcpListener;
-use tokio::sync::{mpsc, oneshot, watch, Mutex};
+use tokio::sync::{Mutex, mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::db::DbPool;
@@ -219,17 +219,6 @@ impl SenderContext {
     pub fn scope_id(&self) -> String {
         crate::db::models::memory::onebot_user_scope_id(self.user_id)
     }
-
-    /// Where anything learned from this person right now was learned. An admin
-    /// speaking is still speaking on a surface — operator authorship is a
-    /// property of explicit commands, not of who happens to be talking.
-    pub fn origin(&self) -> crate::db::models::memory::Origin {
-        if self.is_group {
-            crate::db::models::memory::Origin::Group
-        } else {
-            crate::db::models::memory::Origin::Private
-        }
-    }
 }
 
 impl From<&SenderContext> for crate::provider::SenderRef {
@@ -265,13 +254,19 @@ pub struct IncomingMessage {
 
 impl IncomingMessage {
     pub fn new(text: impl Into<String>, sender: Option<SenderContext>) -> Self {
-        Self { text: text.into(), sender }
+        Self {
+            text: text.into(),
+            sender,
+        }
     }
 }
 
 impl From<&InboxItem> for IncomingMessage {
     fn from(i: &InboxItem) -> Self {
-        Self { text: i.text.clone(), sender: i.sender.clone() }
+        Self {
+            text: i.text.clone(),
+            sender: i.sender.clone(),
+        }
     }
 }
 
@@ -335,13 +330,18 @@ impl SessionState {
     fn push_note(&mut self, text: String, now: i64) {
         expire_inbox(&mut self.inbox, now);
         let notice_count = self.inbox.iter().filter(|i| i.kind == InboxKind::Notice).count();
-        if notice_count >= NOTICE_INBOX_CAP {
-            if let Some(pos) = self.inbox.iter().position(|i| i.kind == InboxKind::Notice) {
-                self.inbox.remove(pos);
-            }
+        if notice_count >= NOTICE_INBOX_CAP
+            && let Some(pos) = self.inbox.iter().position(|i| i.kind == InboxKind::Notice)
+        {
+            self.inbox.remove(pos);
         }
         // Notices are ours, not anyone's utterance.
-        self.inbox.push(InboxItem { text, kind: InboxKind::Notice, created_at: now, sender: None });
+        self.inbox.push(InboxItem {
+            text,
+            kind: InboxKind::Notice,
+            created_at: now,
+            sender: None,
+        });
     }
 
     fn record_seen(&mut self, message_id: i64) {
@@ -487,10 +487,7 @@ impl RunningTurn {
     }
 
     pub fn cancel_token(&self) -> CancellationToken {
-        self.turn
-            .as_ref()
-            .map(|t| t.cancel_token().clone())
-            .unwrap_or_default()
+        self.turn.as_ref().map(|t| t.cancel_token().clone()).unwrap_or_default()
     }
 
     /// Open this turn's durable record.
@@ -505,15 +502,8 @@ impl RunningTurn {
     /// rather than read from the config, because the config names the listener
     /// and the event names who answered — and those stop being the same thing
     /// the moment a second account connects to that listener.
-    pub async fn open_record(
-        &self,
-        pool: &crate::db::DbPool,
-        self_id: Option<i64>,
-    ) -> Result<(), String> {
-        crate::agent::turn_record::begin(
-            pool, &self.turn_id, &self.conversation_id, TurnOrigin::OneBot, self_id,
-        )
-        .await
+    pub async fn open_record(&self, pool: &crate::db::DbPool, self_id: Option<i64>) -> Result<(), String> {
+        crate::agent::turn_record::begin(pool, &self.turn_id, &self.conversation_id, TurnOrigin::OneBot, self_id).await
     }
 
     /// Fold a finished round's numbers in. Follow-up rounds are the same turn,
@@ -670,19 +660,29 @@ pub fn end_turn(
 /// rounds so events surface inside the running turn.
 pub fn drain_inbox_mid_turn(states: &SessionStates, session: &SessionKey) -> Vec<InboxItem> {
     let mut map = states.lock();
-    let Some(s) = map.get_mut(&session.to_string()) else { return vec![] };
+    let Some(s) = map.get_mut(&session.to_string()) else {
+        return vec![];
+    };
     expire_inbox(&mut s.inbox, now_ms());
     std::mem::take(&mut s.inbox)
 }
 
 /// Queue a notice note for `session`; oldest notes are dropped past the cap.
 pub fn push_notice_note(states: &SessionStates, session: &SessionKey, text: String) {
-    states.lock().entry(session.to_string()).or_default().push_note(text, now_ms());
+    states
+        .lock()
+        .entry(session.to_string())
+        .or_default()
+        .push_note(text, now_ms());
 }
 
 /// Record an OneBot message id that entered the AI context for `session`.
 pub fn record_seen_message(states: &SessionStates, session: &SessionKey, message_id: i64) {
-    states.lock().entry(session.to_string()).or_default().record_seen(message_id);
+    states
+        .lock()
+        .entry(session.to_string())
+        .or_default()
+        .record_seen(message_id);
 }
 
 pub fn was_seen_message(states: &SessionStates, session: &SessionKey, message_id: i64) -> bool {
@@ -731,8 +731,7 @@ pub enum RequestKind {
 /// (never other lock users), and a momentarily full queue backpressures rather
 /// than silently dropping the message.
 async fn broadcast(state: &Arc<SharedState>, json: String) {
-    let sinks: Vec<mpsc::Sender<String>> =
-        state.ws_sinks.lock().await.values().cloned().collect();
+    let sinks: Vec<mpsc::Sender<String>> = state.ws_sinks.lock().await.values().cloned().collect();
     for sink in sinks {
         let _ = sink.send(json.clone()).await;
     }
@@ -740,14 +739,13 @@ async fn broadcast(state: &Arc<SharedState>, json: String) {
 
 /// Broadcast an action to all connected clients without waiting for a response.
 pub async fn send_action_nowait(state: &Arc<SharedState>, action: &OneBotAction) {
-    let Ok(json) = serde_json::to_string(action) else { return };
+    let Ok(json) = serde_json::to_string(action) else {
+        return;
+    };
     broadcast(state, json).await;
 }
 
-pub async fn call_api(
-    state: &Arc<SharedState>,
-    action: OneBotAction,
-) -> Result<serde_json::Value, String> {
+pub async fn call_api(state: &Arc<SharedState>, action: OneBotAction) -> Result<serde_json::Value, String> {
     call_api_with_timeout(state, action, std::time::Duration::from_secs(10)).await
 }
 
@@ -829,7 +827,9 @@ pub fn load_config(pool: &DbPool) -> OneBotConfig {
     };
 
     let mut get = |key: &str| -> Option<String> {
-        crate::db::ops::preference::get_preference(&mut conn, key).ok().flatten()
+        crate::db::ops::preference::get_preference(&mut conn, key)
+            .ok()
+            .flatten()
     };
 
     OneBotConfig {
@@ -850,8 +850,7 @@ pub fn save_config(pool: &DbPool, config: &OneBotConfig) -> Result<(), String> {
     let now = now_ms();
 
     let mut set = |key: &str, val: &str| -> Result<(), String> {
-        crate::db::ops::preference::set_preference(&mut conn, key, val, now)
-            .map_err(|e| e.to_string())
+        crate::db::ops::preference::set_preference(&mut conn, key, val, now).map_err(|e| e.to_string())
     };
 
     set("onebot.enabled", if config.enabled { "true" } else { "false" })?;
@@ -859,7 +858,10 @@ pub fn save_config(pool: &DbPool, config: &OneBotConfig) -> Result<(), String> {
     set("onebot.port", &config.port.to_string())?;
     set("onebot.access_token", config.access_token.as_deref().unwrap_or(""))?;
     set("onebot.assistant_id", config.assistant_id.as_deref().unwrap_or(""))?;
-    set("onebot.admin_users", &serde_json::to_string(&config.admin_users).unwrap_or_default())?;
+    set(
+        "onebot.admin_users",
+        &serde_json::to_string(&config.admin_users).unwrap_or_default(),
+    )?;
     set("onebot.ack_emoji_id", &config.ack_emoji_id)?;
 
     Ok(())
@@ -928,10 +930,7 @@ impl OneBotServer {
         if self.is_running() {
             return Err("OneBot server is already running".into());
         }
-        validate_listen_config(
-            &self.state.config.host,
-            self.state.config.access_token.as_deref(),
-        )?;
+        validate_listen_config(&self.state.config.host, self.state.config.access_token.as_deref())?;
 
         let state = self.state.clone();
         let running = self.running.clone();
@@ -1037,7 +1036,10 @@ impl OneBotServer {
 /// without a real access token is refused outright.
 fn validate_listen_config(host: &str, access_token: Option<&str>) -> Result<(), String> {
     let is_loopback = host.eq_ignore_ascii_case("localhost")
-        || host.parse::<std::net::IpAddr>().map(|ip| ip.is_loopback()).unwrap_or(false);
+        || host
+            .parse::<std::net::IpAddr>()
+            .map(|ip| ip.is_loopback())
+            .unwrap_or(false);
     if is_loopback {
         return Ok(());
     }
@@ -1214,9 +1216,7 @@ pub async fn maybe_start(handle: tauri::AppHandle) {
     let mcp = handle.state::<crate::state::AppMcp>().0.clone();
     let coordinator = handle.state::<crate::state::AppTurns>().0.clone();
 
-    let server = OneBotServer::new(
-        pool, secrets, tools, mcp, coordinator, config, Some(handle.clone()),
-    );
+    let server = OneBotServer::new(pool, secrets, tools, mcp, coordinator, config, Some(handle.clone()));
     if let Err(e) = server.start() {
         tracing::error!("Failed to auto-start OneBot server: {e}");
     }
@@ -1231,7 +1231,12 @@ mod tests {
     use crate::turn::{Busy, TurnOrigin};
 
     fn item(kind: InboxKind, at: i64) -> InboxItem {
-        InboxItem { text: "x".into(), kind, created_at: at, sender: None }
+        InboxItem {
+            text: "x".into(),
+            kind,
+            created_at: at,
+            sender: None,
+        }
     }
 
     /// Everything the turn/inbox transitions actually touch. Nothing here needs
@@ -1272,7 +1277,10 @@ mod tests {
 
         fn begin(&self, key: &SessionKey, conv: &str, at: i64) -> TurnStart {
             try_begin_turn(
-                &self.states, &self.coordinator, key, conv,
+                &self.states,
+                &self.coordinator,
+                key,
+                conv,
                 item(InboxKind::UserMessage, at),
             )
         }
@@ -1379,7 +1387,8 @@ mod tests {
         let turn = f.started(&key, "conv-1", 1000);
         // Arrived too late to be injected mid-turn. Stamped now, because
         // `end_turn` expires the inbox against the real clock.
-        f.states.lock()
+        f.states
+            .lock()
             .get_mut(&key.to_string())
             .unwrap()
             .inbox
@@ -1435,8 +1444,14 @@ mod tests {
         assert!(matches!(end_turn(&f.states, &key, turn, announce), TurnEnd::Done));
 
         let (session_free, conversation_free) = seen.expect("the end must be announced");
-        assert!(session_free, "the session was still active when the turn was announced over");
-        assert!(conversation_free, "the conversation was still held when the turn was announced over");
+        assert!(
+            session_free,
+            "the session was still active when the turn was announced over"
+        );
+        assert!(
+            conversation_free,
+            "the conversation was still held when the turn was announced over"
+        );
     }
 
     /// A follow-up round is not an ending, so nothing may be announced. One
@@ -1447,7 +1462,8 @@ mod tests {
         let f = Fixture::new();
         let key = SessionKey::group(1);
         let turn = f.started(&key, "conv-1", 1000);
-        f.states.lock()
+        f.states
+            .lock()
             .get_mut(&key.to_string())
             .unwrap()
             .inbox
@@ -1482,7 +1498,8 @@ mod tests {
     fn a_conversation_held_by_the_desktop_queues_nothing() {
         let f = Fixture::new();
         let key = SessionKey::group(1);
-        let _desktop = f.coordinator
+        let _desktop = f
+            .coordinator
             .try_acquire_turn("conv-1", TurnOrigin::Desktop)
             .expect("free");
 
@@ -1524,17 +1541,20 @@ mod tests {
             let sink: StopSink = Box::new(move |payload| {
                 // Read from inside the announcement: after it returns, the two
                 // orderings are indistinguishable.
-                let session_free = !states.lock()
-                    .get(&session)
-                    .is_some_and(|s| s.turn_active);
-                let conversation_free = coordinator
-                    .try_acquire_turn(&conversation, TurnOrigin::Desktop)
-                    .is_ok();
-                recorded.lock().unwrap().push((payload, session_free, conversation_free));
+                let session_free = !states.lock().get(&session).is_some_and(|s| s.turn_active);
+                let conversation_free = coordinator.try_acquire_turn(&conversation, TurnOrigin::Desktop).is_ok();
+                recorded
+                    .lock()
+                    .unwrap()
+                    .push((payload, session_free, conversation_free));
             });
             let running = RunningTurn::new(
-                Arc::clone(&f.states), Arc::clone(&f.approvals),
-                key.clone(), turn, conv.to_string(), Some(sink),
+                Arc::clone(&f.states),
+                Arc::clone(&f.approvals),
+                key.clone(),
+                turn,
+                conv.to_string(),
+                Some(sink),
             );
             (Self { stops }, running)
         }
@@ -1613,14 +1633,21 @@ mod tests {
         let key = SessionKey::group(1);
         let turn = f.started(&key, "conv-1", 1000);
         let (watch, mut running) = Watcher::attach(&f, &key, turn, "conv-1");
-        f.states.lock()
+        f.states
+            .lock()
             .get_mut(&key.to_string())
             .unwrap()
             .inbox
             .push(item(InboxKind::UserMessage, now_ms()));
 
-        assert!(running.end_round("end_turn").is_some(), "a queued message continues the turn");
-        assert!(watch.stops().is_empty(), "a round that is not the end announces nothing");
+        assert!(
+            running.end_round("end_turn").is_some(),
+            "a queued message continues the turn"
+        );
+        assert!(
+            watch.stops().is_empty(),
+            "a round that is not the end announces nothing"
+        );
 
         // The follow-up round dies.
         drop(running);
@@ -1726,7 +1753,8 @@ mod tests {
         let key = SessionKey::group(1);
         let turn = f.started(&key, "conv-1", 1000);
         let (watch, mut running) = Watcher::attach(&f, &key, turn, "conv-1");
-        f.states.lock()
+        f.states
+            .lock()
             .get_mut(&key.to_string())
             .unwrap()
             .inbox

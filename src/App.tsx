@@ -10,7 +10,6 @@ import { usePlatform } from '@/hooks/use-platform'
 import { useGlobalEventListener } from '@/hooks/use-global-event-listener'
 import { useConversationStore } from '@/stores/conversation-store'
 
-
 /** How long to wait for a stopped turn to let go of its conversation before
  *  giving up and surfacing the refusal. */
 const RELEASE_POLL_MS = 100
@@ -71,13 +70,16 @@ function App() {
     setPage('chat')
   }, [refreshConversations, activeProjectId, storeSetActiveId])
 
-  const handleCreateWithMessage = useCallback(async (text: string) => {
-    const conv = await api.createConversation(undefined, activeProjectId ?? undefined)
-    await refreshConversations()
-    setPendingMessage(text)
-    storeSetActiveId(conv.id)
-    setPage('chat')
-  }, [refreshConversations, activeProjectId, storeSetActiveId])
+  const handleCreateWithMessage = useCallback(
+    async (text: string) => {
+      const conv = await api.createConversation(undefined, activeProjectId ?? undefined)
+      await refreshConversations()
+      setPendingMessage(text)
+      storeSetActiveId(conv.id)
+      setPage('chat')
+    },
+    [refreshConversations, activeProjectId, storeSetActiveId],
+  )
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -111,37 +113,55 @@ function App() {
     [storeSetActiveId],
   )
 
-  const handleSelectProject = useCallback((id: string | null) => {
-    storeSetActiveProjectId(id)
-  }, [storeSetActiveProjectId])
+  const handleSelectProject = useCallback(
+    (id: string | null) => {
+      storeSetActiveProjectId(id)
+    },
+    [storeSetActiveProjectId],
+  )
 
-  const handleCreateProject = useCallback(async (name: string, path: string) => {
-    await api.createProject(name, path)
-    await refreshProjects()
-  }, [refreshProjects])
+  const handleCreateProject = useCallback(
+    async (name: string, path: string) => {
+      await api.createProject(name, path)
+      await refreshProjects()
+    },
+    [refreshProjects],
+  )
 
-  const handleRename = useCallback(async (id: string, newTitle: string) => {
-    await api.updateConversationTitle(id, newTitle)
-    await refreshConversations()
-  }, [refreshConversations])
+  const handleRename = useCallback(
+    async (id: string, newTitle: string) => {
+      await api.updateConversationTitle(id, newTitle)
+      await refreshConversations()
+    },
+    [refreshConversations],
+  )
 
-  const handleTogglePin = useCallback(async (id: string) => {
-    await api.togglePinConversation(id)
-    await refreshConversations()
-  }, [refreshConversations])
+  const handleTogglePin = useCallback(
+    async (id: string) => {
+      await api.togglePinConversation(id)
+      await refreshConversations()
+    },
+    [refreshConversations],
+  )
 
-  const handleDeleteProject = useCallback(async (id: string) => {
-    await api.deleteProject(id)
-    await refreshProjects()
-    if (activeProjectId === id) {
-      storeSetActiveProjectId(null)
-    }
-  }, [refreshProjects, activeProjectId, storeSetActiveProjectId])
+  const handleDeleteProject = useCallback(
+    async (id: string) => {
+      await api.deleteProject(id)
+      await refreshProjects()
+      if (activeProjectId === id) {
+        storeSetActiveProjectId(null)
+      }
+    },
+    [refreshProjects, activeProjectId, storeSetActiveProjectId],
+  )
 
-  const handleRenameProject = useCallback(async (id: string, newName: string) => {
-    await api.updateProject(id, { name: newName })
-    await refreshProjects()
-  }, [refreshProjects])
+  const handleRenameProject = useCallback(
+    async (id: string, newName: string) => {
+      await api.updateProject(id, { name: newName })
+      await refreshProjects()
+    },
+    [refreshProjects],
+  )
 
   const activeConversation = conversations.find((c) => c.id === activeId)
   const activeProject = projects.find((p) => p.id === activeProjectId)
@@ -154,9 +174,8 @@ function App() {
     page,
     settingsTab,
     pendingMessage,
-    headerTitle: page === 'settings'
-      ? t('settings.title')
-      : (activeConversation?.title ?? activeProject?.name ?? t('app.name')),
+    headerTitle:
+      page === 'settings' ? t('settings.title') : (activeConversation?.title ?? activeProject?.name ?? t('app.name')),
     canDragWindow,
     onSelect: handleSelect,
     onCreate: handleCreate,

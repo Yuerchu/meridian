@@ -12,11 +12,7 @@ use crate::state::ApprovalWaiters;
 /// already answered, or lost with the process. Reporting success there is what
 /// made a dead approval card look like a live one, so the front end could keep
 /// clicking a button that would never do anything.
-fn decide(
-    app: &tauri::AppHandle,
-    approval_id: &str,
-    decision: ApprovalDecision,
-) -> Result<(), String> {
+fn decide(app: &tauri::AppHandle, approval_id: &str, decision: ApprovalDecision) -> Result<(), String> {
     let waiters = app.state::<ApprovalWaiters>();
     let entry = waiters.lock().remove(approval_id);
     match entry {
@@ -24,7 +20,9 @@ fn decide(
             // The receiver is gone when the turn stopped waiting between our
             // lookup and now. Same situation as a missing entry from the
             // caller's point of view.
-            pending.sender.send(decision)
+            pending
+                .sender
+                .send(decision)
                 .map_err(|_| "that turn is no longer waiting for an answer".to_string())
         }
         None => Err("that request is no longer waiting for an answer".to_string()),
@@ -37,20 +35,12 @@ pub async fn approve_tool_call(app: tauri::AppHandle, approval_id: String) -> Re
 }
 
 #[tauri::command]
-pub async fn deny_tool_call(
-    app: tauri::AppHandle,
-    approval_id: String,
-    reason: Option<String>,
-) -> Result<(), String> {
+pub async fn deny_tool_call(app: tauri::AppHandle, approval_id: String, reason: Option<String>) -> Result<(), String> {
     decide(&app, &approval_id, ApprovalDecision::Denied(reason))
 }
 
 #[tauri::command]
-pub async fn respond_to_ask(
-    app: tauri::AppHandle,
-    approval_id: String,
-    response: String,
-) -> Result<(), String> {
+pub async fn respond_to_ask(app: tauri::AppHandle, approval_id: String, response: String) -> Result<(), String> {
     decide(&app, &approval_id, ApprovalDecision::Response(response))
 }
 
@@ -108,10 +98,7 @@ pub struct PendingApprovalInfo {
 /// sub-agent's own transcript, where the call really is. Both are the same
 /// `approval_id`, so there is exactly one place it can be answered from and no
 /// race between two cards.
-pub(crate) fn pending_for(
-    app: &tauri::AppHandle,
-    conversation_id: &str,
-) -> Vec<PendingApprovalInfo> {
+pub(crate) fn pending_for(app: &tauri::AppHandle, conversation_id: &str) -> Vec<PendingApprovalInfo> {
     let waiters = app.state::<ApprovalWaiters>();
     let map = waiters.lock();
     views_for(&map, conversation_id)
@@ -146,21 +133,21 @@ fn views_for(
         // Where it is asked. The card names the parent's own row and call, so
         // that the approval lands inside the `run_agent` block rather than
         // arriving as a tool call the parent never made.
-        if let Some(b) = &p.bubble {
-            if b.conversation_id == conversation_id {
-                out.push(PendingApprovalInfo {
-                    approval_id: id.clone(),
-                    assistant_message_id: b.assistant_message_id.clone(),
-                    provider_call_id: p.provider_call_id.clone(),
-                    origin_call_id: p.origin_call_id.clone(),
-                    tool_name: p.tool_name.clone(),
-                    arguments: p.arguments.clone(),
-                    retry_reason: p.retry_reason.clone(),
-                    bubbled: false,
-                    parent_call_id: Some(b.parent_call_id.clone()),
-                    sub_conversation_id: Some(b.sub_conversation_id.clone()),
-                });
-            }
+        if let Some(b) = &p.bubble
+            && b.conversation_id == conversation_id
+        {
+            out.push(PendingApprovalInfo {
+                approval_id: id.clone(),
+                assistant_message_id: b.assistant_message_id.clone(),
+                provider_call_id: p.provider_call_id.clone(),
+                origin_call_id: p.origin_call_id.clone(),
+                tool_name: p.tool_name.clone(),
+                arguments: p.arguments.clone(),
+                retry_reason: p.retry_reason.clone(),
+                bubbled: false,
+                parent_call_id: Some(b.parent_call_id.clone()),
+                sub_conversation_id: Some(b.sub_conversation_id.clone()),
+            });
         }
     }
     out
@@ -182,18 +169,21 @@ mod tests {
         // The receiver goes away immediately; nothing here answers anything, and
         // building the views never touches the channel.
         let (tx, _rx) = tokio::sync::oneshot::channel();
-        map.insert(approval_id.to_string(), PendingApproval {
-            conversation_id: "sub-1".into(),
-            turn_id: "child-turn".into(),
-            assistant_message_id: "child-row".into(),
-            provider_call_id: call_id.into(),
-            origin_call_id: None,
-            tool_name: "run_command".into(),
-            arguments: r#"{"command":"cargo test --all"}"#.into(),
-            retry_reason: None,
-            bubble,
-            sender: tx,
-        });
+        map.insert(
+            approval_id.to_string(),
+            PendingApproval {
+                conversation_id: "sub-1".into(),
+                turn_id: "child-turn".into(),
+                assistant_message_id: "child-row".into(),
+                provider_call_id: call_id.into(),
+                origin_call_id: None,
+                tool_name: "run_command".into(),
+                arguments: r#"{"command":"cargo test --all"}"#.into(),
+                retry_reason: None,
+                bubble,
+                sender: tx,
+            },
+        );
     }
 
     fn bubble(parent_call_id: &str) -> Bubble {
@@ -259,10 +249,13 @@ mod tests {
             .map(|v| (v.approval_id, v.parent_call_id.unwrap_or_default()))
             .collect();
         on_parent.sort();
-        assert_eq!(on_parent, vec![
-            ("appr-1".to_string(), "call-a".to_string()),
-            ("appr-2".to_string(), "call-b".to_string()),
-        ]);
+        assert_eq!(
+            on_parent,
+            vec![
+                ("appr-1".to_string(), "call-a".to_string()),
+                ("appr-2".to_string(), "call-b".to_string()),
+            ]
+        );
     }
 
     /// The ordinary case is untouched: one view, in its own conversation, with

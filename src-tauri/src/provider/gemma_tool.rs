@@ -4,12 +4,12 @@ use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::stream::StreamExt;
 
-use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
 use super::openai_compat::{ChatChunk, ChunkUsage, normalise_openai_usage, parse_openai_sse_events};
 use super::{
-    AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent,
-    ToolCall, ToolDefinition,
+    AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ToolCall,
+    ToolDefinition,
 };
+use crate::client::{HttpTransport, Request, RequestBody, ReqwestTransport};
 
 const TOOL_CALL_START: &str = "<|tool_call>";
 const TOOL_CALL_END: &str = "<tool_call|>";
@@ -56,10 +56,7 @@ impl GemmaToolProvider {
             body["max_tokens"] = serde_json::json!(m);
         }
 
-        let mut req = Request::new(
-            http::Method::POST,
-            format!("{}/chat/completions", self.base_url),
-        );
+        let mut req = Request::new(http::Method::POST, format!("{}/chat/completions", self.base_url));
         req.headers.insert(
             http::header::AUTHORIZATION,
             super::auth_header_value(&format!("Bearer {}", self.api_key)),
@@ -82,35 +79,17 @@ fn format_tools_for_prompt(tools: &[ToolDefinition]) -> String {
             .parameters
             .get("required")
             .and_then(|r| r.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
             .unwrap_or_default();
-        if let Some(props) = tool
-            .parameters
-            .get("properties")
-            .and_then(|p| p.as_object())
+        if let Some(props) = tool.parameters.get("properties").and_then(|p| p.as_object())
+            && !props.is_empty()
         {
-            if !props.is_empty() {
-                out.push_str("Parameters:\n");
-                for (name, schema) in props {
-                    let typ = schema
-                        .get("type")
-                        .and_then(|t| t.as_str())
-                        .unwrap_or("string");
-                    let desc = schema
-                        .get("description")
-                        .and_then(|d| d.as_str())
-                        .unwrap_or("");
-                    let req_mark = if required.contains(name) {
-                        ", required"
-                    } else {
-                        ""
-                    };
-                    out.push_str(&format!("- {name} ({typ}{req_mark}): {desc}\n"));
-                }
+            out.push_str("Parameters:\n");
+            for (name, schema) in props {
+                let typ = schema.get("type").and_then(|t| t.as_str()).unwrap_or("string");
+                let desc = schema.get("description").and_then(|d| d.as_str()).unwrap_or("");
+                let req_mark = if required.contains(name) { ", required" } else { "" };
+                out.push_str(&format!("- {name} ({typ}{req_mark}): {desc}\n"));
             }
         }
         out.push('\n');
@@ -123,11 +102,11 @@ fn inject_tool_prompt(messages: &[ChatMessage], tool_prompt: &str) -> Vec<ChatMe
         return messages.to_vec();
     }
     let mut result = messages.to_vec();
-    if let Some(first) = result.first_mut() {
-        if first.role == "system" {
-            first.content.push_str(tool_prompt);
-            return result;
-        }
+    if let Some(first) = result.first_mut()
+        && first.role == "system"
+    {
+        first.content.push_str(tool_prompt);
+        return result;
     }
     result.insert(
         0,
@@ -147,10 +126,10 @@ fn inject_tool_prompt(messages: &[ChatMessage], tool_prompt: &str) -> Vec<ChatMe
 // --- Message serialization ---
 
 fn content_value(content: &str) -> serde_json::Value {
-    if content.starts_with('[') {
-        if let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(content) {
-            return serde_json::Value::Array(parts);
-        }
+    if content.starts_with('[')
+        && let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(content)
+    {
+        return serde_json::Value::Array(parts);
     }
     serde_json::Value::String(content.to_string())
 }
@@ -240,16 +219,15 @@ fn parse_gemma_args(raw: &str) -> String {
             }
         }
     }
-    serde_json::to_string(&serde_json::Value::Object(result))
-        .unwrap_or_else(|_| "{}".to_string())
+    serde_json::to_string(&serde_json::Value::Object(result)).unwrap_or_else(|_| "{}".to_string())
 }
 
 fn parse_gemma_value(raw: &str) -> serde_json::Value {
-    if raw.starts_with(QUOTE) {
-        if let Some(end) = raw[QUOTE.len()..].find(QUOTE) {
-            let inner = &raw[QUOTE.len()..QUOTE.len() + end];
-            return serde_json::Value::String(inner.to_string());
-        }
+    if raw.starts_with(QUOTE)
+        && let Some(end) = raw[QUOTE.len()..].find(QUOTE)
+    {
+        let inner = &raw[QUOTE.len()..QUOTE.len() + end];
+        return serde_json::Value::String(inner.to_string());
     }
     if raw == "true" {
         return serde_json::Value::Bool(true);
@@ -401,7 +379,9 @@ impl GemmaParseState {
             let after = &combined[pos + TOOL_CALL_START.len()..];
             let mut events = Vec::new();
             if !before.is_empty() {
-                events.push(StreamEvent::Text { content: before.to_string() });
+                events.push(StreamEvent::Text {
+                    content: before.to_string(),
+                });
             }
             self.in_tool_call = true;
             self.tool_call_buffer = after.to_string();
@@ -417,7 +397,9 @@ impl GemmaParseState {
             if emit.is_empty() {
                 vec![]
             } else {
-                vec![StreamEvent::Text { content: emit.to_string() }]
+                vec![StreamEvent::Text {
+                    content: emit.to_string(),
+                }]
             }
         }
     }
@@ -456,14 +438,15 @@ impl GemmaParseState {
         let mut events = Vec::new();
         if self.in_tool_call && !self.tool_call_buffer.is_empty() {
             self.in_tool_call = false;
-            events.push(StreamEvent::Text { content: format!(
-                "{TOOL_CALL_START}{}",
-                std::mem::take(&mut self.tool_call_buffer)
-            ) });
+            events.push(StreamEvent::Text {
+                content: format!("{TOOL_CALL_START}{}", std::mem::take(&mut self.tool_call_buffer)),
+            });
         }
         // A held-back partial marker that never completed is just text.
         if !self.pending.is_empty() {
-            events.push(StreamEvent::Text { content: std::mem::take(&mut self.pending) });
+            events.push(StreamEvent::Text {
+                content: std::mem::take(&mut self.pending),
+            });
         }
         events
     }
@@ -478,12 +461,9 @@ fn adapt_gemma_stream(inner: ChatStream) -> ChatStream {
 
         while let Some(event) = inner.next().await {
             let out = match event {
-                Ok(StreamEvent::Text { content }) => {
-                    state.process_text(&content).into_iter().map(Ok).collect()
-                }
+                Ok(StreamEvent::Text { content }) => state.process_text(&content).into_iter().map(Ok).collect(),
                 Ok(StreamEvent::Stop { reason, usage }) => {
-                    let mut evs: Vec<Result<StreamEvent, ProviderError>> =
-                        state.flush().into_iter().map(Ok).collect();
+                    let mut evs: Vec<Result<StreamEvent, ProviderError>> = state.flush().into_iter().map(Ok).collect();
                     evs.push(Ok(StreamEvent::Stop { reason, usage }));
                     evs
                 }
@@ -503,6 +483,9 @@ fn adapt_gemma_stream(inner: ChatStream) -> ChatStream {
     Box::pin(rx)
 }
 
+// Reached only from `chat_with_tools`, the non-streaming trait path nothing
+// drives yet; its tests are live.
+#[allow(dead_code)]
 fn extract_tool_calls_from_text(text: &str) -> (String, Vec<ToolCall>) {
     let mut clean = String::new();
     let mut calls = Vec::new();
@@ -538,11 +521,7 @@ impl ChatProvider for GemmaToolProvider {
         tools: Vec<ToolDefinition>,
         params: ChatParams,
     ) -> Result<ChatStream, ProviderError> {
-        let tools_opt = if tools.is_empty() {
-            None
-        } else {
-            Some(tools.as_slice())
-        };
+        let tools_opt = if tools.is_empty() { None } else { Some(tools.as_slice()) };
         let transport = ReqwestTransport::shared();
         let req = self.build_request(&messages, tools_opt, &params, true);
         let resp = transport.stream(req).await?;
@@ -559,13 +538,15 @@ impl ChatProvider for GemmaToolProvider {
                             }
                             match serde_json::from_str::<ChatChunk>(&ev.data) {
                                 Ok(chunk) => {
-                                    let (mut stream_events, finish_reason, usage) =
-                                        parse_openai_sse_events(&chunk);
+                                    let (mut stream_events, finish_reason, usage) = parse_openai_sse_events(&chunk);
                                     if let Some(u) = usage {
                                         stream_events.push(StreamEvent::UsageUpdate { usage: u });
                                     }
                                     if let Some(fr) = finish_reason {
-                                        stream_events.push(StreamEvent::Stop { reason: fr, usage: None });
+                                        stream_events.push(StreamEvent::Stop {
+                                            reason: fr,
+                                            usage: None,
+                                        });
                                     }
                                     stream_events.into_iter().map(Ok).collect()
                                 }
@@ -585,11 +566,7 @@ impl ChatProvider for GemmaToolProvider {
         }
     }
 
-    async fn chat(
-        &self,
-        messages: Vec<ChatMessage>,
-        params: ChatParams,
-    ) -> Result<String, ProviderError> {
+    async fn chat(&self, messages: Vec<ChatMessage>, params: ChatParams) -> Result<String, ProviderError> {
         let transport = ReqwestTransport::shared();
         let req = self.build_request(&messages, None, &params, false);
         let resp = transport.execute(req).await?;
@@ -654,19 +631,25 @@ mod tests {
 
         // Chunk 1 ends mid-marker: only clean text is emitted, partial held back.
         let ev1 = state.process_text(&format!("abc{head}"));
-        let text1: String = ev1.iter().filter_map(|e| match e {
-            StreamEvent::Text { content } => Some(content.clone()),
-            _ => None,
-        }).collect();
+        let text1: String = ev1
+            .iter()
+            .filter_map(|e| match e {
+                StreamEvent::Text { content } => Some(content.clone()),
+                _ => None,
+            })
+            .collect();
         assert_eq!(text1, "abc");
 
         // Chunk 2 completes the marker: we enter tool-call mode, marker not leaked.
         let ev2 = state.process_text(tail);
         assert!(state.in_tool_call);
-        let text2: String = ev2.iter().filter_map(|e| match e {
-            StreamEvent::Text { content } => Some(content.clone()),
-            _ => None,
-        }).collect();
+        let text2: String = ev2
+            .iter()
+            .filter_map(|e| match e {
+                StreamEvent::Text { content } => Some(content.clone()),
+                _ => None,
+            })
+            .collect();
         assert_eq!(text2, "");
     }
 
@@ -679,8 +662,7 @@ mod tests {
 
     #[test]
     fn test_parse_gemma_call_string_arg() {
-        let (name, args) =
-            parse_gemma_call("call:get_weather{city:<|\"|>\u{5317}\u{4eac}<|\"|>}").unwrap();
+        let (name, args) = parse_gemma_call("call:get_weather{city:<|\"|>\u{5317}\u{4eac}<|\"|>}").unwrap();
         assert_eq!(name, "get_weather");
         let v: serde_json::Value = serde_json::from_str(&args).unwrap();
         assert_eq!(v["city"], "\u{5317}\u{4eac}");
@@ -708,8 +690,7 @@ mod tests {
 
     #[test]
     fn test_parse_gemma_call_array() {
-        let input =
-            "call:send_message{targets:[<|\"|>user_a<|\"|>,<|\"|>user_b<|\"|>],text:<|\"|>hello<|\"|>}";
+        let input = "call:send_message{targets:[<|\"|>user_a<|\"|>,<|\"|>user_b<|\"|>],text:<|\"|>hello<|\"|>}";
         let (name, args) = parse_gemma_call(input).unwrap();
         assert_eq!(name, "send_message");
         let v: serde_json::Value = serde_json::from_str(&args).unwrap();
@@ -749,9 +730,7 @@ mod tests {
     #[test]
     fn test_stream_state_tool_call_single_chunk() {
         let mut state = GemmaParseState::new();
-        let events = state.process_text(
-            "说明文字<|tool_call>call:test{key:<|\"|>val<|\"|>}<tool_call|>",
-        );
+        let events = state.process_text("说明文字<|tool_call>call:test{key:<|\"|>val<|\"|>}<tool_call|>");
         assert!(events.len() >= 3);
         assert!(matches!(&events[0], StreamEvent::Text { content } if content == "说明文字"));
         assert!(matches!(&events[1], StreamEvent::ToolCallStart { name, .. } if name == "test"));

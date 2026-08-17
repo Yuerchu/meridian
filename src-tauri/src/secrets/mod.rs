@@ -52,10 +52,14 @@ impl fmt::Display for SecretName {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum SecretScope {
     Global,
+    /// Per-project secrets, ported from Codex; everything stored today is
+    /// `Global`.
+    #[allow(dead_code)]
     Environment(String),
 }
 
 impl SecretScope {
+    #[allow(dead_code)]
     pub fn environment(environment_id: impl Into<String>) -> Result<Self> {
         let env_id = environment_id.into();
         let trimmed = env_id.trim();
@@ -73,6 +77,7 @@ impl SecretScope {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SecretListEntry {
     pub scope: SecretScope,
@@ -83,6 +88,8 @@ pub trait SecretsBackend: Send + Sync {
     fn set(&self, scope: &SecretScope, name: &SecretName, value: &str) -> Result<()>;
     fn get(&self, scope: &SecretScope, name: &SecretName) -> Result<Option<String>>;
     fn delete(&self, scope: &SecretScope, name: &SecretName) -> Result<bool>;
+    /// No secrets-listing UI yet; ported store contract.
+    #[allow(dead_code)]
     fn list(&self, scope_filter: Option<&SecretScope>) -> Result<Vec<SecretListEntry>>;
 }
 
@@ -94,17 +101,13 @@ pub struct SecretsManager {
 impl SecretsManager {
     pub fn new(data_dir: PathBuf) -> Self {
         let keyring_store: Arc<dyn KeyringStore> = Arc::new(DefaultKeyringStore);
-        let backend: Arc<dyn SecretsBackend> =
-            Arc::new(LocalSecretsBackend::new(data_dir, keyring_store));
+        let backend: Arc<dyn SecretsBackend> = Arc::new(LocalSecretsBackend::new(data_dir, keyring_store));
         Self { backend }
     }
 
-    pub fn new_with_keyring_store(
-        data_dir: PathBuf,
-        keyring_store: Arc<dyn KeyringStore>,
-    ) -> Self {
-        let backend: Arc<dyn SecretsBackend> =
-            Arc::new(LocalSecretsBackend::new(data_dir, keyring_store));
+    #[allow(dead_code)]
+    pub fn new_with_keyring_store(data_dir: PathBuf, keyring_store: Arc<dyn KeyringStore>) -> Self {
+        let backend: Arc<dyn SecretsBackend> = Arc::new(LocalSecretsBackend::new(data_dir, keyring_store));
         Self { backend }
     }
 
@@ -120,11 +123,14 @@ impl SecretsManager {
         self.backend.delete(scope, name)
     }
 
+    #[allow(dead_code)]
     pub fn list(&self, scope_filter: Option<&SecretScope>) -> Result<Vec<SecretListEntry>> {
         self.backend.list(scope_filter)
     }
 }
 
+/// Pairs with `SecretScope::Environment`, which nothing constructs yet.
+#[allow(dead_code)]
 pub fn environment_id_from_path(path: &Path) -> String {
     let canonical = path
         .canonicalize()

@@ -32,7 +32,8 @@ export function useSenderNames(speakers: string | null): SenderNames {
     }
     let cancelled = false
 
-    api.listMemorySubjects()
+    api
+      .listMemorySubjects()
       .then((subjects) => {
         if (cancelled) return
         const next: SenderNames = {}
@@ -49,7 +50,9 @@ export function useSenderNames(speakers: string | null): SenderNames {
         if (!cancelled) setNames({})
       })
 
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [speakers])
 
   return names

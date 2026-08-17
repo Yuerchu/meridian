@@ -54,11 +54,7 @@ pub(crate) struct TurnConfig {
     pub offered: HashSet<String>,
 }
 
-pub(crate) fn resolve(
-    conn: &mut SqliteConnection,
-    registry: &ToolRegistry,
-    input: TurnConfigInput,
-) -> TurnConfig {
+pub(crate) fn resolve(conn: &mut SqliteConnection, registry: &ToolRegistry, input: TurnConfigInput) -> TurnConfig {
     let TurnConfigInput {
         assistant,
         conversation_id,
@@ -161,7 +157,11 @@ pub(crate) fn resolve(
     }
 
     let offered = tool_defs.iter().map(|d| d.name.clone()).collect();
-    TurnConfig { tool_defs, system_prompt: prompt, offered }
+    TurnConfig {
+        tool_defs,
+        system_prompt: prompt,
+        offered,
+    }
 }
 
 /// Tool filtering as configured on the assistant: preset wins over an explicit
@@ -203,11 +203,14 @@ fn enabled_tools(conn: &mut SqliteConnection, assistant: Option<&Assistant>) -> 
 mod tests {
     use super::*;
     use crate::db::models::tool_preset::NewToolPreset;
-    use crate::db::{test_db, DbPool};
+    use crate::db::{DbPool, test_db};
     use diesel::prelude::*;
 
     fn registry() -> ToolRegistry {
-        ToolRegistry::new(std::path::PathBuf::from("/nonexistent"), std::path::PathBuf::from("/nonexistent"))
+        ToolRegistry::new(
+            std::path::PathBuf::from("/nonexistent"),
+            std::path::PathBuf::from("/nonexistent"),
+        )
     }
 
     fn seed_conversation(conn: &mut SqliteConnection, id: &str) {
@@ -320,7 +323,10 @@ mod tests {
 
         assert!(cfg.offered.contains("read_file"));
         assert!(cfg.offered.contains("glob"));
-        assert!(!cfg.offered.contains("write_file"), "the preset wins over enabled_tools");
+        assert!(
+            !cfg.offered.contains("write_file"),
+            "the preset wins over enabled_tools"
+        );
         assert!(!cfg.offered.contains("run_command"));
     }
 
@@ -360,8 +366,7 @@ mod tests {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
         let assistant = assistant_with(Some("gone"), None);
-        let cfg =
-            resolve(&mut conn, &reg, input(switchable(Some("plan")), Some(assistant)));
+        let cfg = resolve(&mut conn, &reg, input(switchable(Some("plan")), Some(assistant)));
 
         assert!(cfg.offered.contains("exit_plan"), "must never be stranded");
         assert!(!cfg.offered.contains("read_file"), "but gains nothing else");
@@ -451,12 +456,14 @@ mod tests {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
         let assistant = assistant_with(None, Some(r#"["read_file"]"#));
-        let cfg =
-            resolve(&mut conn, &reg, input(switchable(Some("plan")), Some(assistant)));
+        let cfg = resolve(&mut conn, &reg, input(switchable(Some("plan")), Some(assistant)));
 
         assert!(cfg.offered.contains("read_file"));
         assert!(cfg.offered.contains("exit_plan"), "the exit tool is the one exception");
-        assert!(!cfg.offered.contains("glob"), "plan mode allows it, the assistant does not");
+        assert!(
+            !cfg.offered.contains("glob"),
+            "plan mode allows it, the assistant does not"
+        );
     }
 
     #[test]

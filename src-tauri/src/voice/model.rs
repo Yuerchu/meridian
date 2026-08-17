@@ -42,8 +42,7 @@ pub fn status(app_data_dir: &Path) -> ModelStatus {
 /// Import a locally downloaded `.tar.bz2` archive (the same one the download
 /// would fetch). Blocking — run inside `spawn_blocking`.
 pub fn import_archive(app_data_dir: &Path, archive_path: &Path) -> Result<(), String> {
-    let file = std::fs::File::open(archive_path)
-        .map_err(|e| format!("Cannot open archive: {e}"))?;
+    let file = std::fs::File::open(archive_path).map_err(|e| format!("Cannot open archive: {e}"))?;
     let decoder = bzip2::read::BzDecoder::new(file);
     let mut archive = tar::Archive::new(decoder);
     unpack_and_install(&mut archive, app_data_dir)
@@ -51,10 +50,7 @@ pub fn import_archive(app_data_dir: &Path, archive_path: &Path) -> Result<(), St
 
 /// Shared tail of import and download: unpack into a scratch dir, verify the
 /// file manifest, then swap it into place atomically.
-pub fn unpack_and_install<R: std::io::Read>(
-    archive: &mut tar::Archive<R>,
-    app_data_dir: &Path,
-) -> Result<(), String> {
+pub fn unpack_and_install<R: std::io::Read>(archive: &mut tar::Archive<R>, app_data_dir: &Path) -> Result<(), String> {
     let dest = model_dir(app_data_dir);
     let scratch = dest.with_extension("tmp");
     let _ = std::fs::remove_dir_all(&scratch);

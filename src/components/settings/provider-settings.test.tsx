@@ -66,10 +66,7 @@ describe('ProviderSettings mobile list/detail navigation', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockApi.listProviders.mockResolvedValue([
-      makeProvider('p1', 'Provider One'),
-      makeProvider('p2', 'Provider Two'),
-    ])
+    mockApi.listProviders.mockResolvedValue([makeProvider('p1', 'Provider One'), makeProvider('p2', 'Provider Two')])
     mockApi.getProviderKeyExists.mockResolvedValue(false)
   })
 

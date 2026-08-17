@@ -105,9 +105,7 @@ pub(crate) fn block(
     conversation_id: &str,
     asking: Option<&str>,
 ) -> Option<Report> {
-    let candidates =
-        crate::db::ops::turn::unreported_for_conversation(conn, conversation_id, asking, WINDOW)
-            .ok()?;
+    let candidates = crate::db::ops::turn::unreported_for_conversation(conn, conversation_id, asking, WINDOW).ok()?;
     // Per conversation, because a delegated run is held on its own. Judging a
     // sub-agent against the parent's lease would call every live one a wreck.
     // Read once per conversation rather than once per row, so one list is never
@@ -150,8 +148,10 @@ pub(crate) fn block(
 /// message asks the same question and gets it.
 fn choose<'a>(cut_off: &[&'a InterruptedCandidate]) -> Vec<&'a InterruptedCandidate> {
     let risky = |c: &InterruptedCandidate| matches!(c.turn.phase(), Some(TurnPhase::RunningTool));
-    let mut chosen: Vec<usize> =
-        (0..cut_off.len()).filter(|&i| risky(cut_off[i])).take(AT_MOST).collect();
+    let mut chosen: Vec<usize> = (0..cut_off.len())
+        .filter(|&i| risky(cut_off[i]))
+        .take(AT_MOST)
+        .collect();
     for i in 0..cut_off.len() {
         if chosen.len() >= AT_MOST {
             break;
@@ -209,10 +209,12 @@ pub(crate) async fn confirm_delivered(pool: &crate::db::DbPool, report: Report) 
         // the sub-agent's conversation being told, and the other way round.
         let mut written = 0;
         for ledger in [Ledger::Own, Ledger::Parent] {
-            let ids: Vec<String> =
-                turns.iter().filter(|(_, l)| *l == ledger).map(|(id, _)| id.clone()).collect();
-            written += crate::db::ops::turn::mark_reported(&mut conn, &ids, ledger, now)
-                .map_err(|e| e.to_string())?;
+            let ids: Vec<String> = turns
+                .iter()
+                .filter(|(_, l)| *l == ledger)
+                .map(|(id, _)| id.clone())
+                .collect();
+            written += crate::db::ops::turn::mark_reported(&mut conn, &ids, ledger, now).map_err(|e| e.to_string())?;
         }
         Ok::<usize, String>(written)
     })
@@ -238,9 +240,7 @@ fn describe(turns: &[&InterruptedCandidate]) -> String {
     // Says "a turn" rather than "a turn in this conversation": one of these may
     // have run in a sub-agent's transcript, and each line names its own subject.
     let body = match each.as_slice() {
-        [only] => format!(
-            "A turn was cut off before it finished, and nothing recorded why. {only}"
-        ),
+        [only] => format!("A turn was cut off before it finished, and nothing recorded why. {only}"),
         many => format!(
             "Several turns were cut off before they finished, and nothing recorded why. \
              Oldest first.\n{}",
@@ -298,10 +298,17 @@ fn subject(candidate: &InterruptedCandidate) -> Option<String> {
     }
     // The title is the description the parent wrote when it delegated, so it is
     // the one phrase that identifies the errand in the parent's own words.
-    Some(match candidate.child_title.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
-        Some(title) => format!("A sub-agent you delegated to (\"{title}\")"),
-        None => "A sub-agent you delegated to".to_string(),
-    })
+    Some(
+        match candidate
+            .child_title
+            .as_deref()
+            .map(str::trim)
+            .filter(|t| !t.is_empty())
+        {
+            Some(title) => format!("A sub-agent you delegated to (\"{title}\")"),
+            None => "A sub-agent you delegated to".to_string(),
+        },
+    )
 }
 
 #[cfg(test)]
@@ -331,11 +338,7 @@ mod tests {
     /// What the real caller looks like: a turn that has already opened its own
     /// record asking about the ones before it. Without the exclusion it would
     /// find itself — running, and held — and report nothing.
-    fn asked_by(
-        pool: &crate::db::DbPool,
-        coordinator: &TurnCoordinator,
-        asking: &str,
-    ) -> Option<Report> {
+    fn asked_by(pool: &crate::db::DbPool, coordinator: &TurnCoordinator, asking: &str) -> Option<Report> {
         let mut conn = pool.get().unwrap();
         block(&mut conn, coordinator, "c1", Some(asking))
     }
@@ -435,8 +438,7 @@ mod tests {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
         turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-        turn::set_phase(&mut conn, "dead", TurnPhase::RunningTool, Some("edit_file"), 1001)
-            .unwrap();
+        turn::set_phase(&mut conn, "dead", TurnPhase::RunningTool, Some("edit_file"), 1001).unwrap();
         drop(conn);
 
         // The new turn takes the conversation and opens its record, exactly as
@@ -453,7 +455,11 @@ mod tests {
         // Without the exclusion the asking turn is a candidate row, and only
         // the coordinator keeps it out.
         let unfiltered = latest(&pool, &c).expect("the dead turn is still reported");
-        assert_eq!(unfiltered.turn_ids(), ["dead"], "a turn being run is not a turn that was cut off");
+        assert_eq!(
+            unfiltered.turn_ids(),
+            ["dead"],
+            "a turn being run is not a turn that was cut off"
+        );
     }
 
     #[test]
@@ -461,8 +467,7 @@ mod tests {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
         turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-        turn::set_phase(&mut conn, "t1", TurnPhase::AwaitingApproval, Some("run_command"), 1001)
-            .unwrap();
+        turn::set_phase(&mut conn, "t1", TurnPhase::AwaitingApproval, Some("run_command"), 1001).unwrap();
         turn::reconcile_interrupted(&mut conn, 2000).unwrap();
         drop(conn);
 
@@ -566,8 +571,7 @@ mod tests {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
         turn::begin(&mut conn, "dead", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-        turn::set_phase(&mut conn, "dead", TurnPhase::RunningTool, Some("edit_file"), 1001)
-            .unwrap();
+        turn::set_phase(&mut conn, "dead", TurnPhase::RunningTool, Some("edit_file"), 1001).unwrap();
         drop(conn);
 
         // The next turn reads the warning and then falls over on its way out —
@@ -580,8 +584,14 @@ mod tests {
             "it read the warning, which is not the same as delivering it",
         );
         let mut conn = pool.get().unwrap();
-        turn::finish(&mut conn, "stillborn", TurnStatus::Failed, Some("API Key not set"), 2100)
-            .unwrap();
+        turn::finish(
+            &mut conn,
+            "stillborn",
+            TurnStatus::Failed,
+            Some("API Key not set"),
+            2100,
+        )
+        .unwrap();
         drop(conn);
 
         // The turn after it still has to be told.
@@ -591,7 +601,11 @@ mod tests {
         let told = asked_by(&pool, &c, "next").expect("nobody has told the model yet");
         assert!(told.text().contains("edit_file"));
         assert!(told.text().contains("may have taken effect"));
-        assert_eq!(told.turn_ids(), ["dead"], "the failed turn is an ending, not an interruption");
+        assert_eq!(
+            told.turn_ids(),
+            ["dead"],
+            "the failed turn is an ending, not an interruption"
+        );
     }
 
     /// Crashing twice without a request getting out in between owes two
@@ -602,8 +616,7 @@ mod tests {
         let (pool, c) = setup();
         let mut conn = pool.get().unwrap();
         turn::begin(&mut conn, "first", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-        turn::set_phase(&mut conn, "first", TurnPhase::RunningTool, Some("edit_file"), 1001)
-            .unwrap();
+        turn::set_phase(&mut conn, "first", TurnPhase::RunningTool, Some("edit_file"), 1001).unwrap();
         turn::begin(&mut conn, "second", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
         turn::set_phase(&mut conn, "second", TurnPhase::Compacting, None, 2001).unwrap();
         drop(conn);
@@ -627,8 +640,7 @@ mod tests {
         {
             let mut conn = pool.get().unwrap();
             for n in 0..(AT_MOST as i64 + 1) {
-                turn::begin(&mut conn, &format!("t{n}"), "c1", TurnOrigin::Desktop, None, 1000 + n)
-                    .unwrap();
+                turn::begin(&mut conn, &format!("t{n}"), "c1", TurnOrigin::Desktop, None, 1000 + n).unwrap();
             }
         }
 
@@ -660,8 +672,15 @@ mod tests {
             )
             .unwrap();
             for n in 0..(AT_MOST as i64) {
-                turn::begin(&mut conn, &format!("later{n}"), "c1", TurnOrigin::Desktop, None, 2000 + n)
-                    .unwrap();
+                turn::begin(
+                    &mut conn,
+                    &format!("later{n}"),
+                    "c1",
+                    TurnOrigin::Desktop,
+                    None,
+                    2000 + n,
+                )
+                .unwrap();
             }
         }
 
@@ -694,20 +713,18 @@ mod tests {
     }
 
     /// A sub-agent's conversation, as `DesktopSubAgents` opens one.
-    fn delegated(
-        conn: &mut SqliteConnection,
-        id: &str,
-        parent: &str,
-        title: Option<&str>,
-    ) {
-        crate::db::ops::conversation::insert(conn, crate::db::models::conversation::NewConversation {
-            id,
-            title,
-            parent_conversation_id: Some(parent),
-            created_at: 1,
-            updated_at: 1,
-            ..Default::default()
-        })
+    fn delegated(conn: &mut SqliteConnection, id: &str, parent: &str, title: Option<&str>) {
+        crate::db::ops::conversation::insert(
+            conn,
+            crate::db::models::conversation::NewConversation {
+                id,
+                title,
+                parent_conversation_id: Some(parent),
+                created_at: 1,
+                updated_at: 1,
+                ..Default::default()
+            },
+        )
         .unwrap();
     }
 
@@ -794,8 +811,7 @@ mod tests {
         delivered(&pool, latest(&pool, &c).expect("the parent is owed it"), 2000);
 
         let mut conn = pool.get().unwrap();
-        let inside = block(&mut conn, &c, "sub-1", None)
-            .expect("the conversation it ran in has not been told");
+        let inside = block(&mut conn, &c, "sub-1", None).expect("the conversation it ran in has not been told");
         assert_eq!(inside.turn_ids(), ["run"]);
     }
 
@@ -830,7 +846,9 @@ mod tests {
         delegated(&mut conn, "sub-1", "c1", Some("an errand"));
         turn::begin(&mut conn, "run", "sub-1", TurnOrigin::SubAgent, None, 1000).unwrap();
         drop(conn);
-        let lease = c.try_acquire_turn_as("sub-1", TurnOrigin::SubAgent, "run".into()).unwrap();
+        let lease = c
+            .try_acquire_turn_as("sub-1", TurnOrigin::SubAgent, "run".into())
+            .unwrap();
 
         assert!(latest(&pool, &c).is_none(), "it is still working");
 

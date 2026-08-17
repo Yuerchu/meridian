@@ -68,18 +68,11 @@ impl LinuxSleepInhibitor {
         self.state = InhibitState::Inactive;
         let should_log_backend_failures = !self.missing_backend_logged;
         let backends = match self.preferred_backend {
-            Some(LinuxBackend::SystemdInhibit) => [
-                LinuxBackend::SystemdInhibit,
-                LinuxBackend::GnomeSessionInhibit,
-            ],
-            Some(LinuxBackend::GnomeSessionInhibit) => [
-                LinuxBackend::GnomeSessionInhibit,
-                LinuxBackend::SystemdInhibit,
-            ],
-            None => [
-                LinuxBackend::SystemdInhibit,
-                LinuxBackend::GnomeSessionInhibit,
-            ],
+            Some(LinuxBackend::SystemdInhibit) => [LinuxBackend::SystemdInhibit, LinuxBackend::GnomeSessionInhibit],
+            Some(LinuxBackend::GnomeSessionInhibit) => {
+                [LinuxBackend::GnomeSessionInhibit, LinuxBackend::SystemdInhibit]
+            }
+            None => [LinuxBackend::SystemdInhibit, LinuxBackend::GnomeSessionInhibit],
         };
 
         for backend in backends {
@@ -93,11 +86,7 @@ impl LinuxSleepInhibitor {
                     }
                     Ok(Some(status)) => {
                         if should_log_backend_failures {
-                            warn!(
-                                ?backend,
-                                ?status,
-                                "Linux sleep inhibitor backend exited immediately"
-                            );
+                            warn!(?backend, ?status, "Linux sleep inhibitor backend exited immediately");
                         }
                     }
                     Err(error) => {
@@ -206,10 +195,7 @@ fn spawn_backend(backend: LinuxBackend) -> Result<Child, std::io::Error> {
             command
         }
     };
-    command
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    command.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
 
     // SAFETY: `pre_exec` must be registered before spawn. The closure only
     // performs libc setup for the child process and returns an `io::Error`

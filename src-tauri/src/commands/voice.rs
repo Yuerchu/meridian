@@ -35,19 +35,14 @@ fn data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 /// Fetch the cached engine or load it. The engine lock is held across the
 /// load, so concurrent callers wait instead of loading twice.
-async fn get_or_load_engine(
-    state: &VoiceState,
-    app_data_dir: PathBuf,
-) -> Result<Arc<voice::engine::Engine>, String> {
+async fn get_or_load_engine(state: &VoiceState, app_data_dir: PathBuf) -> Result<Arc<voice::engine::Engine>, String> {
     let mut slot = state.engine.lock().await;
     if let Some(engine) = slot.as_ref() {
         return Ok(engine.clone());
     }
-    let engine = tokio::task::spawn_blocking(move || {
-        voice::engine::Engine::load(&voice::model_dir(&app_data_dir))
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    let engine = tokio::task::spawn_blocking(move || voice::engine::Engine::load(&voice::model_dir(&app_data_dir)))
+        .await
+        .map_err(|e| e.to_string())??;
     let engine = Arc::new(engine);
     *slot = Some(engine.clone());
     Ok(engine)
@@ -65,7 +60,11 @@ async fn transcribe_samples(
     duration_ms: u64,
 ) -> Result<VoiceTranscript, String> {
     if duration_ms < MIN_DURATION_MS {
-        return Ok(VoiceTranscript { status: "too_short", text: String::new(), duration_ms });
+        return Ok(VoiceTranscript {
+            status: "too_short",
+            text: String::new(),
+            duration_ms,
+        });
     }
 
     let dir = data_dir(app)?;
@@ -76,8 +75,8 @@ async fn transcribe_samples(
     let text = tokio::task::spawn_blocking(move || {
         let level = {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            let pref = db::ops::preference::get_preference(&mut conn, "voice.filter_level")
-                .map_err(|e| e.to_string())?;
+            let pref =
+                db::ops::preference::get_preference(&mut conn, "voice.filter_level").map_err(|e| e.to_string())?;
             voice::filter::FilterLevel::from_preference(pref.as_deref())
         };
         let raw = engine.transcribe(&samples, sample_rate);
@@ -87,9 +86,17 @@ async fn transcribe_samples(
     .map_err(|e| e.to_string())??;
 
     if text.is_empty() {
-        return Ok(VoiceTranscript { status: "empty", text, duration_ms });
+        return Ok(VoiceTranscript {
+            status: "empty",
+            text,
+            duration_ms,
+        });
     }
-    Ok(VoiceTranscript { status: "ok", text, duration_ms })
+    Ok(VoiceTranscript {
+        status: "ok",
+        text,
+        duration_ms,
+    })
 }
 
 /// Warm what the next recording will need, before it is asked for.
@@ -119,9 +126,7 @@ pub async fn voice_prewarm(app: tauri::AppHandle) -> Result<(), String> {
                 return Ok(());
             }
         }
-        if let Ok(Ok(session)) =
-            tokio::task::spawn_blocking(voice::capture::RecordingSession::open).await
-        {
+        if let Ok(Ok(session)) = tokio::task::spawn_blocking(voice::capture::RecordingSession::open).await {
             let mut inner = state.inner.lock().await;
             // A real recording may have started while the device was opening.
             if inner.session.is_some() {
@@ -133,7 +138,10 @@ pub async fn voice_prewarm(app: tauri::AppHandle) -> Result<(), String> {
     }
 
     // Load the model too, so the pause after release is not the first one.
-    let warm = VoiceState { inner: state.inner.clone(), engine: state.engine.clone() };
+    let warm = VoiceState {
+        inner: state.inner.clone(),
+        engine: state.engine.clone(),
+    };
     tokio::spawn(async move {
         let _ = get_or_load_engine(&warm, dir).await;
     });
@@ -226,7 +234,10 @@ pub async fn voice_start_recording(app: tauri::AppHandle) -> Result<(), String> 
 
     // Warm the model while the user is talking so the stop feels instant.
     // Failures are ignored here; stop reports them properly.
-    let engine = VoiceState { inner: state.inner.clone(), engine: state.engine.clone() };
+    let engine = VoiceState {
+        inner: state.inner.clone(),
+        engine: state.engine.clone(),
+    };
     tokio::spawn(async move {
         let _ = get_or_load_engine(&engine, dir).await;
     });
@@ -237,13 +248,7 @@ pub async fn voice_start_recording(app: tauri::AppHandle) -> Result<(), String> 
 #[tauri::command]
 pub async fn voice_stop_and_transcribe(app: tauri::AppHandle) -> Result<VoiceTranscript, String> {
     let state = app.state::<VoiceState>();
-    let session = state
-        .inner
-        .lock()
-        .await
-        .session
-        .take()
-        .ok_or("Not recording")?;
+    let session = state.inner.lock().await.session.take().ok_or("Not recording")?;
 
     let duration_ms = session.started_at.elapsed().as_millis() as u64;
     let captured = session.stop().await?;
@@ -312,11 +317,9 @@ pub async fn voice_import_model(
     let state = app.state::<VoiceState>();
 
     let import_dir = dir.clone();
-    tokio::task::spawn_blocking(move || {
-        voice::model::import_archive(&import_dir, std::path::Path::new(&archive_path))
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+    tokio::task::spawn_blocking(move || voice::model::import_archive(&import_dir, std::path::Path::new(&archive_path)))
+        .await
+        .map_err(|e| e.to_string())??;
 
     *state.engine.lock().await = None;
     Ok(voice::model::status(&dir))

@@ -4,14 +4,7 @@ import type { ProviderCapabilities, ThinkingEffort, ThinkingLevel } from '@/type
  * Every effort tier, ascending. Mirrors EFFORT_LADDER in the Rust catalog
  * (`src-tauri/src/provider/capabilities.rs`).
  */
-export const EFFORT_LADDER: readonly ThinkingEffort[] = [
-  'minimal',
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-  'max',
-] as const
+export const EFFORT_LADDER: readonly ThinkingEffort[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const
 
 /**
  * The effort tiers the current model advertises.
@@ -35,10 +28,7 @@ export function allowedEfforts(caps: ProviderCapabilities | null): readonly Thin
  *
  * `default` and `off` are model-independent and always pass through.
  */
-export function coerceThinkingLevel(
-  current: ThinkingLevel,
-  caps: ProviderCapabilities | null,
-): ThinkingLevel {
+export function coerceThinkingLevel(current: ThinkingLevel, caps: ProviderCapabilities | null): ThinkingLevel {
   if (current === 'default' || current === 'off') return current
   const allowed = allowedEfforts(caps)
   if (allowed.length === 0) return 'default'

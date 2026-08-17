@@ -6,13 +6,7 @@ import { File, Folder, FolderOpen, Xmark } from '@gravity-ui/icons'
 
 import { useConversationStore } from '@/stores/conversation-store'
 import { fileIconUrl } from '@/lib/file-icon'
-import {
-  buildFileTree,
-  touchedFiles,
-  type FileNode,
-  type TouchedFile,
-  type TouchedOp,
-} from '@/lib/touched-files'
+import { buildFileTree, touchedFiles, type FileNode, type TouchedFile, type TouchedOp } from '@/lib/touched-files'
 import { cn } from '@/lib/utils'
 
 /** Every directory in the tree, so a new one arrives already open. */
@@ -47,26 +41,14 @@ const OP_LETTER: Record<TouchedOp, string> = { create: 'A', modify: 'M', delete:
  * anything and no reading of a shell command will say what. A panel that
  * claimed to list every change would be wrong in a way nobody could see.
  */
-export function ChangesPanel({
-  conversationId,
-  onClose,
-}: {
-  conversationId: string
-  onClose: () => void
-}) {
+export function ChangesPanel({ conversationId, onClose }: { conversationId: string; onClose: () => void }) {
   const messages = useConversationStore((s) => s.sessions[conversationId]?.messages)
   const files = useMemo(() => touchedFiles(messages ?? []), [messages])
   return <ChangesPanelView files={files} onClose={onClose} />
 }
 
 /** Split from the store so the playground can render it without a session. */
-export function ChangesPanelView({
-  files,
-  onClose,
-}: {
-  files: TouchedFile[]
-  onClose: () => void
-}) {
+export function ChangesPanelView({ files, onClose }: { files: TouchedFile[]; onClose: () => void }) {
   const { t } = useTranslation()
   const tree = useMemo(() => buildFileTree(files), [files])
   const branches = useMemo(() => branchIds(tree), [tree])
@@ -74,17 +56,12 @@ export function ChangesPanelView({
   // Closed rather than open is what is tracked, so a directory that appears
   // mid-conversation arrives expanded instead of having to be found and opened.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
-  const expandedKeys = useMemo(
-    () => branches.filter((id) => !collapsed.has(id)),
-    [branches, collapsed],
-  )
+  const expandedKeys = useMemo(() => branches.filter((id) => !collapsed.has(id)), [branches, collapsed])
 
   return (
     <div data-slot="changes-panel" className="flex h-full flex-col overflow-hidden">
       <header className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {t('chat.changes.title')}
-        </span>
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">{t('chat.changes.title')}</span>
         <span className="shrink-0 text-xs tabular-nums text-muted">{files.length}</span>
         <Button
           isIconOnly
@@ -116,9 +93,7 @@ export function ChangesPanelView({
       {/* Not a disclaimer for its own sake: a list of edited files that silently
           omits everything a command wrote is the kind of wrong that reads as
           right. */}
-      <p className="shrink-0 border-t border-border px-3 py-2 text-xs text-muted">
-        {t('chat.changes.caveat')}
-      </p>
+      <p className="shrink-0 border-t border-border px-3 py-2 text-xs text-muted">{t('chat.changes.caveat')}</p>
     </div>
   )
 }
@@ -138,20 +113,19 @@ function renderNode(node: FileNode) {
       key={node.id}
       id={node.id}
       textValue={node.name}
-      icon={node.children
-        ? ({ isExpanded }) => (isExpanded ? <FolderOpen /> : <Folder />)
-        : <FileGlyph name={node.name} />}
+      icon={
+        node.children ? ({ isExpanded }) => (isExpanded ? <FolderOpen /> : <Folder />) : <FileGlyph name={node.name} />
+      }
       title={
         <span className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="min-w-0 flex-1 truncate" title={node.id}>{node.name}</span>
+          <span className="min-w-0 flex-1 truncate" title={node.id}>
+            {node.name}
+          </span>
           {node.file && node.file.count > 1 && (
             <span className="shrink-0 text-xs tabular-nums text-muted">×{node.file.count}</span>
           )}
           {op && (
-            <span
-              aria-hidden="true"
-              className={cn('shrink-0 font-mono text-xs', OP_CLASS[op])}
-            >
+            <span aria-hidden="true" className={cn('shrink-0 font-mono text-xs', OP_CLASS[op])}>
               {OP_LETTER[op]}
             </span>
           )}

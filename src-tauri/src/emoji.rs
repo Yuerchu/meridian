@@ -20,13 +20,8 @@ pub fn ensure_pack_dir(app_data_dir: &Path, pack_id: &str) -> Result<PathBuf, St
     Ok(dir)
 }
 
-pub fn import_file(
-    app_data_dir: &Path,
-    pack_id: &str,
-    source_path: &Path,
-) -> Result<(String, String), String> {
-    let meta = std::fs::metadata(source_path)
-        .map_err(|e| format!("Cannot read file: {e}"))?;
+pub fn import_file(app_data_dir: &Path, pack_id: &str, source_path: &Path) -> Result<(String, String), String> {
+    let meta = std::fs::metadata(source_path).map_err(|e| format!("Cannot read file: {e}"))?;
 
     if meta.len() > MAX_FILE_SIZE {
         return Err(format!(
@@ -44,8 +39,7 @@ pub fn import_file(
     let format = detect_format(&file_name)?;
     let dir = ensure_pack_dir(app_data_dir, pack_id)?;
     let dest = dir.join(&file_name);
-    std::fs::copy(source_path, &dest)
-        .map_err(|e| format!("Failed to copy file: {e}"))?;
+    std::fs::copy(source_path, &dest).map_err(|e| format!("Failed to copy file: {e}"))?;
 
     Ok((file_name, format))
 }
@@ -75,7 +69,9 @@ fn detect_format(file_name: &str) -> Result<String, String> {
         "jpg" | "jpeg" => Ok("jpg".into()),
         "bmp" => Ok("bmp".into()),
         "json" => Ok("lottie".into()),
-        _ => Err(format!("Unsupported format: .{ext}. Supported: gif, apng, png, webp, jpg, bmp, json (Lottie).")),
+        _ => Err(format!(
+            "Unsupported format: .{ext}. Supported: gif, apng, png, webp, jpg, bmp, json (Lottie)."
+        )),
     }
 }
 

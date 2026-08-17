@@ -19,7 +19,7 @@ use hyper::http::request::Parts;
 use hyper::{Method, Request, Response, StatusCode};
 
 use super::protocol::{ErrorBody, Kind, ReviewRequest, StopReviewRequest};
-use super::{review, SharedState};
+use super::{SharedState, review};
 
 /// A plan is markdown a model wrote; a couple of megabytes is already far past
 /// anything a reviewer could usefully read.
@@ -105,9 +105,7 @@ async fn route(req: Request<Incoming>, state: Arc<SharedState>) -> Response<Full
 
     let job = match gate {
         Kind::Plan => classify(&parts, &bytes, &state.config).map(ReviewRequest::into_job),
-        Kind::Implementation => {
-            classify_stop(&parts, &bytes, &state.config).map(StopReviewRequest::into_job)
-        }
+        Kind::Implementation => classify_stop(&parts, &bytes, &state.config).map(StopReviewRequest::into_job),
     };
     let job = match job {
         Ok(j) => j,
@@ -144,8 +142,8 @@ pub(crate) fn classify(
 ) -> Result<ReviewRequest, (StatusCode, String)> {
     guard(parts, config)?;
 
-    let request: ReviewRequest = serde_json::from_slice(body)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("malformed request body: {e}")))?;
+    let request: ReviewRequest =
+        serde_json::from_slice(body).map_err(|e| (StatusCode::BAD_REQUEST, format!("malformed request body: {e}")))?;
 
     if request.plan.trim().is_empty() {
         return Err((StatusCode::BAD_REQUEST, "the plan is empty".into()));
@@ -163,8 +161,8 @@ pub(crate) fn classify_stop(
 ) -> Result<StopReviewRequest, (StatusCode, String)> {
     guard(parts, config)?;
 
-    let request: StopReviewRequest = serde_json::from_slice(body)
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("malformed request body: {e}")))?;
+    let request: StopReviewRequest =
+        serde_json::from_slice(body).map_err(|e| (StatusCode::BAD_REQUEST, format!("malformed request body: {e}")))?;
 
     // An empty diff is not an error, but it is not reviewable either, and the
     // plugin is supposed to have skipped it. Say so rather than spending a model
@@ -187,12 +185,17 @@ fn guard(parts: &Parts, config: &super::HookConfig) -> Result<(), (StatusCode, S
     if parts.headers.contains_key("origin") {
         return Err((StatusCode::FORBIDDEN, "cross-origin request refused".into()));
     }
-    if let Some(site) = parts.headers.get("sec-fetch-site").and_then(|v| v.to_str().ok()) {
-        if site != "none" && site != "same-origin" {
-            return Err((StatusCode::FORBIDDEN, "cross-site request refused".into()));
-        }
+    if let Some(site) = parts.headers.get("sec-fetch-site").and_then(|v| v.to_str().ok())
+        && site != "none"
+        && site != "same-origin"
+    {
+        return Err((StatusCode::FORBIDDEN, "cross-site request refused".into()));
     }
-    let content_type = parts.headers.get(CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("");
+    let content_type = parts
+        .headers
+        .get(CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     if !content_type.starts_with("application/json") {
         return Err((StatusCode::FORBIDDEN, "expected application/json".into()));
     }
@@ -246,7 +249,10 @@ mod tests {
     }
 
     fn config() -> super::super::HookConfig {
-        super::super::HookConfig { token: Some("t".repeat(32)), ..Default::default() }
+        super::super::HookConfig {
+            token: Some("t".repeat(32)),
+            ..Default::default()
+        }
     }
 
     fn parts(headers: &[(&str, &str)]) -> Parts {
@@ -258,7 +264,10 @@ mod tests {
     }
 
     fn authed() -> Vec<(&'static str, &'static str)> {
-        vec![("content-type", "application/json"), ("authorization", "Bearer tttttttttttttttttttttttttttttttt")]
+        vec![
+            ("content-type", "application/json"),
+            ("authorization", "Bearer tttttttttttttttttttttttttttttttt"),
+        ]
     }
 
     fn body() -> Vec<u8> {
@@ -282,8 +291,7 @@ mod tests {
 
     #[test]
     fn a_conversation_id_is_carried_through() {
-        let with_id =
-            br#"{"sessionId":"s","cwd":"C:/repo","plan":"p","conversationId":"c-1"}"#;
+        let with_id = br#"{"sessionId":"s","cwd":"C:/repo","plan":"p","conversationId":"c-1"}"#;
         let request = classify(&parts(&authed()), with_id, &config()).unwrap();
         assert_eq!(request.conversation_id.as_deref(), Some("c-1"));
     }
@@ -369,8 +377,7 @@ mod tests {
         tokio::spawn(async move {
             let (stream, _) = listener.accept().await.unwrap();
             let io = hyper_util::rt::TokioIo::new(stream);
-            let service =
-                hyper::service::service_fn(|_req| async { Ok::<_, Infallible>(healthz()) });
+            let service = hyper::service::service_fn(|_req| async { Ok::<_, Infallible>(healthz()) });
             let _ = connection_builder().serve_connection(io, service).await;
         });
 
@@ -409,8 +416,12 @@ mod tests {
         // a reviewer with no memory of round 1.
         assert!(approve.contains(r#""conversationId":"c-1""#), "{approve}");
 
-        let revise =
-            encode(&ReviewResponse::revise("bad".into(), "fix it".into(), "r-2".into(), "c-1".into()));
+        let revise = encode(&ReviewResponse::revise(
+            "bad".into(),
+            "fix it".into(),
+            "r-2".into(),
+            "c-1".into(),
+        ));
         assert!(revise.contains(r#""verdict":"revise""#), "{revise}");
         assert!(revise.contains(r#""message":"fix it""#), "{revise}");
         assert!(revise.contains(r#""conversationId":"c-1""#), "{revise}");
@@ -418,9 +429,6 @@ mod tests {
         // No verdict, but a transcript was still written — the next round
         // continues in it, so this shape carries the conversation too.
         let inconclusive = encode(&ReviewResponse::inconclusive("no idea", "c-1".into()));
-        assert_eq!(
-            inconclusive,
-            r#"{"systemMessage":"no idea","conversationId":"c-1"}"#
-        );
+        assert_eq!(inconclusive, r#"{"systemMessage":"no idea","conversationId":"c-1"}"#);
     }
 }

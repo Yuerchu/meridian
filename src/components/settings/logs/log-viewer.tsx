@@ -129,37 +129,21 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
           <EmptyState size="sm">
             <EmptyState.Header>
               <EmptyState.Title>
-                {logs.isFiltered
-                  ? t('settings.about.logs.empty')
-                  : t('settings.about.logs.emptyRange')}
+                {logs.isFiltered ? t('settings.about.logs.empty') : t('settings.about.logs.emptyRange')}
               </EmptyState.Title>
             </EmptyState.Header>
           </EmptyState>
         ) : (
           <>
             {logs.entries.map((entry) => (
-              <LogRow
-                key={`${entry.cursor.fileIndex}:${entry.cursor.byteOffset}`}
-                entry={entry}
-              />
+              <LogRow key={`${entry.cursor.fileIndex}:${entry.cursor.byteOffset}`} entry={entry} />
             ))}
             <div className="flex flex-col items-center gap-2 p-3">
-              {logs.truncated && (
-                <p className="text-xs text-muted">
-                  {t('settings.about.logs.truncated')}
-                </p>
-              )}
+              {logs.truncated && <p className="text-xs text-muted">{t('settings.about.logs.truncated')}</p>}
               {logs.capped ? (
-                <p className="text-xs text-muted">
-                  {t('settings.about.logs.capped', { max: MAX_RENDERED })}
-                </p>
+                <p className="text-xs text-muted">{t('settings.about.logs.capped', { max: MAX_RENDERED })}</p>
               ) : logs.canLoadOlder ? (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={logs.loadOlder}
-                  isDisabled={logs.loadingMore}
-                >
+                <Button variant="ghost" size="sm" onClick={logs.loadOlder} isDisabled={logs.loadingMore}>
                   {logs.loadingMore && <Spinner className="size-4" />}
                   {t('settings.about.logs.loadOlder')}
                 </Button>

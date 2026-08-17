@@ -32,10 +32,18 @@ use std::path::{Component, Path, PathBuf};
 #[derive(Debug)]
 pub enum AccessError {
     /// The path resolved to something outside the allowed area.
-    Outside { requested: PathBuf, real: PathBuf },
+    Outside {
+        requested: PathBuf,
+        real: PathBuf,
+    },
     /// `..` climbed above the filesystem root.
-    EscapesRoot { requested: PathBuf },
-    Io { path: PathBuf, source: io::Error },
+    EscapesRoot {
+        requested: PathBuf,
+    },
+    Io {
+        path: PathBuf,
+        source: io::Error,
+    },
 }
 
 impl AccessError {
@@ -119,14 +127,20 @@ impl VerifiedFile {
 /// session is not bound to a project, in which case the tool asked for approval
 /// instead).
 pub fn open_read(requested: &Path, within: Option<&Path>) -> Result<VerifiedFile, AccessError> {
-    let lexical = lexical_normalize(requested)
-        .ok_or_else(|| AccessError::EscapesRoot { requested: requested.to_path_buf() })?;
+    let lexical = lexical_normalize(requested).ok_or_else(|| AccessError::EscapesRoot {
+        requested: requested.to_path_buf(),
+    })?;
     // Opened readable rather than query-only, because this handle is the one
     // that will do the reading. Verifying one handle and reading through
     // another would put the resolution back in play.
-    let file = open_readable(&lexical)
-        .map_err(|e| AccessError::Io { path: lexical.clone(), source: e })?;
-    let real = real_path_of(&file).map_err(|e| AccessError::Io { path: lexical.clone(), source: e })?;
+    let file = open_readable(&lexical).map_err(|e| AccessError::Io {
+        path: lexical.clone(),
+        source: e,
+    })?;
+    let real = real_path_of(&file).map_err(|e| AccessError::Io {
+        path: lexical.clone(),
+        source: e,
+    })?;
     confirm_within(requested, &real, within)?;
     Ok(VerifiedFile { file, real })
 }
@@ -139,8 +153,9 @@ pub fn open_read(requested: &Path, within: Option<&Path>) -> Result<VerifiedFile
 /// project is refused with the target still intact. Truncating first and
 /// checking after would destroy the file we were trying to protect.
 pub fn open_write(requested: &Path, within: Option<&Path>) -> Result<VerifiedFile, AccessError> {
-    let lexical = lexical_normalize(requested)
-        .ok_or_else(|| AccessError::EscapesRoot { requested: requested.to_path_buf() })?;
+    let lexical = lexical_normalize(requested).ok_or_else(|| AccessError::EscapesRoot {
+        requested: requested.to_path_buf(),
+    })?;
 
     // Anchor first, then build downward from what the OS confirmed. Creating
     // the directories before checking would already have written into whatever
@@ -151,13 +166,20 @@ pub fn open_write(requested: &Path, within: Option<&Path>) -> Result<VerifiedFil
         target.push(seg);
     }
     if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| AccessError::Io { path: parent.to_path_buf(), source: e })?;
+        std::fs::create_dir_all(parent).map_err(|e| AccessError::Io {
+            path: parent.to_path_buf(),
+            source: e,
+        })?;
     }
 
-    let file = open_for_write_untruncated(&target)
-        .map_err(|e| AccessError::Io { path: target.clone(), source: e })?;
-    let real = real_path_of(&file).map_err(|e| AccessError::Io { path: target.clone(), source: e })?;
+    let file = open_for_write_untruncated(&target).map_err(|e| AccessError::Io {
+        path: target.clone(),
+        source: e,
+    })?;
+    let real = real_path_of(&file).map_err(|e| AccessError::Io {
+        path: target.clone(),
+        source: e,
+    })?;
     // Re-checked against the handle rather than trusting the parent check: the
     // name may have been a link to somewhere else entirely, and between the two
     // opens the parent could have been replaced.
@@ -183,8 +205,10 @@ fn verified_anchor(
     loop {
         match open_for_query(&cur) {
             Ok(handle) => {
-                let real = real_path_of(&handle)
-                    .map_err(|e| AccessError::Io { path: cur.clone(), source: e })?;
+                let real = real_path_of(&handle).map_err(|e| AccessError::Io {
+                    path: cur.clone(),
+                    source: e,
+                })?;
                 confirm_within(requested, &real, within)?;
                 missing.reverse();
                 return Ok((real, missing));
@@ -219,7 +243,10 @@ fn confirm_within(requested: &Path, real: &Path, within: Option<&Path>) -> Resul
         resolved_outside = true,
         "file access denied"
     );
-    Err(AccessError::Outside { requested: requested.to_path_buf(), real: real.to_path_buf() })
+    Err(AccessError::Outside {
+        requested: requested.to_path_buf(),
+        real: real.to_path_buf(),
+    })
 }
 
 /// Create a file, failing if anything is already there.
@@ -229,20 +256,28 @@ fn confirm_within(requested: &Path, real: &Path, within: Option<&Path>) -> Resul
 /// check into approval for overwriting something it never saw. It also settles
 /// the symlink case for free: an exclusive create refuses to follow one.
 pub fn open_create_new(requested: &Path, within: Option<&Path>) -> Result<VerifiedFile, AccessError> {
-    let lexical = lexical_normalize(requested)
-        .ok_or_else(|| AccessError::EscapesRoot { requested: requested.to_path_buf() })?;
+    let lexical = lexical_normalize(requested).ok_or_else(|| AccessError::EscapesRoot {
+        requested: requested.to_path_buf(),
+    })?;
     let (anchor, missing) = verified_anchor(requested, &lexical, within)?;
     let mut target = anchor;
     for seg in &missing {
         target.push(seg);
     }
     if let Some(parent) = target.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| AccessError::Io { path: parent.to_path_buf(), source: e })?;
+        std::fs::create_dir_all(parent).map_err(|e| AccessError::Io {
+            path: parent.to_path_buf(),
+            source: e,
+        })?;
     }
-    let file = open_exclusive(&target)
-        .map_err(|e| AccessError::Io { path: target.clone(), source: e })?;
-    let real = real_path_of(&file).map_err(|e| AccessError::Io { path: target, source: e })?;
+    let file = open_exclusive(&target).map_err(|e| AccessError::Io {
+        path: target.clone(),
+        source: e,
+    })?;
+    let real = real_path_of(&file).map_err(|e| AccessError::Io {
+        path: target,
+        source: e,
+    })?;
     confirm_within(requested, &real, within)?;
     Ok(VerifiedFile { file, real })
 }
@@ -254,11 +289,17 @@ pub fn open_create_new(requested: &Path, within: Option<&Path>) -> Result<Verifi
 /// does not match would fail *after* having left an empty file behind — a
 /// refusal that still changed the workspace.
 pub fn open_edit(requested: &Path, within: Option<&Path>) -> Result<VerifiedFile, AccessError> {
-    let lexical = lexical_normalize(requested)
-        .ok_or_else(|| AccessError::EscapesRoot { requested: requested.to_path_buf() })?;
-    let file = open_existing_rw(&lexical)
-        .map_err(|e| AccessError::Io { path: lexical.clone(), source: e })?;
-    let real = real_path_of(&file).map_err(|e| AccessError::Io { path: lexical.clone(), source: e })?;
+    let lexical = lexical_normalize(requested).ok_or_else(|| AccessError::EscapesRoot {
+        requested: requested.to_path_buf(),
+    })?;
+    let file = open_existing_rw(&lexical).map_err(|e| AccessError::Io {
+        path: lexical.clone(),
+        source: e,
+    })?;
+    let real = real_path_of(&file).map_err(|e| AccessError::Io {
+        path: lexical.clone(),
+        source: e,
+    })?;
     confirm_within(requested, &real, within)?;
     Ok(VerifiedFile { file, real })
 }
@@ -273,8 +314,9 @@ pub fn open_edit(requested: &Path, within: Option<&Path>) -> Result<VerifiedFile
 /// looking at the window. Anything that may skip approval must use `open_read`
 /// or `open_write`, which do the I/O through the handle they checked.
 pub fn verify_path(requested: &Path, within: Option<&Path>) -> Result<PathBuf, AccessError> {
-    let lexical = lexical_normalize(requested)
-        .ok_or_else(|| AccessError::EscapesRoot { requested: requested.to_path_buf() })?;
+    let lexical = lexical_normalize(requested).ok_or_else(|| AccessError::EscapesRoot {
+        requested: requested.to_path_buf(),
+    })?;
     let (anchor, missing) = verified_anchor(requested, &lexical, within)?;
     let mut out = anchor;
     for seg in &missing {
@@ -286,11 +328,17 @@ pub fn verify_path(requested: &Path, within: Option<&Path>) -> Result<PathBuf, A
 /// Resolve a directory the same way, for use as the `within` root. Returns the
 /// OS's own spelling so later comparisons are against like for like.
 pub fn resolve_root(dir: &Path) -> Result<PathBuf, AccessError> {
-    let lexical =
-        lexical_normalize(dir).ok_or_else(|| AccessError::EscapesRoot { requested: dir.to_path_buf() })?;
-    let handle =
-        open_for_query(&lexical).map_err(|e| AccessError::Io { path: lexical.clone(), source: e })?;
-    real_path_of(&handle).map_err(|e| AccessError::Io { path: lexical, source: e })
+    let lexical = lexical_normalize(dir).ok_or_else(|| AccessError::EscapesRoot {
+        requested: dir.to_path_buf(),
+    })?;
+    let handle = open_for_query(&lexical).map_err(|e| AccessError::Io {
+        path: lexical.clone(),
+        source: e,
+    })?;
+    real_path_of(&handle).map_err(|e| AccessError::Io {
+        path: lexical,
+        source: e,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -329,15 +377,29 @@ mod imp {
     }
 
     pub fn open_existing_rw(path: &Path) -> io::Result<File> {
-        OpenOptions::new().read(true).write(true).share_mode(SHARE_ALL).open(path)
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(SHARE_ALL)
+            .open(path)
     }
 
     pub fn open_exclusive(path: &Path) -> io::Result<File> {
-        OpenOptions::new().read(true).write(true).create_new(true).share_mode(SHARE_ALL).open(path)
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create_new(true)
+            .share_mode(SHARE_ALL)
+            .open(path)
     }
 
     pub fn open_for_write_untruncated(path: &Path) -> io::Result<File> {
-        OpenOptions::new().read(true).write(true).create(true).share_mode(SHARE_ALL).open(path)
+        OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .share_mode(SHARE_ALL)
+            .open(path)
     }
 
     pub fn real_path_of(file: &File) -> io::Result<PathBuf> {
@@ -345,15 +407,12 @@ mod imp {
         let handle = file.as_raw_handle() as isize;
         // Called twice on purpose: the first call reports the buffer size it
         // needs (including the terminator), the second fills it.
-        let needed =
-            unsafe { GetFinalPathNameByHandleW(handle, std::ptr::null_mut(), 0, VOLUME_NAME_DOS) };
+        let needed = unsafe { GetFinalPathNameByHandleW(handle, std::ptr::null_mut(), 0, VOLUME_NAME_DOS) };
         if needed == 0 {
             return Err(io::Error::last_os_error());
         }
         let mut buf = vec![0u16; needed as usize];
-        let written = unsafe {
-            GetFinalPathNameByHandleW(handle, buf.as_mut_ptr(), buf.len() as u32, VOLUME_NAME_DOS)
-        };
+        let written = unsafe { GetFinalPathNameByHandleW(handle, buf.as_mut_ptr(), buf.len() as u32, VOLUME_NAME_DOS) };
         if written == 0 || written as usize >= buf.len() {
             return Err(io::Error::last_os_error());
         }
@@ -375,7 +434,11 @@ mod imp {
         } else {
             return p;
         };
-        if stripped.len() <= MAX_COMFORTABLE { PathBuf::from(stripped) } else { p }
+        if stripped.len() <= MAX_COMFORTABLE {
+            PathBuf::from(stripped)
+        } else {
+            p
+        }
     }
 }
 
@@ -436,10 +499,7 @@ mod imp {
     }
 }
 
-use imp::{
-    open_exclusive, open_existing_rw, open_for_query, open_for_write_untruncated, open_readable,
-    real_path_of,
-};
+use imp::{open_exclusive, open_existing_rw, open_for_query, open_for_write_untruncated, open_readable, real_path_of};
 
 #[cfg(test)]
 mod tests {

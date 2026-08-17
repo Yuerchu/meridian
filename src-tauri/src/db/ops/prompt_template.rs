@@ -10,17 +10,13 @@ pub fn list_templates(conn: &mut SqliteConnection) -> QueryResult<Vec<PromptTemp
         .load::<PromptTemplate>(conn)
 }
 
+#[cfg(test)]
 pub fn get_template(conn: &mut SqliteConnection, id: &str) -> QueryResult<PromptTemplate> {
     prompt_templates::table.find(id).first::<PromptTemplate>(conn)
 }
 
-pub fn create_template(
-    conn: &mut SqliteConnection,
-    new: &NewPromptTemplate,
-) -> QueryResult<PromptTemplate> {
-    diesel::insert_into(prompt_templates::table)
-        .values(new)
-        .execute(conn)?;
+pub fn create_template(conn: &mut SqliteConnection, new: &NewPromptTemplate) -> QueryResult<PromptTemplate> {
+    diesel::insert_into(prompt_templates::table).values(new).execute(conn)?;
     prompt_templates::table.find(new.id).first::<PromptTemplate>(conn)
 }
 
@@ -38,11 +34,6 @@ pub fn update_template(
 pub fn delete_template(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
     diesel::delete(prompt_templates::table.find(id)).execute(conn)?;
     Ok(())
-}
-
-pub fn count_templates(conn: &mut SqliteConnection) -> QueryResult<i64> {
-    use diesel::dsl::count_star;
-    prompt_templates::table.select(count_star()).first(conn)
 }
 
 #[cfg(test)]
@@ -79,10 +70,15 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         create_template(&mut conn, &make_template("t1", "Old")).unwrap();
-        let updated = update_template(&mut conn, "t1", &PromptTemplateUpdate {
-            name: Some("New".into()),
-            ..Default::default()
-        }).unwrap();
+        let updated = update_template(
+            &mut conn,
+            "t1",
+            &PromptTemplateUpdate {
+                name: Some("New".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
         assert_eq!(updated.name, "New");
     }
 

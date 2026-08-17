@@ -77,11 +77,7 @@ export interface HotkeyOptions {
  * The event's default is prevented on a match, because every combo worth
  * binding is one the browser or the WebView already has an opinion about.
  */
-export function useHotkey(
-  combo: string,
-  handler: (event: KeyboardEvent) => void,
-  options: HotkeyOptions = {},
-): void {
+export function useHotkey(combo: string, handler: (event: KeyboardEvent) => void, options: HotkeyOptions = {}): void {
   const { enabled = true, ignoreInInput = true } = options
   // An inline handler must stay fresh without rebinding the listener on every
   // render of the component that owns it.

@@ -22,11 +22,11 @@ pub(crate) mod protocol;
 pub(crate) mod review;
 pub(crate) mod verdict;
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
 use tokio::net::TcpListener;
-use tokio::sync::{watch, Mutex};
+use tokio::sync::{Mutex, watch};
 
 use crate::db::DbPool;
 use crate::mcp::McpRegistry;
@@ -150,7 +150,9 @@ pub fn load_config(pool: &DbPool) -> HookConfig {
         return HookConfig::default();
     };
     let mut get = |key: &str| -> Option<String> {
-        crate::db::ops::preference::get_preference(&mut conn, key).ok().flatten()
+        crate::db::ops::preference::get_preference(&mut conn, key)
+            .ok()
+            .flatten()
     };
 
     HookConfig {
@@ -180,8 +182,7 @@ pub fn save_config(pool: &DbPool, config: &HookConfig) -> Result<(), String> {
     let mut conn = get_conn(pool)?;
     let now = now_ms();
     let mut set = |key: &str, val: &str| -> Result<(), String> {
-        crate::db::ops::preference::set_preference(&mut conn, key, val, now)
-            .map_err(|e| e.to_string())
+        crate::db::ops::preference::set_preference(&mut conn, key, val, now).map_err(|e| e.to_string())
     };
 
     set("hooks.enabled", if config.enabled { "true" } else { "false" })?;
@@ -189,17 +190,24 @@ pub fn save_config(pool: &DbPool, config: &HookConfig) -> Result<(), String> {
     set("hooks.port", &config.port.to_string())?;
     set("hooks.token", config.token.as_deref().unwrap_or(""))?;
     set("hooks.plan_review.model", config.review_model.as_deref().unwrap_or(""))?;
-    set("hooks.plan_review.assistant_id", config.assistant_id.as_deref().unwrap_or(""))?;
-    set("hooks.plan_review.timeout_secs", &clamp_timeout(config.timeout_secs).to_string())?;
-    set("hooks.plan_review.max_rounds", &clamp_rounds(config.max_rounds).to_string())?;
+    set(
+        "hooks.plan_review.assistant_id",
+        config.assistant_id.as_deref().unwrap_or(""),
+    )?;
+    set(
+        "hooks.plan_review.timeout_secs",
+        &clamp_timeout(config.timeout_secs).to_string(),
+    )?;
+    set(
+        "hooks.plan_review.max_rounds",
+        &clamp_rounds(config.max_rounds).to_string(),
+    )?;
     Ok(())
 }
 
 /// A 32-character hex token. Not a secret anyone types, so length beats shape.
 pub fn generate_token() -> String {
-    use rand::Rng;
-    let mut rng = rand::rng();
-    (0..32).map(|_| format!("{:x}", rng.random_range(0..16u8))).collect()
+    uuid::Uuid::new_v4().simple().to_string()
 }
 
 pub(crate) struct SharedState {
@@ -408,7 +416,10 @@ fn remove_handshake_if_ours(path: &std::path::Path, generation: u64) {
 /// is the minimum, and a short one is not a token.
 fn validate_listen_config(host: &str, token: Option<&str>) -> Result<(), String> {
     let is_loopback = host.eq_ignore_ascii_case("localhost")
-        || host.parse::<std::net::IpAddr>().map(|ip| ip.is_loopback()).unwrap_or(false);
+        || host
+            .parse::<std::net::IpAddr>()
+            .map(|ip| ip.is_loopback())
+            .unwrap_or(false);
     if is_loopback {
         return Ok(());
     }

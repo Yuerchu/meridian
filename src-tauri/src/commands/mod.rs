@@ -1,11 +1,9 @@
 pub mod approval;
 pub mod approval_adapter;
 pub mod assistant;
-pub mod audit;
 pub mod chat;
 pub mod conversation;
 pub mod dev;
-pub mod edit_session;
 pub mod emoji;
 #[cfg(not(target_os = "android"))]
 pub mod hooks;
@@ -13,12 +11,12 @@ pub mod logs;
 pub mod mcp;
 pub mod memory;
 pub mod message;
+pub mod model_config;
 #[cfg(not(target_os = "android"))]
 pub mod onebot;
 pub mod preference;
 pub mod project;
 pub mod prompt_template;
-pub mod model_config;
 pub mod provider;
 pub mod secret;
 pub mod skill;

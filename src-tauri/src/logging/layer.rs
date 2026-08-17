@@ -6,7 +6,7 @@ use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
-use super::record::{format_ts, JsonVisitor, LogRecord, SCHEMA_VERSION};
+use super::record::{JsonVisitor, LogRecord, SCHEMA_VERSION, format_ts};
 use crate::util::now_ms;
 
 /// Where finished lines go. Behind a trait so tests can collect into a `Vec`
@@ -116,8 +116,8 @@ where
 mod tests {
     use super::*;
     use std::sync::Mutex;
-    use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::Registry;
+    use tracing_subscriber::layer::SubscriberExt;
 
     #[derive(Default)]
     struct CollectingSink(Mutex<Vec<String>>);

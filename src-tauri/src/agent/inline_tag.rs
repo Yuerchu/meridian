@@ -108,11 +108,7 @@ where
         self.specs
             .iter()
             .enumerate()
-            .filter_map(|(idx, spec)| {
-                self.pending
-                    .find(spec.open)
-                    .map(|pos| (pos, spec.open.len(), idx))
-            })
+            .filter_map(|(idx, spec)| self.pending.find(spec.open).map(|pos| (pos, spec.open.len(), idx)))
             .min_by(|(pos_a, len_a, idx_a), (pos_b, len_b, idx_b)| {
                 pos_a
                     .cmp(pos_b)

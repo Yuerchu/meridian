@@ -12,8 +12,7 @@ const MAX_MSG_LEN: usize = 4000;
 pub const IMAGE_SENTINEL: char = '\u{E000}';
 pub const RECORD_SENTINEL: char = '\u{E001}';
 
-static AT_MENTION_RE: LazyLock<Regex> =
-    LazyLock::new(|| Regex::new(r"\[@[^(\]]*\((\d+)\)\]").unwrap());
+static AT_MENTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[@[^(\]]*\((\d+)\)\]").unwrap());
 
 /// A media reference extracted from an image segment.
 #[derive(Debug, Clone, Default)]
@@ -44,7 +43,11 @@ pub struct ParsedMessage {
 impl ParsedMessage {
     /// A message that arrived as text and nothing else, so all of it was typed.
     pub fn from_text(text: &str) -> Self {
-        Self { text: text.to_string(), typed: text.to_string(), ..Default::default() }
+        Self {
+            text: text.to_string(),
+            typed: text.to_string(),
+            ..Default::default()
+        }
     }
 
     pub fn has_media(&self) -> bool {
@@ -97,10 +100,10 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
                 let qq_id: Option<i64> = data
                     .and_then(|d| d.get("qq"))
                     .and_then(|v| v.as_str().and_then(|s| s.parse().ok()).or(v.as_i64()));
-                if let (Some(sid), Some(qid)) = (self_id, qq_id) {
-                    if sid == qid {
-                        continue;
-                    }
+                if let (Some(sid), Some(qid)) = (self_id, qq_id)
+                    && sid == qid
+                {
+                    continue;
                 }
                 if let Some(qid) = qq_id {
                     let name = data.and_then(|d| d.get("name")).and_then(|v| v.as_str());
@@ -245,37 +248,33 @@ pub fn split_long_message(text: &str) -> Vec<String> {
 }
 
 fn find_split_point(text: &str, max_len: usize) -> usize {
-    let mut end = max_len;
-    while end > 0 && !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    let search_range = &text[..end];
+    let search_range = crate::util::take_bytes_at_char_boundary(text, max_len);
 
     // Try paragraph boundary
-    if let Some(pos) = search_range.rfind("\n\n") {
-        if pos > max_len / 4 {
-            return pos + 1;
-        }
+    if let Some(pos) = search_range.rfind("\n\n")
+        && pos > max_len / 4
+    {
+        return pos + 1;
     }
 
     // Try line boundary
-    if let Some(pos) = search_range.rfind('\n') {
-        if pos > max_len / 4 {
-            return pos + 1;
-        }
+    if let Some(pos) = search_range.rfind('\n')
+        && pos > max_len / 4
+    {
+        return pos + 1;
     }
 
     // Try sentence boundary (Chinese and English)
     for sep in &["。", ".", "！", "!", "？", "?", "；", ";"] {
-        if let Some(pos) = search_range.rfind(sep) {
-            if pos > max_len / 4 {
-                return pos + sep.len();
-            }
+        if let Some(pos) = search_range.rfind(sep)
+            && pos > max_len / 4
+        {
+            return pos + sep.len();
         }
     }
 
     // Last resort: split at char boundary near max_len
-    end
+    search_range.len()
 }
 
 /// `ask_user`'s arguments, as a question rather than as a permission request.
@@ -299,7 +298,9 @@ pub fn ask_user_prompt(arguments: &str) -> String {
     let mut out = String::from("❓ 助手有个问题:\n");
     let mut asked = 0;
     for q in &questions {
-        let Some(text) = q.get("question").and_then(|t| t.as_str()) else { continue };
+        let Some(text) = q.get("question").and_then(|t| t.as_str()) else {
+            continue;
+        };
         asked += 1;
         out.push_str(&format!("\n{text}\n"));
         for (i, opt) in q
@@ -310,17 +311,20 @@ pub fn ask_user_prompt(arguments: &str) -> String {
             .iter()
             .enumerate()
         {
-            let Some(label) = opt.get("label").and_then(|l| l.as_str()) else { continue };
+            let Some(label) = opt.get("label").and_then(|l| l.as_str()) else {
+                continue;
+            };
             match opt.get("description").and_then(|d| d.as_str()) {
-                Some(desc) if !desc.is_empty() => {
-                    out.push_str(&format!("  {}. {label} — {desc}\n", i + 1))
-                }
+                Some(desc) if !desc.is_empty() => out.push_str(&format!("  {}. {label} — {desc}\n", i + 1)),
                 _ => out.push_str(&format!("  {}. {label}\n", i + 1)),
             }
         }
     }
     if asked == 0 {
-        out.push_str(&format!("\n{}\n", crate::util::take_bytes_at_char_boundary(arguments, 500)));
+        out.push_str(&format!(
+            "\n{}\n",
+            crate::util::take_bytes_at_char_boundary(arguments, 500)
+        ));
     }
     out.push_str(FOOTER);
     out

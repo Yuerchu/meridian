@@ -25,7 +25,9 @@ export function useShikiLanguage(label: string | null | undefined): { language: 
     void ensureLanguage(language).then(() => {
       if (alive) setReady(isReady(language))
     })
-    return () => { alive = false }
+    return () => {
+      alive = false
+    }
   }, [language])
 
   return { language, ready: ready && language !== PLAIN }

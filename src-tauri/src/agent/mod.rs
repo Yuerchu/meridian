@@ -4,45 +4,57 @@ mod context;
 pub(crate) mod diagnostics;
 pub(crate) mod engine;
 mod file_access;
-pub(crate) mod interrupted;
 mod inline_tag;
+pub(crate) mod interrupted;
 mod loop_guard;
 pub(crate) mod manual;
+pub(crate) mod memory_context;
+pub(crate) mod modes;
 pub(crate) mod pricing;
 mod project_instructions;
 mod provider_config;
 pub(crate) mod skills;
+mod stream;
 pub(crate) mod sub_agents;
-pub(crate) mod memory_context;
-pub(crate) mod modes;
+pub(crate) mod tokenizer;
+mod tool_calls;
 pub(crate) mod tool_defs;
+mod truncate;
 pub(crate) mod turn_config;
 pub(crate) mod turn_record;
-mod stream;
-mod tool_calls;
-pub(crate) mod tokenizer;
-mod truncate;
 
 /// Skills the app ships and rewrites on every launch. They are uneditable and
 /// undeletable through the UI, so the check has to be a set rather than a
 /// comparison against one name.
-pub(crate) const BUILTIN_SKILL_DIRS: &[&str] =
-    &[manual::MANUAL_DIR, diagnostics::DIAGNOSTICS_DIR];
+pub(crate) const BUILTIN_SKILL_DIRS: &[&str] = &[manual::MANUAL_DIR, diagnostics::DIAGNOSTICS_DIR];
 
 pub(crate) fn is_builtin_skill_dir(dir_name: &str) -> bool {
     BUILTIN_SKILL_DIRS.contains(&dir_name)
 }
 
 pub(crate) use base_prompt::base_prompt;
-pub(crate) use compact::{do_compact, mid_turn_compact, CompactCircuitBreaker, CompactError, COMPACT_PROMPT};
-pub(crate) use context::{build_messages, build_messages_with_senders, estimate_tokens, microcompact, resolve_file_uris_in_messages, trim_to_context_limit, SenderNames};
-pub(crate) use memory_context::{memory_budget, persist_injection, plan_injection, plan_injection_async, roster_block, trailing_with_memory, MemoryRequest, MemorySubjectRef};
+pub(crate) use compact::{CompactCircuitBreaker, do_compact, mid_turn_compact};
+#[cfg(test)]
+pub(crate) use context::build_messages;
+pub(crate) use context::{
+    SenderNames, build_messages_with_senders, microcompact, resolve_file_uris_in_messages, trim_to_context_limit,
+};
 pub(crate) use file_access::{build_file_access, file_access_prompt};
 pub(crate) use inline_tag::{InlineHiddenTagParser, InlineTagSpec};
-pub(crate) use loop_guard::{loop_abort_message, loop_warning_message, LoopVerdict, ToolLoopGuard};
+pub(crate) use loop_guard::{LoopVerdict, ToolLoopGuard, loop_abort_message, loop_warning_message};
+pub(crate) use memory_context::{
+    MemoryRequest, MemorySubjectRef, memory_budget, persist_injection, plan_injection, plan_injection_async,
+    roster_block, trailing_with_memory,
+};
 pub(crate) use project_instructions::{instruction_budget, load_project_instructions};
-pub(crate) use provider_config::{build_tool_secrets, get_provider_api_key, provider_secret_name, resolve_provider_config, resolve_turn_params, resolve_with_overrides, without_thinking, ResolvedProvider, TurnParams, TurnParamsInput};
-pub(crate) use stream::{is_context_window_error, is_retryable_stream_error, parse_retry_after, StreamResult, MAX_STREAM_RETRIES, STREAM_RETRY_BASE};
-pub(crate) use tool_calls::{extract_tool_calls_from_blocks, parse_openai_tool_calls, serialize_tool_calls_openai};
+pub(crate) use provider_config::{
+    ResolvedProvider, TurnParams, TurnParamsInput, build_tool_secrets, get_provider_api_key, provider_secret_name,
+    resolve_provider_config, resolve_turn_params, resolve_with_overrides, without_thinking,
+};
+pub(crate) use stream::{
+    MAX_STREAM_RETRIES, STREAM_RETRY_BASE, StreamResult, is_context_window_error, is_retryable_stream_error,
+    parse_retry_after,
+};
 pub(crate) use tokenizer::TokenBudget;
-pub(crate) use truncate::{formatted_truncate_text, TOOL_OUTPUT_TRUNCATION};
+pub(crate) use tool_calls::{extract_tool_calls_from_blocks, serialize_tool_calls_openai};
+pub(crate) use truncate::{TOOL_OUTPUT_TRUNCATION, formatted_truncate_text};

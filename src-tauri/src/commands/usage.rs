@@ -1,7 +1,7 @@
 use tauri::Manager;
 
-use crate::db::ops::usage::{report, UsageBucket, UsageDimension, UsageFilter};
 use crate::AppDb;
+use crate::db::ops::usage::{UsageBucket, UsageDimension, UsageFilter, report};
 
 /// What was spent, grouped by one thing.
 ///

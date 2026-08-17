@@ -69,10 +69,14 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled }: Options) 
   const [peak, setPeak] = useState(0)
 
   const stateRef = useRef(state)
-  useEffect(() => { stateRef.current = state }, [state])
+  useEffect(() => {
+    stateRef.current = state
+  }, [state])
 
   const enabledRef = useRef(enabled)
-  useEffect(() => { enabledRef.current = enabled }, [enabled])
+  useEffect(() => {
+    enabledRef.current = enabled
+  }, [enabled])
 
   const handleRef = useRef<CaptureHandle | null>(null)
   /**
@@ -151,10 +155,7 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled }: Options) 
     }
 
     try {
-      const result = await api.voiceTranscribePcm(
-        captured.sampleRate,
-        encodePcm16Base64(captured.samples),
-      )
+      const result = await api.voiceTranscribePcm(captured.sampleRate, encodePcm16Base64(captured.samples))
       if (result.status === 'ok') onSend(result.text)
       else onNotice(result.status)
     } catch (e) {
@@ -164,86 +165,96 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled }: Options) 
     setElapsed(0)
   }, [onNotice, onSend, release])
 
-  const beginPress = useCallback((clientY: number) => {
-    if (stateRef.current !== 'idle' || pressActiveRef.current) return
-    pressActiveRef.current = true
-    committedRef.current = false
-    cancelledRef.current = false
-    pressedAtRef.current = Date.now()
-    startYRef.current = clientY
+  const beginPress = useCallback(
+    (clientY: number) => {
+      if (stateRef.current !== 'idle' || pressActiveRef.current) return
+      pressActiveRef.current = true
+      committedRef.current = false
+      cancelledRef.current = false
+      pressedAtRef.current = Date.now()
+      startYRef.current = clientY
 
-    // Deliberately no `setState` here. The overlay is drawn for every state but
-    // `idle`, so announcing the press on the way down put "Preparing…" over
-    // half the screen for every tap on the composer — including the taps that
-    // were only ever going to be someone reaching for the keyboard. Nothing is
-    // said until the press has lasted long enough to be a hold.
-    //
-    // Both slow things still start now: the device, and the 149MB encoder
-    // behind the first transcription. Talking covers them.
-    api.voicePrewarm().catch(() => {})
-    const opening = openCapture({ onPeak: (p) => { peakRef.current = p } })
-    opening.then(
-      (handle) => {
-        // The press may already be over, or cancelled, by the time this lands.
-        if (cancelledRef.current || !pressActiveRef.current) {
-          handle.cancel()
-          return
-        }
-        handleRef.current = handle
-        // Only now does audio start being kept: whatever the device produced
-        // while it was warming up belongs to nobody. If the hold threshold has
-        // already passed, the recording has been waiting for this.
-        if (stateRef.current === 'starting') {
+      // Deliberately no `setState` here. The overlay is drawn for every state but
+      // `idle`, so announcing the press on the way down put "Preparing…" over
+      // half the screen for every tap on the composer — including the taps that
+      // were only ever going to be someone reaching for the keyboard. Nothing is
+      // said until the press has lasted long enough to be a hold.
+      //
+      // Both slow things still start now: the device, and the 149MB encoder
+      // behind the first transcription. Talking covers them.
+      api.voicePrewarm().catch(() => {})
+      const opening = openCapture({
+        onPeak: (p) => {
+          peakRef.current = p
+        },
+      })
+      opening.then(
+        (handle) => {
+          // The press may already be over, or cancelled, by the time this lands.
+          if (cancelledRef.current || !pressActiveRef.current) {
+            handle.cancel()
+            return
+          }
+          handleRef.current = handle
+          // Only now does audio start being kept: whatever the device produced
+          // while it was warming up belongs to nobody. If the hold threshold has
+          // already passed, the recording has been waiting for this.
+          if (stateRef.current === 'starting') {
+            setState('recording-hold')
+            captureAtRef.current = Date.now()
+            handle.beginCollecting()
+          }
+        },
+        (err) => {
+          if (cancelledRef.current) return
+          release()
+          onNotice('error', String(err))
+        },
+      )
+
+      holdTimerRef.current = setTimeout(() => {
+        holdTimerRef.current = null
+        // `pressActiveRef` and not the state: a release that beat the state into
+        // place must not be promoted into a recording behind the user's back.
+        if (cancelledRef.current || !pressActiveRef.current) return
+        committedRef.current = true
+        navigator.vibrate?.(15)
+        // The device usually wins this race, but not always — it has taken 2.6s
+        // on the same phone that managed 141ms a minute earlier. `starting` is
+        // what the overlay says while the two are out of step.
+        if (handleRef.current) {
           setState('recording-hold')
           captureAtRef.current = Date.now()
-          handle.beginCollecting()
+          handleRef.current.beginCollecting()
+        } else {
+          setState('starting')
         }
-      },
-      (err) => {
-        if (cancelledRef.current) return
-        release()
-        onNotice('error', String(err))
-      },
-    )
+      }, HOLD_THRESHOLD_MS)
+    },
+    [onNotice, release],
+  )
 
-    holdTimerRef.current = setTimeout(() => {
-      holdTimerRef.current = null
-      // `pressActiveRef` and not the state: a release that beat the state into
-      // place must not be promoted into a recording behind the user's back.
-      if (cancelledRef.current || !pressActiveRef.current) return
-      committedRef.current = true
-      navigator.vibrate?.(15)
-      // The device usually wins this race, but not always — it has taken 2.6s
-      // on the same phone that managed 141ms a minute earlier. `starting` is
-      // what the overlay says while the two are out of step.
-      if (handleRef.current) {
-        setState('recording-hold')
-        captureAtRef.current = Date.now()
-        handleRef.current.beginCollecting()
-      } else {
-        setState('starting')
+  const movePress = useCallback(
+    (clientY: number) => {
+      if (!pressActiveRef.current) return
+      const slid = startYRef.current - clientY
+      // Before the hold commits, travel means the finger was on its way somewhere
+      // else. Give the gesture back rather than turning a scroll into a recording.
+      if (!committedRef.current) {
+        if (Math.abs(slid) > SCROLL_SLOP_PX) cancel()
+        return
       }
-    }, HOLD_THRESHOLD_MS)
-  }, [onNotice, release])
-
-  const movePress = useCallback((clientY: number) => {
-    if (!pressActiveRef.current) return
-    const slid = startYRef.current - clientY
-    // Before the hold commits, travel means the finger was on its way somewhere
-    // else. Give the gesture back rather than turning a scroll into a recording.
-    if (!committedRef.current) {
-      if (Math.abs(slid) > SCROLL_SLOP_PX) cancel()
-      return
-    }
-    const s = stateRef.current
-    if (s !== 'recording-hold' && s !== 'cancelling') return
-    if (slid > CANCEL_SLIDE_PX && s !== 'cancelling') {
-      setState('cancelling')
-      navigator.vibrate?.(10)
-    } else if (slid <= CANCEL_SLIDE_PX && s === 'cancelling') {
-      setState('recording-hold')
-    }
-  }, [cancel])
+      const s = stateRef.current
+      if (s !== 'recording-hold' && s !== 'cancelling') return
+      if (slid > CANCEL_SLIDE_PX && s !== 'cancelling') {
+        setState('cancelling')
+        navigator.vibrate?.(10)
+      } else if (slid <= CANCEL_SLIDE_PX && s === 'cancelling') {
+        setState('recording-hold')
+      }
+    },
+    [cancel],
+  )
 
   const endPress = useCallback(() => {
     if (!pressActiveRef.current) return
@@ -278,56 +289,66 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled }: Options) 
    * `null`; the previous binding is always torn down first.
    */
   const detachRef = useRef<(() => void) | null>(null)
-  const attachField = useCallback((el: HTMLTextAreaElement | null) => {
-    detachRef.current?.()
-    detachRef.current = null
-    if (!el) return
+  const attachField = useCallback(
+    (el: HTMLTextAreaElement | null) => {
+      detachRef.current?.()
+      detachRef.current = null
+      if (!el) return
 
-    const onTouchStart = (e: TouchEvent) => {
-      // One finger only: a second is a pinch, or a mis-grip.
-      if (!enabledRef.current || e.touches.length !== 1) return
-      beginPress(e.touches[0].clientY)
-      // Not prevented. The tap this may become is how the keyboard opens, and
-      // it is only worth taking away once the press has proved to be a hold.
-    }
-    const onTouchMove = (e: TouchEvent) => {
-      if (!pressActiveRef.current) return
-      movePress(e.touches[0]?.clientY ?? 0)
-      // Committed means the finger belongs to the recording: the slide up to
-      // cancel must not also scroll the transcript.
-      if (committedRef.current && e.cancelable) e.preventDefault()
-    }
-    const onTouchEnd = (e: TouchEvent) => {
-      const held = committedRef.current
-      endPress()
-      // Cancelling the touch is what stops it becoming a tap — no focus change,
-      // no keyboard, no text-selection handles. Only for a press that actually
-      // recorded something; anything shorter is left to the platform.
-      if (held && e.cancelable) e.preventDefault()
-    }
-    const onTouchCancel = () => cancel()
-    // The native long-press menu would arrive at ~500ms, after the hold has
-    // already committed at 300. Suppressed only while a press is live, so a
-    // field with text in it keeps the system paste bar — on a phone that is the
-    // only way to reach the clipboard.
-    const onContextMenu = (e: Event) => { if (pressActiveRef.current) e.preventDefault() }
+      const onTouchStart = (e: TouchEvent) => {
+        // One finger only: a second is a pinch, or a mis-grip.
+        if (!enabledRef.current || e.touches.length !== 1) return
+        beginPress(e.touches[0].clientY)
+        // Not prevented. The tap this may become is how the keyboard opens, and
+        // it is only worth taking away once the press has proved to be a hold.
+      }
+      const onTouchMove = (e: TouchEvent) => {
+        if (!pressActiveRef.current) return
+        movePress(e.touches[0]?.clientY ?? 0)
+        // Committed means the finger belongs to the recording: the slide up to
+        // cancel must not also scroll the transcript.
+        if (committedRef.current && e.cancelable) e.preventDefault()
+      }
+      const onTouchEnd = (e: TouchEvent) => {
+        const held = committedRef.current
+        endPress()
+        // Cancelling the touch is what stops it becoming a tap — no focus change,
+        // no keyboard, no text-selection handles. Only for a press that actually
+        // recorded something; anything shorter is left to the platform.
+        if (held && e.cancelable) e.preventDefault()
+      }
+      const onTouchCancel = () => cancel()
+      // The native long-press menu would arrive at ~500ms, after the hold has
+      // already committed at 300. Suppressed only while a press is live, so a
+      // field with text in it keeps the system paste bar — on a phone that is the
+      // only way to reach the clipboard.
+      const onContextMenu = (e: Event) => {
+        if (pressActiveRef.current) e.preventDefault()
+      }
 
-    el.addEventListener('touchstart', onTouchStart, { passive: false })
-    el.addEventListener('touchmove', onTouchMove, { passive: false })
-    el.addEventListener('touchend', onTouchEnd, { passive: false })
-    el.addEventListener('touchcancel', onTouchCancel)
-    el.addEventListener('contextmenu', onContextMenu)
+      el.addEventListener('touchstart', onTouchStart, { passive: false })
+      el.addEventListener('touchmove', onTouchMove, { passive: false })
+      el.addEventListener('touchend', onTouchEnd, { passive: false })
+      el.addEventListener('touchcancel', onTouchCancel)
+      el.addEventListener('contextmenu', onContextMenu)
 
-    detachRef.current = () => {
-      el.removeEventListener('touchstart', onTouchStart)
-      el.removeEventListener('touchmove', onTouchMove)
-      el.removeEventListener('touchend', onTouchEnd)
-      el.removeEventListener('touchcancel', onTouchCancel)
-      el.removeEventListener('contextmenu', onContextMenu)
-    }
-  }, [beginPress, cancel, endPress, movePress])
+      detachRef.current = () => {
+        el.removeEventListener('touchstart', onTouchStart)
+        el.removeEventListener('touchmove', onTouchMove)
+        el.removeEventListener('touchend', onTouchEnd)
+        el.removeEventListener('touchcancel', onTouchCancel)
+        el.removeEventListener('contextmenu', onContextMenu)
+      }
+    },
+    [beginPress, cancel, endPress, movePress],
+  )
 
-  useEffect(() => () => { detachRef.current?.() }, [])
+  useEffect(
+    () => () => {
+      detachRef.current?.()
+    },
+    [],
+  )
 
   // The ticker drives the clock, the level meter and the hard cap.
   //
@@ -337,12 +358,16 @@ export function useAndroidVoiceRecorder({ onSend, onNotice, enabled }: Options) 
   // rebuilds the interval faster than it can fire. That is why the clock read
   // 0:00 for the whole recording.
   const liveRef = useRef({ finish, cancel })
-  useEffect(() => { liveRef.current = { finish, cancel } }, [finish, cancel])
+  useEffect(() => {
+    liveRef.current = { finish, cancel }
+  }, [finish, cancel])
 
   const capturing = state === 'recording-hold' || state === 'cancelling'
   useEffect(() => {
     if (!capturing) return
-    const onHidden = () => { if (document.hidden) liveRef.current.cancel() }
+    const onHidden = () => {
+      if (document.hidden) liveRef.current.cancel()
+    }
     document.addEventListener('visibilitychange', onHidden)
     const timer = setInterval(() => {
       setPeak(peakRef.current)

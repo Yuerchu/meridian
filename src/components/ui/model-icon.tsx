@@ -9,9 +9,7 @@ import { lazy, Suspense } from 'react'
  * paint — the chunk is on local disk and lands within a frame or two, against a
  * placeholder of the right size so nothing shifts when it does.
  */
-const LazyModelIcon = lazy(() =>
-  import('@lobehub/icons').then((m) => ({ default: m.ModelIcon })),
-)
+const LazyModelIcon = lazy(() => import('@lobehub/icons').then((m) => ({ default: m.ModelIcon })))
 
 export interface ModelIconProps {
   model?: string

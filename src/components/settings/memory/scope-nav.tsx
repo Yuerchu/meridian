@@ -4,20 +4,13 @@ import { Pin, PersonXmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { Button, Card } from '@heroui/react'
 import { useConfirm } from '@/hooks/use-confirm'
+import { useRelativeTime } from '@/hooks/use-relative-time'
 import { cn } from '@/lib/utils'
 import type { MemorySubject, Project } from '@/types'
 import type { ScopeFilter } from './use-memory-browser'
 
 /** How many projects or people a branch shows before offering the rest. */
 const COLLAPSED_BRANCH = 8
-
-function relativeTime(ms: number): string {
-  const delta = Date.now() - ms
-  const hours = Math.floor(delta / 3_600_000)
-  if (hours < 1) return 'just now'
-  if (hours < 24) return `${hours}h ago`
-  return `${Math.floor(hours / 24)}d ago`
-}
 
 interface ScopeNavProps {
   filter: ScopeFilter
@@ -33,22 +26,15 @@ interface ScopeNavProps {
  * selection a single value instead of a set of expanded nodes crossed with a
  * set of checked ones.
  */
-export function ScopeNav({
-  filter,
-  onFilterChange,
-  counts,
-  projects,
-  subjects,
-  onChanged,
-}: ScopeNavProps) {
+export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, onChanged }: ScopeNavProps) {
   const { t } = useTranslation()
   const { confirm, confirmDialog } = useConfirm()
+  const relativeTime = useRelativeTime()
 
   const [allProjects, setAllProjects] = useState(false)
   const [allSubjects, setAllSubjects] = useState(false)
 
-  const selectedPerson =
-    filter.kind === 'person' ? subjects.find((s) => s.scope_id === filter.scopeId) : undefined
+  const selectedPerson = filter.kind === 'person' ? subjects.find((s) => s.scope_id === filter.scopeId) : undefined
 
   const visibleProjects = allProjects ? projects : projects.slice(0, COLLAPSED_BRANCH)
   const visibleSubjects = allSubjects ? subjects : subjects.slice(0, COLLAPSED_BRANCH)
@@ -60,7 +46,14 @@ export function ScopeNav({
    * `aria-pressed` carries the selection. The variant swap says which row is
    * current to anyone looking at it, and said it to nobody else.
    */
-  const row = ({ id, active, label, count = null, onClick, indent = false }: {
+  const row = ({
+    id,
+    active,
+    label,
+    count = null,
+    onClick,
+    indent = false,
+  }: {
     id: string
     active: boolean
     label: string
@@ -93,9 +86,7 @@ export function ScopeNav({
       onClick={onToggle}
       data-slot={slot}
     >
-      {expanded
-        ? t('settings.memory.nav.showLess')
-        : t('settings.memory.nav.showAll', { count: total })}
+      {expanded ? t('settings.memory.nav.showLess') : t('settings.memory.nav.showAll', { count: total })}
     </Button>
   )
 
@@ -104,9 +95,7 @@ export function ScopeNav({
     // 14rem, this left 88px for the memories on a 360px screen — the scope
     // picker was taking the whole screen and calling it a sidebar.
     <div data-slot="memory-scope-nav" className="flex w-full shrink-0 flex-col gap-0.5 md:w-56">
-      <div className="px-2 pb-1 text-xs font-medium text-muted">
-        {t('settings.memory.nav.scope')}
-      </div>
+      <div className="px-2 pb-1 text-xs font-medium text-muted">{t('settings.memory.nav.scope')}</div>
 
       {row({
         id: 'all',
@@ -146,9 +135,7 @@ export function ScopeNav({
         }),
       )}
       {projects.length > COLLAPSED_BRANCH &&
-        moreRow('memory-scope-more-projects', allProjects, projects.length, () =>
-          setAllProjects((v) => !v),
-        )}
+        moreRow('memory-scope-more-projects', allProjects, projects.length, () => setAllProjects((v) => !v))}
       {row({
         id: 'people',
         active: filter.kind === 'people',
@@ -166,9 +153,7 @@ export function ScopeNav({
         }),
       )}
       {subjects.length > COLLAPSED_BRANCH &&
-        moreRow('memory-scope-more-people', allSubjects, subjects.length, () =>
-          setAllSubjects((v) => !v),
-        )}
+        moreRow('memory-scope-more-people', allSubjects, subjects.length, () => setAllSubjects((v) => !v))}
 
       {selectedPerson && (
         <Card data-slot="memory-person-card" className="mt-3">
@@ -188,19 +173,13 @@ export function ScopeNav({
             variant="ghost"
             className="w-full justify-start font-normal"
             onClick={async () => {
-              await api.setMemorySubjectFlags(
-                selectedPerson.scope_id,
-                selectedPerson.is_pinned === 0,
-                undefined,
-              )
+              await api.setMemorySubjectFlags(selectedPerson.scope_id, selectedPerson.is_pinned === 0, undefined)
               onChanged()
             }}
             data-slot="memory-pin-toggle"
           >
             <Pin className={selectedPerson.is_pinned !== 0 ? 'text-foreground' : 'text-muted'} />
-            {selectedPerson.is_pinned !== 0
-              ? t('settings.memory.unpin')
-              : t('settings.memory.pin')}
+            {selectedPerson.is_pinned !== 0 ? t('settings.memory.unpin') : t('settings.memory.pin')}
           </Button>
 
           <Button

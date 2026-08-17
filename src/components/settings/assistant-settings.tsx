@@ -1,14 +1,34 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, StarFill, SquareDashedText } from '@gravity-ui/icons'
-import { Button, Checkbox, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField, Tooltip } from '@heroui/react'
+import {
+  Button,
+  Checkbox,
+  Disclosure,
+  DisclosureGroup,
+  Input,
+  Label,
+  TextArea,
+  TextField,
+  Tooltip,
+} from '@heroui/react'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SavedHint, SettingsHeader, SettingsPane, SettingsSelect, SettingsSkeleton } from './primitives'
 import { ProviderModelPicker } from './provider-model-picker'
 import { SubAgentSettings } from './sub-agent-settings'
-import type { Assistant, EmojiPack, Provider, ModelInfo, PromptTemplate, Skill, TemplateVariable, ToolInfo, ToolPreset } from '@/types'
+import type {
+  Assistant,
+  EmojiPack,
+  Provider,
+  ModelInfo,
+  PromptTemplate,
+  Skill,
+  TemplateVariable,
+  ToolInfo,
+  ToolPreset,
+} from '@/types'
 import { SettingsDrilldown } from './settings-drilldown'
 
 function AssistantEditor({
@@ -50,14 +70,21 @@ function AssistantEditor({
   )
   const [selectedTools, setSelectedTools] = useState<Set<string>>(() => {
     if (assistant.enabled_tools) {
-      try { return new Set(JSON.parse(assistant.enabled_tools) as string[]) } catch { /* ignore */ }
+      try {
+        return new Set(JSON.parse(assistant.enabled_tools) as string[])
+      } catch {
+        /* ignore */
+      }
     }
     return new Set<string>()
   })
 
   useEffect(() => {
     if (providerId) {
-      api.fetchProviderModels(providerId).then(setModels).catch(() => setModels([]))
+      api
+        .fetchProviderModels(providerId)
+        .then(setModels)
+        .catch(() => setModels([]))
     } else {
       setModels([])
     }
@@ -69,22 +96,14 @@ function AssistantEditor({
     api.listTemplateVariables().then(setTemplateVars)
     api.listEmojiPacks().then(setAllPacks)
     api.listToolPresets().then(setToolPresets)
-    api.listAssistantEmojiPacks(assistant.id).then((packs) =>
-      setAssignedPackIds(new Set(packs.map((p) => p.id))),
-    )
+    api.listAssistantEmojiPacks(assistant.id).then((packs) => setAssignedPackIds(new Set(packs.map((p) => p.id))))
     api.listSkills().then(setAllSkills)
-    api.listSkillBindings('assistant', assistant.id).then((dirs) =>
-      setBoundSkillDirs(new Set(dirs)),
-    )
+    api.listSkillBindings('assistant', assistant.id).then((dirs) => setBoundSkillDirs(new Set(dirs)))
   }, [assistant.id])
 
   async function handleSave() {
-    const enabledTools = toolMode === 'custom'
-      ? JSON.stringify([...selectedTools])
-      : null
-    const toolPresetId = toolMode === 'preset' && selectedPresetId
-      ? selectedPresetId
-      : null
+    const enabledTools = toolMode === 'custom' ? JSON.stringify([...selectedTools]) : null
+    const toolPresetId = toolMode === 'preset' && selectedPresetId ? selectedPresetId : null
     await onSave(assistant.id, {
       name,
       systemPrompt,
@@ -118,11 +137,7 @@ function AssistantEditor({
       <TextField fullWidth>
         <div className="flex items-center justify-between">
           <Label>{t('settings.assistant.systemPrompt')}</Label>
-          <Button
-            variant="ghost"
-            className="text-xs gap-1"
-            onClick={() => setShowTemplates(!showTemplates)}
-          >
+          <Button variant="ghost" className="text-xs gap-1" onClick={() => setShowTemplates(!showTemplates)}>
             <SquareDashedText className="w-3.5 h-3.5" />
             {t('settings.assistant.browseTemplates')}
           </Button>
@@ -137,12 +152,13 @@ function AssistantEditor({
                 key={tpl.id}
                 variant="ghost"
                 className="w-full justify-start h-auto px-2 py-1.5 text-xs"
-                onClick={() => { setSystemPrompt(tpl.template_text); setShowTemplates(false) }}
+                onClick={() => {
+                  setSystemPrompt(tpl.template_text)
+                  setShowTemplates(false)
+                }}
               >
                 <span className="font-medium">{tpl.name}</span>
-                {tpl.description && (
-                  <span className="text-muted ml-2">{tpl.description}</span>
-                )}
+                {tpl.description && <span className="text-muted ml-2">{tpl.description}</span>}
               </Button>
             ))}
           </div>
@@ -176,7 +192,10 @@ function AssistantEditor({
         models={models}
         providerId={providerId}
         modelId={modelId}
-        onChange={(provider, model) => { setProviderId(provider); setModelId(model) }}
+        onChange={(provider, model) => {
+          setProviderId(provider)
+          setModelId(model)
+        }}
         emptyProviderLabel={t('settings.assistant.providerDefault')}
       />
 
@@ -224,7 +243,8 @@ function AssistantEditor({
         </div>
         {thinkingEnabled && (
           <div className="space-y-1 mt-2">
-            <Input fullWidth
+            <Input
+              fullWidth
               type="number"
               value={thinkingBudget}
               onChange={(e) => setThinkingBudget(e.target.value)}
@@ -238,26 +258,25 @@ function AssistantEditor({
       <SettingsDrilldown
         title={t('settings.assistant.tools')}
         summary={
-          toolMode === 'all' ? t('settings.assistant.toolsAll')
-            : toolMode === 'preset' ? t('settings.tools.preset')
+          toolMode === 'all'
+            ? t('settings.assistant.toolsAll')
+            : toolMode === 'preset'
+              ? t('settings.tools.preset')
               : t('settings.assistant.toolsCustom')
         }
       >
         <div className="flex gap-2 mb-2">
-          <Button
-            variant={toolMode === 'all' ? 'primary' : 'outline'}
-            onClick={() => setToolMode('all')}
-          >{t('settings.assistant.toolsAll')}</Button>
+          <Button variant={toolMode === 'all' ? 'primary' : 'outline'} onClick={() => setToolMode('all')}>
+            {t('settings.assistant.toolsAll')}
+          </Button>
           {toolPresets.length > 0 && (
-            <Button
-              variant={toolMode === 'preset' ? 'primary' : 'outline'}
-              onClick={() => setToolMode('preset')}
-            >{t('settings.tools.preset')}</Button>
+            <Button variant={toolMode === 'preset' ? 'primary' : 'outline'} onClick={() => setToolMode('preset')}>
+              {t('settings.tools.preset')}
+            </Button>
           )}
-          <Button
-            variant={toolMode === 'custom' ? 'primary' : 'outline'}
-            onClick={() => setToolMode('custom')}
-          >{t('settings.assistant.toolsCustom')}</Button>
+          <Button variant={toolMode === 'custom' ? 'primary' : 'outline'} onClick={() => setToolMode('custom')}>
+            {t('settings.assistant.toolsCustom')}
+          </Button>
         </div>
         {toolMode === 'preset' && (
           <SettingsSelect
@@ -272,48 +291,45 @@ function AssistantEditor({
           <div
             data-slot="tool-list"
             className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
-          >{/* `role="group"` with a name, rather than `CheckboxGroup`: the
+          >
+            {/* `role="group"` with a name, rather than `CheckboxGroup`: the
                 boxes below commit one at a time and two of the three sibling
                 grids write straight through to the backend on each toggle. A
                 group-level value would mean diffing an array back into "which
                 one changed", which is a lot of new failure for a label. */}
-          <div
-            role="group"
-            aria-label={t('settings.assistant.tools')}
-            className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2"
-          >
-            {allTools.map((tool) => (
-              <Checkbox
-                key={tool.name}
-                className="py-0.5 text-xs"
-                isSelected={selectedTools.has(tool.name)}
-                onChange={(selected) => {
-                  const next = new Set(selectedTools)
-                  if (selected) next.add(tool.name)
-                  else next.delete(tool.name)
-                  setSelectedTools(next)
-                }}
-              >
-                <Checkbox.Content>
-                  <Checkbox.Control>
-                    <Checkbox.Indicator />
-                  </Checkbox.Control>
-                  <span className="truncate font-mono">{tool.name}</span>
-                  {tool.source === 'mcp' && (
-                    <span className="text-xs text-muted">MCP</span>
-                  )}
-                </Checkbox.Content>
-              </Checkbox>
-            ))}
-          </div></div>
+            <div
+              role="group"
+              aria-label={t('settings.assistant.tools')}
+              className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2"
+            >
+              {allTools.map((tool) => (
+                <Checkbox
+                  key={tool.name}
+                  className="py-0.5 text-xs"
+                  isSelected={selectedTools.has(tool.name)}
+                  onChange={(selected) => {
+                    const next = new Set(selectedTools)
+                    if (selected) next.add(tool.name)
+                    else next.delete(tool.name)
+                    setSelectedTools(next)
+                  }}
+                >
+                  <Checkbox.Content>
+                    <Checkbox.Control>
+                      <Checkbox.Indicator />
+                    </Checkbox.Control>
+                    <span className="truncate font-mono">{tool.name}</span>
+                    {tool.source === 'mcp' && <span className="text-xs text-muted">MCP</span>}
+                  </Checkbox.Content>
+                </Checkbox>
+              ))}
+            </div>
+          </div>
         )}
       </SettingsDrilldown>
 
       {allPacks.length > 0 && (
-        <SettingsDrilldown
-          title={t('settings.assistant.emojiPacks')}
-          summary={assignedPackIds.size || undefined}
-        >
+        <SettingsDrilldown title={t('settings.assistant.emojiPacks')} summary={assignedPackIds.size || undefined}>
           <div
             role="group"
             aria-label={t('settings.assistant.emojiPacks')}
@@ -351,57 +367,58 @@ function AssistantEditor({
       )}
 
       {allSkills.length > 0 && (
-        <SettingsDrilldown
-          title={t('settings.skills.assistantSection')}
-          summary={boundSkillDirs.size || undefined}
-        >
+        <SettingsDrilldown title={t('settings.skills.assistantSection')} summary={boundSkillDirs.size || undefined}>
           <p className="text-xs text-muted">{t('settings.skills.assistantHint')}</p>
           <div
             data-slot="skill-list"
             className="max-h-40 overflow-y-auto overscroll-contain border border-border rounded-lg"
-          ><div
-            role="group"
-            aria-label={t('settings.skills.assistantSection')}
-            className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2"
           >
-            {allSkills.map((skill) => (
-              <Checkbox
-                key={skill.dir_name}
-                className="py-0.5 text-xs"
-                isSelected={boundSkillDirs.has(skill.dir_name)}
-                isDisabled={skill.is_enabled === 0}
-                onChange={async (selected) => {
-                  setSkillError(null)
-                  try {
-                    // The cap on bindings per anchor lives in the backend, so
-                    // take the returned set rather than guessing locally.
-                    const next = await api.setSkillBinding('assistant', assistant.id, skill.dir_name, selected)
-                    setBoundSkillDirs(new Set(next))
-                  } catch (e) {
-                    setSkillError(String(e))
-                  }
-                }}
-              >
-                <Checkbox.Content>
-                  <Checkbox.Control>
-                    <Checkbox.Indicator />
-                  </Checkbox.Control>
-                  <span className="truncate">{skill.display_name}</span>
-                </Checkbox.Content>
-              </Checkbox>
-            ))}
-          </div></div>
+            <div
+              role="group"
+              aria-label={t('settings.skills.assistantSection')}
+              className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2"
+            >
+              {allSkills.map((skill) => (
+                <Checkbox
+                  key={skill.dir_name}
+                  className="py-0.5 text-xs"
+                  isSelected={boundSkillDirs.has(skill.dir_name)}
+                  isDisabled={skill.is_enabled === 0}
+                  onChange={async (selected) => {
+                    setSkillError(null)
+                    try {
+                      // The cap on bindings per anchor lives in the backend, so
+                      // take the returned set rather than guessing locally.
+                      const next = await api.setSkillBinding('assistant', assistant.id, skill.dir_name, selected)
+                      setBoundSkillDirs(new Set(next))
+                    } catch (e) {
+                      setSkillError(String(e))
+                    }
+                  }}
+                >
+                  <Checkbox.Content>
+                    <Checkbox.Control>
+                      <Checkbox.Indicator />
+                    </Checkbox.Control>
+                    <span className="truncate">{skill.display_name}</span>
+                  </Checkbox.Content>
+                </Checkbox>
+              ))}
+            </div>
+          </div>
           {skillError && <p className="text-xs text-danger">{skillError}</p>}
         </SettingsDrilldown>
       )}
 
       <div className="flex items-center gap-2 pt-1">
         <Button onClick={handleSave}>{t('common.save')}</Button>
-        {saved && (
-          <SavedHint />
-        )}
+        {saved && <SavedHint />}
         {onDelete && (
-          <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={() => onDelete(assistant.id)}>
+          <Button
+            variant="ghost"
+            className="ml-auto text-danger hover:text-danger"
+            onClick={() => onDelete(assistant.id)}
+          >
             {t('common.delete')}
           </Button>
         )}
@@ -419,10 +436,7 @@ export function AssistantSettings() {
   const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
-    const [aList, pList] = await Promise.all([
-      api.listAssistants(),
-      api.listProviders(),
-    ])
+    const [aList, pList] = await Promise.all([api.listAssistants(), api.listProviders()])
     setAssistants(aList)
     setProviders(pList)
   }, [])
@@ -447,7 +461,7 @@ export function AssistantSettings() {
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (!await confirm({ body: t('settings.confirmDelete.assistant') })) return
+      if (!(await confirm({ body: t('settings.confirmDelete.assistant') }))) return
       await api.deleteAssistant(id)
       if (expandedId === id) setExpandedId(null)
       await refresh()
@@ -478,7 +492,7 @@ export function AssistantSettings() {
       <DisclosureGroup
         className="flex flex-col gap-1"
         expandedKeys={expandedId ? [expandedId] : []}
-        onExpandedChange={(keys) => setExpandedId((([...keys][0] as string | undefined) ?? null))}
+        onExpandedChange={(keys) => setExpandedId(([...keys][0] as string | undefined) ?? null)}
       >
         {assistants.map((a) => {
           const isExpanded = expandedId === a.id
@@ -499,12 +513,8 @@ export function AssistantSettings() {
                   <span className="flex-1 truncate">{a.name}</span>
                   {/* eslint-disable-next-line no-restricted-syntax -- gold-star semantics: default-assistant marker is intentionally amber (CLAUDE.md whitelist) */}
                   {isDefault && <StarFill className="w-3.5 h-3.5 text-amber-500" />}
-                  {providerName && (
-                    <span className="text-xs text-muted">{providerName}</span>
-                  )}
-                  {a.model_id && (
-                    <span className="text-xs text-muted">{a.model_id}</span>
-                  )}
+                  {providerName && <span className="text-xs text-muted">{providerName}</span>}
+                  {a.model_id && <span className="text-xs text-muted">{a.model_id}</span>}
                   <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
                 </Disclosure.Trigger>
               </Disclosure.Heading>

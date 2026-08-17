@@ -41,13 +41,10 @@ fn part_path(app_data_dir: &Path) -> PathBuf {
 
 /// Download and install the model. Emits `voice-model-download` progress and a
 /// final `voice-model-download-done`; the caller only spawns and forgets.
-pub async fn run(
-    app: tauri::AppHandle,
-    app_data_dir: PathBuf,
-    url: Option<String>,
-    cancel: CancellationToken,
-) {
-    let url = url.filter(|u| !u.trim().is_empty()).unwrap_or_else(|| DEFAULT_MODEL_URL.to_string());
+pub async fn run(app: tauri::AppHandle, app_data_dir: PathBuf, url: Option<String>, cancel: CancellationToken) {
+    let url = url
+        .filter(|u| !u.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_MODEL_URL.to_string());
     let result = tokio::select! {
         r = fetch_and_install(&app, &app_data_dir, &url) => r,
         _ = cancel.cancelled() => Err("cancelled".to_string()),
@@ -61,11 +58,7 @@ pub async fn run(
     let _ = app.emit("voice-model-download-done", payload);
 }
 
-async fn fetch_and_install(
-    app: &tauri::AppHandle,
-    app_data_dir: &Path,
-    url: &str,
-) -> Result<(), String> {
+async fn fetch_and_install(app: &tauri::AppHandle, app_data_dir: &Path, url: &str) -> Result<(), String> {
     let resp = http_client()?
         .get(url)
         .send()
@@ -110,8 +103,7 @@ async fn fetch_and_install(
 
     let data_dir = app_data_dir.to_path_buf();
     tokio::task::spawn_blocking(move || {
-        let file = std::fs::File::open(part_path(&data_dir))
-            .map_err(|e| format!("Cannot reopen download: {e}"))?;
+        let file = std::fs::File::open(part_path(&data_dir)).map_err(|e| format!("Cannot reopen download: {e}"))?;
         let decoder = bzip2::read::BzDecoder::new(file);
         let mut archive = tar::Archive::new(decoder);
         super::model::unpack_and_install(&mut archive, &data_dir)

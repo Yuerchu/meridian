@@ -10,5 +10,5 @@ mod transport;
 
 pub use error::TransportError;
 pub use request::{Request, RequestBody};
-pub use retry::{backoff, RetryPolicy};
+pub use retry::backoff;
 pub use transport::{HttpTransport, ReqwestTransport};

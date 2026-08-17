@@ -1,7 +1,6 @@
 import { matchesHotkey, parseHotkey } from './use-hotkey'
 
-const press = (init: Partial<KeyboardEventInit> & { key: string }) =>
-  new KeyboardEvent('keydown', init)
+const press = (init: Partial<KeyboardEventInit> & { key: string }) => new KeyboardEvent('keydown', init)
 
 describe('parseHotkey', () => {
   it('reads modifiers in any order and any spelling', () => {

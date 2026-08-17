@@ -2,10 +2,7 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FloatingToc } from '@heroui-pro/react/floating-toc'
 
-import {
-  useMessageScroller,
-  useMessageScrollerVisibility,
-} from '@/components/ui/message-scroller'
+import { useMessageScroller, useMessageScrollerVisibility } from '@/components/ui/message-scroller'
 import type { Turn } from '@/lib/turns'
 
 /**
@@ -25,7 +22,11 @@ const LABEL_CHARS = 60
  * truncated into a replacement glyph.
  */
 function label(content: string): string {
-  const line = content.split('\n').map((l) => l.trim()).find(Boolean) ?? ''
+  const line =
+    content
+      .split('\n')
+      .map((l) => l.trim())
+      .find(Boolean) ?? ''
   const chars = Array.from(line.replace(/\s+/g, ' '))
   return chars.length > LABEL_CHARS ? `${chars.slice(0, LABEL_CHARS).join('')}…` : chars.join('')
 }
@@ -58,12 +59,13 @@ export function TurnOutline({ turns }: { turns: Turn[] }) {
   const { scrollToMessage } = useMessageScroller()
 
   const entries = useMemo(
-    () => turns
-      .filter((turn) => turn.userMessage !== null)
-      .map((turn) => ({
-        id: turn.id,
-        text: label(turn.userMessage?.content ?? ''),
-      })),
+    () =>
+      turns
+        .filter((turn) => turn.userMessage !== null)
+        .map((turn) => ({
+          id: turn.id,
+          text: label(turn.userMessage?.content ?? ''),
+        })),
     [turns],
   )
 

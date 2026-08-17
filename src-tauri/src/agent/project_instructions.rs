@@ -30,10 +30,7 @@ pub(crate) fn instruction_budget(context_limit: usize) -> usize {
 }
 
 #[cfg(not(target_os = "android"))]
-pub(crate) async fn load_project_instructions(
-    project_path: Option<&str>,
-    max_tokens: usize,
-) -> Option<String> {
+pub(crate) async fn load_project_instructions(project_path: Option<&str>, max_tokens: usize) -> Option<String> {
     let root = project_path?;
     let root_path = PathBuf::from(root);
     if !root_path.is_dir() {
@@ -49,10 +46,7 @@ pub(crate) async fn load_project_instructions(
 }
 
 #[cfg(target_os = "android")]
-pub(crate) async fn load_project_instructions(
-    _project_path: Option<&str>,
-    _max_tokens: usize,
-) -> Option<String> {
+pub(crate) async fn load_project_instructions(_project_path: Option<&str>, _max_tokens: usize) -> Option<String> {
     None
 }
 
@@ -74,25 +68,39 @@ fn load_sync(root: &Path, max_tokens: usize) -> Option<String> {
 
     {
         let guard = cache().lock().ok()?;
-        if let Some((cached_hash, cached)) = guard.get(&canon_root) {
-            if *cached_hash == mtime_hash {
-                return Some(cached.content.clone());
-            }
+        if let Some((cached_hash, cached)) = guard.get(&canon_root)
+            && *cached_hash == mtime_hash
+        {
+            return Some(cached.content.clone());
         }
     }
 
-    let content = format_instructions(&canon_root, claude_md.as_ref(), claude_local_md.as_ref(), &rule_files, max_tokens);
+    let content = format_instructions(
+        &canon_root,
+        claude_md.as_ref(),
+        claude_local_md.as_ref(),
+        &rule_files,
+        max_tokens,
+    );
 
     if content.is_empty() {
         return None;
     }
 
-    let result = format!("\n\n<project_instructions>\n{}\n</project_instructions>", content.trim());
+    let result = format!(
+        "\n\n<project_instructions>\n{}\n</project_instructions>",
+        content.trim()
+    );
 
     if let Ok(mut guard) = cache().lock() {
         guard.insert(
             canon_root,
-            (mtime_hash, CachedInstructions { content: result.clone() }),
+            (
+                mtime_hash,
+                CachedInstructions {
+                    content: result.clone(),
+                },
+            ),
         );
     }
 
@@ -132,21 +140,21 @@ fn collect_md_files(dir: &Path, out: &mut Vec<PathBuf>, root: &Path) {
     let Ok(entries) = std::fs::read_dir(dir) else { return };
     for entry in entries.flatten() {
         let path = entry.path();
-        if let Ok(canon) = std::fs::canonicalize(&path) {
-            if !canon.starts_with(root) {
-                continue;
-            }
+        if let Ok(canon) = std::fs::canonicalize(&path)
+            && !canon.starts_with(root)
+        {
+            continue;
         }
         if path.is_dir() {
             if out.len() < MAX_RULES_FILES {
                 collect_md_files(&path, out, root);
             }
-        } else if path.extension().is_some_and(|ext| ext == "md") && path.is_file() {
-            if let Ok(meta) = std::fs::metadata(&path) {
-                if meta.len() <= MAX_FILE_SIZE {
-                    out.push(path);
-                }
-            }
+        } else if path.extension().is_some_and(|ext| ext == "md")
+            && path.is_file()
+            && let Ok(meta) = std::fs::metadata(&path)
+            && meta.len() <= MAX_FILE_SIZE
+        {
+            out.push(path);
         }
     }
 }
@@ -154,10 +162,10 @@ fn collect_md_files(dir: &Path, out: &mut Vec<PathBuf>, root: &Path) {
 pub(crate) fn compute_mtime_hash(paths: &[&PathBuf]) -> u64 {
     let mut hasher = DefaultHasher::new();
     for p in paths {
-        if let Ok(meta) = std::fs::metadata(p) {
-            if let Ok(mtime) = meta.modified() {
-                mtime.hash(&mut hasher);
-            }
+        if let Ok(meta) = std::fs::metadata(p)
+            && let Ok(mtime) = meta.modified()
+        {
+            mtime.hash(&mut hasher);
         }
         p.hash(&mut hasher);
     }
@@ -210,20 +218,20 @@ fn format_instructions(
     let claude_budget = max_tokens * 70 / 100;
     let local_budget = max_tokens * 10 / 100;
 
-    if let Some(path) = claude_md {
-        if let Some(content) = read_file_utf8(path) {
-            let truncated = truncate_to_tokens(&content, claude_budget);
-            tokens_used += estimate_tokens(&truncated);
-            parts.push(format!("# Project Instructions (CLAUDE.md)\n\n{}", truncated));
-        }
+    if let Some(path) = claude_md
+        && let Some(content) = read_file_utf8(path)
+    {
+        let truncated = truncate_to_tokens(&content, claude_budget);
+        tokens_used += estimate_tokens(&truncated);
+        parts.push(format!("# Project Instructions (CLAUDE.md)\n\n{}", truncated));
     }
 
-    if let Some(path) = claude_local_md {
-        if let Some(content) = read_file_utf8(path) {
-            let truncated = truncate_to_tokens(&content, local_budget);
-            tokens_used += estimate_tokens(&truncated);
-            parts.push(format!("# Personal Overrides (CLAUDE.local.md)\n\n{}", truncated));
-        }
+    if let Some(path) = claude_local_md
+        && let Some(content) = read_file_utf8(path)
+    {
+        let truncated = truncate_to_tokens(&content, local_budget);
+        tokens_used += estimate_tokens(&truncated);
+        parts.push(format!("# Personal Overrides (CLAUDE.local.md)\n\n{}", truncated));
     }
 
     if !rule_files.is_empty() {
@@ -397,8 +405,8 @@ mod tests {
 
         let rules_dir = root.join(".claude").join("rules");
         std::fs::create_dir_all(&rules_dir).unwrap();
-        std::fs::write(&rules_dir.join("binary.md"), &[0xFF, 0xFE, 0x00, 0x01]).unwrap();
-        std::fs::write(&rules_dir.join("valid.md"), "valid rule").unwrap();
+        std::fs::write(rules_dir.join("binary.md"), [0xFF, 0xFE, 0x00, 0x01]).unwrap();
+        std::fs::write(rules_dir.join("valid.md"), "valid rule").unwrap();
 
         let (_, _, rules) = discover_files(root);
         let result = format_instructions(root, None, None, &rules, 32_000);

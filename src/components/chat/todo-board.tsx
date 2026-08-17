@@ -46,17 +46,13 @@ export default function TodoBoard({ todos, className }: { todos: TodoDraft[]; cl
               <Kanban.ColumnIndicator>
                 <TodoStatusIcon status={status} />
               </Kanban.ColumnIndicator>
-              <Kanban.ColumnTitle className="text-xs">
-                {t(`chat.todo.status.${status}`)}
-              </Kanban.ColumnTitle>
+              <Kanban.ColumnTitle className="text-xs">{t(`chat.todo.status.${status}`)}</Kanban.ColumnTitle>
               <Kanban.ColumnCount>{items.length}</Kanban.ColumnCount>
             </Kanban.ColumnHeader>
             <Kanban.ColumnBody>
               <Kanban.CardList
                 aria-label={t(`chat.todo.status.${status}`)}
-                renderEmptyState={() => (
-                  <span className="text-xs text-muted">{t('chat.todo.emptyColumn')}</span>
-                )}
+                renderEmptyState={() => <span className="text-xs text-muted">{t('chat.todo.emptyColumn')}</span>}
               >
                 {/* Index as key and as id, for the reason `TodoItemList`
                     gives: a `TodoDraft` carries no id, and the list is

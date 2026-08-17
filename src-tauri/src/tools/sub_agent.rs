@@ -73,11 +73,7 @@ impl Tool for RunAgentTool {
         Permission::Always
     }
 
-    async fn execute(
-        &self,
-        _args: serde_json::Value,
-        _context: &ToolContext,
-    ) -> Result<String, String> {
+    async fn execute(&self, _args: serde_json::Value, _context: &ToolContext) -> Result<String, String> {
         Err("run_agent must be handled by the agent loop".to_string())
     }
 }

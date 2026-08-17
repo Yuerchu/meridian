@@ -199,15 +199,16 @@ pub(crate) enum ReviewResponse {
 
 impl ReviewResponse {
     pub(crate) fn approve(summary: String, review_id: String, conversation_id: String) -> Self {
-        Self::Verdict { verdict: "approve", summary, message: None, review_id, conversation_id }
+        Self::Verdict {
+            verdict: "approve",
+            summary,
+            message: None,
+            review_id,
+            conversation_id,
+        }
     }
 
-    pub(crate) fn revise(
-        summary: String,
-        message: String,
-        review_id: String,
-        conversation_id: String,
-    ) -> Self {
+    pub(crate) fn revise(summary: String, message: String, review_id: String, conversation_id: String) -> Self {
         Self::Verdict {
             verdict: "revise",
             summary,
@@ -219,7 +220,10 @@ impl ReviewResponse {
 
     /// Ran, wrote a transcript, but produced no usable verdict.
     pub(crate) fn inconclusive(reason: impl Into<String>, conversation_id: String) -> Self {
-        Self::Inconclusive { system_message: reason.into(), conversation_id }
+        Self::Inconclusive {
+            system_message: reason.into(),
+            conversation_id,
+        }
     }
 }
 

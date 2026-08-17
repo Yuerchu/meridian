@@ -4,11 +4,11 @@ use futures::stream::StreamExt;
 use serde::Deserialize;
 use std::collections::HashMap;
 
-use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
 use super::{
-    AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent,
-    ToolCall, ToolDefinition, TokenUsage,
+    AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, TokenUsage, ToolCall,
+    ToolDefinition,
 };
+use crate::client::{HttpTransport, Request, RequestBody, ReqwestTransport};
 
 pub struct OpenAIResponsesProvider {
     base_url: String,
@@ -60,25 +60,27 @@ impl OpenAIResponsesProvider {
             // The config-facing name is "fast"; the wire value is the priority tier.
             body["service_tier"] = serde_json::json!("priority");
         }
-        if let Some(tools) = tools {
-            if !tools.is_empty() {
-                body["tools"] = serde_json::json!(tools.iter().map(|t| {
-                    serde_json::json!({
-                        "type": "function",
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.parameters,
-                        "strict": false,
+        if let Some(tools) = tools
+            && !tools.is_empty()
+        {
+            body["tools"] = serde_json::json!(
+                tools
+                    .iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "type": "function",
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.parameters,
+                            "strict": false,
+                        })
                     })
-                }).collect::<Vec<_>>());
-                body["tool_choice"] = serde_json::json!("auto");
-            }
+                    .collect::<Vec<_>>()
+            );
+            body["tool_choice"] = serde_json::json!("auto");
         }
 
-        let mut req = Request::new(
-            http::Method::POST,
-            format!("{}/responses", self.base_url),
-        );
+        let mut req = Request::new(http::Method::POST, format!("{}/responses", self.base_url));
         req.headers.insert(
             http::header::AUTHORIZATION,
             super::auth_header_value(&format!("Bearer {}", self.api_key)),
@@ -156,11 +158,6 @@ struct StreamState {
 }
 
 #[derive(Deserialize)]
-struct ResponseCompletedPayload {
-    usage: Option<ResponseUsage>,
-}
-
-#[derive(Deserialize)]
 pub(super) struct ResponseUsage {
     input_tokens: Option<i64>,
     output_tokens: Option<i64>,
@@ -197,11 +194,6 @@ pub(super) fn normalise_responses_usage(u: &ResponseUsage) -> TokenUsage {
 }
 
 #[derive(Deserialize)]
-struct ResponseFailedPayload {
-    error: Option<ResponseError>,
-}
-
-#[derive(Deserialize)]
 struct ResponseError {
     code: Option<String>,
     message: Option<String>,
@@ -217,10 +209,12 @@ fn parse_responses_event(
             let parsed: Result<serde_json::Value, _> = serde_json::from_str(data);
             match parsed {
                 Ok(v) => {
-                    if let Some(delta) = v["delta"].as_str() {
-                        if !delta.is_empty() {
-                            return vec![Ok(StreamEvent::Text { content: delta.to_string() })];
-                        }
+                    if let Some(delta) = v["delta"].as_str()
+                        && !delta.is_empty()
+                    {
+                        return vec![Ok(StreamEvent::Text {
+                            content: delta.to_string(),
+                        })];
                     }
                     vec![]
                 }
@@ -231,10 +225,12 @@ fn parse_responses_event(
             let parsed: Result<serde_json::Value, _> = serde_json::from_str(data);
             match parsed {
                 Ok(v) => {
-                    if let Some(delta) = v["delta"].as_str() {
-                        if !delta.is_empty() {
-                            return vec![Ok(StreamEvent::Reasoning { content: delta.to_string() })];
-                        }
+                    if let Some(delta) = v["delta"].as_str()
+                        && !delta.is_empty()
+                    {
+                        return vec![Ok(StreamEvent::Reasoning {
+                            content: delta.to_string(),
+                        })];
                     }
                     vec![]
                 }
@@ -275,9 +271,7 @@ fn parse_responses_event(
                 Ok(v) => {
                     let item = &v["item"];
                     if item["type"].as_str() == Some("function_call") {
-                        let call_id = item["call_id"].as_str()
-                            .or_else(|| item["id"].as_str())
-                            .unwrap_or("");
+                        let call_id = item["call_id"].as_str().or_else(|| item["id"].as_str()).unwrap_or("");
                         let arguments = item["arguments"].as_str().unwrap_or("{}").to_string();
                         if let Some(&index) = state.call_id_to_index.get(call_id) {
                             return vec![Ok(StreamEvent::ToolCallDone { index, arguments })];
@@ -296,9 +290,7 @@ fn parse_responses_event(
                     if delta.is_empty() {
                         return vec![];
                     }
-                    let call_id = v["call_id"].as_str()
-                        .or_else(|| v["item_id"].as_str())
-                        .unwrap_or("");
+                    let call_id = v["call_id"].as_str().or_else(|| v["item_id"].as_str()).unwrap_or("");
                     if let Some(&index) = state.call_id_to_index.get(call_id) {
                         return vec![Ok(StreamEvent::ToolCallDelta {
                             index,
@@ -315,14 +307,9 @@ fn parse_responses_event(
             match parsed {
                 Ok(v) => {
                     let arguments = v["arguments"].as_str().unwrap_or("{}").to_string();
-                    let call_id = v["call_id"].as_str()
-                        .or_else(|| v["item_id"].as_str())
-                        .unwrap_or("");
+                    let call_id = v["call_id"].as_str().or_else(|| v["item_id"].as_str()).unwrap_or("");
                     if let Some(&index) = state.call_id_to_index.get(call_id) {
-                        return vec![Ok(StreamEvent::ToolCallDone {
-                            index,
-                            arguments,
-                        })];
+                        return vec![Ok(StreamEvent::ToolCallDone { index, arguments })];
                     }
                     vec![]
                 }
@@ -334,14 +321,18 @@ fn parse_responses_event(
             match parsed {
                 Ok(v) => {
                     let response = &v["response"];
-                    let usage = response.get("usage").and_then(|u| {
-                        serde_json::from_value::<ResponseUsage>(u.clone()).ok()
-                    }).map(|u| normalise_responses_usage(&u));
+                    let usage = response
+                        .get("usage")
+                        .and_then(|u| serde_json::from_value::<ResponseUsage>(u.clone()).ok())
+                        .map(|u| normalise_responses_usage(&u));
                     let mut events = Vec::new();
                     if let Some(u) = usage {
                         events.push(Ok(StreamEvent::UsageUpdate { usage: u }));
                     }
-                    events.push(Ok(StreamEvent::Stop { reason: "stop".into(), usage: None }));
+                    events.push(Ok(StreamEvent::Stop {
+                        reason: "stop".into(),
+                        usage: None,
+                    }));
                     events
                 }
                 Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
@@ -352,11 +343,14 @@ fn parse_responses_event(
             match parsed {
                 Ok(v) => {
                     let response = &v["response"];
-                    let error = response.get("error").and_then(|e| {
-                        serde_json::from_value::<ResponseError>(e.clone()).ok()
-                    });
+                    let error = response
+                        .get("error")
+                        .and_then(|e| serde_json::from_value::<ResponseError>(e.clone()).ok());
                     let code = error.as_ref().and_then(|e| e.code.as_deref()).unwrap_or("unknown");
-                    let message = error.as_ref().and_then(|e| e.message.as_deref()).unwrap_or("Unknown error");
+                    let message = error
+                        .as_ref()
+                        .and_then(|e| e.message.as_deref())
+                        .unwrap_or("Unknown error");
                     vec![Err(ProviderError::Api {
                         status: 400,
                         body: format!("{}: {}", code, message),
@@ -372,14 +366,18 @@ fn parse_responses_event(
                     let reason = v["response"]["incomplete_details"]["reason"]
                         .as_str()
                         .unwrap_or("unknown");
-                    let usage = v["response"].get("usage").and_then(|u| {
-                        serde_json::from_value::<ResponseUsage>(u.clone()).ok()
-                    }).map(|u| normalise_responses_usage(&u));
+                    let usage = v["response"]
+                        .get("usage")
+                        .and_then(|u| serde_json::from_value::<ResponseUsage>(u.clone()).ok())
+                        .map(|u| normalise_responses_usage(&u));
                     let mut events = Vec::new();
                     if let Some(u) = usage {
                         events.push(Ok(StreamEvent::UsageUpdate { usage: u }));
                     }
-                    events.push(Ok(StreamEvent::Stop { reason: reason.to_string(), usage: None }));
+                    events.push(Ok(StreamEvent::Stop {
+                        reason: reason.to_string(),
+                        usage: None,
+                    }));
                     events
                 }
                 Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
@@ -404,7 +402,8 @@ impl ChatProvider for OpenAIResponsesProvider {
 
         let mut state = StreamState::default();
 
-        let stream = resp.bytes
+        let stream = resp
+            .bytes
             .map(|r| r.map_err(ProviderError::Transport))
             .eventsource()
             .flat_map(move |event| {
@@ -418,29 +417,25 @@ impl ChatProvider for OpenAIResponsesProvider {
         Ok(Box::pin(stream))
     }
 
-    async fn chat(
-        &self,
-        messages: Vec<ChatMessage>,
-        params: ChatParams,
-    ) -> Result<String, ProviderError> {
+    async fn chat(&self, messages: Vec<ChatMessage>, params: ChatParams) -> Result<String, ProviderError> {
         let transport = ReqwestTransport::shared();
         let req = self.build_request(&messages, None, &params, false);
         let resp = transport.execute(req).await?;
 
-        let parsed: serde_json::Value = serde_json::from_slice(&resp.body)
-            .map_err(|e| ProviderError::Parse(e.to_string()))?;
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&resp.body).map_err(|e| ProviderError::Parse(e.to_string()))?;
 
         let mut text = String::new();
         if let Some(output) = parsed["output"].as_array() {
             for item in output {
-                if item["type"].as_str() == Some("message") {
-                    if let Some(content) = item["content"].as_array() {
-                        for part in content {
-                            if part["type"].as_str() == Some("output_text") {
-                                if let Some(t) = part["text"].as_str() {
-                                    text.push_str(t);
-                                }
-                            }
+                if item["type"].as_str() == Some("message")
+                    && let Some(content) = item["content"].as_array()
+                {
+                    for part in content {
+                        if part["type"].as_str() == Some("output_text")
+                            && let Some(t) = part["text"].as_str()
+                        {
+                            text.push_str(t);
                         }
                     }
                 }
@@ -464,8 +459,8 @@ impl ChatProvider for OpenAIResponsesProvider {
         let req = self.build_request(&messages, Some(&tools), &params, false);
         let resp = transport.execute(req).await?;
 
-        let parsed: serde_json::Value = serde_json::from_slice(&resp.body)
-            .map_err(|e| ProviderError::Parse(e.to_string()))?;
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&resp.body).map_err(|e| ProviderError::Parse(e.to_string()))?;
 
         let mut text = String::new();
         let mut reasoning_content: Option<String> = None;
@@ -477,19 +472,16 @@ impl ChatProvider for OpenAIResponsesProvider {
                     Some("message") => {
                         if let Some(content) = item["content"].as_array() {
                             for part in content {
-                                if part["type"].as_str() == Some("output_text") {
-                                    if let Some(t) = part["text"].as_str() {
-                                        text.push_str(t);
-                                    }
+                                if part["type"].as_str() == Some("output_text")
+                                    && let Some(t) = part["text"].as_str()
+                                {
+                                    text.push_str(t);
                                 }
                             }
                         }
                     }
                     Some("function_call") => {
-                        if let (Some(call_id), Some(name)) = (
-                            item["call_id"].as_str(),
-                            item["name"].as_str(),
-                        ) {
+                        if let (Some(call_id), Some(name)) = (item["call_id"].as_str(), item["name"].as_str()) {
                             let arguments = item["arguments"].as_str().unwrap_or("{}").to_string();
                             tool_calls.push(ToolCall {
                                 id: call_id.to_string(),
@@ -516,11 +508,17 @@ impl ChatProvider for OpenAIResponsesProvider {
             }
         }
 
-        let usage = parsed.get("usage").and_then(|u| {
-            serde_json::from_value::<ResponseUsage>(u.clone()).ok()
-        }).map(|u| normalise_responses_usage(&u));
+        let usage = parsed
+            .get("usage")
+            .and_then(|u| serde_json::from_value::<ResponseUsage>(u.clone()).ok())
+            .map(|u| normalise_responses_usage(&u));
 
-        Ok(AgentResponse { text, reasoning_content, tool_calls, usage })
+        Ok(AgentResponse {
+            text,
+            reasoning_content,
+            tool_calls,
+            usage,
+        })
     }
 }
 
@@ -530,7 +528,10 @@ mod tests {
 
     fn body_for(model: &str, mutate: impl FnOnce(&mut ChatParams)) -> serde_json::Value {
         let caps = crate::provider::capabilities::resolve("openai", Some("responses"), model);
-        let mut params = ChatParams { model: model.into(), ..Default::default() };
+        let mut params = ChatParams {
+            model: model.into(),
+            ..Default::default()
+        };
         mutate(&mut params);
         crate::provider::capabilities::filter_params(&mut params, &caps);
         let provider = OpenAIResponsesProvider::new("https://example.test", "k");

@@ -66,7 +66,12 @@ function CustomToolEditor({
       <div className="grid grid-cols-2 gap-2">
         <TextField fullWidth>
           <Label>{t('settings.tools.name')}</Label>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="my_tool" className="font-mono text-xs" />
+          <Input
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="my_tool"
+            className="font-mono text-xs"
+          />
         </TextField>
         <SettingsSelect
           label={t('settings.tools.permission')}
@@ -81,11 +86,21 @@ function CustomToolEditor({
       </TextField>
       <TextField fullWidth>
         <Label>{t('settings.tools.command')}</Label>
-        <Input value={command} onChange={(e) => setCommand(e.target.value)} placeholder="python script.py" className="font-mono text-xs" />
+        <Input
+          value={command}
+          onChange={(e) => setCommand(e.target.value)}
+          placeholder="python script.py"
+          className="font-mono text-xs"
+        />
       </TextField>
       <TextField fullWidth>
         <Label>{t('settings.tools.argsTemplate')}</Label>
-        <Input value={argsTemplate} onChange={(e) => setArgsTemplate(e.target.value)} placeholder="--input {{input}} --output {{output}}" className="font-mono text-xs" />
+        <Input
+          value={argsTemplate}
+          onChange={(e) => setArgsTemplate(e.target.value)}
+          placeholder="--input {{input}} --output {{output}}"
+          className="font-mono text-xs"
+        />
         <Description>{t('settings.tools.argsTemplateHint')}</Description>
       </TextField>
       <TextField type="number">
@@ -96,9 +111,7 @@ function CustomToolEditor({
         <Button onClick={handleSave} isDisabled={!name.trim() || !command.trim()}>
           {t('common.save')}
         </Button>
-        {saved && (
-          <SavedHint />
-        )}
+        {saved && <SavedHint />}
         {onDelete && (
           <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
             <TrashBin className="w-3.5 h-3.5" />
@@ -149,13 +162,18 @@ export function ToolMarketplace() {
         summary={builtinTools.filter((tool) => tool.source === 'builtin').length}
       >
         <div className="grid grid-cols-1 gap-1">
-          {builtinTools.filter((t) => t.source === 'builtin').map((tool) => (
-            <div key={tool.name} className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg">
-              <Wrench className="w-3.5 h-3.5 text-muted flex-shrink-0" />
-              <span className="font-mono flex-1">{tool.name}</span>
-              <span className="text-muted truncate max-w-[200px]">{tool.description}</span>
-            </div>
-          ))}
+          {builtinTools
+            .filter((t) => t.source === 'builtin')
+            .map((tool) => (
+              <div
+                key={tool.name}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg"
+              >
+                <Wrench className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+                <span className="font-mono flex-1">{tool.name}</span>
+                <span className="text-muted truncate max-w-[200px]">{tool.description}</span>
+              </div>
+            ))}
         </div>
       </SettingsDrilldown>
 
@@ -166,27 +184,22 @@ export function ToolMarketplace() {
         >
           <p className="text-xs text-muted">{t('settings.tools.onebotHint')}</p>
           <div className="grid grid-cols-1 gap-1">
-            {builtinTools.filter((tool) => tool.source === 'onebot').map((tool) => (
-              <div key={tool.name} className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg">
-                <Wrench className="w-3.5 h-3.5 text-muted flex-shrink-0" />
-                <span className="font-mono flex-1">{tool.name}</span>
-                <span className="text-muted truncate max-w-[160px]">
-                  {t(`settings.tools.qq.${tool.name}`)}
-                </span>
-                {tool.scope === 'group' && (
-                  <Chip className="text-muted">{t('settings.tools.qqGroupOnly')}</Chip>
-                )}
-                {tool.scope === 'private' && (
-                  <Chip className="text-muted">{t('settings.tools.qqPrivateOnly')}</Chip>
-                )}
-                {tool.admin_only === true && (
-                  <Chip className="text-muted">{t('settings.tools.qqAdminOnly')}</Chip>
-                )}
-                {tool.needs_approval === true && (
-                  <Chip className="text-muted">{t('settings.tools.qqApproval')}</Chip>
-                )}
-              </div>
-            ))}
+            {builtinTools
+              .filter((tool) => tool.source === 'onebot')
+              .map((tool) => (
+                <div
+                  key={tool.name}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs border border-border rounded-lg"
+                >
+                  <Wrench className="w-3.5 h-3.5 text-muted flex-shrink-0" />
+                  <span className="font-mono flex-1">{tool.name}</span>
+                  <span className="text-muted truncate max-w-[160px]">{t(`settings.tools.qq.${tool.name}`)}</span>
+                  {tool.scope === 'group' && <Chip className="text-muted">{t('settings.tools.qqGroupOnly')}</Chip>}
+                  {tool.scope === 'private' && <Chip className="text-muted">{t('settings.tools.qqPrivateOnly')}</Chip>}
+                  {tool.admin_only === true && <Chip className="text-muted">{t('settings.tools.qqAdminOnly')}</Chip>}
+                  {tool.needs_approval === true && <Chip className="text-muted">{t('settings.tools.qqApproval')}</Chip>}
+                </div>
+              ))}
           </div>
         </SettingsDrilldown>
       )}
@@ -203,7 +216,10 @@ export function ToolMarketplace() {
         {showCreate && (
           <Card className="mb-3">
             <CustomToolEditor
-              onSave={() => { setShowCreate(false); refresh() }}
+              onSave={() => {
+                setShowCreate(false)
+                refresh()
+              }}
             />
           </Card>
         )}
@@ -214,7 +230,7 @@ export function ToolMarketplace() {
         <DisclosureGroup
           className="flex flex-col gap-1"
           expandedKeys={expandedToolId ? [expandedToolId] : []}
-          onExpandedChange={(keys) => setExpandedToolId((([...keys][0] as string | undefined) ?? null))}
+          onExpandedChange={(keys) => setExpandedToolId(([...keys][0] as string | undefined) ?? null)}
         >
           {customTools.map((ct) => {
             const isExpanded = expandedToolId === ct.id
@@ -234,7 +250,9 @@ export function ToolMarketplace() {
                     <span className="font-mono min-w-0 flex-1 truncate">{ct.name}</span>
                     <span className="text-muted truncate">{ct.command}</span>
                     {ct.is_enabled === 0 && (
-                      <span className="text-xs text-muted bg-default px-1 rounded shrink-0">{t('settings.tools.disabled')}</span>
+                      <span className="text-xs text-muted bg-default px-1 rounded shrink-0">
+                        {t('settings.tools.disabled')}
+                      </span>
                     )}
                     <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
                   </Disclosure.Trigger>
@@ -255,7 +273,7 @@ export function ToolMarketplace() {
                         tool={ct}
                         onSave={refresh}
                         onDelete={async () => {
-                          if (!await confirm({ body: t('settings.confirmDelete.customTool') })) return
+                          if (!(await confirm({ body: t('settings.confirmDelete.customTool') }))) return
                           await api.deleteCustomTool(ct.id)
                           setExpandedToolId(null)
                           refresh()
@@ -283,14 +301,13 @@ export function ToolMarketplace() {
           {presets.map((preset) => {
             const toolNames: string[] = JSON.parse(preset.tool_names || '[]')
             return (
-              <div key={preset.id} className="flex items-center gap-2 px-3 py-2 text-xs border border-border rounded-lg">
+              <div
+                key={preset.id}
+                className="flex items-center gap-2 px-3 py-2 text-xs border border-border rounded-lg"
+              >
                 <span className="font-medium flex-1">{preset.name}</span>
-                <span className="text-muted">
-                  {t('settings.tools.presetCount', { count: toolNames.length })}
-                </span>
-                {preset.is_builtin === 1 && (
-                  <Chip className="text-muted">{t('settings.template.builtin')}</Chip>
-                )}
+                <span className="text-muted">{t('settings.tools.presetCount', { count: toolNames.length })}</span>
+                {preset.is_builtin === 1 && <Chip className="text-muted">{t('settings.template.builtin')}</Chip>}
               </div>
             )
           })}

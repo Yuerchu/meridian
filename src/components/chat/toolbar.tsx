@@ -1,12 +1,37 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowsRotateRight, Bulb, Camera, Check, ChevronLeft, ChevronRight, ChevronsRight, Compass, Cpu, FaceRobot, Hammer, Paperclip, Picture, Plus, StarFill, Thunderbolt } from '@gravity-ui/icons'
+import {
+  ArrowsRotateRight,
+  Bulb,
+  Camera,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsRight,
+  Compass,
+  Cpu,
+  FaceRobot,
+  Hammer,
+  Paperclip,
+  Picture,
+  Plus,
+  StarFill,
+  Thunderbolt,
+} from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
 import { Button, Drawer } from '@heroui/react'
 import { cn } from '@/lib/utils'
 import { api } from '@/api'
 import { allowedEfforts } from '@/lib/thinking'
-import type { Assistant, ChatMode, Provider, ProviderCapabilities, ModelInfo, ThinkingEffort, ThinkingLevel } from '@/types'
+import type {
+  Assistant,
+  ChatMode,
+  Provider,
+  ProviderCapabilities,
+  ModelInfo,
+  ThinkingEffort,
+  ThinkingLevel,
+} from '@/types'
 
 interface ToolbarProps {
   assistants: Assistant[]
@@ -55,9 +80,7 @@ const THINKING_LEVELS: Array<{ id: ThinkingLevel; labelKey: string; descKey: str
  */
 function levelsFor(capabilities: ProviderCapabilities | null | undefined) {
   const allowed = allowedEfforts(capabilities ?? null)
-  return THINKING_LEVELS.filter(
-    (l) => l.id === 'default' || l.id === 'off' || allowed.includes(l.id as ThinkingEffort),
-  )
+  return THINKING_LEVELS.filter((l) => l.id === 'default' || l.id === 'off' || allowed.includes(l.id as ThinkingEffort))
 }
 
 // ---- Mobile bottom-sheet options menu ----
@@ -104,28 +127,32 @@ export function MobileOptionsMenu({
   const supportsThinking = capabilities?.supports_thinking !== false
   const supportsFast = capabilities?.supports_fast === true
   const levels = levelsFor(capabilities)
-  const thinkingLabel = thinkingLevel === 'default'
-    ? t('toolbar.thinking.default')
-    : t(`toolbar.thinking.${thinkingLevel}`)
+  const thinkingLabel =
+    thinkingLevel === 'default' ? t('toolbar.thinking.default') : t(`toolbar.thinking.${thinkingLevel}`)
 
   const close = useCallback(() => {
     setOpen(false)
     setTimeout(() => setPanel('main'), 200)
   }, [])
 
-  const handleAction = useCallback((action: () => void) => {
-    close()
-    action()
-  }, [close])
+  const handleAction = useCallback(
+    (action: () => void) => {
+      close()
+      action()
+    },
+    [close],
+  )
 
   useEffect(() => {
     if (panel !== 'model' || modelsLoaded) return
     setLoadingModels(true)
     Promise.allSettled(
-      providers.filter((p) => p.is_enabled).map(async (p) => ({
-        provider: p,
-        models: await api.fetchProviderModels(p.id, false),
-      })),
+      providers
+        .filter((p) => p.is_enabled)
+        .map(async (p) => ({
+          provider: p,
+          models: await api.fetchProviderModels(p.id, false),
+        })),
     ).then((results) => {
       setGroups(
         results
@@ -139,7 +166,8 @@ export function MobileOptionsMenu({
 
   // Also neutralizes ui Button defaults (h-8/rounded-lg/justify-center/font-medium)
   // so the drawer items keep their original full-width list layout.
-  const itemCls = 'flex h-auto items-center justify-start gap-3 w-full rounded-none px-4 py-2.5 text-sm font-normal text-foreground active:bg-default transition-colors'
+  const itemCls =
+    'flex h-auto items-center justify-start gap-3 w-full rounded-none px-4 py-2.5 text-sm font-normal text-foreground active:bg-default transition-colors'
 
   return (
     <Drawer
@@ -195,15 +223,23 @@ export function MobileOptionsMenu({
                         const Icon = active.icon
                         return (
                           <>
-                            <Icon className={cn('w-4 h-4', mode === 'work' ? 'text-muted' : 'text-info-soft-foreground')} />
-                            <span>{t('toolbar.mode')}: {t(active.labelKey)}</span>
+                            <Icon
+                              className={cn('w-4 h-4', mode === 'work' ? 'text-muted' : 'text-info-soft-foreground')}
+                            />
+                            <span>
+                              {t('toolbar.mode')}: {t(active.labelKey)}
+                            </span>
                           </>
                         )
                       })()}
                     </span>
                     <ChevronRight className="w-4 h-4 text-muted" />
                   </Button>
-                  <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('assistant')}>
+                  <Button
+                    variant="ghost"
+                    className={cn(itemCls, 'justify-between')}
+                    onClick={() => setPanel('assistant')}
+                  >
                     <span className="flex items-center gap-3">
                       <FaceRobot className="w-4 h-4 text-muted" />
                       <span>{currentAssistant?.name ?? t('toolbar.noAssistant')}</span>
@@ -212,18 +248,33 @@ export function MobileOptionsMenu({
                   </Button>
                   <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('model')}>
                     <span className="flex items-center gap-3">
-                      {currentModelId
-                        ? <ModelIcon model={currentModelId} size={16} />
-                        : <Cpu className="w-4 h-4 text-muted" />}
+                      {currentModelId ? (
+                        <ModelIcon model={currentModelId} size={16} />
+                      ) : (
+                        <Cpu className="w-4 h-4 text-muted" />
+                      )}
                       <span className="truncate max-w-[200px]">{currentModelId ?? t('toolbar.selectModel')}</span>
                     </span>
                     <ChevronRight className="w-4 h-4 text-muted" />
                   </Button>
                   {supportsThinking && (
-                    <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('thinking')}>
+                    <Button
+                      variant="ghost"
+                      className={cn(itemCls, 'justify-between')}
+                      onClick={() => setPanel('thinking')}
+                    >
                       <span className="flex items-center gap-3">
-                        <Bulb className={cn('w-4 h-4', thinkingLevel !== 'default' && thinkingLevel !== 'off' ? 'text-info-soft-foreground' : 'text-muted')} />
-                        <span>{t('toolbar.thinking')}: {thinkingLabel}</span>
+                        <Bulb
+                          className={cn(
+                            'w-4 h-4',
+                            thinkingLevel !== 'default' && thinkingLevel !== 'off'
+                              ? 'text-info-soft-foreground'
+                              : 'text-muted',
+                          )}
+                        />
+                        <span>
+                          {t('toolbar.thinking')}: {thinkingLabel}
+                        </span>
                       </span>
                       <ChevronRight className="w-4 h-4 text-muted" />
                     </Button>
@@ -256,7 +307,9 @@ export function MobileOptionsMenu({
                       onClick={() => onToggleFast(!fastMode)}
                     >
                       <span className="flex items-center gap-3">
-                        <Thunderbolt className={cn('w-4 h-4', fastMode ? 'text-warning-soft-foreground' : 'text-muted')} />
+                        <Thunderbolt
+                          className={cn('w-4 h-4', fastMode ? 'text-warning-soft-foreground' : 'text-muted')}
+                        />
                         <span>{t('toolbar.fast')}</span>
                       </span>
                       <span className="text-xs text-muted">
@@ -270,7 +323,12 @@ export function MobileOptionsMenu({
               {panel === 'assistant' && (
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-                    <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
+                    <Button
+                      isIconOnly
+                      variant="ghost"
+                      className="size-auto p-1 rounded-md hover:bg-default"
+                      onClick={() => setPanel('main')}
+                    >
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
                     <span className="text-sm font-medium">{t('toolbar.noAssistant').replace(/^No /, 'Select ')}</span>
@@ -281,7 +339,10 @@ export function MobileOptionsMenu({
                         key={a.id}
                         variant="ghost"
                         className={cn(itemCls, a.id === currentAssistantId && 'bg-default')}
-                        onClick={() => { onSelectAssistant(a.id); close() }}
+                        onClick={() => {
+                          onSelectAssistant(a.id)
+                          close()
+                        }}
                       >
                         {a.is_default === 1 && (
                           <StarFill
@@ -300,7 +361,12 @@ export function MobileOptionsMenu({
               {panel === 'model' && (
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-                    <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
+                    <Button
+                      isIconOnly
+                      variant="ghost"
+                      className="size-auto p-1 rounded-md hover:bg-default"
+                      onClick={() => setPanel('main')}
+                    >
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
                     <span className="text-sm font-medium flex-1">{t('toolbar.models')}</span>
@@ -312,10 +378,12 @@ export function MobileOptionsMenu({
                         setLoadingModels(true)
                         setGroups([])
                         Promise.allSettled(
-                          providers.filter((p) => p.is_enabled).map(async (p) => ({
-                            provider: p,
-                            models: await api.fetchProviderModels(p.id, true),
-                          })),
+                          providers
+                            .filter((p) => p.is_enabled)
+                            .map(async (p) => ({
+                              provider: p,
+                              models: await api.fetchProviderModels(p.id, true),
+                            })),
                         ).then((results) => {
                           setGroups(
                             results
@@ -335,9 +403,7 @@ export function MobileOptionsMenu({
                     {loadingModels && <div className="px-4 py-3 text-xs text-muted">{t('toolbar.loadingModels')}</div>}
                     {groups.map((g) => (
                       <div key={g.provider.id}>
-                        <div className="px-4 py-1 text-xs text-muted">
-                          {g.provider.name}
-                        </div>
+                        <div className="px-4 py-1 text-xs text-muted">{g.provider.name}</div>
                         {g.models.map((m) => (
                           <Button
                             key={`${g.provider.id}-${m.id}`}
@@ -346,7 +412,10 @@ export function MobileOptionsMenu({
                               itemCls,
                               m.id === currentModelId && g.provider.id === currentProviderId && 'bg-default',
                             )}
-                            onClick={() => { onSelectModel(m.id, g.provider.id); close() }}
+                            onClick={() => {
+                              onSelectModel(m.id, g.provider.id)
+                              close()
+                            }}
                           >
                             <ModelIcon model={m.id} size={16} className="flex-shrink-0" />
                             <span className="flex-1 truncate">{m.name}</span>
@@ -367,7 +436,12 @@ export function MobileOptionsMenu({
               {panel === 'mode' && (
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-                    <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
+                    <Button
+                      isIconOnly
+                      variant="ghost"
+                      className="size-auto p-1 rounded-md hover:bg-default"
+                      onClick={() => setPanel('main')}
+                    >
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
                     <span className="text-sm font-medium">{t('toolbar.mode')}</span>
@@ -379,7 +453,10 @@ export function MobileOptionsMenu({
                         key={m.id}
                         variant="ghost"
                         className={cn(itemCls, 'justify-between', m.id === mode && 'bg-default')}
-                        onClick={() => { onSelectMode(m.id); close() }}
+                        onClick={() => {
+                          onSelectMode(m.id)
+                          close()
+                        }}
                       >
                         <span className="flex items-center gap-3">
                           <Icon className="w-4 h-4 text-muted" />
@@ -395,7 +472,12 @@ export function MobileOptionsMenu({
               {panel === 'thinking' && (
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border">
-                    <Button isIconOnly variant="ghost" className="size-auto p-1 rounded-md hover:bg-default" onClick={() => setPanel('main')}>
+                    <Button
+                      isIconOnly
+                      variant="ghost"
+                      className="size-auto p-1 rounded-md hover:bg-default"
+                      onClick={() => setPanel('main')}
+                    >
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
                     <span className="text-sm font-medium">{t('toolbar.thinking')}</span>
@@ -405,7 +487,10 @@ export function MobileOptionsMenu({
                       key={level.id}
                       variant="ghost"
                       className={cn(itemCls, 'justify-between', level.id === thinkingLevel && 'bg-default')}
-                      onClick={() => { onSelectThinkingLevel(level.id); close() }}
+                      onClick={() => {
+                        onSelectThinkingLevel(level.id)
+                        close()
+                      }}
                     >
                       <span>{t(level.labelKey)}</span>
                       <span className="text-xs text-muted">{t(level.descKey)}</span>

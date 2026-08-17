@@ -14,9 +14,7 @@
  * and expect the chunk count to go back up.
  */
 const unreachable = () => {
-  throw new Error(
-    'Pro CodeBlock is stubbed out at build time — see src/lib/pro-code-block-stub.ts',
-  )
+  throw new Error('Pro CodeBlock is stubbed out at build time — see src/lib/pro-code-block-stub.ts')
 }
 
 export const CodeBlock = Object.assign(unreachable, {

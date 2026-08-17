@@ -22,8 +22,11 @@ fn stage_sherpa_runtime() {
         return;
     }
     // Only these three are loaded at runtime; the C++ API library is not.
-    const RUNTIME_DLLS: [&str; 3] =
-        ["sherpa-onnx-c-api.dll", "onnxruntime.dll", "onnxruntime_providers_shared.dll"];
+    const RUNTIME_DLLS: [&str; 3] = [
+        "sherpa-onnx-c-api.dll",
+        "onnxruntime.dll",
+        "onnxruntime_providers_shared.dll",
+    ];
 
     let Some(profile_dir) = profile_dir() else { return };
     let staged = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap()).join("resources");
@@ -43,10 +46,10 @@ fn stage_sherpa_runtime() {
         // Skipping an unchanged copy keeps this out of every incremental build,
         // and avoids rewriting a DLL a running app may still have open.
         let to = staged.join(name);
-        if !is_current(&from, &to) {
-            if let Err(e) = std::fs::copy(&from, &to) {
-                panic!("could not stage {} to {}: {e}", from.display(), to.display());
-            }
+        if !is_current(&from, &to)
+            && let Err(e) = std::fs::copy(&from, &to)
+        {
+            panic!("could not stage {} to {}: {e}", from.display(), to.display());
         }
     }
 }
@@ -88,7 +91,9 @@ fn profile_dir() -> Option<PathBuf> {
 }
 
 fn is_current(from: &Path, to: &Path) -> bool {
-    let (Ok(src), Ok(dst)) = (from.metadata(), to.metadata()) else { return false };
+    let (Ok(src), Ok(dst)) = (from.metadata(), to.metadata()) else {
+        return false;
+    };
     match (src.modified(), dst.modified()) {
         (Ok(s), Ok(d)) => src.len() == dst.len() && d >= s,
         _ => false,

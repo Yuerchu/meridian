@@ -2,14 +2,13 @@ use diesel::prelude::*;
 use diesel::sql_types::{BigInt, Text};
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::memory::{
-    DeletedBy, Memory, MemoryProposal, MemorySubject, MemoryUpdate, NewMemory, NewMemoryProposal,
-    NewMemorySubject, Origin, ProposalStatus, Visibility, GLOBAL_SCOPE_ID,
-    MAX_CLIENT_GLOBAL_MEMORIES, MAX_MEMORIES_PER_PROJECT, MAX_MEMORIES_PER_SUBJECT,
-    MAX_MEMORY_CONTENT_LEN, MAX_ONEBOT_GLOBAL_MEMORIES, MAX_PINNED_SUBJECTS,
-    MAX_REMEMBERED_SUBJECTS, MAX_TRACKED_SUBJECTS,
-};
 use crate::db::models::memory::MemoryScope;
+use crate::db::models::memory::{
+    DeletedBy, MAX_CLIENT_GLOBAL_MEMORIES, MAX_MEMORIES_PER_PROJECT, MAX_MEMORIES_PER_SUBJECT, MAX_MEMORY_CONTENT_LEN,
+    MAX_ONEBOT_GLOBAL_MEMORIES, MAX_PINNED_SUBJECTS, MAX_REMEMBERED_SUBJECTS, MAX_TRACKED_SUBJECTS, Memory,
+    MemoryProposal, MemorySubject, MemoryUpdate, NewMemory, NewMemoryProposal, NewMemorySubject, Origin,
+    ProposalStatus, Visibility,
+};
 use crate::db::schema::{memories, memory_proposals, memory_subjects};
 
 /// Trash retention. Soft-deleted rows outlive the delete so `/memory undo` and
@@ -32,12 +31,18 @@ pub struct VisibilityCtx {
 impl VisibilityCtx {
     /// What the model may see about someone in a group.
     pub fn group_injection() -> Self {
-        Self { origins: Some(Origin::group_visible().to_vec()), include_owner_only: true }
+        Self {
+            origins: Some(Origin::group_visible().to_vec()),
+            include_owner_only: true,
+        }
     }
 
     /// What the model may see about the person it is privately talking to.
     pub fn private_injection() -> Self {
-        Self { origins: None, include_owner_only: true }
+        Self {
+            origins: None,
+            include_owner_only: true,
+        }
     }
 
     /// What a person may see about themselves, in whichever place they asked.
@@ -85,11 +90,7 @@ pub struct ReadWindow<'a> {
 // Reads
 // ---------------------------------------------------------------------------
 
-pub fn list_by_scope(
-    conn: &mut SqliteConnection,
-    scope: MemoryScope,
-    scope_id: &str,
-) -> QueryResult<Vec<Memory>> {
+pub fn list_by_scope(conn: &mut SqliteConnection, scope: MemoryScope, scope_id: &str) -> QueryResult<Vec<Memory>> {
     active()
         .filter(memories::scope_type.eq(scope.as_str()))
         .filter(memories::scope_id.eq(scope_id.to_string()))
@@ -132,9 +133,9 @@ pub fn list_by_scopes(
     q = q.filter(memories::updated_at.lt(window.before_ts));
     if let Some(after) = window.after {
         q = q.filter(
-            memories::updated_at.gt(after.ts).or(memories::updated_at
-                .eq(after.ts)
-                .and(memories::id.gt(after.id.clone()))),
+            memories::updated_at
+                .gt(after.ts)
+                .or(memories::updated_at.eq(after.ts).and(memories::id.gt(after.id.clone()))),
         );
     }
     q.order((memories::updated_at.asc(), memories::id.asc()))
@@ -173,9 +174,9 @@ pub fn list_deleted_by_scopes(
     }
     if let Some(after) = window.after {
         q = q.filter(
-            memories::deleted_at.gt(after.ts).or(memories::deleted_at
-                .eq(after.ts)
-                .and(memories::id.gt(after.id.clone()))),
+            memories::deleted_at
+                .gt(after.ts)
+                .or(memories::deleted_at.eq(after.ts).and(memories::id.gt(after.id.clone()))),
         );
     }
     q.order((memories::deleted_at.asc(), memories::id.asc()))
@@ -188,7 +189,13 @@ pub fn visible_user_memories(
     subject_scope_id: &str,
     ctx: &VisibilityCtx,
 ) -> QueryResult<Vec<Memory>> {
-    list_by_scopes(conn, MemoryScope::OnebotUser, &[subject_scope_id.to_string()], ctx, None)
+    list_by_scopes(
+        conn,
+        MemoryScope::OnebotUser,
+        &[subject_scope_id.to_string()],
+        ctx,
+        None,
+    )
 }
 
 pub fn get_memory(conn: &mut SqliteConnection, id: &str) -> QueryResult<Memory> {
@@ -209,11 +216,7 @@ pub fn get_memory_by_key(
         .optional()
 }
 
-pub fn count_by_scope(
-    conn: &mut SqliteConnection,
-    scope: MemoryScope,
-    scope_id: &str,
-) -> QueryResult<i64> {
+pub fn count_by_scope(conn: &mut SqliteConnection, scope: MemoryScope, scope_id: &str) -> QueryResult<i64> {
     active()
         .filter(memories::scope_type.eq(scope.as_str()))
         .filter(memories::scope_id.eq(scope_id.to_string()))
@@ -223,10 +226,7 @@ pub fn count_by_scope(
 
 /// Memories naming a person, wherever they live. Opt-out uses this to reach
 /// group-scoped rows that talk about someone.
-pub fn list_by_subject(
-    conn: &mut SqliteConnection,
-    subject_scope_id: &str,
-) -> QueryResult<Vec<Memory>> {
+pub fn list_by_subject(conn: &mut SqliteConnection, subject_scope_id: &str) -> QueryResult<Vec<Memory>> {
     active()
         .filter(memories::subject_scope_id.eq(subject_scope_id.to_string()))
         .order(memories::updated_at.desc())
@@ -322,11 +322,7 @@ pub fn upsert_memory(conn: &mut SqliteConnection, new: &NewMemory) -> QueryResul
     }
 }
 
-pub fn update_memory(
-    conn: &mut SqliteConnection,
-    id: &str,
-    changeset: &MemoryUpdate,
-) -> QueryResult<Memory> {
+pub fn update_memory(conn: &mut SqliteConnection, id: &str, changeset: &MemoryUpdate) -> QueryResult<Memory> {
     diesel::update(memories::table.find(id)).set(changeset).execute(conn)?;
     memories::table.find(id).first::<Memory>(conn)
 }
@@ -345,7 +341,10 @@ pub fn soft_delete_memories(
             .filter(memories::id.eq_any(ids.to_vec()))
             .filter(memories::deleted_at.is_null()),
     )
-    .set((memories::deleted_at.eq(Some(now)), memories::deleted_by.eq(Some(by.as_str()))))
+    .set((
+        memories::deleted_at.eq(Some(now)),
+        memories::deleted_by.eq(Some(by.as_str())),
+    ))
     .execute(conn)
 }
 
@@ -358,11 +357,7 @@ pub fn soft_delete_memories(
 /// whose `deleted_at` is gone, and would therefore never mention it again: the
 /// memory exists, the model has been told to forget it, and nothing will ever
 /// tell it otherwise.
-pub fn restore_memories(
-    conn: &mut SqliteConnection,
-    ids: &[String],
-    now: i64,
-) -> QueryResult<usize> {
+pub fn restore_memories(conn: &mut SqliteConnection, ids: &[String], now: i64) -> QueryResult<usize> {
     if ids.is_empty() {
         return Ok(0);
     }
@@ -466,11 +461,11 @@ pub fn touch_subject(
     Ok(())
 }
 
-pub fn get_subject(
-    conn: &mut SqliteConnection,
-    scope_id: &str,
-) -> QueryResult<Option<MemorySubject>> {
-    memory_subjects::table.find(scope_id).first::<MemorySubject>(conn).optional()
+pub fn get_subject(conn: &mut SqliteConnection, scope_id: &str) -> QueryResult<Option<MemorySubject>> {
+    memory_subjects::table
+        .find(scope_id)
+        .first::<MemorySubject>(conn)
+        .optional()
 }
 
 pub fn list_subjects(conn: &mut SqliteConnection) -> QueryResult<Vec<MemorySubject>> {
@@ -628,20 +623,14 @@ pub fn sweep_untracked_subjects(conn: &mut SqliteConnection, now: i64) -> QueryR
 // Bot-wide proposals
 // ---------------------------------------------------------------------------
 
-pub fn create_proposal(
-    conn: &mut SqliteConnection,
-    new: &NewMemoryProposal,
-) -> QueryResult<MemoryProposal> {
+pub fn create_proposal(conn: &mut SqliteConnection, new: &NewMemoryProposal) -> QueryResult<MemoryProposal> {
     diesel::insert_into(memory_proposals::table).values(new).execute(conn)?;
     memory_proposals::table
         .order(memory_proposals::id.desc())
         .first::<MemoryProposal>(conn)
 }
 
-pub fn list_proposals(
-    conn: &mut SqliteConnection,
-    only_pending: bool,
-) -> QueryResult<Vec<MemoryProposal>> {
+pub fn list_proposals(conn: &mut SqliteConnection, only_pending: bool) -> QueryResult<Vec<MemoryProposal>> {
     let mut q = memory_proposals::table.into_boxed();
     if only_pending {
         q = q.filter(memory_proposals::status.eq(ProposalStatus::Pending.as_str()));
@@ -650,7 +639,10 @@ pub fn list_proposals(
 }
 
 pub fn get_proposal(conn: &mut SqliteConnection, id: i32) -> QueryResult<Option<MemoryProposal>> {
-    memory_proposals::table.find(id).first::<MemoryProposal>(conn).optional()
+    memory_proposals::table
+        .find(id)
+        .first::<MemoryProposal>(conn)
+        .optional()
 }
 
 /// Resolve exactly once. A zero row count means it was already handled or has
@@ -686,17 +678,6 @@ pub fn expire_proposals(conn: &mut SqliteConnection, now: i64) -> QueryResult<us
     .execute(conn)
 }
 
-/// Drop resolved proposals past the retention window. Row ids are never reused
-/// regardless, since the table is AUTOINCREMENT.
-pub fn purge_old_proposals(conn: &mut SqliteConnection, now: i64) -> QueryResult<usize> {
-    diesel::delete(
-        memory_proposals::table
-            .filter(memory_proposals::status.ne(ProposalStatus::Pending.as_str()))
-            .filter(memory_proposals::created_at.lt(now - TRASH_RETENTION_MS)),
-    )
-    .execute(conn)
-}
-
 // ---------------------------------------------------------------------------
 // Rendering
 // ---------------------------------------------------------------------------
@@ -713,11 +694,7 @@ pub fn escape_attr(value: &str) -> String {
 
 /// Render one section. The leading blank line belongs to the block because every
 /// call site concatenates bare strings.
-pub fn format_memory_section(
-    memories: &[Memory],
-    tag: &str,
-    attrs: Option<&str>,
-) -> Option<String> {
+pub fn format_memory_section(memories: &[Memory], tag: &str, attrs: Option<&str>) -> Option<String> {
     if memories.is_empty() {
         return None;
     }
@@ -731,21 +708,6 @@ pub fn format_memory_section(
     }
     block.push_str(&format!("</{tag}>"));
     Some(block)
-}
-
-/// Legacy single-section renderer kept byte-for-byte identical to what desktop
-/// chats have been receiving. The layered renderer lives in agent::memory_context.
-pub fn format_memory_block(memories: &[Memory]) -> Option<String> {
-    format_memory_section(memories, "project_memories", None)
-}
-
-/// Convenience for the desktop path, which is still project-only.
-pub fn list_memories(conn: &mut SqliteConnection, project_id: &str) -> QueryResult<Vec<Memory>> {
-    list_by_scope(conn, MemoryScope::Project, project_id)
-}
-
-pub fn global_scope_id() -> &'static str {
-    GLOBAL_SCOPE_ID
 }
 
 #[cfg(test)]
@@ -786,12 +748,10 @@ mod tests {
         mem(conn, "g", 1, Origin::Group, Visibility::Normal);
 
         let scope = onebot_user_scope_id(1);
-        let in_group =
-            visible_user_memories(conn, &scope, &VisibilityCtx::group_injection()).unwrap();
+        let in_group = visible_user_memories(conn, &scope, &VisibilityCtx::group_injection()).unwrap();
         assert_eq!(in_group.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["g"]);
 
-        let in_private =
-            visible_user_memories(conn, &scope, &VisibilityCtx::private_injection()).unwrap();
+        let in_private = visible_user_memories(conn, &scope, &VisibilityCtx::private_injection()).unwrap();
         assert_eq!(in_private.len(), 2);
     }
 
@@ -809,8 +769,7 @@ mod tests {
         assert_eq!(seen.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["pref"]);
 
         // ...while the model still gets to act on it.
-        let injected =
-            visible_user_memories(conn, &scope, &VisibilityCtx::group_injection()).unwrap();
+        let injected = visible_user_memories(conn, &scope, &VisibilityCtx::group_injection()).unwrap();
         assert_eq!(injected.len(), 2);
     }
 
@@ -860,7 +819,10 @@ mod tests {
         sweep_untracked_subjects(conn, 999_999).unwrap();
 
         let row = get_subject(conn, &quitter).unwrap();
-        assert!(row.is_some_and(|s| s.is_opted_out()), "opt-out row must survive the sweep");
+        assert!(
+            row.is_some_and(|s| s.is_opted_out()),
+            "opt-out row must survive the sweep"
+        );
     }
 
     /// A write must only trim the person it wrote about. Sweeping every subject
@@ -890,7 +852,9 @@ mod tests {
         );
         // Person 2 was untouched by that write and must be left alone.
         assert_eq!(
-            list_by_scope(conn, MemoryScope::OnebotUser, &onebot_user_scope_id(2)).unwrap().len(),
+            list_by_scope(conn, MemoryScope::OnebotUser, &onebot_user_scope_id(2))
+                .unwrap()
+                .len(),
             MAX_MEMORIES_PER_SUBJECT
         );
     }
@@ -922,9 +886,14 @@ mod tests {
         mem(conn, "a", 1, Origin::Group, Visibility::Normal);
 
         let ids = vec![onebot_user_scope_id(2), onebot_user_scope_id(1)];
-        let rows =
-            list_by_scopes(conn, MemoryScope::OnebotUser, &ids, &VisibilityCtx::group_injection(), None)
-                .unwrap();
+        let rows = list_by_scopes(
+            conn,
+            MemoryScope::OnebotUser,
+            &ids,
+            &VisibilityCtx::group_injection(),
+            None,
+        )
+        .unwrap();
         // onebot:1 sorts before onebot:2 regardless of the order asked for.
         assert_eq!(rows.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["a", "b"]);
     }
@@ -949,8 +918,14 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(resolve_proposal(conn, p.id, ProposalStatus::Approved, Some(1), 10).unwrap(), 1);
-        assert_eq!(resolve_proposal(conn, p.id, ProposalStatus::Approved, Some(1), 11).unwrap(), 0);
+        assert_eq!(
+            resolve_proposal(conn, p.id, ProposalStatus::Approved, Some(1), 10).unwrap(),
+            1
+        );
+        assert_eq!(
+            resolve_proposal(conn, p.id, ProposalStatus::Approved, Some(1), 11).unwrap(),
+            0
+        );
     }
 
     #[test]
@@ -972,37 +947,9 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(resolve_proposal(conn, p.id, ProposalStatus::Approved, None, 200).unwrap(), 0);
-    }
-
-    /// Desktop chats must keep receiving exactly the block they always have.
-    #[test]
-    fn project_block_is_byte_identical_to_the_legacy_format() {
-        let pool = test_db();
-        let conn = &mut pool.get().unwrap();
-        crate::db::ops::project::create_project(
-            conn,
-            &crate::db::models::project::NewProject {
-                id: "p1", name: "P", path: None, source_type: "local", source_id: None,
-                assistant_id: None, description: None, created_at: 1, updated_at: 1,
-            },
-        )
-        .unwrap();
-        upsert_memory(
-            conn,
-            &NewMemory {
-                id: "m1", scope_type: "project", scope_id: "p1", key: "stack",
-                content: "Rust + Tauri", memory_type: "general", subject_scope_id: None,
-                origin: "desktop", visibility: "normal", source_session_id: None,
-                created_at: 1, updated_at: 1,
-            },
-        )
-        .unwrap();
-
-        let rows = list_by_scope(conn, MemoryScope::Project, "p1").unwrap();
         assert_eq!(
-            format_memory_block(&rows).unwrap(),
-            "\n\n<project_memories>\n- [general] stack: Rust + Tauri\n</project_memories>"
+            resolve_proposal(conn, p.id, ProposalStatus::Approved, None, 200).unwrap(),
+            0
         );
     }
 
@@ -1045,8 +992,7 @@ mod origin_visibility_tests {
         )
         .unwrap();
 
-        let seen =
-            visible_user_memories(conn, &scope, &VisibilityCtx::group_injection()).unwrap();
+        let seen = visible_user_memories(conn, &scope, &VisibilityCtx::group_injection()).unwrap();
         assert_eq!(seen.len(), 1, "operator-written memory must survive group filtering");
     }
 
@@ -1076,8 +1022,15 @@ mod legacy_length_tests {
         crate::db::ops::project::create_project(
             conn,
             &crate::db::models::project::NewProject {
-                id: "p1", name: "P", path: None, source_type: "local", source_id: None,
-                assistant_id: None, description: None, created_at: 1, updated_at: 1,
+                id: "p1",
+                name: "P",
+                path: None,
+                source_type: "local",
+                source_id: None,
+                assistant_id: None,
+                description: None,
+                created_at: 1,
+                updated_at: 1,
             },
         )
         .unwrap();
@@ -1086,10 +1039,18 @@ mod legacy_length_tests {
         let long = "x".repeat(3_000);
         diesel::insert_into(memories::table)
             .values(&NewMemory {
-                id: "old", scope_type: "project", scope_id: "p1", key: "k",
-                content: &long, memory_type: "general", subject_scope_id: None,
-                origin: "desktop", visibility: "normal", source_session_id: None,
-                created_at: 1, updated_at: 1,
+                id: "old",
+                scope_type: "project",
+                scope_id: "p1",
+                key: "k",
+                content: &long,
+                memory_type: "general",
+                subject_scope_id: None,
+                origin: "desktop",
+                visibility: "normal",
+                source_session_id: None,
+                created_at: 1,
+                updated_at: 1,
             })
             .execute(conn)
             .unwrap();

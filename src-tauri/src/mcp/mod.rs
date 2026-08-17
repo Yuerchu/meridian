@@ -6,10 +6,10 @@ pub mod streamable_http;
 #[cfg(test)]
 mod tests;
 
+use serde::Serialize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use serde::Serialize;
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
@@ -53,7 +53,11 @@ impl std::fmt::Display for TransportError {
 
 #[async_trait::async_trait]
 pub trait McpTransport: Send {
-    async fn request(&mut self, method: &str, params: Option<serde_json::Value>) -> Result<serde_json::Value, TransportError>;
+    async fn request(
+        &mut self,
+        method: &str,
+        params: Option<serde_json::Value>,
+    ) -> Result<serde_json::Value, TransportError>;
     async fn notify(&mut self, method: &str, params: Option<serde_json::Value>) -> Result<(), String>;
     async fn shutdown(&mut self);
 }
@@ -191,7 +195,11 @@ impl McpRegistry {
     }
 
     pub fn tools_for_server(&self, server_id: &str) -> Vec<McpToolDef> {
-        self.tools().iter().filter(|t| t.server_id == server_id).cloned().collect()
+        self.tools()
+            .iter()
+            .filter(|t| t.server_id == server_id)
+            .cloned()
+            .collect()
     }
 
     /// Only servers with an entry appear. Anything absent is disconnected, and
@@ -199,14 +207,22 @@ impl McpRegistry {
     /// a row per known-but-unconnected server here would just be the same
     /// information from a worse source.
     pub fn all_connection_statuses(&self) -> Vec<McpConnectionStatus> {
-        let states: Vec<(String, ConnectionState)> = self.servers().iter()
-            .map(|(id, slot)| (id.clone(), match slot {
-                Slot::Connected { .. } => ConnectionState::Connected,
-                Slot::Connecting { .. } => ConnectionState::Connecting,
-            }))
+        let states: Vec<(String, ConnectionState)> = self
+            .servers()
+            .iter()
+            .map(|(id, slot)| {
+                (
+                    id.clone(),
+                    match slot {
+                        Slot::Connected { .. } => ConnectionState::Connected,
+                        Slot::Connecting { .. } => ConnectionState::Connecting,
+                    },
+                )
+            })
             .collect();
         let tools = self.tools();
-        states.into_iter()
+        states
+            .into_iter()
             .map(|(server_id, state)| McpConnectionStatus {
                 tool_count: tools.iter().filter(|t| t.server_id == server_id).count(),
                 server_id,
@@ -227,12 +243,10 @@ impl McpRegistry {
     /// wrong. Removing tools after releasing the lock is a race: a stale
     /// obituary can pass its generation check, release, let a fresh connection
     /// publish, and then delete the new connection's tools on its way out.
-    fn forget_tools_locked(
-        &self,
-        _guard: &std::sync::MutexGuard<'_, HashMap<String, Slot>>,
-        server_id: &str,
-    ) {
-        let remaining: Vec<McpToolDef> = self.tools().iter()
+    fn forget_tools_locked(&self, _guard: &std::sync::MutexGuard<'_, HashMap<String, Slot>>, server_id: &str) {
+        let remaining: Vec<McpToolDef> = self
+            .tools()
+            .iter()
             .filter(|t| t.server_id != server_id)
             .cloned()
             .collect();
@@ -240,11 +254,14 @@ impl McpRegistry {
     }
 
     fn publish(&self, tools: Vec<McpToolDef>) {
-        let definitions = tools.iter().map(|t| ToolDefinition {
-            name: t.qualified_name.clone(),
-            description: t.description.clone(),
-            parameters: t.input_schema.clone(),
-        }).collect();
+        let definitions = tools
+            .iter()
+            .map(|t| ToolDefinition {
+                name: t.qualified_name.clone(),
+                description: t.description.clone(),
+                parameters: t.input_schema.clone(),
+            })
+            .collect();
         let mut snapshot = self.snapshot.write().unwrap_or_else(|e| e.into_inner());
         snapshot.tools = Arc::new(tools);
         snapshot.definitions = Arc::new(definitions);
@@ -286,18 +303,26 @@ impl McpRegistry {
                     let generation = self.next_generation();
                     let cancel = CancellationToken::new();
                     let (tx, rx) = watch::channel(None);
-                    servers.insert(server.id.clone(), Slot::Connecting {
-                        generation,
-                        cancel: cancel.clone(),
-                        done: rx,
-                    });
+                    servers.insert(
+                        server.id.clone(),
+                        Slot::Connecting {
+                            generation,
+                            cancel: cancel.clone(),
+                            done: rx,
+                        },
+                    );
                     // The old connection is about to be stopped, so its tools
                     // stop being offered now rather than when the new one
                     // arrives. Leaving them up would mean handing the model a
                     // tool with nothing behind it — and if the new dial fails,
                     // leaving them there for good.
                     self.forget_tools_locked(&servers, &server.id);
-                    Start::Own { generation, cancel, done: tx, replaced }
+                    Start::Own {
+                        generation,
+                        cancel,
+                        done: tx,
+                        replaced,
+                    }
                 }
             }
         };
@@ -315,7 +340,12 @@ impl McpRegistry {
                     }
                 }
             }
-            Start::Own { generation, cancel, done, replaced } => (generation, cancel, done, replaced),
+            Start::Own {
+                generation,
+                cancel,
+                done,
+                replaced,
+            } => (generation, cancel, done, replaced),
         };
 
         if let Some(old) = replaced {
@@ -347,10 +377,7 @@ impl McpRegistry {
     }
 
     /// Build the transport and complete the handshake. Runs with no lock held.
-    async fn dial(
-        &self,
-        server: &McpServer,
-    ) -> Result<(Box<dyn McpTransport>, Vec<protocol::McpToolInfo>), String> {
+    async fn dial(&self, server: &McpServer) -> Result<(Box<dyn McpTransport>, Vec<protocol::McpToolInfo>), String> {
         let started = std::time::Instant::now();
         let fail = |stage: &'static str, error: String| -> String {
             tracing::warn!(
@@ -372,37 +399,46 @@ impl McpRegistry {
         let mut transport: Box<dyn McpTransport> = match staged {
             Some(t) => t,
             None => match server.transport_type.as_str() {
-            "stdio" => {
-                let command = server.command.as_deref()
-                    .ok_or_else(|| fail("config", "missing command".into()))?;
-                let args = parse_config_field::<Vec<String>>(server.args.as_deref(), "args", &server.id);
-                // A malformed env is the worst of the three: the server starts
-                // without its token and fails every call with a 401 that looks
-                // like the user's key is wrong.
-                let env = parse_config_field::<HashMap<String, String>>(server.env.as_deref(), "env", &server.id);
-                Box::new(
-                    StdioTransport::spawn(command, &args, &env, None)
-                        .await
-                        .map_err(|e| fail("spawn", e))?,
-                )
-            }
-            "streamablehttp" => {
-                let url = server.url.as_deref()
-                    .ok_or_else(|| fail("config", "missing URL".into()))?;
-                let headers = parse_config_field::<HashMap<String, String>>(
-                    server.headers.as_deref(), "headers", &server.id,
-                );
-                Box::new(StreamableHttpTransport::new(url, &headers).map_err(|e| fail("connect", e))?)
-            }
-            other => return Err(fail("config", format!("unsupported transport: {other}"))),
+                "stdio" => {
+                    let command = server
+                        .command
+                        .as_deref()
+                        .ok_or_else(|| fail("config", "missing command".into()))?;
+                    let args = parse_config_field::<Vec<String>>(server.args.as_deref(), "args", &server.id);
+                    // A malformed env is the worst of the three: the server starts
+                    // without its token and fails every call with a 401 that looks
+                    // like the user's key is wrong.
+                    let env = parse_config_field::<HashMap<String, String>>(server.env.as_deref(), "env", &server.id);
+                    Box::new(
+                        StdioTransport::spawn(command, &args, &env, None)
+                            .await
+                            .map_err(|e| fail("spawn", e))?,
+                    )
+                }
+                "streamablehttp" => {
+                    let url = server
+                        .url
+                        .as_deref()
+                        .ok_or_else(|| fail("config", "missing URL".into()))?;
+                    let headers =
+                        parse_config_field::<HashMap<String, String>>(server.headers.as_deref(), "headers", &server.id);
+                    Box::new(StreamableHttpTransport::new(url, &headers).map_err(|e| fail("connect", e))?)
+                }
+                other => return Err(fail("config", format!("unsupported transport: {other}"))),
             },
         };
 
-        transport.request("initialize", Some(serde_json::json!({
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": { "name": "meridian", "version": "0.1.0" }
-        }))).await.map_err(|e| fail("initialize", e.to_string()))?;
+        transport
+            .request(
+                "initialize",
+                Some(serde_json::json!({
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": { "name": "meridian", "version": "0.1.0" }
+                })),
+            )
+            .await
+            .map_err(|e| fail("initialize", e.to_string()))?;
 
         if let Err(e) = transport.notify("notifications/initialized", None).await {
             // Some servers refuse later requests without it, so a failure here
@@ -410,10 +446,12 @@ impl McpRegistry {
             tracing::debug!(server_id = %server.id, error = %e, "MCP initialized notification failed");
         }
 
-        let result = transport.request("tools/list", None).await
+        let result = transport
+            .request("tools/list", None)
+            .await
             .map_err(|e| fail("tools_list", e.to_string()))?;
-        let tools_result: McpToolsListResult = serde_json::from_value(result)
-            .map_err(|e| fail("parse_tools", format!("parse tools/list: {e}")))?;
+        let tools_result: McpToolsListResult =
+            serde_json::from_value(result).map_err(|e| fail("parse_tools", format!("parse tools/list: {e}")))?;
 
         tracing::debug!(
             server_id = %server.id,
@@ -435,7 +473,8 @@ impl McpRegistry {
         tools: Vec<protocol::McpToolInfo>,
     ) -> Result<(), String> {
         let mut servers = self.servers();
-        let still_ours = servers.get(&server.id)
+        let still_ours = servers
+            .get(&server.id)
             .is_some_and(|s| matches!(s, Slot::Connecting { .. }) && s.generation() == generation);
         if !still_ours {
             drop(servers);
@@ -457,7 +496,9 @@ impl McpRegistry {
             generation,
             transport,
             Arc::clone(self) as Arc<dyn ActorObituary>,
-            self.test_deadline.get().copied()
+            self.test_deadline
+                .get()
+                .copied()
                 .unwrap_or(std::time::Duration::from_secs(90)),
         );
         #[cfg(not(test))]
@@ -471,7 +512,9 @@ impl McpRegistry {
 
         // Rebuilt from the published list under the same lock, so two servers
         // registering at once cannot both decide a qualified name is free.
-        let mut all: Vec<McpToolDef> = self.tools().iter()
+        let mut all: Vec<McpToolDef> = self
+            .tools()
+            .iter()
             .filter(|t| t.server_id != server.id)
             .cloned()
             .collect();
@@ -565,14 +608,11 @@ impl McpRegistry {
     /// request itself is awaited with nothing locked, which is the whole point
     /// of the rewrite: a server taking thirty seconds no longer stops every
     /// other conversation from assembling its tools.
-    pub async fn call_tool(
-        &self,
-        qualified_name: &str,
-        args: serde_json::Value,
-    ) -> Result<String, String> {
+    pub async fn call_tool(&self, qualified_name: &str, args: serde_json::Value) -> Result<String, String> {
         let (server_id, original_name) = {
             let tools = self.tools();
-            let tool_def = tools.iter()
+            let tool_def = tools
+                .iter()
                 .find(|t| t.qualified_name == qualified_name)
                 .ok_or_else(|| format!("MCP tool not found: {qualified_name}"))?;
             (tool_def.server_id.clone(), tool_def.name.clone())
@@ -596,19 +636,25 @@ impl McpRegistry {
             }
         };
 
-        let result = handle.request("tools/call", Some(serde_json::json!({
-            "name": original_name,
-            "arguments": args,
-        }))).await.map_err(|e| {
-            tracing::warn!(
-                server_id = %server_id,
-                tool = %original_name,
-                fatal = e.is_fatal(),
-                error = %e,
-                "MCP tool call failed"
-            );
-            e.to_string()
-        })?;
+        let result = handle
+            .request(
+                "tools/call",
+                Some(serde_json::json!({
+                    "name": original_name,
+                    "arguments": args,
+                })),
+            )
+            .await
+            .map_err(|e| {
+                tracing::warn!(
+                    server_id = %server_id,
+                    tool = %original_name,
+                    fatal = e.is_fatal(),
+                    error = %e,
+                    "MCP tool call failed"
+                );
+                e.to_string()
+            })?;
 
         let call_result: McpCallToolResult = serde_json::from_value(result).map_err(|e| {
             tracing::warn!(
@@ -620,7 +666,9 @@ impl McpRegistry {
             format!("parse tools/call result: {e}")
         })?;
 
-        let text = call_result.content.iter()
+        let text = call_result
+            .content
+            .iter()
             .filter(|c| c.content_type == "text")
             .filter_map(|c| c.text.as_deref())
             .collect::<Vec<_>>()
@@ -637,7 +685,11 @@ impl McpRegistry {
             );
             Err(text)
         } else {
-            Ok(if text.is_empty() { "(no output)".to_string() } else { text })
+            Ok(if text.is_empty() {
+                "(no output)".to_string()
+            } else {
+                text
+            })
         }
     }
 
@@ -657,7 +709,8 @@ impl McpRegistry {
 
         let pending: Vec<Closing> = {
             let mut servers = self.servers();
-            let taken = servers.drain()
+            let taken = servers
+                .drain()
                 .map(|(id, slot)| match slot {
                     Slot::Connected { handle, .. } => Closing::Live(id, handle),
                     Slot::Connecting { cancel, done, .. } => {
@@ -741,7 +794,9 @@ fn parse_config_field<T: Default + serde::de::DeserializeOwned>(
     field: &'static str,
     server_id: &str,
 ) -> T {
-    let Some(raw) = raw.filter(|s| !s.trim().is_empty()) else { return T::default() };
+    let Some(raw) = raw.filter(|s| !s.trim().is_empty()) else {
+        return T::default();
+    };
     match serde_json::from_str(raw) {
         Ok(value) => value,
         Err(e) => {

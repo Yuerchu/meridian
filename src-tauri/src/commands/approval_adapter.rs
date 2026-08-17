@@ -74,19 +74,22 @@ impl DesktopApprovals {
         // before there is somewhere to put it.
         {
             let waiters = app.state::<ApprovalWaiters>();
-            waiters.lock().insert(approval_id.clone(), crate::state::PendingApproval {
-                conversation_id: self.conversation_id.clone(),
-                turn_id: self.turn_id.clone(),
-                assistant_message_id: message_id.to_string(),
-                provider_call_id: tc.id.clone(),
-                // A retry is an attempt at the same call, under the same id.
-                origin_call_id: retry_reason.map(|_| tc.id.clone()),
-                tool_name: tc.name.clone(),
-                arguments: tc.arguments.clone(),
-                retry_reason: retry_reason.map(str::to_string),
-                bubble: self.bubble.clone(),
-                sender: tx,
-            });
+            waiters.lock().insert(
+                approval_id.clone(),
+                crate::state::PendingApproval {
+                    conversation_id: self.conversation_id.clone(),
+                    turn_id: self.turn_id.clone(),
+                    assistant_message_id: message_id.to_string(),
+                    provider_call_id: tc.id.clone(),
+                    // A retry is an attempt at the same call, under the same id.
+                    origin_call_id: retry_reason.map(|_| tc.id.clone()),
+                    tool_name: tc.name.clone(),
+                    arguments: tc.arguments.clone(),
+                    retry_reason: retry_reason.map(str::to_string),
+                    bubble: self.bubble.clone(),
+                    sender: tx,
+                },
+            );
         }
         // Routed to whoever is watching. For a delegated run that is the parent:
         // the sub-agent's conversation may not even be open, and a question
@@ -127,7 +130,10 @@ impl DesktopApprovals {
         // phase behind would have a crash a minute later report a card that is
         // no longer on screen.
         let decision = engine::in_phase(
-            &pool, &self.turn_id, TurnPhase::AwaitingApproval, Some(&tc.name),
+            &pool,
+            &self.turn_id,
+            TurnPhase::AwaitingApproval,
+            Some(&tc.name),
             async {
                 let decision = tokio::select! {
                     _ = self.cancel.cancelled() => None,
@@ -141,7 +147,8 @@ impl DesktopApprovals {
                 }
                 decision
             },
-        ).await;
+        )
+        .await;
         Ok(decision)
     }
 }

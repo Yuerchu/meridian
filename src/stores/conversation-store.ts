@@ -2,7 +2,19 @@ import { create } from 'zustand'
 import { produce } from 'immer'
 import { api } from '@/api'
 import { parseTodoArgs, toDrafts, type TodoArgs } from '@/components/chat/todo-list'
-import type { BranchPoint, Conversation, Message, PendingApprovalInfo, Project, ContentBlock, OpenAIToolCall, SubAgentRunView, TodoListView, ToolCallDisplay, TurnRecord } from '@/types'
+import type {
+  BranchPoint,
+  Conversation,
+  Message,
+  PendingApprovalInfo,
+  Project,
+  ContentBlock,
+  OpenAIToolCall,
+  SubAgentRunView,
+  TodoListView,
+  ToolCallDisplay,
+  TurnRecord,
+} from '@/types'
 
 /**
  * Read a checklist out of an `update_todos` call. A list whose steps are all
@@ -224,7 +236,9 @@ export function hydrateBlocks(
                 status: toolMsg
                   ? outcomeOf(toolMsg)
                   : stillWaiting
-                    ? stillWaiting.bubbled ? 'awaiting_parent' : 'pending'
+                    ? stillWaiting.bubbled
+                      ? 'awaiting_parent'
+                      : 'pending'
                     : unansweredStatus(m.turn_id, byTurn),
                 result: toolMsg?.content,
                 // Left off when the answer has to come from elsewhere, so that
@@ -233,26 +247,28 @@ export function hydrateBlocks(
                 retry_reason: stillWaiting?.retry_reason,
                 sub_agent: run?.spawned_turn_id
                   ? {
-                    conversation_id: run.conversation_id,
-                    turn_id: run.spawned_turn_id,
-                    kind: run.agent_kind ?? undefined,
-                    steps: run.steps,
-                  }
+                      conversation_id: run.conversation_id,
+                      turn_id: run.spawned_turn_id,
+                      kind: run.agent_kind ?? undefined,
+                      steps: run.steps,
+                    }
                   : undefined,
                 nested_approval: nested
                   ? {
-                    approval_id: nested.approval_id,
-                    call_id: nested.provider_call_id,
-                    tool_name: nested.tool_name,
-                    arguments: nested.arguments,
-                    retry_reason: nested.retry_reason,
-                    sub_conversation_id: nested.sub_conversation_id,
-                  }
+                      approval_id: nested.approval_id,
+                      call_id: nested.provider_call_id,
+                      tool_name: nested.tool_name,
+                      arguments: nested.arguments,
+                      retry_reason: nested.retry_reason,
+                      sub_conversation_id: nested.sub_conversation_id,
+                    }
                   : undefined,
               },
             })
           }
-        } catch { /* ignore */ }
+        } catch {
+          /* ignore */
+        }
       }
       return { ...m, _blocks: blocks.length > 0 ? blocks : undefined }
     }
@@ -261,7 +277,9 @@ export function hydrateBlocks(
       try {
         const blocks = JSON.parse(m.tool_calls) as ContentBlock[]
         return { ...m, _blocks: blocks }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
     return m
   })
@@ -320,8 +338,7 @@ export function reconcileMessages(prev: Message[], next: Message[]): Message[] {
  */
 function keepAnswered(local: Message, fresh: Message): Message {
   const answered = (local._blocks ?? []).filter(
-    (b): b is Extract<ContentBlock, { type: 'tool_call' }> =>
-      b.type === 'tool_call' && ANSWERED.has(b.data.status),
+    (b): b is Extract<ContentBlock, { type: 'tool_call' }> => b.type === 'tool_call' && ANSWERED.has(b.data.status),
   )
   if (answered.length === 0 || !fresh._blocks) return fresh
   const taken = new Set<number>()
@@ -722,11 +739,13 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   },
 
   ensureSession: (convId) => {
-    set(produce((state: ConversationStore) => {
-      if (!state.sessions[convId]) {
-        state.sessions[convId] = defaultSession()
-      }
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        if (!state.sessions[convId]) {
+          state.sessions[convId] = defaultSession()
+        }
+      }),
+    )
   },
 
   loadMessages: async (convId) => {
@@ -742,21 +761,23 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
       get().sessions[convId]?.messages ?? [],
       hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
     )
-    set(produce((state: ConversationStore) => {
-      if (!state.sessions[convId]) {
-        state.sessions[convId] = defaultSession()
-      }
-      const session = state.sessions[convId]
-      // A turn started while the request was in flight. Its own events describe
-      // the conversation better than this snapshot does, and the approvals it
-      // just registered are not in there.
-      if (session.generation !== generation) return
-      session.messages = mergeSnapshot(session, snapshot)
-      session.compactCursor = snap.conversation.compact_cursor
-      session.branches = indexBranches(snap.tree.branches)
-      session.turns = snap.turns
-      adoptLiveTurn(session, snap.turns)
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        if (!state.sessions[convId]) {
+          state.sessions[convId] = defaultSession()
+        }
+        const session = state.sessions[convId]
+        // A turn started while the request was in flight. Its own events describe
+        // the conversation better than this snapshot does, and the approvals it
+        // just registered are not in there.
+        if (session.generation !== generation) return
+        session.messages = mergeSnapshot(session, snapshot)
+        session.compactCursor = snap.conversation.compact_cursor
+        session.branches = indexBranches(snap.tree.branches)
+        session.turns = snap.turns
+        adoptLiveTurn(session, snap.turns)
+      }),
+    )
   },
 
   /** Show a different version of a step. The reply is the whole new path, so
@@ -764,10 +785,12 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
    *  longer on screen. */
   switchBranch: async (convId, messageId) => {
     const generation = get().sessions[convId]?.generation ?? 0
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (session) session.switchingBranch = true
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (session) session.switchingBranch = true
+      }),
+    )
     let superseded = false
     try {
       // The switch moves the head; the snapshot afterwards is what the new path
@@ -780,30 +803,34 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         get().sessions[convId]?.messages ?? [],
         hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
       )
-      set(produce((state: ConversationStore) => {
-        const session = state.sessions[convId]
-        if (!session) return
-        // A turn started across two round trips. This snapshot predates it, and
-        // this path assigns outright rather than merging — so applying it would
-        // not just be stale, it would delete the rows that turn has already
-        // streamed in.
-        if (session.generation !== generation) {
-          superseded = true
-          return
-        }
-        // Replaced outright, not merged: what is local belongs to the branch
-        // being left, and splicing it in would carry messages across.
-        session.messages = snapshot
-        session.branches = indexBranches(snap.tree.branches)
-        session.turns = snap.turns
-        adoptLiveTurn(session, snap.turns)
-        session.expandedTurns = {}
-      }))
+      set(
+        produce((state: ConversationStore) => {
+          const session = state.sessions[convId]
+          if (!session) return
+          // A turn started across two round trips. This snapshot predates it, and
+          // this path assigns outright rather than merging — so applying it would
+          // not just be stale, it would delete the rows that turn has already
+          // streamed in.
+          if (session.generation !== generation) {
+            superseded = true
+            return
+          }
+          // Replaced outright, not merged: what is local belongs to the branch
+          // being left, and splicing it in would carry messages across.
+          session.messages = snapshot
+          session.branches = indexBranches(snap.tree.branches)
+          session.turns = snap.turns
+          adoptLiveTurn(session, snap.turns)
+          session.expandedTurns = {}
+        }),
+      )
     } finally {
-      set(produce((state: ConversationStore) => {
-        const session = state.sessions[convId]
-        if (session) session.switchingBranch = false
-      }))
+      set(
+        produce((state: ConversationStore) => {
+          const session = state.sessions[convId]
+          if (session) session.switchingBranch = false
+        }),
+      )
     }
     // The head really did move, so what is on screen is a path the server no
     // longer agrees with. Read it again under whatever generation is current
@@ -813,383 +840,404 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   },
 
   beginTurn: (convId, turnId) => {
-    set(produce((state: ConversationStore) => {
-      if (!state.sessions[convId]) {
-        state.sessions[convId] = defaultSession()
-      }
-      const session = state.sessions[convId]
-      session.streaming = true
-      session.activeTurnId = turnId
-      session.retry = null
-      // The guard means "a turn started while your request was in flight", and
-      // this is where a turn starts. Leaving it to the first `message_start`
-      // would let a reload fetched before the user sent — the one the previous
-      // turn's stop kicked off, say — pass the check and land on top of the
-      // bubble they have just added.
-      session.generation += 1
-      session.error = null
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        if (!state.sessions[convId]) {
+          state.sessions[convId] = defaultSession()
+        }
+        const session = state.sessions[convId]
+        session.streaming = true
+        session.activeTurnId = turnId
+        session.retry = null
+        // The guard means "a turn started while your request was in flight", and
+        // this is where a turn starts. Leaving it to the first `message_start`
+        // would let a reload fetched before the user sent — the one the previous
+        // turn's stop kicked off, say — pass the check and land on top of the
+        // bubble they have just added.
+        session.generation += 1
+        session.error = null
+      }),
+    )
   },
 
   abortTurn: (convId, turnId, error) => {
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (!session) return
-      // Somebody else's failure. The turn on screen is not the one that just
-      // rejected: unlocking the composer would invite a send the backend would
-      // only refuse, and writing the message would report a dead turn's error
-      // against a live one.
-      if (session.activeTurnId !== null && session.activeTurnId !== turnId) return
-      if (error !== undefined) session.error = error
-      // Refused because somebody else had the conversation, and that somebody
-      // has already announced itself. The composer stays locked and the session
-      // follows the turn that actually owns it — this is the answer the user is
-      // about to see arriving.
-      if (session.candidateTurnId) {
-        session.activeTurnId = session.candidateTurnId
-        session.candidateTurnId = null
-        return
-      }
-      session.streaming = false
-      session.activeTurnId = null
-      session.retry = null
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        // Somebody else's failure. The turn on screen is not the one that just
+        // rejected: unlocking the composer would invite a send the backend would
+        // only refuse, and writing the message would report a dead turn's error
+        // against a live one.
+        if (session.activeTurnId !== null && session.activeTurnId !== turnId) return
+        if (error !== undefined) session.error = error
+        // Refused because somebody else had the conversation, and that somebody
+        // has already announced itself. The composer stays locked and the session
+        // follows the turn that actually owns it — this is the answer the user is
+        // about to see arriving.
+        if (session.candidateTurnId) {
+          session.activeTurnId = session.candidateTurnId
+          session.candidateTurnId = null
+          return
+        }
+        session.streaming = false
+        session.activeTurnId = null
+        session.retry = null
+      }),
+    )
   },
 
   handleMessageStart: (convId, messageId, turnId) => {
-    set(produce((state: ConversationStore) => {
-      // One iteration of a delegated run. Only runs that announced themselves
-      // have a key here, so ordinary turns are not counted and the map stays
-      // the size of the delegations this session has seen.
-      if (turnId && state.subAgentSteps[turnId] !== undefined) {
-        state.subAgentSteps[turnId] += 1
-      }
-      if (!state.sessions[convId]) {
-        state.sessions[convId] = defaultSession()
-      }
-      const session = state.sessions[convId]
-      // A message_start naming a turn this session is not showing does not get
-      // to take the session: the id on screen may belong to a turn that is
-      // still streaming, and letting this one in would hand the stop that
-      // follows it the power to end that turn.
-      //
-      // But it is not necessarily stale either. The local id is minted before
-      // the request goes out, so it may name a turn the backend has not
-      // accepted — and this event may be the turn that actually holds the
-      // conversation. So it is remembered, and `abortTurn` promotes it if the
-      // local request comes back refused.
-      //
-      // The row is recorded either way: text for it may be behind it in the
-      // queue, and with no row to find, `findAssistantMsg` would append that
-      // text to whatever row happens to be last.
-      const foreign = turnId && session.activeTurnId && session.activeTurnId !== turnId
-      if (foreign) {
-        session.candidateTurnId = turnId
-      } else {
-        session.streaming = true
-        // Left alone when the event carries no id, rather than cleared: an
-        // unnamed turn is not evidence that the named one ended.
-        if (turnId) session.activeTurnId = turnId
-        // Our own turn wrote a message, so it did get the conversation and
-        // whatever was being held cannot have had it.
-        session.candidateTurnId = null
-        session.generation += 1
-      }
-      session.messages.push({
-        id: messageId,
-        conversation_id: convId,
-        role: 'assistant',
-        content: '',
-        provider_id: null,
-        model_id: null,
-        input_tokens: null,
-        output_tokens: null,
-        cache_read_tokens: null,
-        cache_write_tokens: null,
-        provider_name: null,
-        tool_calls: null,
-        tool_call_id: null,
-        sort_order: session.messages.length,
-        created_at: Date.now(),
-        reasoning_content: null,
-        rating: null,
-        schema_version: 2,
-        is_compact_summary: 0,
-      })
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        // One iteration of a delegated run. Only runs that announced themselves
+        // have a key here, so ordinary turns are not counted and the map stays
+        // the size of the delegations this session has seen.
+        if (turnId && state.subAgentSteps[turnId] !== undefined) {
+          state.subAgentSteps[turnId] += 1
+        }
+        if (!state.sessions[convId]) {
+          state.sessions[convId] = defaultSession()
+        }
+        const session = state.sessions[convId]
+        // A message_start naming a turn this session is not showing does not get
+        // to take the session: the id on screen may belong to a turn that is
+        // still streaming, and letting this one in would hand the stop that
+        // follows it the power to end that turn.
+        //
+        // But it is not necessarily stale either. The local id is minted before
+        // the request goes out, so it may name a turn the backend has not
+        // accepted — and this event may be the turn that actually holds the
+        // conversation. So it is remembered, and `abortTurn` promotes it if the
+        // local request comes back refused.
+        //
+        // The row is recorded either way: text for it may be behind it in the
+        // queue, and with no row to find, `findAssistantMsg` would append that
+        // text to whatever row happens to be last.
+        const foreign = turnId && session.activeTurnId && session.activeTurnId !== turnId
+        if (foreign) {
+          session.candidateTurnId = turnId
+        } else {
+          session.streaming = true
+          // Left alone when the event carries no id, rather than cleared: an
+          // unnamed turn is not evidence that the named one ended.
+          if (turnId) session.activeTurnId = turnId
+          // Our own turn wrote a message, so it did get the conversation and
+          // whatever was being held cannot have had it.
+          session.candidateTurnId = null
+          session.generation += 1
+        }
+        session.messages.push({
+          id: messageId,
+          conversation_id: convId,
+          role: 'assistant',
+          content: '',
+          provider_id: null,
+          model_id: null,
+          input_tokens: null,
+          output_tokens: null,
+          cache_read_tokens: null,
+          cache_write_tokens: null,
+          provider_name: null,
+          tool_calls: null,
+          tool_call_id: null,
+          sort_order: session.messages.length,
+          created_at: Date.now(),
+          reasoning_content: null,
+          rating: null,
+          schema_version: 2,
+          is_compact_summary: 0,
+        })
+      }),
+    )
   },
 
   handleText: (convId, messageId, content) => {
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (!session) return
-      const idx = findAssistantMsg(session.messages, messageId)
-      if (idx < 0) return
-      const target = session.messages[idx]
-      const blocks = target._blocks ?? []
-      const last = blocks[blocks.length - 1]
-      if (last?.type === 'text') {
-        last.text += content
-      } else {
-        blocks.push({ type: 'text', text: content })
-      }
-      target._blocks = blocks
-      target.content += content
-      session.retry = null
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        const idx = findAssistantMsg(session.messages, messageId)
+        if (idx < 0) return
+        const target = session.messages[idx]
+        const blocks = target._blocks ?? []
+        const last = blocks[blocks.length - 1]
+        if (last?.type === 'text') {
+          last.text += content
+        } else {
+          blocks.push({ type: 'text', text: content })
+        }
+        target._blocks = blocks
+        target.content += content
+        session.retry = null
+      }),
+    )
   },
 
   handleReasoning: (convId, messageId, content) => {
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (!session) return
-      const idx = findAssistantMsg(session.messages, messageId)
-      if (idx < 0) return
-      const target = session.messages[idx]
-      const blocks = target._blocks ?? []
-      const last = blocks[blocks.length - 1]
-      if (last?.type === 'thinking') {
-        last.text += content
-      } else {
-        blocks.push({ type: 'thinking', text: content })
-      }
-      target._blocks = blocks
-      session.retry = null
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        const idx = findAssistantMsg(session.messages, messageId)
+        if (idx < 0) return
+        const target = session.messages[idx]
+        const blocks = target._blocks ?? []
+        const last = blocks[blocks.length - 1]
+        if (last?.type === 'thinking') {
+          last.text += content
+        } else {
+          blocks.push({ type: 'thinking', text: content })
+        }
+        target._blocks = blocks
+        session.retry = null
+      }),
+    )
   },
 
   handleToolCall: (convId, messageId, callId, toolName, args) => {
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (!session) return
-      const idx = findAssistantMsg(session.messages, messageId)
-      if (idx < 0) return
-      const target = session.messages[idx]
-      const blocks = target._blocks ?? []
-      target._blocks = blocks
-      session.retry = null
-      // The card may be here already. A reload that read the database after
-      // this row's `tool_calls` column was written rebuilds every card in the
-      // round from it, and that snapshot can be applied after this event was
-      // sent and before it was handled. Pushing regardless leaves a second copy
-      // that nothing will ever answer: results go to the first unanswered card
-      // with the id, and the rebuilt one is always ahead of this.
-      //
-      // But two cards can also share an id honestly — gateways that number
-      // their calls per request repeat "0" within one, and the tests below
-      // hold that behaviour — so this cannot be a lookup by id. The column
-      // decides instead: it is written once, with every call the round made,
-      // and a row carrying it has had all of them drawn already. A row still
-      // being streamed into has no column yet, which is the whole live path.
-      //
-      // Malformed is not the same as present: hydration would have drawn
-      // nothing from it, so there is nothing here to duplicate.
-      if (storedCalls(target.tool_calls)) return
-      blocks.push({
-        type: 'tool_call',
-        data: {
-          call_id: callId,
-          tool_name: toolName,
-          arguments: args,
-          status: 'running',
-        },
-      })
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        const idx = findAssistantMsg(session.messages, messageId)
+        if (idx < 0) return
+        const target = session.messages[idx]
+        const blocks = target._blocks ?? []
+        target._blocks = blocks
+        session.retry = null
+        // The card may be here already. A reload that read the database after
+        // this row's `tool_calls` column was written rebuilds every card in the
+        // round from it, and that snapshot can be applied after this event was
+        // sent and before it was handled. Pushing regardless leaves a second copy
+        // that nothing will ever answer: results go to the first unanswered card
+        // with the id, and the rebuilt one is always ahead of this.
+        //
+        // But two cards can also share an id honestly — gateways that number
+        // their calls per request repeat "0" within one, and the tests below
+        // hold that behaviour — so this cannot be a lookup by id. The column
+        // decides instead: it is written once, with every call the round made,
+        // and a row carrying it has had all of them drawn already. A row still
+        // being streamed into has no column yet, which is the whole live path.
+        //
+        // Malformed is not the same as present: hydration would have drawn
+        // nothing from it, so there is nothing here to duplicate.
+        if (storedCalls(target.tool_calls)) return
+        blocks.push({
+          type: 'tool_call',
+          data: {
+            call_id: callId,
+            tool_name: toolName,
+            arguments: args,
+            status: 'running',
+          },
+        })
+      }),
+    )
   },
 
   handleToolApproval: (convId, messageId, approvalId, callId, toolName, retryReason, originCallId, bubble) => {
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (!session) return
-      const entry: PendingApprovalEntry = {
-        providerCallId: callId,
-        messageId,
-        originCallId,
-        toolName,
-        retryReason,
-      }
-      if (toolName === 'ask_user') {
-        session.pendingAsks[approvalId] = entry
-      } else {
-        session.pendingApprovals[approvalId] = entry
-      }
-      // A delegated run's question. It goes inside the `run_agent` card rather
-      // than onto one of its own: the call it names happened in another
-      // conversation, and this row has no block for it.
-      if (bubble) {
-        const parent = session.messages.find((m) => m.id === messageId)
-        const host = (parent?._blocks ?? []).find(
-          (b) => b.type === 'tool_call' && b.data.call_id === bubble.parentCallId,
-        )
-        if (host?.type === 'tool_call') {
-          host.data.nested_approval = {
-            approval_id: approvalId,
-            call_id: callId,
-            tool_name: toolName,
-            arguments: bubble.arguments,
-            retry_reason: retryReason,
-            sub_conversation_id: bubble.subConversationId,
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        const entry: PendingApprovalEntry = {
+          providerCallId: callId,
+          messageId,
+          originCallId,
+          toolName,
+          retryReason,
+        }
+        if (toolName === 'ask_user') {
+          session.pendingAsks[approvalId] = entry
+        } else {
+          session.pendingApprovals[approvalId] = entry
+        }
+        // A delegated run's question. It goes inside the `run_agent` card rather
+        // than onto one of its own: the call it names happened in another
+        // conversation, and this row has no block for it.
+        if (bubble) {
+          const parent = session.messages.find((m) => m.id === messageId)
+          const host = (parent?._blocks ?? []).find(
+            (b) => b.type === 'tool_call' && b.data.call_id === bubble.parentCallId,
+          )
+          if (host?.type === 'tool_call') {
+            host.data.nested_approval = {
+              approval_id: approvalId,
+              call_id: callId,
+              tool_name: toolName,
+              arguments: bubble.arguments,
+              retry_reason: retryReason,
+              sub_conversation_id: bubble.subConversationId,
+            }
           }
+          return
         }
-        return
-      }
-      // Only under the assistant row that asked, and only a card still
-      // outstanding — scanning the whole transcript, which this used to do,
-      // lights up every card sharing the id, and gateways that restart theirs
-      // at "0" make that routine.
-      //
-      // Past that the two kinds of question want different cards. A first ask
-      // wants one nobody has claimed, so two asks in a row land on two cards.
-      // A sandbox escalation is the second question about a call that was
-      // already approved and has already run: its card is claimed by
-      // construction, so asking for an unclaimed one finds nothing and leaves
-      // the card saying "running" while the backend waits for an answer the
-      // user is never offered. Reopening the conversation used to be the only
-      // way out, because hydration matches on the call id and does not care who
-      // claimed it.
-      const target = session.messages.find((m) => m.id === messageId)
-      const card = (target?._blocks ?? []).find(
-        (b) => b.type === 'tool_call' && b.data.call_id === callId
-          && !ANSWERED.has(b.data.status)
-          && (retryReason !== undefined || (!b.data.approval_id && b.data.status !== 'pending')),
-      )
-      if (card?.type === 'tool_call') {
-        // Whatever it was holding has been answered and acted on already — that
-        // is how the call got as far as being refused. Leaving the entry would
-        // keep the sidebar claiming this conversation needs attention twice.
-        if (card.data.approval_id) {
-          delete session.pendingApprovals[card.data.approval_id]
-          delete session.pendingAsks[card.data.approval_id]
+        // Only under the assistant row that asked, and only a card still
+        // outstanding — scanning the whole transcript, which this used to do,
+        // lights up every card sharing the id, and gateways that restart theirs
+        // at "0" make that routine.
+        //
+        // Past that the two kinds of question want different cards. A first ask
+        // wants one nobody has claimed, so two asks in a row land on two cards.
+        // A sandbox escalation is the second question about a call that was
+        // already approved and has already run: its card is claimed by
+        // construction, so asking for an unclaimed one finds nothing and leaves
+        // the card saying "running" while the backend waits for an answer the
+        // user is never offered. Reopening the conversation used to be the only
+        // way out, because hydration matches on the call id and does not care who
+        // claimed it.
+        const target = session.messages.find((m) => m.id === messageId)
+        const card = (target?._blocks ?? []).find(
+          (b) =>
+            b.type === 'tool_call' &&
+            b.data.call_id === callId &&
+            !ANSWERED.has(b.data.status) &&
+            (retryReason !== undefined || (!b.data.approval_id && b.data.status !== 'pending')),
+        )
+        if (card?.type === 'tool_call') {
+          // Whatever it was holding has been answered and acted on already — that
+          // is how the call got as far as being refused. Leaving the entry would
+          // keep the sidebar claiming this conversation needs attention twice.
+          if (card.data.approval_id) {
+            delete session.pendingApprovals[card.data.approval_id]
+            delete session.pendingAsks[card.data.approval_id]
+          }
+          card.data.status = 'pending'
+          card.data.approval_id = approvalId
+          card.data.retry_reason = retryReason
         }
-        card.data.status = 'pending'
-        card.data.approval_id = approvalId
-        card.data.retry_reason = retryReason
-      }
-    }))
+      }),
+    )
   },
 
   handleSubAgentStarted: (convId, messageId, callId, run) => {
-    set(produce((state: ConversationStore) => {
-      // Seeded even when there is no session to draw into: the counter is keyed
-      // by turn and read by whichever card ends up rendering, and a run whose
-      // parent is not open still writes rows the moment it starts.
-      state.subAgentSteps[run.turnId] = state.subAgentSteps[run.turnId] ?? 0
-      const session = state.sessions[convId]
-      if (!session) return
-      const target = session.messages.find((m) => m.id === messageId)
-      const card = (target?._blocks ?? []).find(
-        (b) => b.type === 'tool_call' && b.data.call_id === callId,
-      )
-      if (card?.type === 'tool_call') {
-        card.data.sub_agent = {
-          conversation_id: run.conversationId,
-          turn_id: run.turnId,
-          kind: run.kind,
-          steps: 0,
+    set(
+      produce((state: ConversationStore) => {
+        // Seeded even when there is no session to draw into: the counter is keyed
+        // by turn and read by whichever card ends up rendering, and a run whose
+        // parent is not open still writes rows the moment it starts.
+        state.subAgentSteps[run.turnId] = state.subAgentSteps[run.turnId] ?? 0
+        const session = state.sessions[convId]
+        if (!session) return
+        const target = session.messages.find((m) => m.id === messageId)
+        const card = (target?._blocks ?? []).find((b) => b.type === 'tool_call' && b.data.call_id === callId)
+        if (card?.type === 'tool_call') {
+          card.data.sub_agent = {
+            conversation_id: run.conversationId,
+            turn_id: run.turnId,
+            kind: run.kind,
+            steps: 0,
+          }
         }
-      }
-    }))
+      }),
+    )
   },
 
   resolveNestedApproval: (convId, approvalId) => {
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (!session) return
-      delete session.pendingApprovals[approvalId]
-      delete session.pendingAsks[approvalId]
-      for (const m of session.messages) {
-        for (const b of m._blocks ?? []) {
-          if (b.type === 'tool_call' && b.data.nested_approval?.approval_id === approvalId) {
-            b.data.nested_approval = undefined
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        delete session.pendingApprovals[approvalId]
+        delete session.pendingAsks[approvalId]
+        for (const m of session.messages) {
+          for (const b of m._blocks ?? []) {
+            if (b.type === 'tool_call' && b.data.nested_approval?.approval_id === approvalId) {
+              b.data.nested_approval = undefined
+            }
           }
         }
-      }
-    }))
+      }),
+    )
   },
 
   handleToolResult: (convId, messageId, callId, result, outcome) => {
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (!session) return
-      const status: ToolCallDisplay['status'] =
-        outcome === 'denied' ? 'denied'
-          : outcome === 'error' ? 'error'
-            : 'completed'
-      // Same locality rule as the approval above, and the same notion of still
-      // outstanding: results arrive in the order the calls were made, so the
-      // first card without an answer is the one this answers.
-      const target = session.messages.find((m) => m.id === messageId)
-      const card = (target?._blocks ?? []).find(
-        (b) => b.type === 'tool_call' && b.data.call_id === callId
-          && !ANSWERED.has(b.data.status),
-      )
-      if (card?.type === 'tool_call') {
-        // Retire the entry this card was waiting on, not every entry sharing
-        // the call id — a sibling call may still have one outstanding.
-        if (card.data.approval_id) {
-          delete session.pendingApprovals[card.data.approval_id]
-          delete session.pendingAsks[card.data.approval_id]
-        }
-        card.data.status = status
-        card.data.result = result
-        card.data.approval_id = undefined
-        // The checklist bar tracks the arguments of the last successful call;
-        // a rejected one left the stored list untouched.
-        if (card.data.tool_name === 'update_todos' && status === 'completed') {
-          session.activeTodos = readTodoArgs(card.data.arguments)
-        }
-      } else {
-        // No card left to update — the transcript was rebuilt without one.
-        // Retire whatever was waiting on this call anyway, or the sidebar keeps
-        // claiming the conversation needs attention.
-        for (const [id, entry] of Object.entries(session.pendingApprovals)) {
-          if (entry.messageId === messageId && entry.providerCallId === callId) {
-            delete session.pendingApprovals[id]
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        const status: ToolCallDisplay['status'] =
+          outcome === 'denied' ? 'denied' : outcome === 'error' ? 'error' : 'completed'
+        // Same locality rule as the approval above, and the same notion of still
+        // outstanding: results arrive in the order the calls were made, so the
+        // first card without an answer is the one this answers.
+        const target = session.messages.find((m) => m.id === messageId)
+        const card = (target?._blocks ?? []).find(
+          (b) => b.type === 'tool_call' && b.data.call_id === callId && !ANSWERED.has(b.data.status),
+        )
+        if (card?.type === 'tool_call') {
+          // Retire the entry this card was waiting on, not every entry sharing
+          // the call id — a sibling call may still have one outstanding.
+          if (card.data.approval_id) {
+            delete session.pendingApprovals[card.data.approval_id]
+            delete session.pendingAsks[card.data.approval_id]
+          }
+          card.data.status = status
+          card.data.result = result
+          card.data.approval_id = undefined
+          // The checklist bar tracks the arguments of the last successful call;
+          // a rejected one left the stored list untouched.
+          if (card.data.tool_name === 'update_todos' && status === 'completed') {
+            session.activeTodos = readTodoArgs(card.data.arguments)
+          }
+        } else {
+          // No card left to update — the transcript was rebuilt without one.
+          // Retire whatever was waiting on this call anyway, or the sidebar keeps
+          // claiming the conversation needs attention.
+          for (const [id, entry] of Object.entries(session.pendingApprovals)) {
+            if (entry.messageId === messageId && entry.providerCallId === callId) {
+              delete session.pendingApprovals[id]
+            }
+          }
+          for (const [id, entry] of Object.entries(session.pendingAsks)) {
+            if (entry.messageId === messageId && entry.providerCallId === callId) {
+              delete session.pendingAsks[id]
+            }
           }
         }
-        for (const [id, entry] of Object.entries(session.pendingAsks)) {
-          if (entry.messageId === messageId && entry.providerCallId === callId) {
-            delete session.pendingAsks[id]
-          }
-        }
-      }
-    }))
+      }),
+    )
   },
 
   markApprovalOrphaned: (approvalId) => {
-    set(produce((state: ConversationStore) => {
-      for (const session of Object.values(state.sessions)) {
-        const entry = session.pendingApprovals[approvalId] ?? session.pendingAsks[approvalId]
-        if (!entry) continue
-        delete session.pendingApprovals[approvalId]
-        delete session.pendingAsks[approvalId]
-        // Written to the store rather than to the card's own state: a card that
-        // only remembers this locally goes back to offering a dead button the
-        // next time the transcript reloads.
-        const target = session.messages.find((m) => m.id === entry.messageId)
-        for (const block of target?._blocks ?? []) {
-          if (block.type !== 'tool_call') continue
-          if (block.data.approval_id === approvalId) {
-            block.data.status = 'orphaned'
-            block.data.approval_id = undefined
+    set(
+      produce((state: ConversationStore) => {
+        for (const session of Object.values(state.sessions)) {
+          const entry = session.pendingApprovals[approvalId] ?? session.pendingAsks[approvalId]
+          if (!entry) continue
+          delete session.pendingApprovals[approvalId]
+          delete session.pendingAsks[approvalId]
+          // Written to the store rather than to the card's own state: a card that
+          // only remembers this locally goes back to offering a dead button the
+          // next time the transcript reloads.
+          const target = session.messages.find((m) => m.id === entry.messageId)
+          for (const block of target?._blocks ?? []) {
+            if (block.type !== 'tool_call') continue
+            if (block.data.approval_id === approvalId) {
+              block.data.status = 'orphaned'
+              block.data.approval_id = undefined
+            }
+            // A delegated run's question. The card it sits in is the `run_agent`
+            // call, which is not itself orphaned — only the question is, so it
+            // goes and the card carries on saying what it is doing.
+            if (block.data.nested_approval?.approval_id === approvalId) {
+              block.data.nested_approval = undefined
+            }
           }
-          // A delegated run's question. The card it sits in is the `run_agent`
-          // call, which is not itself orphaned — only the question is, so it
-          // goes and the card carries on saying what it is doing.
-          if (block.data.nested_approval?.approval_id === approvalId) {
-            block.data.nested_approval = undefined
-          }
+          return
         }
-        return
-      }
-    }))
+      }),
+    )
   },
 
   setActiveTodos: (convId, todos) => {
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (session) session.activeTodos = todos
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (session) session.activeTodos = todos
+      }),
+    )
   },
 
   // The streamed tool events are gone after a reload or a conversation switch,
@@ -1203,32 +1251,33 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     } catch {
       return
     }
-    get().setActiveTodos(
-      convId,
-      view ? { title: view.list.title, todos: toDrafts(view.items) } : null,
-    )
+    get().setActiveTodos(convId, view ? { title: view.list.title, todos: toDrafts(view.items) } : null)
   },
 
   handleRetry: (convId, attempt, max, delayMs) => {
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      // Not scoped to a turn: the event names the assistant row, and a session
-      // that is not showing that row is not showing the header this appears in
-      // either. The next thing to happen on any turn clears it.
-      if (session) session.retry = { attempt, max, delayMs }
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        // Not scoped to a turn: the event names the assistant row, and a session
+        // that is not showing that row is not showing the header this appears in
+        // either. The next thing to happen on any turn clears it.
+        if (session) session.retry = { attempt, max, delayMs }
+      }),
+    )
   },
 
   handleStreamReset: (convId, messageId) => {
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (!session) return
-      const idx = findAssistantMsg(session.messages, messageId)
-      if (idx < 0) return
-      const target = session.messages[idx]
-      target.content = ''
-      target._blocks = undefined
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        const idx = findAssistantMsg(session.messages, messageId)
+        if (idx < 0) return
+        const target = session.messages[idx]
+        target.content = ''
+        target._blocks = undefined
+      }),
+    )
   },
 
   handleStop: (convId, turnId) => {
@@ -1241,48 +1290,50 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     // before writing anything, and refusing it would leave the composer
     // disabled for good.
     const mine = !turnId || !session0?.activeTurnId || session0.activeTurnId === turnId
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (!session) return
-      if (!mine) {
-        // A turn that was being held in case the local one turned out not to
-        // own the conversation. It has ended, so there is nothing to hand over
-        // to; the reload below still runs, because the transcript changed.
-        if (turnId && session.candidateTurnId === turnId) session.candidateTurnId = null
-        return
-      }
-      // The local turn ended before it ever wrote a message, and another turn
-      // announced itself while it was in flight. Same handover as a refusal:
-      // that one has the conversation and the composer stays locked.
-      if (session.candidateTurnId) {
-        session.activeTurnId = session.candidateTurnId
-        session.candidateTurnId = null
-        return
-      }
-      session.streaming = false
-      session.activeTurnId = null
-      session.retry = null
-      // The turn is over, so nothing is listening for these answers any more.
-      // Clearing the entries without touching the cards used to leave a pair of
-      // buttons that looked live and did nothing when pressed.
-      for (const [id, entry] of [
-        ...Object.entries(session.pendingApprovals),
-        ...Object.entries(session.pendingAsks),
-      ]) {
-        const target = session.messages.find((m) => m.id === entry.messageId)
-        for (const block of target?._blocks ?? []) {
-          if (block.type === 'tool_call' && block.data.approval_id === id) {
-            block.data.status = 'orphaned'
-            block.data.approval_id = undefined
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        if (!mine) {
+          // A turn that was being held in case the local one turned out not to
+          // own the conversation. It has ended, so there is nothing to hand over
+          // to; the reload below still runs, because the transcript changed.
+          if (turnId && session.candidateTurnId === turnId) session.candidateTurnId = null
+          return
+        }
+        // The local turn ended before it ever wrote a message, and another turn
+        // announced itself while it was in flight. Same handover as a refusal:
+        // that one has the conversation and the composer stays locked.
+        if (session.candidateTurnId) {
+          session.activeTurnId = session.candidateTurnId
+          session.candidateTurnId = null
+          return
+        }
+        session.streaming = false
+        session.activeTurnId = null
+        session.retry = null
+        // The turn is over, so nothing is listening for these answers any more.
+        // Clearing the entries without touching the cards used to leave a pair of
+        // buttons that looked live and did nothing when pressed.
+        for (const [id, entry] of [
+          ...Object.entries(session.pendingApprovals),
+          ...Object.entries(session.pendingAsks),
+        ]) {
+          const target = session.messages.find((m) => m.id === entry.messageId)
+          for (const block of target?._blocks ?? []) {
+            if (block.type === 'tool_call' && block.data.approval_id === id) {
+              block.data.status = 'orphaned'
+              block.data.approval_id = undefined
+            }
           }
         }
-      }
-      session.pendingApprovals = {}
-      session.pendingAsks = {}
-      if (convId !== state.activeId) {
-        session.fulfilledUnseen = true
-      }
-    }))
+        session.pendingApprovals = {}
+        session.pendingAsks = {}
+        if (convId !== state.activeId) {
+          session.fulfilledUnseen = true
+        }
+      }),
+    )
     // The whole snapshot, not just the messages: a turn that regenerated an
     // answer has just created a branch point, and the pager for it has to
     // appear now rather than the next time the conversation is opened. The turn
@@ -1294,104 +1345,127 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         get().sessions[convId]?.messages ?? [],
         hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
       )
-      set(produce((state: ConversationStore) => {
-        const session = state.sessions[convId]
-        if (!session) return
-        // A new stream started while this snapshot was in flight; its own stop
-        // handler will reload, so applying the stale snapshot would clobber it.
-        if (session.generation !== generation) return
-        session.messages = mergeSnapshot(session, snapshot)
-        session.branches = indexBranches(snap.tree.branches)
-        session.turns = snap.turns
-      }))
+      set(
+        produce((state: ConversationStore) => {
+          const session = state.sessions[convId]
+          if (!session) return
+          // A new stream started while this snapshot was in flight; its own stop
+          // handler will reload, so applying the stale snapshot would clobber it.
+          if (session.generation !== generation) return
+          session.messages = mergeSnapshot(session, snapshot)
+          session.branches = indexBranches(snap.tree.branches)
+          session.turns = snap.turns
+        }),
+      )
     })
   },
 
   handleCompactStart: (convId) => {
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (session) session.compacting = true
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (session) session.compacting = true
+      }),
+    )
   },
 
   handleCompactDone: (convId, midTurn) => {
     if (midTurn) {
-      set(produce((state: ConversationStore) => {
-        const session = state.sessions[convId]
-        if (session) session.compacting = false
-      }))
+      set(
+        produce((state: ConversationStore) => {
+          const session = state.sessions[convId]
+          if (session) session.compacting = false
+        }),
+      )
       return
     }
     const generation = get().sessions[convId]?.generation ?? 0
-    api.conversationSnapshot(convId).then((snap) => {
-      const snapshot = reconcileMessages(
-        get().sessions[convId]?.messages ?? [],
-        hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
-      )
-      set(produce((state: ConversationStore) => {
-        const session = state.sessions[convId]
-        if (!session) return
-        session.compacting = false
-        // A stream may have advanced while this snapshot was in flight; merge
-        // instead of clobbering, and skip entirely if a newer turn superseded it.
-        if (session.generation !== generation) return
-        session.messages = mergeSnapshot(session, snapshot)
-        session.branches = indexBranches(snap.tree.branches)
-        session.compactCursor = snap.conversation.compact_cursor
-        session.turns = snap.turns
-      }))
-    }).catch(() => {
-      set(produce((state: ConversationStore) => {
-        const session = state.sessions[convId]
-        if (session) session.compacting = false
-      }))
-    })
+    api
+      .conversationSnapshot(convId)
+      .then((snap) => {
+        const snapshot = reconcileMessages(
+          get().sessions[convId]?.messages ?? [],
+          hydrateBlocks(snap.tree.messages, snap.pending_approvals, snap.turns, snap.sub_agent_runs),
+        )
+        set(
+          produce((state: ConversationStore) => {
+            const session = state.sessions[convId]
+            if (!session) return
+            session.compacting = false
+            // A stream may have advanced while this snapshot was in flight; merge
+            // instead of clobbering, and skip entirely if a newer turn superseded it.
+            if (session.generation !== generation) return
+            session.messages = mergeSnapshot(session, snapshot)
+            session.branches = indexBranches(snap.tree.branches)
+            session.compactCursor = snap.conversation.compact_cursor
+            session.turns = snap.turns
+          }),
+        )
+      })
+      .catch(() => {
+        set(
+          produce((state: ConversationStore) => {
+            const session = state.sessions[convId]
+            if (session) session.compacting = false
+          }),
+        )
+      })
   },
 
   setStreaming: (convId, value) => {
-    set(produce((state: ConversationStore) => {
-      if (!state.sessions[convId]) {
-        state.sessions[convId] = defaultSession()
-      }
-      state.sessions[convId].streaming = value
-      // Turning streaming off by hand — a request that failed before the turn
-      // ever started — must not leave an id behind, or the next stop would be
-      // measured against a run that no longer exists.
-      if (!value) {
-        state.sessions[convId].activeTurnId = null
-        state.sessions[convId].candidateTurnId = null
-      }
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        if (!state.sessions[convId]) {
+          state.sessions[convId] = defaultSession()
+        }
+        state.sessions[convId].streaming = value
+        // Turning streaming off by hand — a request that failed before the turn
+        // ever started — must not leave an id behind, or the next stop would be
+        // measured against a run that no longer exists.
+        if (!value) {
+          state.sessions[convId].activeTurnId = null
+          state.sessions[convId].candidateTurnId = null
+        }
+      }),
+    )
   },
 
   setCompacting: (convId, value) => {
-    set(produce((state: ConversationStore) => {
-      if (state.sessions[convId]) {
-        state.sessions[convId].compacting = value
-      }
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        if (state.sessions[convId]) {
+          state.sessions[convId].compacting = value
+        }
+      }),
+    )
   },
 
   setError: (convId, error) => {
-    set(produce((state: ConversationStore) => {
-      if (state.sessions[convId]) {
-        state.sessions[convId].error = error
-      }
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        if (state.sessions[convId]) {
+          state.sessions[convId].error = error
+        }
+      }),
+    )
   },
 
   markSeen: (convId) => {
-    set(produce((state: ConversationStore) => {
-      if (state.sessions[convId]) {
-        state.sessions[convId].fulfilledUnseen = false
-      }
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        if (state.sessions[convId]) {
+          state.sessions[convId].fulfilledUnseen = false
+        }
+      }),
+    )
   },
 
   setTurnExpanded: (convId, turnId, expanded) => {
-    set(produce((state: ConversationStore) => {
-      const session = state.sessions[convId]
-      if (session) session.expandedTurns[turnId] = expanded
-    }))
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (session) session.expandedTurns[turnId] = expanded
+      }),
+    )
   },
 }))

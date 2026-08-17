@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Checkbox, Input, Label, ListBox, Select } from '@heroui/react'
 import { api } from '@/api'
+import { cn } from '@/lib/utils'
 import type { Assistant, HooksConfig, HooksStatus, ModelInfo, Provider } from '@/types'
 import { SettingsHeader, SettingsPane } from './primitives'
 
@@ -63,7 +64,10 @@ function ModelPicker({
       setModels([])
       return
     }
-    api.fetchProviderModels(providerId).then(setModels).catch(() => setModels([]))
+    api
+      .fetchProviderModels(providerId)
+      .then(setModels)
+      .catch(() => setModels([]))
   }, [providerId])
 
   // An incomplete pair is stored as nothing rather than as half a name: the
@@ -177,9 +181,12 @@ export function HooksSettings() {
   const timeoutId = useId()
   const roundsId = useId()
 
-  useEffect(() => () => {
-    if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
-  }, [])
+  useEffect(
+    () => () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+    },
+    [],
+  )
 
   const loadData = useCallback(async () => {
     try {
@@ -198,7 +205,9 @@ export function HooksSettings() {
     }
   }, [])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -306,9 +315,7 @@ export function HooksSettings() {
             if (v) setConfig({ ...config, assistant_id: v === '_default' ? null : String(v) })
           }}
         >
-          <Label className="block text-xs font-medium text-muted">
-            {t('settings.hooks.assistant')}
-          </Label>
+          <Label className="block text-xs font-medium text-muted">{t('settings.hooks.assistant')}</Label>
           <Select.Trigger>
             <Select.Value />
             <Select.Indicator />
@@ -406,9 +413,7 @@ export function HooksSettings() {
           }
         />
         <p className="text-xs text-muted">
-          {config.max_rounds === 0
-            ? t('settings.hooks.maxRoundsUnlimited')
-            : t('settings.hooks.maxRoundsHint')}
+          {config.max_rounds === 0 ? t('settings.hooks.maxRoundsUnlimited') : t('settings.hooks.maxRoundsHint')}
         </p>
       </div>
 
@@ -451,7 +456,7 @@ export function HooksSettings() {
       {status && (
         <div className="rounded-lg border p-3 space-y-1 text-sm">
           <div className="flex items-center gap-2">
-            <span className={`inline-block w-2 h-2 rounded-full ${running ? 'bg-success' : 'bg-muted'}`} />
+            <span className={cn('inline-block w-2 h-2 rounded-full', running ? 'bg-success' : 'bg-muted')} />
             <span className="font-medium">
               {running ? t('settings.hooks.statusRunning') : t('settings.hooks.statusStopped')}
             </span>

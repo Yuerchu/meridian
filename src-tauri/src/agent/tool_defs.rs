@@ -10,8 +10,8 @@ use crate::provider::ToolDefinition;
 use crate::tools::ToolRegistry;
 
 use super::modes::Modes;
-use super::skills::{is_valid_slug, MAX_AVAILABLE_SKILLS};
-use super::sub_agents::{SubAgentCatalog, RUN_AGENT_TOOL};
+use super::skills::{MAX_AVAILABLE_SKILLS, is_valid_slug};
+use super::sub_agents::{RUN_AGENT_TOOL, SubAgentCatalog};
 
 pub const LOAD_SKILL_TOOL: &str = "load_skill";
 
@@ -93,7 +93,9 @@ pub(crate) fn collect(
 /// skill names. With no skills bound the tool is dropped entirely rather than
 /// offered with an empty menu.
 pub(crate) fn apply_skill_catalog(defs: &mut Vec<ToolDefinition>, skills: &[Skill]) {
-    let Some(idx) = defs.iter().position(|d| d.name == LOAD_SKILL_TOOL) else { return };
+    let Some(idx) = defs.iter().position(|d| d.name == LOAD_SKILL_TOOL) else {
+        return;
+    };
 
     // Names come off disk and so bypassed every Rust-side check; validate here,
     // at the boundary where they turn into a provider payload. An illegal name
@@ -132,10 +134,10 @@ pub(crate) fn apply_skill_catalog(defs: &mut Vec<ToolDefinition>, skills: &[Skil
 
     let def = &mut defs[idx];
     def.description.push_str(catalog.trim_end());
-    if let Some(props) = def.parameters.get_mut("properties").and_then(|p| p.as_object_mut()) {
-        if let Some(field) = props.get_mut("skill_name").and_then(|f| f.as_object_mut()) {
-            field.insert("enum".into(), serde_json::json!(names));
-        }
+    if let Some(props) = def.parameters.get_mut("properties").and_then(|p| p.as_object_mut())
+        && let Some(field) = props.get_mut("skill_name").and_then(|f| f.as_object_mut())
+    {
+        field.insert("enum".into(), serde_json::json!(names));
     }
 }
 
@@ -154,11 +156,10 @@ pub(crate) fn apply_skill_catalog(defs: &mut Vec<ToolDefinition>, skills: &[Skil
 ///   nowhere to look up names will invent them.
 /// * `Some`, populated — the roster goes into the description and the qualified
 ///   names become an `enum`, the same shape `load_skill` uses.
-pub(crate) fn apply_sub_agent_catalog(
-    defs: &mut Vec<ToolDefinition>,
-    catalog: Option<&SubAgentCatalog>,
-) {
-    let Some(idx) = defs.iter().position(|d| d.name == RUN_AGENT_TOOL) else { return };
+pub(crate) fn apply_sub_agent_catalog(defs: &mut Vec<ToolDefinition>, catalog: Option<&SubAgentCatalog>) {
+    let Some(idx) = defs.iter().position(|d| d.name == RUN_AGENT_TOOL) else {
+        return;
+    };
 
     let Some(catalog) = catalog else {
         defs.remove(idx);
@@ -203,7 +204,10 @@ mod tests {
     }
 
     fn registry() -> ToolRegistry {
-        ToolRegistry::new(std::path::PathBuf::from("/nonexistent"), std::path::PathBuf::from("/nonexistent"))
+        ToolRegistry::new(
+            std::path::PathBuf::from("/nonexistent"),
+            std::path::PathBuf::from("/nonexistent"),
+        )
     }
 
     fn named(names: &[&str]) -> Vec<ToolDefinition> {
@@ -285,7 +289,10 @@ mod tests {
         apply_sub_agent_catalog(&mut defs, Some(&SubAgentCatalog { models: Vec::new() }));
 
         assert!(names_of(&defs).contains(&RUN_AGENT_TOOL.to_string()));
-        assert!(model_property(&defs).is_none(), "an unconstrained model field is worse than none");
+        assert!(
+            model_property(&defs).is_none(),
+            "an unconstrained model field is worse than none"
+        );
     }
 
     #[test]
@@ -314,7 +321,11 @@ mod tests {
     #[test]
     fn work_mode_narrows_nothing_and_offers_the_way_into_plan() {
         let mut defs = named(&["read_file", "write_file", "run_command"]);
-        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(None)), &registry());
+        apply_mode(
+            &mut defs,
+            Modes::Switchable(super::super::modes::resolve(None)),
+            &registry(),
+        );
         assert_eq!(
             names_of(&defs),
             ["read_file", "write_file", "run_command", "enter_plan"],
@@ -324,7 +335,11 @@ mod tests {
     #[test]
     fn plan_mode_keeps_readers_and_drops_writers() {
         let mut defs = named(&["read_file", "write_file", "apply_patch", "run_command", "save_memory"]);
-        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(Some("plan"))), &registry());
+        apply_mode(
+            &mut defs,
+            Modes::Switchable(super::super::modes::resolve(Some("plan"))),
+            &registry(),
+        );
 
         let names = names_of(&defs);
         assert!(names.contains(&"read_file".to_string()));
@@ -337,7 +352,11 @@ mod tests {
     #[test]
     fn plan_mode_injects_its_exit_tool() {
         let mut defs = named(&["read_file"]);
-        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(Some("plan"))), &registry());
+        apply_mode(
+            &mut defs,
+            Modes::Switchable(super::super::modes::resolve(Some("plan"))),
+            &registry(),
+        );
         let exit = defs.iter().find(|d| d.name == "exit_plan").expect("exit tool injected");
         // Pulled from the registry, so the schema the model sees is the real one.
         assert!(!exit.description.is_empty());
@@ -349,7 +368,11 @@ mod tests {
         // It lives in the registry, so an assistant with no tool filter would
         // otherwise be offered it in every ordinary conversation.
         let mut defs = named(&["read_file", "exit_plan"]);
-        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(None)), &registry());
+        apply_mode(
+            &mut defs,
+            Modes::Switchable(super::super::modes::resolve(None)),
+            &registry(),
+        );
         // No `enter_plan` either: read_file alone is already read-only, so
         // planning would take nothing away.
         assert_eq!(names_of(&defs), ["read_file"]);
@@ -369,18 +392,30 @@ mod tests {
     #[test]
     fn the_way_into_plan_appears_only_when_it_would_restrict_something() {
         let mut read_only = named(&["read_file", "web_search"]);
-        apply_mode(&mut read_only, Modes::Switchable(super::super::modes::resolve(None)), &registry());
+        apply_mode(
+            &mut read_only,
+            Modes::Switchable(super::super::modes::resolve(None)),
+            &registry(),
+        );
         assert_eq!(names_of(&read_only), ["read_file", "web_search"]);
 
         let mut can_edit = named(&["read_file", "write_file"]);
-        apply_mode(&mut can_edit, Modes::Switchable(super::super::modes::resolve(None)), &registry());
+        apply_mode(
+            &mut can_edit,
+            Modes::Switchable(super::super::modes::resolve(None)),
+            &registry(),
+        );
         assert!(names_of(&can_edit).contains(&"enter_plan".to_string()));
     }
 
     #[test]
     fn you_cannot_re_enter_the_mode_you_are_already_in() {
         let mut defs = named(&["read_file", "enter_plan"]);
-        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(Some("plan"))), &registry());
+        apply_mode(
+            &mut defs,
+            Modes::Switchable(super::super::modes::resolve(Some("plan"))),
+            &registry(),
+        );
         let names = names_of(&defs);
         assert!(!names.contains(&"enter_plan".to_string()), "already there");
         assert!(names.contains(&"exit_plan".to_string()), "but can leave");
@@ -391,18 +426,32 @@ mod tests {
         // The assistant allows two tools; plan mode's whitelist is much wider,
         // but must not hand back anything the assistant had already excluded.
         let mut defs = named(&["read_file", "glob"]);
-        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(Some("plan"))), &registry());
+        apply_mode(
+            &mut defs,
+            Modes::Switchable(super::super::modes::resolve(Some("plan"))),
+            &registry(),
+        );
 
         let names = names_of(&defs);
-        assert!(!names.contains(&"list_directory".to_string()), "not enabled by the assistant");
-        assert!(!names.contains(&"web_search".to_string()), "not enabled by the assistant");
+        assert!(
+            !names.contains(&"list_directory".to_string()),
+            "not enabled by the assistant"
+        );
+        assert!(
+            !names.contains(&"web_search".to_string()),
+            "not enabled by the assistant"
+        );
         assert_eq!(names.len(), 3, "read_file, glob and the injected exit tool");
     }
 
     #[test]
     fn injection_does_not_duplicate_an_existing_definition() {
         let mut defs = named(&["read_file", "exit_plan"]);
-        apply_mode(&mut defs, Modes::Switchable(super::super::modes::resolve(Some("plan"))), &registry());
+        apply_mode(
+            &mut defs,
+            Modes::Switchable(super::super::modes::resolve(Some("plan"))),
+            &registry(),
+        );
         assert_eq!(defs.iter().filter(|d| d.name == "exit_plan").count(), 1);
     }
 
@@ -435,10 +484,13 @@ mod tests {
     #[test]
     fn catalog_lists_skills_and_constrains_the_enum() {
         let mut defs = defs_with_load_skill();
-        apply_skill_catalog(&mut defs, &[
-            skill("pdf-tools", "pdf-tools", "Fill PDF forms"),
-            skill("git-helper", "git-helper", "Explain git state"),
-        ]);
+        apply_skill_catalog(
+            &mut defs,
+            &[
+                skill("pdf-tools", "pdf-tools", "Fill PDF forms"),
+                skill("git-helper", "git-helper", "Explain git state"),
+            ],
+        );
 
         let d = defs.iter().find(|d| d.name == LOAD_SKILL_TOOL).unwrap();
         assert!(d.description.contains("- pdf-tools: Fill PDF forms"));
@@ -457,10 +509,13 @@ mod tests {
     #[test]
     fn illegal_names_never_reach_the_provider_payload() {
         let mut defs = defs_with_load_skill();
-        apply_skill_catalog(&mut defs, &[
-            skill("good", "good", "Fine"),
-            skill("bad", "Not A Slug", "Would 400 the whole request"),
-        ]);
+        apply_skill_catalog(
+            &mut defs,
+            &[
+                skill("good", "good", "Fine"),
+                skill("bad", "Not A Slug", "Would 400 the whole request"),
+            ],
+        );
         assert_eq!(enum_of(&defs), vec!["good"]);
     }
 
@@ -474,11 +529,14 @@ mod tests {
     #[test]
     fn clashing_names_are_flagged_and_listed_once() {
         let mut defs = defs_with_load_skill();
-        apply_skill_catalog(&mut defs, &[
-            skill("mine-pdf", "pdf", "Mine"),
-            skill("theirs-pdf", "pdf", "Theirs"),
-            skill("solo", "solo", "Alone"),
-        ]);
+        apply_skill_catalog(
+            &mut defs,
+            &[
+                skill("mine-pdf", "pdf", "Mine"),
+                skill("theirs-pdf", "pdf", "Theirs"),
+                skill("solo", "solo", "Alone"),
+            ],
+        );
 
         let d = defs.iter().find(|d| d.name == LOAD_SKILL_TOOL).unwrap();
         assert!(d.description.contains("2 skills claim this name"));
@@ -510,7 +568,10 @@ mod tests {
 
     #[test]
     fn collect_filters_to_the_enabled_list() {
-        let registry = ToolRegistry::new(std::path::PathBuf::from("/nonexistent"), std::path::PathBuf::from("/nonexistent"));
+        let registry = ToolRegistry::new(
+            std::path::PathBuf::from("/nonexistent"),
+            std::path::PathBuf::from("/nonexistent"),
+        );
         let mcp = vec![ToolDefinition {
             name: "mcp__srv__thing".into(),
             description: "d".into(),
@@ -521,8 +582,11 @@ mod tests {
         assert!(all.iter().any(|d| d.name == "read_file"));
         assert!(all.iter().any(|d| d.name == "mcp__srv__thing"));
 
-        let filtered =
-            collect(&registry, mcp, Some(&["read_file".to_string(), "mcp__srv__thing".to_string()]));
+        let filtered = collect(
+            &registry,
+            mcp,
+            Some(&["read_file".to_string(), "mcp__srv__thing".to_string()]),
+        );
         assert_eq!(filtered.len(), 2);
     }
 }

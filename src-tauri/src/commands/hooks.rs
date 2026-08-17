@@ -20,10 +20,7 @@ pub async fn get_hooks_config(app: tauri::AppHandle) -> Result<hooks::HookConfig
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
-pub async fn save_hooks_config(
-    app: tauri::AppHandle,
-    config: hooks::HookConfig,
-) -> Result<hooks::HookConfig, String> {
+pub async fn save_hooks_config(app: tauri::AppHandle, config: hooks::HookConfig) -> Result<hooks::HookConfig, String> {
     let pool = app.state::<AppDb>().0.clone();
     // Minted here rather than in the settings page: the page would have to send
     // it back on every save, and a token that travels twice is a token that can
@@ -47,7 +44,10 @@ pub async fn save_hooks_config(
 pub async fn regenerate_hooks_token(app: tauri::AppHandle) -> Result<String, String> {
     let pool = app.state::<AppDb>().0.clone();
     let token = hooks::generate_token();
-    let config = hooks::HookConfig { token: Some(token.clone()), ..hooks::load_config(&pool) };
+    let config = hooks::HookConfig {
+        token: Some(token.clone()),
+        ..hooks::load_config(&pool)
+    };
     hooks::save_config(&pool, &config)?;
     // Otherwise the running server keeps checking the old token and the
     // handshake file keeps advertising it — the new one would be a value in the

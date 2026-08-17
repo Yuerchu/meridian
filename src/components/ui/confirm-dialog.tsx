@@ -59,7 +59,10 @@ export function ConfirmDialog({
                 no. */}
             <Button
               variant={status === 'danger' ? 'danger' : 'primary'}
-              onClick={() => { onConfirm(); onOpenChange(false) }}
+              onClick={() => {
+                onConfirm()
+                onOpenChange(false)
+              }}
             >
               {confirmLabel ?? t('common.confirm')}
             </Button>

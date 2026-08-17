@@ -1,0 +1,14 @@
+# Rust 归 rustfmt 管;生成物与锁文件不重排
+src-tauri/
+dist/
+pnpm-lock.yaml
+skills-lock.json
+
+# 文档的换行是作者的分段决定,不交给机器重排
+*.md
+
+# 第三方样式快照与生成目录
+.playwright-mcp/
+.agents/
+.codex/
+.claude/

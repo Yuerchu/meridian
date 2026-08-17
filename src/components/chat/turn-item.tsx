@@ -127,11 +127,11 @@ export const TurnItem = React.memo(function TurnItem({
   // Two independent pagers. Regenerating forks below the question, so that
   // pager belongs to the answer; editing the question forks beside it, so that
   // one belongs to the bubble. Both can be present at once.
-  const answerBranch = useConversationStore(
-    (s) => (assistants[0] ? s.sessions[conversationId]?.branches[assistants[0].id] : undefined),
+  const answerBranch = useConversationStore((s) =>
+    assistants[0] ? s.sessions[conversationId]?.branches[assistants[0].id] : undefined,
   )
-  const questionBranch = useConversationStore(
-    (s) => (turn.userMessage ? s.sessions[conversationId]?.branches[turn.userMessage.id] : undefined),
+  const questionBranch = useConversationStore((s) =>
+    turn.userMessage ? s.sessions[conversationId]?.branches[turn.userMessage.id] : undefined,
   )
   const switching = useConversationStore((s) => s.sessions[conversationId]?.switchingBranch ?? false)
   const switchBranch = useConversationStore((s) => s.switchBranch)
@@ -159,9 +159,7 @@ export const TurnItem = React.memo(function TurnItem({
 
   // Subscribed here rather than passed down: reading it in the parent would make
   // expanding one turn re-render the whole list.
-  const userChoice = useConversationStore(
-    (s) => s.sessions[conversationId]?.expandedTurns[turn.id],
-  )
+  const userChoice = useConversationStore((s) => s.sessions[conversationId]?.expandedTurns[turn.id])
   const setTurnExpanded = useConversationStore((s) => s.setTurnExpanded)
 
   // A turn holds itself open while it runs, and while it is blocked on the user
@@ -170,8 +168,7 @@ export const TurnItem = React.memo(function TurnItem({
   // reason in reverse: what it was doing when it stopped is the only thing worth
   // reading about it, and collapsed it looks like nothing more than a short
   // answer.
-  const forcedOpen =
-    isTurnStreaming || turn.status === 'awaiting-input' || turn.status === 'crashed'
+  const forcedOpen = isTurnStreaming || turn.status === 'awaiting-input' || turn.status === 'crashed'
   const [autoOpen, setAutoOpen] = useState(forcedOpen)
   const open = userChoice ?? (forcedOpen || autoOpen)
 
@@ -206,14 +203,17 @@ export const TurnItem = React.memo(function TurnItem({
     return () => clearTimeout(timer)
   }, [isTurnStreaming, userChoice, collapsible, collapseWithCompensation])
 
-  const handleOpenChange = useCallback((next: boolean) => {
-    if (!next && !isFullyVisible()) {
-      setSuppressTransition(true)
-      pendingCorrection.current = beginCollapse()
-    }
-    setAutoOpen(next)
-    setTurnExpanded(conversationId, turn.id, next)
-  }, [beginCollapse, isFullyVisible, setTurnExpanded, conversationId, turn.id])
+  const handleOpenChange = useCallback(
+    (next: boolean) => {
+      if (!next && !isFullyVisible()) {
+        setSuppressTransition(true)
+        pendingCorrection.current = beginCollapse()
+      }
+      setAutoOpen(next)
+      setTurnExpanded(conversationId, turn.id, next)
+    },
+    [beginCollapse, isFullyVisible, setTurnExpanded, conversationId, turn.id],
+  )
 
   // Only the streaming turn can be the one being retried, and it is the last
   // one — the same turn `buildTurns` gave the streaming status to.
@@ -225,12 +225,12 @@ export const TurnItem = React.memo(function TurnItem({
       : t('chat.turn.processing')
     : turn.status === 'awaiting-input'
       ? t('chat.turn.awaitingInput')
-      // Distinct wording from `interrupted`, which is what the user gets when
-      // they pressed Stop. Saying "stopped" about a turn nobody stopped is how
-      // a half-written file goes unnoticed — and naming a cause would be worse
-      // still, because there is no cause on record: everything that leaves a
-      // turn without an ending arrives here looking the same.
-      : turn.status === 'crashed'
+      : // Distinct wording from `interrupted`, which is what the user gets when
+        // they pressed Stop. Saying "stopped" about a turn nobody stopped is how
+        // a half-written file goes unnoticed — and naming a cause would be worse
+        // still, because there is no cause on record: everything that leaves a
+        // turn without an ending arrives here looking the same.
+        turn.status === 'crashed'
         ? t('chat.turn.crashed')
         : turn.status === 'interrupted'
           ? t('chat.turn.interrupted')
@@ -292,29 +292,29 @@ export const TurnItem = React.memo(function TurnItem({
         {question}
         {questionPager}
         <MessageScrollerAnchor messageId={answerAnchorId(turn.id)} className="space-y-6">
-        {assistants.map((m, i) => {
-          const isLast = i === assistants.length - 1
-          const ownsActions = m.id === actionMessageId
-          return (
-            <ErrorBoundary key={m.id} fallback={renderError}>
-              <MessageItem
-                message={m}
-                isStreaming={streaming && isLastTurn && isLast}
-                isLastMessage={isLastTurn && isLast}
-                showFooter={ownsActions}
-                tokenTotals={ownsActions ? turn.tokens : undefined}
-                onDelete={ownsActions ? onDeleteTurn : undefined}
-                onRegenerate={ownsActions ? onRegenerateTurn : undefined}
-                onRate={ownsActions ? onRate : undefined}
-                isOneBot={isOneBot}
-                emojiMap={emojiMap}
-                assistantAvatar={assistantAvatar}
-                isFirstInGroup={i === 0 || assistants[i - 1].model_id !== m.model_id}
-              />
-            </ErrorBoundary>
-          )
-        })}
-        {activityMarker}
+          {assistants.map((m, i) => {
+            const isLast = i === assistants.length - 1
+            const ownsActions = m.id === actionMessageId
+            return (
+              <ErrorBoundary key={m.id} fallback={renderError}>
+                <MessageItem
+                  message={m}
+                  isStreaming={streaming && isLastTurn && isLast}
+                  isLastMessage={isLastTurn && isLast}
+                  showFooter={ownsActions}
+                  tokenTotals={ownsActions ? turn.tokens : undefined}
+                  onDelete={ownsActions ? onDeleteTurn : undefined}
+                  onRegenerate={ownsActions ? onRegenerateTurn : undefined}
+                  onRate={ownsActions ? onRate : undefined}
+                  isOneBot={isOneBot}
+                  emojiMap={emojiMap}
+                  assistantAvatar={assistantAvatar}
+                  isFirstInGroup={i === 0 || assistants[i - 1].model_id !== m.model_id}
+                />
+              </ErrorBoundary>
+            )
+          })}
+          {activityMarker}
         </MessageScrollerAnchor>
         {answerPager}
       </div>
@@ -324,12 +324,7 @@ export const TurnItem = React.memo(function TurnItem({
   const conclusionOwner = assistants.find((m) => m.id === actionMessageId)
 
   return (
-    <div
-      ref={collapseRef}
-      data-slot="turn"
-      data-status={turn.status}
-      className={cn('space-y-6', className)}
-    >
+    <div ref={collapseRef} data-slot="turn" data-status={turn.status} className={cn('space-y-6', className)}>
       {question}
       {questionPager}
       {/* The process line and the conclusion are one answer, so they sit at a
@@ -339,14 +334,8 @@ export const TurnItem = React.memo(function TurnItem({
         <div className="flex w-full min-w-0 gap-2 text-sm">
           <AssistantAvatar src={assistantAvatar} modelId={assistants[0]?.model_id} />
           <div className="flex w-full min-w-0 flex-col">
-            {assistants[0] && (
-              <MessageMeta modelId={assistants[0].model_id} createdAt={assistants[0].created_at} />
-            )}
-            <TurnCollapse
-              status={turn.status}
-              isExpanded={open}
-              onExpandedChange={handleOpenChange}
-            >
+            {assistants[0] && <MessageMeta modelId={assistants[0].model_id} createdAt={assistants[0].created_at} />}
+            <TurnCollapse status={turn.status} isExpanded={open} onExpandedChange={handleOpenChange}>
               <TurnTrigger>
                 <span className="inline-flex items-center gap-1.5">
                   <TurnStatusIcon />

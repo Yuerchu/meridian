@@ -12,12 +12,10 @@ use super::tool_calls::{extract_tool_calls_from_blocks, parse_openai_tool_calls}
 /// from the subject table.
 pub(crate) type SenderNames = HashMap<i64, String>;
 
-/// Single-speaker surfaces (desktop chat) and tests.
-pub(crate) fn build_messages(
-    system_prompt: &str,
-    context: &ActiveContext,
-    user_message: &str,
-) -> Vec<ChatMessage> {
+/// Single-speaker shorthand. Production callers all attribute senders now, so
+/// only tests still take this path.
+#[cfg(test)]
+pub(crate) fn build_messages(system_prompt: &str, context: &ActiveContext, user_message: &str) -> Vec<ChatMessage> {
     build_messages_with_senders(
         system_prompt,
         context,
@@ -43,7 +41,15 @@ pub(crate) fn build_messages_with_senders(
 ) -> Vec<ChatMessage> {
     let mut msgs = Vec::new();
     if !system_prompt.is_empty() {
-        msgs.push(ChatMessage { role: "system".into(), content: system_prompt.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None, origin: provider::MessageOrigin::Assistant });
+        msgs.push(ChatMessage {
+            role: "system".into(),
+            content: system_prompt.into(),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            signature: None,
+            origin: provider::MessageOrigin::Assistant,
+        });
     }
     if let Some(summary) = context.summary.as_ref() {
         // Deliberately not SystemContext: a summary stands in for the
@@ -82,15 +88,18 @@ fn attach_sender_note(msgs: &mut Vec<ChatMessage>) {
         system.content.push_str(provider::SENDER_PREFIX_NOTE);
         return;
     }
-    msgs.insert(0, ChatMessage {
-        role: "system".into(),
-        content: provider::SENDER_PREFIX_NOTE.into(),
-        reasoning_content: None,
-        tool_calls: None,
-        tool_call_id: None,
-        signature: None,
-        origin: provider::MessageOrigin::Assistant,
-    });
+    msgs.insert(
+        0,
+        ChatMessage {
+            role: "system".into(),
+            content: provider::SENDER_PREFIX_NOTE.into(),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            signature: None,
+            origin: provider::MessageOrigin::Assistant,
+        },
+    );
 }
 
 fn sender_ref(user_id: i64, names: &SenderNames) -> SenderRef {
@@ -120,15 +129,24 @@ fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message, names: &Sender
             let tool_calls = if m.schema_version >= 2 {
                 parse_openai_tool_calls(m.tool_calls.as_deref())
             } else {
-                m.tool_calls.as_deref()
-                    .map(|tc| extract_tool_calls_from_blocks(tc))
+                m.tool_calls
+                    .as_deref()
+                    .map(extract_tool_calls_from_blocks)
                     .unwrap_or_default()
             };
             let reasoning = m.reasoning_content.clone();
             if !tool_calls.is_empty() {
                 msgs.push(ChatMessage::assistant_with_tools(&m.content, reasoning, tool_calls));
             } else {
-                msgs.push(ChatMessage { role: "assistant".into(), content: m.content.clone(), reasoning_content: reasoning, tool_calls: None, tool_call_id: None, signature: None, origin: provider::MessageOrigin::Assistant });
+                msgs.push(ChatMessage {
+                    role: "assistant".into(),
+                    content: m.content.clone(),
+                    reasoning_content: reasoning,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    signature: None,
+                    origin: provider::MessageOrigin::Assistant,
+                });
             }
         }
         "tool" => {
@@ -152,42 +170,44 @@ fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message, names: &Sender
     }
 }
 
-pub(crate) fn resolve_file_uris_in_messages(
-    messages: &mut [ChatMessage],
-    files_root: Option<&std::path::Path>,
-) {
+pub(crate) fn resolve_file_uris_in_messages(messages: &mut [ChatMessage], files_root: Option<&std::path::Path>) {
     let Some(files_root) = files_root else { return };
     for msg in messages.iter_mut() {
         // Only user-authored attachments may be inlined: assistant/tool content
         // is model-influenced and must never trigger local file reads.
-        if msg.role != "user" { continue; }
-        if !msg.content.starts_with('[') { continue; }
-        let Ok(mut parts) = serde_json::from_str::<Vec<serde_json::Value>>(&msg.content) else { continue };
+        if msg.role != "user" {
+            continue;
+        }
+        if !msg.content.starts_with('[') {
+            continue;
+        }
+        let Ok(mut parts) = serde_json::from_str::<Vec<serde_json::Value>>(&msg.content) else {
+            continue;
+        };
         let mut changed = false;
         for part in parts.iter_mut() {
-            let url = part.pointer("/image_url/url")
+            let url = part
+                .pointer("/image_url/url")
                 .or_else(|| part.pointer("/file/url"))
                 .and_then(|u| u.as_str())
                 .map(String::from);
-            if let Some(ref uri) = url {
-                if let Some(path) = crate::files::resolve_attachment_uri(uri, files_root) {
-                    let mime = mime_guess::from_path(&path).first_or_octet_stream().to_string();
-                    if let Ok(data_uri) = crate::files::file_to_base64_data_uri(&path, &mime) {
-                        if let Some(img_url) = part.pointer_mut("/image_url/url") {
-                            *img_url = serde_json::Value::String(data_uri);
-                            changed = true;
-                        } else if let Some(file_url) = part.pointer_mut("/file/url") {
-                            *file_url = serde_json::Value::String(data_uri);
-                            changed = true;
-                        }
+            if let Some(ref uri) = url
+                && let Some(path) = crate::files::resolve_attachment_uri(uri, files_root)
+            {
+                let mime = mime_guess::from_path(&path).first_or_octet_stream().to_string();
+                if let Ok(data_uri) = crate::files::file_to_base64_data_uri(&path, &mime) {
+                    if let Some(img_url) = part.pointer_mut("/image_url/url") {
+                        *img_url = serde_json::Value::String(data_uri);
+                        changed = true;
+                    } else if let Some(file_url) = part.pointer_mut("/file/url") {
+                        *file_url = serde_json::Value::String(data_uri);
+                        changed = true;
                     }
                 }
             }
         }
-        if changed {
-            if let Ok(json) = serde_json::to_string(&parts) {
-                msg.content = json;
-            }
+        if changed && let Ok(json) = serde_json::to_string(&parts) {
+            msg.content = json;
         }
     }
 }
@@ -256,20 +276,20 @@ pub(crate) fn remove_orphan_tool_messages(messages: &mut Vec<ChatMessage>) {
         }
     }
     messages.retain(|m| {
-        if m.role == "tool" {
-            if let Some(ref id) = m.tool_call_id {
-                return valid_call_ids.contains(id);
-            }
+        if m.role == "tool"
+            && let Some(ref id) = m.tool_call_id
+        {
+            return valid_call_ids.contains(id);
         }
         true
     });
     // Also remove assistant tool_calls whose results were dropped
     let mut valid_result_ids = std::collections::HashSet::new();
     for m in messages.iter() {
-        if m.role == "tool" {
-            if let Some(ref id) = m.tool_call_id {
-                valid_result_ids.insert(id.clone());
-            }
+        if m.role == "tool"
+            && let Some(ref id) = m.tool_call_id
+        {
+            valid_result_ids.insert(id.clone());
         }
     }
     for m in messages.iter_mut() {
@@ -285,16 +305,10 @@ pub(crate) fn remove_orphan_tool_messages(messages: &mut Vec<ChatMessage>) {
 static DATA_URI_RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
 
 pub(crate) fn data_uri_re() -> &'static regex::Regex {
-    DATA_URI_RE.get_or_init(|| {
-        regex::Regex::new(r"data:(image/[^;]+);base64,[A-Za-z0-9+/=]+").unwrap()
-    })
+    DATA_URI_RE.get_or_init(|| regex::Regex::new(r"data:(image/[^;]+);base64,[A-Za-z0-9+/=]+").unwrap())
 }
 
-pub(crate) fn microcompact(
-    messages: &mut Vec<ChatMessage>,
-    budget: &TokenBudget,
-    keep_recent_turns: usize,
-) -> usize {
+pub(crate) fn microcompact(messages: &mut [ChatMessage], budget: &TokenBudget, keep_recent_turns: usize) -> usize {
     let before = budget.counter.count_messages(messages);
 
     let has_system = messages.first().is_some_and(|m| m.role == "system");
@@ -310,7 +324,9 @@ pub(crate) fn microcompact(
             if tokens > 2000 {
                 let chars: Vec<char> = msg.content.chars().collect();
                 let head_end = char_index_for_tokens(&budget.counter, &chars, 200);
-                let tail_start = chars.len().saturating_sub(char_index_for_tokens_rev(&budget.counter, &chars, 100));
+                let tail_start = chars
+                    .len()
+                    .saturating_sub(char_index_for_tokens_rev(&budget.counter, &chars, 100));
                 if head_end < tail_start {
                     let head: String = chars[..head_end].iter().collect();
                     let tail: String = chars[tail_start..].iter().collect();
@@ -319,10 +335,12 @@ pub(crate) fn microcompact(
             }
         }
 
-        msg.content = data_uri_re().replace_all(&msg.content, |caps: &regex::Captures| {
-            let mime = caps.get(1).map(|m| m.as_str()).unwrap_or("image/unknown");
-            format!("[image: {mime}]")
-        }).into_owned();
+        msg.content = data_uri_re()
+            .replace_all(&msg.content, |caps: &regex::Captures| {
+                let mime = caps.get(1).map(|m| m.as_str()).unwrap_or("image/unknown");
+                format!("[image: {mime}]")
+            })
+            .into_owned();
 
         if msg.role == "assistant" {
             msg.reasoning_content = None;
@@ -459,10 +477,8 @@ mod tests {
         // `tool_calls` nothing answers is rejected by the provider, so the pairing
         // has to be repaired here rather than at each call site.
         let mut assistant = msg("2", "assistant", "calling a tool");
-        assistant.tool_calls = Some(
-            r#"[{"id":"call_1","type":"function","function":{"name":"read_file","arguments":"{}"}}]"#
-                .into(),
-        );
+        assistant.tool_calls =
+            Some(r#"[{"id":"call_1","type":"function","function":{"name":"read_file","arguments":"{}"}}]"#.into());
         let history = vec![msg("1", "user", "q"), assistant];
         let msgs = build_messages("sys", &ctx(&history), "next");
         let a = msgs.iter().find(|m| m.role == "assistant").unwrap();
@@ -475,7 +491,10 @@ mod tests {
         tool.tool_call_id = Some("call_1".into());
         let history = vec![msg("1", "user", "q"), tool];
         let msgs = build_messages("sys", &ctx(&history), "next");
-        assert!(msgs.iter().all(|m| m.role != "tool"), "orphan tool row should be dropped");
+        assert!(
+            msgs.iter().all(|m| m.role != "tool"),
+            "orphan tool row should be dropped"
+        );
     }
 
     #[test]
@@ -490,8 +509,14 @@ mod tests {
 
         let mut msgs = vec![chat_msg("assistant", &content), chat_msg("user", &content)];
         resolve_file_uris_in_messages(&mut msgs, Some(&root));
-        assert!(msgs[0].content.contains("file:///"), "assistant content must never be inlined");
-        assert!(msgs[1].content.contains("data:"), "user attachment inside the root should inline");
+        assert!(
+            msgs[0].content.contains("file:///"),
+            "assistant content must never be inlined"
+        );
+        assert!(
+            msgs[1].content.contains("data:"),
+            "user attachment inside the root should inline"
+        );
 
         let outside = dir.path().join("evil.txt");
         std::fs::write(&outside, b"x").unwrap();
@@ -499,7 +524,10 @@ mod tests {
         let content2 = format!(r#"[{{"type":"image_url","image_url":{{"url":"{uri2}"}}}}]"#);
         let mut msgs2 = vec![chat_msg("user", &content2)];
         resolve_file_uris_in_messages(&mut msgs2, Some(&root));
-        assert!(msgs2[0].content.contains("file:///"), "paths outside the root must not inline");
+        assert!(
+            msgs2[0].content.contains("file:///"),
+            "paths outside the root must not inline"
+        );
 
         // No root configured → nothing is inlined at all.
         let mut msgs3 = vec![chat_msg("user", &content)];
@@ -542,9 +570,15 @@ mod tests {
     fn test_trim_removes_orphan_tool_results() {
         let mut msgs = vec![
             chat_msg("system", "sys"),
-            ChatMessage::assistant_with_tools("I'll call a tool", None, vec![
-                ToolCall { id: "call_1".into(), name: "read_file".into(), arguments: "{}".into() },
-            ]),
+            ChatMessage::assistant_with_tools(
+                "I'll call a tool",
+                None,
+                vec![ToolCall {
+                    id: "call_1".into(),
+                    name: "read_file".into(),
+                    arguments: "{}".into(),
+                }],
+            ),
             ChatMessage::tool_result("call_1", "file content"),
             chat_msg("user", &"x".repeat(500)),
             chat_msg("assistant", &"y".repeat(500)),
@@ -554,9 +588,14 @@ mod tests {
             if m.role == "tool" {
                 let id = m.tool_call_id.as_deref().unwrap();
                 let has_call = msgs.iter().any(|am| {
-                    am.tool_calls.as_ref().is_some_and(|tcs| tcs.iter().any(|tc| tc.id == id))
+                    am.tool_calls
+                        .as_ref()
+                        .is_some_and(|tcs| tcs.iter().any(|tc| tc.id == id))
                 });
-                assert!(has_call, "orphan tool result with call_id={id} should have been removed");
+                assert!(
+                    has_call,
+                    "orphan tool result with call_id={id} should have been removed"
+                );
             }
         }
     }
@@ -590,7 +629,9 @@ mod injected_context_tests {
     use crate::provider::MessageOrigin;
 
     fn long_history(n: usize) -> Vec<ChatMessage> {
-        (0..n).map(|i| ChatMessage::user(&"word ".repeat(200).repeat(i % 2 + 1))).collect()
+        (0..n)
+            .map(|i| ChatMessage::user(&"word ".repeat(200).repeat(i % 2 + 1)))
+            .collect()
     }
 
     /// A stored row carrying an injection frozen by an earlier turn.
@@ -600,13 +641,27 @@ mod injected_context_tests {
             conversation_id: "c".into(),
             role: "context".into(),
             content: content.into(),
-            provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
-            tool_calls: None, tool_call_id: None, sort_order: 0, created_at: 0,
-            reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
-            sender_id: None, parent_id: None, compact_anchor_id: None,
+            provider_id: None,
+            model_id: None,
+            input_tokens: None,
+            output_tokens: None,
+            tool_calls: None,
+            tool_call_id: None,
+            sort_order: 0,
+            created_at: 0,
+            reasoning_content: None,
+            rating: None,
+            schema_version: 2,
+            is_compact_summary: 0,
+            sender_id: None,
+            parent_id: None,
+            compact_anchor_id: None,
             source: Some(source.into()),
-            turn_id: None, tool_outcome: None,
-            cache_read_tokens: None, cache_write_tokens: None, provider_name: None,
+            turn_id: None,
+            tool_outcome: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            provider_name: None,
         }
     }
 
@@ -677,7 +732,10 @@ mod injected_context_tests {
     /// against.
     #[test]
     fn a_frozen_memory_row_is_still_injected_context() {
-        let row = frozen_row("<owner_notes>\n- [general] k: v\n</owner_notes>", "memory|full|100.abc|-|");
+        let row = frozen_row(
+            "<owner_notes>\n- [general] k: v\n</owner_notes>",
+            "memory|full|100.abc|-|",
+        );
         let mut msgs = Vec::new();
         push_history_message(&mut msgs, &row, &SenderNames::new());
         msgs.push(ChatMessage::user("hi"));

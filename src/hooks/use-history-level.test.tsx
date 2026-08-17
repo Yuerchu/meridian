@@ -50,15 +50,7 @@ function Level({ open, onClose }: { open: boolean; onClose: () => void }) {
 }
 
 /** A child that owns its own level — the mobile drawer, in miniature. */
-function Drawer({
-  open,
-  onClose,
-  onPick,
-}: {
-  open: boolean
-  onClose: () => void
-  onPick: () => void
-}) {
+function Drawer({ open, onClose, onPick }: { open: boolean; onClose: () => void; onPick: () => void }) {
   useHistoryLevel(open, onClose)
   return <button type="button" data-testid="pick" onClick={onPick} />
 }
@@ -69,7 +61,13 @@ function Harness({ initial = false, onClosed }: { initial?: boolean; onClosed?: 
     <>
       <button type="button" data-testid="open" onClick={() => setOpen(true)} />
       <button type="button" data-testid="close" onClick={() => setOpen(false)} />
-      <Level open={open} onClose={() => { setOpen(false); onClosed?.() }} />
+      <Level
+        open={open}
+        onClose={() => {
+          setOpen(false)
+          onClosed?.()
+        }}
+      />
     </>
   )
 }
@@ -100,10 +98,14 @@ describe('useHistoryLevel', () => {
   it('claims a level while open and releases it when closed from React', async () => {
     const { getByTestId, unmount } = render(<Harness />)
 
-    await act(async () => { getByTestId('open').click() })
+    await act(async () => {
+      getByTestId('open').click()
+    })
     expect(depth()).toBe(1)
 
-    await act(async () => { getByTestId('close').click() })
+    await act(async () => {
+      getByTestId('close').click()
+    })
     expect(depth()).toBe(0)
 
     unmount()
@@ -113,8 +115,12 @@ describe('useHistoryLevel', () => {
     const onClosed = vi.fn()
     const { getByTestId, unmount } = render(<Harness onClosed={onClosed} />)
 
-    await act(async () => { getByTestId('open').click() })
-    await act(async () => { getByTestId('close').click() })
+    await act(async () => {
+      getByTestId('open').click()
+    })
+    await act(async () => {
+      getByTestId('close').click()
+    })
 
     // The level is gone before goBack lands, so the popstate it causes finds
     // nothing to dismiss.
@@ -126,11 +132,15 @@ describe('useHistoryLevel', () => {
     const onClosed = vi.fn()
     const { getByTestId, unmount } = render(<Harness onClosed={onClosed} />)
 
-    await act(async () => { getByTestId('open').click() })
+    await act(async () => {
+      getByTestId('open').click()
+    })
     expect(depth()).toBe(1)
 
     // The hardware key: the WebView steps back, then announces it.
-    await act(async () => { history.fake.go(-1) })
+    await act(async () => {
+      history.fake.go(-1)
+    })
 
     expect(onClosed).toHaveBeenCalledTimes(1)
     expect(depth()).toBe(0)
@@ -155,7 +165,9 @@ describe('useHistoryLevel', () => {
     await act(async () => {})
     expect(depth()).toBe(1)
 
-    await act(async () => { history.fake.go(-1) })
+    await act(async () => {
+      history.fake.go(-1)
+    })
 
     expect(first).not.toHaveBeenCalled()
     expect(latest).toHaveBeenCalledTimes(1)
@@ -166,7 +178,9 @@ describe('useHistoryLevel', () => {
     const onClosed = vi.fn()
     const { getByTestId, unmount } = render(<Harness onClosed={onClosed} />)
 
-    await act(async () => { getByTestId('open').click() })
+    await act(async () => {
+      getByTestId('open').click()
+    })
     expect(depth()).toBe(1)
 
     unmount()
@@ -180,8 +194,14 @@ describe('useHistoryLevel', () => {
     function Nested() {
       const [outer, setOuter] = useState(false)
       const [inner, setInner] = useState(false)
-      useHistoryLevel(outer, () => { order.push('outer'); setOuter(false) })
-      useHistoryLevel(inner, () => { order.push('inner'); setInner(false) })
+      useHistoryLevel(outer, () => {
+        order.push('outer')
+        setOuter(false)
+      })
+      useHistoryLevel(inner, () => {
+        order.push('inner')
+        setInner(false)
+      })
       return (
         <>
           <button type="button" data-testid="outer" onClick={() => setOuter(true)} />
@@ -191,13 +211,19 @@ describe('useHistoryLevel', () => {
     }
     const { getByTestId, unmount } = render(<Nested />)
 
-    await act(async () => { getByTestId('outer').click() })
-    await act(async () => { getByTestId('inner').click() })
+    await act(async () => {
+      getByTestId('outer').click()
+    })
+    await act(async () => {
+      getByTestId('inner').click()
+    })
     expect(depth()).toBe(2)
 
     // One gesture, two entries: `go(-2)` is a single popstate carrying an
     // absolute depth, which is why `settleTo` reads a target rather than a step.
-    await act(async () => { history.fake.go(-2) })
+    await act(async () => {
+      history.fake.go(-2)
+    })
 
     expect(order).toEqual(['inner', 'outer'])
     expect(depth()).toBe(0)
@@ -223,14 +249,20 @@ describe('useHistoryLevel', () => {
       const [page, setPage] = useState<'chat' | 'settings'>('chat')
       // The parent's level. Its effect runs *after* the child's, which is the
       // ordering the bug depended on.
-      useHistoryLevel(page === 'settings', () => { closedPage(); setPage('chat') })
+      useHistoryLevel(page === 'settings', () => {
+        closedPage()
+        setPage('chat')
+      })
       return (
         <>
           <button type="button" data-testid="open-drawer" onClick={() => setDrawer(true)} />
           <Drawer
             open={drawer}
             onClose={() => setDrawer(false)}
-            onPick={() => { setDrawer(false); setPage('settings') }}
+            onPick={() => {
+              setDrawer(false)
+              setPage('settings')
+            }}
           />
           <span data-testid="page">{page}</span>
         </>
@@ -239,10 +271,14 @@ describe('useHistoryLevel', () => {
 
     const { getByTestId, unmount } = render(<Shell />)
 
-    await act(async () => { getByTestId('open-drawer').click() })
+    await act(async () => {
+      getByTestId('open-drawer').click()
+    })
     expect(depth()).toBe(1)
 
-    await act(async () => { getByTestId('pick').click() })
+    await act(async () => {
+      getByTestId('pick').click()
+    })
 
     expect(getByTestId('page').textContent).toBe('settings')
     expect(closedPage).not.toHaveBeenCalled()
@@ -252,7 +288,9 @@ describe('useHistoryLevel', () => {
     expect(history.depthNow()).toBe(1)
 
     // And the gesture still reaches it.
-    await act(async () => { history.fake.go(-1) })
+    await act(async () => {
+      history.fake.go(-1)
+    })
     expect(closedPage).toHaveBeenCalledTimes(1)
     expect(getByTestId('page').textContent).toBe('chat')
     expect(depth()).toBe(0)
@@ -270,7 +308,9 @@ describe('useHistoryLevel', () => {
     }
     const { getByTestId, unmount } = render(<Panes />)
 
-    await act(async () => { getByTestId('open').click() })
+    await act(async () => {
+      getByTestId('open').click()
+    })
 
     expect(depth()).toBe(0)
     unmount()

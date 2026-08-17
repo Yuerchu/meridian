@@ -33,10 +33,7 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
   return (
     <div
       data-slot="todo-bar-shell"
-      className={cn(
-        'px-4 pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]',
-        className,
-      )}
+      className={cn('px-4 pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]', className)}
     >
       <div className="mx-auto max-w-2xl">
         {/* Same card as the tool cards: HeroUI's `.card` values (24px radius,
@@ -82,19 +79,14 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
                   so the count and chevron sit at the right edge without an
                   ml-auto fighting for the free space. */}
               <div className="flex min-w-0 flex-1 items-center gap-2">
-                <span
-                  data-slot="todo-bar-title"
-                  className="max-w-40 shrink-0 truncate font-medium text-foreground"
-                >
+                <span data-slot="todo-bar-title" className="max-w-40 shrink-0 truncate font-medium text-foreground">
                   {todos.title}
                 </span>
                 <span data-slot="todo-bar-current" className="truncate text-muted">
                   {current ? current.active_form : t('chat.todo.idle')}
                 </span>
               </div>
-              <span className="shrink-0 tabular-nums text-muted">
-                {t('chat.todo.progress', { done, total })}
-              </span>
+              <span className="shrink-0 tabular-nums text-muted">{t('chat.todo.progress', { done, total })}</span>
               <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />
             </Disclosure.Trigger>
           </Disclosure.Heading>

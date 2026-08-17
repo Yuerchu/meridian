@@ -1,7 +1,7 @@
-use std::time::Duration;
-use async_trait::async_trait;
-use super::{Permission, Tool, ToolContext, ShellType};
+use super::{Permission, ShellType, Tool, ToolContext};
 use crate::sandbox::ExecResult;
+use async_trait::async_trait;
+use std::time::Duration;
 
 pub struct RunCommandTool;
 
@@ -35,23 +35,28 @@ impl Tool for RunCommandTool {
     }
 
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
-        let command = args["command"]
-            .as_str()
-            .ok_or("missing 'command' argument")?;
+        let command = args["command"].as_str().ok_or("missing 'command' argument")?;
 
         let cwd = context.working_dir_or_current();
 
         let shell_argv: Vec<String> = match context.shell {
             ShellType::Cmd => vec!["cmd".into(), "/C".into(), command.into()],
             ShellType::PowerShell => {
-                vec![find_powershell().into(), "-NoProfile".into(), "-Command".into(), command.into()]
+                vec![
+                    find_powershell().into(),
+                    "-NoProfile".into(),
+                    "-Command".into(),
+                    command.into(),
+                ]
             }
             ShellType::Bash => {
                 vec![find_bash().into(), "-c".into(), command.into()]
             }
         };
 
-        let timeout = context.sandbox_policy.as_ref()
+        let timeout = context
+            .sandbox_policy
+            .as_ref()
             .map(|p| p.timeout)
             .unwrap_or(COMMAND_TIMEOUT);
 
@@ -222,7 +227,12 @@ mod tests {
     fn denied_on_access_keywords() {
         assert!(is_sandbox_denied(&exec_res(1, "拒绝访问。", true, false)));
         assert!(is_sandbox_denied(&exec_res(1, "Access is denied.", true, false)));
-        assert!(is_sandbox_denied(&exec_res(1, "mkdir: cannot create directory: Permission denied", true, false)));
+        assert!(is_sandbox_denied(&exec_res(
+            1,
+            "mkdir: cannot create directory: Permission denied",
+            true,
+            false
+        )));
         // Git Bash dying at startup under the restricted token
         assert!(is_sandbox_denied(&exec_res(
             256,
@@ -234,7 +244,12 @@ mod tests {
 
     #[test]
     fn not_denied_without_keywords_or_sandbox() {
-        assert!(!is_sandbox_denied(&exec_res(127, "bash: foo: command not found", true, false)));
+        assert!(!is_sandbox_denied(&exec_res(
+            127,
+            "bash: foo: command not found",
+            true,
+            false
+        )));
         assert!(!is_sandbox_denied(&exec_res(0, "", true, false)));
         assert!(!is_sandbox_denied(&exec_res(1, "Access is denied.", false, false)));
         assert!(!is_sandbox_denied(&exec_res(1, "Access is denied.", true, true)));

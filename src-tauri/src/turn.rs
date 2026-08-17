@@ -30,9 +30,11 @@ use tokio_util::sync::CancellationToken;
 /// drained by the OneBot runner, so parking a message there while the desktop
 /// holds the conversation would strand it until the next QQ message happened to
 /// come along.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::IntoStaticStr, strum::EnumString)]
+#[strum(serialize_all = "snake_case")]
 pub enum TurnOrigin {
     Desktop,
+    #[strum(serialize = "onebot")]
     OneBot,
     /// A turn a `run_agent` call delegated. It runs in a conversation of its
     /// own, so it contends with nobody — but the distinction is what lets an
@@ -55,25 +57,12 @@ impl TurnOrigin {
     /// How it is stored. Also what a crash report says the turn was, so it
     /// outlives the process that decided it.
     pub fn as_str(&self) -> &'static str {
-        match self {
-            TurnOrigin::Desktop => "desktop",
-            TurnOrigin::OneBot => "onebot",
-            TurnOrigin::SubAgent => "sub_agent",
-            TurnOrigin::PlanReview => "plan_review",
-            TurnOrigin::ImplReview => "impl_review",
-        }
+        self.into()
     }
 
     /// Read side, for whoever reports on a stored turn.
     pub fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "desktop" => Ok(TurnOrigin::Desktop),
-            "onebot" => Ok(TurnOrigin::OneBot),
-            "sub_agent" => Ok(TurnOrigin::SubAgent),
-            "plan_review" => Ok(TurnOrigin::PlanReview),
-            "impl_review" => Ok(TurnOrigin::ImplReview),
-            other => Err(format!("unknown turn origin '{other}'")),
-        }
+        value.parse().map_err(|_| format!("unknown turn origin '{value}'"))
     }
 }
 
@@ -87,7 +76,10 @@ enum Occupant {
     Turn(ActiveTurn),
     /// A short write that is not a turn: compaction, a subtree delete, a branch
     /// switch. No cancellation token — nothing sends these a stop.
-    Mutation { operation_id: String, kind: &'static str },
+    Mutation {
+        operation_id: String,
+        kind: &'static str,
+    },
 }
 
 impl Occupant {
@@ -117,24 +109,39 @@ impl std::fmt::Display for Busy {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Busy::Turn(TurnOrigin::Desktop) => {
-                write!(f, "This conversation is already answering. Wait for it to finish, or stop it first.")
+                write!(
+                    f,
+                    "This conversation is already answering. Wait for it to finish, or stop it first."
+                )
             }
             Busy::Turn(TurnOrigin::OneBot) => {
-                write!(f, "This conversation is being answered from QQ right now. Wait for that turn to finish.")
+                write!(
+                    f,
+                    "This conversation is being answered from QQ right now. Wait for that turn to finish."
+                )
             }
             // Reachable from the sub-agent's own conversation, which the user
             // can open while it runs. Not from the parent's: a delegated run
             // occupies a conversation nobody else is writing to.
             Busy::Turn(TurnOrigin::SubAgent) => {
-                write!(f, "A sub-agent is working in this conversation. Wait for it to finish, or stop it first.")
+                write!(
+                    f,
+                    "A sub-agent is working in this conversation. Wait for it to finish, or stop it first."
+                )
             }
             // Two hooks firing for one session, most likely because the plan
             // was resubmitted before the first review came back.
             Busy::Turn(TurnOrigin::PlanReview) => {
-                write!(f, "A plan review is already running for this session. Wait for it to finish.")
+                write!(
+                    f,
+                    "A plan review is already running for this session. Wait for it to finish."
+                )
             }
             Busy::Turn(TurnOrigin::ImplReview) => {
-                write!(f, "A review of these changes is already running. Wait for it to finish.")
+                write!(
+                    f,
+                    "A review of these changes is already running. Wait for it to finish."
+                )
             }
             Busy::Mutation(kind) => {
                 write!(f, "This conversation is busy: {kind} is in progress.")
@@ -227,11 +234,7 @@ impl TurnCoordinator {
     }
 
     /// Take the conversation for a turn, or say who already has it.
-    pub fn try_acquire_turn(
-        self: &Arc<Self>,
-        conversation_id: &str,
-        origin: TurnOrigin,
-    ) -> Result<TurnLease, Busy> {
+    pub fn try_acquire_turn(self: &Arc<Self>, conversation_id: &str, origin: TurnOrigin) -> Result<TurnLease, Busy> {
         self.try_acquire_turn_as(conversation_id, origin, uuid::Uuid::new_v4().to_string())
     }
 
@@ -313,7 +316,10 @@ impl TurnCoordinator {
             }
             map.by_conversation.insert(
                 conversation_id.to_string(),
-                Occupant::Mutation { operation_id: operation_id.clone(), kind },
+                Occupant::Mutation {
+                    operation_id: operation_id.clone(),
+                    kind,
+                },
             );
             map.bump(conversation_id);
         }
@@ -366,7 +372,10 @@ impl TurnCoordinator {
             let operation_id = uuid::Uuid::new_v4().to_string();
             map.by_conversation.insert(
                 id.clone(),
-                Occupant::Mutation { operation_id: operation_id.clone(), kind },
+                Occupant::Mutation {
+                    operation_id: operation_id.clone(),
+                    kind,
+                },
             );
             map.bump(id);
             taken.push((id.clone(), operation_id));
@@ -544,10 +553,7 @@ mod tests {
         let c = coordinator();
         let busy = c.try_acquire_turn("child-b", TurnOrigin::SubAgent).expect("free");
 
-        let refused = c.try_acquire_mutations(
-            &["parent".into(), "child-a".into(), "child-b".into()],
-            "a delete",
-        );
+        let refused = c.try_acquire_mutations(&["parent".into(), "child-a".into(), "child-b".into()], "a delete");
         assert_eq!(refused.err(), Some(Busy::Turn(TurnOrigin::SubAgent)));
 
         // The two it did take on the way are free again, and free for anyone.
@@ -623,12 +629,7 @@ mod tests {
         let parent = CancellationToken::new();
 
         let lease = c
-            .try_acquire_turn_with(
-                "child",
-                TurnOrigin::SubAgent,
-                "t-child".into(),
-                parent.child_token(),
-            )
+            .try_acquire_turn_with("child", TurnOrigin::SubAgent, "t-child".into(), parent.child_token())
             .expect("free");
 
         // Stopping the conversation stops the token the runner is holding.
@@ -638,12 +639,7 @@ mod tests {
 
         // And the other direction: the parent going away takes the child with it.
         let lease = c
-            .try_acquire_turn_with(
-                "child",
-                TurnOrigin::SubAgent,
-                "t-again".into(),
-                parent.child_token(),
-            )
+            .try_acquire_turn_with("child", TurnOrigin::SubAgent, "t-again".into(), parent.child_token())
             .expect("released");
         assert!(!lease.cancel_token().is_cancelled());
         parent.cancel();
@@ -744,7 +740,10 @@ mod tests {
         let before = c.observe("conv-1");
         assert!(before.held().is_none());
 
-        drop(c.try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "t1".into()).expect("free"));
+        drop(
+            c.try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "t1".into())
+                .expect("free"),
+        );
 
         let after = c.observe("conv-1");
         assert_eq!(after.held(), before.held(), "the ids agree, which is the trap");
@@ -758,7 +757,9 @@ mod tests {
         let c = coordinator();
         let before = c.observe("conv-1");
 
-        let _lease = c.try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "t1".into()).unwrap();
+        let _lease = c
+            .try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "t1".into())
+            .unwrap();
 
         assert!(!c.unchanged_since(&before));
         // A fresh observation is good again, and names the turn.
@@ -795,14 +796,20 @@ mod tests {
         let seen = c.observe("conv-1");
 
         // A whole turn and a whole write, elsewhere.
-        drop(c.try_acquire_turn_as("conv-2", TurnOrigin::Desktop, "t".into()).unwrap());
+        drop(
+            c.try_acquire_turn_as("conv-2", TurnOrigin::Desktop, "t".into())
+                .unwrap(),
+        );
         drop(c.try_acquire_mutation("conv-2", "a delete").unwrap());
         let _busy = c.try_acquire_turn_as("conv-3", TurnOrigin::OneBot, "u".into()).unwrap();
 
         assert!(c.unchanged_since(&seen), "none of that was about conv-1");
 
         // And conv-1's own comings and goings still are.
-        drop(c.try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "mine".into()).unwrap());
+        drop(
+            c.try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "mine".into())
+                .unwrap(),
+        );
         assert!(!c.unchanged_since(&seen));
     }
 
@@ -811,7 +818,9 @@ mod tests {
     #[test]
     fn being_turned_away_is_not_a_change() {
         let c = coordinator();
-        let _held = c.try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "t1".into()).unwrap();
+        let _held = c
+            .try_acquire_turn_as("conv-1", TurnOrigin::Desktop, "t1".into())
+            .unwrap();
         let before = c.observe("conv-1");
 
         assert!(c.try_acquire_turn("conv-1", TurnOrigin::OneBot).is_err());

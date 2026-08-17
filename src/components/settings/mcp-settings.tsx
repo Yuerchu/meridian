@@ -13,14 +13,17 @@ import { SettingsRow } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 
 interface McpServersJson {
-  mcpServers?: Record<string, {
-    type?: string
-    command?: string
-    args?: string[]
-    env?: Record<string, string>
-    url?: string
-    headers?: Record<string, string>
-  }>
+  mcpServers?: Record<
+    string,
+    {
+      type?: string
+      command?: string
+      args?: string[]
+      env?: Record<string, string>
+      url?: string
+      headers?: Record<string, string>
+    }
+  >
 }
 
 function parseImportJson(raw: string): McpServersJson | null {
@@ -29,7 +32,7 @@ function parseImportJson(raw: string): McpServersJson | null {
     if (parsed.mcpServers && typeof parsed.mcpServers === 'object') return parsed
     if (typeof parsed === 'object' && !Array.isArray(parsed)) {
       const keys = Object.keys(parsed)
-      if (keys.length > 0 && keys.every(k => typeof parsed[k] === 'object')) {
+      if (keys.length > 0 && keys.every((k) => typeof parsed[k] === 'object')) {
         return { mcpServers: parsed }
       }
     }
@@ -39,13 +42,7 @@ function parseImportJson(raw: string): McpServersJson | null {
   }
 }
 
-function JsonImportDialog({
-  onImport,
-  onCancel,
-}: {
-  onImport: (data: McpServersJson) => void
-  onCancel: () => void
-}) {
+function JsonImportDialog({ onImport, onCancel }: { onImport: (data: McpServersJson) => void; onCancel: () => void }) {
   const { t } = useTranslation()
   const [text, setText] = useState('')
   const [error, setError] = useState(false)
@@ -61,18 +58,22 @@ function JsonImportDialog({
 
   return (
     <div className="space-y-3">
-      <TextArea fullWidth
+      <TextArea
+        fullWidth
         className="h-40 font-mono resize-none"
         placeholder={t('settings.mcp.importJsonPlaceholder')}
         value={text}
-        onChange={(e) => { setText(e.target.value); setError(false) }}
+        onChange={(e) => {
+          setText(e.target.value)
+          setError(false)
+        }}
       />
-      {error && (
-        <p className="text-sm text-danger">{t('settings.mcp.importJsonError')}</p>
-      )}
+      {error && <p className="text-sm text-danger">{t('settings.mcp.importJsonError')}</p>}
       <div className="flex gap-2">
         <Button onClick={handleSubmit}>{t('settings.mcp.importJsonSubmit')}</Button>
-        <Button variant="outline" onClick={onCancel}>{t('settings.mcp.importJsonCancel')}</Button>
+        <Button variant="outline" onClick={onCancel}>
+          {t('settings.mcp.importJsonCancel')}
+        </Button>
       </div>
     </div>
   )
@@ -121,10 +122,19 @@ function McpServerEditor({
         setTools(t)
         setConnected(statuses.some((s) => s.server_id === server.id && s.state === 'connected'))
       })
-      .catch(() => { /* the card still renders; the buttons say what to try */ })
+      .catch(() => {
+        /* the card still renders; the buttons say what to try */
+      })
   }, [
-    server.id, server.name, server.transport_type, server.command, server.args,
-    server.env, server.url, server.headers, server.is_enabled,
+    server.id,
+    server.name,
+    server.transport_type,
+    server.command,
+    server.args,
+    server.env,
+    server.url,
+    server.headers,
+    server.is_enabled,
   ])
 
   const handleSave = useCallback(async () => {
@@ -171,20 +181,23 @@ function McpServerEditor({
     setConnected(false)
   }, [server.id])
 
-  const handleToggleAutoConnect = useCallback(async (next: boolean) => {
-    const previous = autoConnect
-    setAutoConnect(next)
-    try {
-      await api.updateMcpServer(server.id, { isEnabled: next ? 1 : 0 })
-      onUpdate()
-    } catch (e) {
-      // Rolled back rather than kept locally: a switch that says a server will
-      // come back on its own, when nothing recorded that, is worse than an
-      // error — the user finds out at the next launch.
-      setAutoConnect(previous)
-      setError(String(e))
-    }
-  }, [server.id, autoConnect, onUpdate])
+  const handleToggleAutoConnect = useCallback(
+    async (next: boolean) => {
+      const previous = autoConnect
+      setAutoConnect(next)
+      try {
+        await api.updateMcpServer(server.id, { isEnabled: next ? 1 : 0 })
+        onUpdate()
+      } catch (e) {
+        // Rolled back rather than kept locally: a switch that says a server will
+        // come back on its own, when nothing recorded that, is worse than an
+        // error — the user finds out at the next launch.
+        setAutoConnect(previous)
+        setError(String(e))
+      }
+    },
+    [server.id, autoConnect, onUpdate],
+  )
 
   const isHttp = transportType === 'streamablehttp'
 
@@ -205,7 +218,7 @@ function McpServerEditor({
               'px-3 py-1.5 rounded-md text-sm transition-colors',
               !isHttp
                 ? 'bg-default text-default-foreground hover:bg-default hover:text-default-foreground'
-                : 'text-muted hover:text-foreground hover:bg-default/50'
+                : 'text-muted hover:text-foreground hover:bg-default/50',
             )}
           >
             {t('settings.mcp.transportStdio')}
@@ -217,7 +230,7 @@ function McpServerEditor({
               'px-3 py-1.5 rounded-md text-sm transition-colors',
               isHttp
                 ? 'bg-default text-default-foreground hover:bg-default hover:text-default-foreground'
-                : 'text-muted hover:text-foreground hover:bg-default/50'
+                : 'text-muted hover:text-foreground hover:bg-default/50',
             )}
           >
             {t('settings.mcp.transportHttp')}
@@ -233,7 +246,11 @@ function McpServerEditor({
           </TextField>
           <TextField fullWidth>
             <Label>{t('settings.mcp.headers')}</Label>
-            <Input value={headers} onChange={(e) => setHeaders(e.target.value)} placeholder='{"Authorization": "Bearer ..."}' />
+            <Input
+              value={headers}
+              onChange={(e) => setHeaders(e.target.value)}
+              placeholder='{"Authorization": "Bearer ..."}'
+            />
           </TextField>
         </>
       ) : (
@@ -244,11 +261,15 @@ function McpServerEditor({
           </TextField>
           <TextField fullWidth>
             <Label>{t('settings.mcp.args')}</Label>
-            <Input value={args} onChange={(e) => setArgs(e.target.value)} placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]' />
+            <Input
+              value={args}
+              onChange={(e) => setArgs(e.target.value)}
+              placeholder='["-y", "@modelcontextprotocol/server-filesystem", "/path"]'
+            />
           </TextField>
           <TextField fullWidth>
             <Label>{t('settings.mcp.env')}</Label>
-            <Input value={env} onChange={(e) => setEnv(e.target.value)} placeholder='{}' />
+            <Input value={env} onChange={(e) => setEnv(e.target.value)} placeholder="{}" />
           </TextField>
         </>
       )}
@@ -257,9 +278,7 @@ function McpServerEditor({
           something you do now, auto-connect is something you mean for next
           time. Disconnecting does not turn the switch off. */}
       <div className="flex items-center gap-2">
-        <Button onClick={handleSave}>
-          {saved ? t('common.saved') : t('common.save')}
-        </Button>
+        <Button onClick={handleSave}>{saved ? t('common.saved') : t('common.save')}</Button>
         {connected ? (
           <Button variant="outline" onClick={handleDisconnect}>
             <PlugConnection className="w-3.5 h-3.5 mr-1.5" />
@@ -271,30 +290,31 @@ function McpServerEditor({
             {connecting ? t('common.loading') : t('settings.mcp.connect')}
           </Button>
         )}
-        <Switch
-          className="ml-auto"
-          isSelected={autoConnect}
-          onChange={handleToggleAutoConnect}
-        >
+        <Switch className="ml-auto" isSelected={autoConnect} onChange={handleToggleAutoConnect}>
           <Switch.Content>
-            <Switch.Control><Switch.Thumb /></Switch.Control>
+            <Switch.Control>
+              <Switch.Thumb />
+            </Switch.Control>
             {t('settings.mcp.autoConnect')}
           </Switch.Content>
         </Switch>
       </div>
 
       {error && (
-        <div className="p-2 bg-danger/10 border border-danger/30 rounded text-sm text-danger break-all">
-          {error}
-        </div>
+        <div className="p-2 bg-danger/10 border border-danger/30 rounded text-sm text-danger break-all">{error}</div>
       )}
 
       {tools.length > 0 && (
         <div>
-          <p className="text-sm font-medium">{t('settings.mcp.tools')} ({tools.length})</p>
+          <p className="text-sm font-medium">
+            {t('settings.mcp.tools')} ({tools.length})
+          </p>
           <div className="mt-1 space-y-1">
             {tools.map((tool) => (
-              <div key={tool.qualified_name} className="flex items-center gap-2 px-2 py-1 rounded bg-default/50 text-xs">
+              <div
+                key={tool.qualified_name}
+                className="flex items-center gap-2 px-2 py-1 rounded bg-default/50 text-xs"
+              >
                 <span className="font-mono">{tool.name}</span>
                 <span className="text-muted truncate">{tool.description}</span>
               </div>
@@ -327,7 +347,9 @@ export function McpSettings() {
     api.listMcpServers().then(setServers)
   }, [])
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => {
+    refresh()
+  }, [refresh])
 
   const handleAdd = useCallback(async () => {
     const server = await api.createMcpServer('New Server', 'stdio')
@@ -335,31 +357,37 @@ export function McpSettings() {
     openItem(server.id)
   }, [refresh, openItem])
 
-  const handleDelete = useCallback(async (id: string) => {
-    if (!await confirm({ body: t('settings.confirmDelete.mcpServer') })) return
-    await api.deleteMcpServer(id)
-    if (selectedId === id) select(null)
-    refresh()
-  }, [confirm, t, selectedId, select, refresh])
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!(await confirm({ body: t('settings.confirmDelete.mcpServer') }))) return
+      await api.deleteMcpServer(id)
+      if (selectedId === id) select(null)
+      refresh()
+    },
+    [confirm, t, selectedId, select, refresh],
+  )
 
-  const handleImport = useCallback(async (data: McpServersJson) => {
-    if (!data.mcpServers) return
-    let lastId: string | null = null
-    for (const [name, cfg] of Object.entries(data.mcpServers)) {
-      const type = cfg.type ?? (cfg.url ? 'streamablehttp' : 'stdio')
-      const server = await api.createMcpServer(name, type, {
-        command: cfg.command,
-        args: cfg.args ? JSON.stringify(cfg.args) : undefined,
-        env: cfg.env ? JSON.stringify(cfg.env) : undefined,
-        url: cfg.url,
-        headers: cfg.headers ? JSON.stringify(cfg.headers) : undefined,
-      })
-      lastId = server.id
-    }
-    back()
-    refresh()
-    if (lastId) openItem(lastId)
-  }, [back, openItem, refresh])
+  const handleImport = useCallback(
+    async (data: McpServersJson) => {
+      if (!data.mcpServers) return
+      let lastId: string | null = null
+      for (const [name, cfg] of Object.entries(data.mcpServers)) {
+        const type = cfg.type ?? (cfg.url ? 'streamablehttp' : 'stdio')
+        const server = await api.createMcpServer(name, type, {
+          command: cfg.command,
+          args: cfg.args ? JSON.stringify(cfg.args) : undefined,
+          env: cfg.env ? JSON.stringify(cfg.env) : undefined,
+          url: cfg.url,
+          headers: cfg.headers ? JSON.stringify(cfg.headers) : undefined,
+        })
+        lastId = server.id
+      }
+      back()
+      refresh()
+      if (lastId) openItem(lastId)
+    },
+    [back, openItem, refresh],
+  )
 
   const selected = servers.find((s) => s.id === selectedId)
 
@@ -383,11 +411,7 @@ export function McpSettings() {
   const headerActions = (
     <div className="flex items-center gap-1">
       <Tooltip delay={0}>
-        <Button
-          aria-label={t('settings.mcp.importJson')}
-          variant="outline"
-          onClick={() => openAux('import')}
-        >
+        <Button aria-label={t('settings.mcp.importJson')} variant="outline" onClick={() => openAux('import')}>
           <ArrowDownToSquare className="w-4 h-4" />
         </Button>
         <Tooltip.Content placement="top">{t('settings.mcp.importJson')}</Tooltip.Content>
@@ -400,45 +424,39 @@ export function McpSettings() {
 
   return (
     <>
-    <MasterDetail
-      nav={nav}
-      title={t('settings.mcp.title')}
-      actions={headerActions}
-      listWidth="w-48"
-      headerPlacement="top"
-      list={
-        <div
-          data-slot="mcp-server-list"
-          className="overflow-y-auto overscroll-contain"
-        >
-          {serverList}
-        </div>
-      }
-      detailTitle={selected?.name}
-      detail={selected ? (
-        <McpServerEditor
-          key={selected.id}
-          server={selected}
-          onUpdate={refresh}
-          onDelete={handleDelete}
-        />
-      ) : undefined}
-      emptyDetail={t('settings.mcp.selectServer')}
-      // On a phone the import form is a screen of its own and now has a way
-      // back out of it; on a desktop it opens above a list that stays put.
-      auxTitle={t('settings.mcp.importJson')}
-      aux={showImport ? (
-        <JsonImportDialog onImport={handleImport} onCancel={back} />
-      ) : undefined}
-      emptyState={servers.length === 0 && !showImport ? (
-        <EmptyState size="sm">
-          <EmptyState.Header>
-            <EmptyState.Title>{t('settings.mcp.noServers')}</EmptyState.Title>
-          </EmptyState.Header>
-        </EmptyState>
-      ) : undefined}
-    />
-    {confirmDialog}
+      <MasterDetail
+        nav={nav}
+        title={t('settings.mcp.title')}
+        actions={headerActions}
+        listWidth="w-48"
+        headerPlacement="top"
+        list={
+          <div data-slot="mcp-server-list" className="overflow-y-auto overscroll-contain">
+            {serverList}
+          </div>
+        }
+        detailTitle={selected?.name}
+        detail={
+          selected ? (
+            <McpServerEditor key={selected.id} server={selected} onUpdate={refresh} onDelete={handleDelete} />
+          ) : undefined
+        }
+        emptyDetail={t('settings.mcp.selectServer')}
+        // On a phone the import form is a screen of its own and now has a way
+        // back out of it; on a desktop it opens above a list that stays put.
+        auxTitle={t('settings.mcp.importJson')}
+        aux={showImport ? <JsonImportDialog onImport={handleImport} onCancel={back} /> : undefined}
+        emptyState={
+          servers.length === 0 && !showImport ? (
+            <EmptyState size="sm">
+              <EmptyState.Header>
+                <EmptyState.Title>{t('settings.mcp.noServers')}</EmptyState.Title>
+              </EmptyState.Header>
+            </EmptyState>
+          ) : undefined
+        }
+      />
+      {confirmDialog}
     </>
   )
 }

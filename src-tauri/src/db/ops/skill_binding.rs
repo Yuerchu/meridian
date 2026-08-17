@@ -3,9 +3,7 @@ use diesel::sqlite::SqliteConnection;
 
 use crate::db::models::skill::Skill;
 use crate::db::models::skill_binding::SkillLayer;
-use crate::db::schema::{
-    skill_bindings_assistant, skill_bindings_global, skill_bindings_project, skills,
-};
+use crate::db::schema::{skill_bindings_assistant, skill_bindings_global, skill_bindings_project, skills};
 
 /// Bindings cost context on every request (each one contributes a name and a
 /// description to the tool schema), so the cap is per anchor rather than a
@@ -79,11 +77,7 @@ pub fn unbind(
 }
 
 /// Directory names bound at one specific layer, for the settings UI.
-pub fn list_layer(
-    conn: &mut SqliteConnection,
-    layer: SkillLayer,
-    anchor_id: Option<&str>,
-) -> QueryResult<Vec<String>> {
+pub fn list_layer(conn: &mut SqliteConnection, layer: SkillLayer, anchor_id: Option<&str>) -> QueryResult<Vec<String>> {
     match layer {
         SkillLayer::Global => skill_bindings_global::table
             .select(skill_bindings_global::dir_name)
@@ -108,11 +102,7 @@ pub fn list_layer(
     }
 }
 
-pub fn count_layer(
-    conn: &mut SqliteConnection,
-    layer: SkillLayer,
-    anchor_id: Option<&str>,
-) -> QueryResult<usize> {
+pub fn count_layer(conn: &mut SqliteConnection, layer: SkillLayer, anchor_id: Option<&str>) -> QueryResult<usize> {
     Ok(list_layer(conn, layer, anchor_id)?.len())
 }
 
@@ -150,19 +140,22 @@ mod tests {
     use crate::db::test_db;
 
     fn seed_skill(conn: &mut SqliteConnection, dir_name: &str) {
-        upsert_skill(conn, &NewSkill {
-            dir_name,
-            llm_name: dir_name,
-            llm_description: "desc",
-            display_name: dir_name,
-            display_description: None,
-            source: "user",
-            is_enabled: 1,
-            is_builtin: 0,
-            mtime_hash: None,
-            created_at: 1,
-            updated_at: 1,
-        })
+        upsert_skill(
+            conn,
+            &NewSkill {
+                dir_name,
+                llm_name: dir_name,
+                llm_description: "desc",
+                display_name: dir_name,
+                display_description: None,
+                source: "user",
+                is_enabled: 1,
+                is_builtin: 0,
+                mtime_hash: None,
+                created_at: 1,
+                updated_at: 1,
+            },
+        )
         .unwrap();
     }
 
@@ -263,10 +256,14 @@ mod tests {
         let mut conn = pool.get().unwrap();
         seed_skill(&mut conn, "off");
         bind(&mut conn, SkillLayer::Global, None, "off").unwrap();
-        crate::db::ops::skill::update_skill(&mut conn, "off", &SkillUpdate {
-            is_enabled: Some(0),
-            ..Default::default()
-        })
+        crate::db::ops::skill::update_skill(
+            &mut conn,
+            "off",
+            &SkillUpdate {
+                is_enabled: Some(0),
+                ..Default::default()
+            },
+        )
         .unwrap();
 
         assert!(resolve_available(&mut conn, None, None).unwrap().is_empty());

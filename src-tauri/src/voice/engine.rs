@@ -26,8 +26,8 @@ impl Engine {
         config.model_config.tokens = Some(file("tokens.txt"));
         config.model_config.num_threads = 4;
 
-        let recognizer = OnlineRecognizer::create(&config)
-            .ok_or("Failed to load the speech model; the files may be corrupt")?;
+        let recognizer =
+            OnlineRecognizer::create(&config).ok_or("Failed to load the speech model; the files may be corrupt")?;
         Ok(Engine { recognizer })
     }
 
@@ -46,11 +46,7 @@ impl Engine {
             self.recognizer.decode(&stream);
         }
 
-        let text = self
-            .recognizer
-            .get_result(&stream)
-            .map(|r| r.text)
-            .unwrap_or_default();
+        let text = self.recognizer.get_result(&stream).map(|r| r.text).unwrap_or_default();
         normalize(&text)
     }
 }

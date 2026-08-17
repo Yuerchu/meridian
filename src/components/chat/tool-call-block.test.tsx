@@ -20,11 +20,7 @@ vi.mock('@/api', () => ({
   },
 }))
 
-function toolCall(
-  toolName: string,
-  args: unknown,
-  status: ToolCallDisplay['status'] = 'pending',
-): ToolCallDisplay {
+function toolCall(toolName: string, args: unknown, status: ToolCallDisplay['status'] = 'pending'): ToolCallDisplay {
   return {
     call_id: 'call-1',
     tool_name: toolName,
@@ -126,9 +122,7 @@ describe('ToolCallBlock file-edit diff rendering', () => {
 
   it('renders write_file content with the file name header', () => {
     const { container } = render(
-      <ToolCallBlock
-        data={toolCall('write_file', { path: 'notes/todo.md', content: '# Todo\n- item one\n' })}
-      />,
+      <ToolCallBlock data={toolCall('write_file', { path: 'notes/todo.md', content: '# Todo\n- item one\n' })} />,
     )
 
     expectCardOpen(container)
@@ -261,9 +255,7 @@ describe('the interactive cards say what became of them', () => {
   /// would take its buttons away.
   it('leaves anything but a running call as it was', () => {
     for (const status of ['pending', 'completed', 'denied', 'error', 'orphaned'] as const) {
-      const { unmount } = render(
-        <ToolCallBlock data={toolCall('run_command', { command: 'ls' }, status)} queued />,
-      )
+      const { unmount } = render(<ToolCallBlock data={toolCall('run_command', { command: 'ls' }, status)} queued />)
       expect(screen.queryByText(i18n.t('chat.tool.queued')), status).toBeNull()
       unmount()
     }
@@ -282,26 +274,18 @@ describe('the interactive cards say what became of them', () => {
     expect(screen.queryByRole('button', { name: i18n.t('chat.tool.allow') })).toBeNull()
     expect(screen.getByText(i18n.t('chat.tool.running'))).toBeVisible()
 
-    rerender(
-      <ToolCallBlock
-        data={{ ...first, approval_id: 'appr-2', retry_reason: 'sandbox denied' }}
-      />,
-    )
+    rerender(<ToolCallBlock data={{ ...first, approval_id: 'appr-2', retry_reason: 'sandbox denied' }} />)
 
     expect(screen.getByText(i18n.t('chat.tool.sandboxRetryPrompt'))).toBeVisible()
     // Its own label, not "Allow": what is being agreed to is not the call the
     // user already agreed to.
-    expect(
-      screen.getByRole('button', { name: i18n.t('chat.tool.retryWithoutSandbox') }),
-    ).toBeVisible()
+    expect(screen.getByRole('button', { name: i18n.t('chat.tool.retryWithoutSandbox') })).toBeVisible()
   })
 
   /// Two spinners side by side read as two things happening at once.
   it('does not spin twice over one running question', () => {
     const { container } = render(
-      <ToolCallBlock
-        data={toolCall('ask_user', { questions: [{ id: 'q', question: 'Q?' }] }, 'running')}
-      />,
+      <ToolCallBlock data={toolCall('ask_user', { questions: [{ id: 'q', question: 'Q?' }] }, 'running')} />,
     )
     expect(container.querySelectorAll('.animate-spin')).toHaveLength(1)
   })
@@ -338,7 +322,12 @@ describe('web search sources', () => {
     ...toolCall('web_search', { query: 'heroui' }, 'completed'),
     result: JSON.stringify({
       sources: [
-        { url: 'https://heroui.com/docs', title: 'HeroUI documentation', site_name: 'HeroUI', favicon: 'https://heroui.com/f.ico' },
+        {
+          url: 'https://heroui.com/docs',
+          title: 'HeroUI documentation',
+          site_name: 'HeroUI',
+          favicon: 'https://heroui.com/f.ico',
+        },
         { url: 'https://react.dev', title: 'React', site_name: '', favicon: null },
       ],
     }),

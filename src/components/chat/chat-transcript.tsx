@@ -26,7 +26,9 @@ const MotionMessageScrollerItem = m.create(MessageScrollerItem)
 function ImeScrollSync() {
   const ime = useImeBottom()
   const { scrollToEnd } = useMessageScroller()
-  useEffect(() => { if (ime > 0) scrollToEnd() }, [ime, scrollToEnd])
+  useEffect(() => {
+    if (ime > 0) scrollToEnd()
+  }, [ime, scrollToEnd])
   return null
 }
 

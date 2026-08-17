@@ -35,18 +35,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    attachments (id) {
-        id -> Text,
-        message_id -> Text,
-        file_name -> Text,
-        file_path -> Text,
-        mime_type -> Text,
-        file_size -> BigInt,
-        created_at -> BigInt,
-    }
-}
-
-diesel::table! {
     cached_models (id) {
         id -> Nullable<Integer>,
         provider_id -> Text,
@@ -450,7 +438,6 @@ diesel::joinable!(assistant_emoji_packs -> assistants (assistant_id));
 diesel::joinable!(assistant_emoji_packs -> emoji_packs (pack_id));
 diesel::joinable!(assistants -> providers (provider_id));
 diesel::joinable!(assistants -> tool_presets (tool_preset_id));
-diesel::joinable!(attachments -> messages (message_id));
 diesel::joinable!(cached_models -> providers (provider_id));
 diesel::joinable!(model_configs -> providers (provider_id));
 diesel::joinable!(conversations -> assistants (assistant_id));
@@ -472,4 +459,32 @@ diesel::joinable!(todo_items -> todo_lists (list_id));
 diesel::joinable!(turns -> conversations (conversation_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    assistant_emoji_packs,assistants,attachments,cached_models,conversations,custom_tools,emoji_packs,emojis,mcp_servers,memories,memory_proposals,memory_subjects,messages,mode_artifacts,model_configs,preferences,projects,prompt_templates,providers,skill_bindings_assistant,skill_bindings_global,skill_bindings_project,skills,todo_items,todo_lists,tool_categories,tool_permissions,tool_presets,turns,);
+    assistant_emoji_packs,
+    assistants,
+    cached_models,
+    conversations,
+    custom_tools,
+    emoji_packs,
+    emojis,
+    mcp_servers,
+    memories,
+    memory_proposals,
+    memory_subjects,
+    messages,
+    mode_artifacts,
+    model_configs,
+    preferences,
+    projects,
+    prompt_templates,
+    providers,
+    skill_bindings_assistant,
+    skill_bindings_global,
+    skill_bindings_project,
+    skills,
+    todo_items,
+    todo_lists,
+    tool_categories,
+    tool_permissions,
+    tool_presets,
+    turns,
+);

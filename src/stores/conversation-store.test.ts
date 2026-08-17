@@ -64,9 +64,7 @@ describe('hydrateBlocks', () => {
   /** An assistant row that made one tool call. */
   function caller(id: string, callId: string, name = 'read_file'): Message {
     return msg(id, {
-      tool_calls: JSON.stringify([
-        { id: callId, type: 'function', function: { name, arguments: '{}' } },
-      ]),
+      tool_calls: JSON.stringify([{ id: callId, type: 'function', function: { name, arguments: '{}' } }]),
     })
   }
 
@@ -88,12 +86,17 @@ describe('hydrateBlocks', () => {
   })
 
   it('reads an unanswered call the backend is still holding as pending', () => {
-    const out = hydrateBlocks([caller('a', 'c1')], [{
-      approval_id: 'appr-1',
-      assistant_message_id: 'a',
-      provider_call_id: 'c1',
-      tool_name: 'read_file',
-    }])
+    const out = hydrateBlocks(
+      [caller('a', 'c1')],
+      [
+        {
+          approval_id: 'appr-1',
+          assistant_message_id: 'a',
+          provider_call_id: 'c1',
+          tool_name: 'read_file',
+        },
+      ],
+    )
     expect(callBlocks(out, 'a')[0]).toMatchObject({ status: 'pending', approval_id: 'appr-1' })
   })
 
@@ -109,7 +112,7 @@ describe('hydrateBlocks', () => {
   /// registry entry immediately, and the tool then runs — for as long as it
   /// takes — before its row exists. Neither an approval nor a result, on a call
   /// that is at that moment editing a file.
-  it('does not call a live turn\'s unanswered call orphaned', () => {
+  it("does not call a live turn's unanswered call orphaned", () => {
     const out = hydrateBlocks(
       [caller('a', 'c1', 'edit_file')],
       [],
@@ -119,12 +122,14 @@ describe('hydrateBlocks', () => {
     expect(callBlocks(out, 'a')[0]).toMatchObject({ status: 'orphaned' })
 
     const owned = hydrateBlocks(
-      [msg('a', {
-        turn_id: 't1',
-        tool_calls: JSON.stringify([
-          { id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } },
-        ]),
-      })],
+      [
+        msg('a', {
+          turn_id: 't1',
+          tool_calls: JSON.stringify([
+            { id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } },
+          ]),
+        }),
+      ],
       [],
       [turnRecord('t1', 'running')],
     )
@@ -136,12 +141,14 @@ describe('hydrateBlocks', () => {
   it('calls an unanswered call orphaned once its turn has ended', () => {
     for (const ended of ['done', 'cancelled', 'failed', 'interrupted']) {
       const out = hydrateBlocks(
-        [msg('a', {
-          turn_id: 't1',
-          tool_calls: JSON.stringify([
-            { id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } },
-          ]),
-        })],
+        [
+          msg('a', {
+            turn_id: 't1',
+            tool_calls: JSON.stringify([
+              { id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } },
+            ]),
+          }),
+        ],
         [],
         [turnRecord('t1', ended)],
       )
@@ -157,14 +164,12 @@ describe('hydrateBlocks', () => {
   it('does not read a missing or unrecognised turn record as an ending', () => {
     const row = msg('a', {
       turn_id: 't1',
-      tool_calls: JSON.stringify([
-        { id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } },
-      ]),
+      tool_calls: JSON.stringify([{ id: 'c1', type: 'function', function: { name: 'edit_file', arguments: '{}' } }]),
     })
     expect(callBlocks(hydrateBlocks([row], [], []), 'a')[0]).toMatchObject({ status: 'running' })
-    expect(
-      callBlocks(hydrateBlocks([row], [], [turnRecord('t1', 'from_the_future')]), 'a')[0],
-    ).toMatchObject({ status: 'running' })
+    expect(callBlocks(hydrateBlocks([row], [], [turnRecord('t1', 'from_the_future')]), 'a')[0]).toMatchObject({
+      status: 'running',
+    })
   })
 
   /// Reloading used to turn every refusal into a green tick, with the refusal
@@ -185,13 +190,18 @@ describe('hydrateBlocks', () => {
   })
 
   it('carries the escalation reason onto the card it belongs to', () => {
-    const out = hydrateBlocks([caller('a', 'c1', 'run_command')], [{
-      approval_id: 'appr-1',
-      assistant_message_id: 'a',
-      provider_call_id: 'c1',
-      tool_name: 'run_command',
-      retry_reason: 'sandbox denied',
-    }])
+    const out = hydrateBlocks(
+      [caller('a', 'c1', 'run_command')],
+      [
+        {
+          approval_id: 'appr-1',
+          assistant_message_id: 'a',
+          provider_call_id: 'c1',
+          tool_name: 'run_command',
+          retry_reason: 'sandbox denied',
+        },
+      ],
+    )
     expect(callBlocks(out, 'a')[0]).toMatchObject({
       status: 'pending',
       retry_reason: 'sandbox denied',
@@ -201,12 +211,8 @@ describe('hydrateBlocks', () => {
   // Gateways that number their tool calls from zero every request make this the
   // normal case, not a corner one. A transcript-wide lookup would hand the
   // second round's pending call the first round's result.
-  it('does not let a later call claim an earlier round\'s result when ids repeat', () => {
-    const out = hydrateBlocks([
-      caller('a1', '0'),
-      answer('t1', '0', 'first round'),
-      caller('a2', '0'),
-    ])
+  it("does not let a later call claim an earlier round's result when ids repeat", () => {
+    const out = hydrateBlocks([caller('a1', '0'), answer('t1', '0', 'first round'), caller('a2', '0')])
     expect(callBlocks(out, 'a1')[0]).toMatchObject({ status: 'completed', result: 'first round' })
     expect(callBlocks(out, 'a2')[0]).toMatchObject({ status: 'orphaned' })
     expect(callBlocks(out, 'a2')[0].result).toBeUndefined()
@@ -219,20 +225,28 @@ describe('hydrateBlocks', () => {
         { id: '0', type: 'function', function: { name: 'read_file', arguments: '{}' } },
       ]),
     })
-    const out = hydrateBlocks([both], [
-      { approval_id: 'appr-1', assistant_message_id: 'a', provider_call_id: '0', tool_name: 'read_file' },
-      { approval_id: 'appr-2', assistant_message_id: 'a', provider_call_id: '0', tool_name: 'read_file' },
-    ])
+    const out = hydrateBlocks(
+      [both],
+      [
+        { approval_id: 'appr-1', assistant_message_id: 'a', provider_call_id: '0', tool_name: 'read_file' },
+        { approval_id: 'appr-2', assistant_message_id: 'a', provider_call_id: '0', tool_name: 'read_file' },
+      ],
+    )
     expect(callBlocks(out, 'a').map((b) => b.approval_id)).toEqual(['appr-1', 'appr-2'])
   })
 
   it('keeps an approval from another assistant row off this one', () => {
-    const out = hydrateBlocks([caller('a1', 'c1'), caller('a2', 'c1')], [{
-      approval_id: 'appr-1',
-      assistant_message_id: 'a2',
-      provider_call_id: 'c1',
-      tool_name: 'read_file',
-    }])
+    const out = hydrateBlocks(
+      [caller('a1', 'c1'), caller('a2', 'c1')],
+      [
+        {
+          approval_id: 'appr-1',
+          assistant_message_id: 'a2',
+          provider_call_id: 'c1',
+          tool_name: 'read_file',
+        },
+      ],
+    )
     expect(callBlocks(out, 'a1')[0]).toMatchObject({ status: 'orphaned' })
     expect(callBlocks(out, 'a2')[0]).toMatchObject({ status: 'pending', approval_id: 'appr-1' })
   })
@@ -289,7 +303,9 @@ describe('reconcileMessages', () => {
     const next = [
       msg('a', {
         content: 'done',
-        _blocks: [{ type: 'tool_call', data: { call_id: 'c1', tool_name: 'run', arguments: '{}', status: 'completed' } }],
+        _blocks: [
+          { type: 'tool_call', data: { call_id: 'c1', tool_name: 'run', arguments: '{}', status: 'completed' } },
+        ],
       }),
     ]
     const out = reconcileMessages(prev, next)
@@ -364,9 +380,7 @@ describe('live approval events', () => {
 
   it('carries the escalation details onto the card', () => {
     store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
-    store().handleToolApproval(
-      CONV, 'a1', 'appr-1', 'c1', 'run_command', 'sandbox denied', 'c1',
-    )
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', 'sandbox denied', 'c1')
 
     expect(cards()[0]).toMatchObject({ status: 'pending', retry_reason: 'sandbox denied' })
     expect(store().sessions[CONV]!.pendingApprovals['appr-1']).toMatchObject({
@@ -388,9 +402,7 @@ describe('live approval events', () => {
     expect(cards()[0]).toMatchObject({ status: 'pending', approval_id: 'appr-1' })
 
     // The user says yes, the command runs, the sandbox blocks it.
-    store().handleToolApproval(
-      CONV, 'a1', 'appr-2', 'c1', 'run_command', 'sandbox denied', 'c1',
-    )
+    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c1', 'run_command', 'sandbox denied', 'c1')
 
     expect(cards()[0]).toMatchObject({
       status: 'pending',
@@ -408,9 +420,7 @@ describe('live approval events', () => {
     store().handleToolCall(CONV, 'a1', '0', 'run_command', '{}')
     store().handleToolResult(CONV, 'a1', '0', 'the first one is done')
 
-    store().handleToolApproval(
-      CONV, 'a1', 'appr-2', '0', 'run_command', 'sandbox denied', '0',
-    )
+    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'run_command', 'sandbox denied', '0')
 
     expect(cards().map((c) => c.status)).toEqual(['completed', 'pending'])
     expect(cards()[0].result).toBe('the first one is done')
@@ -449,7 +459,9 @@ describe('a reload racing the live round', () => {
   function reloadPausedMidRound(): [Promise<void>, (snap: ConversationSnapshot) => void] {
     let land: (snap: ConversationSnapshot) => void = () => {}
     vi.mocked(api.conversationSnapshot).mockReturnValueOnce(
-      new Promise<ConversationSnapshot>((resolve) => { land = resolve }),
+      new Promise<ConversationSnapshot>((resolve) => {
+        land = resolve
+      }),
     )
     return [store().loadMessages(CONV), (snap) => land(snap)]
   }
@@ -459,17 +471,19 @@ describe('a reload racing the live round', () => {
   function roundWritten(ids: string[]): ConversationSnapshot {
     return snapshotOf(
       {
-        messages: [msg('a1', {
-          turn_id: 'turn-1',
-          content: 'on it',
-          tool_calls: JSON.stringify(
-            ids.map((id) => ({
-              id,
-              type: 'function',
-              function: { name: 'run_command', arguments: '{}' },
-            })),
-          ),
-        })],
+        messages: [
+          msg('a1', {
+            turn_id: 'turn-1',
+            content: 'on it',
+            tool_calls: JSON.stringify(
+              ids.map((id) => ({
+                id,
+                type: 'function',
+                function: { name: 'run_command', arguments: '{}' },
+              })),
+            ),
+          }),
+        ],
         head_message_id: 'a1',
         branches: [],
       },
@@ -613,11 +627,7 @@ describe('stops are scoped to a turn', () => {
       snapshotOf(
         { messages: [], head_message_id: null, branches: [] },
         {
-          turns: [
-            turnRecord('turn-1', 'interrupted'),
-            turnRecord('turn-2', 'crashed'),
-            turnRecord('turn-3', 'done'),
-          ],
+          turns: [turnRecord('turn-1', 'interrupted'), turnRecord('turn-2', 'crashed'), turnRecord('turn-3', 'done')],
         },
       ),
     )
@@ -673,7 +683,9 @@ describe('stops are scoped to a turn', () => {
   it('discards a reload that was already in flight when the turn started', async () => {
     let land: (snap: ConversationSnapshot) => void = () => {}
     vi.mocked(api.conversationSnapshot).mockReturnValueOnce(
-      new Promise<ConversationSnapshot>((resolve) => { land = resolve }),
+      new Promise<ConversationSnapshot>((resolve) => {
+        land = resolve
+      }),
     )
 
     const reloading = store().loadMessages(CONV)
@@ -711,7 +723,7 @@ describe('stops are scoped to a turn', () => {
   /// The same race one event earlier, and the mirror of the stale stop above.
   /// A late `message_start` used to take the session back, and the stop
   /// following it then cleared the turn that was really running.
-  it("does not let a late message start take the session from the run that replaced it", () => {
+  it('does not let a late message start take the session from the run that replaced it', () => {
     store().handleMessageStart(CONV, 'a1', 'turn-1')
     store().abortTurn(CONV, 'turn-1')
     store().beginTurn(CONV, 'turn-2')
@@ -903,7 +915,7 @@ describe('stops are scoped to a turn', () => {
   /// Stopping is what strands an approval: the turn is gone, so nothing is
   /// left to answer the card. It must not do that to a turn that is still
   /// running.
-  it('leaves another run\'s approvals alone', () => {
+  it("leaves another run's approvals alone", () => {
     store().handleMessageStart(CONV, 'a1', 'turn-2')
     store().handleToolCall(CONV, 'a1', 'c1', 'read_file', '{}')
     store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'read_file')
@@ -965,11 +977,13 @@ describe('branch state', () => {
   /// Without this the pager only shows up the next time the conversation is
   /// opened, since the turn that created the branch point ends with this reload.
   it('picks up a new branch point when a turn ends', async () => {
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(snapshotOf({
-      messages: [msg('q'), msg('a2')],
-      head_message_id: 'a2',
-      branches: [{ message_id: 'a2', index: 1, total: 2, sibling_ids: ['a1', 'a2'] }],
-    }))
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf({
+        messages: [msg('q'), msg('a2')],
+        head_message_id: 'a2',
+        branches: [{ message_id: 'a2', index: 1, total: 2, sibling_ids: ['a1', 'a2'] }],
+      }),
+    )
 
     useConversationStore.getState().handleStop(CONV)
     await vi.waitFor(() => {
@@ -988,11 +1002,13 @@ describe('branch state', () => {
     // The switch moves the head and says nothing; the snapshot after it is
     // where the new path comes from.
     vi.mocked(api.switchBranch).mockResolvedValue(undefined)
-    vi.mocked(api.conversationSnapshot).mockResolvedValue(snapshotOf({
-      messages: [msg('q'), msg('a2', { content: 'second' })],
-      head_message_id: 'a2',
-      branches: [{ message_id: 'a2', index: 1, total: 2, sibling_ids: ['a1', 'a2'] }],
-    }))
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf({
+        messages: [msg('q'), msg('a2', { content: 'second' })],
+        head_message_id: 'a2',
+        branches: [{ message_id: 'a2', index: 1, total: 2, sibling_ids: ['a1', 'a2'] }],
+      }),
+    )
 
     await useConversationStore.getState().switchBranch(CONV, 'a2')
 
@@ -1024,15 +1040,21 @@ describe('branch state', () => {
 
     let land: (snap: ConversationSnapshot) => void = () => {}
     vi.mocked(api.conversationSnapshot)
-      .mockReturnValueOnce(new Promise<ConversationSnapshot>((resolve) => { land = resolve }))
+      .mockReturnValueOnce(
+        new Promise<ConversationSnapshot>((resolve) => {
+          land = resolve
+        }),
+      )
       // The re-read this is expected to trigger afterwards: the switch really
       // did move the head, so the new path has to be picked up under whatever
       // generation is current by then.
-      .mockResolvedValue(snapshotOf({
-        messages: [msg('q'), msg('a2', { content: 'the other version' })],
-        head_message_id: 'a2',
-        branches: [{ message_id: 'a2', index: 1, total: 2, sibling_ids: ['a1', 'a2'] }],
-      }))
+      .mockResolvedValue(
+        snapshotOf({
+          messages: [msg('q'), msg('a2', { content: 'the other version' })],
+          head_message_id: 'a2',
+          branches: [{ message_id: 'a2', index: 1, total: 2, sibling_ids: ['a1', 'a2'] }],
+        }),
+      )
 
     const switching = store().switchBranch(CONV, 'a2')
     expect(session().switchingBranch).toBe(true)
@@ -1073,11 +1095,13 @@ describe('delegated runs', () => {
   function delegator(id: string, callId: string): Message {
     return msg(id, {
       turn_id: 't1',
-      tool_calls: JSON.stringify([{
-        id: callId,
-        type: 'function',
-        function: { name: 'run_agent', arguments: '{"agent":"agent","description":"fix the test"}' },
-      }]),
+      tool_calls: JSON.stringify([
+        {
+          id: callId,
+          type: 'function',
+          function: { name: 'run_agent', arguments: '{"agent":"agent","description":"fix the test"}' },
+        },
+      ]),
     })
   }
 
@@ -1090,18 +1114,38 @@ describe('delegated runs', () => {
       [],
       [turnRecord('t1', 'running')],
       [
-        { conversation_id: 'sub-1', spawned_by_message_id: 'a1', spawned_by_call_id: '0',
-          spawned_turn_id: 'run-1', agent_kind: 'agent', title: 'first', steps: 3, status: 'done' },
-        { conversation_id: 'sub-2', spawned_by_message_id: 'a2', spawned_by_call_id: '0',
-          spawned_turn_id: 'run-2', agent_kind: 'explore', title: 'second', steps: 1, status: 'running' },
+        {
+          conversation_id: 'sub-1',
+          spawned_by_message_id: 'a1',
+          spawned_by_call_id: '0',
+          spawned_turn_id: 'run-1',
+          agent_kind: 'agent',
+          title: 'first',
+          steps: 3,
+          status: 'done',
+        },
+        {
+          conversation_id: 'sub-2',
+          spawned_by_message_id: 'a2',
+          spawned_by_call_id: '0',
+          spawned_turn_id: 'run-2',
+          agent_kind: 'explore',
+          title: 'second',
+          steps: 1,
+          status: 'running',
+        },
       ],
     )
 
     expect(callBlocks(out, 'a1')[0].sub_agent).toMatchObject({
-      conversation_id: 'sub-1', turn_id: 'run-1', steps: 3,
+      conversation_id: 'sub-1',
+      turn_id: 'run-1',
+      steps: 3,
     })
     expect(callBlocks(out, 'a2')[0].sub_agent).toMatchObject({
-      conversation_id: 'sub-2', turn_id: 'run-2', steps: 1,
+      conversation_id: 'sub-2',
+      turn_id: 'run-2',
+      steps: 1,
     })
   })
 
@@ -1111,16 +1155,18 @@ describe('delegated runs', () => {
   it('puts a delegated question inside the card that spawned the run', () => {
     const out = hydrateBlocks(
       [delegator('a1', '0')],
-      [{
-        approval_id: 'appr-1',
-        assistant_message_id: 'a1',
-        provider_call_id: 'child-call',
-        tool_name: 'run_command',
-        arguments: '{"command":"cargo test --all"}',
-        bubbled: false,
-        parent_call_id: '0',
-        sub_conversation_id: 'sub-1',
-      }],
+      [
+        {
+          approval_id: 'appr-1',
+          assistant_message_id: 'a1',
+          provider_call_id: 'child-call',
+          tool_name: 'run_command',
+          arguments: '{"command":"cargo test --all"}',
+          bubbled: false,
+          parent_call_id: '0',
+          sub_conversation_id: 'sub-1',
+        },
+      ],
       [turnRecord('t1', 'running')],
     )
 
@@ -1146,14 +1192,16 @@ describe('delegated runs', () => {
     })
     const out = hydrateBlocks(
       [caller],
-      [{
-        approval_id: 'appr-1',
-        assistant_message_id: 'a1',
-        provider_call_id: 'child-call',
-        tool_name: 'run_command',
-        arguments: '{}',
-        bubbled: true,
-      }],
+      [
+        {
+          approval_id: 'appr-1',
+          assistant_message_id: 'a1',
+          provider_call_id: 'child-call',
+          tool_name: 'run_command',
+          arguments: '{}',
+          bubbled: true,
+        },
+      ],
       [turnRecord('t1', 'running')],
     )
 
@@ -1182,7 +1230,9 @@ describe('delegated runs', () => {
 
     it('counts only the runs that announced themselves', () => {
       store().handleSubAgentStarted(CONV, 'a1', '0', {
-        conversationId: 'sub-1', turnId: 'run-1', kind: 'agent',
+        conversationId: 'sub-1',
+        turnId: 'run-1',
+        kind: 'agent',
       })
       expect(card().sub_agent).toMatchObject({ conversation_id: 'sub-1', turn_id: 'run-1' })
 
@@ -1196,10 +1246,11 @@ describe('delegated runs', () => {
     })
 
     it('nests a delegated question instead of inventing a card for it', () => {
-      store().handleToolApproval(
-        CONV, 'a1', 'appr-1', 'child-call', 'run_command', undefined, undefined,
-        { parentCallId: '0', arguments: '{"command":"ls"}', subConversationId: 'sub-1' },
-      )
+      store().handleToolApproval(CONV, 'a1', 'appr-1', 'child-call', 'run_command', undefined, undefined, {
+        parentCallId: '0',
+        arguments: '{"command":"ls"}',
+        subConversationId: 'sub-1',
+      })
 
       const row = store().sessions[CONV]!.messages.find((m) => m.id === 'a1')!
       const calls = (row._blocks ?? []).filter((b) => b.type === 'tool_call')
@@ -1216,10 +1267,10 @@ describe('delegated runs', () => {
 
     // The run is not what failed — only its question was lost.
     it('drops a lost question without writing off the run', () => {
-      store().handleToolApproval(
-        CONV, 'a1', 'appr-1', 'child-call', 'run_command', undefined, undefined,
-        { parentCallId: '0', arguments: '{}' },
-      )
+      store().handleToolApproval(CONV, 'a1', 'appr-1', 'child-call', 'run_command', undefined, undefined, {
+        parentCallId: '0',
+        arguments: '{}',
+      })
       store().markApprovalOrphaned('appr-1')
 
       expect(card().nested_approval).toBeUndefined()

@@ -55,10 +55,7 @@ export function MasterDetail<Aux extends string = never>({
       const showingAux = nav.aux !== null
       return (
         <div data-slot="master-detail" className={cn('max-w-3xl', className)}>
-          <SettingsSubPage
-            title={showingAux ? auxTitle : detailTitle}
-            onBack={nav.back}
-          >
+          <SettingsSubPage title={showingAux ? auxTitle : detailTitle} onBack={nav.back}>
             {showingAux ? aux : detail}
           </SettingsSubPage>
         </div>
@@ -83,9 +80,7 @@ export function MasterDetail<Aux extends string = never>({
             {!atTop && <SettingsHeader title={title} actions={actions} className="mb-3" />}
             {list}
           </div>
-          <div className="min-w-0 flex-1">
-            {detail ?? <div className="text-sm text-muted">{emptyDetail}</div>}
-          </div>
+          <div className="min-w-0 flex-1">{detail ?? <div className="text-sm text-muted">{emptyDetail}</div>}</div>
         </div>
       )}
     </div>

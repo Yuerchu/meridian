@@ -1,13 +1,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::engine::ApprovalDecision;
 use crate::agent::CompactCircuitBreaker;
+use crate::agent::engine::ApprovalDecision;
 use crate::db::DbPool;
-use crate::edit_session;
 use crate::mcp;
 use crate::secrets::SecretsManager;
 use crate::tools;
@@ -169,8 +168,9 @@ pub(crate) struct SubAgentInbox {
 pub(crate) enum Accept {
     Queued,
     /// Nobody is reading any more. The text comes back so the caller can say so
-    /// rather than pretend it went somewhere.
-    Closed(String),
+    /// rather than pretend it went somewhere — the one caller today declines to,
+    /// which is its choice rather than this type's.
+    Closed(#[allow(dead_code)] String),
 }
 
 impl SubAgentInbox {
@@ -198,9 +198,12 @@ impl SubAgentInbox {
     /// the caller owes them an account of it — dropping it on the floor is the
     /// one outcome that must not happen.
     pub(crate) fn close(&self) -> Vec<crate::agent::engine::Steered> {
-        self.queue.lock().unwrap_or_else(|e| e.into_inner()).take().unwrap_or_default()
+        self.queue
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .take()
+            .unwrap_or_default()
     }
-
 }
 
 /// The inbox *is* the port. A wrapper type would only exist to hold a reference
@@ -223,7 +226,9 @@ impl AppSubAgentInboxes {
     /// conversation is minted per run, so a collision would mean a previous run
     /// failed to clean up, and the new run is the one people are typing at.
     pub(crate) fn open(&self, conversation_id: &str) -> Arc<SubAgentInbox> {
-        let inbox = Arc::new(SubAgentInbox { queue: std::sync::Mutex::new(Some(Vec::new())) });
+        let inbox = Arc::new(SubAgentInbox {
+            queue: std::sync::Mutex::new(Some(Vec::new())),
+        });
         self.lock().insert(conversation_id.to_string(), Arc::clone(&inbox));
         inbox
     }
@@ -252,16 +257,13 @@ impl AppSubAgentInboxes {
     }
 }
 
-pub(crate) struct EditSessions(pub(crate) Mutex<HashMap<String, Arc<tokio::sync::Mutex<edit_session::EditSession>>>>);
 pub(crate) struct CompactBreakers(pub(crate) Mutex<HashMap<String, Arc<CompactCircuitBreaker>>>);
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn pending(conversation_id: &str, call_id: &str)
-        -> (PendingApproval, oneshot::Receiver<ApprovalDecision>)
-    {
+    fn pending(conversation_id: &str, call_id: &str) -> (PendingApproval, oneshot::Receiver<ApprovalDecision>) {
         let (tx, rx) = oneshot::channel();
         let entry = PendingApproval {
             conversation_id: conversation_id.into(),
@@ -291,8 +293,14 @@ mod tests {
         waiters.lock().insert("appr-2".into(), b);
         assert_eq!(waiters.lock().len(), 2);
 
-        let answered = waiters.lock().remove("appr-1").expect("first approval still registered");
-        answered.sender.send(ApprovalDecision::Approved).expect("its turn is still listening");
+        let answered = waiters
+            .lock()
+            .remove("appr-1")
+            .expect("first approval still registered");
+        answered
+            .sender
+            .send(ApprovalDecision::Approved)
+            .expect("its turn is still listening");
 
         assert!(rx_a.try_recv().is_ok());
         assert!(rx_b.try_recv().is_err(), "the other turn must not have been answered");
@@ -319,7 +327,9 @@ mod tests {
         waiters.lock().insert("appr-1".into(), a);
         waiters.lock().insert("appr-2".into(), b);
 
-        let mine: Vec<String> = waiters.lock().iter()
+        let mine: Vec<String> = waiters
+            .lock()
+            .iter()
             .filter(|(_, p)| p.conversation_id == "conv-1")
             .map(|(id, _)| id.clone())
             .collect();
@@ -355,7 +365,9 @@ mod tests {
     /// `system_context` would have said.
     #[test]
     fn what_a_desktop_user_types_is_a_user_talking() {
-        let inbox = SubAgentInbox { queue: std::sync::Mutex::new(Some(Vec::new())) };
+        let inbox = SubAgentInbox {
+            queue: std::sync::Mutex::new(Some(Vec::new())),
+        };
         inbox.append("use the other approach".into());
 
         let taken = inbox.close();
@@ -370,7 +382,9 @@ mod tests {
     #[test]
     fn draining_is_not_closing() {
         use crate::agent::engine::Steering;
-        let inbox = SubAgentInbox { queue: std::sync::Mutex::new(Some(Vec::new())) };
+        let inbox = SubAgentInbox {
+            queue: std::sync::Mutex::new(Some(Vec::new())),
+        };
         inbox.append("first".into());
 
         assert_eq!(inbox.drain().len(), 1);
@@ -379,7 +393,10 @@ mod tests {
 
         assert_eq!(inbox.close().len(), 1);
         assert!(matches!(inbox.append("third".into()), Accept::Closed(_)));
-        assert!(inbox.drain().is_empty(), "a closed inbox has nothing left to give the loop");
+        assert!(
+            inbox.drain().is_empty(),
+            "a closed inbox has nothing left to give the loop"
+        );
     }
 
     /// One turn panicking while holding the lock must not take every later
@@ -391,7 +408,8 @@ mod tests {
         let _ = std::thread::spawn(move || {
             let _guard = poisoner.lock();
             panic!("a turn died holding the lock");
-        }).join();
+        })
+        .join();
 
         assert!(waiters.lock().is_empty());
     }

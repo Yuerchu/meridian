@@ -66,15 +66,15 @@ impl TransitionEffect {
     /// A transition that did not happen, whether because the user said no or
     /// because a write did. All that is left is what to say.
     fn said(result: impl Into<String>, outcome: &'static str) -> Self {
-        Self { result: result.into(), outcome, next: None }
+        Self {
+            result: result.into(),
+            outcome,
+            next: None,
+        }
     }
 
     /// A switch that landed, with the turn it resolved to.
-    fn switched(
-        result: impl Into<String>,
-        mode: &'static ModeSpec,
-        config: TurnConfig,
-    ) -> Self {
+    fn switched(result: impl Into<String>, mode: &'static ModeSpec, config: TurnConfig) -> Self {
         Self {
             result: result.into(),
             outcome: "success",
@@ -126,10 +126,10 @@ pub(crate) fn apply_turn_config(
 /// user of the same slot with the opposite intent: steering appends, and must
 /// not touch the prefix the prompt cache is keyed on.
 pub(crate) fn replace_system_prompt(chat_messages: &mut [ChatMessage], prompt: &str) {
-    if let Some(first) = chat_messages.first_mut() {
-        if first.role == "system" {
-            first.content = prompt.trim().to_string();
-        }
+    if let Some(first) = chat_messages.first_mut()
+        && first.role == "system"
+    {
+        first.content = prompt.trim().to_string();
     }
 }
 
@@ -153,13 +153,13 @@ pub(crate) async fn enter(
             return Ok(TransitionEffect::said(
                 format!("The user would rather not plan first: {reason}\n\nCarry on as you were."),
                 "denied",
-            ))
+            ));
         }
         _ => {
             return Ok(TransitionEffect::said(
                 "The user declined to switch to plan mode. Carry on as you were.",
                 "denied",
-            ))
+            ));
         }
     }
 
@@ -229,15 +229,19 @@ where
         let conv_id = conversation_id.to_string();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            db::ops::plan::record_plan(&mut conn, &conv_id, &plan_text, now_ms())
-                .map_err(|e| e.to_string())
+            db::ops::plan::record_plan(&mut conn, &conv_id, &plan_text, now_ms()).map_err(|e| e.to_string())
         })
         .await
         .map_err(|e| e.to_string())?
     };
     let row = match recorded {
         Ok(row) => row,
-        Err(e) => return Ok(TransitionEffect::said(format!("Could not record the plan: {e}"), "error")),
+        Err(e) => {
+            return Ok(TransitionEffect::said(
+                format!("Could not record the plan: {e}"),
+                "error",
+            ));
+        }
     };
 
     let decision = ask.await?;
@@ -270,8 +274,7 @@ where
             let mut conn = get_conn(&pool)?;
             let now = now_ms();
             db::ops::plan::approve(&mut conn, &plan_id, now).map_err(|e| e.to_string())?;
-            db::ops::conversation::update_mode(&mut conn, &conv_id, next_mode, now)
-                .map_err(|e| e.to_string())
+            db::ops::conversation::update_mode(&mut conn, &conv_id, next_mode, now).map_err(|e| e.to_string())
         })
         .await
         .map_err(|e| e.to_string())?
@@ -317,8 +320,7 @@ async fn store_mode(
     let conv_id = conversation_id.to_string();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
-        db::ops::conversation::update_mode(&mut conn, &conv_id, mode, now_ms())
-            .map_err(|e| e.to_string())
+        db::ops::conversation::update_mode(&mut conn, &conv_id, mode, now_ms()).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())
@@ -369,8 +371,7 @@ mod tests {
 
     fn conversation(pool: &DbPool) {
         let mut conn = pool.get().unwrap();
-        db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1)
-            .unwrap();
+        db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1).unwrap();
     }
 
     fn stored_mode(pool: &DbPool) -> Option<String> {
@@ -409,19 +410,22 @@ mod tests {
 
     impl FakeRebuild {
         fn giving(prompt: &str, tools: &[&str]) -> Self {
-            Self { answer: Ok(Ok(config(prompt, tools))), asked: Mutex::new(Vec::new()) }
+            Self {
+                answer: Ok(Ok(config(prompt, tools))),
+                asked: Mutex::new(Vec::new()),
+            }
         }
         fn refusing() -> Self {
-            Self { answer: Ok(Err("no connection".into())), asked: Mutex::new(Vec::new()) }
+            Self {
+                answer: Ok(Err("no connection".into())),
+                asked: Mutex::new(Vec::new()),
+            }
         }
     }
 
     #[async_trait::async_trait]
     impl Transitions for FakeRebuild {
-        async fn rebuild(
-            &self,
-            mode: &'static ModeSpec,
-        ) -> Result<Result<TurnConfig, String>, String> {
+        async fn rebuild(&self, mode: &'static ModeSpec) -> Result<Result<TurnConfig, String>, String> {
             self.asked.lock().unwrap().push(mode.id);
             match &self.answer {
                 Ok(Ok(c)) => Ok(Ok(TurnConfig {
@@ -488,7 +492,12 @@ mod tests {
         let mut state = Loop::in_work();
 
         let effect = enter(
-            &pool, &rebuild, Some(&emit), "c1", plan_mode(), Some(ApprovalDecision::Approved),
+            &pool,
+            &rebuild,
+            Some(&emit),
+            "c1",
+            plan_mode(),
+            Some(ApprovalDecision::Approved),
         )
         .await
         .unwrap();
@@ -499,7 +508,10 @@ mod tests {
         assert_eq!(state.names(), ["read_file"]);
         assert!(state.offered.contains("read_file") && !state.offered.contains("write_file"));
         assert_eq!(state.messages[0].content, "# Plan mode\n\nyou are planning");
-        assert_eq!(state.messages[1].content, "do the thing", "and nothing else in the history");
+        assert_eq!(
+            state.messages[1].content, "do the thing",
+            "and nothing else in the history"
+        );
         assert_eq!(stored_mode(&pool).as_deref(), Some(PLAN_MODE));
         assert_eq!(*rebuild.asked.lock().unwrap(), [PLAN_MODE]);
         assert_eq!(*emit.0.lock().unwrap(), ["conversation-updated"]);
@@ -515,16 +527,25 @@ mod tests {
         let rebuild = FakeRebuild::giving("planning", &["read_file", "run_command"]);
         let mut state = Loop::in_work();
 
-        let effect =
-            enter(&pool, &rebuild, None, "c1", plan_mode(), Some(ApprovalDecision::Approved))
-                .await
-                .unwrap();
+        let effect = enter(
+            &pool,
+            &rebuild,
+            None,
+            "c1",
+            plan_mode(),
+            Some(ApprovalDecision::Approved),
+        )
+        .await
+        .unwrap();
         state.apply(effect);
 
         // What the loop would send and what it would authorise, one iteration
         // later, with nothing in between.
         assert_eq!(state.names(), ["read_file", "run_command"]);
-        assert!(!state.offered.contains("write_file"), "the withheld tool is refused too");
+        assert!(
+            !state.offered.contains("write_file"),
+            "the withheld tool is refused too"
+        );
         assert_eq!(rebuild.asked.lock().unwrap().len(), 1);
     }
 
@@ -540,14 +561,22 @@ mod tests {
         let mut state = Loop::in_work();
 
         let effect = enter(
-            &pool, &rebuild, Some(&emit), "c1", plan_mode(), Some(ApprovalDecision::Approved),
+            &pool,
+            &rebuild,
+            Some(&emit),
+            "c1",
+            plan_mode(),
+            Some(ApprovalDecision::Approved),
         )
         .await
         .unwrap();
         let (result, outcome) = state.apply(effect);
 
         assert_eq!(outcome, "error");
-        assert!(result.contains("no connection"), "the model is told what went wrong: {result}");
+        assert!(
+            result.contains("no connection"),
+            "the model is told what went wrong: {result}"
+        );
         assert_eq!(state.mode.id, WORK_MODE, "still where it was");
         assert_eq!(state.names(), ["write_file"]);
         assert!(state.offered.contains("write_file"));
@@ -729,7 +758,9 @@ mod tests {
             Ok(Some(ApprovalDecision::Approved))
         };
 
-        exit(&pool, &rebuild, None, "c1", plan_mode(), r#"{"plan":"p"}"#, ask).await.unwrap();
+        exit(&pool, &rebuild, None, "c1", plan_mode(), r#"{"plan":"p"}"#, ask)
+            .await
+            .unwrap();
 
         assert!(stored_when_asked.load(Ordering::SeqCst));
     }
@@ -749,8 +780,9 @@ mod tests {
                 seen.store(true, Ordering::SeqCst);
                 Ok(Some(ApprovalDecision::Approved))
             };
-            let effect =
-                exit(&pool, &rebuild, None, "c1", plan_mode(), arguments, ask).await.unwrap();
+            let effect = exit(&pool, &rebuild, None, "c1", plan_mode(), arguments, ask)
+                .await
+                .unwrap();
 
             assert_eq!(effect.outcome, "error", "for {arguments}");
             assert!(!effect.moves());

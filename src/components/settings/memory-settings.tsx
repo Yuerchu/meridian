@@ -35,8 +35,7 @@ export function MemorySettings() {
   // selected. The per-person and bot-wide layers are populated by conversations
   // and by operator approval instead.
   const targetScope = browser.filter.kind === 'clientGlobal' ? 'client_global' : 'project'
-  const targetProjectId =
-    browser.filter.kind === 'project' ? browser.filter.projectId : browser.projects[0]?.id
+  const targetProjectId = browser.filter.kind === 'project' ? browser.filter.projectId : browser.projects[0]?.id
   // The client-wide layer needs no project, so it stays available to someone who
   // has not created one.
   const canAdd = targetScope === 'client_global' || !!targetProjectId
@@ -88,7 +87,8 @@ export function MemorySettings() {
 
         <div data-slot="memory-list" className="min-w-0 flex-1 space-y-2">
           <div className="flex items-center gap-2">
-            <Input fullWidth
+            <Input
+              fullWidth
               type="text"
               value={browser.search}
               onChange={(e) => browser.setSearch(e.target.value)}
@@ -106,14 +106,16 @@ export function MemorySettings() {
 
           {showAdd && (
             <Card data-slot="memory-add-form">
-              <Input fullWidth
+              <Input
+                fullWidth
                 type="text"
                 value={newKey}
                 onChange={(e) => setNewKey(e.target.value)}
                 placeholder={t('settings.memory.key')}
                 autoFocus
               />
-              <TextArea fullWidth
+              <TextArea
+                fullWidth
                 value={newContent}
                 onChange={(e) => setNewContent(e.target.value)}
                 placeholder={t('settings.memory.content')}

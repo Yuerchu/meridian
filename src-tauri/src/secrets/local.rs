@@ -124,8 +124,8 @@ impl LocalSecretsBackend {
             return Ok(file.clone());
         }
 
-        let ciphertext = fs::read(&path)
-            .with_context(|| format!("failed to read secrets file at {}", path.display()))?;
+        let ciphertext =
+            fs::read(&path).with_context(|| format!("failed to read secrets file at {}", path.display()))?;
         let passphrase = self.load_or_create_passphrase()?;
         // On decrypt failure, surface an error instead of silently discarding the
         // file: the keyring entry may have been lost/rotated, and destroying the
@@ -137,12 +137,8 @@ impl LocalSecretsBackend {
                 path.display()
             )
         })?;
-        let mut parsed: SecretsFile = serde_json::from_slice(&plaintext).with_context(|| {
-            format!(
-                "failed to deserialize decrypted secrets file at {}",
-                path.display()
-            )
-        })?;
+        let mut parsed: SecretsFile = serde_json::from_slice(&plaintext)
+            .with_context(|| format!("failed to deserialize decrypted secrets file at {}", path.display()))?;
         if parsed.version == 0 {
             parsed.version = SECRETS_VERSION;
         }
@@ -162,8 +158,7 @@ impl LocalSecretsBackend {
 
     fn save_file(&self, file: &SecretsFile) -> Result<()> {
         let dir = self.secrets_dir();
-        fs::create_dir_all(&dir)
-            .with_context(|| format!("failed to create secrets dir {}", dir.display()))?;
+        fs::create_dir_all(&dir).with_context(|| format!("failed to create secrets dir {}", dir.display()))?;
 
         let passphrase = self.load_or_create_passphrase()?;
         let plaintext = serde_json::to_vec(file).context("failed to serialize secrets file")?;
@@ -252,10 +247,7 @@ fn write_file_atomically(path: &Path, contents: &[u8]) -> Result<()> {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_nanos());
-    let tmp_path = dir.join(format!(
-        ".{LOCAL_SECRETS_FILENAME}.tmp-{}-{nonce}",
-        std::process::id()
-    ));
+    let tmp_path = dir.join(format!(".{LOCAL_SECRETS_FILENAME}.tmp-{}-{nonce}", std::process::id()));
 
     {
         let mut tmp_file = fs::OpenOptions::new()
@@ -263,12 +255,12 @@ fn write_file_atomically(path: &Path, contents: &[u8]) -> Result<()> {
             .write(true)
             .open(&tmp_path)
             .with_context(|| format!("failed to create temp secrets file at {}", tmp_path.display()))?;
-        tmp_file.write_all(contents).with_context(|| {
-            format!("failed to write temp secrets file at {}", tmp_path.display())
-        })?;
-        tmp_file.sync_all().with_context(|| {
-            format!("failed to sync temp secrets file at {}", tmp_path.display())
-        })?;
+        tmp_file
+            .write_all(contents)
+            .with_context(|| format!("failed to write temp secrets file at {}", tmp_path.display()))?;
+        tmp_file
+            .sync_all()
+            .with_context(|| format!("failed to sync temp secrets file at {}", tmp_path.display()))?;
     }
 
     match fs::rename(&tmp_path, path) {
@@ -278,10 +270,17 @@ fn write_file_atomically(path: &Path, contents: &[u8]) -> Result<()> {
             {
                 if path.exists() {
                     fs::remove_file(path).with_context(|| {
-                        format!("failed to remove existing secrets file at {} before replace", path.display())
+                        format!(
+                            "failed to remove existing secrets file at {} before replace",
+                            path.display()
+                        )
                     })?;
                     fs::rename(&tmp_path, path).with_context(|| {
-                        format!("failed to replace secrets file at {} with {}", path.display(), tmp_path.display())
+                        format!(
+                            "failed to replace secrets file at {} with {}",
+                            path.display(),
+                            tmp_path.display()
+                        )
                     })?;
                     return Ok(());
                 }
@@ -289,7 +288,11 @@ fn write_file_atomically(path: &Path, contents: &[u8]) -> Result<()> {
 
             let _ = fs::remove_file(&tmp_path);
             Err(initial_error).with_context(|| {
-                format!("failed to atomically replace secrets file at {} with {}", path.display(), tmp_path.display())
+                format!(
+                    "failed to atomically replace secrets file at {} with {}",
+                    path.display(),
+                    tmp_path.display()
+                )
             })
         }
     }
@@ -322,6 +325,8 @@ fn decrypt_with_passphrase(ciphertext: &[u8], passphrase: &SecretString) -> Resu
     decrypt(&identity, ciphertext).context("failed to decrypt secrets file")
 }
 
+/// Read side of `SecretScope::canonical_key`, used by the unconsumed `list`.
+#[allow(dead_code)]
 fn parse_canonical_key(canonical_key: &str) -> Option<SecretListEntry> {
     let mut parts = canonical_key.split('/');
     let scope_kind = parts.next()?;
@@ -362,14 +367,9 @@ mod tests {
         LocalSecretsBackend::new(dir.to_path_buf(), keyring)
     }
 
-    fn make_counting_backend(
-        dir: &std::path::Path,
-    ) -> (LocalSecretsBackend, Arc<MockKeyringStore>) {
+    fn make_counting_backend(dir: &std::path::Path) -> (LocalSecretsBackend, Arc<MockKeyringStore>) {
         let keyring = Arc::new(MockKeyringStore::new());
-        (
-            LocalSecretsBackend::new(dir.to_path_buf(), keyring.clone()),
-            keyring,
-        )
+        (LocalSecretsBackend::new(dir.to_path_buf(), keyring.clone()), keyring)
     }
 
     /// age calibrates its scrypt work factor to take about a second on the
@@ -408,9 +408,7 @@ mod tests {
 
         // Long enough that the ciphertext changes length: two writes in the same
         // filesystem timestamp tick would otherwise be told apart by size alone.
-        other
-            .set(&scope, &name, "second-value-considerably-longer")
-            .unwrap();
+        other.set(&scope, &name, "second-value-considerably-longer").unwrap();
         assert_eq!(
             backend.get(&scope, &name).unwrap(),
             Some("second-value-considerably-longer".into()),
@@ -453,10 +451,7 @@ mod tests {
         backend.set(&scope, &name, "val2").unwrap();
 
         let secrets_dir = dir.path().join("secrets");
-        let entries: Vec<_> = fs::read_dir(&secrets_dir)
-            .unwrap()
-            .filter_map(|e| e.ok())
-            .collect();
+        let entries: Vec<_> = fs::read_dir(&secrets_dir).unwrap().filter_map(|e| e.ok()).collect();
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].file_name().to_str().unwrap(), LOCAL_SECRETS_FILENAME);
     }

@@ -1,16 +1,16 @@
-use std::sync::atomic::{AtomicU32, AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
 
-use crate::db::{self, DbPool};
+use super::context::{data_uri_re, remove_orphan_tool_messages};
+use super::provider_config::{TurnParamsInput, resolve_provider_config, resolve_turn_params, without_thinking};
+use super::stream::is_context_window_error;
+use super::tokenizer::TokenBudget;
 use crate::db::models::assistant::Assistant;
 use crate::db::models::message::NewMessage;
+use crate::db::{self, DbPool};
 use crate::provider::{self, ChatMessage, ChatProvider};
 use crate::secrets::SecretsManager;
 use crate::util::{get_conn, now_ms};
-use super::context::{remove_orphan_tool_messages, data_uri_re};
-use super::provider_config::{resolve_provider_config, resolve_turn_params, without_thinking, TurnParamsInput};
-use super::stream::is_context_window_error;
-use super::tokenizer::TokenBudget;
 
 pub(crate) const COMPACT_PROMPT: &str = "\
 You are a summarization assistant for an AI coding agent conversation. \
@@ -62,7 +62,6 @@ const TOOL_RESULT_TAIL_CHARS: usize = 200;
 pub(crate) enum CompactError {
     NotEnoughMessages,
     Provider(String),
-    ExhaustedRetries,
 }
 
 impl std::fmt::Display for CompactError {
@@ -70,7 +69,6 @@ impl std::fmt::Display for CompactError {
         match self {
             Self::NotEnoughMessages => write!(f, "Not enough messages to compact"),
             Self::Provider(e) => write!(f, "Provider error: {e}"),
-            Self::ExhaustedRetries => write!(f, "Compaction failed after max retries"),
         }
     }
 }
@@ -121,12 +119,15 @@ pub(crate) async fn do_compact(
         let conv_id = conversation_id.to_string();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
-            let history = db::ops::message::list_messages(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
-            Ok::<_, String>(db::ops::message::active_context(&history, conv.head_message_id.as_deref()))
-        }).await.map_err(|e| e.to_string())??
+            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
+            let history = db::ops::message::list_messages(&mut conn, &conv_id).map_err(|e| e.to_string())?;
+            Ok::<_, String>(db::ops::message::active_context(
+                &history,
+                conv.head_message_id.as_deref(),
+            ))
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
 
     // Injected background is not conversation and takes no part in any of the
@@ -139,8 +140,7 @@ pub(crate) async fn do_compact(
     // only labels user/assistant/tool and would skip these anyway, but that is a
     // property of a match arm rather than a decision, and `<owner_notes>` going
     // through a summariser is not something to leave resting on one.
-    let active_messages: Vec<&db::models::message::Message> =
-        ctx.path.iter().filter(|m| m.role != "context").collect();
+    let active_messages: Vec<&db::models::message::Message> = ctx.path.iter().filter(|m| m.role != "context").collect();
 
     let min_messages = keep_recent * 2 + 2;
     if active_messages.len() < min_messages {
@@ -170,20 +170,30 @@ pub(crate) async fn do_compact(
         let assistant2 = assistant.cloned();
         tokio::task::spawn_blocking(move || {
             let crate::agent::ResolvedProvider {
-                provider_type, base_url, api_key, model, api_format, ..
+                provider_type,
+                base_url,
+                api_key,
+                model,
+                api_format,
+                ..
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
-            let turn = resolve_turn_params(&pool2, TurnParamsInput {
-                assistant: assistant2.as_ref(),
-                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
-                provider_type: &provider_type,
-                api_format: &api_format,
-                model: &model,
-                thinking_level: None,
-                // Summarising is background work; it does not take the priority tier.
-                fast: false,
-            })?;
+            let turn = resolve_turn_params(
+                &pool2,
+                TurnParamsInput {
+                    assistant: assistant2.as_ref(),
+                    provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                    provider_type: &provider_type,
+                    api_format: &api_format,
+                    model: &model,
+                    thinking_level: None,
+                    // Summarising is background work; it does not take the priority tier.
+                    fast: false,
+                },
+            )?;
             Ok::<_, String>((provider_type, base_url, api_key, model, api_format, turn))
-        }).await.map_err(|e| e.to_string())??
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
     let prov = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
     let params = without_thinking(turn.params);
@@ -191,8 +201,7 @@ pub(crate) async fn do_compact(
     // sized against a different one is sized against nothing.
     let budget = TokenBudget::new(&provider_type, &model, turn.context_limit, turn.max_output, None);
 
-    let summary =
-        compact_with_retry(&*prov, &compact_system, &conversation_text, &params, &budget).await?;
+    let summary = compact_with_retry(&*prov, &compact_system, &conversation_text, &params, &budget).await?;
 
     let project_context = extract_recent_files_from_db_messages(&active_messages[boundary_idx..]);
 
@@ -215,34 +224,52 @@ pub(crate) async fn do_compact(
                 .map_err(|e| e.to_string())?;
             let msg_id = uuid::Uuid::new_v4().to_string();
             let now = now_ms();
-            db::ops::message::insert_message(&mut conn, &NewMessage {
-                id: &msg_id, conversation_id: &conv_id, role: "user",
-                content: &final_summary,
-                provider_id: None, model_id: None,
-                input_tokens: None, output_tokens: None,
-                tool_calls: None, tool_call_id: None,
-                sort_order: -1, created_at: now,
-                reasoning_content: None, rating: None,
-                schema_version: 2, is_compact_summary: 1,
-                // A summary is written by the compaction pass, not by any speaker.
-                sender_id: None,
-                // A summary is not a node in the tree; it sits beside it and
-                // names the message it stands in front of.
-                parent_id: None, compact_anchor_id: Some(&anchor), source: None,
-                // Nor by any one turn. A summary outlives the turns whose
-                // history it replaced, and attributing it to whichever turn
-                // happened to trigger the compaction would make it disappear
-                // with that turn's record.
-                turn_id: None, tool_outcome: None,
-                // The summarising request had its own usage, but it is not this
-                // row's: this row is the summary, not the reply that produced
-                // it, and charging it here would double-count against the turn
-                // that already recorded that call.
-                cache_read_tokens: None, cache_write_tokens: None,
-                provider_name: None,
-            }).map_err(|e| e.to_string())?;
+            db::ops::message::insert_message(
+                &mut conn,
+                &NewMessage {
+                    id: &msg_id,
+                    conversation_id: &conv_id,
+                    role: "user",
+                    content: &final_summary,
+                    provider_id: None,
+                    model_id: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    sort_order: -1,
+                    created_at: now,
+                    reasoning_content: None,
+                    rating: None,
+                    schema_version: 2,
+                    is_compact_summary: 1,
+                    // A summary is written by the compaction pass, not by any speaker.
+                    sender_id: None,
+                    // A summary is not a node in the tree; it sits beside it and
+                    // names the message it stands in front of.
+                    parent_id: None,
+                    compact_anchor_id: Some(&anchor),
+                    source: None,
+                    // Nor by any one turn. A summary outlives the turns whose
+                    // history it replaced, and attributing it to whichever turn
+                    // happened to trigger the compaction would make it disappear
+                    // with that turn's record.
+                    turn_id: None,
+                    tool_outcome: None,
+                    // The summarising request had its own usage, but it is not this
+                    // row's: this row is the summary, not the reply that produced
+                    // it, and charging it here would double-count against the turn
+                    // that already recorded that call.
+                    cache_read_tokens: None,
+                    cache_write_tokens: None,
+                    provider_name: None,
+                },
+            )
+            .map_err(|e| e.to_string())?;
             Ok::<_, String>(())
-        }).await.map_err(|e| e.to_string())??;
+        })
+        .await
+        .map_err(|e| e.to_string())??;
     }
 
     Ok(anchor_id)
@@ -290,7 +317,15 @@ async fn compact_with_retry(
         };
 
         let msgs = vec![
-            ChatMessage { role: "system".into(), content: system.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None, origin: crate::provider::MessageOrigin::Assistant },
+            ChatMessage {
+                role: "system".into(),
+                content: system.into(),
+                reasoning_content: None,
+                tool_calls: None,
+                tool_call_id: None,
+                signature: None,
+                origin: crate::provider::MessageOrigin::Assistant,
+            },
             ChatMessage::user(&trimmed),
         ];
 
@@ -316,8 +351,10 @@ async fn compact_with_retry(
             );
             continue;
         }
-        let attempt_params =
-            provider::ChatParams { max_tokens: Some(ceiling as i32), ..params.clone() };
+        let attempt_params = provider::ChatParams {
+            max_tokens: Some(ceiling as i32),
+            ..params.clone()
+        };
 
         match send_summary(provider, msgs, attempt_params).await {
             Ok(summary) => return Ok(summary),
@@ -367,8 +404,7 @@ async fn send_summary(
         let sent = provider.chat(msgs.clone(), params.clone()).await;
         match sent {
             Err(ref e)
-                if attempt < MAX_SUMMARY_TRANSIENT_RETRIES
-                    && super::is_retryable_stream_error(&e.to_string()) =>
+                if attempt < MAX_SUMMARY_TRANSIENT_RETRIES && super::is_retryable_stream_error(&e.to_string()) =>
             {
                 attempt += 1;
                 let delay = crate::client::backoff(SUMMARY_RETRY_BASE, attempt as u64);
@@ -434,10 +470,9 @@ pub(crate) async fn mid_turn_compact(
     // filter for this model.
     let compact_params = without_thinking(params.clone());
 
-    let summary =
-        compact_with_retry(provider, COMPACT_PROMPT, &conversation_text, &compact_params, budget)
-            .await
-            .map_err(CompactError::Provider)?;
+    let summary = compact_with_retry(provider, COMPACT_PROMPT, &conversation_text, &compact_params, budget)
+        .await
+        .map_err(CompactError::Provider)?;
 
     let file_context = extract_recent_files_from_chat(messages);
     let summary_with_context = if file_context.is_empty() {
@@ -476,12 +511,11 @@ fn extract_recent_files_from_chat(messages: &[ChatMessage]) -> String {
                     "search_files" => "searched",
                     _ => continue,
                 };
-                if let Ok(args) = serde_json::from_str::<serde_json::Value>(&tc.arguments) {
-                    if let Some(path) = args.get("path").and_then(|p| p.as_str()) {
-                        if seen.insert(path.to_string()) {
-                            files.push((path.to_string(), op));
-                        }
-                    }
+                if let Ok(args) = serde_json::from_str::<serde_json::Value>(&tc.arguments)
+                    && let Some(path) = args.get("path").and_then(|p| p.as_str())
+                    && seen.insert(path.to_string())
+                {
+                    files.push((path.to_string(), op));
                 }
             }
         }
@@ -507,13 +541,23 @@ fn extract_recent_files_from_db_messages(messages: &[&crate::db::models::message
     let mut seen = std::collections::HashSet::new();
 
     for m in messages.iter().rev() {
-        if m.role != "assistant" { continue; }
+        if m.role != "assistant" {
+            continue;
+        }
         let Some(ref tc_json) = m.tool_calls else { continue };
-        let Ok(tcs) = serde_json::from_str::<Vec<serde_json::Value>>(tc_json) else { continue };
+        let Ok(tcs) = serde_json::from_str::<Vec<serde_json::Value>>(tc_json) else {
+            continue;
+        };
         for tc in &tcs {
-            let name = tc.get("function").and_then(|f| f.get("name")).and_then(|n| n.as_str())
+            let name = tc
+                .get("function")
+                .and_then(|f| f.get("name"))
+                .and_then(|n| n.as_str())
                 .or_else(|| tc.get("name").and_then(|n| n.as_str()));
-            let args_str = tc.get("function").and_then(|f| f.get("arguments")).and_then(|a| a.as_str())
+            let args_str = tc
+                .get("function")
+                .and_then(|f| f.get("arguments"))
+                .and_then(|a| a.as_str())
                 .or_else(|| tc.get("arguments").and_then(|a| a.as_str()));
             let Some(name) = name else { continue };
             let op = match name {
@@ -523,17 +567,17 @@ fn extract_recent_files_from_db_messages(messages: &[&crate::db::models::message
                 "search_files" => "searched",
                 _ => continue,
             };
-            if let Some(args_str) = args_str {
-                if let Ok(args) = serde_json::from_str::<serde_json::Value>(args_str) {
-                    if let Some(path) = args.get("path").and_then(|p| p.as_str()) {
-                        if seen.insert(path.to_string()) {
-                            files.push((path.to_string(), op));
-                        }
-                    }
-                }
+            if let Some(args_str) = args_str
+                && let Ok(args) = serde_json::from_str::<serde_json::Value>(args_str)
+                && let Some(path) = args.get("path").and_then(|p| p.as_str())
+                && seen.insert(path.to_string())
+            {
+                files.push((path.to_string(), op));
             }
         }
-        if files.len() >= 10 { break; }
+        if files.len() >= 10 {
+            break;
+        }
     }
 
     if files.is_empty() {
@@ -628,7 +672,10 @@ mod tests {
 
     impl Summariser {
         fn failing(errs: Vec<ProviderError>) -> Self {
-            Self { fails: Mutex::new(errs.into()), ..Default::default() }
+            Self {
+                fails: Mutex::new(errs.into()),
+                ..Default::default()
+            }
         }
         fn ceilings(&self) -> Vec<Option<i32>> {
             self.sent.lock().unwrap().iter().map(|(_, c)| *c).collect()
@@ -703,7 +750,10 @@ mod tests {
     #[tokio::test]
     async fn a_summary_does_not_ask_for_the_whole_window() {
         let prov = Summariser::default();
-        let params = provider::ChatParams { max_tokens: Some(128_000), ..Default::default() };
+        let params = provider::ChatParams {
+            max_tokens: Some(128_000),
+            ..Default::default()
+        };
 
         let out = compact_with_retry(&prov, "system", "### User\nhello\n\n", &params, &budget())
             .await
@@ -718,7 +768,10 @@ mod tests {
     #[tokio::test]
     async fn a_smaller_configured_ceiling_is_left_alone() {
         let prov = Summariser::default();
-        let params = provider::ChatParams { max_tokens: Some(4_096), ..Default::default() };
+        let params = provider::ChatParams {
+            max_tokens: Some(4_096),
+            ..Default::default()
+        };
 
         compact_with_retry(&prov, "system", "### User\nhello\n\n", &params, &budget())
             .await
@@ -733,7 +786,10 @@ mod tests {
     #[tokio::test]
     async fn a_summary_asks_for_what_its_own_input_left() {
         let prov = Summariser::default();
-        let params = provider::ChatParams { max_tokens: Some(128_000), ..Default::default() };
+        let params = provider::ChatParams {
+            max_tokens: Some(128_000),
+            ..Default::default()
+        };
 
         // Comfortably inside a 32k window, but not by 16k.
         let out = compact_with_retry(&prov, "system", &history(24_000), &params, &budget())
@@ -752,7 +808,10 @@ mod tests {
     #[tokio::test]
     async fn a_history_with_no_room_behind_it_is_cut_before_it_is_sent() {
         let prov = Summariser::default();
-        let params = provider::ChatParams { max_tokens: Some(128_000), ..Default::default() };
+        let params = provider::ChatParams {
+            max_tokens: Some(128_000),
+            ..Default::default()
+        };
 
         let out = compact_with_retry(&prov, "system", &history(31_000), &params, &budget())
             .await
@@ -771,7 +830,10 @@ mod tests {
     #[tokio::test]
     async fn a_history_that_cannot_be_cut_small_enough_says_so() {
         let prov = Summariser::default();
-        let params = provider::ChatParams { max_tokens: Some(128_000), ..Default::default() };
+        let params = provider::ChatParams {
+            max_tokens: Some(128_000),
+            ..Default::default()
+        };
 
         // One indivisible section, larger than the window.
         let huge = format!("### User\n{}\n\n", "word ".repeat(40_000));
@@ -787,9 +849,14 @@ mod tests {
     /// gateway hiccup should not cost both.
     #[tokio::test]
     async fn a_transient_failure_is_retried_rather_than_counted_against_compaction() {
-        let prov =
-            Summariser::failing(vec![ProviderError::Api { status: 502, body: "bad gateway".into() }]);
-        let params = provider::ChatParams { max_tokens: Some(8_000), ..Default::default() };
+        let prov = Summariser::failing(vec![ProviderError::Api {
+            status: 502,
+            body: "bad gateway".into(),
+        }]);
+        let params = provider::ChatParams {
+            max_tokens: Some(8_000),
+            ..Default::default()
+        };
 
         let out = compact_with_retry(&prov, "system", "### User\nhello\n\n", &params, &budget())
             .await
@@ -806,7 +873,10 @@ mod tests {
             status: 401,
             body: "invalid api key".into(),
         }]);
-        let params = provider::ChatParams { max_tokens: Some(8_000), ..Default::default() };
+        let params = provider::ChatParams {
+            max_tokens: Some(8_000),
+            ..Default::default()
+        };
 
         let err = compact_with_retry(&prov, "system", "### User\nhello\n\n", &params, &budget())
             .await
@@ -886,13 +956,27 @@ mod tests {
             conversation_id: "c".into(),
             role: "context".into(),
             content: "<owner_notes>\n- [general] 他在找工作\n</owner_notes>".into(),
-            provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
-            tool_calls: None, tool_call_id: None, sort_order: 0, created_at: 0,
-            reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
-            sender_id: None, parent_id: None, compact_anchor_id: None,
+            provider_id: None,
+            model_id: None,
+            input_tokens: None,
+            output_tokens: None,
+            tool_calls: None,
+            tool_call_id: None,
+            sort_order: 0,
+            created_at: 0,
+            reasoning_content: None,
+            rating: None,
+            schema_version: 2,
+            is_compact_summary: 0,
+            sender_id: None,
+            parent_id: None,
+            compact_anchor_id: None,
             source: Some("memory|full|100.abc|-|".into()),
-            turn_id: None, tool_outcome: None,
-            cache_read_tokens: None, cache_write_tokens: None, provider_name: None,
+            turn_id: None,
+            tool_outcome: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            provider_name: None,
         };
         assert_eq!(prepare_compact_input(&[&row]), "");
 
@@ -905,9 +989,15 @@ mod tests {
     #[test]
     fn test_extract_recent_files_from_chat() {
         let msgs = vec![
-            ChatMessage::assistant_with_tools("let me read", None, vec![
-                provider::ToolCall { id: "c1".into(), name: "read_file".into(), arguments: r#"{"path":"src/main.rs"}"#.into() },
-            ]),
+            ChatMessage::assistant_with_tools(
+                "let me read",
+                None,
+                vec![provider::ToolCall {
+                    id: "c1".into(),
+                    name: "read_file".into(),
+                    arguments: r#"{"path":"src/main.rs"}"#.into(),
+                }],
+            ),
             ChatMessage::tool_result("c1", "fn main() {}"),
         ];
         let result = extract_recent_files_from_chat(&msgs);

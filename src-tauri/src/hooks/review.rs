@@ -21,7 +21,7 @@ use diesel::Connection;
 use hyper::StatusCode;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::engine::{self, Approvals, ApprovalDecision};
+use crate::agent::engine::{self, ApprovalDecision, Approvals};
 use crate::agent::turn_record;
 use crate::db;
 use crate::db::DbPool;
@@ -34,9 +34,9 @@ use crate::tools::{FileAccess, ShellType, ToolContext};
 use crate::turn::TurnOrigin;
 use crate::util::{get_conn, now_ms};
 
+use super::SharedState;
 use super::protocol::{Kind, ReviewJob, ReviewResponse};
 use super::verdict::{self, Outcome, REVIEW_TOOLS};
-use super::SharedState;
 
 /// Progress goes to a window that may not be open, and that is fine.
 ///
@@ -66,12 +66,7 @@ impl engine::Emit for BestEffortEmit {
 ///
 /// Goes out even when there is no `message_id` — a turn that died before
 /// writing an assistant row still has to clear that flag.
-fn stopped(
-    state: &SharedState,
-    conversation_id: &str,
-    turn_id: &str,
-    outcome: &engine::TurnOutcome,
-) {
+fn stopped(state: &SharedState, conversation_id: &str, turn_id: &str, outcome: &engine::TurnOutcome) {
     use tauri::Emitter;
     let Some(handle) = &state.app_handle else { return };
     let _ = handle.emit(
@@ -111,7 +106,10 @@ pub(crate) struct Refused {
 }
 
 fn refuse(status: StatusCode, message: impl Into<String>) -> Refused {
-    Refused { status, message: message.into() }
+    Refused {
+        status,
+        message: message.into(),
+    }
 }
 
 /// Nobody to ask.
@@ -146,14 +144,14 @@ impl Approvals for NoApprovals {
 /// is inside the future that just got dropped. Observed exactly that: a turn
 /// abandoned seven seconds in, still `running` eight minutes later, its own
 /// timeout unable to fire because nothing was polling it.
-pub(crate) async fn run(
-    state: Arc<SharedState>,
-    job: ReviewJob,
-) -> Result<ReviewResponse, Refused> {
+pub(crate) async fn run(state: Arc<SharedState>, job: ReviewJob) -> Result<ReviewResponse, Refused> {
     let state = state.as_ref();
     let cwd = job.cwd.clone();
     if !tokio::fs::metadata(&cwd).await.map(|m| m.is_dir()).unwrap_or(false) {
-        return Err(refuse(StatusCode::BAD_REQUEST, format!("cwd is not a directory: {cwd}")));
+        return Err(refuse(
+            StatusCode::BAD_REQUEST,
+            format!("cwd is not a directory: {cwd}"),
+        ));
     }
 
     let model = state.config.review_model.clone().ok_or_else(|| {
@@ -181,10 +179,9 @@ pub(crate) async fn run(
     // Nothing to undo on failure: the id was never handed out, so the client
     // still holds whatever it held before and the next round validates it the
     // same way. A half-written conversation is caught by the transaction.
-    let user_message_id =
-        write_round(state, &conversation_id, &turn_id, &job, &assistant, is_new)
-            .await
-            .map_err(|e| refuse(StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    let user_message_id = write_round(state, &conversation_id, &turn_id, &job, &assistant, is_new)
+        .await
+        .map_err(|e| refuse(StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     // Before the model is called, not after: the subject is already written, and
     // a review that runs for minutes should be openable from the moment it
@@ -241,12 +238,8 @@ pub(crate) async fn run(
     // a round that produced no verdict still wrote a transcript, and the next
     // round should continue in it rather than start the reviewer over.
     Ok(match verdict::parse(&reply) {
-        Outcome::Approve { summary } => {
-            ReviewResponse::approve(summary, turn_id, conversation_id)
-        }
-        Outcome::Revise { summary, message } => {
-            ReviewResponse::revise(summary, message, turn_id, conversation_id)
-        }
+        Outcome::Approve { summary } => ReviewResponse::approve(summary, turn_id, conversation_id),
+        Outcome::Revise { summary, message } => ReviewResponse::revise(summary, message, turn_id, conversation_id),
         Outcome::Inconclusive { reason } => {
             tracing::warn!(reason, chars = reply.chars().count(), "review gave no usable verdict");
             ReviewResponse::inconclusive(format!("{reason}，本次不阻断"), conversation_id)
@@ -296,9 +289,7 @@ async fn effective_assistant(
     let round = job.round.max(1);
     let system_prompt = match job.kind {
         Kind::Plan => verdict::prompt(cwd, round, max_rounds, job.stagnant),
-        Kind::Implementation => {
-            verdict::implementation_prompt(cwd, round, max_rounds, job.stagnant)
-        }
+        Kind::Implementation => verdict::implementation_prompt(cwd, round, max_rounds, job.stagnant),
     };
     Ok(Assistant {
         provider_id: Some(provider_id.to_string()),
@@ -312,21 +303,16 @@ async fn effective_assistant(
     })
 }
 
-async fn resolve_params(
-    state: &SharedState,
-    assistant: &Assistant,
-) -> Result<crate::agent::TurnParams, Refused> {
+async fn resolve_params(state: &SharedState, assistant: &Assistant) -> Result<crate::agent::TurnParams, Refused> {
     let pool = state.pool.clone();
     let secrets = state.secrets.clone();
     let a = assistant.clone();
     let resolved = {
         let pool = pool.clone();
-        tokio::task::spawn_blocking(move || {
-            crate::agent::resolve_with_overrides(&secrets, &pool, Some(&a), None, None)
-        })
-        .await
-        .map_err(|e| refuse(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .map_err(|e| refuse(StatusCode::SERVICE_UNAVAILABLE, e))?
+        tokio::task::spawn_blocking(move || crate::agent::resolve_with_overrides(&secrets, &pool, Some(&a), None, None))
+            .await
+            .map_err(|e| refuse(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+            .map_err(|e| refuse(StatusCode::SERVICE_UNAVAILABLE, e))?
     };
 
     let assistant = assistant.clone();
@@ -442,8 +428,11 @@ async fn write_round(
         Kind::Implementation => TurnOrigin::ImplReview,
     };
     let cwd = job.cwd.clone();
-    let (assistant_id, provider_id, model_id) =
-        (assistant.id.clone(), assistant.provider_id.clone(), assistant.model_id.clone());
+    let (assistant_id, provider_id, model_id) = (
+        assistant.id.clone(),
+        assistant.provider_id.clone(),
+        assistant.model_id.clone(),
+    );
 
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
@@ -548,10 +537,7 @@ async fn write_round(
 }
 
 fn title_for(kind: Kind, cwd: &str) -> String {
-    let leaf = cwd
-        .rsplit(['/', '\\'])
-        .find(|s| !s.is_empty())
-        .unwrap_or("(unknown)");
+    let leaf = cwd.rsplit(['/', '\\']).find(|s| !s.is_empty()).unwrap_or("(unknown)");
     format!("{} · {leaf}", kind.title_prefix())
 }
 
@@ -561,7 +547,10 @@ fn round_prompt(job: &ReviewJob) -> String {
     if job.round > 1 && !job.history.is_empty() {
         out.push_str("前几轮的结论：\n");
         for entry in &job.history {
-            out.push_str(&format!("- 第 {} 轮：{} — {}\n", entry.round, entry.verdict, entry.summary));
+            out.push_str(&format!(
+                "- 第 {} 轮：{} — {}\n",
+                entry.round, entry.verdict, entry.summary
+            ));
         }
         out.push('\n');
     }
@@ -638,7 +627,6 @@ async fn run_turn(
         conversation_id: Some(conversation_id.to_string()),
         assistant_id: Some(assistant.id.clone()),
         db_pool: Some(state.pool.clone()),
-        edit_session: None,
         #[cfg(not(target_os = "android"))]
         sandbox_policy: None,
         tool_secrets,
@@ -686,8 +674,11 @@ async fn run_turn(
         sub_agents: None,
     };
 
-    let services =
-        engine::TurnServices { pool: &state.pool, tools: &state.tools, mcp: &state.mcp };
+    let services = engine::TurnServices {
+        pool: &state.pool,
+        tools: &state.tools,
+        mcp: &state.mcp,
+    };
     let deadline = std::time::Duration::from_secs(state.config.timeout_secs.max(1) as u64);
 
     let running = engine::run_turn(&services, setup, ports);
@@ -703,10 +694,7 @@ async fn run_turn(
     }
 }
 
-async fn load_history(
-    state: &SharedState,
-    conversation_id: &str,
-) -> db::ops::message::ActiveContext {
+async fn load_history(state: &SharedState, conversation_id: &str) -> db::ops::message::ActiveContext {
     let pool = state.pool.clone();
     let id = conversation_id.to_string();
     tokio::task::spawn_blocking(move || {
@@ -786,10 +774,16 @@ mod tests {
     #[test]
     fn the_title_names_the_repository_and_which_gate() {
         assert_eq!(title_for(Kind::Plan, "C:/Users/x/Code/meridian"), "计划审查 · meridian");
-        assert_eq!(title_for(Kind::Plan, "C:\\Users\\x\\Code\\meridian\\"), "计划审查 · meridian");
+        assert_eq!(
+            title_for(Kind::Plan, "C:\\Users\\x\\Code\\meridian\\"),
+            "计划审查 · meridian"
+        );
         assert_eq!(title_for(Kind::Plan, ""), "计划审查 · (unknown)");
         // Two gates land in the same sidebar; the title is what tells them apart.
-        assert_eq!(title_for(Kind::Implementation, "C:/Code/meridian"), "改动审查 · meridian");
+        assert_eq!(
+            title_for(Kind::Implementation, "C:/Code/meridian"),
+            "改动审查 · meridian"
+        );
     }
 
     /// A conversation row with a chosen `agent_kind`, which the convenience
@@ -820,7 +814,10 @@ mod tests {
     }
 
     fn claiming(id: Option<&str>) -> ReviewJob {
-        ReviewJob { conversation_id: id.map(str::to_string), ..job(Kind::Plan, 1, vec![]) }
+        ReviewJob {
+            conversation_id: id.map(str::to_string),
+            ..job(Kind::Plan, 1, vec![])
+        }
     }
 
     /// The property this whole check exists for. The endpoint is reachable by
@@ -937,8 +934,10 @@ mod tests {
     /// half of what this gate is for.
     #[test]
     fn an_implementation_review_labels_the_claim_and_the_evidence() {
-        let asking =
-            ReviewJob { note: Some("加了 bar()".into()), ..job(Kind::Implementation, 1, vec![]) };
+        let asking = ReviewJob {
+            note: Some("加了 bar()".into()),
+            ..job(Kind::Implementation, 1, vec![])
+        };
         let prompt = round_prompt(&asking);
 
         let claim = prompt.find("加了 bar()").expect("the summary should be there");

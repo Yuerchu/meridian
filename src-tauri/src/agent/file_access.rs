@@ -24,8 +24,7 @@ pub(crate) async fn build_file_access(pool: &DbPool) -> tools::FileAccess {
         let (manage_pref, saf_pref) = prefs.unwrap_or((None, None));
 
         let mut roots = Vec::new();
-        if manage_pref.as_deref() == Some("true")
-            && crate::android_bridge::is_manage_storage_granted().unwrap_or(false)
+        if manage_pref.as_deref() == Some("true") && crate::android_bridge::is_manage_storage_granted().unwrap_or(false)
         {
             let shared = std::path::PathBuf::from("/storage/emulated/0");
             roots.push(tools::AccessRoot {
@@ -39,7 +38,9 @@ pub(crate) async fn build_file_access(pool: &DbPool) -> tools::FileAccess {
             if let Ok(rd) = std::fs::read_dir("/storage") {
                 for entry in rd.flatten() {
                     let name = entry.file_name().to_string_lossy().to_string();
-                    if name == "emulated" || name == "self" { continue; }
+                    if name == "emulated" || name == "self" {
+                        continue;
+                    }
                     let p = entry.path();
                     if p.is_dir() {
                         roots.push(tools::AccessRoot {
@@ -89,9 +90,7 @@ pub(crate) fn file_access_prompt(file_access: &tools::FileAccess) -> String {
                 Settings (an authorized directory or 'All files access')."
             .to_string();
     }
-    let mut out = String::from(
-        "\n\n# File access\nYou can access files under these locations (use absolute paths):\n",
-    );
+    let mut out = String::from("\n\n# File access\nYou can access files under these locations (use absolute paths):\n");
     for root in roots {
         match &root.kind {
             tools::RootKind::RealPath(_) => {

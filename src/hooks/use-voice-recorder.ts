@@ -72,37 +72,40 @@ export function useVoiceRecorder({ onSend, onNotice }: UseVoiceRecorderOptions) 
     })()
   }, [])
 
-  const handlePointerDown = useCallback(async (e: React.PointerEvent) => {
-    // Narrow a copy, not the ref itself: narrowing the ref would follow it past
-    // the await below, where its value can legitimately have changed.
-    const before = stateRef.current
-    if (before === 'recording-toggle') {
-      // Second click ends a toggle-mode recording; act on press for snappiness.
-      finish()
-      return
-    }
-    if (before !== 'idle') return
+  const handlePointerDown = useCallback(
+    async (e: React.PointerEvent) => {
+      // Narrow a copy, not the ref itself: narrowing the ref would follow it past
+      // the await below, where its value can legitimately have changed.
+      const before = stateRef.current
+      if (before === 'recording-toggle') {
+        // Second click ends a toggle-mode recording; act on press for snappiness.
+        finish()
+        return
+      }
+      if (before !== 'idle') return
 
-    e.currentTarget.setPointerCapture(e.pointerId)
-    pressedAtRef.current = Date.now()
-    // Not 'recording-*' yet: opening the input device takes a moment, and
-    // showing a live recording indicator during it invites the user to start
-    // talking into a microphone that is not capturing. The opening words were
-    // getting cut off that way.
-    setState('starting')
-    startPromiseRef.current = api.voiceStartRecording()
-    try {
-      await startPromiseRef.current
-      captureAtRef.current = Date.now()
-      // A release or cancel may have landed while the device was opening; only
-      // promote to a live state if we are still waiting for one.
-      if (stateRef.current === 'starting') setState('recording-hold')
-    } catch (err) {
-      setState('idle')
-      const msg = String(err)
-      onNotice(msg.includes('model_not_installed') ? 'model_missing' : 'error', msg)
-    }
-  }, [finish, onNotice])
+      e.currentTarget.setPointerCapture(e.pointerId)
+      pressedAtRef.current = Date.now()
+      // Not 'recording-*' yet: opening the input device takes a moment, and
+      // showing a live recording indicator during it invites the user to start
+      // talking into a microphone that is not capturing. The opening words were
+      // getting cut off that way.
+      setState('starting')
+      startPromiseRef.current = api.voiceStartRecording()
+      try {
+        await startPromiseRef.current
+        captureAtRef.current = Date.now()
+        // A release or cancel may have landed while the device was opening; only
+        // promote to a live state if we are still waiting for one.
+        if (stateRef.current === 'starting') setState('recording-hold')
+      } catch (err) {
+        setState('idle')
+        const msg = String(err)
+        onNotice(msg.includes('model_not_installed') ? 'model_missing' : 'error', msg)
+      }
+    },
+    [finish, onNotice],
+  )
 
   const handlePointerUp = useCallback(() => {
     // 'starting' counts as held: the intent is established even if the device

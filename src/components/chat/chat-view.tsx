@@ -19,7 +19,11 @@ import type { Message } from '@/types'
 // every render of a conversation whose session has not been created yet.
 const NO_MESSAGES: Message[] = []
 
-function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsumed }: {
+function ChatViewInner({
+  conversationId,
+  initialMessage,
+  onInitialMessageConsumed,
+}: {
   conversationId: string
   initialMessage?: string | null
   onInitialMessageConsumed?: () => void
@@ -83,27 +87,36 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     api.stopChat(conversationId, turnId)
   }, [conversationId])
 
-  const handleDelete = useCallback((id: string) => {
-    api.deleteMessage(conversationId, id).then(() => {
-      storeLoadMessages(conversationId)
-    })
-  }, [conversationId, storeLoadMessages])
+  const handleDelete = useCallback(
+    (id: string) => {
+      api.deleteMessage(conversationId, id).then(() => {
+        storeLoadMessages(conversationId)
+      })
+    },
+    [conversationId, storeLoadMessages],
+  )
 
-  const handleRate = useCallback((id: string, rating: number | null) => {
-    api.rateMessage(id, rating).then(() => {
-      storeLoadMessages(conversationId)
-    })
-  }, [conversationId, storeLoadMessages])
+  const handleRate = useCallback(
+    (id: string, rating: number | null) => {
+      api.rateMessage(id, rating).then(() => {
+        storeLoadMessages(conversationId)
+      })
+    },
+    [conversationId, storeLoadMessages],
+  )
 
-  const handleCompact = useCallback(async (instructions?: string) => {
-    storeSetError(conversationId, null)
-    try {
-      await api.compact(conversationId, instructions)
-    } catch (err) {
-      storeSetError(conversationId, String(err))
-      storeSetCompacting(conversationId, false)
-    }
-  }, [conversationId, storeSetError, storeSetCompacting])
+  const handleCompact = useCallback(
+    async (instructions?: string) => {
+      storeSetError(conversationId, null)
+      try {
+        await api.compact(conversationId, instructions)
+      } catch (err) {
+        storeSetError(conversationId, String(err))
+        storeSetCompacting(conversationId, false)
+      }
+    },
+    [conversationId, storeSetError, storeSetCompacting],
+  )
 
   const initialMessageSent = useRef<string | null>(null)
   useEffect(() => {
@@ -132,15 +145,10 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
   }, [compactSummary?.compact_anchor_id, messages])
   // Split by turn rather than by message: a boundary landing mid-turn used to
   // put the question in the compacted region and its answer in the active one.
-  const compactedTurns = compactBoundary != null
-    ? allTurns.filter((t) => t.firstSortOrder < compactBoundary)
-    : []
-  const activeTurns = compactBoundary != null
-    ? allTurns.filter((t) => t.firstSortOrder >= compactBoundary)
-    : allTurns
-  const compactedCount = compactBoundary != null
-    ? visibleMessages.filter((m) => m.sort_order < compactBoundary).length
-    : 0
+  const compactedTurns = compactBoundary != null ? allTurns.filter((t) => t.firstSortOrder < compactBoundary) : []
+  const activeTurns = compactBoundary != null ? allTurns.filter((t) => t.firstSortOrder >= compactBoundary) : allTurns
+  const compactedCount =
+    compactBoundary != null ? visibleMessages.filter((m) => m.sort_order < compactBoundary).length : 0
 
   const contextInfo = useContextInfo(conversationId, {
     assistant: settings.selectedAssistant,
@@ -165,7 +173,9 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
     // once the run has taken the text: a refusal means it was written down
     // nowhere, and retyping it would be the user paying for that.
     if (steering) {
-      void steerMessage(text).then((sent) => { if (sent) setInput('') })
+      void steerMessage(text).then((sent) => {
+        if (sent) setInput('')
+      })
       return
     }
 
@@ -196,7 +206,7 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
         emojiMap={emojiMap}
         senderNames={senderNames}
         assistantAvatar={settings.selectedAssistant?.avatar}
-        leading={(
+        leading={
           <CompactedRegion
             turns={compactedTurns}
             conversationId={conversationId}
@@ -208,13 +218,13 @@ function ChatViewInner({ conversationId, initialMessage, onInitialMessageConsume
             senderNames={senderNames}
             assistantAvatar={settings.selectedAssistant?.avatar}
           />
-        )}
+        }
         trailing={<TranscriptStatus compacting={compacting} error={error} />}
-        emptyState={messages.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center text-muted text-sm">
-            {t('chat.startHint')}
-          </div>
-        ) : null}
+        emptyState={
+          messages.length === 0 ? (
+            <div className="flex flex-1 items-center justify-center text-muted text-sm">{t('chat.startHint')}</div>
+          ) : null
+        }
         scrollToBottomLabel={t('chat.scrollToBottom')}
       />
 

@@ -64,7 +64,13 @@ interface AppSidebarProps {
   onRenameProject: (id: string, newName: string) => void
 }
 
-function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path: string) => void; onCancel: () => void }) {
+function NewProjectForm({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (name: string, path: string) => void
+  onCancel: () => void
+}) {
   const { t } = useTranslation()
   const [name, setName] = useState('')
   const [path, setPath] = useState('')
@@ -83,7 +89,8 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
 
   return (
     <div className="px-2 py-1.5 space-y-1.5">
-      <Input fullWidth
+      <Input
+        fullWidth
         type="text"
         value={name}
         onChange={(e) => setName(e.target.value)}
@@ -96,16 +103,9 @@ function NewProjectForm({ onSubmit, onCancel }: { onSubmit: (name: string, path:
           else if (e.key === 'Escape') onCancel()
         }}
       />
-      <Button
-        type="button"
-        variant="outline"
-        onClick={handleBrowse}
-        className="w-full justify-start text-xs"
-      >
+      <Button type="button" variant="outline" onClick={handleBrowse} className="w-full justify-start text-xs">
         <FolderOpen className="text-muted" />
-        <span className={path ? 'text-foreground truncate' : 'text-muted'}>
-          {path || t('sidebar.browsePath')}
-        </span>
+        <span className={path ? 'text-foreground truncate' : 'text-muted'}>{path || t('sidebar.browsePath')}</span>
       </Button>
       <div className="flex gap-1">
         <Button
@@ -198,10 +198,11 @@ export function AppSidebar({
    * no-op, which is every press on a wide window.
    */
   const dismissing = useCallback(
-    <A extends unknown[]>(run: (...args: A) => void) => (...args: A) => {
-      setMobileOpen(false)
-      run(...args)
-    },
+    <A extends unknown[]>(run: (...args: A) => void) =>
+      (...args: A) => {
+        setMobileOpen(false)
+        run(...args)
+      },
     [setMobileOpen],
   )
 
@@ -252,40 +253,41 @@ export function AppSidebar({
   // its own Trigger — a Root parked next to the dialogs at the bottom of this
   // component throws `ContextMenuRootContext is missing` at render, which
   // neither the type checker nor the build notices.
-  const rowMenu = useCallback((
-    scope: string,
-    kind: MenuHit['kind'],
-    actions: RowAction[],
-    children: React.ReactNode,
-  ) => (
-    <ContextMenu
-      open={menu?.scope === scope && menu.kind === kind}
-      onOpenChange={(open) => setMenu(open ? hitRef.current : null)}
-    >
-      <ContextMenuTrigger
-        onContextMenu={(e: React.MouseEvent) => {
-          const id = (e.target as HTMLElement).closest('[data-row-id]')?.getAttribute('data-row-id')
-          hitRef.current = id ? { scope, kind, id } : null
-        }}
+  const rowMenu = useCallback(
+    (scope: string, kind: MenuHit['kind'], actions: RowAction[], children: React.ReactNode) => (
+      <ContextMenu
+        open={menu?.scope === scope && menu.kind === kind}
+        onOpenChange={(open) => setMenu(open ? hitRef.current : null)}
       >
-        {children}
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <RowActionItems actions={actions} />
-      </ContextMenuContent>
-    </ContextMenu>
-  ), [menu])
+        <ContextMenuTrigger
+          onContextMenu={(e: React.MouseEvent) => {
+            const id = (e.target as HTMLElement).closest('[data-row-id]')?.getAttribute('data-row-id')
+            hitRef.current = id ? { scope, kind, id } : null
+          }}
+        >
+          {children}
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <RowActionItems actions={actions} />
+        </ContextMenuContent>
+      </ContextMenu>
+    ),
+    [menu],
+  )
 
-  const renaming = renameTarget?.type === 'project'
-    ? projects.find((p) => p.id === renameTarget.id)?.name
-    : conversations.find((c) => c.id === renameTarget?.id)?.title ?? ''
+  const renaming =
+    renameTarget?.type === 'project'
+      ? projects.find((p) => p.id === renameTarget.id)?.name
+      : (conversations.find((c) => c.id === renameTarget?.id)?.title ?? '')
 
   const settingsSide = (prefix: string) => (
     <>
       <Sidebar.Header>
         <Sidebar.Menu aria-label={t('settings.backToApp')}>
           <Sidebar.MenuItem id={`${prefix}back`} textValue={t('settings.backToApp')} onAction={closeSettings}>
-            <Sidebar.MenuIcon><ArrowLeft /></Sidebar.MenuIcon>
+            <Sidebar.MenuIcon>
+              <ArrowLeft />
+            </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('settings.backToApp')}</Sidebar.MenuLabel>
           </Sidebar.MenuItem>
         </Sidebar.Menu>
@@ -303,7 +305,9 @@ export function AppSidebar({
                 isCurrent={settingsTab === tab.id}
                 onAction={() => changeSettingsTab(tab.id)}
               >
-                <Sidebar.MenuIcon><tab.icon /></Sidebar.MenuIcon>
+                <Sidebar.MenuIcon>
+                  <tab.icon />
+                </Sidebar.MenuIcon>
                 <Sidebar.MenuLabel>{t(tab.labelKey)}</Sidebar.MenuLabel>
               </Sidebar.MenuItem>
             ))}
@@ -318,7 +322,9 @@ export function AppSidebar({
       <Sidebar.Header>
         <Sidebar.Menu aria-label={t('sidebar.newChat')}>
           <Sidebar.MenuItem id={`${prefix}new`} textValue={t('sidebar.newChat')} onAction={createConversation}>
-            <Sidebar.MenuIcon><Plus /></Sidebar.MenuIcon>
+            <Sidebar.MenuIcon>
+              <Plus />
+            </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('sidebar.newChat')}</Sidebar.MenuLabel>
           </Sidebar.MenuItem>
         </Sidebar.Menu>
@@ -341,7 +347,10 @@ export function AppSidebar({
               </Button>
             </span>
           </Sidebar.GroupLabel>
-          {rowMenu(prefix, 'project', hitProject ? projectActions(hitProject) : [], (
+          {rowMenu(
+            prefix,
+            'project',
+            hitProject ? projectActions(hitProject) : [],
             <Sidebar.Menu aria-label={t('sidebar.projects')}>
               <Sidebar.MenuItem
                 id={`${prefix}all-projects`}
@@ -349,7 +358,9 @@ export function AppSidebar({
                 isCurrent={activeProjectId === null}
                 onAction={() => selectProject(null)}
               >
-                <Sidebar.MenuIcon><FolderOpen /></Sidebar.MenuIcon>
+                <Sidebar.MenuIcon>
+                  <FolderOpen />
+                </Sidebar.MenuIcon>
                 <Sidebar.MenuLabel>{t('sidebar.allProjects')}</Sidebar.MenuLabel>
               </Sidebar.MenuItem>
               {projects.map((project) => (
@@ -361,13 +372,15 @@ export function AppSidebar({
                   isCurrent={project.id === activeProjectId}
                   onAction={() => selectProject(project.id)}
                 >
-                  <Sidebar.MenuIcon><ProjectIcon sourceType={project.source_type} /></Sidebar.MenuIcon>
+                  <Sidebar.MenuIcon>
+                    <ProjectIcon sourceType={project.source_type} />
+                  </Sidebar.MenuIcon>
                   <Sidebar.MenuLabel>{project.name}</Sidebar.MenuLabel>
                   <RowActionsMenu label={project.name} actions={projectActions(project)} />
                 </Sidebar.MenuItem>
               ))}
-            </Sidebar.Menu>
-          ))}
+            </Sidebar.Menu>,
+          )}
           {showNewProject && (
             <NewProjectForm
               onSubmit={(name, path) => {
@@ -381,7 +394,10 @@ export function AppSidebar({
 
         <Sidebar.Group>
           <Sidebar.GroupLabel>{t('sidebar.conversations')}</Sidebar.GroupLabel>
-          {rowMenu(prefix, 'conversation', hitConversation ? conversationActions(hitConversation) : [], (
+          {rowMenu(
+            prefix,
+            'conversation',
+            hitConversation ? conversationActions(hitConversation) : [],
             <Sidebar.Menu aria-label={t('sidebar.conversations')}>
               {conversations.map((conv) => (
                 <Sidebar.MenuItem
@@ -398,26 +414,23 @@ export function AppSidebar({
                   <Sidebar.MenuChip>
                     {/* Pinned rows were sorted to the top and said nothing about
                         why they were there. */}
-                    {conv.is_pinned === 1 && (
-                      <Pin aria-label={t('contextMenu.pin')} className="size-3 text-muted" />
-                    )}
+                    {conv.is_pinned === 1 && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-muted" />}
                     <ConversationIndicator conversationId={conv.id} activeId={activeId} />
                   </Sidebar.MenuChip>
-                  <RowActionsMenu
-                    label={conv.title ?? t('sidebar.newChat')}
-                    actions={conversationActions(conv)}
-                  />
+                  <RowActionsMenu label={conv.title ?? t('sidebar.newChat')} actions={conversationActions(conv)} />
                 </Sidebar.MenuItem>
               ))}
-            </Sidebar.Menu>
-          ))}
+            </Sidebar.Menu>,
+          )}
         </Sidebar.Group>
       </Sidebar.Content>
 
       <Sidebar.Footer>
         <Sidebar.Menu aria-label={t('sidebar.settings')}>
           <Sidebar.MenuItem id={`${prefix}settings`} textValue={t('sidebar.settings')} onAction={openSettings}>
-            <Sidebar.MenuIcon><Gear /></Sidebar.MenuIcon>
+            <Sidebar.MenuIcon>
+              <Gear />
+            </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('sidebar.settings')}</Sidebar.MenuLabel>
           </Sidebar.MenuItem>
         </Sidebar.Menu>
@@ -443,9 +456,7 @@ export function AppSidebar({
           footer: `[data-state=collapsed] .sidebar__header` sets its own inline
           padding at a specificity a utility cannot reach, so a cutout would be
           honoured until the sidebar was collapsed and then quietly stop being. */}
-      <Sidebar className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]">
-        {side('d-')}
-      </Sidebar>
+      <Sidebar className="pt-[var(--safe-top)] pb-[var(--safe-bottom)] pl-[var(--safe-left)]">{side('d-')}</Sidebar>
       {/* Renders nothing above 768px. Below it Pro hides the panel outright, so
           without this a narrow window would have a toggle that toggles nothing.
           The sheet covers the full height including the cutout and the
@@ -457,7 +468,9 @@ export function AppSidebar({
 
       <RenameDialog
         isOpen={renameTarget !== null}
-        onOpenChange={(open) => { if (!open) setRenameTarget(null) }}
+        onOpenChange={(open) => {
+          if (!open) setRenameTarget(null)
+        }}
         initialValue={renaming ?? ''}
         heading={t('contextMenu.rename')}
         onSubmit={(value) => {

@@ -29,9 +29,9 @@
 
 use std::future::Future;
 
+use crate::db::DbPool;
 use crate::db::models::message::{MessageUsage, NewMessage};
 use crate::db::models::turn::TurnPhase;
-use crate::db::DbPool;
 use crate::util::{get_conn, now_ms};
 
 /// Open the row this iteration will stream into, and return its id.
@@ -62,7 +62,10 @@ pub(crate) async fn begin_assistant(
         crate::db::ops::message::append_message(
             &mut conn,
             &NewMessage {
-                id: &msg_id, conversation_id: &conv_id, role: "assistant", content: "",
+                id: &msg_id,
+                conversation_id: &conv_id,
+                role: "assistant",
+                content: "",
                 // Written when the row is opened, not when it is filled in. The
                 // window between the two is the longest in the turn, and a turn
                 // that dies inside it still cost the upstream everything it had
@@ -75,15 +78,28 @@ pub(crate) async fn begin_assistant(
                 // already read that row through `get_provider` before reaching
                 // here, and a provider deleted in the window between is a broken
                 // configuration worth failing on rather than papering over.
-                provider_id: provider_id.as_deref(), model_id: Some(&model), input_tokens: None,
-                output_tokens: None, tool_calls: None, tool_call_id: None, sort_order: 0,
-                created_at: now_ms(), reasoning_content: None, rating: None, schema_version: 2,
-                is_compact_summary: 0, sender_id: None,
-                parent_id: None, compact_anchor_id: None, source: None,
-                turn_id: Some(&turn), tool_outcome: None,
+                provider_id: provider_id.as_deref(),
+                model_id: Some(&model),
+                input_tokens: None,
+                output_tokens: None,
+                tool_calls: None,
+                tool_call_id: None,
+                sort_order: 0,
+                created_at: now_ms(),
+                reasoning_content: None,
+                rating: None,
+                schema_version: 2,
+                is_compact_summary: 0,
+                sender_id: None,
+                parent_id: None,
+                compact_anchor_id: None,
+                source: None,
+                turn_id: Some(&turn),
+                tool_outcome: None,
                 // Nothing is known about the reply yet; the update that fills
                 // this row in is what supplies them.
-                cache_read_tokens: None, cache_write_tokens: None,
+                cache_read_tokens: None,
+                cache_write_tokens: None,
                 provider_name: provider_name.as_deref(),
             },
             parent.as_deref(),
@@ -193,14 +209,26 @@ pub(crate) async fn append_tool_result(
         crate::db::ops::message::append_message(
             &mut conn,
             &NewMessage {
-                id: &msg_id, conversation_id: &conv_id, role: "tool",
-                content: &content, provider_id: None, model_id: None,
-                input_tokens: None, output_tokens: None,
-                tool_calls: None, tool_call_id: Some(&call_id),
-                sort_order: 0, created_at: now_ms(),
-                reasoning_content: None, rating: None, schema_version: 2,
-                is_compact_summary: 0, sender_id: None,
-                parent_id: None, compact_anchor_id: None, source: None,
+                id: &msg_id,
+                conversation_id: &conv_id,
+                role: "tool",
+                content: &content,
+                provider_id: None,
+                model_id: None,
+                input_tokens: None,
+                output_tokens: None,
+                tool_calls: None,
+                tool_call_id: Some(&call_id),
+                sort_order: 0,
+                created_at: now_ms(),
+                reasoning_content: None,
+                rating: None,
+                schema_version: 2,
+                is_compact_summary: 0,
+                sender_id: None,
+                parent_id: None,
+                compact_anchor_id: None,
+                source: None,
                 turn_id: Some(&turn),
                 // The same word the event carries. Stored so a reload does not
                 // turn a refusal into a green tick with the refusal text
@@ -208,7 +236,8 @@ pub(crate) async fn append_tool_result(
                 tool_outcome: Some(outcome),
                 // A tool result is our own text, not something an upstream was
                 // paid to produce.
-                cache_read_tokens: None, cache_write_tokens: None,
+                cache_read_tokens: None,
+                cache_write_tokens: None,
                 provider_name: None,
             },
             parent.as_deref(),
@@ -284,15 +313,30 @@ pub(crate) async fn write_steering(
         crate::db::ops::message::append_message(
             &mut conn,
             &NewMessage {
-                id: &msg_id, conversation_id: &conv_id, role: "user",
-                content: &content, provider_id: None, model_id: None,
-                input_tokens: None, output_tokens: None,
-                tool_calls: None, tool_call_id: None, sort_order: 0,
-                created_at: now_ms(), reasoning_content: None, rating: None,
-                schema_version: 2, is_compact_summary: 0, sender_id,
-                parent_id: None, compact_anchor_id: None, source: None,
-                turn_id: Some(&turn), tool_outcome: None,
-                cache_read_tokens: None, cache_write_tokens: None,
+                id: &msg_id,
+                conversation_id: &conv_id,
+                role: "user",
+                content: &content,
+                provider_id: None,
+                model_id: None,
+                input_tokens: None,
+                output_tokens: None,
+                tool_calls: None,
+                tool_call_id: None,
+                sort_order: 0,
+                created_at: now_ms(),
+                reasoning_content: None,
+                rating: None,
+                schema_version: 2,
+                is_compact_summary: 0,
+                sender_id,
+                parent_id: None,
+                compact_anchor_id: None,
+                source: None,
+                turn_id: Some(&turn),
+                tool_outcome: None,
+                cache_read_tokens: None,
+                cache_write_tokens: None,
                 provider_name: None,
             },
             parent.as_deref(),
@@ -343,8 +387,7 @@ mod tests {
 
     fn conversation(pool: &DbPool) {
         let mut conn = pool.get().unwrap();
-        crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1)
-            .unwrap();
+        crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1).unwrap();
         crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
     }
 
@@ -355,13 +398,14 @@ mod tests {
 
     fn head(pool: &DbPool) -> Option<String> {
         let mut conn = pool.get().unwrap();
-        crate::db::ops::conversation::get_conversation(&mut conn, "c1").unwrap().head_message_id
+        crate::db::ops::conversation::get_conversation(&mut conn, "c1")
+            .unwrap()
+            .head_message_id
     }
 
     fn phase(pool: &DbPool) -> (Option<TurnPhase>, Option<String>) {
         let mut conn = pool.get().unwrap();
-        let t: crate::db::models::turn::Turn =
-            crate::db::schema::turns::table.find("t1").first(&mut conn).unwrap();
+        let t: crate::db::models::turn::Turn = crate::db::schema::turns::table.find("t1").first(&mut conn).unwrap();
         (t.phase(), t.phase_tool)
     }
 
@@ -416,7 +460,9 @@ mod tests {
         // The pool hands out one connection, so every borrow here is scoped:
         // holding one across an await that needs its own is a deadlock, not a
         // failure of what is being tested.
-        let id = begin_assistant(&pool, "c1", "t1", (None, None), "m", None).await.unwrap();
+        let id = begin_assistant(&pool, "c1", "t1", (None, None), "m", None)
+            .await
+            .unwrap();
         {
             let mut conn = pool.get().unwrap();
             assert!(
@@ -449,7 +495,11 @@ mod tests {
         assert_eq!(logged[0].role, "assistant");
         assert_eq!(logged[0].input_tokens, Some(200));
         assert_eq!(logged[0].cache_read_tokens, Some(180));
-        assert_eq!(logged[0].turn_origin.as_deref(), Some("desktop"), "snapshotted off the turn");
+        assert_eq!(
+            logged[0].turn_origin.as_deref(),
+            Some("desktop"),
+            "snapshotted off the turn"
+        );
     }
 
     /// The one write that takes the turn down with it. Everything downstream is
@@ -459,7 +509,11 @@ mod tests {
     async fn a_turn_that_cannot_open_a_row_stops() {
         let pool = test_db();
         // No conversation, so the foreign key refuses it.
-        assert!(begin_assistant(&pool, "nope", "t1", (None, None), "m", None).await.is_err());
+        assert!(
+            begin_assistant(&pool, "nope", "t1", (None, None), "m", None)
+                .await
+                .is_err()
+        );
     }
 
     /// Filling the row in is the one write that swallows a refused write.
@@ -482,7 +536,9 @@ mod tests {
     async fn filling_a_row_in_swallows_a_database_write_error() {
         let pool = test_db();
         conversation(&pool);
-        let id = begin_assistant(&pool, "c1", "t1", (None, None), "m", None).await.unwrap();
+        let id = begin_assistant(&pool, "c1", "t1", (None, None), "m", None)
+            .await
+            .unwrap();
 
         {
             use diesel::connection::SimpleConnection;
@@ -491,7 +547,12 @@ mod tests {
             // The write really is refused, so what follows is testing something.
             assert!(
                 crate::db::ops::message::update_assistant_message(
-                    &mut conn, &id, "the answer", None, None, &MessageUsage::default(),
+                    &mut conn,
+                    &id,
+                    "the answer",
+                    None,
+                    None,
+                    &MessageUsage::default(),
                 )
                 .is_err(),
                 "query_only must make this a real failure",
@@ -522,21 +583,17 @@ mod tests {
     async fn a_tool_result_that_cannot_be_written_does_not_stop_the_turn() {
         let pool = test_db();
         conversation(&pool);
-        let assistant = begin_assistant(&pool, "c1", "t1", (None, None), "m", None).await.unwrap();
+        let assistant = begin_assistant(&pool, "c1", "t1", (None, None), "m", None)
+            .await
+            .unwrap();
 
-        let landed = append_tool_result(
-            &pool, "c1", "t1", "call-1", "done", "success", Some(&assistant),
-        )
-        .await;
+        let landed = append_tool_result(&pool, "c1", "t1", "call-1", "done", "success", Some(&assistant)).await;
         assert!(landed.is_some());
         assert_eq!(head(&pool), landed, "the cursor moves onto it");
 
         // Same call against a conversation that does not exist: refused, and
         // said so without unwinding.
-        let lost = append_tool_result(
-            &pool, "nope", "t1", "call-2", "done", "success", Some(&assistant),
-        )
-        .await;
+        let lost = append_tool_result(&pool, "nope", "t1", "call-2", "done", "success", Some(&assistant)).await;
         assert!(lost.is_none(), "None is how the caller knows to leave the cursor alone");
     }
 
@@ -548,7 +605,9 @@ mod tests {
         conversation(&pool);
 
         for (call, outcome) in [("a", "success"), ("b", "denied"), ("c", "error")] {
-            append_tool_result(&pool, "c1", "t1", call, "x", outcome, None).await.unwrap();
+            append_tool_result(&pool, "c1", "t1", call, "x", outcome, None)
+                .await
+                .unwrap();
         }
 
         let stored: Vec<Option<String>> = rows(&pool)
@@ -556,11 +615,10 @@ mod tests {
             .filter(|m| m.role == "tool")
             .map(|m| m.tool_outcome)
             .collect();
-        assert_eq!(stored, [
-            Some("success".into()),
-            Some("denied".into()),
-            Some("error".into())
-        ]);
+        assert_eq!(
+            stored,
+            [Some("success".into()), Some("denied".into()), Some("error".into())]
+        );
     }
 
     /// Written before the work, not after — whatever is stored when the process
@@ -576,7 +634,11 @@ mod tests {
         .await;
 
         assert_eq!(seen, (Some(TurnPhase::RunningTool), Some("edit_file".into())));
-        assert_eq!(phase(&pool), (Some(TurnPhase::Streaming), None), "and it does not linger");
+        assert_eq!(
+            phase(&pool),
+            (Some(TurnPhase::Streaming), None),
+            "and it does not linger"
+        );
     }
 
     /// It brackets an approval the same way, which is a window the process can

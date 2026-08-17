@@ -142,7 +142,8 @@ export interface ToolCallDisplay {
    *  this transcript — the question was put on the card that spawned the run,
    *  which is where somebody is actually looking. Drawn without buttons, so
    *  there is only ever one place an answer can come from. */
-  status: 'pending' | 'approved' | 'denied' | 'running' | 'queued' | 'completed' | 'error' | 'orphaned' | 'awaiting_parent'
+  status:
+    'pending' | 'approved' | 'denied' | 'running' | 'queued' | 'completed' | 'error' | 'orphaned' | 'awaiting_parent'
   result?: string
   /** What the buttons answer with while this call is `pending`. Minted by the
    *  backend per approval rather than taken from the provider's call id, which
@@ -271,9 +272,7 @@ export interface PendingApprovalInfo {
 }
 
 export type ContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'thinking'; text: string }
-  | { type: 'tool_call'; data: ToolCallDisplay }
+  { type: 'text'; text: string } | { type: 'thinking'; text: string } | { type: 'tool_call'; data: ToolCallDisplay }
 
 export interface OpenAIToolCall {
   id: string
@@ -633,8 +632,7 @@ export interface ModelConfigInput {
  * a row here can name something that no longer exists, and that is the point
  * rather than a bug. See `src-tauri/src/db/ops/usage.rs`.
  */
-export type UsageDimension =
-  | 'total' | 'provider' | 'model' | 'bot' | 'source' | 'conversation' | 'day' | 'hour'
+export type UsageDimension = 'total' | 'provider' | 'model' | 'bot' | 'source' | 'conversation' | 'day' | 'hour'
 
 export interface UsageFilter {
   since_ms?: number | null

@@ -190,9 +190,7 @@ async fn a_call_in_flight_does_not_block_reading_the_tool_list() {
 
     let calling = {
         let registry = Arc::clone(&registry);
-        tokio::spawn(async move {
-            registry.call_tool("mcp__a__slow", serde_json::json!({})).await
-        })
+        tokio::spawn(async move { registry.call_tool("mcp__a__slow", serde_json::json!({})).await })
     };
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -218,14 +216,15 @@ async fn one_server_being_slow_does_not_hold_up_another() {
 
     let slow_call = {
         let registry = Arc::clone(&registry);
-        tokio::spawn(async move {
-            registry.call_tool("mcp__a__slow", serde_json::json!({})).await
-        })
+        tokio::spawn(async move { registry.call_tool("mcp__a__slow", serde_json::json!({})).await })
     };
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let started = std::time::Instant::now();
-    registry.call_tool("mcp__b__quick", serde_json::json!({})).await.unwrap();
+    registry
+        .call_tool("mcp__b__quick", serde_json::json!({}))
+        .await
+        .unwrap();
     assert!(
         started.elapsed() < Duration::from_millis(200),
         "the second server waited on the first"
@@ -240,18 +239,19 @@ async fn calls_to_one_server_are_serialised() {
     let spec = MockSpec::new(vec!["t"]).behaviour(Behaviour::Reply(Duration::from_millis(80)));
     let registry = connected("a", &spec).await;
 
-    let calls: Vec<_> = (0..4).map(|_| {
-        let registry = Arc::clone(&registry);
-        tokio::spawn(async move {
-            registry.call_tool("mcp__a__t", serde_json::json!({})).await
+    let calls: Vec<_> = (0..4)
+        .map(|_| {
+            let registry = Arc::clone(&registry);
+            tokio::spawn(async move { registry.call_tool("mcp__a__t", serde_json::json!({})).await })
         })
-    }).collect();
+        .collect();
     for c in calls {
         c.await.unwrap().unwrap();
     }
     assert_eq!(spec.calls.load(Ordering::SeqCst), 4);
     assert_eq!(
-        spec.max_in_flight.load(Ordering::SeqCst), 1,
+        spec.max_in_flight.load(Ordering::SeqCst),
+        1,
         "two requests were on the same transport at once"
     );
 }
@@ -267,13 +267,22 @@ async fn a_server_that_never_answers_is_dropped_along_with_its_tools() {
     registry.connect(&server("a")).await.unwrap();
     assert_eq!(registry.tool_definitions().len(), 1);
 
-    let err = registry.call_tool("mcp__a__t", serde_json::json!({})).await.unwrap_err();
+    let err = registry
+        .call_tool("mcp__a__t", serde_json::json!({}))
+        .await
+        .unwrap_err();
     assert!(err.contains("stopped responding"), "{err}");
 
     // The obituary runs on the actor's own task; give it a turn to land.
     tokio::time::sleep(Duration::from_millis(100)).await;
-    assert!(registry.tool_definitions().is_empty(), "its tools outlived the connection");
-    assert!(registry.all_connection_statuses().is_empty(), "the entry outlived the connection");
+    assert!(
+        registry.tool_definitions().is_empty(),
+        "its tools outlived the connection"
+    );
+    assert!(
+        registry.all_connection_statuses().is_empty(),
+        "the entry outlived the connection"
+    );
     assert_eq!(spec.shutdowns.load(Ordering::SeqCst), 1);
 }
 
@@ -287,11 +296,11 @@ async fn concurrent_connects_share_one_attempt() {
     // real stdio path and fail to spawn, which is itself the assertion.
     stage(&registry, spec.build());
     let target = server("a");
-    let (a, b) = tokio::join!(
-        registry.connect(&target),
-        registry.connect(&target),
+    let (a, b) = tokio::join!(registry.connect(&target), registry.connect(&target),);
+    assert!(
+        a.is_ok() && b.is_ok(),
+        "both callers should see the same success: {a:?} {b:?}"
     );
-    assert!(a.is_ok() && b.is_ok(), "both callers should see the same success: {a:?} {b:?}");
     assert_eq!(registry.all_connection_statuses().len(), 1);
     assert_eq!(registry.tool_definitions().len(), 1);
 }
@@ -309,7 +318,11 @@ async fn reconnecting_replaces_the_previous_connection() {
     // The replaced transport is shut down rather than dropped on the floor,
     // which is what used to leak a child process per reconnect.
     tokio::time::sleep(Duration::from_millis(50)).await;
-    assert_eq!(first.shutdowns.load(Ordering::SeqCst), 1, "the old transport was never closed");
+    assert_eq!(
+        first.shutdowns.load(Ordering::SeqCst),
+        1,
+        "the old transport was never closed"
+    );
     let names: Vec<String> = registry.tool_definitions().iter().map(|d| d.name.clone()).collect();
     assert_eq!(names, vec!["mcp__a__new".to_string()]);
 }
@@ -337,7 +350,8 @@ async fn a_stale_obituary_leaves_the_current_connection_alone() {
     registry.actor_stopped("a", current - 1);
 
     assert_eq!(
-        registry.all_connection_statuses().len(), 1,
+        registry.all_connection_statuses().len(),
+        1,
         "a stale notice closed a live connection"
     );
     assert_eq!(registry.tool_definitions().len(), 1);
@@ -350,11 +364,18 @@ async fn a_refused_call_leaves_the_connection_up() {
     let spec = MockSpec::new(vec!["t"]).behaviour(Behaviour::Refuse("MCP error -32602: bad params"));
     let registry = connected("a", &spec).await;
 
-    let err = registry.call_tool("mcp__a__t", serde_json::json!({})).await.unwrap_err();
+    let err = registry
+        .call_tool("mcp__a__t", serde_json::json!({}))
+        .await
+        .unwrap_err();
     assert!(err.contains("bad params"), "{err}");
 
     tokio::time::sleep(Duration::from_millis(50)).await;
-    assert_eq!(registry.all_connection_statuses().len(), 1, "a refusal closed the connection");
+    assert_eq!(
+        registry.all_connection_statuses().len(),
+        1,
+        "a refusal closed the connection"
+    );
     assert_eq!(registry.tool_definitions().len(), 1);
     assert_eq!(spec.shutdowns.load(Ordering::SeqCst), 0);
 }
@@ -367,7 +388,10 @@ async fn a_broken_transport_is_never_reused() {
     let spec = MockSpec::new(vec!["t"]).behaviour(Behaviour::Break("MCP server closed stdout"));
     let registry = connected("a", &spec).await;
 
-    let err = registry.call_tool("mcp__a__t", serde_json::json!({})).await.unwrap_err();
+    let err = registry
+        .call_tool("mcp__a__t", serde_json::json!({}))
+        .await
+        .unwrap_err();
     assert!(err.contains("closed stdout"), "{err}");
 
     tokio::time::sleep(Duration::from_millis(50)).await;
@@ -375,7 +399,10 @@ async fn a_broken_transport_is_never_reused() {
         registry.all_connection_statuses().is_empty(),
         "a broken transport was left connected and would be used again"
     );
-    assert!(registry.tool_definitions().is_empty(), "its tools outlived the transport");
+    assert!(
+        registry.tool_definitions().is_empty(),
+        "its tools outlived the transport"
+    );
     assert_eq!(spec.shutdowns.load(Ordering::SeqCst), 1);
 }
 
@@ -389,9 +416,7 @@ async fn disconnecting_stops_a_server_that_is_mid_call() {
 
     let call = {
         let registry = Arc::clone(&registry);
-        tokio::spawn(async move {
-            registry.call_tool("mcp__a__t", serde_json::json!({})).await
-        })
+        tokio::spawn(async move { registry.call_tool("mcp__a__t", serde_json::json!({})).await })
     };
     tokio::time::sleep(Duration::from_millis(50)).await;
 
@@ -403,11 +428,18 @@ async fn disconnecting_stops_a_server_that_is_mid_call() {
     );
     // The point of waiting: by the time disconnect returns the child is really
     // gone, not merely scheduled to go.
-    assert_eq!(spec.shutdowns.load(Ordering::SeqCst), 1, "the transport was never shut down");
+    assert_eq!(
+        spec.shutdowns.load(Ordering::SeqCst),
+        1,
+        "the transport was never shut down"
+    );
     assert!(registry.all_connection_statuses().is_empty());
 
     let outcome = call.await.unwrap();
-    assert!(outcome.is_err(), "the in-flight call should have been told the connection went away");
+    assert!(
+        outcome.is_err(),
+        "the in-flight call should have been told the connection went away"
+    );
 }
 
 /// Same requirement at exit, where the budget only means something if it is
@@ -419,17 +451,19 @@ async fn shutdown_closes_a_server_that_is_mid_call_within_its_budget() {
 
     let _call = {
         let registry = Arc::clone(&registry);
-        tokio::spawn(async move {
-            registry.call_tool("mcp__a__t", serde_json::json!({})).await
-        })
+        tokio::spawn(async move { registry.call_tool("mcp__a__t", serde_json::json!({})).await })
     };
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let started = std::time::Instant::now();
     registry.shutdown_all(Duration::from_secs(2)).await;
-    assert!(started.elapsed() < Duration::from_secs(2), "shutdown ran out its budget");
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "shutdown ran out its budget"
+    );
     assert_eq!(
-        spec.shutdowns.load(Ordering::SeqCst), 1,
+        spec.shutdowns.load(Ordering::SeqCst),
+        1,
         "exit returned before the child process was gone"
     );
     assert!(registry.all_connection_statuses().is_empty());
@@ -461,7 +495,8 @@ async fn a_stale_obituary_does_not_delete_a_newer_connections_tools() {
 
     let names: Vec<String> = registry.tool_definitions().iter().map(|d| d.name.clone()).collect();
     assert_eq!(
-        names, vec!["mcp__a__new".to_string()],
+        names,
+        vec!["mcp__a__new".to_string()],
         "a stale obituary removed the tools of the connection that replaced it"
     );
     assert_eq!(registry.all_connection_statuses().len(), 1);
@@ -511,20 +546,31 @@ async fn shutdown_waits_for_a_connect_that_is_still_dialling() {
     };
     // Long enough for the handshake to be under way and the transport to exist.
     tokio::time::sleep(Duration::from_millis(100)).await;
-    assert_eq!(spec.drops.load(Ordering::SeqCst), 0, "the transport should still be alive");
+    assert_eq!(
+        spec.drops.load(Ordering::SeqCst),
+        0,
+        "the transport should still be alive"
+    );
 
     let started = std::time::Instant::now();
     registry.shutdown_all(Duration::from_secs(2)).await;
-    assert!(started.elapsed() < Duration::from_secs(2), "shutdown ran out its budget");
+    assert!(
+        started.elapsed() < Duration::from_secs(2),
+        "shutdown ran out its budget"
+    );
 
     // The point: by the time shutdown returns the dialling task has let go of
     // its transport, so the drop that kills the child has actually happened.
     assert_eq!(
-        spec.drops.load(Ordering::SeqCst), 1,
+        spec.drops.load(Ordering::SeqCst),
+        1,
         "exit returned while a connection attempt still held its child process"
     );
     assert!(registry.all_connection_statuses().is_empty());
-    assert!(dialling.await.unwrap().is_err(), "the cancelled connect should report failure");
+    assert!(
+        dialling.await.unwrap().is_err(),
+        "the cancelled connect should report failure"
+    );
 }
 
 #[tokio::test]

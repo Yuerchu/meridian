@@ -22,7 +22,9 @@ export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
     <div className="flex flex-col items-center justify-center h-full px-4">
       <div className="w-full max-w-2xl">
         <h1 className="text-center mb-6">
-          <span className="shimmer shimmer-duration-3000 text-lg font-medium text-muted">{t('chat.empty.subtitle')}</span>
+          <span className="shimmer shimmer-duration-3000 text-lg font-medium text-muted">
+            {t('chat.empty.subtitle')}
+          </span>
         </h1>
         <Composer
           autoFocus

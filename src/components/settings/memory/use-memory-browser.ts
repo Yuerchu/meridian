@@ -30,7 +30,10 @@ export function useMemoryBrowser() {
   // Enum values come from Rust so the front end never keeps its own copy to
   // drift out of sync.
   useEffect(() => {
-    api.memoryEnums().then(setEnums).catch(() => {})
+    api
+      .memoryEnums()
+      .then(setEnums)
+      .catch(() => {})
   }, [])
 
   const refresh = useCallback(async () => {
@@ -85,9 +88,7 @@ export function useMemoryBrowser() {
     }
     const q = search.trim().toLowerCase()
     if (q) {
-      rows = rows.filter(
-        (m) => m.key.toLowerCase().includes(q) || m.content.toLowerCase().includes(q),
-      )
+      rows = rows.filter((m) => m.key.toLowerCase().includes(q) || m.content.toLowerCase().includes(q))
     }
     return rows
   }, [memories, filter, originFilter, search])
@@ -116,10 +117,7 @@ export function useMemoryBrowser() {
 
   /** Everything the current filter and search leave on screen — not every
    *  memory in the database, which is not what the row checkboxes offered. */
-  const selectAllVisible = useCallback(
-    () => setSelected(new Set(visible.map((m) => m.id))),
-    [visible],
-  )
+  const selectAllVisible = useCallback(() => setSelected(new Set(visible.map((m) => m.id))), [visible])
 
   return {
     projects,

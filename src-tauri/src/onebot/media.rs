@@ -4,9 +4,9 @@
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use super::format::{ParsedMessage, IMAGE_SENTINEL, RECORD_SENTINEL};
+use super::format::{IMAGE_SENTINEL, ParsedMessage, RECORD_SENTINEL};
 use super::protocol::{OneBotAction, OneBotEvent};
-use super::{call_api_with_timeout, SharedState};
+use super::{SharedState, call_api_with_timeout};
 
 pub const MAX_IMAGES: usize = 5;
 pub const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
@@ -34,10 +34,10 @@ pub async fn process_media(
 
     // Voice transcription runs concurrently with the image work below.
     let record_fut = async {
-        if parsed.has_record {
-            if let Some(mid) = event.message_id {
-                return transcribe_record(state, mid).await;
-            }
+        if parsed.has_record
+            && let Some(mid) = event.message_id
+        {
+            return transcribe_record(state, mid).await;
         }
         None
     };
@@ -51,9 +51,10 @@ pub async fn process_media(
     // Each image independently: vision download when supported, else OCR.
     // Returns (Option<uri>, Option<ocr_text>) so both lists rebuild in order.
     let image_futs = parsed.images.iter().enumerate().map(|(i, media)| async move {
-        let url = media.url.as_deref().or_else(|| {
-            media.file.as_deref().filter(|f| f.starts_with("http"))
-        });
+        let url = media
+            .url
+            .as_deref()
+            .or_else(|| media.file.as_deref().filter(|f| f.starts_with("http")));
         let Some(url) = url.filter(|_| i < MAX_IMAGES) else {
             return (None, None);
         };
@@ -66,11 +67,7 @@ pub async fn process_media(
         (None, ocr_image_text(state, url).await)
     });
 
-    let (transcript, image_outcomes) = futures::future::join(
-        record_fut,
-        futures::future::join_all(image_futs),
-    )
-    .await;
+    let (transcript, image_outcomes) = futures::future::join(record_fut, futures::future::join_all(image_futs)).await;
 
     if let Some(transcript) = transcript {
         text = text.replacen(RECORD_SENTINEL, &format!("[语音内容: {transcript}]"), 1);
@@ -78,8 +75,7 @@ pub async fn process_media(
 
     if !parsed.images.is_empty() {
         // join_all preserves input order, so index i maps to images[i].
-        let ocr_results: Vec<Option<String>> =
-            image_outcomes.iter().map(|(_, ocr)| ocr.clone()).collect();
+        let ocr_results: Vec<Option<String>> = image_outcomes.iter().map(|(_, ocr)| ocr.clone()).collect();
         for (uri, _) in &image_outcomes {
             if let Some(uri) = uri {
                 image_uris.push(uri.clone());
@@ -168,25 +164,25 @@ async fn resolve_supports_images(
         let mut conn = crate::util::get_conn(&pool).ok()?;
         let effective_aid = match config_aid {
             Some(aid) => Some(aid),
-            None => crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
-                .ok()?
-                .assistant_id,
+            None => {
+                crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
+                    .ok()?
+                    .assistant_id
+            }
         };
-        let assistant = effective_aid
-            .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, &aid).ok());
+        let assistant = effective_aid.and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, &aid).ok());
         drop(conn);
 
         let crate::agent::ResolvedProvider {
-            provider_type, model: resolved_model, api_format, ..
+            provider_type,
+            model: resolved_model,
+            api_format,
+            ..
         } = crate::agent::resolve_provider_config(&secrets, &pool, assistant.as_ref()).ok()?;
         let model = override_model
             .or_else(|| assistant.as_ref().and_then(|a| a.model_id.clone()))
             .unwrap_or(resolved_model);
-        let caps = crate::provider::registry::get_capabilities(
-            &provider_type,
-            Some(&api_format),
-            &model,
-        );
+        let caps = crate::provider::registry::get_capabilities(&provider_type, Some(&api_format), &model);
         Some(caps.supports_images)
     })
     .await
@@ -195,11 +191,7 @@ async fn resolve_supports_images(
     .unwrap_or(false)
 }
 
-async fn fetch_and_store_image(
-    state: &Arc<SharedState>,
-    conversation_id: &str,
-    url: &str,
-) -> Result<String, String> {
+async fn fetch_and_store_image(state: &Arc<SharedState>, conversation_id: &str, url: &str) -> Result<String, String> {
     let app = state.app_handle.as_ref().ok_or("no app handle")?;
     let (bytes, ext) = download_image(url).await?;
     store_image_bytes(app, conversation_id, bytes, &ext).await
@@ -250,8 +242,7 @@ async fn download_image(url: &str) -> Result<(Vec<u8>, String), String> {
         .or_else(|| {
             let path = url.split(['?', '#']).next().unwrap_or("");
             let ext = path.rsplit('.').next().unwrap_or("");
-            matches!(ext, "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp")
-                .then(|| ext.to_string())
+            matches!(ext, "jpg" | "jpeg" | "png" | "gif" | "webp" | "bmp").then(|| ext.to_string())
         })
         .unwrap_or_else(|| "jpg".into());
 
@@ -312,10 +303,7 @@ mod tests {
 
     #[test]
     fn test_merge_ocr_fewer_results_than_placeholders() {
-        let out = merge_ocr_into_text(
-            &format!("{IMAGE_SENTINEL}{IMAGE_SENTINEL}"),
-            &[Some("a".into())],
-        );
+        let out = merge_ocr_into_text(&format!("{IMAGE_SENTINEL}{IMAGE_SENTINEL}"), &[Some("a".into())]);
         assert_eq!(out, "[图片内容: a][图片]");
         assert_eq!(merge_ocr_into_text("无图", &[]), "无图");
     }

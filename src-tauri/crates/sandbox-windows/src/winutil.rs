@@ -27,10 +27,7 @@ pub fn to_wide<S: AsRef<OsStr>>(s: S) -> Vec<u16> {
 /// Reference behavior matches Rust std::process::Command on Windows.
 #[cfg(target_os = "windows")]
 pub fn quote_windows_arg(arg: &str) -> String {
-    let needs_quotes = arg.is_empty()
-        || arg
-            .chars()
-            .any(|c| matches!(c, ' ' | '\t' | '\n' | '\r' | '"'));
+    let needs_quotes = arg.is_empty() || arg.chars().any(|c| matches!(c, ' ' | '\t' | '\n' | '\r' | '"'));
     if !needs_quotes {
         return arg.to_string();
     }
@@ -77,9 +74,7 @@ pub fn argv_to_command_line(argv: &[String]) -> String {
 pub fn format_last_error(err: i32) -> String {
     unsafe {
         let mut buf_ptr: *mut u16 = std::ptr::null_mut();
-        let flags = FORMAT_MESSAGE_ALLOCATE_BUFFER
-            | FORMAT_MESSAGE_FROM_SYSTEM
-            | FORMAT_MESSAGE_IGNORE_INSERTS;
+        let flags = FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS;
         let len = FormatMessageW(
             flags,
             std::ptr::null(),
@@ -161,9 +156,7 @@ pub fn resolve_sid(name: &str) -> Result<Vec<u8>> {
             domain.resize(domain_len as usize, 0);
             continue;
         }
-        return Err(anyhow::anyhow!(
-            "LookupAccountNameW failed for {name}: {err}"
-        ));
+        return Err(anyhow::anyhow!("LookupAccountNameW failed for {name}: {err}"));
     }
 }
 
@@ -215,8 +208,7 @@ mod tests {
         let argv = vec![
             "cmd.exe".to_string(),
             "/c".to_string(),
-            "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand abc=="
-                .to_string(),
+            "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile -EncodedCommand abc==".to_string(),
         ];
 
         assert_eq!(

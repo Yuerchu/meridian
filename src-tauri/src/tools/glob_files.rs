@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use super::{Permission, Tool, ToolContext};
+use async_trait::async_trait;
 
 pub struct GlobFilesTool;
 
@@ -58,11 +58,9 @@ impl Tool for GlobFilesTool {
         let base = match context.resolve_and_validate(&base_str)? {
             super::ResolvedTarget::Real(p) => p,
             super::ResolvedTarget::Saf { .. } => {
-                return Err(
-                    "glob is not supported in SAF-authorized directories; \
+                return Err("glob is not supported in SAF-authorized directories; \
                      enable 'All files access' in Settings to search there"
-                        .to_string(),
-                );
+                    .to_string());
             }
         };
 
@@ -78,8 +76,8 @@ fn glob_search(base: &std::path::Path, pattern: &str) -> Result<String, String> 
     use ignore::WalkBuilder;
 
     let full_pattern = base.join(pattern).to_string_lossy().to_string();
-    let glob_matcher = glob::Pattern::new(&full_pattern)
-        .map_err(|e| format!("invalid glob pattern '{}': {}", pattern, e))?;
+    let glob_matcher =
+        glob::Pattern::new(&full_pattern).map_err(|e| format!("invalid glob pattern '{}': {}", pattern, e))?;
 
     let walker = WalkBuilder::new(base)
         .hidden(false)
@@ -102,7 +100,8 @@ fn glob_search(base: &std::path::Path, pattern: &str) -> Result<String, String> 
 
         let path_str = path.to_string_lossy();
         if glob_matcher.matches(&path_str) || glob_matcher.matches(&path_str.replace('\\', "/")) {
-            let relative = path.strip_prefix(base)
+            let relative = path
+                .strip_prefix(base)
                 .map(|p| p.to_string_lossy().to_string())
                 .unwrap_or_else(|_| path_str.to_string());
             matches.push(relative);

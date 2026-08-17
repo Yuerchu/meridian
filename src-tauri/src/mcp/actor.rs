@@ -27,6 +27,7 @@ use super::{McpTransport, TransportError};
 /// transport. Deliberately longer than the per-transport read timeouts, which
 /// are the normal way a slow call ends; reaching this one means the transport
 /// stopped honouring even those.
+#[cfg_attr(test, allow(dead_code))] // tests connect via spawn_with_deadline
 const ACTOR_REQUEST_DEADLINE: std::time::Duration = std::time::Duration::from_secs(90);
 
 /// Requests allowed to queue before callers are turned away.
@@ -86,7 +87,11 @@ impl ActorHandle {
         params: Option<serde_json::Value>,
     ) -> Result<serde_json::Value, McpError> {
         let (reply, rx) = oneshot::channel();
-        let call = Call { method: method.to_string(), params, reply };
+        let call = Call {
+            method: method.to_string(),
+            params,
+            reply,
+        };
 
         // `try_send`, not `send`: waiting for room in the queue is waiting on
         // the very server that has stopped answering.
@@ -94,17 +99,14 @@ impl ActorHandle {
             mpsc::error::TrySendError::Full(_) => {
                 McpError::Protocol(format!("MCP server is busy; '{method}' was not sent"))
             }
-            mpsc::error::TrySendError::Closed(_) => {
-                McpError::Fatal("MCP server connection has closed".into())
-            }
+            mpsc::error::TrySendError::Closed(_) => McpError::Fatal("MCP server connection has closed".into()),
         })?;
 
         // The sender is dropped without a value only when the actor stopped
         // mid-call, which it does exactly when it has declared the transport
         // dead.
-        rx.await.unwrap_or_else(|_| {
-            Err(McpError::Fatal("MCP server connection was lost".into()))
-        })
+        rx.await
+            .unwrap_or_else(|_| Err(McpError::Fatal("MCP server connection was lost".into())))
     }
 
     /// Stop the actor and wait until it has finished, transport shutdown
@@ -136,6 +138,7 @@ pub trait ActorObituary: Send + Sync + 'static {
 }
 
 /// Start the task and hand back the only way to talk to it.
+#[cfg_attr(test, allow(dead_code))] // the test build calls spawn_with_deadline directly
 pub fn spawn(
     server_id: String,
     generation: u64,
@@ -158,8 +161,14 @@ pub fn spawn_with_deadline(
     let stop = CancellationToken::new();
     let (finished_tx, finished) = watch::channel(false);
     tokio::spawn(run(
-        server_id, generation, transport, rx, obituary, deadline,
-        stop.clone(), finished_tx,
+        server_id,
+        generation,
+        transport,
+        rx,
+        obituary,
+        deadline,
+        stop.clone(),
+        finished_tx,
     ));
     ActorHandle { tx, stop, finished }
 }
@@ -256,7 +265,8 @@ async fn run(
     rx.close();
     while let Some(call) = rx.recv().await {
         let _ = call.reply.send(Err(McpError::Fatal(
-            died.clone().unwrap_or_else(|| "MCP server connection has closed".into()),
+            died.clone()
+                .unwrap_or_else(|| "MCP server connection has closed".into()),
         )));
     }
 

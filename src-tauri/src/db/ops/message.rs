@@ -20,13 +20,15 @@ use crate::db::schema::{conversations, messages};
 /// the active path — which the user sees as their answer vanishing. Exclusion is
 /// `turn::TurnCoordinator`'s job, one turn per conversation, and it is taken
 /// before anything here is called.
-pub fn append_message(
-    conn: &mut SqliteConnection,
-    new: &NewMessage,
-    parent: Option<&str>,
-) -> QueryResult<Message> {
+pub fn append_message(conn: &mut SqliteConnection, new: &NewMessage, parent: Option<&str>) -> QueryResult<Message> {
     let row = conn.transaction(|conn| {
-        let row = insert_message(conn, &NewMessage { parent_id: parent, ..copy_of(new) })?;
+        let row = insert_message(
+            conn,
+            &NewMessage {
+                parent_id: parent,
+                ..copy_of(new)
+            },
+        )?;
         diesel::update(conversations::table.find(new.conversation_id))
             .set(conversations::head_message_id.eq(Some(&row.id)))
             .execute(conn)?;
@@ -74,15 +76,14 @@ fn audit_copy(conn: &mut SqliteConnection, row: &Message) {
 /// `history` is the caller's already-loaded message list for the conversation,
 /// ordered by `sort_order`.
 pub fn resolve_head(stored_head: Option<&str>, history: &[Message]) -> Option<String> {
-    if let Some(head) = stored_head {
-        if history.iter().any(|m| m.id == head && m.is_compact_summary == 0) {
-            return Some(head.to_string());
-        }
+    if let Some(head) = stored_head
+        && history.iter().any(|m| m.id == head && m.is_compact_summary == 0)
+    {
+        return Some(head.to_string());
     }
     history
         .iter()
-        .filter(|m| m.is_compact_summary == 0)
-        .next_back()
+        .rfind(|m| m.is_compact_summary == 0)
         .map(|m| m.id.clone())
 }
 
@@ -148,10 +149,7 @@ fn path_to_head(history: &[Message], head: &str) -> Vec<Message> {
 /// Load the active path plus whichever summary applies to it.
 ///
 /// `history` is the full conversation, ordered by `sort_order`.
-pub fn active_context(
-    history: &[Message],
-    stored_head: Option<&str>,
-) -> ActiveContext {
+pub fn active_context(history: &[Message], stored_head: Option<&str>) -> ActiveContext {
     let head_id = resolve_head(stored_head, history);
     // No sort_order fallback for an unlinked history. The backfill runs inside
     // the migration transaction and a failure there aborts startup, so a
@@ -169,11 +167,13 @@ pub fn active_context(
     // deepest anchor wins, being the most recent compaction of this path.
     let mut best: Option<(usize, &Message)> = None;
     for s in history.iter().filter(|m| m.is_compact_summary == 1) {
-        let Some(anchor) = s.compact_anchor_id.as_deref() else { continue };
-        if let Some(idx) = path.iter().position(|m| m.id == anchor) {
-            if best.is_none_or(|(prev, _)| idx > prev) {
-                best = Some((idx, s));
-            }
+        let Some(anchor) = s.compact_anchor_id.as_deref() else {
+            continue;
+        };
+        if let Some(idx) = path.iter().position(|m| m.id == anchor)
+            && best.is_none_or(|(prev, _)| idx > prev)
+        {
+            best = Some((idx, s));
         }
     }
 
@@ -227,10 +227,7 @@ fn copy_of<'a>(n: &NewMessage<'a>) -> NewMessage<'a> {
 /// in either `schema.rs` or the struct would compile, pass every test, and
 /// quietly report each cache write as a read for the rest of the table's life.
 /// `as_select()` makes that a compile error instead.
-pub fn list_messages(
-    conn: &mut SqliteConnection,
-    conversation_id: &str,
-) -> QueryResult<Vec<Message>> {
+pub fn list_messages(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<Message>> {
     messages::table
         .filter(messages::conversation_id.eq(conversation_id))
         .order(messages::sort_order.asc())
@@ -238,13 +235,8 @@ pub fn list_messages(
         .load(conn)
 }
 
-pub fn insert_message(
-    conn: &mut SqliteConnection,
-    new: &NewMessage,
-) -> QueryResult<Message> {
-    diesel::insert_into(messages::table)
-        .values(new)
-        .execute(conn)?;
+pub fn insert_message(conn: &mut SqliteConnection, new: &NewMessage) -> QueryResult<Message> {
+    diesel::insert_into(messages::table).values(new).execute(conn)?;
     messages::table.find(new.id).first::<Message>(conn)
 }
 
@@ -252,21 +244,6 @@ pub fn insert_message(
 // command that was its only caller. Rewriting one row's text in place has no
 // safe entry point: it names a message, not a conversation, so it cannot take
 // the lease that keeps a running turn from having the ground moved under it.
-
-pub fn update_content_and_tool_calls(
-    conn: &mut SqliteConnection,
-    id: &str,
-    content: &str,
-    tool_calls: Option<&str>,
-) -> QueryResult<()> {
-    diesel::update(messages::table.find(id))
-        .set((
-            messages::content.eq(content),
-            messages::tool_calls.eq(tool_calls),
-        ))
-        .execute(conn)?;
-    Ok(())
-}
 
 /// One row by id. Selected by name, for the reason `list_messages` is.
 pub fn get_message(conn: &mut SqliteConnection, id: &str) -> QueryResult<Message> {
@@ -300,27 +277,10 @@ pub fn update_assistant_message(
 // to "how does a row get its token counts" that could drift from the first. The
 // cache columns would have doubled that surface for nothing.
 
-pub fn update_rating(
-    conn: &mut SqliteConnection,
-    id: &str,
-    rating: Option<i32>,
-) -> QueryResult<()> {
+pub fn update_rating(conn: &mut SqliteConnection, id: &str, rating: Option<i32>) -> QueryResult<()> {
     diesel::update(messages::table.find(id))
         .set(messages::rating.eq(rating))
         .execute(conn)?;
-    Ok(())
-}
-
-pub fn delete_compact_summaries(
-    conn: &mut SqliteConnection,
-    conversation_id: &str,
-) -> QueryResult<()> {
-    diesel::delete(
-        messages::table
-            .filter(messages::conversation_id.eq(conversation_id))
-            .filter(messages::is_compact_summary.eq(1)),
-    )
-    .execute(conn)?;
     Ok(())
 }
 
@@ -451,7 +411,9 @@ fn effective_parent(history: &[Message], m: &Message) -> Option<String> {
     let mut cursor = m.parent_id.clone();
     while let Some(id) = cursor {
         // A parent that is not in `history` is as far as this can go.
-        let Some(parent) = history.iter().find(|h| h.id == id) else { return Some(id) };
+        let Some(parent) = history.iter().find(|h| h.id == id) else {
+            return Some(id);
+        };
         if parent.role != "context" {
             return Some(id);
         }
@@ -480,7 +442,9 @@ pub fn branch_points(history: &[Message], path: &[Message]) -> Vec<BranchPoint> 
         }
         siblings.sort_by_key(|s| s.sort_order);
         let ids: Vec<String> = siblings.iter().map(|s| s.id.clone()).collect();
-        let Some(index) = ids.iter().position(|id| id == &m.id) else { continue };
+        let Some(index) = ids.iter().position(|id| id == &m.id) else {
+            continue;
+        };
         out.push(BranchPoint {
             message_id: m.id.clone(),
             index,
@@ -865,13 +829,16 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
-        tree(&mut conn, &[
-            ("q", None),
-            ("a1", Some("q")),
-            ("a1x", Some("a1")),
-            ("a2", Some("q")),
-            ("a2x", Some("a2")),
-        ]);
+        tree(
+            &mut conn,
+            &[
+                ("q", None),
+                ("a1", Some("q")),
+                ("a1x", Some("a1")),
+                ("a2", Some("q")),
+                ("a2x", Some("a2")),
+            ],
+        );
         let history = list_messages(&mut conn, "c1").unwrap();
 
         assert_eq!(ids(&active_context(&history, Some("a1x"))), ["q", "a1", "a1x"]);
@@ -921,7 +888,10 @@ mod tests {
         assert_eq!(ctx.anchor_index, Some(1));
         assert_eq!(ctx.summary.as_ref().map(|m| m.id.as_str()), Some("s"));
         // m1 is represented by the summary, so it is not sent again.
-        assert_eq!(ctx.live().iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["m2", "m3"]);
+        assert_eq!(
+            ctx.live().iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            ["m2", "m3"]
+        );
     }
 
     /// The whole point of anchoring: switching branches must not hand this one
@@ -1021,12 +991,10 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
-        tree(&mut conn, &[
-            ("q", None),
-            ("a1", Some("q")),
-            ("a2", Some("q")),
-            ("a3", Some("q")),
-        ]);
+        tree(
+            &mut conn,
+            &[("q", None), ("a1", Some("q")), ("a2", Some("q")), ("a3", Some("q"))],
+        );
         let history = list_messages(&mut conn, "c1").unwrap();
         let ctx = active_context(&history, Some("a2"));
 
@@ -1060,12 +1028,10 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
-        tree(&mut conn, &[
-            ("q", None),
-            ("a1", Some("q")),
-            ("a1x", Some("a1")),
-            ("a2", Some("q")),
-        ]);
+        tree(
+            &mut conn,
+            &[("q", None), ("a1", Some("q")), ("a1x", Some("a1")), ("a2", Some("q"))],
+        );
 
         let head = switch_branch(&mut conn, "c1", "a1").unwrap();
         assert_eq!(head.as_deref(), Some("a1x"), "lands where that branch was last written");
@@ -1092,16 +1058,18 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
-        tree(&mut conn, &[
-            ("q", None),
-            ("a1", Some("q")),
-            ("a1x", Some("a1")),
-            ("a2", Some("q")),
-        ]);
+        tree(
+            &mut conn,
+            &[("q", None), ("a1", Some("q")), ("a1x", Some("a1")), ("a2", Some("q"))],
+        );
 
         delete_subtree(&mut conn, "c1", "a1").unwrap();
 
-        let left: Vec<String> = list_messages(&mut conn, "c1").unwrap().into_iter().map(|m| m.id).collect();
+        let left: Vec<String> = list_messages(&mut conn, "c1")
+            .unwrap()
+            .into_iter()
+            .map(|m| m.id)
+            .collect();
         assert_eq!(left, ["q", "a2"]);
     }
 
@@ -1118,7 +1086,10 @@ mod tests {
 
         let head = delete_subtree(&mut conn, "c1", "a").unwrap();
         assert_eq!(head.as_deref(), Some("q"));
-        assert_eq!(get_conversation(&mut conn, "c1").unwrap().head_message_id.as_deref(), Some("q"));
+        assert_eq!(
+            get_conversation(&mut conn, "c1").unwrap().head_message_id.as_deref(),
+            Some("q")
+        );
     }
 
     /// With the deleted branch gone the head lands on the surviving one, at the
@@ -1128,12 +1099,10 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
-        tree(&mut conn, &[
-            ("q", None),
-            ("a1", Some("q")),
-            ("a2", Some("q")),
-            ("a2x", Some("a2")),
-        ]);
+        tree(
+            &mut conn,
+            &[("q", None), ("a1", Some("q")), ("a2", Some("q")), ("a2x", Some("a2"))],
+        );
 
         delete_subtree(&mut conn, "c1", "a1").unwrap();
 

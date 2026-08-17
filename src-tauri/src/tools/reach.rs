@@ -104,7 +104,11 @@ pub fn locate(ctx: &ToolContext, path: &str, writing: bool) -> Reach {
                 // A SAF target is inside a granted tree by construction, and has
                 // no real path to inspect for hooks.
                 Ok(super::ResolvedTarget::Saf { .. }) => {
-                    if writing { Reach::WritesProject } else { Reach::ReadsProject }
+                    if writing {
+                        Reach::WritesProject
+                    } else {
+                        Reach::ReadsProject
+                    }
                 }
                 Err(_) => Reach::Outside,
             }
@@ -125,7 +129,9 @@ fn classify(real: &Path, root: &Path, writing: bool) -> Reach {
 /// The widest reach of several paths — used by calls that touch more than one,
 /// so a patch that edits ten ordinary files and one hook still gets asked about.
 pub fn widest(reaches: impl IntoIterator<Item = Reach>) -> Reach {
-    reaches.into_iter().fold(Reach::Contained, |acc, r| if rank(r) > rank(acc) { r } else { acc })
+    reaches
+        .into_iter()
+        .fold(Reach::Contained, |acc, r| if rank(r) > rank(acc) { r } else { acc })
 }
 
 fn rank(r: Reach) -> u8 {

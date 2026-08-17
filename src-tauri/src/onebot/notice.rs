@@ -7,21 +7,15 @@ use std::sync::Arc;
 use super::format;
 use super::protocol::{OneBotAction, OneBotEvent};
 use super::session::{SessionKey, SessionKind};
-use super::{call_api, handler, push_notice_note, was_seen_message, SharedState};
+use super::{SharedState, call_api, handler, push_notice_note, was_seen_message};
 use crate::util::now_ms;
 
 const POKE_COOLDOWN_MS: i64 = 30_000;
 const RECALL_SUMMARY_CHARS: usize = 50;
 
-pub async fn handle_notice(
-    event: &OneBotEvent,
-    state: &Arc<SharedState>,
-    conn_id: u64,
-) -> Vec<OneBotAction> {
+pub async fn handle_notice(event: &OneBotEvent, state: &Arc<SharedState>, conn_id: u64) -> Vec<OneBotAction> {
     match event.notice_type.as_deref() {
-        Some("notify") if event.sub_type.as_deref() == Some("poke") => {
-            handle_poke(event, state, conn_id).await
-        }
+        Some("notify") if event.sub_type.as_deref() == Some("poke") => handle_poke(event, state, conn_id).await,
         Some("group_recall") | Some("friend_recall") => {
             handle_recall(event, state).await;
             vec![]
@@ -37,11 +31,7 @@ pub async fn handle_notice(
     }
 }
 
-async fn handle_poke(
-    event: &OneBotEvent,
-    state: &Arc<SharedState>,
-    conn_id: u64,
-) -> Vec<OneBotAction> {
+async fn handle_poke(event: &OneBotEvent, state: &Arc<SharedState>, conn_id: u64) -> Vec<OneBotAction> {
     let self_id = event.self_id.unwrap_or(0);
     let user_id = event.user_id.unwrap_or(0);
     // Only react when the bot itself got poked by someone else.
@@ -163,11 +153,7 @@ async fn handle_membership(event: &OneBotEvent, state: &Arc<SharedState>) {
 }
 
 /// Best-effort nickname lookup; falls back to `None` (caller shows the QQ id).
-async fn lookup_nickname(
-    state: &Arc<SharedState>,
-    session: &SessionKey,
-    user_id: i64,
-) -> Option<String> {
+async fn lookup_nickname(state: &Arc<SharedState>, session: &SessionKey, user_id: i64) -> Option<String> {
     let echo = uuid::Uuid::new_v4().to_string();
     let action = match session.kind {
         SessionKind::Group => OneBotAction::get_group_member_info(session.id, user_id, echo),
@@ -183,10 +169,7 @@ async fn lookup_nickname(
 
 /// Recover sender name + a short content summary of a recalled message via
 /// `get_msg` (llbot serves recalled messages from its local cache).
-async fn fetch_recalled_summary(
-    state: &Arc<SharedState>,
-    message_id: i64,
-) -> (Option<String>, Option<String>) {
+async fn fetch_recalled_summary(state: &Arc<SharedState>, message_id: i64) -> (Option<String>, Option<String>) {
     let echo = uuid::Uuid::new_v4().to_string();
     let Ok(data) = call_api(state, OneBotAction::get_msg(message_id, echo)).await else {
         return (None, None);

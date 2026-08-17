@@ -40,13 +40,8 @@ pub struct CreatedProcess {
 }
 
 pub fn make_env_block(env: &HashMap<String, String>) -> Vec<u16> {
-    let mut items: Vec<(String, String)> =
-        env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    items.sort_by(|a, b| {
-        a.0.to_uppercase()
-            .cmp(&b.0.to_uppercase())
-            .then(a.0.cmp(&b.0))
-    });
+    let mut items: Vec<(String, String)> = env.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+    items.sort_by(|a, b| a.0.to_uppercase().cmp(&b.0.to_uppercase()).then(a.0.cmp(&b.0)));
     let mut w: Vec<u16> = Vec::new();
     for (k, v) in items {
         let mut s = to_wide(format!("{k}={v}"));
@@ -94,9 +89,7 @@ pub unsafe fn create_process_as_user(
     // The job is attached atomically at creation (PROC_THREAD_ATTRIBUTE_JOB_LIST)
     // so the whole process tree is terminable from the first instruction. If the
     // job can't be set up the spawn fails — never run the command untracked.
-    let job = std::sync::Arc::new(
-        crate::job::JobObject::create().map_err(|e| anyhow!("create process job: {e}"))?,
-    );
+    let job = std::sync::Arc::new(crate::job::JobObject::create().map_err(|e| anyhow!("create process job: {e}"))?);
     let mut pi: PROCESS_INFORMATION = std::mem::zeroed();
     let cwd_wide = to_wide(cwd);
     let env_block_len = env_block.len();
@@ -226,9 +219,7 @@ pub fn spawn_process_with_pipes(
             CloseHandle(in_w);
             return Err(anyhow!("CreatePipe stdout failed: {}", GetLastError()));
         }
-        if matches!(stderr_mode, StderrMode::Separate)
-            && CreatePipe(&mut err_r, &mut err_w, ptr::null_mut(), 0) == 0
-        {
+        if matches!(stderr_mode, StderrMode::Separate) && CreatePipe(&mut err_r, &mut err_w, ptr::null_mut(), 0) == 0 {
             CloseHandle(in_r);
             CloseHandle(in_w);
             CloseHandle(out_r);
@@ -243,17 +234,8 @@ pub fn spawn_process_with_pipes(
     };
 
     let stdio = Some((in_r, out_w, stderr_handle));
-    let spawn_result = unsafe {
-        create_process_as_user(
-            h_token,
-            argv,
-            cwd,
-            env_map,
-            logs_base_dir,
-            stdio,
-            use_private_desktop,
-        )
-    };
+    let spawn_result =
+        unsafe { create_process_as_user(h_token, argv, cwd, env_map, logs_base_dir, stdio, use_private_desktop) };
     let created = match spawn_result {
         Ok(v) => v,
         Err(err) => {

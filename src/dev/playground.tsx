@@ -52,7 +52,16 @@ import type { TouchedFile } from '@/lib/touched-files'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { buildTurns, formatDuration, type TurnStep } from '@/lib/turns'
 import { useAppTheme } from '@/lib/theme'
-import type { ChatMode, ContentBlock, Conversation, Message, Project, ProviderCapabilities, ThinkingLevel, ToolCallDisplay } from '@/types'
+import type {
+  ChatMode,
+  ContentBlock,
+  Conversation,
+  Message,
+  Project,
+  ProviderCapabilities,
+  ThinkingLevel,
+  ToolCallDisplay,
+} from '@/types'
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -101,21 +110,43 @@ function step(over: Partial<TurnStep> & Pick<TurnStep, 'kind'>): TurnStep {
 const DEMO_STEPS: TurnStep[] = [
   step({ kind: 'thinking', text: '先确认改动范围，再决定从哪个文件读起。' }),
   step({ kind: 'text', text: '我先看一下现有实现。' }),
-  step({ kind: 'tool', data: tool({ tool_name: 'read_file', status: 'completed', arguments: '{"path":"src/lib/turns.ts"}', result: 'export function buildTurns(...)' }) }),
+  step({
+    kind: 'tool',
+    data: tool({
+      tool_name: 'read_file',
+      status: 'completed',
+      arguments: '{"path":"src/lib/turns.ts"}',
+      result: 'export function buildTurns(...)',
+    }),
+  }),
   step({ kind: 'text', text: '分组逻辑没问题，接着跑一遍测试。' }),
-  step({ kind: 'tool', data: tool({ tool_name: 'run_command', status: 'completed', arguments: '{"command":"pnpm test"}', result: '89 passed' }) }),
+  step({
+    kind: 'tool',
+    data: tool({
+      tool_name: 'run_command',
+      status: 'completed',
+      arguments: '{"command":"pnpm test"}',
+      result: '89 passed',
+    }),
+  }),
 ]
 
 const MANY_STEPS: TurnStep[] = Array.from({ length: 40 }, (_, i) =>
-  step({ kind: 'tool', data: tool({ tool_name: 'read_file', status: 'completed', call_id: `pg-many-${i}`, arguments: `{"path":"src/file-${i}.ts"}` }) }),
+  step({
+    kind: 'tool',
+    data: tool({
+      tool_name: 'read_file',
+      status: 'completed',
+      call_id: `pg-many-${i}`,
+      arguments: `{"path":"src/file-${i}.ts"}`,
+    }),
+  }),
 )
 
 /** Fixed so the relative timestamps below stay on "刚刚" between reloads. */
 const PG_NOW = Date.now()
 
-function msg(
-  over: Partial<Message> & Pick<Message, 'id' | 'role' | 'content'>,
-): Message {
+function msg(over: Partial<Message> & Pick<Message, 'id' | 'role' | 'content'>): Message {
   return {
     conversation_id: 'pg',
     provider_id: 'openai',
@@ -153,29 +184,45 @@ const ANSWER_MD = [
  * process line and the footer. Built through `buildTurns` so the preview splits
  * process from conclusion the same way the real transcript does.
  */
-function TurnItemCase({ label, blocks, streaming = false }: {
+function TurnItemCase({
+  label,
+  blocks,
+  streaming = false,
+}: {
   label: string
   blocks: ContentBlock[]
   streaming?: boolean
 }) {
-  const turns = buildTurns([
-    msg({ id: `${label}-u`, role: 'user', content: '把审批矩阵那一节补完，然后我们定稿。', sort_order: 0 }),
-    msg({
-      id: `${label}-a`,
-      role: 'assistant',
-      content: ANSWER,
-      sort_order: 1,
-      created_at: PG_NOW + 450_000,
-      input_tokens: 611_603,
-      output_tokens: 6_699,
-      _blocks: blocks,
-    }),
-  ], { streaming })
+  const turns = buildTurns(
+    [
+      msg({ id: `${label}-u`, role: 'user', content: '把审批矩阵那一节补完，然后我们定稿。', sort_order: 0 }),
+      msg({
+        id: `${label}-a`,
+        role: 'assistant',
+        content: ANSWER,
+        sort_order: 1,
+        created_at: PG_NOW + 450_000,
+        input_tokens: 611_603,
+        output_tokens: 6_699,
+        _blocks: blocks,
+      }),
+    ],
+    { streaming },
+  )
   return (
     <div className="w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
       <div className="text-xs text-muted">{label}</div>
       {turns.map((turn) => (
-        <TurnItem key={turn.id} turn={turn} conversationId="pg" isLastTurn={streaming} streaming={streaming} onRegenerate={noop} onRate={noop} onDelete={noop} />
+        <TurnItem
+          key={turn.id}
+          turn={turn}
+          conversationId="pg"
+          isLastTurn={streaming}
+          streaming={streaming}
+          onRegenerate={noop}
+          onRate={noop}
+          onDelete={noop}
+        />
       ))}
     </div>
   )
@@ -208,17 +255,18 @@ function TurnCase({
 }) {
   const [open, setOpen] = useState(defaultOpen)
   const [index, setIndex] = useState(branch?.index ?? 1)
-  const headline = status === 'streaming'
-    ? '处理中…'
-    : status === 'crashed'
-      ? '还没结束就中断了'
-      : status === 'interrupted'
-        ? '已中断'
-        : status === 'awaiting-input'
-          ? '等待你的响应'
-          : durationMs != null
-            ? `已处理 ${formatDuration(durationMs)}`
-            : `${steps.length} 个步骤`
+  const headline =
+    status === 'streaming'
+      ? '处理中…'
+      : status === 'crashed'
+        ? '还没结束就中断了'
+        : status === 'interrupted'
+          ? '已中断'
+          : status === 'awaiting-input'
+            ? '等待你的响应'
+            : durationMs != null
+              ? `已处理 ${formatDuration(durationMs)}`
+              : `${steps.length} 个步骤`
 
   return (
     <div className="group/turn w-full max-w-2xl space-y-1 rounded-xl border border-dashed border-border/60 p-4">
@@ -256,15 +304,18 @@ function TurnCase({
           )}
           <span className="text-muted">1,204 + 318 tokens</span>
           <TurnActions>
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">复制</Button>
-            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">重新生成</Button>
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+              复制
+            </Button>
+            <Button variant="ghost" size="sm" className="h-6 px-2 text-xs">
+              重新生成
+            </Button>
           </TurnActions>
         </TurnFooter>
       </Turn>
     </div>
   )
 }
-
 
 /**
  * The composer menu with nothing behind it: `providers` is empty, so the model
@@ -315,8 +366,6 @@ function ComposerMenuCase({
   )
 }
 
-
-
 const READ_RESULT = [
   "import { defineConfig } from 'vite'",
   '',
@@ -340,7 +389,12 @@ const COMMAND_RESULT = [
 const WEB_SEARCH_RESULT = JSON.stringify({
   sources: [
     { title: 'HeroUI Pro', url: 'https://heroui.pro', content: '', site_name: 'HeroUI' },
-    { title: 'Base UI Collapsible', url: 'https://base-ui.com/react/components/collapsible', content: '', site_name: 'Base UI' },
+    {
+      title: 'Base UI Collapsible',
+      url: 'https://base-ui.com/react/components/collapsible',
+      content: '',
+      site_name: 'Base UI',
+    },
   ],
 })
 
@@ -413,10 +467,7 @@ const TODO_RUNNING = JSON.stringify({
 
 const TODO_DONE = JSON.stringify({
   title: '修复 CI 失败',
-  todos: [
-    todoStep('定位失败用例', '正在定位失败用例', 'completed'),
-    todoStep('修掉断言', '正在修断言', 'completed'),
-  ],
+  todos: [todoStep('定位失败用例', '正在定位失败用例', 'completed'), todoStep('修掉断言', '正在修断言', 'completed')],
 })
 
 const TODO_SINGLE = JSON.stringify({
@@ -427,10 +478,7 @@ const TODO_SINGLE = JSON.stringify({
 // The model is allowed to leave nothing in progress; the bar has to say so.
 const TODO_NO_CURRENT = JSON.stringify({
   title: '梳理待办',
-  todos: [
-    todoStep('收集需求', '正在收集需求', 'completed'),
-    todoStep('排优先级', '正在排优先级', 'pending'),
-  ],
+  todos: [todoStep('收集需求', '正在收集需求', 'completed'), todoStep('排优先级', '正在排优先级', 'pending')],
 })
 
 const PLAN_MD = [
@@ -598,279 +646,357 @@ function Gallery() {
 
         <Section title="ToolCallBlock / 业务状态">
           <div>
-            <ToolCallBlock data={tool({
-              tool_name: 'read_file',
-              status: 'completed',
-              arguments: JSON.stringify({ path: 'C:/Users/dev/project/vite.config.ts' }),
-              result: READ_RESULT,
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'search_files',
-              status: 'completed',
-              arguments: JSON.stringify({ pattern: 'approveToolCall' }),
-              result: SEARCH_RESULT,
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'run_command',
-              status: 'completed',
-              arguments: JSON.stringify({ command: 'cargo check' }),
-              result: COMMAND_RESULT,
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'save_memory',
-              status: 'completed',
-              arguments: JSON.stringify({ key: 'user_preference' }),
-              result: JSON.stringify({ saved: true, key: 'user_preference', scope: 'global' }),
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'write_file',
-              status: 'running',
-              arguments: JSON.stringify({ path: 'src/lib/format.ts', content: WRITE_FILE_CONTENT }),
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'read_file',
+                status: 'completed',
+                arguments: JSON.stringify({ path: 'C:/Users/dev/project/vite.config.ts' }),
+                result: READ_RESULT,
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'search_files',
+                status: 'completed',
+                arguments: JSON.stringify({ pattern: 'approveToolCall' }),
+                result: SEARCH_RESULT,
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'run_command',
+                status: 'completed',
+                arguments: JSON.stringify({ command: 'cargo check' }),
+                result: COMMAND_RESULT,
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'save_memory',
+                status: 'completed',
+                arguments: JSON.stringify({ key: 'user_preference' }),
+                result: JSON.stringify({ saved: true, key: 'user_preference', scope: 'global' }),
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'write_file',
+                status: 'running',
+                arguments: JSON.stringify({ path: 'src/lib/format.ts', content: WRITE_FILE_CONTENT }),
+              })}
+            />
             {/* The pair worth looking at together: the transcript calls both of
                 these running, and only the first one is. Everything a reply asks
                 for is written down before any of it runs, so the difference has
                 to come from position. */}
-            <ToolCallBlock data={tool({
-              tool_name: 'run_command',
-              status: 'running',
-              arguments: JSON.stringify({ command: 'cargo test --lib' }),
-            })} />
-            <ToolCallBlock queued data={tool({
-              tool_name: 'run_command',
-              status: 'running',
-              arguments: JSON.stringify({ command: 'pnpm vitest run' }),
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'edit_file',
-              status: 'pending',
-              arguments: JSON.stringify({
-                file_path: 'src/main.tsx',
-                old_string: 'createRoot(root).render(\n  <App />,\n)',
-                new_string: 'createRoot(root).render(\n  <StrictMode>\n    <App />\n  </StrictMode>,\n)',
-              }),
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'apply_patch',
-              status: 'pending',
-              arguments: JSON.stringify({ base_path: '.', patch: CODEX_PATCH }),
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'apply_patch',
-              status: 'completed',
-              arguments: JSON.stringify({ patch: UNIFIED_PATCH }),
-              result: 'Applied patch: 1 updated — src/lib.rs',
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'run_command',
-              status: 'pending',
-              call_id: 'pg-escalation',
-              retry_reason: 'sandbox denied',
-              arguments: JSON.stringify({ command: 'netsh advfirewall show allprofiles' }),
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'run_command',
+                status: 'running',
+                arguments: JSON.stringify({ command: 'cargo test --lib' }),
+              })}
+            />
+            <ToolCallBlock
+              queued
+              data={tool({
+                tool_name: 'run_command',
+                status: 'running',
+                arguments: JSON.stringify({ command: 'pnpm vitest run' }),
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'edit_file',
+                status: 'pending',
+                arguments: JSON.stringify({
+                  file_path: 'src/main.tsx',
+                  old_string: 'createRoot(root).render(\n  <App />,\n)',
+                  new_string: 'createRoot(root).render(\n  <StrictMode>\n    <App />\n  </StrictMode>,\n)',
+                }),
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'apply_patch',
+                status: 'pending',
+                arguments: JSON.stringify({ base_path: '.', patch: CODEX_PATCH }),
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'apply_patch',
+                status: 'completed',
+                arguments: JSON.stringify({ patch: UNIFIED_PATCH }),
+                result: 'Applied patch: 1 updated — src/lib.rs',
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'run_command',
+                status: 'pending',
+                call_id: 'pg-escalation',
+                retry_reason: 'sandbox denied',
+                arguments: JSON.stringify({ command: 'netsh advfirewall show allprofiles' }),
+              })}
+            />
             {/* Asked for, never answered: the turn died while it was on screen. */}
-            <ToolCallBlock data={tool({
-              tool_name: 'run_command',
-              status: 'orphaned',
-              arguments: JSON.stringify({ command: 'git push --force' }),
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'delete_file',
-              status: 'error',
-              arguments: JSON.stringify({ path: 'C:/locked/file.db' }),
-              result: 'Permission denied: the file is locked by another process (os error 32)',
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'read_file',
-              status: 'denied',
-              arguments: JSON.stringify({ path: 'C:/Users/dev/.ssh/id_ed25519' }),
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'run_command',
+                status: 'orphaned',
+                arguments: JSON.stringify({ command: 'git push --force' }),
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'delete_file',
+                status: 'error',
+                arguments: JSON.stringify({ path: 'C:/locked/file.db' }),
+                result: 'Permission denied: the file is locked by another process (os error 32)',
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'read_file',
+                status: 'denied',
+                arguments: JSON.stringify({ path: 'C:/Users/dev/.ssh/id_ed25519' }),
+              })}
+            />
           </div>
         </Section>
 
         <Section title="ToolCallBlock / run_agent">
           <div>
             {/* 跑着，还没派出去——事件到达之前卡片上没有会话可以点进去。 */}
-            <ToolCallBlock data={tool({
-              tool_name: 'run_agent',
-              status: 'running',
-              arguments: RUN_AGENT_ARGS,
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'run_agent',
+                status: 'running',
+                arguments: RUN_AGENT_ARGS,
+              })}
+            />
             {/* 跑着，已经有会话和步数。 */}
-            <ToolCallBlock data={tool({
-              tool_name: 'run_agent',
-              status: 'running',
-              call_id: 'pg-run-agent-live',
-              arguments: RUN_AGENT_ARGS,
-              sub_agent: { conversation_id: 'pg-sub-1', turn_id: 'pg-run-1', kind: 'agent', steps: 4 },
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'run_agent',
+                status: 'running',
+                call_id: 'pg-run-agent-live',
+                arguments: RUN_AGENT_ARGS,
+                sub_agent: { conversation_id: 'pg-sub-1', turn_id: 'pg-run-1', kind: 'agent', steps: 4 },
+              })}
+            />
             {/* 它要权限。问题画在这里，因为没人在看它自己那条会话。 */}
-            <ToolCallBlock data={tool({
-              tool_name: 'run_agent',
-              status: 'running',
-              call_id: 'pg-run-agent-asking',
-              arguments: RUN_AGENT_ARGS,
-              sub_agent: { conversation_id: 'pg-sub-1', turn_id: 'pg-run-2', kind: 'agent', steps: 2 },
-              nested_approval: {
-                approval_id: 'pg-nested',
-                call_id: 'pg-child-call',
-                tool_name: 'run_command',
-                arguments: JSON.stringify({ command: 'cargo test --all' }),
-                sub_conversation_id: 'pg-sub-1',
-              },
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'run_agent',
+                status: 'running',
+                call_id: 'pg-run-agent-asking',
+                arguments: RUN_AGENT_ARGS,
+                sub_agent: { conversation_id: 'pg-sub-1', turn_id: 'pg-run-2', kind: 'agent', steps: 2 },
+                nested_approval: {
+                  approval_id: 'pg-nested',
+                  call_id: 'pg-child-call',
+                  tool_name: 'run_command',
+                  arguments: JSON.stringify({ command: 'cargo test --all' }),
+                  sub_conversation_id: 'pg-sub-1',
+                },
+              })}
+            />
             {/* 只读的那一种。 */}
-            <ToolCallBlock data={tool({
-              tool_name: 'run_agent',
-              status: 'completed',
-              call_id: 'pg-run-agent-explore',
-              arguments: JSON.stringify({
-                agent: 'explore',
-                description: '找出 SSE 解析在哪一层',
-                prompt: '在 src-tauri/src/provider 下找到 SSE 事件变成 ChatChunk 的位置，报告文件与行号。',
-              }),
-              sub_agent: { conversation_id: 'pg-sub-2', turn_id: 'pg-run-3', kind: 'explore', steps: 3 },
-              result: 'openai_compat.rs:187 起，eventsource-stream 的 Event 在这里变成 ChatChunk。',
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'run_agent',
+                status: 'completed',
+                call_id: 'pg-run-agent-explore',
+                arguments: JSON.stringify({
+                  agent: 'explore',
+                  description: '找出 SSE 解析在哪一层',
+                  prompt: '在 src-tauri/src/provider 下找到 SSE 事件变成 ChatChunk 的位置，报告文件与行号。',
+                }),
+                sub_agent: { conversation_id: 'pg-sub-2', turn_id: 'pg-run-3', kind: 'explore', steps: 3 },
+                result: 'openai_compat.rs:187 起，eventsource-stream 的 Event 在这里变成 ChatChunk。',
+              })}
+            />
             {/* 派出去了，然后进程没了。 */}
-            <ToolCallBlock data={tool({
-              tool_name: 'run_agent',
-              status: 'orphaned',
-              call_id: 'pg-run-agent-dead',
-              arguments: RUN_AGENT_ARGS,
-              sub_agent: { conversation_id: 'pg-sub-3', turn_id: 'pg-run-4', kind: 'agent', steps: 1 },
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'run_agent',
+                status: 'orphaned',
+                call_id: 'pg-run-agent-dead',
+                arguments: RUN_AGENT_ARGS,
+                sub_agent: { conversation_id: 'pg-sub-3', turn_id: 'pg-run-4', kind: 'agent', steps: 1 },
+              })}
+            />
             {/* 子会话里看同一次调用：确实在等人，但不是等看这条 transcript 的人。 */}
-            <ToolCallBlock data={tool({
-              tool_name: 'run_command',
-              status: 'awaiting_parent',
-              arguments: JSON.stringify({ command: 'cargo test --all' }),
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'run_command',
+                status: 'awaiting_parent',
+                arguments: JSON.stringify({ command: 'cargo test --all' }),
+              })}
+            />
           </div>
         </Section>
 
         <Section title="ToolCallBlock / ask_user 与 web_search">
           <div>
-            <ToolCallBlock data={tool({
-              tool_name: 'ask_user',
-              status: 'pending',
-              arguments: ASK_USER_ARGS,
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'ask_user',
+                status: 'pending',
+                arguments: ASK_USER_ARGS,
+              })}
+            />
             {/* 问题留在屏幕上，表单没了——发不出去了，取而代之的是它的下场。 */}
-            <ToolCallBlock data={tool({
-              tool_name: 'ask_user',
-              status: 'orphaned',
-              arguments: ASK_USER_ARGS,
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'ask_user',
-              status: 'error',
-              arguments: ASK_USER_ARGS,
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'web_search',
-              status: 'pending',
-              arguments: JSON.stringify({ query: 'HeroUI Pro chain of thought' }),
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'web_search',
-              status: 'completed',
-              arguments: JSON.stringify({ query: 'HeroUI Pro chain of thought' }),
-              result: WEB_SEARCH_RESULT,
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'ask_user',
+                status: 'orphaned',
+                arguments: ASK_USER_ARGS,
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'ask_user',
+                status: 'error',
+                arguments: ASK_USER_ARGS,
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'web_search',
+                status: 'pending',
+                arguments: JSON.stringify({ query: 'HeroUI Pro chain of thought' }),
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'web_search',
+                status: 'completed',
+                arguments: JSON.stringify({ query: 'HeroUI Pro chain of thought' }),
+                result: WEB_SEARCH_RESULT,
+              })}
+            />
           </div>
         </Section>
 
         <Section title="ToolCallBlock / todo 清单">
           <div>
-            <ToolCallBlock data={tool({
-              tool_name: 'update_todos',
-              status: 'completed',
-              arguments: TODO_RUNNING,
-              result: 'Checklist "重构鉴权模块" updated (1/4 done). Now: 替换调用方',
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'update_todos',
-              status: 'completed',
-              arguments: TODO_DONE,
-              result: 'Checklist "修复 CI 失败" finished (2/2). The next update starts a new one.',
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'update_todos',
-              status: 'completed',
-              arguments: TODO_SINGLE,
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'update_todos',
+                status: 'completed',
+                arguments: TODO_RUNNING,
+                result: 'Checklist "重构鉴权模块" updated (1/4 done). Now: 替换调用方',
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'update_todos',
+                status: 'completed',
+                arguments: TODO_DONE,
+                result: 'Checklist "修复 CI 失败" finished (2/2). The next update starts a new one.',
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'update_todos',
+                status: 'completed',
+                arguments: TODO_SINGLE,
+              })}
+            />
             {/* Mid-stream the arguments are still partial JSON, so it falls back to a plain card. */}
-            <ToolCallBlock data={tool({
-              tool_name: 'update_todos',
-              status: 'running',
-              arguments: '{"title":"重构鉴权模块","todos":[{"content":"抽离 token',
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'update_todos',
-              status: 'error',
-              arguments: JSON.stringify({
-                title: '重构鉴权模块',
-                todos: [
-                  todoStep('抽离 token 校验', '正在抽离 token 校验', 'in_progress'),
-                  todoStep('替换调用方', '正在替换调用方', 'in_progress'),
-                ],
-              }),
-              result: 'Only one step may be in_progress at a time, but 2 are: 抽离 token 校验, 替换调用方. Mark the others pending or completed.',
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'update_todos',
+                status: 'running',
+                arguments: '{"title":"重构鉴权模块","todos":[{"content":"抽离 token',
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'update_todos',
+                status: 'error',
+                arguments: JSON.stringify({
+                  title: '重构鉴权模块',
+                  todos: [
+                    todoStep('抽离 token 校验', '正在抽离 token 校验', 'in_progress'),
+                    todoStep('替换调用方', '正在替换调用方', 'in_progress'),
+                  ],
+                }),
+                result:
+                  'Only one step may be in_progress at a time, but 2 are: 抽离 token 校验, 替换调用方. Mark the others pending or completed.',
+              })}
+            />
           </div>
         </Section>
 
         <Section title="ToolCallBlock / 计划模式">
           <div>
-            <ToolCallBlock data={tool({
-              tool_name: 'enter_plan',
-              status: 'pending',
-              arguments: JSON.stringify({
-                reason: '鉴权改动牵涉三个模块，先确认走 middleware 还是 handler 内联更省事。',
-              }),
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'enter_plan',
-              status: 'denied',
-              arguments: JSON.stringify({ reason: '这个改动可能有多种做法。' }),
-              result: 'The user would rather not plan first…',
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'exit_plan',
-              status: 'pending',
-              arguments: PLAN_ARGS,
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'exit_plan',
-              status: 'completed',
-              arguments: PLAN_ARGS,
-              result: 'The user approved the plan. You are out of plan mode…',
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'exit_plan',
-              status: 'denied',
-              arguments: PLAN_ARGS,
-              result: 'The user sent the plan back: 先别动 handler.rs，只加测试。',
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'enter_plan',
+                status: 'pending',
+                arguments: JSON.stringify({
+                  reason: '鉴权改动牵涉三个模块，先确认走 middleware 还是 handler 内联更省事。',
+                }),
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'enter_plan',
+                status: 'denied',
+                arguments: JSON.stringify({ reason: '这个改动可能有多种做法。' }),
+                result: 'The user would rather not plan first…',
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'exit_plan',
+                status: 'pending',
+                arguments: PLAN_ARGS,
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'exit_plan',
+                status: 'completed',
+                arguments: PLAN_ARGS,
+                result: 'The user approved the plan. You are out of plan mode…',
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'exit_plan',
+                status: 'denied',
+                arguments: PLAN_ARGS,
+                result: 'The user sent the plan back: 先别动 handler.rs，只加测试。',
+              })}
+            />
             {/* 重载后才见得到的那几种：tool_outcome 落库以后，拒绝和失败不再
                 退化成绿勾；未答复但 turn 仍在跑的调用也不再被写成"已失效"。
                 在这之前它们都只会渲染出一个空壳。 */}
-            <ToolCallBlock data={tool({
-              tool_name: 'exit_plan',
-              status: 'error',
-              arguments: PLAN_ARGS,
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'enter_plan',
-              status: 'running',
-              arguments: JSON.stringify({ reason: '还在等这次调用跑完。' }),
-            })} />
-            <ToolCallBlock data={tool({
-              tool_name: 'enter_plan',
-              status: 'orphaned',
-              arguments: JSON.stringify({ reason: '问这个的那一轮已经没了。' }),
-            })} />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'exit_plan',
+                status: 'error',
+                arguments: PLAN_ARGS,
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'enter_plan',
+                status: 'running',
+                arguments: JSON.stringify({ reason: '还在等这次调用跑完。' }),
+              })}
+            />
+            <ToolCallBlock
+              data={tool({
+                tool_name: 'enter_plan',
+                status: 'orphaned',
+                arguments: JSON.stringify({ reason: '问这个的那一轮已经没了。' }),
+              })}
+            />
           </div>
         </Section>
 
@@ -884,22 +1010,67 @@ function Gallery() {
 
         <Section title="TurnItem / 一整个回合的排版">
           <div className="space-y-3">
-            <TurnItemCase label="有中间过程 · 头像与署名在回合顶部" blocks={[
-              { type: 'thinking', text: '先确认改动范围，再决定从哪个文件读起。' },
-              { type: 'tool_call', data: tool({ tool_name: 'read_file', status: 'completed', call_id: 'pg-turnitem-read', arguments: '{"path":"docs/approval.md"}', result: '## 审批矩阵' }) },
-              { type: 'text', text: ANSWER_MD },
-            ]} />
+            <TurnItemCase
+              label="有中间过程 · 头像与署名在回合顶部"
+              blocks={[
+                { type: 'thinking', text: '先确认改动范围，再决定从哪个文件读起。' },
+                {
+                  type: 'tool_call',
+                  data: tool({
+                    tool_name: 'read_file',
+                    status: 'completed',
+                    call_id: 'pg-turnitem-read',
+                    arguments: '{"path":"docs/approval.md"}',
+                    result: '## 审批矩阵',
+                  }),
+                },
+                { type: 'text', text: ANSWER_MD },
+              ]}
+            />
             <TurnItemCase label="纯问答 · 头像与署名在结论行" blocks={[{ type: 'text', text: ANSWER }]} />
-            <TurnItemCase label="工具已返回、模型还没开口 · 底部留一行 shimmer" streaming blocks={[
-              { type: 'text', text: '我先看看项目里有什么。' },
-              { type: 'tool_call', data: tool({ tool_name: 'run_command', status: 'completed', call_id: 'pg-waiting-ls', arguments: '{"command":"ls"}', result: 'main.py' }) },
-            ]} />
-            <TurnItemCase label="待审批 · 引出它的那句话留在它上方" blocks={[
-              { type: 'text', text: '我先看看项目里有什么。' },
-              { type: 'tool_call', data: tool({ tool_name: 'run_command', status: 'completed', call_id: 'pg-approval-ls', arguments: '{"command":"ls"}', result: 'main.py' }) },
-              { type: 'text', text: '看下 main.py。' },
-              { type: 'tool_call', data: tool({ tool_name: 'run_command', status: 'pending', call_id: 'pg-approval-cat', arguments: '{"command":"Get-Content main.py"}' }) },
-            ]} />
+            <TurnItemCase
+              label="工具已返回、模型还没开口 · 底部留一行 shimmer"
+              streaming
+              blocks={[
+                { type: 'text', text: '我先看看项目里有什么。' },
+                {
+                  type: 'tool_call',
+                  data: tool({
+                    tool_name: 'run_command',
+                    status: 'completed',
+                    call_id: 'pg-waiting-ls',
+                    arguments: '{"command":"ls"}',
+                    result: 'main.py',
+                  }),
+                },
+              ]}
+            />
+            <TurnItemCase
+              label="待审批 · 引出它的那句话留在它上方"
+              blocks={[
+                { type: 'text', text: '我先看看项目里有什么。' },
+                {
+                  type: 'tool_call',
+                  data: tool({
+                    tool_name: 'run_command',
+                    status: 'completed',
+                    call_id: 'pg-approval-ls',
+                    arguments: '{"command":"ls"}',
+                    result: 'main.py',
+                  }),
+                },
+                { type: 'text', text: '看下 main.py。' },
+                {
+                  type: 'tool_call',
+                  data: tool({
+                    tool_name: 'run_command',
+                    status: 'pending',
+                    call_id: 'pg-approval-cat',
+                    arguments: '{"command":"Get-Content main.py"}',
+                  }),
+                },
+              ]}
+            />
           </div>
         </Section>
 
@@ -911,7 +1082,12 @@ function Gallery() {
             <TurnCase
               label="awaiting-input · 待审批块留在折叠区外"
               status="awaiting-input"
-              pinned={[step({ kind: 'tool', data: tool({ tool_name: 'run_command', status: 'pending', arguments: '{"command":"rm -rf dist"}' }) })]}
+              pinned={[
+                step({
+                  kind: 'tool',
+                  data: tool({ tool_name: 'run_command', status: 'pending', arguments: '{"command":"rm -rf dist"}' }),
+                }),
+              ]}
               result={null}
             />
             <TurnCase label="interrupted · 无结论" status="interrupted" result={null} />
@@ -959,7 +1135,6 @@ function Gallery() {
             <TodoBoard todos={(JSON.parse(TODO_NO_CURRENT) as { todos: TodoDraft[] }).todos} />
           </div>
         </Section>
-
 
         <Section title="VoiceButton / 语音输入按钮">
           <div className="flex flex-wrap items-center gap-6">
@@ -1011,14 +1186,23 @@ function HotkeyProbe() {
 
   const note = (what: string) => setLog((prev) => [what, ...prev].slice(0, 6))
 
-  useHotkey('mod+k', () => { note('mod+k'); setPaletteOpen(true) }, { ignoreInInput: false })
+  useHotkey(
+    'mod+k',
+    () => {
+      note('mod+k')
+      setPaletteOpen(true)
+    },
+    { ignoreInInput: false },
+  )
   useHotkey('mod+shift+k', () => note('mod+shift+k'))
   useHotkey('escape', () => note('escape'))
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="outline" onClick={() => setPaletteOpen(true)}>打开面板</Button>
+        <Button variant="outline" onClick={() => setPaletteOpen(true)}>
+          打开面板
+        </Button>
         <Input
           type="text"
           aria-label="焦点测试用输入框"
@@ -1027,8 +1211,8 @@ function HotkeyProbe() {
         />
       </div>
       <p className="text-xs text-muted">
-        预期：<code>mod+k</code> 在输入框里也触发，<code>mod+shift+k</code> 不触发（<code>ignoreInInput</code> 默认开），
-        且 <code>mod+shift+k</code> 不会连带触发 <code>mod+k</code>。
+        预期：<code>mod+k</code> 在输入框里也触发，<code>mod+shift+k</code> 不触发（<code>ignoreInInput</code>{' '}
+        默认开）， 且 <code>mod+shift+k</code> 不会连带触发 <code>mod+k</code>。
       </p>
       <div className="rounded-lg border border-border bg-surface p-3 text-xs">
         <div className="text-muted">最近命中：{log.length ? log.join(' · ') : '（无）'}</div>
@@ -1060,10 +1244,20 @@ const CHANGED_FILES: TouchedFile[] = [
 
 function paletteRow(id: string, title: string | null, over: Partial<Conversation> = {}): Conversation {
   return {
-    id, title, project_id: null, is_pinned: 0, is_archived: 0,
-    message_count: 3, created_at: 0, updated_at: 0,
-    assistant_id: null, compact_cursor: null, thinking_level: null,
-    fast_mode: 0, mode: null, head_message_id: null,
+    id,
+    title,
+    project_id: null,
+    is_pinned: 0,
+    is_archived: 0,
+    message_count: 3,
+    created_at: 0,
+    updated_at: 0,
+    assistant_id: null,
+    compact_cursor: null,
+    thinking_level: null,
+    fast_mode: 0,
+    mode: null,
+    head_message_id: null,
     ...over,
   } as Conversation
 }
@@ -1076,6 +1270,26 @@ const PALETTE_ROWS: Conversation[] = [
 ]
 
 const PALETTE_PROJECTS: Project[] = [
-  { id: 'p1', name: 'meridian', path: 'C:/code/meridian', source_type: 'local', source_id: null, assistant_id: null, description: null, created_at: 0, updated_at: 0 },
-  { id: 'p2', name: '某个群聊', path: null, source_type: 'onebot_group', source_id: '123', assistant_id: null, description: null, created_at: 0, updated_at: 0 },
+  {
+    id: 'p1',
+    name: 'meridian',
+    path: 'C:/code/meridian',
+    source_type: 'local',
+    source_id: null,
+    assistant_id: null,
+    description: null,
+    created_at: 0,
+    updated_at: 0,
+  },
+  {
+    id: 'p2',
+    name: '某个群聊',
+    path: null,
+    source_type: 'onebot_group',
+    source_id: '123',
+    assistant_id: null,
+    description: null,
+    created_at: 0,
+    updated_at: 0,
+  },
 ]

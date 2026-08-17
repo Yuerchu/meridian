@@ -91,9 +91,7 @@ export function useTurnSettings(conversationId: string): TurnSettings {
   // global default only when the conversation has no (or a dangling) binding.
   useEffect(() => {
     if (assistants.length === 0) return
-    const bound = conversationAssistantId
-      ? assistants.find((x) => x.id === conversationAssistantId)
-      : undefined
+    const bound = conversationAssistantId ? assistants.find((x) => x.id === conversationAssistantId) : undefined
     const effective = bound ?? assistants.find((x) => x.is_default === 1) ?? assistants[0]
     if (effective) {
       setSelectedAssistantId(effective.id)
@@ -109,9 +107,12 @@ export function useTurnSettings(conversationId: string): TurnSettings {
       if (a?.model_id) setSelectedModelId(a.model_id)
       if (a?.provider_id) setSelectedProviderId(a.provider_id)
       // Persist the explicit switch so the binding survives conversation changes
-      api.setConversationAssistant(conversationId, id)
+      api
+        .setConversationAssistant(conversationId, id)
         .then(() => refreshConversations())
-        .catch(() => { /* selection still applies locally for this session */ })
+        .catch(() => {
+          /* selection still applies locally for this session */
+        })
     },
     [assistants, conversationId, refreshConversations],
   )
@@ -128,7 +129,8 @@ export function useTurnSettings(conversationId: string): TurnSettings {
       setCapabilities(null)
       return
     }
-    api.getProviderCapabilities(selectedProviderId, selectedModelId)
+    api
+      .getProviderCapabilities(selectedProviderId, selectedModelId)
       .then(setCapabilities)
       .catch(() => setCapabilities(null))
   }, [selectedProviderId, selectedModelId])
@@ -154,53 +156,69 @@ export function useTurnSettings(conversationId: string): TurnSettings {
     if (capabilities.supports_fast !== true) setFastMode(false)
   }, [capabilities])
 
-  const onSelectThinkingLevel = useCallback((level: ThinkingLevel) => {
-    setThinkingLevel(level)
-    api.setConversationReasoningPrefs(conversationId, level === 'default' ? null : level, fastMode)
-      .then(() => refreshConversations())
-      .catch(() => { /* selection still applies locally for this session */ })
-  }, [conversationId, fastMode, refreshConversations])
+  const onSelectThinkingLevel = useCallback(
+    (level: ThinkingLevel) => {
+      setThinkingLevel(level)
+      api
+        .setConversationReasoningPrefs(conversationId, level === 'default' ? null : level, fastMode)
+        .then(() => refreshConversations())
+        .catch(() => {
+          /* selection still applies locally for this session */
+        })
+    },
+    [conversationId, fastMode, refreshConversations],
+  )
 
-  const onToggleFast = useCallback((next: boolean) => {
-    setFastMode(next)
-    api.setConversationReasoningPrefs(
-      conversationId,
-      thinkingLevel === 'default' ? null : thinkingLevel,
-      next,
-    )
-      .then(() => refreshConversations())
-      .catch(() => { /* toggle still applies locally for this session */ })
-  }, [conversationId, thinkingLevel, refreshConversations])
+  const onToggleFast = useCallback(
+    (next: boolean) => {
+      setFastMode(next)
+      api
+        .setConversationReasoningPrefs(conversationId, thinkingLevel === 'default' ? null : thinkingLevel, next)
+        .then(() => refreshConversations())
+        .catch(() => {
+          /* toggle still applies locally for this session */
+        })
+    },
+    [conversationId, thinkingLevel, refreshConversations],
+  )
 
-  const onSelectMode = useCallback((next: ChatMode) => {
-    const previous = mode
-    setMode(next)
-    api.setConversationMode(conversationId, next === 'work' ? null : next)
-      .then(() => refreshConversations())
-      .catch((err) => {
-        // Rolled back rather than kept locally, unlike the other two toggles.
-        // The mode decides whether the model can edit files at all, so a
-        // toolbar showing a mode that did not take effect is worse than an
-        // error: the user would think they were in a read-only conversation.
-        setMode(previous)
-        storeSetError(conversationId, String(err))
-      })
-  }, [conversationId, mode, refreshConversations, storeSetError])
+  const onSelectMode = useCallback(
+    (next: ChatMode) => {
+      const previous = mode
+      setMode(next)
+      api
+        .setConversationMode(conversationId, next === 'work' ? null : next)
+        .then(() => refreshConversations())
+        .catch((err) => {
+          // Rolled back rather than kept locally, unlike the other two toggles.
+          // The mode decides whether the model can edit files at all, so a
+          // toolbar showing a mode that did not take effect is worse than an
+          // error: the user would think they were in a read-only conversation.
+          setMode(previous)
+          storeSetError(conversationId, String(err))
+        })
+    },
+    [conversationId, mode, refreshConversations, storeSetError],
+  )
 
-  const onToggleAcceptEdits = useCallback((next: boolean) => {
-    const previous = acceptEdits
-    setAcceptEdits(next)
-    api.setConversationAcceptEdits(conversationId, next)
-      .then(() => refreshConversations())
-      .catch((err) => {
-        // Rolled back rather than kept locally, for the same reason as the mode:
-        // a toolbar claiming edits are pre-approved when the backend never
-        // recorded it would have the user expecting silence and getting prompts
-        // — or worse, the reverse.
-        setAcceptEdits(previous)
-        storeSetError(conversationId, String(err))
-      })
-  }, [conversationId, acceptEdits, refreshConversations, storeSetError])
+  const onToggleAcceptEdits = useCallback(
+    (next: boolean) => {
+      const previous = acceptEdits
+      setAcceptEdits(next)
+      api
+        .setConversationAcceptEdits(conversationId, next)
+        .then(() => refreshConversations())
+        .catch((err) => {
+          // Rolled back rather than kept locally, for the same reason as the mode:
+          // a toolbar claiming edits are pre-approved when the backend never
+          // recorded it would have the user expecting silence and getting prompts
+          // — or worse, the reverse.
+          setAcceptEdits(previous)
+          storeSetError(conversationId, String(err))
+        })
+    },
+    [conversationId, acceptEdits, refreshConversations, storeSetError],
+  )
 
   // Tracks the stored value continuously: approving a plan switches the mode on
   // the backend, which emits `conversation-updated`, and the toolbar has to

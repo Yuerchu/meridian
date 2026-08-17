@@ -142,9 +142,7 @@ export function GeneralSettings() {
       )}
 
       <div className="space-y-3">
-        <p className="block text-xs font-medium text-muted">
-          {t('settings.general.webSearch')}
-        </p>
+        <p className="block text-xs font-medium text-muted">{t('settings.general.webSearch')}</p>
         {/* The heading above names the whole section, not this control, so both
             the picker and the key field carry their own name. Without them a
             screen reader announces the trigger by its current value alone. */}
@@ -157,7 +155,8 @@ export function GeneralSettings() {
           triggerClassName="max-w-xs"
         />
         <div className="flex items-center gap-2">
-          <Input fullWidth
+          <Input
+            fullWidth
             type="password"
             aria-label={t('settings.provider.apiKey')}
             value={searchApiKey}
@@ -177,9 +176,7 @@ export function GeneralSettings() {
             {searchKeySaved ? <Check className="w-4 h-4" /> : t('settings.general.save')}
           </Button>
         </div>
-        <p className="text-xs text-muted">
-          {t('settings.general.searchHint')}
-        </p>
+        <p className="text-xs text-muted">{t('settings.general.searchHint')}</p>
       </div>
 
       {platform === 'android' && <AndroidFileAccess />}

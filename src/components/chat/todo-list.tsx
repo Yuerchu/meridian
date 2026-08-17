@@ -26,9 +26,9 @@ const STATUSES: readonly TodoItemStatus[] = ['pending', 'in_progress', 'complete
 function isDraft(value: unknown): value is TodoDraft {
   if (typeof value !== 'object' || value === null) return false
   const v = value as Record<string, unknown>
-  return typeof v.content === 'string'
-    && typeof v.active_form === 'string'
-    && STATUSES.includes(v.status as TodoItemStatus)
+  return (
+    typeof v.content === 'string' && typeof v.active_form === 'string' && STATUSES.includes(v.status as TodoItemStatus)
+  )
 }
 
 /**

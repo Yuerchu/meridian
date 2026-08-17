@@ -1,0 +1,14 @@
+# 仓库内一律 LF(与 .editorconfig 一致)。没有这条,Windows 的 autocrlf
+# 会在 checkout 时转成 CRLF,rustfmt/prettier 的 --check 就会在没人改过的
+# 文件上报差异。
+* text=auto eol=lf
+
+# 二进制类型,禁止任何行尾处理
+*.png binary
+*.ico binary
+*.icns binary
+*.gif binary
+*.jpg binary
+*.webp binary
+*.woff2 binary
+*.onnx binary

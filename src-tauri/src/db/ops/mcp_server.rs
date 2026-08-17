@@ -14,21 +14,12 @@ pub fn get_mcp_server(conn: &mut SqliteConnection, id: &str) -> QueryResult<McpS
     mcp_servers::table.find(id).first::<McpServer>(conn)
 }
 
-pub fn create_mcp_server(
-    conn: &mut SqliteConnection,
-    new: &NewMcpServer,
-) -> QueryResult<McpServer> {
-    diesel::insert_into(mcp_servers::table)
-        .values(new)
-        .execute(conn)?;
+pub fn create_mcp_server(conn: &mut SqliteConnection, new: &NewMcpServer) -> QueryResult<McpServer> {
+    diesel::insert_into(mcp_servers::table).values(new).execute(conn)?;
     mcp_servers::table.find(new.id).first::<McpServer>(conn)
 }
 
-pub fn update_mcp_server(
-    conn: &mut SqliteConnection,
-    id: &str,
-    changeset: &McpServerUpdate,
-) -> QueryResult<McpServer> {
+pub fn update_mcp_server(conn: &mut SqliteConnection, id: &str, changeset: &McpServerUpdate) -> QueryResult<McpServer> {
     diesel::update(mcp_servers::table.find(id))
         .set(changeset)
         .execute(conn)?;

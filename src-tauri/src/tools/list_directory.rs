@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use super::{Permission, Tool, ToolContext};
+use async_trait::async_trait;
 
 pub struct ListDirectoryTool;
 
@@ -43,9 +43,7 @@ impl Tool for ListDirectoryTool {
     }
 
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
-        let path_str = args["path"]
-            .as_str()
-            .ok_or("missing 'path' argument")?;
+        let path_str = args["path"].as_str().ok_or("missing 'path' argument")?;
 
         let target = context.resolve_and_validate(path_str)?;
         let entries = super::backend::list_dir(&target).await?;

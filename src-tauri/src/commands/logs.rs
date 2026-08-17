@@ -93,7 +93,9 @@ pub async fn get_log_settings(app: tauri::AppHandle) -> Result<LogSettings, Stri
     let pool = app.state::<AppDb>().0.clone();
     let level = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().ok()?;
-        db::ops::preference::get_preference(&mut conn, logging::LEVEL_PREFERENCE_KEY).ok().flatten()
+        db::ops::preference::get_preference(&mut conn, logging::LEVEL_PREFERENCE_KEY)
+            .ok()
+            .flatten()
     })
     .await
     .map_err(|e| e.to_string())?

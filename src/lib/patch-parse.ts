@@ -37,7 +37,7 @@ function stripDiffPrefix(p: string): string {
 }
 
 /** Codex-style: `*** Begin Patch` / `*** Update File: x` / `@@ ctx` / `+-` lines. */
-export function parseCodexPatch(patch: string): FileDiff[] {
+function parseCodexPatch(patch: string): FileDiff[] {
   const files: FileDiff[] = []
   let cur: FileDiff | null = null
   for (const raw of patch.split('\n')) {
@@ -72,7 +72,7 @@ export function parseCodexPatch(patch: string): FileDiff[] {
 
 /** Line-scanning fallback for diffs jsdiff rejects, e.g. hunk headers whose
  *  line counts are wrong — models miscount them routinely. */
-export function parseUnifiedPatchLoose(patch: string): FileDiff[] {
+function parseUnifiedPatchLoose(patch: string): FileDiff[] {
   const files: FileDiff[] = []
   const lines = patch.split('\n')
   let cur: FileDiff | null = null
@@ -100,7 +100,7 @@ export function parseUnifiedPatchLoose(patch: string): FileDiff[] {
   return files
 }
 
-export function parseUnifiedPatch(patch: string): FileDiff[] {
+function parseUnifiedPatch(patch: string): FileDiff[] {
   let parsed: ReturnType<typeof parsePatch>
   try {
     parsed = parsePatch(patch)

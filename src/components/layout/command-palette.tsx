@@ -82,22 +82,17 @@ export function CommandPalette({
           <Command.Dialog inputValue={query} onInputChange={setQuery}>
             <Command.Header>
               <Command.InputGroup aria-label={t('palette.title')}>
-                <Command.InputGroup.Prefix><Magnifier /></Command.InputGroup.Prefix>
+                <Command.InputGroup.Prefix>
+                  <Magnifier />
+                </Command.InputGroup.Prefix>
                 <Command.InputGroup.Input placeholder={t('palette.placeholder')} />
                 <Command.InputGroup.ClearButton />
               </Command.InputGroup>
             </Command.Header>
 
-            <Command.List
-              aria-label={t('palette.title')}
-              renderEmptyState={() => t('palette.empty')}
-            >
+            <Command.List aria-label={t('palette.title')} renderEmptyState={() => t('palette.empty')}>
               <Command.Group heading={t('palette.actions')}>
-                <Command.Item
-                  id="new-conversation"
-                  textValue={t('sidebar.newChat')}
-                  onAction={act(onCreate)}
-                >
+                <Command.Item id="new-conversation" textValue={t('sidebar.newChat')} onAction={act(onCreate)}>
                   <Plus />
                   {t('sidebar.newChat')}
                 </Command.Item>

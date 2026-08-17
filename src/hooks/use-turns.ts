@@ -26,11 +26,7 @@ const NO_TURNS: TurnRecord[] = []
  * level; this preserves it one layer up, so only the turn actually being written
  * to changes reference.
  */
-export function useTurns(
-  messages: Message[],
-  streaming: boolean,
-  turns: TurnRecord[] = NO_TURNS,
-): Turn[] {
+export function useTurns(messages: Message[], streaming: boolean, turns: TurnRecord[] = NO_TURNS): Turn[] {
   const crashed = useMemo(() => crashedIds(turns), [turns])
   const built = useMemo(
     () => buildTurns(messages, { streaming, crashedTurnIds: crashed }),

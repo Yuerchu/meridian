@@ -56,9 +56,7 @@ export function SelectTextModal({
             <Button slot="close" variant="secondary">
               {t('common.cancel')}
             </Button>
-            <Button onPress={() => navigator.clipboard.writeText(text)}>
-              {t('contextMenu.copyAll')}
-            </Button>
+            <Button onPress={() => navigator.clipboard.writeText(text)}>{t('contextMenu.copyAll')}</Button>
           </Modal.Footer>
         </Modal.Dialog>
       </Modal.Container>

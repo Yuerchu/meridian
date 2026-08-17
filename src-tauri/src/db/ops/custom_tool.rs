@@ -17,22 +17,12 @@ pub fn list_enabled_tools(conn: &mut SqliteConnection) -> QueryResult<Vec<Custom
         .load::<CustomTool>(conn)
 }
 
-pub fn get_tool(conn: &mut SqliteConnection, id: &str) -> QueryResult<CustomTool> {
-    custom_tools::table.find(id).first::<CustomTool>(conn)
-}
-
 pub fn create_tool(conn: &mut SqliteConnection, new: &NewCustomTool) -> QueryResult<CustomTool> {
-    diesel::insert_into(custom_tools::table)
-        .values(new)
-        .execute(conn)?;
+    diesel::insert_into(custom_tools::table).values(new).execute(conn)?;
     custom_tools::table.find(new.id).first::<CustomTool>(conn)
 }
 
-pub fn update_tool(
-    conn: &mut SqliteConnection,
-    id: &str,
-    changeset: &CustomToolUpdate,
-) -> QueryResult<CustomTool> {
+pub fn update_tool(conn: &mut SqliteConnection, id: &str, changeset: &CustomToolUpdate) -> QueryResult<CustomTool> {
     diesel::update(custom_tools::table.find(id))
         .set(changeset)
         .execute(conn)?;

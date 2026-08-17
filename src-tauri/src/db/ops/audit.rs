@@ -1,11 +1,9 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::audit::{AuditMessage, NewAuditMessage};
+use crate::db::models::audit::NewAuditMessage;
 use crate::db::models::message::Message;
-use crate::db::schema::{
-    audit_messages, conversations, memory_subjects, model_configs, projects, turns,
-};
+use crate::db::schema::{audit_messages, conversations, memory_subjects, model_configs, projects, turns};
 use crate::util::now_ms;
 
 /// What a row needs beside itself to be readable once everything it points at is
@@ -170,20 +168,14 @@ pub fn record(conn: &mut SqliteConnection, msg: &Message) -> QueryResult<()> {
     Ok(())
 }
 
-/// Drop everything recorded before `cutoff`, and say how much went.
-///
-/// The only way rows leave this table. Retention is the operator's decision and
-/// has to be expressible; without this the log grows without bound and the people
-/// in it have no way to ever be forgotten. Modelled on `purge_memories` — by time
-/// rather than by person, because an audit trail with one participant quietly
-/// removed reads as though they were never there.
-pub fn purge_before(conn: &mut SqliteConnection, cutoff: i64) -> QueryResult<usize> {
-    diesel::delete(audit_messages::table.filter(audit_messages::created_at.lt(cutoff)))
-        .execute(conn)
-}
-
-/// Newest first, for an operator reading the log back.
-pub fn list_recent(conn: &mut SqliteConnection, limit: i64) -> QueryResult<Vec<AuditMessage>> {
+/// Newest first. Test-only: production reads the table through `db::ops::usage`,
+/// but the tests that verify audit writes need the rows back verbatim.
+#[cfg(test)]
+pub fn list_recent(
+    conn: &mut SqliteConnection,
+    limit: i64,
+) -> QueryResult<Vec<crate::db::models::audit::AuditMessage>> {
+    use crate::db::models::audit::AuditMessage;
     audit_messages::table
         .order(audit_messages::created_at.desc())
         .limit(limit)
@@ -243,7 +235,9 @@ mod tests {
         delete_conversation(&mut conn, "c1").unwrap();
 
         assert!(
-            crate::db::ops::message::list_messages(&mut conn, "c1").unwrap().is_empty(),
+            crate::db::ops::message::list_messages(&mut conn, "c1")
+                .unwrap()
+                .is_empty(),
             "the transcript really did go",
         );
         let kept = list_recent(&mut conn, 10).unwrap();
@@ -252,28 +246,6 @@ mod tests {
         assert_eq!(kept[0].content, "what did you do");
         assert_eq!(kept[0].sender_id, Some(12345));
         assert_eq!(kept[0].conversation_id, "c1", "still names what it was about");
-    }
-
-    /// Retention has to be expressible, or the people in the log can never be
-    /// forgotten.
-    #[test]
-    fn purging_removes_only_what_is_older_than_the_cutoff() {
-        let pool = test_db();
-        let mut conn = pool.get().unwrap();
-        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
-
-        let mut old = user_row("m1", "c1");
-        old.created_at = 1_000;
-        let old = append_message(&mut conn, &old, None).unwrap();
-
-        let mut new = user_row("m2", "c1");
-        new.created_at = 9_000;
-        append_message(&mut conn, &new, Some(&old.id)).unwrap();
-
-        assert_eq!(purge_before(&mut conn, 5_000).unwrap(), 1);
-        let left = list_recent(&mut conn, 10).unwrap();
-        assert_eq!(left.len(), 1);
-        assert_eq!(left[0].message_id, "m2");
     }
 
     /// The write half of not repricing history. What the model cost is read once,
@@ -301,22 +273,25 @@ mod tests {
             })
             .execute(&mut conn)
             .unwrap();
-        crate::db::ops::model_config::upsert(&mut conn, &NewModelConfig {
-            id: "mc1",
-            provider_id: "p1",
-            model_id: "m1",
-            display_name: None,
-            context_window: 128_000,
-            compact_threshold: 100_000,
-            max_output_tokens: None,
-            input_price: 3.0,
-            output_price: 15.0,
-            cache_price: Some(0.3),
-            cache_write_price: Some(3.75),
-            created_at: 0,
-            updated_at: 0,
-            capability_overrides: None,
-        })
+        crate::db::ops::model_config::upsert(
+            &mut conn,
+            &NewModelConfig {
+                id: "mc1",
+                provider_id: "p1",
+                model_id: "m1",
+                display_name: None,
+                context_window: 128_000,
+                compact_threshold: 100_000,
+                max_output_tokens: None,
+                input_price: 3.0,
+                output_price: 15.0,
+                cache_price: Some(0.3),
+                cache_write_price: Some(3.75),
+                created_at: 0,
+                updated_at: 0,
+                capability_overrides: None,
+            },
+        )
         .unwrap();
 
         let mut reply = user_row("m1", "c1");
@@ -333,22 +308,25 @@ mod tests {
         assert_eq!(logged.cache_write_price, Some(3.75));
 
         // The price moves; the record does not.
-        crate::db::ops::model_config::upsert(&mut conn, &NewModelConfig {
-            id: "mc1",
-            provider_id: "p1",
-            model_id: "m1",
-            display_name: None,
-            context_window: 128_000,
-            compact_threshold: 100_000,
-            max_output_tokens: None,
-            input_price: 99.0,
-            output_price: 99.0,
-            cache_price: None,
-            cache_write_price: None,
-            created_at: 0,
-            updated_at: 0,
-            capability_overrides: None,
-        })
+        crate::db::ops::model_config::upsert(
+            &mut conn,
+            &NewModelConfig {
+                id: "mc1",
+                provider_id: "p1",
+                model_id: "m1",
+                display_name: None,
+                context_window: 128_000,
+                compact_threshold: 100_000,
+                max_output_tokens: None,
+                input_price: 99.0,
+                output_price: 99.0,
+                cache_price: None,
+                cache_write_price: None,
+                created_at: 0,
+                updated_at: 0,
+                capability_overrides: None,
+            },
+        )
         .unwrap();
         assert_eq!(list_recent(&mut conn, 10).unwrap()[0].input_price, Some(3.0));
     }

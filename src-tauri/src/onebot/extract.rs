@@ -15,12 +15,12 @@ use diesel::connection::Connection;
 
 use serde::Deserialize;
 
+use crate::db::DbPool;
 use crate::db::models::memory::{
-    onebot_user_scope_id, MemoryScope, NewMemory, NewMemoryProposal, Origin, ProposalStatus,
-    Visibility, GLOBAL_SCOPE_ID,
+    GLOBAL_SCOPE_ID, MemoryScope, NewMemory, NewMemoryProposal, Origin, ProposalStatus, Visibility,
+    onebot_user_scope_id,
 };
 use crate::db::ops::memory::VisibilityCtx;
-use crate::db::DbPool;
 use crate::util::{extract_json_object, now_ms};
 
 /// How long an operator has to act on a bot-wide proposal.
@@ -117,11 +117,7 @@ pub enum Accepted {
 /// A plain bool rather than a predicate: there is exactly one subject to ask
 /// about, and a closure here only disguised that opt-out was being consulted on
 /// one branch instead of all of them.
-pub fn validate(
-    candidate: &MemoryCandidate,
-    facts: &TurnFacts,
-    subject_opted_out: bool,
-) -> Result<(), Rejected> {
+pub fn validate(candidate: &MemoryCandidate, facts: &TurnFacts, subject_opted_out: bool) -> Result<(), Rejected> {
     if candidate.key.trim().is_empty() || candidate.content.trim().is_empty() {
         return Err(Rejected::Invalid("empty key or content".into()));
     }
@@ -242,8 +238,7 @@ pub fn commit(
 
     // Only the subject just written can have gone over its own cap.
     let touched = matches!(scope, MemoryScope::OnebotUser).then_some(scope_id.as_str());
-    crate::db::ops::memory::enforce_subject_lru(conn, touched, now)
-        .map_err(|e| e.to_string())?;
+    crate::db::ops::memory::enforce_subject_lru(conn, touched, now).map_err(|e| e.to_string())?;
     Ok(Accepted::Stored)
 }
 
@@ -277,17 +272,14 @@ pub fn approve_proposal(
     // `pending`, so a retry reported "already handled" and the content was gone
     // while the audit trail claimed an approval that never took effect.
     let result = conn.transaction::<_, ApprovalError, _>(|conn| {
-        let changed = crate::db::ops::memory::resolve_proposal(
-            conn, id, ProposalStatus::Approved, Some(approver), now,
-        )?;
+        let changed =
+            crate::db::ops::memory::resolve_proposal(conn, id, ProposalStatus::Approved, Some(approver), now)?;
         if changed == 0 {
             return Ok(None);
         }
 
-        crate::db::ops::memory::validate_memory(
-            conn, MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID, &p.key, &p.content,
-        )
-        .map_err(ApprovalError::Rejected)?;
+        crate::db::ops::memory::validate_memory(conn, MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID, &p.key, &p.content)
+            .map_err(ApprovalError::Rejected)?;
         let mem_id = uuid::Uuid::new_v4().to_string();
         crate::db::ops::memory::upsert_memory(
             conn,
@@ -324,10 +316,7 @@ pub fn approve_proposal(
 /// The proposal's key if this id belongs to a still-actionable proposal.
 /// Lets the decision dispatcher tell "not mine" apart from "mine, but stale",
 /// so an unrelated number falls through to ordinary chat.
-pub fn is_known_proposal(
-    conn: &mut diesel::sqlite::SqliteConnection,
-    id: i32,
-) -> Option<String> {
+pub fn is_known_proposal(conn: &mut diesel::sqlite::SqliteConnection, id: i32) -> Option<String> {
     crate::db::ops::memory::get_proposal(conn, id)
         .ok()
         .flatten()
@@ -340,10 +329,8 @@ pub fn reject_proposal(
     rejecter: i64,
     now: i64,
 ) -> Result<bool, String> {
-    let changed = crate::db::ops::memory::resolve_proposal(
-        conn, id, ProposalStatus::Rejected, Some(rejecter), now,
-    )
-    .map_err(|e| e.to_string())?;
+    let changed = crate::db::ops::memory::resolve_proposal(conn, id, ProposalStatus::Rejected, Some(rejecter), now)
+        .map_err(|e| e.to_string())?;
     Ok(changed > 0)
 }
 
@@ -400,27 +387,24 @@ pub fn existing_for_extraction(
     let scope_ids: Vec<String> = subjects.iter().map(|u| onebot_user_scope_id(*u)).collect();
 
     let mut lines: Vec<String> = Vec::new();
-    if let Some(pid) = facts.project_id.as_ref() {
-        if let Ok(rows) =
+    if let Some(pid) = facts.project_id.as_ref()
+        && let Ok(rows) =
             crate::db::ops::memory::list_by_scopes(conn, MemoryScope::Project, std::slice::from_ref(pid), &ctx, None)
-        {
-            for m in rows {
-                lines.push(format!("- [chat] {}: {}", m.key, m.content));
-            }
+    {
+        for m in rows {
+            lines.push(format!("- [chat] {}: {}", m.key, m.content));
         }
     }
-    if !scope_ids.is_empty() {
-        if let Ok(rows) =
-            crate::db::ops::memory::list_by_scopes(conn, MemoryScope::OnebotUser, &scope_ids, &ctx, None)
-        {
-            for m in rows {
-                let uid = m
-                    .subject_scope_id
-                    .as_deref()
-                    .and_then(crate::db::models::memory::parse_onebot_user_scope_id)
-                    .unwrap_or_default();
-                lines.push(format!("- [about {uid}] {}: {}", m.key, m.content));
-            }
+    if !scope_ids.is_empty()
+        && let Ok(rows) = crate::db::ops::memory::list_by_scopes(conn, MemoryScope::OnebotUser, &scope_ids, &ctx, None)
+    {
+        for m in rows {
+            let uid = m
+                .subject_scope_id
+                .as_deref()
+                .and_then(crate::db::models::memory::parse_onebot_user_scope_id)
+                .unwrap_or_default();
+            lines.push(format!("- [about {uid}] {}: {}", m.key, m.content));
         }
     }
     // Bounded: this section only has to be big enough to spot a duplicate.
@@ -438,11 +422,7 @@ pub fn is_opted_out(conn: &mut diesel::sqlite::SqliteConnection, user_id: i64) -
 
 /// Run the pass for a finished turn and store whatever survives validation.
 /// Returns the ids of any bot-wide proposals raised.
-pub async fn run_extraction(
-    pool: &DbPool,
-    raw_response: &str,
-    facts: TurnFacts,
-) -> Result<Vec<i32>, String> {
+pub async fn run_extraction(pool: &DbPool, raw_response: &str, facts: TurnFacts) -> Result<Vec<i32>, String> {
     #[derive(Deserialize)]
     struct Envelope {
         #[serde(default)]
@@ -450,8 +430,7 @@ pub async fn run_extraction(
     }
 
     let json = extract_json_object(raw_response).ok_or("no JSON object in extraction response")?;
-    let envelope: Envelope =
-        serde_json::from_str(&json).map_err(|e| format!("malformed extraction output: {e}"))?;
+    let envelope: Envelope = serde_json::from_str(&json).map_err(|e| format!("malformed extraction output: {e}"))?;
     if envelope.candidates.is_empty() {
         return Ok(Vec::new());
     }
@@ -510,7 +489,9 @@ mod tests {
             key: "k".into(),
             content: "c".into(),
             memory_type: None,
-            sources: vec![SourceRef { inbound_message_id: source.into() }],
+            sources: vec![SourceRef {
+                inbound_message_id: source.into(),
+            }],
         }
     }
 
@@ -604,10 +585,7 @@ mod tests {
         let result = commit(conn, &c, &facts(true), 1000).unwrap();
         assert!(matches!(result, Accepted::Proposed(_)));
 
-        let stored = crate::db::ops::memory::list_by_scope(
-            conn, MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID,
-        )
-        .unwrap();
+        let stored = crate::db::ops::memory::list_by_scope(conn, MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID).unwrap();
         assert!(stored.is_empty(), "bot-wide memory must not land without approval");
     }
 
@@ -674,14 +652,20 @@ mod tests {
             panic!("expected a proposal");
         };
 
-        assert!(approve_proposal(conn, id, 99, 2000).is_err(), "quota must refuse the write");
+        assert!(
+            approve_proposal(conn, id, 99, 2000).is_err(),
+            "quota must refuse the write"
+        );
 
         // Still pending, so the operator can free a slot and try again.
         let p = crate::db::ops::memory::get_proposal(conn, id).unwrap().unwrap();
         assert_eq!(p.status, ProposalStatus::Pending.as_str());
 
         crate::db::ops::memory::soft_delete_memories(
-            conn, &["g0".to_string()], crate::db::models::memory::DeletedBy::Admin, 2500,
+            conn,
+            &["g0".to_string()],
+            crate::db::models::memory::DeletedBy::Admin,
+            2500,
         )
         .unwrap();
         assert_eq!(approve_proposal(conn, id, 99, 3000).unwrap().as_deref(), Some("k"));
@@ -698,11 +682,11 @@ mod tests {
 
         let after_ttl = 1000 + PROPOSAL_TTL_MS + 1;
         assert_eq!(approve_proposal(conn, id, 99, after_ttl).unwrap(), None);
-        assert!(crate::db::ops::memory::list_by_scope(
-            conn, MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID
-        )
-        .unwrap()
-        .is_empty());
+        assert!(
+            crate::db::ops::memory::list_by_scope(conn, MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID)
+                .unwrap()
+                .is_empty()
+        );
     }
 
     /// An approved bot rule must be usable by the model, so it is `normal`, not
@@ -717,10 +701,7 @@ mod tests {
         };
         approve_proposal(conn, id, 99, 2000).unwrap();
 
-        let rows = crate::db::ops::memory::list_by_scope(
-            conn, MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID,
-        )
-        .unwrap();
+        let rows = crate::db::ops::memory::list_by_scope(conn, MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID).unwrap();
         assert_eq!(rows[0].visibility, Visibility::Normal.as_str());
         assert_eq!(rows[0].origin, Origin::Admin.as_str());
     }
@@ -787,10 +768,12 @@ mod gating_tests {
 
     #[test]
     fn substantive_turns_still_do() {
-        assert!(worth_extracting(&[
-            "我平时用 Rust 写后端，回答尽量简短一点，不要列表"
-        ]));
+        assert!(worth_extracting(&["我平时用 Rust 写后端，回答尽量简短一点，不要列表"]));
         // Several short messages can add up to something worth reading.
-        assert!(worth_extracting(&["我叫张三", "在深圳工作", "平时写 Rust 和 TypeScript"]));
+        assert!(worth_extracting(&[
+            "我叫张三",
+            "在深圳工作",
+            "平时写 Rust 和 TypeScript"
+        ]));
     }
 }

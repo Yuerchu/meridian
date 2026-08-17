@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 import { api } from '@/api'
 import type { Emoji } from '@/types'
 
@@ -10,7 +10,10 @@ export function useEmojiMap(assistantId: string | null) {
   const [map, setMap] = useState<EmojiMap>({})
 
   useEffect(() => {
-    if (!assistantId) { setMap({}); return }
+    if (!assistantId) {
+      setMap({})
+      return
+    }
     let cancelled = false
 
     async function load() {
@@ -20,9 +23,9 @@ export function useEmojiMap(assistantId: string | null) {
         const emojiGroups = await Promise.all(packs.map((pack) => api.listEmojis(pack.id)))
         if (cancelled) return
         const allEmojis = emojiGroups.flat()
-        const entries = await Promise.all(allEmojis.map(async (emoji) => (
-          [emoji.name, { emoji, url: await api.getEmojiFileUrl(emoji.id) }] as const
-        )))
+        const entries = await Promise.all(
+          allEmojis.map(async (emoji) => [emoji.name, { emoji, url: await api.getEmojiFileUrl(emoji.id) }] as const),
+        )
         if (!cancelled) setMap(Object.fromEntries(entries))
       } catch {
         if (!cancelled) setMap({})
@@ -30,7 +33,9 @@ export function useEmojiMap(assistantId: string | null) {
     }
 
     void load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [assistantId])
 
   return map
@@ -38,10 +43,7 @@ export function useEmojiMap(assistantId: string | null) {
 
 const EMOJI_REGEX = /\[emoji:([^\]]+)\]/g
 
-export function renderEmojisInText(
-  text: string,
-  emojiMap: EmojiMap,
-): (string | React.ReactElement)[] {
+export function renderEmojisInText(text: string, emojiMap: EmojiMap): (string | React.ReactElement)[] {
   if (Object.keys(emojiMap).length === 0) return [text]
 
   const parts: (string | React.ReactElement)[] = []
@@ -78,15 +80,4 @@ export function renderEmojisInText(
   }
 
   return parts
-}
-
-export function EmojiText({
-  text,
-  emojiMap,
-}: {
-  text: string
-  emojiMap: EmojiMap
-}) {
-  const parts = useMemo(() => renderEmojisInText(text, emojiMap), [text, emojiMap])
-  return <>{parts}</>
 }

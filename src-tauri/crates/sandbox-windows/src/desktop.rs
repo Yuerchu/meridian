@@ -104,11 +104,7 @@ impl PrivateDesktop {
         if handle == 0 {
             let err = unsafe { GetLastError() } as i32;
             logging::debug_log(
-                &format!(
-                    "CreateDesktopW failed for {name}: {} ({})",
-                    err,
-                    format_last_error(err),
-                ),
+                &format!("CreateDesktopW failed for {name}: {} ({})", err, format_last_error(err),),
                 logs_base_dir,
             );
             return Err(anyhow::anyhow!("CreateDesktopW failed: {err}"));

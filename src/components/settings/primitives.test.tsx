@@ -19,14 +19,7 @@ describe('SettingsSelect', () => {
     // the twenty call sites it replaced each narrowed `Key | null` by hand, in
     // five different ways.
     const onChange = vi.fn<(value: Level) => void>()
-    render(
-      <SettingsSelect
-        ariaLabel="Level"
-        value="all"
-        options={OPTIONS}
-        onChange={onChange}
-      />,
-    )
+    render(<SettingsSelect ariaLabel="Level" value="all" options={OPTIONS} onChange={onChange} />)
 
     await user.click(screen.getByRole('button', { name: /Level/ }))
     await user.click(await screen.findByRole('option', { name: 'Warnings' }))
@@ -41,16 +34,12 @@ describe('SettingsSelect', () => {
    * two of the dropdowns this replaced had only the second.
    */
   it('names the trigger from ariaLabel', () => {
-    render(
-      <SettingsSelect ariaLabel="Level" value="all" options={OPTIONS} onChange={vi.fn()} />,
-    )
+    render(<SettingsSelect ariaLabel="Level" value="all" options={OPTIONS} onChange={vi.fn()} />)
     expect(screen.getByRole('button', { name: /Level/ })).toBeInTheDocument()
   })
 
   it('names the trigger from a visible label', () => {
-    render(
-      <SettingsSelect label="Level" value="all" options={OPTIONS} onChange={vi.fn()} />,
-    )
+    render(<SettingsSelect label="Level" value="all" options={OPTIONS} onChange={vi.fn()} />)
     // The label is a real one, so it names the control rather than sitting
     // beside it — two of the dropdowns this replaced had neither and were
     // announced by their current value alone.
@@ -58,9 +47,7 @@ describe('SettingsSelect', () => {
   })
 
   it('shows the option matching the current value', () => {
-    render(
-      <SettingsSelect ariaLabel="Level" value="error" options={OPTIONS} onChange={vi.fn()} />,
-    )
+    render(<SettingsSelect ariaLabel="Level" value="error" options={OPTIONS} onChange={vi.fn()} />)
     expect(screen.getByRole('button', { name: /Level/ })).toHaveTextContent('Errors')
   })
 })

@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
+use jni::JNIEnv;
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::sys::{jfloat, jint};
-use jni::JNIEnv;
 use tokio::sync::oneshot;
 
 const BRIDGE_CLASS: &str = "cn.yuxiaoqiu.meridian.FileBridge";
@@ -23,8 +23,7 @@ static BRIDGE_REF: OnceLock<GlobalRef> = OnceLock::new();
 /// Get the JavaVM via ndk-context.
 fn java_vm() -> Result<jni::JavaVM, String> {
     let ctx = ndk_context::android_context();
-    unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }
-        .map_err(|e| format!("failed to get JavaVM: {e}"))
+    unsafe { jni::JavaVM::from_raw(ctx.vm().cast()) }.map_err(|e| format!("failed to get JavaVM: {e}"))
 }
 
 /// Attach to the JVM and run `f` with the JNI env and the application context.
@@ -34,9 +33,7 @@ fn java_vm() -> Result<jni::JavaVM, String> {
 /// All local references created inside `f` (and by `describe_exception`) are
 /// released when the local frame pops, preventing table overflow on the
 /// permanently-attached tokio blocking threads.
-fn with_env<T>(
-    f: impl FnOnce(&mut JNIEnv, &JObject) -> Result<T, jni::errors::Error>,
-) -> Result<T, String> {
+fn with_env<T>(f: impl FnOnce(&mut JNIEnv, &JObject) -> Result<T, jni::errors::Error>) -> Result<T, String> {
     let vm = java_vm()?;
     let mut env = vm
         .attach_current_thread_permanently()
@@ -45,14 +42,13 @@ fn with_env<T>(
     // context is a global ref from ndk-context, not a frame-local ref — safe to
     // borrow across the local frame boundary.
     let context = unsafe { JObject::from_raw(ctx.context().cast()) };
-    let outcome: Result<Result<T, String>, jni::errors::Error> =
-        env.with_local_frame(32, |env| {
-            Ok(match f(env, &context) {
-                Ok(v) => Ok(v),
-                Err(jni::errors::Error::JavaException) => Err(describe_exception(env)),
-                Err(e) => Err(format!("JNI error: {e}")),
-            })
-        });
+    let outcome: Result<Result<T, String>, jni::errors::Error> = env.with_local_frame(32, |env| {
+        Ok(match f(env, &context) {
+            Ok(v) => Ok(v),
+            Err(jni::errors::Error::JavaException) => Err(describe_exception(env)),
+            Err(e) => Err(format!("JNI error: {e}")),
+        })
+    });
     outcome.unwrap_or_else(|e| Err(format!("JNI local frame error: {e}")))
 }
 
@@ -69,7 +65,9 @@ fn describe_exception(env: &mut JNIEnv) -> String {
                     return format!(
                         "Directory authorization has been revoked or expired. \
                          Ask the user to re-authorize this folder in Settings > File Access. \
-                         ({})", s);
+                         ({})",
+                        s
+                    );
                 }
                 return s;
             }
@@ -132,8 +130,13 @@ pub fn open_manage_storage_settings() -> Result<(), String> {
 
 // ---- Window insets ----
 
-static CURRENT_INSETS: Mutex<crate::platform::WindowInsets> =
-    Mutex::new(crate::platform::WindowInsets { top: 0.0, right: 0.0, bottom: 0.0, left: 0.0, ime_bottom: 0.0 });
+static CURRENT_INSETS: Mutex<crate::platform::WindowInsets> = Mutex::new(crate::platform::WindowInsets {
+    top: 0.0,
+    right: 0.0,
+    bottom: 0.0,
+    left: 0.0,
+    ime_bottom: 0.0,
+});
 
 pub fn current_insets() -> crate::platform::WindowInsets {
     *CURRENT_INSETS.lock().unwrap()
@@ -150,7 +153,13 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnInsetsCha
     left: jfloat,
     ime_bottom: jfloat,
 ) {
-    let insets = crate::platform::WindowInsets { top, right, bottom, left, ime_bottom };
+    let insets = crate::platform::WindowInsets {
+        top,
+        right,
+        bottom,
+        left,
+        ime_bottom,
+    };
     *CURRENT_INSETS.lock().unwrap() = insets;
     if let Some(app) = crate::state::APP_HANDLE.get() {
         use tauri::Emitter;
@@ -162,8 +171,7 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnInsetsCha
 
 type MediaPickResult = Option<String>; // content:// URI, None = cancelled
 
-static MEDIA_WAITERS: OnceLock<Mutex<HashMap<i32, oneshot::Sender<MediaPickResult>>>> =
-    OnceLock::new();
+static MEDIA_WAITERS: OnceLock<Mutex<HashMap<i32, oneshot::Sender<MediaPickResult>>>> = OnceLock::new();
 static NEXT_MEDIA_REQ: AtomicI32 = AtomicI32::new(1);
 
 fn media_waiters() -> &'static Mutex<HashMap<i32, oneshot::Sender<MediaPickResult>>> {
@@ -177,13 +185,8 @@ pub async fn take_photo() -> Result<MediaPickResult, String> {
 
     let launched = with_env(|env, context| {
         let cls = bridge_class(env, context)?;
-        env.call_static_method(
-            &cls,
-            "launchCamera",
-            "(I)Z",
-            &[JValue::Int(req_id)],
-        )?
-        .z()
+        env.call_static_method(&cls, "launchCamera", "(I)Z", &[JValue::Int(req_id)])?
+            .z()
     });
     match launched {
         Ok(true) => {}
@@ -214,13 +217,8 @@ pub async fn pick_gallery() -> Result<MediaPickResult, String> {
 
     let launched = with_env(|env, context| {
         let cls = bridge_class(env, context)?;
-        env.call_static_method(
-            &cls,
-            "launchGallery",
-            "(I)Z",
-            &[JValue::Int(req_id)],
-        )?
-        .z()
+        env.call_static_method(&cls, "launchGallery", "(I)Z", &[JValue::Int(req_id)])?
+            .z()
     });
     match launched {
         Ok(true) => {}
@@ -319,13 +317,8 @@ pub async fn pick_directory() -> Result<SafPickResult, String> {
 
     let launched = with_env(|env, context| {
         let cls = bridge_class(env, context)?;
-        env.call_static_method(
-            &cls,
-            "launchDirectoryPicker",
-            "(I)Z",
-            &[JValue::Int(req_id)],
-        )?
-        .z()
+        env.call_static_method(&cls, "launchDirectoryPicker", "(I)Z", &[JValue::Int(req_id)])?
+            .z()
     });
     match launched {
         Ok(true) => {}
@@ -368,7 +361,9 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnSafResult
                 let name_str: String = if name.is_null() {
                     "directory".to_string()
                 } else {
-                    env.get_string(&name).map(Into::into).unwrap_or_else(|_| "directory".to_string())
+                    env.get_string(&name)
+                        .map(Into::into)
+                        .unwrap_or_else(|_| "directory".to_string())
                 };
                 Some((uri_str, name_str))
             }
@@ -384,7 +379,12 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnSafResult
 pub fn release_persisted_uri(tree_uri: &str) -> Result<(), String> {
     with_env(|env, context| {
         let resolver = env
-            .call_method(context, "getContentResolver", "()Landroid/content/ContentResolver;", &[])?
+            .call_method(
+                context,
+                "getContentResolver",
+                "()Landroid/content/ContentResolver;",
+                &[],
+            )?
             .l()?;
         let uri_str = env.new_string(tree_uri)?;
         let uri = env
@@ -409,12 +409,14 @@ pub fn release_persisted_uri(tree_uri: &str) -> Result<(), String> {
 pub fn persisted_tree_uris() -> Result<Vec<String>, String> {
     let json: String = with_env(|env, context| {
         let cls = bridge_class(env, context)?;
-        let s = env.call_static_method(
-            &cls,
-            "persistedTreeUris",
-            "(Landroid/content/Context;)Ljava/lang/String;",
-            &[JValue::Object(context)],
-        )?.l()?;
+        let s = env
+            .call_static_method(
+                &cls,
+                "persistedTreeUris",
+                "(Landroid/content/Context;)Ljava/lang/String;",
+                &[JValue::Object(context)],
+            )?
+            .l()?;
         env.get_string(&JString::from(s)).map(Into::into)
     })?;
     serde_json::from_str(&json).map_err(|e| format!("invalid uri list: {e}"))
@@ -422,17 +424,10 @@ pub fn persisted_tree_uris() -> Result<Vec<String>, String> {
 
 // ---- SAF file operations (blocking JNI wrapped in spawn_blocking) ----
 
-fn call_saf_string(
-    method: &'static str,
-    sig: &'static str,
-    args: Vec<String>,
-) -> Result<String, String> {
+fn call_saf_string(method: &'static str, sig: &'static str, args: Vec<String>) -> Result<String, String> {
     with_env(|env, context| {
         let cls = bridge_class(env, context)?;
-        let jstrings: Vec<JString> = args
-            .iter()
-            .map(|a| env.new_string(a))
-            .collect::<Result<_, _>>()?;
+        let jstrings: Vec<JString> = args.iter().map(|a| env.new_string(a)).collect::<Result<_, _>>()?;
         let mut jargs: Vec<JValue> = vec![JValue::Object(context)];
         jargs.extend(jstrings.iter().map(|s| JValue::Object(s)));
         let result = env.call_static_method(&cls, method, sig, &jargs)?;
@@ -456,17 +451,19 @@ pub async fn saf_read(tree_uri: &str, rel: &str, max_bytes: i64) -> Result<SafRe
             let cls = bridge_class(env, context)?;
             let jtree = env.new_string(&tree)?;
             let jrel = env.new_string(&rel)?;
-            let result = env.call_static_method(
-                &cls,
-                "safRead",
-                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;J)Ljava/lang/String;",
-                &[
-                    JValue::Object(context),
-                    JValue::Object(&jtree),
-                    JValue::Object(&jrel),
-                    JValue::Long(max_bytes),
-                ],
-            )?.l()?;
+            let result = env
+                .call_static_method(
+                    &cls,
+                    "safRead",
+                    "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;J)Ljava/lang/String;",
+                    &[
+                        JValue::Object(context),
+                        JValue::Object(&jtree),
+                        JValue::Object(&jrel),
+                        JValue::Long(max_bytes),
+                    ],
+                )?
+                .l()?;
             let jstr = JString::from(result);
             let s = env.get_string(&jstr)?;
             Ok(String::from(s))
@@ -503,10 +500,7 @@ pub async fn saf_write(tree_uri: &str, rel: &str, content: &str) -> Result<(), S
     .map_err(|e| format!("task failed: {e}"))?
 }
 
-pub async fn saf_list(
-    tree_uri: &str,
-    rel: &str,
-) -> Result<Vec<crate::tools::backend::DirEntry>, String> {
+pub async fn saf_list(tree_uri: &str, rel: &str) -> Result<Vec<crate::tools::backend::DirEntry>, String> {
     let (tree, rel) = (tree_uri.to_string(), rel.to_string());
     let json = tokio::task::spawn_blocking(move || {
         call_saf_string(
@@ -524,8 +518,7 @@ pub async fn saf_list(
         is_dir: bool,
         size: Option<u64>,
     }
-    let entries: Vec<Entry> =
-        serde_json::from_str(&json).map_err(|e| format!("invalid listing from bridge: {e}"))?;
+    let entries: Vec<Entry> = serde_json::from_str(&json).map_err(|e| format!("invalid listing from bridge: {e}"))?;
     Ok(entries
         .into_iter()
         .map(|e| crate::tools::backend::DirEntry {
@@ -563,8 +556,7 @@ pub async fn saf_delete(tree_uri: &str, rel: &str, recursive: bool) -> Result<()
 }
 
 pub async fn saf_rename(tree_uri: &str, from_rel: &str, to_rel: &str) -> Result<(), String> {
-    let (tree, from_rel, to_rel) =
-        (tree_uri.to_string(), from_rel.to_string(), to_rel.to_string());
+    let (tree, from_rel, to_rel) = (tree_uri.to_string(), from_rel.to_string(), to_rel.to_string());
     tokio::task::spawn_blocking(move || {
         with_env(|env, context| {
             let cls = bridge_class(env, context)?;
@@ -623,11 +615,7 @@ pub async fn content_copy(uri: &str, dest_abs: &str) -> Result<(), String> {
                 &cls,
                 "contentCopy",
                 "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)V",
-                &[
-                    JValue::Object(context),
-                    JValue::Object(&juri),
-                    JValue::Object(&jdest),
-                ],
+                &[JValue::Object(context), JValue::Object(&juri), JValue::Object(&jdest)],
             )?;
             Ok(())
         })

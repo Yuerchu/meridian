@@ -170,9 +170,12 @@ export function InputBar({
     if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
     noticeTimerRef.current = setTimeout(() => setVoiceNotice(null), 3000)
   }, [])
-  const showVoiceNotice = useCallback((notice: VoiceNotice, detail?: string) => {
-    showHint(notice === 'error' && detail ? detail : t(`chat.voice.${notice}`))
-  }, [showHint, t])
+  const showVoiceNotice = useCallback(
+    (notice: VoiceNotice, detail?: string) => {
+      showHint(notice === 'error' && detail ? detail : t(`chat.voice.${notice}`))
+    },
+    [showHint, t],
+  )
   const voice = useVoiceRecorder({
     onSend: (text) => onVoiceSend?.(text),
     onNotice: showVoiceNotice,
@@ -215,13 +218,16 @@ export function InputBar({
     onSubmit()
   }, [disabled, value, onSubmit])
 
-  const handleFieldReady = useCallback((el: HTMLTextAreaElement | null) => {
-    textareaRef.current = el
-    // The hold is bound here rather than through JSX: React attaches touch
-    // handlers passively at the root, where the `preventDefault()` that keeps a
-    // hold from becoming a tap is ignored without a word.
-    if (isAndroid) attachField(el)
-  }, [isAndroid, attachField])
+  const handleFieldReady = useCallback(
+    (el: HTMLTextAreaElement | null) => {
+      textareaRef.current = el
+      // The hold is bound here rather than through JSX: React attaches touch
+      // handlers passively at the root, where the `preventDefault()` that keeps a
+      // hold from becoming a tap is ignored without a word.
+      if (isAndroid) attachField(el)
+    },
+    [isAndroid, attachField],
+  )
 
   const handleContextMenuOpen = useCallback((open: boolean) => {
     if (open) {
@@ -289,14 +295,19 @@ export function InputBar({
   // A path is all either the picker or a drop hands over; the name is asked for
   // separately because on Android a `content://` URI has no readable last
   // segment, and the tail of the path is only a fallback for when that fails.
-  const attachPaths = useCallback(async (paths: string[]) => {
-    if (!onAttachFiles || paths.length === 0) return
-    const files = await Promise.all(paths.map(async (p) => ({
-      path: p,
-      name: await api.resolveFileName(p).catch(() => p.replace(/\\/g, '/').split('/').pop() ?? 'file'),
-    })))
-    onAttachFiles(files)
-  }, [onAttachFiles])
+  const attachPaths = useCallback(
+    async (paths: string[]) => {
+      if (!onAttachFiles || paths.length === 0) return
+      const files = await Promise.all(
+        paths.map(async (p) => ({
+          path: p,
+          name: await api.resolveFileName(p).catch(() => p.replace(/\\/g, '/').split('/').pop() ?? 'file'),
+        })),
+      )
+      onAttachFiles(files)
+    },
+    [onAttachFiles],
+  )
 
   const handlePickFile = useCallback(async () => {
     // Cancelling rejects on Android rather than resolving to null, so a tap on
@@ -306,7 +317,12 @@ export function InputBar({
     if (paths) await attachPaths(Array.isArray(paths) ? paths : [paths])
   }, [attachPaths])
 
-  const handleDropFiles = useCallback((paths: string[]) => { void attachPaths(paths) }, [attachPaths])
+  const handleDropFiles = useCallback(
+    (paths: string[]) => {
+      void attachPaths(paths)
+    },
+    [attachPaths],
+  )
 
   const menuItems = (
     <>
@@ -344,227 +360,228 @@ export function InputBar({
     <div className="px-4 pb-[max(1rem,var(--safe-bottom))] pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]">
       <div className="max-w-2xl mx-auto">
         {isAndroid && (
-          <VoiceOverlay
-            state={androidVoice.state}
-            elapsed={androidVoice.elapsed}
-            peak={androidVoice.peak}
-          />
+          <VoiceOverlay state={androidVoice.state} elapsed={androidVoice.elapsed} peak={androidVoice.peak} />
         )}
-        <ComposerContextMenu
-          enabled={!isCoarsePointer()}
-          onOpenChange={handleContextMenuOpen}
-          items={menuItems}
-        >
-        <Composer
-          value={value}
-          onChange={onChange}
-          onSubmit={handleSubmit}
-          // Not simply `disabled`: while a reply streams the field stays live,
-          // and only Send turns into Stop.
-          disabled={disabled && !streaming}
-          streaming={streaming}
-          onStop={onStop}
-          steerable={steerable}
-          ariaLabel={t('chat.placeholder')}
-          placeholder={
-            steerable && streaming
-              ? t('chat.placeholderSteer')
-              // Only promises the hold while the hold is bound.
-              : voicePress
-                ? t('chat.placeholderVoice')
-                : t('chat.placeholder')
-          }
-          onFieldReady={handleFieldReady}
-          onDropFiles={onAttachFiles ? handleDropFiles : undefined}
-          notice={voiceNotice && (
-            <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>
-          )}
-          attachments={attachedFiles.length > 0 && (
-            <ChatAttachmentGroup>
-              {attachedFiles.map((f, i) => (
-                // An image gets a thumbnail rather than the paperclip everything
-                // used to get: the path is already on disk, so this costs one
-                // asset-protocol URL. Anything else falls back to the icon the
-                // extension implies.
-                <ChatAttachment key={i} name={f.name} src={localPreviewSrc(f.path, f.name)}>
-                  <ChatAttachment.Preview />
-                  <ChatAttachment.Info />
-                  {onRemoveFile && (
-                    <ChatAttachment.Remove
-                      aria-label={t('chat.removeAttachment', { name: f.name })}
-                      onPress={() => onRemoveFile(i)}
-                    />
-                  )}
-                </ChatAttachment>
-              ))}
-            </ChatAttachmentGroup>
-          )}
-          toolbarStart={steerable && streaming ? null : (
-            isAndroid ? (
-              <MobileOptionsMenu
-                assistants={assistants}
-                providers={providers}
-                currentAssistantId={currentAssistantId}
-                currentModelId={currentModelId}
-                currentProviderId={currentProviderId}
-                onSelectAssistant={onSelectAssistant}
-                onSelectModel={onSelectModel}
-                thinkingLevel={thinkingLevel}
-                onSelectThinkingLevel={onSelectThinkingLevel}
-                fastMode={fastMode}
-                onToggleFast={onToggleFast}
-                mode={mode}
-                onSelectMode={onSelectMode}
-                acceptEdits={acceptEdits}
-                onToggleAcceptEdits={onToggleAcceptEdits}
-                capabilities={capabilities}
-                onTakePhoto={handleTakePhoto}
-                onPickGallery={handlePickGallery}
-                onPickFile={handlePickFile}
-                supportsImages={capabilities?.supports_images !== false}
-              />
-            ) : (
-              <ComposerMenu
-                assistants={assistants}
-                providers={providers}
-                currentAssistantId={currentAssistantId}
-                currentModelId={currentModelId}
-                currentProviderId={currentProviderId}
-                onSelectAssistant={onSelectAssistant}
-                onSelectModel={onSelectModel}
-                thinkingLevel={thinkingLevel}
-                onSelectThinkingLevel={onSelectThinkingLevel}
-                fastMode={fastMode}
-                onToggleFast={onToggleFast}
-                mode={mode}
-                onSelectMode={onSelectMode}
-                acceptEdits={acceptEdits}
-                onToggleAcceptEdits={onToggleAcceptEdits}
-                capabilities={capabilities}
-                onPickFile={
-                  onAttachFiles && capabilities?.supports_images !== false
-                    ? handlePickFile
-                    : undefined
-                }
-              />
-            )
-          )}
-          toolbarEnd={
-            <>
-              <EmojiPicker
-                assistantId={currentAssistantId}
-                onSelect={(syntax) => onChange(value + syntax)}
-              />
-              {!isAndroid && onVoiceSend && (
-                <Tooltip delay={0}>
-                  {/* The button inside picks the tooltip's trigger props up from
+        <ComposerContextMenu enabled={!isCoarsePointer()} onOpenChange={handleContextMenuOpen} items={menuItems}>
+          <Composer
+            value={value}
+            onChange={onChange}
+            onSubmit={handleSubmit}
+            // Not simply `disabled`: while a reply streams the field stays live,
+            // and only Send turns into Stop.
+            disabled={disabled && !streaming}
+            streaming={streaming}
+            onStop={onStop}
+            steerable={steerable}
+            ariaLabel={t('chat.placeholder')}
+            placeholder={
+              steerable && streaming
+                ? t('chat.placeholderSteer')
+                : // Only promises the hold while the hold is bound.
+                  voicePress
+                  ? t('chat.placeholderVoice')
+                  : t('chat.placeholder')
+            }
+            onFieldReady={handleFieldReady}
+            onDropFiles={onAttachFiles ? handleDropFiles : undefined}
+            notice={voiceNotice && <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>}
+            attachments={
+              attachedFiles.length > 0 && (
+                <ChatAttachmentGroup>
+                  {attachedFiles.map((f, i) => (
+                    // An image gets a thumbnail rather than the paperclip everything
+                    // used to get: the path is already on disk, so this costs one
+                    // asset-protocol URL. Anything else falls back to the icon the
+                    // extension implies.
+                    <ChatAttachment key={i} name={f.name} src={localPreviewSrc(f.path, f.name)}>
+                      <ChatAttachment.Preview />
+                      <ChatAttachment.Info />
+                      {onRemoveFile && (
+                        <ChatAttachment.Remove
+                          aria-label={t('chat.removeAttachment', { name: f.name })}
+                          onPress={() => onRemoveFile(i)}
+                        />
+                      )}
+                    </ChatAttachment>
+                  ))}
+                </ChatAttachmentGroup>
+              )
+            }
+            toolbarStart={
+              steerable && streaming ? null : isAndroid ? (
+                <MobileOptionsMenu
+                  assistants={assistants}
+                  providers={providers}
+                  currentAssistantId={currentAssistantId}
+                  currentModelId={currentModelId}
+                  currentProviderId={currentProviderId}
+                  onSelectAssistant={onSelectAssistant}
+                  onSelectModel={onSelectModel}
+                  thinkingLevel={thinkingLevel}
+                  onSelectThinkingLevel={onSelectThinkingLevel}
+                  fastMode={fastMode}
+                  onToggleFast={onToggleFast}
+                  mode={mode}
+                  onSelectMode={onSelectMode}
+                  acceptEdits={acceptEdits}
+                  onToggleAcceptEdits={onToggleAcceptEdits}
+                  capabilities={capabilities}
+                  onTakePhoto={handleTakePhoto}
+                  onPickGallery={handlePickGallery}
+                  onPickFile={handlePickFile}
+                  supportsImages={capabilities?.supports_images !== false}
+                />
+              ) : (
+                <ComposerMenu
+                  assistants={assistants}
+                  providers={providers}
+                  currentAssistantId={currentAssistantId}
+                  currentModelId={currentModelId}
+                  currentProviderId={currentProviderId}
+                  onSelectAssistant={onSelectAssistant}
+                  onSelectModel={onSelectModel}
+                  thinkingLevel={thinkingLevel}
+                  onSelectThinkingLevel={onSelectThinkingLevel}
+                  fastMode={fastMode}
+                  onToggleFast={onToggleFast}
+                  mode={mode}
+                  onSelectMode={onSelectMode}
+                  acceptEdits={acceptEdits}
+                  onToggleAcceptEdits={onToggleAcceptEdits}
+                  capabilities={capabilities}
+                  onPickFile={onAttachFiles && capabilities?.supports_images !== false ? handlePickFile : undefined}
+                />
+              )
+            }
+            toolbarEnd={
+              <>
+                <EmojiPicker assistantId={currentAssistantId} onSelect={(syntax) => onChange(value + syntax)} />
+                {!isAndroid && onVoiceSend && (
+                  <Tooltip delay={0}>
+                    {/* The button inside picks the tooltip's trigger props up from
                       context, so `Tooltip.Trigger` would only add a second,
                       inert tab stop around a real button. */}
-                  <VoiceButton
-                    aria-label={
-                      voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')
-                    }
-                    state={voice.state}
-                    elapsed={voice.elapsed}
-                    disabled={disabled || streaming}
-                    onPointerDown={voice.handlePointerDown}
-                    onPointerUp={voice.handlePointerUp}
-                    onPointerCancel={voice.handlePointerCancel}
-                    onPointerEnter={voice.handlePointerEnter}
-                    onPointerLeave={voice.handlePointerLeave}
-                  />
-                  <Tooltip.Content placement="top">
-                    {voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
-                  </Tooltip.Content>
-                </Tooltip>
-              )}
-              {contextInfo && contextInfo.messageCount > 0 && (() => {
-                const ratio = contextInfo.estimatedTokens / contextInfo.contextLimit
-                // Below the warning threshold the ring is ambient, not a
-                // reading — quieter than `color="default"`, which is a
-                // foreground shade.
-                const color = ratio > 0.95 ? 'danger' : ratio > 0.8 ? 'warning' : undefined
-                // A popover rather than a tooltip. This panel has a button in
-                // it, and a tooltip is not a place a button can live: it is
-                // announced as a description, it closes when the pointer leaves
-                // on the way to what it contains, and nothing in it is
-                // reachable from the keyboard. That was already true of the
-                // manual-compact link, which is why it needed a hand-rolled
-                // `<button>` with a lint exemption to look right in there.
-                return (
-                  <Popover>
-                    <Popover.Trigger
-                      aria-label={t('chat.context.tokens', {
-                        used: contextInfo.estimatedTokens.toLocaleString(),
-                        limit: contextInfo.contextLimit.toLocaleString(),
-                      })}
-                      className="inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                    >
-                      <ProgressCircle
-                        aria-hidden
-                        value={contextInfo.estimatedTokens}
-                        maxValue={contextInfo.contextLimit}
-                        isIndeterminate={compacting}
-                        color={color}
-                        className={
-                          color && !compacting ? undefined : '[--progress-circle-stroke:var(--muted)]'
-                        }
-                      >
-                        <ProgressCircle.Track className="size-4.5">
-                          <ProgressCircle.TrackCircle />
-                          <ProgressCircle.FillCircle />
-                        </ProgressCircle.Track>
-                      </ProgressCircle>
-                    </Popover.Trigger>
-                    <Popover.Content placement="top" className="max-w-64">
-                      <Popover.Dialog className="flex flex-col gap-1 text-xs tabular-nums">
-                        {compacting ? (
-                          <span>{t('chat.compact.inProgress')}</span>
-                        ) : (
-                          <>
-                            {/* Whose window this is. A delegated run has its own
+                    <VoiceButton
+                      aria-label={voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
+                      state={voice.state}
+                      elapsed={voice.elapsed}
+                      disabled={disabled || streaming}
+                      onPointerDown={voice.handlePointerDown}
+                      onPointerUp={voice.handlePointerUp}
+                      onPointerCancel={voice.handlePointerCancel}
+                      onPointerEnter={voice.handlePointerEnter}
+                      onPointerLeave={voice.handlePointerLeave}
+                    />
+                    <Tooltip.Content placement="top">
+                      {voice.state === 'idle' ? t('chat.voice.tooltip') : t('chat.voice.cancelHint')}
+                    </Tooltip.Content>
+                  </Tooltip>
+                )}
+                {contextInfo &&
+                  contextInfo.messageCount > 0 &&
+                  (() => {
+                    const ratio = contextInfo.estimatedTokens / contextInfo.contextLimit
+                    // Below the warning threshold the ring is ambient, not a
+                    // reading — quieter than `color="default"`, which is a
+                    // foreground shade.
+                    const color = ratio > 0.95 ? 'danger' : ratio > 0.8 ? 'warning' : undefined
+                    // A popover rather than a tooltip. This panel has a button in
+                    // it, and a tooltip is not a place a button can live: it is
+                    // announced as a description, it closes when the pointer leaves
+                    // on the way to what it contains, and nothing in it is
+                    // reachable from the keyboard. That was already true of the
+                    // manual-compact link, which is why it needed a hand-rolled
+                    // `<button>` with a lint exemption to look right in there.
+                    return (
+                      <Popover>
+                        <Popover.Trigger
+                          aria-label={t('chat.context.tokens', {
+                            used: contextInfo.estimatedTokens.toLocaleString(),
+                            limit: contextInfo.contextLimit.toLocaleString(),
+                          })}
+                          className="inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        >
+                          <ProgressCircle
+                            aria-hidden
+                            value={contextInfo.estimatedTokens}
+                            maxValue={contextInfo.contextLimit}
+                            isIndeterminate={compacting}
+                            color={color}
+                            className={color && !compacting ? undefined : '[--progress-circle-stroke:var(--muted)]'}
+                          >
+                            <ProgressCircle.Track className="size-4.5">
+                              <ProgressCircle.TrackCircle />
+                              <ProgressCircle.FillCircle />
+                            </ProgressCircle.Track>
+                          </ProgressCircle>
+                        </Popover.Trigger>
+                        <Popover.Content placement="top" className="max-w-64">
+                          <Popover.Dialog className="flex flex-col gap-1 text-xs tabular-nums">
+                            {compacting ? (
+                              <span>{t('chat.compact.inProgress')}</span>
+                            ) : (
+                              <>
+                                {/* Whose window this is. A delegated run has its own
                                 model and its own limit, so the same percentage
                                 means a different number of tokens — and the
                                 conversation it was started from is one tap away,
                                 which is exactly when that gets confusing. */}
-                            <span className="text-muted">
-                              {contextInfo.agentKind
-                                ? t('chat.context.forSubAgent', {
-                                  kind: t(`chat.subAgent.${contextInfo.agentKind === 'explore' ? 'explore' : 'agent'}`),
-                                  model: contextInfo.model,
-                                })
-                                : contextInfo.model}
-                            </span>
-                            <span>{t('chat.context.messages', { count: contextInfo.messageCount })}</span>
-                            <span>{t('chat.context.tokens', { used: contextInfo.estimatedTokens.toLocaleString(), limit: contextInfo.contextLimit.toLocaleString() })}</span>
-                            {contextInfo.autoCompactEnabled && contextInfo.compactBreaker !== 'closed' ? (
-                              // Before the countdown, and instead of it: "0% until
-                              // auto-compact" next to a number that never moves
-                              // reads as a bug in the indicator rather than as
-                              // compaction having given up.
-                              <span className="text-warning">{t('chat.compact.circuitBreakerOpen')}</span>
-                            ) : contextInfo.autoCompactEnabled && contextInfo.autoCompactThreshold > 0 && (
-                              <span>{Math.max(0, Math.round((1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100))}% {t('chat.compact.untilAutoCompact')}</span>
+                                <span className="text-muted">
+                                  {contextInfo.agentKind
+                                    ? t('chat.context.forSubAgent', {
+                                        kind: t(
+                                          `chat.subAgent.${contextInfo.agentKind === 'explore' ? 'explore' : 'agent'}`,
+                                        ),
+                                        model: contextInfo.model,
+                                      })
+                                    : contextInfo.model}
+                                </span>
+                                <span>{t('chat.context.messages', { count: contextInfo.messageCount })}</span>
+                                <span>
+                                  {t('chat.context.tokens', {
+                                    used: contextInfo.estimatedTokens.toLocaleString(),
+                                    limit: contextInfo.contextLimit.toLocaleString(),
+                                  })}
+                                </span>
+                                {contextInfo.autoCompactEnabled && contextInfo.compactBreaker !== 'closed' ? (
+                                  // Before the countdown, and instead of it: "0% until
+                                  // auto-compact" next to a number that never moves
+                                  // reads as a bug in the indicator rather than as
+                                  // compaction having given up.
+                                  <span className="text-warning">{t('chat.compact.circuitBreakerOpen')}</span>
+                                ) : (
+                                  contextInfo.autoCompactEnabled &&
+                                  contextInfo.autoCompactThreshold > 0 && (
+                                    <span>
+                                      {Math.max(
+                                        0,
+                                        Math.round(
+                                          (1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100,
+                                        ),
+                                      )}
+                                      % {t('chat.compact.untilAutoCompact')}
+                                    </span>
+                                  )
+                                )}
+                                {onCompact && !streaming && (
+                                  <Button
+                                    variant="ghost"
+                                    className="mt-1 h-auto justify-start px-0 py-0 text-xs font-normal underline underline-offset-2"
+                                    onPress={onCompact}
+                                  >
+                                    {t('chat.compact.manual')}
+                                  </Button>
+                                )}
+                              </>
                             )}
-                            {onCompact && !streaming && (
-                              <Button
-                                variant="ghost"
-                                className="mt-1 h-auto justify-start px-0 py-0 text-xs font-normal underline underline-offset-2"
-                                onPress={onCompact}
-                              >
-                                {t('chat.compact.manual')}
-                              </Button>
-                            )}
-                          </>
-                        )}
-                      </Popover.Dialog>
-                    </Popover.Content>
-                  </Popover>
-                )
-              })()}
-            </>
-          }
-        />
+                          </Popover.Dialog>
+                        </Popover.Content>
+                      </Popover>
+                    )
+                  })()}
+              </>
+            }
+          />
         </ComposerContextMenu>
       </div>
     </div>

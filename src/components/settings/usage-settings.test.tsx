@@ -29,9 +29,7 @@ function bucket(over: Partial<UsageBucket> = {}): UsageBucket {
 
 /** Answers each of the five groupings the panel asks for. */
 function serve(by: Partial<Record<UsageDimension, UsageBucket[]>>) {
-  mockApi.usageReport.mockImplementation((dimension: UsageDimension) =>
-    Promise.resolve(by[dimension] ?? []),
-  )
+  mockApi.usageReport.mockImplementation((dimension: UsageDimension) => Promise.resolve(by[dimension] ?? []))
 }
 
 beforeEach(() => {
@@ -125,8 +123,7 @@ it('narrows the window without reloading the whole page', async () => {
   render(<UsageSettings />)
   await screen.findByText('Cost')
 
-  const sent = (): UsageFilter | null =>
-    (mockApi.usageReport.mock.calls.at(-1)?.[1] as UsageFilter | undefined) ?? null
+  const sent = (): UsageFilter | null => (mockApi.usageReport.mock.calls.at(-1)?.[1] as UsageFilter | undefined) ?? null
   const thirtyDays = sent()?.since_ms ?? 0
 
   await userEvent.click(screen.getByRole('tab', { name: 'Last 7 days' }))

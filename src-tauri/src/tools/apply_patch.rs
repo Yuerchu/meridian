@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use super::{Permission, ResolvedTarget, Tool, ToolContext};
+use async_trait::async_trait;
 
 pub struct ApplyPatchTool;
 
@@ -60,8 +60,12 @@ impl Tool for ApplyPatchTool {
     /// covers them.
     fn reach(&self, args: &serde_json::Value, context: &ToolContext) -> super::reach::Reach {
         use super::reach::Reach;
-        let Some(patch) = args["patch"].as_str() else { return Reach::Outside };
-        let Ok(ops) = parse_patch(patch) else { return Reach::Outside };
+        let Some(patch) = args["patch"].as_str() else {
+            return Reach::Outside;
+        };
+        let Ok(ops) = parse_patch(patch) else {
+            return Reach::Outside;
+        };
         let base = args["base_path"]
             .as_str()
             .map(str::to_string)
@@ -81,19 +85,16 @@ impl Tool for ApplyPatchTool {
     }
 
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
-        let patch = args["patch"]
+        let patch = args["patch"].as_str().ok_or("missing 'patch' argument")?;
+        let base_str: Option<String> = args["base_path"]
             .as_str()
-            .ok_or("missing 'patch' argument")?;
-        let base_str: Option<String> = args["base_path"].as_str()
             .map(str::to_string)
             .or_else(|| context.working_directory.clone());
 
         let ops = parse_patch(patch)?;
 
         let join = |p: &str| join_base(p, base_str.as_deref());
-        let resolve = |p: &str| -> Result<ResolvedTarget, String> {
-            context.resolve_and_validate(&join(p))
-        };
+        let resolve = |p: &str| -> Result<ResolvedTarget, String> { context.resolve_and_validate(&join(p)) };
 
         let mut added: Vec<String> = Vec::new();
         let mut updated: Vec<String> = Vec::new();
@@ -103,45 +104,24 @@ impl Tool for ApplyPatchTool {
         for op in &ops {
             match op {
                 FileOp::Add { path, content } => {
-                    if let Some(ref session) = context.edit_session {
-                        let target = resolve(path)?;
-                        if let ResolvedTarget::Real(ref p) = target {
-                            if tokio::fs::symlink_metadata(p).await.is_ok() {
-                                return Err(format!(
-                                    "Add File: '{path}' already exists; use '*** Update File:' to modify it"
-                                ));
-                            }
-                            let mut session = session.lock().await;
-                            session.stage_write(p.clone(), None, content.clone(), "apply_patch");
+                    // The exclusive create both refuses an existing file and
+                    // hands back the handle that will be written, so nothing
+                    // is re-resolved between the two.
+                    let target = context.open_create_new(&join(path)).map_err(|e| {
+                        if e.contains("exists") {
+                            format!("Add File: '{path}' already exists; use '*** Update File:' to modify it")
                         } else {
-                            super::backend::write_string(&target, content).await?;
+                            e
                         }
-                    } else {
-                        // The exclusive create both refuses an existing file and
-                        // hands back the handle that will be written, so nothing
-                        // is re-resolved between the two.
-                        let target = context.open_create_new(&join(path)).map_err(|e| {
-                            if e.contains("exists") {
-                                format!(
-                                    "Add File: '{path}' already exists; use '*** Update File:' to modify it"
-                                )
-                            } else {
-                                e
-                            }
-                        })?;
-                        super::backend::write_opened(target, content).await?;
-                    }
+                    })?;
+                    super::backend::write_opened(target, content).await?;
                     added.push(path.clone());
                 }
                 FileOp::Delete { path } => {
                     if context.is_access_root(path) {
-                        return Err(format!(
-                            "refusing to delete '{path}': it is an authorized access root"
-                        ));
+                        return Err(format!("refusing to delete '{path}': it is an authorized access root"));
                     }
                     let target = resolve(path)?;
-                    // Deletes bypass edit_session staging (it has no stage_delete),
-                    // matching the standalone delete_file tool.
                     super::backend::delete(&target, false).await?;
                     deleted.push(path.clone());
                 }
@@ -149,21 +129,16 @@ impl Tool for ApplyPatchTool {
                     let apply = |original: &str| -> Result<String, String> {
                         match &update.body {
                             UpdateBody::Numbered(hunks) => apply_hunks(original, hunks),
-                            UpdateBody::Contextual(chunks) => {
-                                apply_context_chunks(original, chunks, &update.path)
-                            }
+                            UpdateBody::Contextual(chunks) => apply_context_chunks(original, chunks, &update.path),
                         }
                     };
 
-                    // An in-place update with nothing staged is the one shape
-                    // that can run on a single handle: what the hunks matched
-                    // against is what gets rewritten. Staging needs the old text
-                    // in hand, and a move has to rename before it writes, so
-                    // both of those resolve by path instead.
-                    if update.move_to.is_none()
-                        && context.edit_session.is_none()
-                        && !update.is_new_file
-                    {
+                    // An in-place update is the one shape that can run on a
+                    // single handle: what the hunks matched against is what
+                    // gets rewritten. A move has to rename before it writes,
+                    // and a new file has nothing to read, so both of those
+                    // resolve by path instead.
+                    if update.move_to.is_none() && !update.is_new_file {
                         let target = context.open_edit(&join(&update.path))?;
                         super::backend::edit_opened(target, apply).await?;
                         updated.push(update.path.clone());
@@ -179,28 +154,16 @@ impl Tool for ApplyPatchTool {
                     let result = apply(&original)?;
                     match &update.move_to {
                         None => {
-                            if let Some(ref session) = context.edit_session {
-                                if let ResolvedTarget::Real(ref p) = target {
-                                    let orig = if update.is_new_file { None } else { Some(original) };
-                                    let mut session = session.lock().await;
-                                    session.stage_write(p.clone(), orig, result, "apply_patch");
-                                } else {
-                                    super::backend::write_string(&target, &result).await?;
-                                }
-                            } else {
-                                super::backend::write_string(&target, &result).await?;
-                            }
+                            super::backend::write_string(&target, &result).await?;
                             updated.push(update.path.clone());
                         }
                         Some(dst) => {
                             let dst_target = resolve(dst)?;
-                            if let ResolvedTarget::Real(ref p) = dst_target {
-                                if tokio::fs::symlink_metadata(p).await.is_ok() {
-                                    return Err(format!("Move to: '{dst}' already exists"));
-                                }
+                            if let ResolvedTarget::Real(ref p) = dst_target
+                                && tokio::fs::symlink_metadata(p).await.is_ok()
+                            {
+                                return Err(format!("Move to: '{dst}' already exists"));
                             }
-                            // Moves bypass edit_session staging (it has no stage_rename),
-                            // matching the standalone move_file tool.
                             super::backend::rename(&target, &dst_target).await?;
                             super::backend::write_string(&dst_target, &result).await.map_err(|e| {
                                 format!("file was moved to '{dst}' but updating its content failed: {e}")
@@ -338,11 +301,7 @@ fn header_path(trimmed: &str, marker: &str) -> Option<String> {
     trimmed.strip_prefix(marker).map(|rest| rest.trim().to_string())
 }
 
-fn register_path(
-    seen: &mut std::collections::HashSet<String>,
-    path: &str,
-    marker: &str,
-) -> Result<(), String> {
+fn register_path(seen: &mut std::collections::HashSet<String>, path: &str, marker: &str) -> Result<(), String> {
     if path.is_empty() {
         return Err(format!("'{marker}' is missing a file path"));
     }
@@ -381,7 +340,7 @@ fn parse_codex_patch(patch: &str) -> Result<Vec<FileOp>, String> {
                 "found '*** Begin Patch' but no '*** End Patch' — the patch may be truncated; \
                  re-emit the complete patch"
                     .to_string(),
-            )
+            );
         }
         // No envelope but bare "*** Update File:" headers: accept, tolerate surrounding junk.
         (None, _) => (&all_lines[..], 0, false),
@@ -408,14 +367,14 @@ fn parse_codex_patch(patch: &str) -> Result<Vec<FileOp>, String> {
             register_path(&mut seen, &path, "*** Update File:")?;
             let mut move_to = None;
             let mut j = i + 1;
-            if j < body.len() {
-                if let Some(dst) = header_path(body[j].trim(), "*** Move to:") {
-                    if dst.is_empty() {
-                        return Err("'*** Move to:' is missing a file path".to_string());
-                    }
-                    move_to = Some(dst);
-                    j += 1;
+            if j < body.len()
+                && let Some(dst) = header_path(body[j].trim(), "*** Move to:")
+            {
+                if dst.is_empty() {
+                    return Err("'*** Move to:' is missing a file path".to_string());
                 }
+                move_to = Some(dst);
+                j += 1;
             }
             let (chunks, next) = parse_update_chunks(body, j, &path, offset)?;
             ops.push(FileOp::Update(FileUpdate {
@@ -622,13 +581,12 @@ fn apply_context_chunks(original: &str, chunks: &[ContextChunk], path: &str) -> 
 
     for chunk in chunks {
         if let Some(ref ctx) = chunk.change_context {
-            let anchor = seek_lines(&orig_lines, std::slice::from_ref(ctx), line_index, false)
-                .ok_or_else(|| {
-                    format!(
-                        "could not find context line '@@ {ctx}' in {path} (searched from line {})",
-                        line_index + 1
-                    )
-                })?;
+            let anchor = seek_lines(&orig_lines, std::slice::from_ref(ctx), line_index, false).ok_or_else(|| {
+                format!(
+                    "could not find context line '@@ {ctx}' in {path} (searched from line {})",
+                    line_index + 1
+                )
+            })?;
             line_index = anchor + 1;
         }
 
@@ -765,15 +723,23 @@ fn parse_hunk(lines: &[&str], start: usize) -> Result<(Hunk, usize), String> {
         i += 1;
     }
 
-    Ok((Hunk { old_start, lines: hunk_lines }, i))
+    Ok((
+        Hunk {
+            old_start,
+            lines: hunk_lines,
+        },
+        i,
+    ))
 }
 
 fn parse_hunk_header(header: &str) -> Result<usize, String> {
     // @@ -old_start,old_count +new_start,new_count @@
     let re = regex::Regex::new(r"@@ -(\d+)").unwrap();
-    let caps = re.captures(header)
+    let caps = re
+        .captures(header)
         .ok_or_else(|| format!("invalid hunk header: {header}"))?;
-    caps[1].parse::<usize>()
+    caps[1]
+        .parse::<usize>()
         .map_err(|e| format!("invalid line number in hunk header: {e}"))
 }
 
@@ -884,10 +850,7 @@ mod tests {
         let original = "one\r\ntwo\r\nthree\r\n";
         let hunks = vec![Hunk {
             old_start: 2,
-            lines: vec![
-                PatchLine::Context("two".into()),
-                PatchLine::Add("added".into()),
-            ],
+            lines: vec![PatchLine::Context("two".into()), PatchLine::Add("added".into())],
         }];
         let out = apply_hunks(original, &hunks).unwrap();
         assert_eq!(out, "one\r\ntwo\r\nadded\r\nthree\r\n");
@@ -921,7 +884,8 @@ mod tests {
 
     #[test]
     fn codex_parse_update_basic() {
-        let patch = "*** Begin Patch\n*** Update File: src/main.rs\n@@ fn main()\n-    old();\n+    new();\n*** End Patch\n";
+        let patch =
+            "*** Begin Patch\n*** Update File: src/main.rs\n@@ fn main()\n-    old();\n+    new();\n*** End Patch\n";
         let ops = parse_patch(patch).unwrap();
         assert_eq!(ops.len(), 1);
         match &ops[0] {
@@ -1172,13 +1136,11 @@ mod tests {
     #[test]
     fn chunks_context_not_found_error_is_diagnostic() {
         let original = "a\nb\n";
-        let err = apply_context_chunks(original, &[chunk(None, &["missing"], &["x"])], "src/f.rs")
-            .unwrap_err();
+        let err = apply_context_chunks(original, &[chunk(None, &["missing"], &["x"])], "src/f.rs").unwrap_err();
         assert!(err.contains("src/f.rs"));
         assert!(err.contains("missing"));
         assert!(err.contains("re-read the file"));
-        let err = apply_context_chunks(original, &[chunk(Some("nowhere()"), &["a"], &["A"])], "f")
-            .unwrap_err();
+        let err = apply_context_chunks(original, &[chunk(Some("nowhere()"), &["a"], &["A"])], "f").unwrap_err();
         assert!(err.contains("nowhere()"));
     }
 
@@ -1204,7 +1166,6 @@ mod tests {
             conversation_id: None,
             assistant_id: None,
             db_pool: None,
-            edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),
@@ -1241,11 +1202,17 @@ mod tests {
         assert!(result.contains("1 added"));
         assert!(result.contains("2 updated (1 moved)"));
         assert!(result.contains("1 deleted"));
-        assert_eq!(std::fs::read_to_string(dir.path().join("fresh.txt")).unwrap(), "hello\n");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("fresh.txt")).unwrap(),
+            "hello\n"
+        );
         assert_eq!(std::fs::read_to_string(dir.path().join("upd.txt")).unwrap(), "a\nB\n");
         assert!(!dir.path().join("gone.txt").exists());
         assert!(!dir.path().join("old.txt").exists());
-        assert_eq!(std::fs::read_to_string(dir.path().join("renamed.txt")).unwrap(), "1\nTWO\n");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("renamed.txt")).unwrap(),
+            "1\nTWO\n"
+        );
     }
 
     #[tokio::test]

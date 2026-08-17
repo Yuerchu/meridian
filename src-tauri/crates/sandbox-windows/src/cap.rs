@@ -57,8 +57,7 @@ fn persist_caps(path: &Path, caps: &CapSids) -> Result<()> {
 pub fn load_or_create_cap_sids(codex_home: &Path) -> Result<CapSids> {
     let path = cap_sid_file(codex_home);
     if path.exists() {
-        let txt = fs::read_to_string(&path)
-            .with_context(|| format!("read cap sid file {}", path.display()))?;
+        let txt = fs::read_to_string(&path).with_context(|| format!("read cap sid file {}", path.display()))?;
         let t = txt.trim();
         if t.starts_with('{') && t.ends_with('}') {
             if let Ok(obj) = serde_json::from_str::<CapSids>(t) {
@@ -113,11 +112,7 @@ pub fn writable_root_cap_sid_for_path(codex_home: &Path, root: &Path) -> Result<
     Ok(sid)
 }
 
-pub fn workspace_write_cap_sid_for_root(
-    codex_home: &Path,
-    cwd: &Path,
-    root: &Path,
-) -> Result<String> {
+pub fn workspace_write_cap_sid_for_root(codex_home: &Path, cwd: &Path, root: &Path) -> Result<String> {
     if canonical_path_key(root) == canonical_path_key(cwd) {
         workspace_cap_sid_for_cwd(codex_home, cwd)
     } else {
@@ -156,17 +151,10 @@ mod tests {
         std::fs::create_dir_all(&workspace).expect("create workspace root");
 
         let canonical = dunce::canonicalize(&workspace).expect("canonical workspace root");
-        let alt_spelling = PathBuf::from(
-            canonical
-                .to_string_lossy()
-                .replace('\\', "/")
-                .to_ascii_uppercase(),
-        );
+        let alt_spelling = PathBuf::from(canonical.to_string_lossy().replace('\\', "/").to_ascii_uppercase());
 
-        let first_sid =
-            workspace_cap_sid_for_cwd(&codex_home, canonical.as_path()).expect("first sid");
-        let second_sid =
-            workspace_cap_sid_for_cwd(&codex_home, alt_spelling.as_path()).expect("second sid");
+        let first_sid = workspace_cap_sid_for_cwd(&codex_home, canonical.as_path()).expect("first sid");
+        let second_sid = workspace_cap_sid_for_cwd(&codex_home, alt_spelling.as_path()).expect("second sid");
 
         assert_eq!(first_sid, second_sid);
 
@@ -185,10 +173,9 @@ mod tests {
         std::fs::create_dir_all(&workspace).expect("create workspace");
         std::fs::create_dir_all(&extra_root).expect("create extra root");
 
-        let workspace_sid = workspace_write_cap_sid_for_root(&codex_home, &workspace, &workspace)
-            .expect("workspace sid");
-        let extra_sid = workspace_write_cap_sid_for_root(&codex_home, &workspace, &extra_root)
-            .expect("extra root sid");
+        let workspace_sid =
+            workspace_write_cap_sid_for_root(&codex_home, &workspace, &workspace).expect("workspace sid");
+        let extra_sid = workspace_write_cap_sid_for_root(&codex_home, &workspace, &extra_root).expect("extra root sid");
 
         assert_ne!(workspace_sid, extra_sid);
         assert_eq!(

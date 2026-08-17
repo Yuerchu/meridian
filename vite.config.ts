@@ -27,9 +27,7 @@ function trimIconManifest(): Plugin {
     resolveId: (id) => (id === source ? virtualId : null),
     load(id) {
       if (id !== virtualId) return null
-      const manifest = JSON.parse(
-        fs.readFileSync(path.resolve(rootDir, 'node_modules', source), 'utf8'),
-      )
+      const manifest = JSON.parse(fs.readFileSync(path.resolve(rootDir, 'node_modules', source), 'utf8'))
       const { iconDefinitions, fileExtensions, fileNames, file } = manifest
       return `export default ${JSON.stringify({ iconDefinitions, fileExtensions, fileNames, file })}`
     },
@@ -74,8 +72,7 @@ export default defineConfig({
     // data URLs — over a megabyte of main bundle for a set where a session
     // touches a handful. As files they are fetched on demand, and off the local
     // disk that costs nothing. Everything else keeps the default threshold.
-    assetsInlineLimit: (filePath) =>
-      filePath.includes('material-icon-theme') ? false : undefined,
+    assetsInlineLimit: (filePath) => (filePath.includes('material-icon-theme') ? false : undefined),
   },
   server: {
     host: host || '127.0.0.1',

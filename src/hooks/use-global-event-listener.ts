@@ -134,16 +134,21 @@ export function useGlobalEventListener() {
       // so the card would be decorative. Drop the event rather than draw one.
       if (p.type === 'tool_approval_req' && p.call_id && p.approval_id) {
         store.handleToolApproval(
-          convId, p.message_id!, p.approval_id, p.call_id, p.tool_name!,
-          p.retry_reason, p.origin_call_id,
+          convId,
+          p.message_id!,
+          p.approval_id,
+          p.call_id,
+          p.tool_name!,
+          p.retry_reason,
+          p.origin_call_id,
           // Routed here rather than to the sub-agent's own conversation, which
           // is where the call is: nobody is necessarily looking at that one.
           p.parent_call_id
             ? {
-              parentCallId: p.parent_call_id,
-              arguments: p.arguments ?? '{}',
-              subConversationId: p.sub_conversation_id,
-            }
+                parentCallId: p.parent_call_id,
+                arguments: p.arguments ?? '{}',
+                subConversationId: p.sub_conversation_id,
+              }
             : undefined,
         )
         if (shouldNotify(convId)) {
@@ -153,10 +158,7 @@ export function useGlobalEventListener() {
         return
       }
 
-      if (
-        p.type === 'sub_agent_started'
-        && p.call_id && p.sub_conversation_id && p.spawned_turn_id
-      ) {
+      if (p.type === 'sub_agent_started' && p.call_id && p.sub_conversation_id && p.spawned_turn_id) {
         store.handleSubAgentStarted(convId, p.message_id!, p.call_id, {
           conversationId: p.sub_conversation_id,
           turnId: p.spawned_turn_id,
@@ -181,13 +183,16 @@ export function useGlobalEventListener() {
       useConversationStore.getState().handleCompactStart(event.payload.conversation_id)
     })
 
-    const compactDoneUnlisten = listen<{ conversation_id: string; error?: string; mid_turn?: boolean }>('compact-done', (event) => {
-      const { conversation_id, error, mid_turn } = event.payload
-      // A compaction that fails silently is indistinguishable from one that was
-      // never attempted, while the context indicator stays pinned at its limit.
-      if (error) useConversationStore.getState().setError(conversation_id, error)
-      useConversationStore.getState().handleCompactDone(conversation_id, mid_turn)
-    })
+    const compactDoneUnlisten = listen<{ conversation_id: string; error?: string; mid_turn?: boolean }>(
+      'compact-done',
+      (event) => {
+        const { conversation_id, error, mid_turn } = event.payload
+        // A compaction that fails silently is indistinguishable from one that was
+        // never attempted, while the context indicator stays pinned at its limit.
+        if (error) useConversationStore.getState().setError(conversation_id, error)
+        useConversationStore.getState().handleCompactDone(conversation_id, mid_turn)
+      },
+    )
 
     return () => {
       chatStreamUnlisten.then((fn) => fn())

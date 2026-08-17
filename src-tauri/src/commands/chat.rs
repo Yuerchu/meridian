@@ -1,25 +1,23 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::{Emitter, Manager};
 
 use crate::agent::engine;
 use crate::agent::turn_record;
 use crate::agent::{
-    build_file_access, build_messages_with_senders, do_compact, file_access_prompt,
-    instruction_budget, load_project_instructions, microcompact, resolve_file_uris_in_messages,
-    trailing_with_memory, trim_to_context_limit, CompactCircuitBreaker, TokenBudget,
+    CompactCircuitBreaker, TokenBudget, build_file_access, build_messages_with_senders, do_compact, file_access_prompt,
+    instruction_budget, load_project_instructions, microcompact, resolve_file_uris_in_messages, trailing_with_memory,
+    trim_to_context_limit,
 };
 use crate::db;
+use crate::db::DbPool;
 use crate::db::models::assistant::Assistant;
 use crate::db::models::message::NewMessage;
-use crate::db::models::turn::{TurnPhase, TurnStatus, ERROR_LOOP_DETECTED};
-use crate::db::DbPool;
+use crate::db::models::turn::{ERROR_LOOP_DETECTED, TurnPhase, TurnStatus};
 use crate::provider;
 use crate::provider::{ChatMessage, ChatParams};
-use crate::state::{
-    AppDb, AppMcp, AppSecrets, AppTools, AppTurns, ApprovalWaiters, CompactBreakers,
-};
+use crate::state::{AppDb, AppMcp, AppSecrets, AppTools, AppTurns, ApprovalWaiters, CompactBreakers};
 use crate::template;
 use crate::tools;
 use crate::turn::{TurnLease, TurnOrigin};
@@ -166,12 +164,15 @@ impl Drop for TurnGuard<'_> {
         // stream ends must not be told the conversation is busy.
         self.lease.take();
         if self.armed {
-            let _ = self.app.emit("chat-stream", serde_json::json!({
-                "type": "stop", "reason": "error", "done": true,
-                "message_id": self.message_id,
-                "turn_id": self.turn_id,
-                "conversation_id": self.conversation_id,
-            }));
+            let _ = self.app.emit(
+                "chat-stream",
+                serde_json::json!({
+                    "type": "stop", "reason": "error", "done": true,
+                    "message_id": self.message_id,
+                    "turn_id": self.turn_id,
+                    "conversation_id": self.conversation_id,
+                }),
+            );
         }
     }
 }
@@ -187,11 +188,7 @@ impl Drop for TurnGuard<'_> {
 /// Succeeds either way. A stop aimed at a turn that already ended is not a
 /// failure the user needs to see; the front end clears its own state regardless.
 #[tauri::command]
-pub async fn stop_chat(
-    app: tauri::AppHandle,
-    conversation_id: String,
-    turn_id: Option<String>,
-) -> Result<(), String> {
+pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String, turn_id: Option<String>) -> Result<(), String> {
     let cancelled = app.state::<AppTurns>().0.cancel(&conversation_id, turn_id.as_deref());
     if !cancelled {
         tracing::debug!(
@@ -264,7 +261,10 @@ pub async fn chat(
     // Nothing is awaited between taking this and handing it to the guard that
     // gives it back, so there is no point at which the task can be dropped
     // holding it.
-    let lease = app.state::<AppTurns>().0.clone()
+    let lease = app
+        .state::<AppTurns>()
+        .0
+        .clone()
         .try_acquire_turn_as(&conversation_id, TurnOrigin::Desktop, turn_id.clone())
         .map_err(|busy| busy.to_string())?;
 
@@ -280,8 +280,19 @@ pub async fn chat(
     // rather than at each `?` also keeps a single failure from being reported
     // twice.
     let result = chat_inner(
-        app, conversation_id, message, lease, Arc::clone(&recorded), replaces,
-        model_override, provider_override, thinking_level, assistant_id, fast, mode, voice,
+        app,
+        conversation_id,
+        message,
+        lease,
+        Arc::clone(&recorded),
+        replaces,
+        model_override,
+        provider_override,
+        thinking_level,
+        assistant_id,
+        fast,
+        mode,
+        voice,
     )
     .await
     .inspect_err(|e| tracing::error!(error = %e, "turn failed"));
@@ -290,10 +301,10 @@ pub async fn chat(
     // killed, and the record has to say which. Without this the row would be
     // left at `running` and the next launch would report a bad API key as a
     // crash.
-    if let Err(ref e) = result {
-        if recorded.load(Ordering::Relaxed) {
-            turn_record::finish(&pool, &turn_id, TurnStatus::Failed, Some(e)).await;
-        }
+    if let Err(ref e) = result
+        && recorded.load(Ordering::Relaxed)
+    {
+        turn_record::finish(&pool, &turn_id, TurnStatus::Failed, Some(e)).await;
     }
     result
 }
@@ -362,22 +373,20 @@ async fn chat_inner(
         let replaces = replaces.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
-            let effective_aid = aid_override.as_deref()
-                .or(conv.assistant_id.as_deref());
+            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
+            let effective_aid = aid_override.as_deref().or(conv.assistant_id.as_deref());
             // Pinned before anything derives from it. A delegated run stays
             // writable after it ends, and a follow-up has to go to the model the
             // transcript was written by — one conversation spanning two models
             // with no record of where it changed is not something anyone can
             // read afterwards. An explicit override from the model picker still
             // wins; this is the fallback, not a lock.
-            let assistant = conv.pin_model(
-                effective_aid.and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok()),
-            );
-            let history = db::ops::message::list_messages(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
-            let project = conv.project_id.as_deref()
+            let assistant =
+                conv.pin_model(effective_aid.and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok()));
+            let history = db::ops::message::list_messages(&mut conn, &conv_id).map_err(|e| e.to_string())?;
+            let project = conv
+                .project_id
+                .as_deref()
                 .and_then(|pid| db::ops::project::get_project(&mut conn, pid).ok());
             let project_path = project.as_ref().and_then(|p| p.path.clone());
             let project_id = project.as_ref().map(|p| p.id.clone());
@@ -419,8 +428,18 @@ async fn chat_inner(
                 (true, parent) => db::ops::message::active_context(&history, parent),
                 (false, _) => db::ops::message::active_context(&history, conv.head_message_id.as_deref()),
             };
-            Ok::<_, String>((assistant, ctx, conv.title, project_path, project_id, conv_prefs, branch_parent))
-        }).await.map_err(|e| e.to_string())??
+            Ok::<_, String>((
+                assistant,
+                ctx,
+                conv.title,
+                project_path,
+                project_id,
+                conv_prefs,
+                branch_parent,
+            ))
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
 
     // Resolve provider config (with optional overrides). Off the async thread:
@@ -477,13 +496,15 @@ async fn chat_inner(
                     return None;
                 }
             };
-            db::ops::preference::get_preference(&mut conn, "user_name").ok().flatten()
-        }).await.ok().flatten()
+            db::ops::preference::get_preference(&mut conn, "user_name")
+                .ok()
+                .flatten()
+        })
+        .await
+        .ok()
+        .flatten()
     };
-    let mut tmpl_ctx = template::build_context(
-        assistant.as_ref().map(|a| a.name.as_str()),
-        user_name.as_deref(),
-    );
+    let mut tmpl_ctx = template::build_context(assistant.as_ref().map(|a| a.name.as_str()), user_name.as_deref());
     if let Some(ref a) = assistant {
         let pool2 = pool.clone();
         let aid = a.id.clone();
@@ -498,17 +519,18 @@ async fn chat_inner(
                 }
             };
             db::ops::emoji::format_emoji_list_block(&mut conn, &aid)
-        }).await.ok().flatten();
+        })
+        .await
+        .ok()
+        .flatten();
         if let Some(names) = emoji_names {
             tmpl_ctx.set("emoji_list", &names);
         }
     }
     let system_prompt_resolved = template::resolve(raw_prompt, &tmpl_ctx);
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
-    let memory_request = crate::agent::MemoryRequest::desktop(
-        project_id.clone(),
-        crate::agent::memory_budget(context_limit),
-    );
+    let memory_request =
+        crate::agent::MemoryRequest::desktop(project_id.clone(), crate::agent::memory_budget(context_limit));
     // How the previous turns stopped, for any that did not stop cleanly. Read
     // here rather than at the top because it is background about the
     // conversation, like the memory block, and travels the same way.
@@ -517,13 +539,8 @@ async fn chat_inner(
     // the end: reading the record settles nothing, and neither does sending a
     // request, since this turn may die on the way out or be refused over SSE
     // by a provider that already answered 200.
-    let interrupted = crate::agent::interrupted::load_block(
-        &pool,
-        &app.state::<AppTurns>().0,
-        &conversation_id,
-        &turn_id,
-    )
-    .await;
+    let interrupted =
+        crate::agent::interrupted::load_block(&pool, &app.state::<AppTurns>().0, &conversation_id, &turn_id).await;
     let instruction_block = {
         let budget = instruction_budget(context_limit);
         if budget > 0 {
@@ -542,9 +559,7 @@ async fn chat_inner(
     // mid-call — which is exactly what used to stop every other conversation
     // from starting a turn.
     let mcp_defs = app.state::<AppMcp>().0.tool_definitions().as_ref().clone();
-    let mode = crate::agent::modes::resolve(
-        mode.as_deref().or(conv_mode.as_deref()),
-    );
+    let mode = crate::agent::modes::resolve(mode.as_deref().or(conv_mode.as_deref()));
     // Kept so the turn can be re-resolved in place if the user approves a plan
     // mid-flight; everything else the resolver needs is still in scope.
     let persona = system_prompt_resolved;
@@ -553,8 +568,7 @@ async fn chat_inner(
         file_access_prompt(&file_access),
         // Mirrored in conversation.rs's estimator via the same function; the
         // OR with this turn's flag only matters before the message lands.
-        crate::voice::prompt::voice_context_block(&ctx.path, voice == Some(true))
-            .unwrap_or_default(),
+        crate::voice::prompt::voice_context_block(&ctx.path, voice == Some(true)).unwrap_or_default(),
     ];
     // Taken from the resolution rather than recomputed from the override and the
     // assistant. Those two miss the third case: with neither set, the resolver
@@ -589,16 +603,21 @@ async fn chat_inner(
         let level = effective_level.map(|s| s.to_string());
         let fast = fast.unwrap_or(conv_fast_mode);
         tokio::task::spawn_blocking(move || {
-            crate::agent::resolve_turn_params(&pool2, crate::agent::TurnParamsInput {
-                assistant: assistant2.as_ref(),
-                provider_id: pid.as_deref(),
-                provider_type: &pt,
-                api_format: &af,
-                model: &mid,
-                thinking_level: level.as_deref(),
-                fast,
-            })
-        }).await.map_err(|e| e.to_string())??
+            crate::agent::resolve_turn_params(
+                &pool2,
+                crate::agent::TurnParamsInput {
+                    assistant: assistant2.as_ref(),
+                    provider_id: pid.as_deref(),
+                    provider_type: &pt,
+                    api_format: &af,
+                    model: &mid,
+                    thinking_level: level.as_deref(),
+                    fast,
+                },
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
     // A model that cannot take tools is sent none at all — several providers
     // refuse any request carrying a tools field. Decided here rather than by
@@ -637,11 +656,10 @@ async fn chat_inner(
                 persona: persona2,
                 context_blocks: blocks,
             };
-            Ok::<_, String>((
-                crate::agent::turn_config::resolve(&mut conn, &registry, input),
-                catalog,
-            ))
-        }).await.map_err(|e| e.to_string())??
+            Ok::<_, String>((crate::agent::turn_config::resolve(&mut conn, &registry, input), catalog))
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
     let tool_defs = turn.tool_defs;
     let offered = turn.offered;
@@ -652,7 +670,13 @@ async fn chat_inner(
     let context_limit = turn_params.context_limit;
     let max_output = turn_params.max_output;
     let model_config = turn_params.model_config;
-    let mut budget = TokenBudget::new(&resolved.provider_type, &model, context_limit, max_output, turn_params.compact_threshold);
+    let mut budget = TokenBudget::new(
+        &resolved.provider_type,
+        &model,
+        context_limit,
+        max_output,
+        turn_params.compact_threshold,
+    );
 
     let circuit_breaker = {
         let breakers = app.state::<CompactBreakers>();
@@ -674,9 +698,8 @@ async fn chat_inner(
     if auto_compact && circuit_breaker.can_compact() {
         // Only to size the window. The real decision is taken after compaction,
         // against the path compaction leaves behind — see below.
-        let probe = crate::agent::plan_injection_async(
-            &pool, memory_request.clone(), ctx.live().to_vec(), now_ms(),
-        ).await;
+        let probe =
+            crate::agent::plan_injection_async(&pool, memory_request.clone(), ctx.live().to_vec(), now_ms()).await;
         let pre_msgs = build_messages_with_senders(
             system_prompt.trim(),
             &ctx,
@@ -690,11 +713,15 @@ async fn chat_inner(
         );
         budget.update_estimate(&pre_msgs);
         if budget.needs_compact() && ctx.path.len() > keep_recent * 2 + 2 {
-            app.emit("compact-start", serde_json::json!({
-                "conversation_id": &conversation_id,
-                "mid_turn": false,
-                "trigger": "threshold",
-            })).ok();
+            app.emit(
+                "compact-start",
+                serde_json::json!({
+                    "conversation_id": &conversation_id,
+                    "mid_turn": false,
+                    "trigger": "threshold",
+                }),
+            )
+            .ok();
             // Compaction deletes the old summary before writing the new one and
             // the two are not one transaction, so dying in here is its own kind
             // of half-finished. The bracket also restores `Streaming` however it
@@ -702,17 +729,32 @@ async fn chat_inner(
             // that follows reported as a compaction that never finished, and
             // tell the model its history might be half-rewritten when it is not.
             let compaction = engine::in_phase(
-                &pool, &turn_id, TurnPhase::Compacting, None,
-                do_compact(&pool, &secrets.0, &conversation_id, assistant.as_ref(), keep_recent, None),
-            ).await;
+                &pool,
+                &turn_id,
+                TurnPhase::Compacting,
+                None,
+                do_compact(
+                    &pool,
+                    &secrets.0,
+                    &conversation_id,
+                    assistant.as_ref(),
+                    keep_recent,
+                    None,
+                ),
+            )
+            .await;
             match compaction {
                 Ok(_anchor) => {
                     compacted = true;
                     circuit_breaker.record_success();
-                    app.emit("compact-done", serde_json::json!({
-                        "conversation_id": &conversation_id,
-                        "mid_turn": false,
-                    })).ok();
+                    app.emit(
+                        "compact-done",
+                        serde_json::json!({
+                            "conversation_id": &conversation_id,
+                            "mid_turn": false,
+                        }),
+                    )
+                    .ok();
                 }
                 Err(e) => {
                     tracing::warn!("Auto-compact failed: {e}");
@@ -720,11 +762,15 @@ async fn chat_inner(
                     // Surfaced rather than swallowed: a silent failure looks
                     // exactly like compaction never having been attempted, while
                     // the context indicator sits pinned at its limit.
-                    app.emit("compact-done", serde_json::json!({
-                        "conversation_id": &conversation_id,
-                        "mid_turn": false,
-                        "error": e,
-                    })).ok();
+                    app.emit(
+                        "compact-done",
+                        serde_json::json!({
+                            "conversation_id": &conversation_id,
+                            "mid_turn": false,
+                            "error": e,
+                        }),
+                    )
+                    .ok();
                 }
             }
         }
@@ -741,13 +787,16 @@ async fn chat_inner(
         // while reporting the turn as compacted.
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool2)?;
-            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
-            let history = db::ops::message::list_messages(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
-            Ok::<_, String>(db::ops::message::active_context(&history, conv.head_message_id.as_deref()))
-        }).await.map_err(|e| e.to_string())?
-            .map_err(|e| format!("compaction finished but its result could not be read back: {e}"))?
+            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
+            let history = db::ops::message::list_messages(&mut conn, &conv_id).map_err(|e| e.to_string())?;
+            Ok::<_, String>(db::ops::message::active_context(
+                &history,
+                conv.head_message_id.as_deref(),
+            ))
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("compaction finished but its result could not be read back: {e}"))?
     } else {
         ctx
     };
@@ -758,9 +807,7 @@ async fn chat_inner(
     // is exactly the signal that everything has to be re-sent, getting this
     // ordering wrong is silent rather than loud.
     let t0 = now_ms();
-    let injection = crate::agent::plan_injection_async(
-        &pool, memory_request, ctx.live().to_vec(), t0,
-    ).await;
+    let injection = crate::agent::plan_injection_async(&pool, memory_request, ctx.live().to_vec(), t0).await;
     let injected = injection.as_ref().and_then(|i| i.text.clone());
 
     let mut chat_messages = build_messages_with_senders(
@@ -804,10 +851,8 @@ async fn chat_inner(
     // Ahead of the message, because that is where it was sent and where the next
     // turn has to find it.
     if let Some(ref injection) = injection {
-        parent_cursor = crate::agent::persist_injection(
-            &pool, injection, &conversation_id, &turn_id, parent_cursor, now,
-        )
-        .await;
+        parent_cursor =
+            crate::agent::persist_injection(&pool, injection, &conversation_id, &turn_id, parent_cursor, now).await;
     }
 
     // Absent only when regenerating, which re-answers a question that is already
@@ -821,29 +866,52 @@ async fn chat_inner(
         let turn = turn_id.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            db::ops::message::append_message(&mut conn, &NewMessage {
-                id: &msg_id, conversation_id: &conv_id, role: "user", content: &msg,
-                provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
-                tool_calls: None, tool_call_id: None, sort_order: 0, created_at: now,
-                reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
-                // Desktop chats have a single implicit speaker.
-                sender_id: None,
-                parent_id: None, compact_anchor_id: None,
-                source: if voice == Some(true) { Some("voice") } else { None },
-                turn_id: Some(&turn), tool_outcome: None,
-                // What the user typed cost no tokens and came from no upstream.
-                cache_read_tokens: None, cache_write_tokens: None,
-                provider_name: None,
-            }, parent.as_deref()).map_err(|e| e.to_string())?;
+            db::ops::message::append_message(
+                &mut conn,
+                &NewMessage {
+                    id: &msg_id,
+                    conversation_id: &conv_id,
+                    role: "user",
+                    content: &msg,
+                    provider_id: None,
+                    model_id: None,
+                    input_tokens: None,
+                    output_tokens: None,
+                    tool_calls: None,
+                    tool_call_id: None,
+                    sort_order: 0,
+                    created_at: now,
+                    reasoning_content: None,
+                    rating: None,
+                    schema_version: 2,
+                    is_compact_summary: 0,
+                    // Desktop chats have a single implicit speaker.
+                    sender_id: None,
+                    parent_id: None,
+                    compact_anchor_id: None,
+                    source: if voice == Some(true) { Some("voice") } else { None },
+                    turn_id: Some(&turn),
+                    tool_outcome: None,
+                    // What the user typed cost no tokens and came from no upstream.
+                    cache_read_tokens: None,
+                    cache_write_tokens: None,
+                    provider_name: None,
+                },
+                parent.as_deref(),
+            )
+            .map_err(|e| e.to_string())?;
             Ok::<_, String>(())
-        }).await.map_err(|e| e.to_string())??;
+        })
+        .await
+        .map_err(|e| e.to_string())??;
         parent_cursor = Some(user_msg_id.clone());
     }
 
     // Shell preference
-    let (shell_type, sandbox_pref, sleep_pref) = {
-        let pool2 = pool.clone();
-        tokio::task::spawn_blocking(move || {
+    let (shell_type, sandbox_pref, sleep_pref) =
+        {
+            let pool2 = pool.clone();
+            tokio::task::spawn_blocking(move || {
             let mut conn = match pool2.get() {
                 Ok(c) => c,
                 Err(e) => {
@@ -864,7 +932,7 @@ async fn chat_inner(
             let sleep = db::ops::preference::get_preference(&mut conn, "sleep_inhibitor.enabled").ok().flatten();
             Some((shell, sandbox, sleep))
         }).await.ok().flatten().unwrap_or((None, None, None))
-    };
+        };
     // Missing preference means enabled: sandbox-by-default on Windows.
     let sandbox_enabled = sandbox_pref.as_deref() != Some("false");
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
@@ -874,7 +942,8 @@ async fn chat_inner(
         let pool2 = pool.clone();
         let secrets2 = secrets.0.clone();
         tokio::task::spawn_blocking(move || crate::agent::build_tool_secrets(&secrets2, &pool2))
-            .await.map_err(|e| e.to_string())?
+            .await
+            .map_err(|e| e.to_string())?
     };
     #[cfg(not(target_os = "android"))]
     let sandbox_policy = crate::sandbox::default_policy_if_enabled(sandbox_enabled, project_path.as_deref());
@@ -882,7 +951,9 @@ async fn chat_inner(
     let _ = sandbox_enabled;
     let tool_context = tools::ToolContext {
         working_directory: project_path,
-        shell: shell_type.map(|s| tools::ShellType::from_str(&s)).unwrap_or_else(tools::ShellType::default_for_platform),
+        shell: shell_type
+            .map(|s| tools::ShellType::from_str(&s))
+            .unwrap_or_else(tools::ShellType::default_for_platform),
         file_access,
         // Cloned rather than moved: approving a plan mid-turn re-resolves the
         // turn config, which needs the project again.
@@ -890,7 +961,6 @@ async fn chat_inner(
         conversation_id: Some(conversation_id.clone()),
         assistant_id: assistant.as_ref().map(|a| a.id.clone()),
         db_pool: Some(pool.clone()),
-        edit_session: None,
         #[cfg(not(target_os = "android"))]
         sandbox_policy,
         tool_secrets,
@@ -944,7 +1014,11 @@ async fn chat_inner(
         bubble: None,
     };
     let outcome = engine::run_turn(
-        &engine::TurnServices { pool: &pool, tools: &tool_registry.0, mcp: &mcp },
+        &engine::TurnServices {
+            pool: &pool,
+            tools: &tool_registry.0,
+            mcp: &mcp,
+        },
         engine::TurnSetup {
             provider: &*provider,
             // Cloned because the title request below reuses the model, and it
@@ -1006,7 +1080,8 @@ async fn chat_inner(
     let turn_aborted = outcome.progress.aborted;
     let last_assistant_text = outcome.reply?;
 
-    let cost_info = model_config.as_ref()
+    let cost_info = model_config
+        .as_ref()
         .filter(|mc| crate::agent::pricing::has_pricing(mc))
         .map(|mc| {
             let usage = crate::provider::TokenUsage {
@@ -1062,9 +1137,16 @@ async fn chat_inner(
     if conv_title.is_none() {
         // Regenerating carries no new message, so the question comes back off the
         // path this turn answered.
-        let titled_question = message.clone().or_else(|| {
-            ctx.path.iter().rev().find(|m| m.role == "user").map(|m| m.content.clone())
-        }).unwrap_or_default();
+        let titled_question = message
+            .clone()
+            .or_else(|| {
+                ctx.path
+                    .iter()
+                    .rev()
+                    .find(|m| m.role == "user")
+                    .map(|m| m.content.clone())
+            })
+            .unwrap_or_default();
         let title_messages = vec![ChatMessage::user(&format!(
             "Generate a short title (max 6 words, no quotes, no punctuation) for this conversation:\nUser: {}\nAssistant: {}",
             titled_question,
@@ -1084,10 +1166,15 @@ async fn chat_inner(
                     if let Ok(mut conn) = pool.get() {
                         let _ = db::ops::conversation::update_title(&mut conn, &conv_id, &title, now_ms());
                     }
-                }).await;
-                app.emit("conversation-updated", serde_json::json!({
-                    "id": conversation_id,
-                })).ok();
+                })
+                .await;
+                app.emit(
+                    "conversation-updated",
+                    serde_json::json!({
+                        "id": conversation_id,
+                    }),
+                )
+                .ok();
             }
         }
     }

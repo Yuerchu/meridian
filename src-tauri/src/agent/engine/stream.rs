@@ -51,9 +51,11 @@ pub(crate) async fn consume_stream(
     let mut finish_reason = None;
     // Some OpenAI-compatible providers inline reasoning as <think> tags in the
     // text stream instead of a separate reasoning field; route it accordingly.
-    let mut think_parser = InlineHiddenTagParser::new_streaming(vec![
-        InlineTagSpec { tag: (), open: "<think>", close: "</think>" },
-    ]);
+    let mut think_parser = InlineHiddenTagParser::new_streaming(vec![InlineTagSpec {
+        tag: (),
+        open: "<think>",
+        close: "</think>",
+    }]);
     // Set by the one exit that means the model reached the end of its answer:
     // the stream running out. Cancellation leaves it false, and so does every
     // error return, none of which get this far.
@@ -154,11 +156,23 @@ pub(crate) async fn consume_stream(
         tool_acc
             .into_iter()
             .filter(|(id, _, _)| !id.is_empty())
-            .map(|(id, name, args)| provider::ToolCall { id, name, arguments: args })
+            .map(|(id, name, args)| provider::ToolCall {
+                id,
+                name,
+                arguments: args,
+            })
             .collect()
     };
 
-    Ok(StreamResult { text, reasoning, signature, tool_calls, usage, finish_reason, ran_to_completion })
+    Ok(StreamResult {
+        text,
+        reasoning,
+        signature,
+        tool_calls,
+        usage,
+        finish_reason,
+        ran_to_completion,
+    })
 }
 
 #[cfg(test)]
@@ -208,17 +222,29 @@ mod tests {
 
     impl Recorder {
         fn watching() -> Self {
-            Self { seen: Mutex::new(Vec::new()), fail_from: None, fatal: true }
+            Self {
+                seen: Mutex::new(Vec::new()),
+                fail_from: None,
+                fatal: true,
+            }
         }
 
         /// Fails every send from the nth onwards, and says so — the desktop.
         fn fatal_from(n: usize) -> Self {
-            Self { seen: Mutex::new(Vec::new()), fail_from: Some(n), fatal: true }
+            Self {
+                seen: Mutex::new(Vec::new()),
+                fail_from: Some(n),
+                fatal: true,
+            }
         }
 
         /// Fails the same way but never admits it — OneBot.
         fn best_effort_from(n: usize) -> Self {
-            Self { seen: Mutex::new(Vec::new()), fail_from: Some(n), fatal: false }
+            Self {
+                seen: Mutex::new(Vec::new()),
+                fail_from: Some(n),
+                fatal: false,
+            }
         }
 
         fn kinds(&self) -> Vec<(String, String)> {
@@ -283,7 +309,9 @@ mod tests {
     async fn an_error_inside_the_stream_is_not_a_completion() {
         let cancel = CancellationToken::new();
         let r = consume_stream(
-            events(vec![StreamEvent::Error { message: "context_length_exceeded".into() }]),
+            events(vec![StreamEvent::Error {
+                message: "context_length_exceeded".into(),
+            }]),
             &cancel,
             None,
             "m1",
@@ -313,12 +341,23 @@ mod tests {
         // The call is complete before the text arrives, so it is sitting in the
         // accumulator with nothing left to do but be returned.
         let stream = then_silence(vec![
-            StreamEvent::ToolCallStart { index: 0, id: "c1".into(), name: "edit_file".into() },
-            StreamEvent::ToolCallDone { index: 0, arguments: "{}".into() },
-            StreamEvent::Text { content: "on it —".into() },
+            StreamEvent::ToolCallStart {
+                index: 0,
+                id: "c1".into(),
+                name: "edit_file".into(),
+            },
+            StreamEvent::ToolCallDone {
+                index: 0,
+                arguments: "{}".into(),
+            },
+            StreamEvent::Text {
+                content: "on it —".into(),
+            },
         ]);
 
-        let r = consume_stream(stream, &cancel, Some(&stopper), "m1", "c1").await.unwrap();
+        let r = consume_stream(stream, &cancel, Some(&stopper), "m1", "c1")
+            .await
+            .unwrap();
 
         assert_eq!(r.text, "on it —", "what the user watched arrive is still there");
         assert!(r.tool_calls.is_empty(), "and the file is not edited");
@@ -335,14 +374,19 @@ mod tests {
             events(vec![
                 StreamEvent::Text { content: "one".into() },
                 StreamEvent::Text { content: "two".into() },
-                StreamEvent::Text { content: "three".into() },
+                StreamEvent::Text {
+                    content: "three".into(),
+                },
             ])
         };
         let cancel = CancellationToken::new();
 
         let desktop = Recorder::fatal_from(1);
         let stopped = consume_stream(script(), &cancel, Some(&desktop), "m1", "c1").await;
-        assert!(stopped.is_err(), "the desktop's events are the answer; losing one ends the turn");
+        assert!(
+            stopped.is_err(),
+            "the desktop's events are the answer; losing one ends the turn"
+        );
         assert_eq!(desktop.kinds().len(), 2, "and it stops at the one that failed");
 
         let onebot = Recorder::best_effort_from(1);
@@ -359,9 +403,15 @@ mod tests {
     async fn both_runners_produce_the_same_events_when_nothing_fails() {
         let script = || {
             events(vec![
-                StreamEvent::Text { content: "vis <think>hidden".into() },
-                StreamEvent::Text { content: "</think> more".into() },
-                StreamEvent::Reasoning { content: "aside".into() },
+                StreamEvent::Text {
+                    content: "vis <think>hidden".into(),
+                },
+                StreamEvent::Text {
+                    content: "</think> more".into(),
+                },
+                StreamEvent::Reasoning {
+                    content: "aside".into(),
+                },
             ])
         };
         let cancel = CancellationToken::new();

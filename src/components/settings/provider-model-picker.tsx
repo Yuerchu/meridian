@@ -9,9 +9,7 @@ const NO_PROVIDER = '_default'
 /** Stands for "not chosen" in the model list. */
 const NO_MODEL = '_none'
 
-type NameProps =
-  | { label: React.ReactNode; ariaLabel?: never }
-  | { label?: never; ariaLabel: string }
+type NameProps = { label: React.ReactNode; ariaLabel?: never } | { label?: never; ariaLabel: string }
 
 interface ProviderModelPickerProps {
   providers: Provider[]
@@ -69,8 +67,7 @@ export function ProviderModelPicker({
 }: ProviderModelPickerProps) {
   const { t } = useTranslation()
 
-  const name = (text: string): NameProps =>
-    labelMode === 'aria' ? { ariaLabel: text } : { label: text }
+  const name = (text: string): NameProps => (labelMode === 'aria' ? { ariaLabel: text } : { label: text })
 
   const providerOptions = [
     { value: NO_PROVIDER, label: emptyProviderLabel },

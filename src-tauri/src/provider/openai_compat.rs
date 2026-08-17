@@ -3,8 +3,11 @@ use eventsource_stream::Eventsource;
 use futures::stream::StreamExt;
 use serde::Deserialize;
 
-use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
-use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ToolCall, ToolDefinition, TokenUsage};
+use super::{
+    AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, TokenUsage, ToolCall,
+    ToolDefinition,
+};
+use crate::client::{HttpTransport, Request, RequestBody, ReqwestTransport};
 
 pub struct OpenAICompatProvider {
     base_url: String,
@@ -50,25 +53,27 @@ impl OpenAICompatProvider {
             // The config-facing name is "fast"; the wire value is the priority tier.
             body["service_tier"] = serde_json::json!("priority");
         }
-        if let Some(tools) = tools {
-            if !tools.is_empty() {
-                body["tools"] = serde_json::json!(tools.iter().map(|t| {
-                    serde_json::json!({
-                        "type": "function",
-                        "function": {
-                            "name": t.name,
-                            "description": t.description,
-                            "parameters": t.parameters,
-                        }
+        if let Some(tools) = tools
+            && !tools.is_empty()
+        {
+            body["tools"] = serde_json::json!(
+                tools
+                    .iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "type": "function",
+                            "function": {
+                                "name": t.name,
+                                "description": t.description,
+                                "parameters": t.parameters,
+                            }
+                        })
                     })
-                }).collect::<Vec<_>>());
-            }
+                    .collect::<Vec<_>>()
+            );
         }
 
-        let mut req = Request::new(
-            http::Method::POST,
-            format!("{}/chat/completions", self.base_url),
-        );
+        let mut req = Request::new(http::Method::POST, format!("{}/chat/completions", self.base_url));
         req.headers.insert(
             http::header::AUTHORIZATION,
             super::auth_header_value(&format!("Bearer {}", self.api_key)),
@@ -79,36 +84,44 @@ impl OpenAICompatProvider {
 }
 
 fn content_value(content: &str) -> serde_json::Value {
-    if content.starts_with('[') {
-        if let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(content) {
-            return serde_json::Value::Array(parts);
-        }
+    if content.starts_with('[')
+        && let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(content)
+    {
+        return serde_json::Value::Array(parts);
     }
     serde_json::Value::String(content.to_string())
 }
 
 pub fn serialize_openai_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
-    messages.iter().map(|m| {
-        // chat-completions has a native `name`, so identity never touches the body.
-        let rendered = super::render_message(m, super::SenderRendering::NameField);
-        let mut msg = serde_json::json!({ "role": m.role, "content": content_value(&rendered.content) });
-        if let Some(ref name) = rendered.name {
-            msg["name"] = serde_json::json!(name);
-        }
-        if let Some(ref tool_calls) = m.tool_calls {
-            msg["tool_calls"] = serde_json::json!(tool_calls.iter().map(|tc| {
-                serde_json::json!({
-                    "id": tc.id,
-                    "type": "function",
-                    "function": { "name": tc.name, "arguments": tc.arguments }
-                })
-            }).collect::<Vec<_>>());
-        }
-        if let Some(ref tool_call_id) = m.tool_call_id {
-            msg["tool_call_id"] = serde_json::json!(tool_call_id);
-        }
-        msg
-    }).collect()
+    messages
+        .iter()
+        .map(|m| {
+            // chat-completions has a native `name`, so identity never touches the body.
+            let rendered = super::render_message(m, super::SenderRendering::NameField);
+            let mut msg = serde_json::json!({ "role": m.role, "content": content_value(&rendered.content) });
+            if let Some(ref name) = rendered.name {
+                msg["name"] = serde_json::json!(name);
+            }
+            if let Some(ref tool_calls) = m.tool_calls {
+                msg["tool_calls"] = serde_json::json!(
+                    tool_calls
+                        .iter()
+                        .map(|tc| {
+                            serde_json::json!({
+                                "id": tc.id,
+                                "type": "function",
+                                "function": { "name": tc.name, "arguments": tc.arguments }
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                );
+            }
+            if let Some(ref tool_call_id) = m.tool_call_id {
+                msg["tool_call_id"] = serde_json::json!(tool_call_id);
+            }
+            msg
+        })
+        .collect()
 }
 
 #[derive(Deserialize)]
@@ -148,9 +161,9 @@ pub struct ChunkUsage {
     pub prompt_tokens: Option<i32>,
     pub completion_tokens: Option<i32>,
     pub total_tokens: Option<i32>,
-    /// DeepSeek's flat split of the prompt, where `hit + miss == prompt_tokens`.
+    /// DeepSeek's flat split of the prompt, where hit + miss == `prompt_tokens`;
+    /// only the hit half is read, the miss half being derivable.
     pub prompt_cache_hit_tokens: Option<i32>,
-    pub prompt_cache_miss_tokens: Option<i32>,
     /// OpenAI's own chat-completions shape for the same information, one object
     /// deeper. It needs a struct rather than another `Option<i32>` because serde
     /// cannot reach into a nested object from a flat field, and a
@@ -210,37 +223,34 @@ pub fn parse_openai_sse_events(chunk: &ChatChunk) -> (Vec<StreamEvent>, Option<S
             finish_reason = Some(fr.clone());
         }
         if let Some(ref delta) = choice.delta {
-            if let Some(ref r) = delta.reasoning_content {
-                if !r.is_empty() {
-                    events.push(StreamEvent::Reasoning { content: r.clone() });
-                }
+            if let Some(ref r) = delta.reasoning_content
+                && !r.is_empty()
+            {
+                events.push(StreamEvent::Reasoning { content: r.clone() });
             }
-            if let Some(ref c) = delta.content {
-                if !c.is_empty() {
-                    events.push(StreamEvent::Text { content: c.clone() });
-                }
+            if let Some(ref c) = delta.content
+                && !c.is_empty()
+            {
+                events.push(StreamEvent::Text { content: c.clone() });
             }
             if let Some(ref tcs) = delta.tool_calls {
                 for tc in tcs {
                     if let Some(ref id) = tc.id {
-                        let name = tc.function.as_ref()
-                            .and_then(|f| f.name.clone())
-                            .unwrap_or_default();
+                        let name = tc.function.as_ref().and_then(|f| f.name.clone()).unwrap_or_default();
                         events.push(StreamEvent::ToolCallStart {
                             index: tc.index,
                             id: id.clone(),
                             name,
                         });
                     }
-                    if let Some(ref f) = tc.function {
-                        if let Some(ref args) = f.arguments {
-                            if !args.is_empty() {
-                                events.push(StreamEvent::ToolCallDelta {
-                                    index: tc.index,
-                                    arguments: args.clone(),
-                                });
-                            }
-                        }
+                    if let Some(ref f) = tc.function
+                        && let Some(ref args) = f.arguments
+                        && !args.is_empty()
+                    {
+                        events.push(StreamEvent::ToolCallDelta {
+                            index: tc.index,
+                            arguments: args.clone(),
+                        });
                     }
                 }
             }
@@ -263,7 +273,8 @@ impl ChatProvider for OpenAICompatProvider {
         let req = self.build_request(&messages, tools_opt, &params, true);
         let resp = transport.stream(req).await?;
 
-        let stream = resp.bytes
+        let stream = resp
+            .bytes
             .map(|r| r.map_err(ProviderError::Transport))
             .eventsource()
             .flat_map(move |event| {
@@ -279,7 +290,10 @@ impl ChatProvider for OpenAICompatProvider {
                                     stream_events.push(StreamEvent::UsageUpdate { usage: u });
                                 }
                                 if let Some(fr) = finish_reason {
-                                    stream_events.push(StreamEvent::Stop { reason: fr, usage: None });
+                                    stream_events.push(StreamEvent::Stop {
+                                        reason: fr,
+                                        usage: None,
+                                    });
                                 }
                                 stream_events.into_iter().map(Ok).collect()
                             }
@@ -294,17 +308,13 @@ impl ChatProvider for OpenAICompatProvider {
         Ok(Box::pin(stream))
     }
 
-    async fn chat(
-        &self,
-        messages: Vec<ChatMessage>,
-        params: ChatParams,
-    ) -> Result<String, ProviderError> {
+    async fn chat(&self, messages: Vec<ChatMessage>, params: ChatParams) -> Result<String, ProviderError> {
         let transport = ReqwestTransport::shared();
         let req = self.build_request(&messages, None, &params, false);
         let resp = transport.execute(req).await?;
 
-        let parsed: serde_json::Value = serde_json::from_slice(&resp.body)
-            .map_err(|e| ProviderError::Parse(e.to_string()))?;
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&resp.body).map_err(|e| ProviderError::Parse(e.to_string()))?;
 
         parsed["choices"][0]["message"]["content"]
             .as_str()
@@ -322,21 +332,23 @@ impl ChatProvider for OpenAICompatProvider {
         let req = self.build_request(&messages, Some(&tools), &params, false);
         let resp = transport.execute(req).await?;
 
-        let parsed: serde_json::Value = serde_json::from_slice(&resp.body)
-            .map_err(|e| ProviderError::Parse(e.to_string()))?;
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&resp.body).map_err(|e| ProviderError::Parse(e.to_string()))?;
 
         let message = &parsed["choices"][0]["message"];
         let text = message["content"].as_str().unwrap_or("").to_string();
         let reasoning_content = message["reasoning_content"].as_str().map(|s| s.to_string());
 
         let tool_calls = if let Some(tcs) = message["tool_calls"].as_array() {
-            tcs.iter().filter_map(|tc| {
-                Some(ToolCall {
-                    id: tc["id"].as_str()?.to_string(),
-                    name: tc["function"]["name"].as_str()?.to_string(),
-                    arguments: tc["function"]["arguments"].as_str()?.to_string(),
+            tcs.iter()
+                .filter_map(|tc| {
+                    Some(ToolCall {
+                        id: tc["id"].as_str()?.to_string(),
+                        name: tc["function"]["name"].as_str()?.to_string(),
+                        arguments: tc["function"]["arguments"].as_str()?.to_string(),
+                    })
                 })
-            }).collect()
+                .collect()
         } else {
             Vec::new()
         };
@@ -349,6 +361,11 @@ impl ChatProvider for OpenAICompatProvider {
             .and_then(|u| serde_json::from_value::<ChunkUsage>(u.clone()).ok())
             .map(|u| normalise_openai_usage(&u));
 
-        Ok(AgentResponse { text, reasoning_content, tool_calls, usage })
+        Ok(AgentResponse {
+            text,
+            reasoning_content,
+            tool_calls,
+            usage,
+        })
     }
 }

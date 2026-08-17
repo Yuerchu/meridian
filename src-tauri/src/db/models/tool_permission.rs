@@ -3,6 +3,9 @@ use serde::Serialize;
 
 use crate::db::schema::tool_permissions;
 
+/// Nothing reads or writes this table yet; it is reserved for the tool
+/// approval-model rework, which is why the declaration outlives its callers.
+#[allow(dead_code)]
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = tool_permissions)]
 pub struct ToolPermission {

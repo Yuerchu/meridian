@@ -45,8 +45,13 @@ describe('markQueued', () => {
   })
 
   it('does not count a call that already has an outcome', () => {
-    expect(markQueued(['completed', 'error', 'denied', 'running', 'running']))
-      .toEqual([false, false, false, false, true])
+    expect(markQueued(['completed', 'error', 'denied', 'running', 'running'])).toEqual([
+      false,
+      false,
+      false,
+      false,
+      true,
+    ])
   })
 
   /// A call sitting in front of the user is the one holding everything up, so it
@@ -60,8 +65,7 @@ describe('markQueued', () => {
   /// Indexes have to line up with what the caller is rendering, which is a mix
   /// of text, thinking and tool steps.
   it('keeps its place past everything that is not a tool call', () => {
-    expect(markQueued([null, 'running', null, 'running', null]))
-      .toEqual([false, false, false, true, false])
+    expect(markQueued([null, 'running', null, 'running', null])).toEqual([false, false, false, true, false])
   })
 
   /// Nothing outstanding means nothing waiting, however many calls ran.

@@ -11,6 +11,7 @@ use tokio_util::sync::CancellationToken;
 pub struct SandboxPolicy {
     /// Currently a no-op: the ported restricted-token sandbox has no network
     /// filtering (WFP was stripped).
+    #[allow(dead_code)]
     pub allow_network: bool,
     pub allow_fs_write_outside_project: bool,
     pub timeout: Duration,
@@ -120,10 +121,10 @@ pub async fn execute(
         return Err(ExecError::Spawn("empty command".into()));
     }
     #[cfg(target_os = "windows")]
-    if let Some(policy) = policy {
-        if !policy.allow_fs_write_outside_project {
-            return execute_windows_sandboxed(command, cwd, policy, timeout, cancel).await;
-        }
+    if let Some(policy) = policy
+        && !policy.allow_fs_write_outside_project
+    {
+        return execute_windows_sandboxed(command, cwd, policy, timeout, cancel).await;
     }
     #[cfg(not(target_os = "windows"))]
     let _ = policy;
@@ -168,9 +169,7 @@ where
     (buf, truncated)
 }
 
-async fn await_capped(
-    mut task: tokio::task::JoinHandle<(Vec<u8>, bool)>,
-) -> (Vec<u8>, bool) {
+async fn await_capped(mut task: tokio::task::JoinHandle<(Vec<u8>, bool)>) -> (Vec<u8>, bool) {
     match tokio::time::timeout(IO_DRAIN_TIMEOUT, &mut task).await {
         Ok(Ok(v)) => v,
         Ok(Err(_)) => (Vec::new(), false),
@@ -321,8 +320,7 @@ async fn execute_windows_sandboxed(
         .unwrap_or_else(|| PathBuf::from("."))
         .join("meridian")
         .join("sandbox");
-    std::fs::create_dir_all(&sandbox_home)
-        .map_err(|e| ExecError::Internal(format!("create sandbox home: {e}")))?;
+    std::fs::create_dir_all(&sandbox_home).map_err(|e| ExecError::Internal(format!("create sandbox home: {e}")))?;
 
     let command = command.to_vec();
     let cwd = cwd.to_path_buf();
@@ -344,16 +342,14 @@ async fn execute_windows_sandboxed(
         // is a hard failure, not something to skip past.
         let mut cap_sid_objs: Vec<token::LocalSid> = Vec::with_capacity(cap_sid_strings.len());
         for sid_str in &cap_sid_strings {
-            let sid = token::LocalSid::from_string(sid_str)
-                .map_err(|e| internal(format!("parse capability SID: {e}")))?;
+            let sid =
+                token::LocalSid::from_string(sid_str).map_err(|e| internal(format!("parse capability SID: {e}")))?;
             cap_sid_objs.push(sid);
         }
-        let cap_sid_ptrs: Vec<*mut std::ffi::c_void> =
-            cap_sid_objs.iter().map(|s| s.as_ptr()).collect();
+        let cap_sid_ptrs: Vec<*mut std::ffi::c_void> = cap_sid_objs.iter().map(|s| s.as_ptr()).collect();
 
         let h_token = unsafe {
-            let base = token::get_current_token_for_restriction()
-                .map_err(|e| internal(format!("get token: {e}")))?;
+            let base = token::get_current_token_for_restriction().map_err(|e| internal(format!("get token: {e}")))?;
             token::create_workspace_write_token_with_caps_from(base, &cap_sid_ptrs)
                 .map_err(|e| internal(format!("create restricted token: {e}")))?
         };
@@ -415,9 +411,7 @@ async fn execute_windows_sandboxed(
 
         unsafe {
             use windows_sys::Win32::Foundation::CloseHandle;
-            use windows_sys::Win32::System::Threading::{
-                GetExitCodeProcess, TerminateProcess, WaitForSingleObject,
-            };
+            use windows_sys::Win32::System::Threading::{GetExitCodeProcess, TerminateProcess, WaitForSingleObject};
 
             // Poll so cancellation is observed promptly (ported from codex
             // windows-sandbox-rs wait_for_process).
@@ -651,7 +645,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let policy = policy_for(dir.path());
         let res = execute(
-            &vec![bash.into(), "-c".into(), "echo one | tr a-z A-Z".into()],
+            &[bash.into(), "-c".into(), "echo one | tr a-z A-Z".into()],
             dir.path(),
             Some(&policy),
             Duration::from_secs(30),
@@ -680,7 +674,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let policy = policy_for(dir.path());
         let res = execute(
-            &vec![
+            &[
                 "powershell".into(),
                 "-NoProfile".into(),
                 "-Command".into(),
@@ -705,7 +699,12 @@ mod tests {
         let policy = policy_for(dir.path());
         let test_dir = dir.path().join("subdir");
         let res = execute(
-            &vec!["cmd".into(), "/C".into(), "mkdir".into(), test_dir.display().to_string()],
+            &[
+                "cmd".into(),
+                "/C".into(),
+                "mkdir".into(),
+                test_dir.display().to_string(),
+            ],
             dir.path(),
             Some(&policy),
             Duration::from_secs(30),
@@ -727,7 +726,12 @@ mod tests {
         let test_dir = PathBuf::from("C:\\meridian_sandbox_deny_test");
         let _ = std::fs::remove_dir(&test_dir);
         let res = execute(
-            &vec!["cmd".into(), "/C".into(), "mkdir".into(), test_dir.display().to_string()],
+            &[
+                "cmd".into(),
+                "/C".into(),
+                "mkdir".into(),
+                test_dir.display().to_string(),
+            ],
             project_dir.path(),
             Some(&policy),
             Duration::from_secs(30),
@@ -768,7 +772,12 @@ mod tests {
         let test_dir = PathBuf::from(&tmp).join(unique);
         let _ = std::fs::remove_dir(&test_dir);
         let res = execute(
-            &vec!["cmd".into(), "/C".into(), "mkdir".into(), test_dir.display().to_string()],
+            &[
+                "cmd".into(),
+                "/C".into(),
+                "mkdir".into(),
+                test_dir.display().to_string(),
+            ],
             project_dir.path(),
             Some(&policy),
             Duration::from_secs(30),

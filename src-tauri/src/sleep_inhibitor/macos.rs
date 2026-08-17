@@ -6,13 +6,7 @@ use core_foundation::base::TCFType;
 use core_foundation::string::CFString;
 use tracing::warn;
 
-#[allow(
-    dead_code,
-    non_camel_case_types,
-    non_snake_case,
-    non_upper_case_globals,
-    clippy::all
-)]
+#[allow(dead_code, non_camel_case_types, non_snake_case, non_upper_case_globals, clippy::all)]
 mod iokit {
     #[link(name = "IOKit", kind = "framework")]
     unsafe extern "C" {}
@@ -49,10 +43,7 @@ impl SleepInhibitor {
                 self.assertion = Some(assertion);
             }
             Err(error) => {
-                warn!(
-                    iokit_error = error,
-                    "Failed to create macOS sleep-prevention assertion"
-                );
+                warn!(iokit_error = error, "Failed to create macOS sleep-prevention assertion");
             }
         }
     }

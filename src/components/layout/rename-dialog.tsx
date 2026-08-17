@@ -67,8 +67,12 @@ export function RenameDialog({
             </TextField>
           </Modal.Body>
           <Modal.Footer>
-            <Button slot="close" variant="secondary">{t('common.cancel')}</Button>
-            <Button onClick={submit} isDisabled={!canSave}>{t('common.save')}</Button>
+            <Button slot="close" variant="secondary">
+              {t('common.cancel')}
+            </Button>
+            <Button onClick={submit} isDisabled={!canSave}>
+              {t('common.save')}
+            </Button>
           </Modal.Footer>
         </Modal.Dialog>
       </Modal.Container>
