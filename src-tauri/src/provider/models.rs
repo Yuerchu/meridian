@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::client::{HttpTransport, ReqwestTransport, Request};
 use super::ProviderError;
+use crate::client::{HttpTransport, Request, ReqwestTransport};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelInfo {
@@ -9,11 +9,7 @@ pub struct ModelInfo {
     pub name: String,
 }
 
-pub async fn fetch_models(
-    provider_type: &str,
-    base_url: &str,
-    api_key: &str,
-) -> Result<Vec<ModelInfo>, ProviderError> {
+pub async fn fetch_models(provider_type: &str, base_url: &str, api_key: &str) -> Result<Vec<ModelInfo>, ProviderError> {
     match provider_type {
         "anthropic" => fetch_anthropic_models(base_url, api_key).await,
         _ => fetch_openai_models(base_url, api_key).await,
@@ -30,10 +26,7 @@ struct OpenAIModel {
     id: String,
 }
 
-async fn fetch_openai_models(
-    base_url: &str,
-    api_key: &str,
-) -> Result<Vec<ModelInfo>, ProviderError> {
+async fn fetch_openai_models(base_url: &str, api_key: &str) -> Result<Vec<ModelInfo>, ProviderError> {
     let base_url = base_url.trim_end_matches('/');
     let transport = ReqwestTransport::shared();
 
@@ -85,10 +78,7 @@ struct AnthropicModel {
     display_name: Option<String>,
 }
 
-async fn fetch_anthropic_models(
-    base_url: &str,
-    api_key: &str,
-) -> Result<Vec<ModelInfo>, ProviderError> {
+async fn fetch_anthropic_models(base_url: &str, api_key: &str) -> Result<Vec<ModelInfo>, ProviderError> {
     let base_url = base_url.trim_end_matches('/');
     let transport = ReqwestTransport::shared();
 

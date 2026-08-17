@@ -71,10 +71,7 @@ type Split = Record<SeriesKey, number>
  */
 function split(bucket: UsageBucket): Split {
   return {
-    uncached: Math.max(
-      0,
-      bucket.input_tokens - bucket.cache_read_tokens - bucket.cache_write_tokens,
-    ),
+    uncached: Math.max(0, bucket.input_tokens - bucket.cache_read_tokens - bucket.cache_write_tokens),
     cacheRead: bucket.cache_read_tokens,
     cacheWrite: bucket.cache_write_tokens,
     output: bucket.output_tokens,
@@ -172,7 +169,8 @@ export function UsageSettings() {
   }, [range, origin, breakdown])
 
   const rangeLabel = useCallback(
-    (value: Range) => (value === null ? t('settings.usage.range.all') : t('settings.usage.range.days', { count: value })),
+    (value: Range) =>
+      value === null ? t('settings.usage.range.all') : t('settings.usage.range.days', { count: value }),
     [t],
   )
 
@@ -197,17 +195,12 @@ export function UsageSettings() {
           label={t('settings.usage.originLabel')}
           selectedKey={origin ?? 'all'}
           onChange={(key) => setOrigin(key === 'all' ? null : (key as Origin))}
-          items={ORIGINS.map((value) => [
-            value ?? 'all',
-            t(`settings.usage.origin.${value ?? 'all'}`),
-          ])}
+          items={ORIGINS.map((value) => [value ?? 'all', t(`settings.usage.origin.${value ?? 'all'}`)])}
         />
         {/* Only once there is something to refresh. The first load draws the
             skeleton below instead, and two loading indicators for one wait is
             one too many. */}
-        {loading && report && (
-          <Spinner size="sm" className="self-end" aria-label={t('common.loading')} />
-        )}
+        {loading && report && <Spinner size="sm" className="self-end" aria-label={t('common.loading')} />}
       </div>
 
       {!report ? (
@@ -239,7 +232,10 @@ export function UsageSettings() {
             <Kpi title={t('settings.usage.kpi.output')}>
               <span className="text-2xl font-semibold tracking-tight">{compact.format(total.output_tokens)}</span>
             </Kpi>
-            <Kpi title={t('settings.usage.kpi.cacheRate')} note={t('settings.usage.kpi.replies', { count: total.messages })}>
+            <Kpi
+              title={t('settings.usage.kpi.cacheRate')}
+              note={t('settings.usage.kpi.replies', { count: total.messages })}
+            >
               <span className="text-2xl font-semibold tracking-tight">
                 {hitRate === null ? '—' : `${(hitRate * 100).toFixed(1)}%`}
               </span>
@@ -271,10 +267,7 @@ export function UsageSettings() {
               keyed on the same state the tab is. */}
           <section className="space-y-2">
             <h3 className="text-sm font-medium">{t('settings.usage.breakdown')}</h3>
-            <Tabs
-              selectedKey={breakdown}
-              onSelectionChange={(key) => setBreakdown(key as Breakdown)}
-            >
+            <Tabs selectedKey={breakdown} onSelectionChange={(key) => setBreakdown(key as Breakdown)}>
               <Tabs.ListContainer className="w-fit">
                 <Tabs.List aria-label={t('settings.usage.breakdown')}>
                   {BREAKDOWNS.map((value) => (
@@ -387,15 +380,7 @@ function UsageSkeleton() {
  * that are not plain numbers (a cost with no currency, a rate that can be "no
  * data"). So the value slot takes a node and the card keeps everything else.
  */
-function Kpi({
-  title,
-  note,
-  children,
-}: {
-  title: string
-  note?: string
-  children: React.ReactNode
-}) {
+function Kpi({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
     <KPI className="rounded-lg border border-border">
       <KPI.Header>
@@ -429,10 +414,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
  */
 function TokenTrend({ days }: { days: UsageBucket[] }) {
   const { t } = useTranslation()
-  const data = useMemo(
-    () => days.map((d) => ({ day: d.key.slice(5), ...split(d) })),
-    [days],
-  )
+  const data = useMemo(() => days.map((d) => ({ day: d.key.slice(5), ...split(d) })), [days])
   const bands = present(data)
   if (data.length === 0) return null
   return (
@@ -464,9 +446,7 @@ function TokenTrend({ days }: { days: UsageBucket[] }) {
           />
         ))}
         <AreaChart.Tooltip
-          content={
-            <AreaChart.TooltipContent indicator="line" valueFormatter={(v) => compact.format(Number(v))} />
-          }
+          content={<AreaChart.TooltipContent indicator="line" valueFormatter={(v) => compact.format(Number(v))} />}
         />
       </AreaChart>
     </>
@@ -482,10 +462,7 @@ function TokenTrend({ days }: { days: UsageBucket[] }) {
  */
 function TokenBars({ buckets }: { buckets: UsageBucket[] }) {
   const { t } = useTranslation()
-  const data = useMemo(
-    () => buckets.slice(0, 6).map((b) => ({ name: b.label ?? b.key, ...split(b) })),
-    [buckets],
-  )
+  const data = useMemo(() => buckets.slice(0, 6).map((b) => ({ name: b.label ?? b.key, ...split(b) })), [buckets])
   const bands = present(data)
   if (data.length === 0) return null
   return (
@@ -502,13 +479,7 @@ function TokenBars({ buckets }: { buckets: UsageBucket[] }) {
             fill={band.color}
             name={t(band.labelKey)}
             stackId="tokens"
-            radius={
-              i === 0
-                ? [4, 0, 0, 4]
-                : i === bands.length - 1
-                  ? [0, 4, 4, 0]
-                  : undefined
-            }
+            radius={i === 0 ? [4, 0, 0, 4] : i === bands.length - 1 ? [0, 4, 4, 0] : undefined}
           />
         ))}
         <BarChart.Tooltip
@@ -567,10 +538,7 @@ function BucketTable({ buckets }: { buckets: UsageBucket[] }) {
             })}
           </span>
           <span
-            className={cn(
-              'w-20 text-right text-sm tabular-nums',
-              bucket.unpriced_messages > 0 && 'text-muted',
-            )}
+            className={cn('w-20 text-right text-sm tabular-nums', bucket.unpriced_messages > 0 && 'text-muted')}
             // The cost of a row that is partly unpriced is a lower bound, and a
             // number with no way to say so is the one thing this page must not
             // print. The dimmed text is the visible half of that; this is the

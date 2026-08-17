@@ -1,12 +1,12 @@
 use tauri::Manager;
 
+use crate::agent::{get_provider_api_key, provider_secret_name};
 use crate::db;
 use crate::db::models::provider::{NewProvider, Provider, ProviderUpdate};
 use crate::provider::models::ModelInfo;
 use crate::secrets::{SecretName, SecretScope};
 use crate::state::{AppDb, AppSecrets};
 use crate::util::now_ms;
-use crate::agent::{get_provider_api_key, provider_secret_name};
 
 #[tauri::command]
 pub async fn list_providers(app: tauri::AppHandle) -> Result<Vec<Provider>, String> {
@@ -14,7 +14,9 @@ pub async fn list_providers(app: tauri::AppHandle) -> Result<Vec<Provider>, Stri
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::provider::list_providers(&mut conn).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -31,18 +33,24 @@ pub async fn create_provider(
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
         let format = api_format.as_deref().unwrap_or("chat_completions");
-        db::ops::provider::create_provider(&mut conn, &NewProvider {
-            id: &id,
-            name: &name,
-            provider_type: &provider_type,
-            base_url: &base_url,
-            is_enabled: 1,
-            sort_order: 0,
-            created_at: now,
-            updated_at: now,
-            api_format: format,
-        }).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+        db::ops::provider::create_provider(
+            &mut conn,
+            &NewProvider {
+                id: &id,
+                name: &name,
+                provider_type: &provider_type,
+                base_url: &base_url,
+                is_enabled: 1,
+                sort_order: 0,
+                created_at: now,
+                updated_at: now,
+                api_format: format,
+            },
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -72,7 +80,9 @@ pub async fn update_provider(
             ..Default::default()
         };
         db::ops::provider::update_provider(&mut conn, &id, &changeset).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -85,18 +95,18 @@ pub async fn delete_provider(app: tauri::AppHandle, id: String) -> Result<(), St
         let key_name = provider_secret_name(&id);
         let _ = secrets.delete(&SecretScope::Global, &SecretName::new(&key_name).unwrap());
         Ok(())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub async fn set_provider_key(
-    app: tauri::AppHandle,
-    provider_id: String,
-    api_key: String,
-) -> Result<(), String> {
+pub async fn set_provider_key(app: tauri::AppHandle, provider_id: String, api_key: String) -> Result<(), String> {
     let secrets = app.state::<AppSecrets>();
     let key_name = provider_secret_name(&provider_id);
-    secrets.0.set(&SecretScope::Global, &SecretName::new(&key_name).unwrap(), &api_key)
+    secrets
+        .0
+        .set(&SecretScope::Global, &SecretName::new(&key_name).unwrap(), &api_key)
         .map_err(|e| e.to_string())?;
     let pool = app.state::<AppDb>().0.clone();
     let pid = provider_id.clone();
@@ -104,21 +114,22 @@ pub async fn set_provider_key(
         if let Ok(mut conn) = pool.get() {
             let _ = db::ops::cached_model::delete_by_provider(&mut conn, &pid);
         }
-    }).await;
+    })
+    .await;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn get_provider_key_exists(
-    app: tauri::AppHandle,
-    provider_id: String,
-) -> Result<bool, String> {
+pub async fn get_provider_key_exists(app: tauri::AppHandle, provider_id: String) -> Result<bool, String> {
     let secrets = app.state::<AppSecrets>();
     let key_name = provider_secret_name(&provider_id);
     // A read failure is not the same as "no key". Reporting it as absent sends
     // the user to enter a key they already have, and re-entering rewrites the
     // store under a fresh passphrase — taking the other providers' keys with it.
-    match secrets.0.get(&SecretScope::Global, &SecretName::new(&key_name).unwrap()) {
+    match secrets
+        .0
+        .get(&SecretScope::Global, &SecretName::new(&key_name).unwrap())
+    {
         Ok(value) => Ok(value.is_some()),
         Err(e) => {
             tracing::error!(
@@ -146,15 +157,19 @@ pub async fn fetch_provider_models(
         let pid = provider_id.clone();
         let cached = tokio::task::spawn_blocking(move || {
             let mut conn = pool2.get().map_err(|e| e.to_string())?;
-            db::ops::cached_model::list_by_provider(&mut conn, &pid)
-                .map_err(|e| e.to_string())
-        }).await.map_err(|e| e.to_string())??;
+            db::ops::cached_model::list_by_provider(&mut conn, &pid).map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
 
         if !cached.is_empty() {
-            return Ok(cached.into_iter().map(|c| ModelInfo {
-                id: c.model_id,
-                name: c.model_name,
-            }).collect());
+            return Ok(cached
+                .into_iter()
+                .map(|c| ModelInfo {
+                    id: c.model_id,
+                    name: c.model_name,
+                })
+                .collect());
         }
     }
 
@@ -165,11 +180,12 @@ pub async fn fetch_provider_models(
             let mut conn = pool2.get().map_err(|e| e.to_string())?;
             let p = db::ops::provider::get_provider(&mut conn, &pid).map_err(|e| e.to_string())?;
             Ok::<_, String>((p.provider_type, p.base_url))
-        }).await.map_err(|e| e.to_string())??
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
 
-    let api_key = get_provider_api_key(&secrets, &provider_id)
-        .ok_or("API Key not set for this provider")?;
+    let api_key = get_provider_api_key(&secrets, &provider_id).ok_or("API Key not set for this provider")?;
 
     let models = crate::provider::models::fetch_models(&provider_type, &base_url, &api_key)
         .await
@@ -182,17 +198,18 @@ pub async fn fetch_provider_models(
         let _ = tokio::task::spawn_blocking(move || {
             let mut conn = pool2.get().map_err(|e| e.to_string())?;
             let now = now_ms();
-            let new_models: Vec<_> = models_clone.iter().map(|m| {
-                db::models::cached_model::NewCachedModel {
+            let new_models: Vec<_> = models_clone
+                .iter()
+                .map(|m| db::models::cached_model::NewCachedModel {
                     provider_id: &pid,
                     model_id: &m.id,
                     model_name: &m.name,
                     fetched_at: now,
-                }
-            }).collect();
-            db::ops::cached_model::replace_models(&mut conn, &pid, &new_models)
-                .map_err(|e| e.to_string())
-        }).await;
+                })
+                .collect();
+            db::ops::cached_model::replace_models(&mut conn, &pid, &new_models).map_err(|e| e.to_string())
+        })
+        .await;
     }
 
     Ok(models)
@@ -216,7 +233,9 @@ pub async fn get_provider_capabilities(
                 .flatten()
                 .and_then(|mc| mc.capability_overrides);
             Ok::<_, String>((p.provider_type, p.api_format, overrides))
-        }).await.map_err(|e| e.to_string())??
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
     let mut caps = crate::provider::registry::get_capabilities(&provider_type, Some(&api_format), &model_id);
     crate::provider::capabilities::apply_overrides(&mut caps, overrides.as_deref());

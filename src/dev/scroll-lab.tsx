@@ -141,7 +141,9 @@ interface LabApi {
 }
 
 declare global {
-  interface Window { __scrollLab?: LabApi }
+  interface Window {
+    __scrollLab?: LabApi
+  }
 }
 
 export default function ScrollLab() {
@@ -177,14 +179,23 @@ export default function ScrollLab() {
   const seedHistory = useCallback((count = 6) => {
     const seeded: Message[] = []
     for (let i = 0; i < count; i++) {
-      seeded.push(message({ id: nextId('seed-user'), role: 'user', content: `历史提问 ${i + 1}：${SHORT_QUESTION}`, sort_order: seeded.length }))
-      seeded.push(message({
-        id: nextId('seed-assistant'),
-        role: 'assistant',
-        content: '',
-        sort_order: seeded.length,
-        _blocks: [{ type: 'text', text: `历史回答 ${i + 1}。\n\n` + ANSWER_CHUNKS.slice(0, 6).join('') }],
-      }))
+      seeded.push(
+        message({
+          id: nextId('seed-user'),
+          role: 'user',
+          content: `历史提问 ${i + 1}：${SHORT_QUESTION}`,
+          sort_order: seeded.length,
+        }),
+      )
+      seeded.push(
+        message({
+          id: nextId('seed-assistant'),
+          role: 'assistant',
+          content: '',
+          sort_order: seeded.length,
+          _blocks: [{ type: 'text', text: `历史回答 ${i + 1}。\n\n` + ANSWER_CHUNKS.slice(0, 6).join('') }],
+        }),
+      )
     }
     setMessages(seeded)
     setStreaming(false)
@@ -203,9 +214,7 @@ export default function ScrollLab() {
         // backend has persisted anything.
         id,
         role: 'user',
-        content: repeat === 0
-          ? SHORT_QUESTION
-          : Array.from({ length: repeat }, () => LONG_QUESTION).join('\n\n'),
+        content: repeat === 0 ? SHORT_QUESTION : Array.from({ length: repeat }, () => LONG_QUESTION).join('\n\n'),
         sort_order: prev.length,
       }),
     ])
@@ -225,14 +234,16 @@ export default function ScrollLab() {
     const at = index ?? chunkRef.current
     chunkRef.current = at + 1
     const text = ANSWER_CHUNKS[at % ANSWER_CHUNKS.length]
-    setMessages((prev) => withLastAssistant(prev, (m) => {
-      const blocks = m._blocks ?? []
-      const last = blocks[blocks.length - 1]
-      if (last?.type === 'text') {
-        return { ...m, _blocks: [...blocks.slice(0, -1), { type: 'text', text: last.text + text }] }
-      }
-      return appendBlock(m, { type: 'text', text })
-    }))
+    setMessages((prev) =>
+      withLastAssistant(prev, (m) => {
+        const blocks = m._blocks ?? []
+        const last = blocks[blocks.length - 1]
+        if (last?.type === 'text') {
+          return { ...m, _blocks: [...blocks.slice(0, -1), { type: 'text', text: last.text + text }] }
+        }
+        return appendBlock(m, { type: 'text', text })
+      }),
+    )
   }, [])
 
   const streamAll = useCallback(() => {
@@ -240,26 +251,38 @@ export default function ScrollLab() {
   }, [streamChunk])
 
   const callTool = useCallback((name = 'read_file') => {
-    setMessages((prev) => withLastAssistant(prev, (m) => appendBlock(m, toolBlock({
-      tool_name: name,
-      status: 'running',
-      arguments: JSON.stringify({ path: `src/components/ui/message-scroller.tsx` }),
-    }))))
+    setMessages((prev) =>
+      withLastAssistant(prev, (m) =>
+        appendBlock(
+          m,
+          toolBlock({
+            tool_name: name,
+            status: 'running',
+            arguments: JSON.stringify({ path: `src/components/ui/message-scroller.tsx` }),
+          }),
+        ),
+      ),
+    )
   }, [])
 
   const finishTool = useCallback(() => {
-    setMessages((prev) => withLastAssistant(prev, (m) => {
-      const blocks = m._blocks ?? []
-      for (let i = blocks.length - 1; i >= 0; i--) {
-        const b = blocks[i]
-        if (b.type === 'tool_call' && b.data.status === 'running') {
-          const next = blocks.slice()
-          next[i] = { type: 'tool_call', data: { ...b.data, status: 'completed', result: '共 137 行，其中 42 行与滚动状态机相关。' } }
-          return { ...m, _blocks: next }
+    setMessages((prev) =>
+      withLastAssistant(prev, (m) => {
+        const blocks = m._blocks ?? []
+        for (let i = blocks.length - 1; i >= 0; i--) {
+          const b = blocks[i]
+          if (b.type === 'tool_call' && b.data.status === 'running') {
+            const next = blocks.slice()
+            next[i] = {
+              type: 'tool_call',
+              data: { ...b.data, status: 'completed', result: '共 137 行，其中 42 行与滚动状态机相关。' },
+            }
+            return { ...m, _blocks: next }
+          }
         }
-      }
-      return m
-    }))
+        return m
+      }),
+    )
   }, [])
 
   const finishTurn = useCallback(() => {
@@ -269,16 +292,16 @@ export default function ScrollLab() {
     // a round-trip later. Doing both at once would hide anything that depends
     // on the row being re-keyed after the turn has already ended.
     setTimeout(() => {
-      setMessages((prev) => prev.map((m) => (
-        m.id.startsWith('temp-user-') ? { ...m, id: nextId('user') } : m
-      )))
+      setMessages((prev) => prev.map((m) => (m.id.startsWith('temp-user-') ? { ...m, id: nextId('user') } : m)))
     }, 60)
   }, [])
 
   const metrics = useCallback(() => {
     const vp = viewport()
     const content = rootRef.current?.querySelector<HTMLElement>('[data-slot="message-scroller-content"]')
-    const items = content ? Array.from(content.querySelectorAll<HTMLElement>('[data-slot="message-scroller-item"]')) : []
+    const items = content
+      ? Array.from(content.querySelectorAll<HTMLElement>('[data-slot="message-scroller-item"]'))
+      : []
     const vpTop = vp?.getBoundingClientRect().top ?? 0
     const answers = content?.querySelectorAll<HTMLElement>('[data-message-anchor]')
     const lastAnswer = answers?.[answers.length - 1] ?? null
@@ -286,9 +309,7 @@ export default function ScrollLab() {
       scrollTop: Math.round(vp?.scrollTop ?? 0),
       scrollHeight: Math.round(vp?.scrollHeight ?? 0),
       clientHeight: Math.round(vp?.clientHeight ?? 0),
-      distanceFromBottom: Math.round(
-        (vp?.scrollHeight ?? 0) - (vp?.scrollTop ?? 0) - (vp?.clientHeight ?? 0),
-      ),
+      distanceFromBottom: Math.round((vp?.scrollHeight ?? 0) - (vp?.scrollTop ?? 0) - (vp?.clientHeight ?? 0)),
       scrollable: vp?.getAttribute('data-scrollable') ?? null,
       mode: vp?.getAttribute('data-scroll-mode') ?? null,
       firstTurnTop: items[0] ? Math.round(items[0].getBoundingClientRect().top - vpTop) : null,
@@ -305,11 +326,12 @@ export default function ScrollLab() {
    * reader being dragged away from what they were reading.
    */
   const runScenarios = useCallback(async (): Promise<ScenarioResult[]> => {
-    const frames = (n: number) => new Promise<void>((resolve) => {
-      let i = 0
-      const step = () => (++i >= n ? resolve() : requestAnimationFrame(step))
-      requestAnimationFrame(step)
-    })
+    const frames = (n: number) =>
+      new Promise<void>((resolve) => {
+        let i = 0
+        const step = () => (++i >= n ? resolve() : requestAnimationFrame(step))
+        requestAnimationFrame(step)
+      })
     // Long enough for the turn to collapse and the re-key to land.
     const settled = () => new Promise<void>((resolve) => setTimeout(resolve, 1200))
     const wheelUp = (distance: number) => {
@@ -321,19 +343,33 @@ export default function ScrollLab() {
     const out: ScenarioResult[] = []
 
     // 1. A question taller than the viewport still lets the answer be seen.
-    reset(); await frames(4)
-    seedHistory(3); await frames(8)
-    sendUser(3); await frames(8)
-    startAssistant(); await frames(6)
+    reset()
+    await frames(4)
+    seedHistory(3)
+    await frames(8)
+    sendUser(3)
+    await frames(8)
+    startAssistant()
+    await frames(6)
     const followed: number[] = []
-    for (let i = 0; i < 4; i++) { streamChunk(i); await frames(4); followed.push(metrics().distanceFromBottom) }
-    callTool(); await frames(6); followed.push(metrics().distanceFromBottom)
-    finishTool(); await frames(6); followed.push(metrics().distanceFromBottom)
+    for (let i = 0; i < 4; i++) {
+      streamChunk(i)
+      await frames(4)
+      followed.push(metrics().distanceFromBottom)
+    }
+    callTool()
+    await frames(6)
+    followed.push(metrics().distanceFromBottom)
+    finishTool()
+    await frames(6)
+    followed.push(metrics().distanceFromBottom)
     // Written out twice so the answer clears the viewport with room to spare —
     // the next scenario is about going back to a beginning that has scrolled
     // away, and it has to still be away once the turn collapses.
     for (let i = 4; i < ANSWER_CHUNKS.length * 2; i++) {
-      streamChunk(i); await frames(4); followed.push(metrics().distanceFromBottom)
+      streamChunk(i)
+      await frames(4)
+      followed.push(metrics().distanceFromBottom)
     }
     const worst = Math.max(...followed)
     out.push({
@@ -348,22 +384,38 @@ export default function ScrollLab() {
     // scenario owns its state: the assertion is about where a turn lands, and
     // inheriting a viewport that another scenario left somewhere makes a
     // failure here impossible to read.
-    reset(); await frames(4)
-    seedHistory(3); await frames(8)
-    sendUser(3); await frames(8)
-    startAssistant(); await frames(6)
-    for (let i = 0; i < 4; i++) { streamChunk(i); await frames(4) }
-    callTool(); await frames(6)
-    finishTool(); await frames(6)
+    reset()
+    await frames(4)
+    seedHistory(3)
+    await frames(8)
+    sendUser(3)
+    await frames(8)
+    startAssistant()
+    await frames(6)
+    for (let i = 0; i < 4; i++) {
+      streamChunk(i)
+      await frames(4)
+    }
+    callTool()
+    await frames(6)
+    finishTool()
+    await frames(6)
     // Twice through, so the answer clears the viewport with room to spare: it
     // has to still be out of sight once the turn collapses.
-    for (let i = 4; i < ANSWER_CHUNKS.length * 2; i++) { streamChunk(i); await frames(4) }
-    finishTurn(); await settled()
+    for (let i = 4; i < ANSWER_CHUNKS.length * 2; i++) {
+      streamChunk(i)
+      await frames(4)
+    }
+    finishTurn()
+    await settled()
     const settledAt = metrics()
     out.push({
       name: '回合结束：回到答案开头且交还控制权',
-      pass: settledAt.mode === 'idle' && settledAt.lastAnswerTop !== null
-        && settledAt.lastAnswerTop >= 0 && settledAt.lastAnswerTop < 200,
+      pass:
+        settledAt.mode === 'idle' &&
+        settledAt.lastAnswerTop !== null &&
+        settledAt.lastAnswerTop >= 0 &&
+        settledAt.lastAnswerTop < 200,
       detail: `答案顶部在视口 ${settledAt.lastAnswerTop}px 处，mode=${settledAt.mode}（应为 0–200 且 idle）`,
     })
     out.push({
@@ -373,18 +425,32 @@ export default function ScrollLab() {
     })
 
     // 3. A reader who scrolled away is left where they are, to the end.
-    reset(); await frames(4)
-    seedHistory(4); await frames(8)
-    sendUser(false); await frames(6)
-    startAssistant(); await frames(4)
-    for (let i = 0; i < 5; i++) { streamChunk(i); await frames(3) }
-    wheelUp(700); await frames(4)
+    reset()
+    await frames(4)
+    seedHistory(4)
+    await frames(8)
+    sendUser(false)
+    await frames(6)
+    startAssistant()
+    await frames(4)
+    for (let i = 0; i < 5; i++) {
+      streamChunk(i)
+      await frames(3)
+    }
+    wheelUp(700)
+    await frames(4)
     const parked = metrics().scrollTop
-    for (let i = 5; i < 10; i++) { streamChunk(i); await frames(3) }
-    callTool('run_command'); await frames(4)
-    finishTool(); await frames(4)
+    for (let i = 5; i < 10; i++) {
+      streamChunk(i)
+      await frames(3)
+    }
+    callTool('run_command')
+    await frames(4)
+    finishTool()
+    await frames(4)
     const duringRead = metrics().scrollTop
-    finishTurn(); await settled()
+    finishTurn()
+    await settled()
     const afterRead = metrics().scrollTop
     out.push({
       name: '读到一半：流式与回合结束都不搬动读者',
@@ -393,14 +459,21 @@ export default function ScrollLab() {
     })
 
     // 4. An answer that never left the screen has nowhere to go back to.
-    reset(); await frames(4)
-    seedHistory(4); await frames(8)
-    sendUser(false); await frames(6)
-    startAssistant(); await frames(4)
-    streamChunk(0); await frames(4)
-    streamChunk(1); await frames(4)
+    reset()
+    await frames(4)
+    seedHistory(4)
+    await frames(8)
+    sendUser(false)
+    await frames(6)
+    startAssistant()
+    await frames(4)
+    streamChunk(0)
+    await frames(4)
+    streamChunk(1)
+    await frames(4)
     const beforeShort = metrics().scrollTop
-    finishTurn(); await settled()
+    finishTurn()
+    await settled()
     const afterShort = metrics().scrollTop
     out.push({
       name: '短答案：结束时不做多余滚动',
@@ -409,17 +482,26 @@ export default function ScrollLab() {
     })
 
     // 5. Returning to the live edge re-arms following.
-    reset(); await frames(4)
-    seedHistory(4); await frames(8)
-    sendUser(false); await frames(6)
-    startAssistant(); await frames(4)
-    for (let i = 0; i < 6; i++) { streamChunk(i); await frames(3) }
-    wheelUp(900); await frames(4)
+    reset()
+    await frames(4)
+    seedHistory(4)
+    await frames(8)
+    sendUser(false)
+    await frames(6)
+    startAssistant()
+    await frames(4)
+    for (let i = 0; i < 6; i++) {
+      streamChunk(i)
+      await frames(3)
+    }
+    wheelUp(900)
+    await frames(4)
     const button = rootRef.current?.querySelector<HTMLButtonElement>('[data-slot="message-scroller-button"]')
     const offered = button?.getAttribute('data-active') === 'true'
     button?.click()
     await settled()
-    streamChunk(7); await frames(4)
+    streamChunk(7)
+    await frames(4)
     const resumed = metrics()
     out.push({
       name: '回到最新：按钮出现，点完继续跟随',
@@ -428,22 +510,42 @@ export default function ScrollLab() {
     })
 
     return out
-  }, [
-    callTool, finishTool, finishTurn, metrics, reset, seedHistory, sendUser,
-    startAssistant, streamChunk, viewport,
-  ])
+  }, [callTool, finishTool, finishTurn, metrics, reset, seedHistory, sendUser, startAssistant, streamChunk, viewport])
 
-  const api = useMemo<LabApi>(() => ({
-    reset, seedHistory, sendUser, startAssistant, streamChunk, streamAll, callTool,
-    finishTool, finishTurn, runScenarios, metrics,
-  }), [
-    reset, seedHistory, sendUser, startAssistant, streamChunk, streamAll, callTool,
-    finishTool, finishTurn, runScenarios, metrics,
-  ])
+  const api = useMemo<LabApi>(
+    () => ({
+      reset,
+      seedHistory,
+      sendUser,
+      startAssistant,
+      streamChunk,
+      streamAll,
+      callTool,
+      finishTool,
+      finishTurn,
+      runScenarios,
+      metrics,
+    }),
+    [
+      reset,
+      seedHistory,
+      sendUser,
+      startAssistant,
+      streamChunk,
+      streamAll,
+      callTool,
+      finishTool,
+      finishTurn,
+      runScenarios,
+      metrics,
+    ],
+  )
 
   useEffect(() => {
     window.__scrollLab = api
-    return () => { delete window.__scrollLab }
+    return () => {
+      delete window.__scrollLab
+    }
   }, [api])
 
   // Polled rather than pushed: scroll position is tracked imperatively inside
@@ -454,8 +556,8 @@ export default function ScrollLab() {
       const m = metrics()
       setReadout(
         `scrollTop ${m.scrollTop} · 距底 ${m.distanceFromBottom} · 视口 ${m.clientHeight} · ` +
-        `内容 ${m.scrollHeight} · scrollable=${m.scrollable ?? '—'} · ` +
-        `首轮顶 ${m.firstTurnTop ?? '—'} · 末答顶 ${m.lastAnswerTop ?? '—'}`,
+          `内容 ${m.scrollHeight} · scrollable=${m.scrollable ?? '—'} · ` +
+          `首轮顶 ${m.firstTurnTop ?? '—'} · 末答顶 ${m.lastAnswerTop ?? '—'}`,
       )
       frame = window.requestAnimationFrame(tick)
     }
@@ -467,28 +569,49 @@ export default function ScrollLab() {
     <div ref={rootRef} className="flex h-screen flex-col bg-background text-foreground">
       <div className="flex flex-wrap items-center gap-2 border-b px-4 py-2">
         <span className="text-sm font-semibold">滚动行为实验场</span>
-        <Button size="sm" variant="outline" onClick={() => seedHistory()}>铺历史</Button>
-        <Button size="sm" variant="outline" onClick={() => sendUser(false)}>发短消息</Button>
-        <Button size="sm" variant="outline" onClick={() => sendUser(true)}>发长消息</Button>
-        <Button size="sm" variant="outline" onClick={() => sendUser(3)}>发超长消息</Button>
-        <Button size="sm" variant="outline" onClick={startAssistant}>助手开始</Button>
-        <Button size="sm" variant="outline" onClick={() => streamChunk()}>流式一块</Button>
-        <Button size="sm" variant="outline" onClick={streamAll}>流式到底</Button>
-        <Button size="sm" variant="outline" onClick={() => callTool()}>工具调用</Button>
-        <Button size="sm" variant="outline" onClick={finishTool}>工具返回</Button>
-        <Button size="sm" variant="outline" onClick={finishTurn}>结束本轮</Button>
-        <Button size="sm" variant="ghost" onClick={reset}>清空</Button>
-        <Button
-          size="sm"
-          onClick={() => { setResults(null); runScenarios().then(setResults) }}
-        >
-          跑全部场景
+        <Button size="sm" variant="outline" onClick={() => seedHistory()}>
+          铺历史
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => sendUser(false)}>
+          发短消息
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => sendUser(true)}>
+          发长消息
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => sendUser(3)}>
+          发超长消息
+        </Button>
+        <Button size="sm" variant="outline" onClick={startAssistant}>
+          助手开始
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => streamChunk()}>
+          流式一块
+        </Button>
+        <Button size="sm" variant="outline" onClick={streamAll}>
+          流式到底
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => callTool()}>
+          工具调用
+        </Button>
+        <Button size="sm" variant="outline" onClick={finishTool}>
+          工具返回
+        </Button>
+        <Button size="sm" variant="outline" onClick={finishTurn}>
+          结束本轮
+        </Button>
+        <Button size="sm" variant="ghost" onClick={reset}>
+          清空
         </Button>
         <Button
           size="sm"
-          variant="ghost"
-          onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+          onClick={() => {
+            setResults(null)
+            runScenarios().then(setResults)
+          }}
         >
+          跑全部场景
+        </Button>
+        <Button size="sm" variant="ghost" onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}>
           主题
         </Button>
       </div>
@@ -505,7 +628,9 @@ export default function ScrollLab() {
         <div data-testid="scroll-lab-results" className="max-h-48 overflow-y-auto border-t px-4 py-2 text-xs">
           {results.map((r) => (
             <div key={r.name} className="flex gap-2 py-0.5">
-              <span className={r.pass ? 'text-success-soft-foreground' : 'text-danger'}>{r.pass ? 'PASS' : 'FAIL'}</span>
+              <span className={r.pass ? 'text-success-soft-foreground' : 'text-danger'}>
+                {r.pass ? 'PASS' : 'FAIL'}
+              </span>
               <span className="font-medium">{r.name}</span>
               <span className="text-muted">{r.detail}</span>
             </div>
@@ -513,10 +638,7 @@ export default function ScrollLab() {
         </div>
       )}
 
-      <div
-        data-testid="scroll-lab-readout"
-        className="border-t px-4 py-2 font-mono text-xs text-muted"
-      >
+      <div data-testid="scroll-lab-readout" className="border-t px-4 py-2 font-mono text-xs text-muted">
         {readout}
       </div>
     </div>

@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use super::protocol::OneBotAction;
 use super::session::{SessionKey, SessionKind};
-use super::{call_api, SharedState};
+use super::{SharedState, call_api};
 
 pub const QQ_HISTORY_TOOL: &str = "qq_get_chat_history";
 const MAX_HISTORY_COUNT: i64 = 50;
@@ -32,22 +32,102 @@ struct ToolSpec {
 }
 
 const SPECS: &[ToolSpec] = &[
-    ToolSpec { name: QQ_HISTORY_TOOL, admin_only: false, needs_approval: false, scope: Scope::Any },
-    ToolSpec { name: "qq_get_group_info", admin_only: false, needs_approval: false, scope: Scope::GroupOnly },
-    ToolSpec { name: "qq_get_group_member_list", admin_only: false, needs_approval: false, scope: Scope::GroupOnly },
-    ToolSpec { name: "qq_get_group_member_info", admin_only: false, needs_approval: false, scope: Scope::GroupOnly },
-    ToolSpec { name: "qq_get_user_info", admin_only: false, needs_approval: false, scope: Scope::PrivateOnly },
-    ToolSpec { name: "qq_get_friend_list", admin_only: true, needs_approval: false, scope: Scope::Any },
-    ToolSpec { name: "qq_get_group_list", admin_only: true, needs_approval: false, scope: Scope::Any },
-    ToolSpec { name: "qq_delete_msg", admin_only: true, needs_approval: true, scope: Scope::Any },
-    ToolSpec { name: "qq_send_poke", admin_only: true, needs_approval: true, scope: Scope::Any },
-    ToolSpec { name: "qq_send_like", admin_only: true, needs_approval: true, scope: Scope::Any },
-    ToolSpec { name: "qq_set_essence_msg", admin_only: true, needs_approval: true, scope: Scope::GroupOnly },
-    ToolSpec { name: "qq_set_group_ban", admin_only: true, needs_approval: true, scope: Scope::GroupOnly },
-    ToolSpec { name: "qq_set_group_kick", admin_only: true, needs_approval: true, scope: Scope::GroupOnly },
-    ToolSpec { name: "qq_set_group_card", admin_only: true, needs_approval: true, scope: Scope::GroupOnly },
-    ToolSpec { name: "qq_set_group_name", admin_only: true, needs_approval: true, scope: Scope::GroupOnly },
-    ToolSpec { name: "qq_send_group_notice", admin_only: true, needs_approval: true, scope: Scope::GroupOnly },
+    ToolSpec {
+        name: QQ_HISTORY_TOOL,
+        admin_only: false,
+        needs_approval: false,
+        scope: Scope::Any,
+    },
+    ToolSpec {
+        name: "qq_get_group_info",
+        admin_only: false,
+        needs_approval: false,
+        scope: Scope::GroupOnly,
+    },
+    ToolSpec {
+        name: "qq_get_group_member_list",
+        admin_only: false,
+        needs_approval: false,
+        scope: Scope::GroupOnly,
+    },
+    ToolSpec {
+        name: "qq_get_group_member_info",
+        admin_only: false,
+        needs_approval: false,
+        scope: Scope::GroupOnly,
+    },
+    ToolSpec {
+        name: "qq_get_user_info",
+        admin_only: false,
+        needs_approval: false,
+        scope: Scope::PrivateOnly,
+    },
+    ToolSpec {
+        name: "qq_get_friend_list",
+        admin_only: true,
+        needs_approval: false,
+        scope: Scope::Any,
+    },
+    ToolSpec {
+        name: "qq_get_group_list",
+        admin_only: true,
+        needs_approval: false,
+        scope: Scope::Any,
+    },
+    ToolSpec {
+        name: "qq_delete_msg",
+        admin_only: true,
+        needs_approval: true,
+        scope: Scope::Any,
+    },
+    ToolSpec {
+        name: "qq_send_poke",
+        admin_only: true,
+        needs_approval: true,
+        scope: Scope::Any,
+    },
+    ToolSpec {
+        name: "qq_send_like",
+        admin_only: true,
+        needs_approval: true,
+        scope: Scope::Any,
+    },
+    ToolSpec {
+        name: "qq_set_essence_msg",
+        admin_only: true,
+        needs_approval: true,
+        scope: Scope::GroupOnly,
+    },
+    ToolSpec {
+        name: "qq_set_group_ban",
+        admin_only: true,
+        needs_approval: true,
+        scope: Scope::GroupOnly,
+    },
+    ToolSpec {
+        name: "qq_set_group_kick",
+        admin_only: true,
+        needs_approval: true,
+        scope: Scope::GroupOnly,
+    },
+    ToolSpec {
+        name: "qq_set_group_card",
+        admin_only: true,
+        needs_approval: true,
+        scope: Scope::GroupOnly,
+    },
+    ToolSpec {
+        name: "qq_set_group_name",
+        admin_only: true,
+        needs_approval: true,
+        scope: Scope::GroupOnly,
+    },
+    ToolSpec {
+        name: "qq_send_group_notice",
+        admin_only: true,
+        needs_approval: true,
+        scope: Scope::GroupOnly,
+    },
 ];
 
 pub struct QqToolExecutor {
@@ -58,7 +138,11 @@ pub struct QqToolExecutor {
 
 impl QqToolExecutor {
     pub fn new(state: Arc<SharedState>, session: SessionKey, is_admin: bool) -> Self {
-        Self { state, session, is_admin }
+        Self {
+            state,
+            session,
+            is_admin,
+        }
     }
 
     fn available(&self, spec: &ToolSpec) -> bool {
@@ -147,14 +231,8 @@ impl QqToolExecutor {
                     },
                 }),
             ),
-            "qq_get_group_info" => (
-                "获取本群的基本信息(群名、人数等)。".to_string(),
-                no_params,
-            ),
-            "qq_get_group_member_list" => (
-                "获取本群成员列表(名称、QQ号、角色)。".to_string(),
-                no_params,
-            ),
+            "qq_get_group_info" => ("获取本群的基本信息(群名、人数等)。".to_string(), no_params),
+            "qq_get_group_member_list" => ("获取本群成员列表(名称、QQ号、角色)。".to_string(), no_params),
             "qq_get_group_member_info" => (
                 "获取本群某个成员的详细信息(名片、角色、头衔、入群时间等)。".to_string(),
                 serde_json::json!({
@@ -165,18 +243,9 @@ impl QqToolExecutor {
                     "required": ["user_id"],
                 }),
             ),
-            "qq_get_user_info" => (
-                "获取当前私聊对象的资料(昵称等)。".to_string(),
-                no_params,
-            ),
-            "qq_get_friend_list" => (
-                "获取机器人的好友列表。".to_string(),
-                no_params,
-            ),
-            "qq_get_group_list" => (
-                "获取机器人加入的群列表。".to_string(),
-                no_params,
-            ),
+            "qq_get_user_info" => ("获取当前私聊对象的资料(昵称等)。".to_string(), no_params),
+            "qq_get_friend_list" => ("获取机器人的好友列表。".to_string(), no_params),
+            "qq_get_group_list" => ("获取机器人加入的群列表。".to_string(), no_params),
             "qq_delete_msg" => (
                 "撤回一条消息(自己发出的,或作为群管理员撤回他人的)。".to_string(),
                 serde_json::json!({
@@ -280,7 +349,11 @@ impl QqToolExecutor {
             ),
             _ => (String::new(), no_params),
         };
-        crate::provider::ToolDefinition { name: name.into(), description, parameters }
+        crate::provider::ToolDefinition {
+            name: name.into(),
+            description,
+            parameters,
+        }
     }
 
     pub async fn execute(&self, name: &str, arguments: &str) -> Result<String, String> {
@@ -293,8 +366,7 @@ impl QqToolExecutor {
         if !self.available(spec) {
             return Err(format!("Tool {name} is not available in this session"));
         }
-        let args: serde_json::Value =
-            serde_json::from_str(arguments).unwrap_or_else(|_| serde_json::json!({}));
+        let args: serde_json::Value = serde_json::from_str(arguments).unwrap_or_else(|_| serde_json::json!({}));
 
         match name {
             QQ_HISTORY_TOOL => self.get_chat_history(&args).await,
@@ -341,7 +413,8 @@ impl QqToolExecutor {
                 call_api(
                     &self.state,
                     OneBotAction::set_group_ban(self.session.id, user_id, duration, echo()),
-                ).await?;
+                )
+                .await?;
                 Ok(if duration > 0 {
                     format!("已禁言 {user_id} {duration} 秒")
                 } else {
@@ -353,7 +426,8 @@ impl QqToolExecutor {
                 call_api(
                     &self.state,
                     OneBotAction::set_group_kick(self.session.id, user_id, echo()),
-                ).await?;
+                )
+                .await?;
                 Ok(format!("已将 {user_id} 移出本群"))
             }
             "qq_set_group_card" => {
@@ -362,7 +436,8 @@ impl QqToolExecutor {
                 call_api(
                     &self.state,
                     OneBotAction::set_group_card(self.session.id, user_id, card, echo()),
-                ).await?;
+                )
+                .await?;
                 Ok(format!("已设置 {user_id} 的群名片"))
             }
             "qq_set_group_name" => {
@@ -374,7 +449,8 @@ impl QqToolExecutor {
                 call_api(
                     &self.state,
                     OneBotAction::set_group_name(self.session.id, name_arg, echo()),
-                ).await?;
+                )
+                .await?;
                 Ok("已修改群名".into())
             }
             "qq_send_group_notice" => {
@@ -386,7 +462,8 @@ impl QqToolExecutor {
                 call_api(
                     &self.state,
                     OneBotAction::send_group_notice(self.session.id, content, echo()),
-                ).await?;
+                )
+                .await?;
                 Ok("已发布群公告".into())
             }
             _ => Err(format!("Unknown QQ tool: {name}")),
@@ -398,12 +475,8 @@ impl QqToolExecutor {
         let message_seq = get_i64(args, "message_seq").filter(|s| *s > 0);
 
         let action = match self.session.kind {
-            SessionKind::Group => {
-                OneBotAction::get_group_msg_history(self.session.id, message_seq, count, echo())
-            }
-            SessionKind::Private => {
-                OneBotAction::get_friend_msg_history(self.session.id, message_seq, count, echo())
-            }
+            SessionKind::Group => OneBotAction::get_group_msg_history(self.session.id, message_seq, count, echo()),
+            SessionKind::Private => OneBotAction::get_friend_msg_history(self.session.id, message_seq, count, echo()),
         };
 
         let data = call_api(&self.state, action).await?;
@@ -433,8 +506,11 @@ impl QqToolExecutor {
     }
 
     async fn get_group_member_list(&self) -> Result<String, String> {
-        let data =
-            call_api(&self.state, OneBotAction::get_group_member_list(self.session.id, echo())).await?;
+        let data = call_api(
+            &self.state,
+            OneBotAction::get_group_member_list(self.session.id, echo()),
+        )
+        .await?;
         let members = data.as_array().ok_or("unexpected member list response")?;
         let mut lines = Vec::with_capacity(members.len() + 1);
         lines.push(format!("本群共 {} 人:", members.len()));
@@ -460,7 +536,8 @@ impl QqToolExecutor {
         let data = call_api(
             &self.state,
             OneBotAction::get_group_member_info(self.session.id, user_id, echo()),
-        ).await?;
+        )
+        .await?;
         let mut out = Vec::new();
         let nickname = data.get("nickname").and_then(|v| v.as_str()).unwrap_or("?");
         out.push(format!("昵称: {nickname}"));
@@ -477,20 +554,19 @@ impl QqToolExecutor {
         if let Some(title) = data.get("title").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
             out.push(format!("头衔: {title}"));
         }
-        if let Some(ts) = data.get("join_time").and_then(|v| v.as_i64()).filter(|t| *t > 0) {
-            if let Some(dt) = chrono::DateTime::from_timestamp(ts, 0) {
-                out.push(format!(
-                    "入群时间: {}",
-                    dt.with_timezone(&chrono::Local).format("%Y-%m-%d")
-                ));
-            }
+        if let Some(ts) = data.get("join_time").and_then(|v| v.as_i64()).filter(|t| *t > 0)
+            && let Some(dt) = chrono::DateTime::from_timestamp(ts, 0)
+        {
+            out.push(format!(
+                "入群时间: {}",
+                dt.with_timezone(&chrono::Local).format("%Y-%m-%d")
+            ));
         }
         Ok(out.join("\n"))
     }
 
     async fn get_user_info(&self) -> Result<String, String> {
-        let data =
-            call_api(&self.state, OneBotAction::get_stranger_info(self.session.id, echo())).await?;
+        let data = call_api(&self.state, OneBotAction::get_stranger_info(self.session.id, echo())).await?;
         let nickname = data.get("nickname").and_then(|v| v.as_str()).unwrap_or("?");
         let mut out = format!("昵称: {nickname}\nQQ号: {}", self.session.id);
         if let Some(sign) = data.get("sign").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
@@ -630,11 +706,7 @@ fn format_history(messages: &[serde_json::Value]) -> String {
             .get("time")
             .and_then(|v| v.as_i64())
             .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0))
-            .map(|dt| {
-                dt.with_timezone(&chrono::Local)
-                    .format("%m-%d %H:%M")
-                    .to_string()
-            })
+            .map(|dt| dt.with_timezone(&chrono::Local).format("%m-%d %H:%M").to_string())
             .unwrap_or_default();
         let sender = msg
             .get("sender")
@@ -650,11 +722,7 @@ fn format_history(messages: &[serde_json::Value]) -> String {
             .get("message")
             .map(|m| super::format::segments_to_text(m, None))
             .filter(|t| !t.is_empty())
-            .or_else(|| {
-                msg.get("raw_message")
-                    .and_then(|v| v.as_str())
-                    .map(String::from)
-            })
+            .or_else(|| msg.get("raw_message").and_then(|v| v.as_str()).map(String::from))
             .unwrap_or_default();
         if text.is_empty() {
             continue;
@@ -713,10 +781,7 @@ mod tests {
     /// tools they will only be refused.
     #[test]
     fn a_private_chat_shows_nothing_its_counterpart_cannot_run() {
-        let shown = names(
-            SessionKind::Private,
-            shown_as_admin(&SessionKind::Private, false),
-        );
+        let shown = names(SessionKind::Private, shown_as_admin(&SessionKind::Private, false));
         assert_eq!(shown, names(SessionKind::Private, false));
         assert!(!shown.contains(&"qq_delete_msg"));
     }
@@ -773,8 +838,7 @@ mod tests {
 
     #[test]
     fn test_action_tools_require_approval_queries_do_not() {
-        let approval_needed: Vec<_> =
-            SPECS.iter().filter(|s| s.needs_approval).map(|s| s.name).collect();
+        let approval_needed: Vec<_> = SPECS.iter().filter(|s| s.needs_approval).map(|s| s.name).collect();
         assert!(approval_needed.contains(&"qq_set_group_ban"));
         assert!(approval_needed.contains(&"qq_delete_msg"));
         assert!(!approval_needed.contains(&QQ_HISTORY_TOOL));
@@ -799,7 +863,10 @@ mod tests {
         ];
         let out = format_history(&messages);
         assert!(out.contains("甲: hello"));
-        assert!(out.contains("message_seq=120"), "footer points at the oldest seq: {out}");
+        assert!(
+            out.contains("message_seq=120"),
+            "footer points at the oldest seq: {out}"
+        );
     }
 
     #[test]

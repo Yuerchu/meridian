@@ -1,15 +1,9 @@
-import * as React from "react"
-import { Disclosure, tv, type VariantProps } from "@heroui/react"
-import {
-  CircleCheck,
-  CircleDashed,
-  CircleExclamation,
-  CircleXmark,
-  Clock,
-} from "@gravity-ui/icons"
-import { useShikiLanguage } from "@/hooks/use-shiki-language"
-import { highlightInline } from "@/lib/shiki"
-import { cn } from "@/lib/utils"
+import * as React from 'react'
+import { Disclosure, tv, type VariantProps } from '@heroui/react'
+import { CircleCheck, CircleDashed, CircleExclamation, CircleXmark, Clock } from '@gravity-ui/icons'
+import { useShikiLanguage } from '@/hooks/use-shiki-language'
+import { highlightInline } from '@/lib/shiki'
+import { cn } from '@/lib/utils'
 
 /**
  * The first four mirror the states an assistant-UI tool part goes through.
@@ -19,14 +13,9 @@ import { cn } from "@/lib/utils"
  * doing the work.
  */
 type ChatToolState =
-  | "input-streaming"
-  | "input-available"
-  | "queued"
-  | "output-available"
-  | "output-error"
-  | "requires-action"
+  'input-streaming' | 'input-available' | 'queued' | 'output-available' | 'output-error' | 'requires-action'
 
-const ChatToolStateContext = React.createContext<ChatToolState>("input-available")
+const ChatToolStateContext = React.createContext<ChatToolState>('input-available')
 
 /**
  * True for a tool card rendered inside a `ChatToolGroup`. The group is the card;
@@ -58,22 +47,22 @@ const ChatToolNestedContext = React.createContext(false)
  * about the card is HeroUI's: no border, a surface fill above the page, and the
  * shadow that separates the two.
  */
-const CHAT_TOOL_CARD = "overflow-hidden rounded-2xl bg-surface shadow-surface"
+const CHAT_TOOL_CARD = 'overflow-hidden rounded-2xl bg-surface shadow-surface'
 
 const chatToolVariants = tv({
   slots: {
-    base: "flex w-full flex-col text-sm",
+    base: 'flex w-full flex-col text-sm',
     // `p-4` matches `.accordion__trigger` (`px-4 py-4`), and the hover fill is
     // the full-strength `bg-default` that `.accordion--surface` uses — at /30
     // over an opaque panel it barely moved.
     trigger: [
-      "flex w-full items-center gap-2 p-4 text-left transition-colors outline-none",
-      "hover:bg-default focus-visible:bg-default",
+      'flex w-full items-center gap-2 p-4 text-left transition-colors outline-none',
+      'hover:bg-default focus-visible:bg-default',
     ],
   },
   variants: {
     nested: {
-      true: { base: "border-t border-separator" },
+      true: { base: 'border-t border-separator' },
       false: { base: CHAT_TOOL_CARD },
     },
     // A HeroUI card carries no edge, so the three ordinary states now have
@@ -87,29 +76,30 @@ const chatToolVariants = tv({
     // summary in a real tool row is muted. A ring sits under no text at all,
     // takes no space, and `ring-inset` keeps it inside the rounded corner.
     state: {
-      "input-streaming": {},
-      "input-available": {},
-      "queued": {},
-      "output-available": {},
-      "output-error": { base: "ring-1 ring-danger/40 ring-inset" },
-      "requires-action": { base: "ring-1 ring-warning/40 ring-inset" },
+      'input-streaming': {},
+      'input-available': {},
+      queued: {},
+      'output-available': {},
+      'output-error': { base: 'ring-1 ring-danger/40 ring-inset' },
+      'requires-action': { base: 'ring-1 ring-warning/40 ring-inset' },
     },
   },
   defaultVariants: {
     nested: false,
-    state: "input-available",
+    state: 'input-available',
   },
 })
 
 interface ChatToolProps
-  extends React.ComponentProps<typeof Disclosure>,
+  extends
+    React.ComponentProps<typeof Disclosure>,
     // `nested` is read from context, not passed: only `ChatToolGroup` knows.
-    Omit<VariantProps<typeof chatToolVariants>, "nested"> {}
+    Omit<VariantProps<typeof chatToolVariants>, 'nested'> {}
 
 function ChatTool({ state, className, ...props }: ChatToolProps) {
   const nested = React.useContext(ChatToolNestedContext)
   return (
-    <ChatToolStateContext.Provider value={state ?? "input-available"}>
+    <ChatToolStateContext.Provider value={state ?? 'input-available'}>
       <Disclosure
         data-slot="chat-tool"
         className={cn(chatToolVariants({ state, nested }).base(), className)}
@@ -119,8 +109,7 @@ function ChatTool({ state, className, ...props }: ChatToolProps) {
   )
 }
 
-interface ChatToolTriggerProps
-  extends Omit<React.ComponentProps<typeof Disclosure.Trigger>, "children"> {
+interface ChatToolTriggerProps extends Omit<React.ComponentProps<typeof Disclosure.Trigger>, 'children'> {
   /**
    * Pinned to the right edge, just left of the chevron — a progress count, a
    * duration, a badge. Use this rather than an `ml-auto` child: the label row
@@ -143,10 +132,7 @@ function ChatToolTrigger({ className, children, endContent, ...props }: ChatTool
         className={cn(chatToolVariants().trigger(), className)}
         {...props}
       >
-        <div
-          data-slot="chat-tool-trigger-label"
-          className="flex min-w-0 flex-1 items-center gap-2"
-        >
+        <div data-slot="chat-tool-trigger-label" className="flex min-w-0 flex-1 items-center gap-2">
           {children}
         </div>
         {endContent}
@@ -159,53 +145,26 @@ function ChatToolTrigger({ className, children, endContent, ...props }: ChatTool
 function ChatToolStatusIcon({ className }: { className?: string }) {
   const state = React.useContext(ChatToolStateContext)
   switch (state) {
-    case "input-streaming":
-    case "input-available":
-      return (
-        <CircleDashed
-          aria-hidden
-          className={cn("size-3.5 shrink-0 animate-spin text-muted", className)}
-        />
-      )
+    case 'input-streaming':
+    case 'input-available':
+      return <CircleDashed aria-hidden className={cn('size-3.5 shrink-0 animate-spin text-muted', className)} />
     // The same mark, standing still. Spinning is the claim that something is
     // happening, and for a call that has not started it is the only thing on
     // screen making that claim.
-    case "queued":
+    case 'queued':
+      return <Clock aria-hidden className={cn('size-3.5 shrink-0 text-muted', className)} />
+    case 'output-available':
+      return <CircleCheck aria-hidden className={cn('size-3.5 shrink-0 text-success-soft-foreground', className)} />
+    case 'output-error':
+      return <CircleXmark aria-hidden className={cn('size-3.5 shrink-0 text-danger', className)} />
+    case 'requires-action':
       return (
-        <Clock
-          aria-hidden
-          className={cn("size-3.5 shrink-0 text-muted", className)}
-        />
-      )
-    case "output-available":
-      return (
-        <CircleCheck
-          aria-hidden
-          className={cn("size-3.5 shrink-0 text-success-soft-foreground", className)}
-        />
-      )
-    case "output-error":
-      return (
-        <CircleXmark
-          aria-hidden
-          className={cn("size-3.5 shrink-0 text-danger", className)}
-        />
-      )
-    case "requires-action":
-      return (
-        <CircleExclamation
-          aria-hidden
-          className={cn("size-3.5 shrink-0 text-warning-soft-foreground", className)}
-        />
+        <CircleExclamation aria-hidden className={cn('size-3.5 shrink-0 text-warning-soft-foreground', className)} />
       )
   }
 }
 
-function ChatToolContent({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<typeof Disclosure.Content>) {
+function ChatToolContent({ className, children, ...props }: React.ComponentProps<typeof Disclosure.Content>) {
   return (
     // `min-h-0` is load-bearing: the card is a flex column, and a flex item's
     // default `min-height: auto` floors it at its content height — so the panel
@@ -215,9 +174,7 @@ function ChatToolContent({
           without it the content never collapses — it just loses its
           `aria-expanded`.
           `px-4 pt-0 pb-4` is `.accordion__body-inner`; `gap-3` is the card's. */}
-      <Disclosure.Body className={cn("flex flex-col gap-3 px-4 pb-4", className)}>
-        {children}
-      </Disclosure.Body>
+      <Disclosure.Body className={cn('flex flex-col gap-3 px-4 pb-4', className)}>{children}</Disclosure.Body>
     </Disclosure.Content>
   )
 }
@@ -226,16 +183,13 @@ function ChatToolContent({
 // inject. `inline` because this sits inside a `<code>` that is already styled —
 // the classic structure would nest a second `<pre><code>` inside it.
 function JsonCode({ code }: { code: string }) {
-  const { language, ready } = useShikiLanguage("json")
-  const html = React.useMemo(
-    () => (ready ? highlightInline(code, language) : null),
-    [code, language, ready]
-  )
+  const { language, ready } = useShikiLanguage('json')
+  const html = React.useMemo(() => (ready ? highlightInline(code, language) : null), [code, language, ready])
   if (html === null) return <code>{code}</code>
   return <code dangerouslySetInnerHTML={{ __html: html }} />
 }
 
-interface ChatToolPayloadProps extends React.ComponentProps<"div"> {
+interface ChatToolPayloadProps extends React.ComponentProps<'div'> {
   // Structured value, rendered as JSON.
   value?: unknown
   // Preformatted text, useful while streaming partial JSON. Takes precedence.
@@ -247,7 +201,7 @@ function ChatToolArgs({ value, text, className, children, ...props }: ChatToolPa
   return (
     <div
       data-slot="chat-tool-args"
-      className={cn("max-h-40 overflow-auto rounded-lg bg-default/40 px-3 py-2", className)}
+      className={cn('max-h-40 overflow-auto rounded-lg bg-default/40 px-3 py-2', className)}
       {...props}
     >
       {children ??
@@ -265,7 +219,7 @@ function ChatToolResult({ value, text, className, children, ...props }: ChatTool
   return (
     <div
       data-slot="chat-tool-result"
-      className={cn("max-h-60 overflow-auto rounded-lg bg-default/40 px-3 py-2", className)}
+      className={cn('max-h-60 overflow-auto rounded-lg bg-default/40 px-3 py-2', className)}
       {...props}
     >
       {children ??
@@ -278,21 +232,17 @@ function ChatToolResult({ value, text, className, children, ...props }: ChatTool
   )
 }
 
-function ChatToolError({ className, ...props }: React.ComponentProps<"div">) {
+function ChatToolError({ className, ...props }: React.ComponentProps<'div'>) {
   return (
-    <div
-      data-slot="chat-tool-error"
-      className={cn("px-0.5 whitespace-pre-wrap text-danger", className)}
-      {...props}
-    />
+    <div data-slot="chat-tool-error" className={cn('px-0.5 whitespace-pre-wrap text-danger', className)} {...props} />
   )
 }
 
-function ChatToolApproval({ className, ...props }: React.ComponentProps<"div">) {
+function ChatToolApproval({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="chat-tool-approval"
-      className={cn("flex items-center justify-end gap-2 pt-1", className)}
+      className={cn('flex items-center justify-end gap-2 pt-1', className)}
       {...props}
     />
   )
@@ -302,7 +252,7 @@ function ChatToolGroup({ className, ...props }: React.ComponentProps<typeof Disc
   return (
     <Disclosure
       data-slot="chat-tool-group"
-      className={cn("flex w-full flex-col text-sm", CHAT_TOOL_CARD, className)}
+      className={cn('flex w-full flex-col text-sm', CHAT_TOOL_CARD, className)}
       {...props}
     />
   )
@@ -312,18 +262,14 @@ function ChatToolGroupTrigger({
   className,
   children,
   ...props
-}: Omit<React.ComponentProps<typeof Disclosure.Trigger>, "children"> & {
+}: Omit<React.ComponentProps<typeof Disclosure.Trigger>, 'children'> & {
   children?: React.ReactNode
 }) {
   return (
     <Disclosure.Heading>
       <Disclosure.Trigger
         data-slot="chat-tool-group-trigger"
-        className={cn(
-          chatToolVariants().trigger(),
-          "font-medium text-foreground",
-          className
-        )}
+        className={cn(chatToolVariants().trigger(), 'font-medium text-foreground', className)}
         {...props}
       >
         {children}
@@ -335,18 +281,14 @@ function ChatToolGroupTrigger({
   )
 }
 
-function ChatToolGroupContent({
-  className,
-  children,
-  ...props
-}: React.ComponentProps<typeof Disclosure.Content>) {
+function ChatToolGroupContent({ className, children, ...props }: React.ComponentProps<typeof Disclosure.Content>) {
   return (
     <Disclosure.Content data-slot="chat-tool-group-content" className="min-h-0 w-full" {...props}>
       {/* Flush, not inset: the group is the card, so its children are rows in it
           rather than cards inside a card. A 24px card nested in a 24px card is
           exactly the rounding a container is not allowed to have, and the gutter
           it would need would only make the double frame more obvious. */}
-      <Disclosure.Body className={cn("flex flex-col", className)}>
+      <Disclosure.Body className={cn('flex flex-col', className)}>
         <ChatToolNestedContext.Provider value={true}>{children}</ChatToolNestedContext.Provider>
       </Disclosure.Body>
     </Disclosure.Content>
@@ -365,6 +307,5 @@ export {
   ChatToolGroup,
   ChatToolGroupTrigger,
   ChatToolGroupContent,
-  chatToolVariants,
   type ChatToolState,
 }

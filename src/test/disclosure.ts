@@ -19,7 +19,7 @@ import { expect } from 'vitest'
 
 /** The panel a trigger owns. `aria-controls` is the only link between them that
  *  does not assume the panel sits in the trigger's subtree. */
-export function disclosurePanel(trigger: Element): HTMLElement {
+function disclosurePanel(trigger: Element): HTMLElement {
   const id = trigger.getAttribute('aria-controls')
   expect(id, 'the trigger names no panel via aria-controls').toBeTruthy()
   const panel = trigger.ownerDocument.getElementById(id!)

@@ -2,9 +2,9 @@ pub mod models;
 pub mod ops;
 pub mod schema;
 
+use diesel::RunQueryDsl;
 use diesel::r2d2::{ConnectionManager, Pool, PooledConnection};
 use diesel::sqlite::SqliteConnection;
-use diesel::RunQueryDsl;
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
@@ -70,16 +70,12 @@ pub fn init_db(db_path: &str) -> DbPool {
 
     let mut conn = pool.get().expect("failed to get db connection");
     // journal_mode is persistent (stored in the db file), one connection suffices.
-    diesel::sql_query("PRAGMA journal_mode=WAL")
-        .execute(&mut conn)
-        .ok();
+    diesel::sql_query("PRAGMA journal_mode=WAL").execute(&mut conn).ok();
 
     // Migrations that rebuild tables via DROP TABLE must not fire ON DELETE
     // actions on referencing rows (migration 11 nulled conversations.project_id
     // this way), so foreign keys are off for the migration run only.
-    diesel::sql_query("PRAGMA foreign_keys=OFF")
-        .execute(&mut conn)
-        .ok();
+    diesel::sql_query("PRAGMA foreign_keys=OFF").execute(&mut conn).ok();
     conn.run_pending_migrations(MIGRATIONS)
         .expect("failed to run migrations");
     // If this one fails the connection spends the rest of its life without
@@ -143,9 +139,7 @@ mod pool_tests {
     fn test_pooled_connections_wait_for_locks() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        let rows: Vec<BusyTimeout> = diesel::sql_query("PRAGMA busy_timeout")
-            .load(&mut conn)
-            .unwrap();
+        let rows: Vec<BusyTimeout> = diesel::sql_query("PRAGMA busy_timeout").load(&mut conn).unwrap();
         assert_eq!(rows[0].timeout, BUSY_TIMEOUT_MS as i32);
     }
 }
@@ -184,8 +178,7 @@ mod migration_tests {
     #[test]
     fn no_two_migrations_claim_the_same_version() {
         let all = MigrationSource::<diesel::sqlite::Sqlite>::migrations(&MIGRATIONS).unwrap();
-        let mut versions: Vec<String> =
-            all.iter().map(|m| m.name().version().as_owned().to_string()).collect();
+        let mut versions: Vec<String> = all.iter().map(|m| m.name().version().as_owned().to_string()).collect();
         let total = versions.len();
         versions.sort();
         versions.dedup();
@@ -209,9 +202,15 @@ mod migration_tests {
         )
         .unwrap();
 
-        let c: Conversation =
-            conversations.find("c1").select(Conversation::as_select()).first(&mut conn).unwrap();
-        assert_eq!(c.accept_edits, 0, "a conversation that predates the column must keep asking");
+        let c: Conversation = conversations
+            .find("c1")
+            .select(Conversation::as_select())
+            .first(&mut conn)
+            .unwrap();
+        assert_eq!(
+            c.accept_edits, 0,
+            "a conversation that predates the column must keep asking"
+        );
     }
 
     /// Bring a database up to migration 18 only, so migration 19 can be tested
@@ -289,12 +288,10 @@ mod migration_tests {
     }
 
     fn fetch(conn: &mut SqliteConnection, id: &str) -> MemoryRow {
-        diesel::sql_query(
-            "SELECT scope_type, scope_id, subject_scope_id, origin FROM memories WHERE id = ?",
-        )
-        .bind::<Text, _>(id)
-        .get_result(conn)
-        .unwrap()
+        diesel::sql_query("SELECT scope_type, scope_id, subject_scope_id, origin FROM memories WHERE id = ?")
+            .bind::<Text, _>(id)
+            .get_result(conn)
+            .unwrap()
     }
 
     /// The whole point of the data mapping: a private-chat memory becomes a
@@ -381,10 +378,9 @@ mod migration_tests {
         )
         .unwrap();
 
-        let row: CountRow =
-            diesel::sql_query("SELECT id AS n FROM memory_proposals WHERE key = 'b'")
-                .get_result(&mut conn)
-                .unwrap();
+        let row: CountRow = diesel::sql_query("SELECT id AS n FROM memory_proposals WHERE key = 'b'")
+            .get_result(&mut conn)
+            .unwrap();
         assert_eq!(row.n, 2, "AUTOINCREMENT must not hand out id 1 again");
     }
 
@@ -461,10 +457,9 @@ mod migration_tests {
         run_migration(&mut conn, "00000000000021");
 
         assert_eq!(parent_of(&mut conn, "asum"), None);
-        let children: CountRow =
-            diesel::sql_query("SELECT COUNT(*) AS n FROM messages WHERE parent_id = 'asum'")
-                .get_result(&mut conn)
-                .unwrap();
+        let children: CountRow = diesel::sql_query("SELECT COUNT(*) AS n FROM messages WHERE parent_id = 'asum'")
+            .get_result(&mut conn)
+            .unwrap();
         assert_eq!(children.n, 0);
     }
 
@@ -480,7 +475,11 @@ mod migration_tests {
             .get_result::<IdRow>(&mut conn)
             .unwrap()
             .id;
-        assert_eq!(anchor.as_deref(), Some("a3"), "cursor 3 maps to the row at sort_order 3");
+        assert_eq!(
+            anchor.as_deref(),
+            Some("a3"),
+            "cursor 3 maps to the row at sort_order 3"
+        );
     }
 
     #[test]
@@ -524,11 +523,9 @@ mod migration_tests {
             #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
             tool_outcome: Option<String>,
         }
-        let rows = diesel::sql_query(
-            "SELECT turn_id, tool_outcome FROM messages ORDER BY sort_order",
-        )
-        .get_results::<Cols>(&mut conn)
-        .unwrap();
+        let rows = diesel::sql_query("SELECT turn_id, tool_outcome FROM messages ORDER BY sort_order")
+            .get_results::<Cols>(&mut conn)
+            .unwrap();
 
         assert_eq!(rows.len(), 2, "no row is lost or duplicated");
         assert!(rows.iter().all(|r| r.turn_id.is_none()));
@@ -612,7 +609,10 @@ mod migration_tests {
         let listed = ops::conversation::list_conversations(&mut conn, false).unwrap();
         assert_eq!(listed.len(), 1);
         assert!(listed[0].parent_conversation_id.is_none());
-        assert!(listed[0].agent_model_id.is_none(), "and it goes on resolving from the assistant");
+        assert!(
+            listed[0].agent_model_id.is_none(),
+            "and it goes on resolving from the assistant"
+        );
         assert!(ops::conversation::sub_agent_runs(&mut conn, "c1").unwrap().is_empty());
     }
 

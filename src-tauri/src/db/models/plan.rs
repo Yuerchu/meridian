@@ -14,8 +14,9 @@ pub const KIND_PLAN: &str = "plan";
 /// it: the first when a newer one replaces it, the second when the work it
 /// described is finished. Retiring rather than deleting keeps the history of
 /// what was proposed readable.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, strum::IntoStaticStr, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum PlanStatus {
     Pending,
     Approved,
@@ -26,24 +27,11 @@ pub enum PlanStatus {
 
 impl PlanStatus {
     pub fn as_str(&self) -> &'static str {
-        match self {
-            PlanStatus::Pending => "pending",
-            PlanStatus::Approved => "approved",
-            PlanStatus::Rejected => "rejected",
-            PlanStatus::Superseded => "superseded",
-            PlanStatus::Done => "done",
-        }
+        self.into()
     }
 
     pub fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "pending" => Ok(PlanStatus::Pending),
-            "approved" => Ok(PlanStatus::Approved),
-            "rejected" => Ok(PlanStatus::Rejected),
-            "superseded" => Ok(PlanStatus::Superseded),
-            "done" => Ok(PlanStatus::Done),
-            other => Err(format!("unknown artifact status '{other}'")),
-        }
+        value.parse().map_err(|_| format!("unknown artifact status '{value}'"))
     }
 }
 

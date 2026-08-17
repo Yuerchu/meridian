@@ -65,7 +65,10 @@ impl LineSink for FileSink {
             writer.write_line(line);
             return;
         }
-        let buffer = early.get_or_insert_with(|| EarlyBuffer { lines: Vec::new(), dropped: 0 });
+        let buffer = early.get_or_insert_with(|| EarlyBuffer {
+            lines: Vec::new(),
+            dropped: 0,
+        });
         if buffer.lines.len() >= EARLY_BUFFER_LINES {
             // Drop the newest, keep the oldest: when startup goes wrong the first
             // error explains the rest.
@@ -93,8 +96,8 @@ pub(crate) fn init_early() {
     // `RUST_LOG` steers stdout only. If it reached the file filter, a developer
     // running with `RUST_LOG=trace` would burn through the whole size budget and
     // evict the records they were trying to keep.
-    let stdout_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| config::build_filter(config::DEFAULT_LEVEL));
+    let stdout_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| config::build_filter(config::DEFAULT_LEVEL));
 
     // The file layer goes on first so its reloadable filter is parameterised by
     // the bare `Registry`, which is what `LEVEL_RELOAD` stores a handle to.
@@ -210,8 +213,7 @@ pub(crate) const LEVEL_PREFERENCE_KEY: &str = "logging.level";
 
 /// Change the file log level for the running process.
 pub(crate) fn set_level(level: &str) -> Result<(), String> {
-    let level = config::normalize_level(level)
-        .ok_or_else(|| format!("unsupported log level '{level}'"))?;
+    let level = config::normalize_level(level).ok_or_else(|| format!("unsupported log level '{level}'"))?;
     LEVEL_RELOAD
         .get()
         .ok_or("logging is not initialised")?
@@ -246,7 +248,11 @@ pub(crate) fn list_files(dir: &Path) -> Vec<(String, u64)> {
     reader::existing_files(dir, true)
         .into_iter()
         .map(|(_, path)| {
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_string();
             let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
             (name, size)
         })
@@ -294,23 +300,23 @@ mod tests {
     #[test]
     fn what_the_layer_writes_is_what_the_reader_reads() {
         let dir = tempfile::tempdir().unwrap();
-        let sink: &'static WriterSink =
-            Box::leak(Box::new(WriterSink(RollingWriter::open(dir.path()).unwrap())));
+        let sink: &'static WriterSink = Box::leak(Box::new(WriterSink(RollingWriter::open(dir.path()).unwrap())));
 
         let subscriber = Registry::default().with(JsonlLayer::new(sink));
         tracing::subscriber::with_default(subscriber, || {
             tracing::info!("plain event");
             let span = tracing::info_span!("chat", conversation_id = "c-42");
-            span.in_scope(|| {
-                tracing::warn!(status = 401, api_key = "sk-live-should-not-appear", "auth failed")
-            });
+            span.in_scope(|| tracing::warn!(status = 401, api_key = "sk-live-should-not-appear", "auth failed"));
         });
 
-        let page = reader::query(dir.path(), &reader::LogQuery {
-            limit: 10,
-            include_rotated: true,
-            ..Default::default()
-        });
+        let page = reader::query(
+            dir.path(),
+            &reader::LogQuery {
+                limit: 10,
+                include_rotated: true,
+                ..Default::default()
+            },
+        );
 
         assert_eq!(page.entries.len(), 2);
         // Newest first.
@@ -335,23 +341,23 @@ mod tests {
     #[test]
     fn records_can_be_narrowed_to_one_conversation_after_a_round_trip() {
         let dir = tempfile::tempdir().unwrap();
-        let sink: &'static WriterSink =
-            Box::leak(Box::new(WriterSink(RollingWriter::open(dir.path()).unwrap())));
+        let sink: &'static WriterSink = Box::leak(Box::new(WriterSink(RollingWriter::open(dir.path()).unwrap())));
 
         let subscriber = Registry::default().with(JsonlLayer::new(sink));
         tracing::subscriber::with_default(subscriber, || {
-            tracing::info_span!("chat", conversation_id = "wanted")
-                .in_scope(|| tracing::error!("this one"));
-            tracing::info_span!("chat", conversation_id = "other")
-                .in_scope(|| tracing::error!("not this one"));
+            tracing::info_span!("chat", conversation_id = "wanted").in_scope(|| tracing::error!("this one"));
+            tracing::info_span!("chat", conversation_id = "other").in_scope(|| tracing::error!("not this one"));
         });
 
-        let page = reader::query(dir.path(), &reader::LogQuery {
-            limit: 10,
-            include_rotated: true,
-            conversation_id: Some("wanted".into()),
-            ..Default::default()
-        });
+        let page = reader::query(
+            dir.path(),
+            &reader::LogQuery {
+                limit: 10,
+                include_rotated: true,
+                conversation_id: Some("wanted".into()),
+                ..Default::default()
+            },
+        );
 
         assert_eq!(page.entries.len(), 1);
         assert_eq!(page.entries[0].msg, "this one");

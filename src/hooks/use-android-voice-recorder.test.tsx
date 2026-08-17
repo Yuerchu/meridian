@@ -14,7 +14,12 @@ const capture = { beginCollecting: vi.fn(), stop: vi.fn(), cancel: vi.fn() }
 let openResolve: ((h: typeof capture) => void) | null = null
 vi.mock('@/lib/web-audio-capture', () => ({
   encodePcm16Base64: () => '',
-  openCapture: vi.fn(() => new Promise((resolve) => { openResolve = resolve as never })),
+  openCapture: vi.fn(
+    () =>
+      new Promise((resolve) => {
+        openResolve = resolve as never
+      }),
+  ),
 }))
 
 type Api = ReturnType<typeof useAndroidVoiceRecorder>
@@ -68,9 +73,13 @@ describe('useAndroidVoiceRecorder', () => {
     const { ref } = mount()
     const el = field(ref.current!)
 
-    act(() => { touch(el, 'touchstart') })
+    act(() => {
+      touch(el, 'touchstart')
+    })
     let end!: Event
-    act(() => { end = touch(el, 'touchend') })
+    act(() => {
+      end = touch(el, 'touchend')
+    })
 
     expect(end.defaultPrevented).toBe(false)
     expect(ref.current!.state).toBe('idle')
@@ -82,13 +91,21 @@ describe('useAndroidVoiceRecorder', () => {
     const { ref } = mount()
     const el = field(ref.current!)
 
-    act(() => { touch(el, 'touchstart') })
-    await act(async () => { openResolve!(capture) })
-    act(() => { vi.advanceTimersByTime(400) })
+    act(() => {
+      touch(el, 'touchstart')
+    })
+    await act(async () => {
+      openResolve!(capture)
+    })
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
     expect(ref.current!.state).toBe('recording-hold')
 
     let end!: Event
-    act(() => { end = touch(el, 'touchend') })
+    act(() => {
+      end = touch(el, 'touchend')
+    })
     expect(end.defaultPrevented).toBe(true)
   })
 
@@ -97,10 +114,16 @@ describe('useAndroidVoiceRecorder', () => {
     const { ref } = mount()
     const el = field(ref.current!)
 
-    act(() => { touch(el, 'touchstart', 100) })
-    act(() => { touch(el, 'touchmove', 130) })
+    act(() => {
+      touch(el, 'touchstart', 100)
+    })
+    act(() => {
+      touch(el, 'touchmove', 130)
+    })
     // The armed timer must not promote a press that was abandoned.
-    act(() => { vi.advanceTimersByTime(400) })
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
     expect(ref.current!.state).toBe('idle')
     expect(capture.beginCollecting).not.toHaveBeenCalled()
   })
@@ -115,12 +138,18 @@ describe('useAndroidVoiceRecorder', () => {
   it('does not resurrect a press that is already over', () => {
     const { ref } = mount()
     const el = field(ref.current!)
-    act(() => { touch(el, 'touchstart') })
+    act(() => {
+      touch(el, 'touchstart')
+    })
     // Deliberately *not* flushing effects here: this is the state the race puts
     // the hook in.
-    act(() => { touch(el, 'touchend') })
+    act(() => {
+      touch(el, 'touchend')
+    })
 
-    act(() => { vi.advanceTimersByTime(400) })
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
     expect(ref.current!.state).toBe('idle')
     expect(ref.current!.isActive).toBe(false)
     expect(capture.beginCollecting).not.toHaveBeenCalled()
@@ -134,15 +163,21 @@ describe('useAndroidVoiceRecorder', () => {
   it('says nothing until the press has lasted long enough to be a hold', async () => {
     const { ref } = mount()
     const el = field(ref.current!)
-    act(() => { touch(el, 'touchstart') })
+    act(() => {
+      touch(el, 'touchstart')
+    })
     expect(ref.current!.isActive).toBe(false)
 
-    await act(async () => { openResolve!(capture) })
+    await act(async () => {
+      openResolve!(capture)
+    })
     // The device is open, but the finger has not been down long enough.
     expect(ref.current!.isActive).toBe(false)
     expect(capture.beginCollecting).not.toHaveBeenCalled()
 
-    act(() => { vi.advanceTimersByTime(400) })
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
     expect(ref.current!.state).toBe('recording-hold')
   })
 
@@ -151,11 +186,17 @@ describe('useAndroidVoiceRecorder', () => {
   it('waits on a slow microphone without losing the hold', async () => {
     const { ref } = mount()
     const el = field(ref.current!)
-    act(() => { touch(el, 'touchstart') })
-    act(() => { vi.advanceTimersByTime(400) })
+    act(() => {
+      touch(el, 'touchstart')
+    })
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
     expect(ref.current!.state).toBe('starting')
 
-    await act(async () => { openResolve!(capture) })
+    await act(async () => {
+      openResolve!(capture)
+    })
     expect(ref.current!.state).toBe('recording-hold')
     expect(capture.beginCollecting).toHaveBeenCalled()
   })
@@ -164,13 +205,23 @@ describe('useAndroidVoiceRecorder', () => {
   it('throws the recording away when released after sliding up', async () => {
     const { ref, onSend } = mount()
     const el = field(ref.current!)
-    act(() => { touch(el, 'touchstart', 500) })
-    await act(async () => { openResolve!(capture) })
-    act(() => { vi.advanceTimersByTime(400) })
-    act(() => { touch(el, 'touchmove', 400) })
+    act(() => {
+      touch(el, 'touchstart', 500)
+    })
+    await act(async () => {
+      openResolve!(capture)
+    })
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
+    act(() => {
+      touch(el, 'touchmove', 400)
+    })
     expect(ref.current!.state).toBe('cancelling')
 
-    act(() => { touch(el, 'touchend') })
+    act(() => {
+      touch(el, 'touchend')
+    })
     expect(ref.current!.state).toBe('idle')
     expect(onSend).not.toHaveBeenCalled()
     expect(capture.cancel).toHaveBeenCalled()
@@ -183,7 +234,9 @@ describe('useAndroidVoiceRecorder', () => {
     const first = field(ref.current!)
     field(ref.current!)
 
-    act(() => { touch(first, 'touchstart') })
+    act(() => {
+      touch(first, 'touchstart')
+    })
     expect(openResolve).toBe(null)
   })
 
@@ -193,7 +246,9 @@ describe('useAndroidVoiceRecorder', () => {
     const ref: { current: Api | null } = { current: null }
     function Probe() {
       ref.current = useAndroidVoiceRecorder({
-        onSend: vi.fn(), onNotice: vi.fn(), enabled: false,
+        onSend: vi.fn(),
+        onNotice: vi.fn(),
+        enabled: false,
       })
       return null
     }
@@ -201,9 +256,15 @@ describe('useAndroidVoiceRecorder', () => {
     const el = field(ref.current!)
 
     let end!: Event
-    act(() => { touch(el, 'touchstart') })
-    act(() => { vi.advanceTimersByTime(400) })
-    act(() => { end = touch(el, 'touchend') })
+    act(() => {
+      touch(el, 'touchstart')
+    })
+    act(() => {
+      vi.advanceTimersByTime(400)
+    })
+    act(() => {
+      end = touch(el, 'touchend')
+    })
 
     expect(ref.current!.state).toBe('idle')
     expect(openResolve).toBe(null)

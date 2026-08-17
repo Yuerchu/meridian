@@ -1,10 +1,10 @@
 use diesel::Connection;
 use tauri::Manager;
 
+use crate::agent::extract_tool_calls_from_blocks;
 use crate::db;
 use crate::db::models::message::Message;
 use crate::state::{AppDb, AppTurns};
-use crate::agent::extract_tool_calls_from_blocks;
 
 /// The active path, the summary that applies to it, and where it can be paged.
 ///
@@ -25,16 +25,21 @@ fn read_tree_with_conversation(
     conn: &mut db::PooledConn,
     conversation_id: &str,
 ) -> Result<(db::models::conversation::Conversation, MessageTree), String> {
-    let conv = db::ops::conversation::get_conversation(conn, conversation_id)
-        .map_err(|e| e.to_string())?;
-    let history = db::ops::message::list_messages(conn, conversation_id)
-        .map_err(|e| e.to_string())?;
+    let conv = db::ops::conversation::get_conversation(conn, conversation_id).map_err(|e| e.to_string())?;
+    let history = db::ops::message::list_messages(conn, conversation_id).map_err(|e| e.to_string())?;
     let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
     let branches = db::ops::message::branch_points(&history, &ctx.path);
     let head_message_id = ctx.head_id.clone();
     let mut messages = ctx.path;
     messages.extend(ctx.summary);
-    Ok((conv, MessageTree { messages, head_message_id, branches }))
+    Ok((
+        conv,
+        MessageTree {
+            messages,
+            head_message_id,
+            branches,
+        },
+    ))
 }
 
 /// A turn as the transcript needs it: how it ended, and what it was doing.
@@ -146,7 +151,11 @@ pub async fn conversation_snapshot(
         // one of the conversations, or the set of conversations itself changed —
         // a run delegated between naming the children and reading them would be
         // judged against no reading at all.
-        let same_children = read.3.iter().map(|r| r.conversation_id.as_str()).eq(children.iter().map(String::as_str));
+        let same_children = read
+            .3
+            .iter()
+            .map(|r| r.conversation_id.as_str())
+            .eq(children.iter().map(String::as_str));
         if same_children && seen.iter().all(|s| coordinator.unchanged_since(s)) {
             settled = Some(read);
             break;
@@ -175,7 +184,13 @@ pub async fn conversation_snapshot(
     };
 
     let pending_approvals = crate::commands::approval::pending_for(&app, &conversation_id);
-    Ok(ConversationSnapshot { conversation, tree, turns, pending_approvals, sub_agent_runs })
+    Ok(ConversationSnapshot {
+        conversation,
+        tree,
+        turns,
+        pending_approvals,
+        sub_agent_runs,
+    })
 }
 
 /// How many passes before the snapshot gives up on pinning the coordinator down.
@@ -192,26 +207,18 @@ type SnapshotRead = (
     Vec<SubAgentRunView>,
 );
 
-async fn children_off_thread(
-    pool: &db::DbPool,
-    conversation_id: &str,
-) -> Result<Vec<String>, String> {
+async fn children_off_thread(pool: &db::DbPool, conversation_id: &str) -> Result<Vec<String>, String> {
     let pool = pool.clone();
     let conv_id = conversation_id.to_string();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::sub_agent_conversation_ids(&mut conn, &conv_id)
-            .map_err(|e| e.to_string())
+        db::ops::conversation::sub_agent_conversation_ids(&mut conn, &conv_id).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
-async fn read_off_thread(
-    pool: &db::DbPool,
-    conversation_id: &str,
-    live: Live<'_>,
-) -> Result<SnapshotRead, String> {
+async fn read_off_thread(pool: &db::DbPool, conversation_id: &str, live: Live<'_>) -> Result<SnapshotRead, String> {
     let pool = pool.clone();
     let conv_id = conversation_id.to_string();
     let live = live.owned();
@@ -282,11 +289,7 @@ impl OwnedLive {
 /// that was never true: a turn recorded as finished sitting above a transcript
 /// that stops mid-tool, or a message belonging to a turn the caller has no
 /// record of.
-fn read_snapshot(
-    conn: &mut db::PooledConn,
-    conversation_id: &str,
-    live: &OwnedLive,
-) -> Result<SnapshotRead, String> {
+fn read_snapshot(conn: &mut db::PooledConn, conversation_id: &str, live: &OwnedLive) -> Result<SnapshotRead, String> {
     conn.transaction::<_, diesel::result::Error, _>(|conn| {
         let (conversation, tree) = read_tree_with_conversation(conn, conversation_id)
             .map_err(|e| diesel::result::Error::QueryBuilderError(e.into()))?;
@@ -349,12 +352,11 @@ fn effective_status(turn: &db::models::turn::Turn, live: &OwnedLive) -> String {
 /// tree without the turns and approvals that belong to it is exactly the
 /// half-answer that command exists to replace.
 #[tauri::command]
-pub async fn switch_branch(
-    app: tauri::AppHandle,
-    conversation_id: String,
-    message_id: String,
-) -> Result<(), String> {
-    let _lease = app.state::<AppTurns>().0.clone()
+pub async fn switch_branch(app: tauri::AppHandle, conversation_id: String, message_id: String) -> Result<(), String> {
+    let _lease = app
+        .state::<AppTurns>()
+        .0
+        .clone()
         .try_acquire_mutation(&conversation_id, "a branch switch")
         .map_err(|busy| busy.to_string())?;
     let pool = app.state::<AppDb>().0.clone();
@@ -363,7 +365,9 @@ pub async fn switch_branch(
         db::ops::message::switch_branch(&mut conn, &conversation_id, &message_id)
             .map(|_| ())
             .map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 // `update_message_content` was here. It took only a message id, so it could not
@@ -390,12 +394,11 @@ pub async fn switch_branch(
 /// used to hand back was thrown away by its only caller, and a tree on its own
 /// is not a state anything can be drawn from.
 #[tauri::command]
-pub async fn delete_message(
-    app: tauri::AppHandle,
-    conversation_id: String,
-    id: String,
-) -> Result<(), String> {
-    let _lease = app.state::<AppTurns>().0.clone()
+pub async fn delete_message(app: tauri::AppHandle, conversation_id: String, id: String) -> Result<(), String> {
+    let _lease = app
+        .state::<AppTurns>()
+        .0
+        .clone()
         .try_acquire_mutation(&conversation_id, "a delete")
         .map_err(|busy| busy.to_string())?;
     let pool = app.state::<AppDb>().0.clone();
@@ -404,7 +407,9 @@ pub async fn delete_message(
         db::ops::message::delete_subtree(&mut conn, &conversation_id, &id)
             .map(|_| ())
             .map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -413,7 +418,9 @@ pub async fn rate_message(app: tauri::AppHandle, id: String, rating: Option<i32>
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::message::update_rating(&mut conn, &id, rating).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// What an export may contain: turns somebody took.
@@ -429,14 +436,17 @@ fn exportable(path: Vec<Message>) -> Vec<Message> {
 }
 
 #[tauri::command]
-pub async fn export_conversation(app: tauri::AppHandle, conversation_id: String, format: String, output_path: Option<String>) -> Result<String, String> {
+pub async fn export_conversation(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    format: String,
+    output_path: Option<String>,
+) -> Result<String, String> {
     let pool = app.state::<AppDb>().0.clone();
     let result: String = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        let conv = db::ops::conversation::get_conversation(&mut conn, &conversation_id)
-            .map_err(|e| e.to_string())?;
-        let history = db::ops::message::list_messages(&mut conn, &conversation_id)
-            .map_err(|e| e.to_string())?;
+        let conv = db::ops::conversation::get_conversation(&mut conn, &conversation_id).map_err(|e| e.to_string())?;
+        let history = db::ops::message::list_messages(&mut conn, &conversation_id).map_err(|e| e.to_string())?;
         // The active path only. Exporting every branch would interleave rival
         // answers to the same question into one transcript, and the DPO pairing
         // below walks backwards for a prompt — across a fork it would pick up a
@@ -447,12 +457,14 @@ pub async fn export_conversation(app: tauri::AppHandle, conversation_id: String,
         // are exactly the training data being exported.
         let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
         let messages: Vec<Message> = exportable(ctx.path);
-        let system_prompt = conv.assistant_id.as_deref()
+        let system_prompt = conv
+            .assistant_id
+            .as_deref()
             .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok())
             .map(|a| a.system_prompt)
             .unwrap_or_default();
 
-        fn msg_to_openai(m: &Message, all_msgs: &[Message]) -> serde_json::Value {
+        fn msg_to_openai(m: &Message, _all_msgs: &[Message]) -> serde_json::Value {
             let mut obj = serde_json::json!({ "role": m.role });
             match m.role.as_str() {
                 "assistant" => {
@@ -465,17 +477,22 @@ pub async fn export_conversation(app: tauri::AppHandle, conversation_id: String,
                     // only contain the final visible answer.
                     if let Some(ref tc_json) = m.tool_calls {
                         if m.schema_version >= 2 {
-                            if let Ok(tcs) = serde_json::from_str::<Vec<serde_json::Value>>(tc_json) {
-                                if !tcs.is_empty() { obj["tool_calls"] = serde_json::json!(tcs); }
+                            if let Ok(tcs) = serde_json::from_str::<Vec<serde_json::Value>>(tc_json)
+                                && !tcs.is_empty()
+                            {
+                                obj["tool_calls"] = serde_json::json!(tcs);
                             }
                         } else {
                             let tool_calls = extract_tool_calls_from_blocks(tc_json);
                             if !tool_calls.is_empty() {
                                 obj["tool_calls"] = serde_json::json!(
-                                    tool_calls.iter().map(|tc| serde_json::json!({
-                                        "id": tc.id, "type": "function",
-                                        "function": { "name": tc.name, "arguments": tc.arguments }
-                                    })).collect::<Vec<_>>()
+                                    tool_calls
+                                        .iter()
+                                        .map(|tc| serde_json::json!({
+                                            "id": tc.id, "type": "function",
+                                            "function": { "name": tc.name, "arguments": tc.arguments }
+                                        }))
+                                        .collect::<Vec<_>>()
                                 );
                             }
                         }
@@ -503,14 +520,15 @@ pub async fn export_conversation(app: tauri::AppHandle, conversation_id: String,
                 for m in &messages {
                     openai_msgs.push(msg_to_openai(m, &messages));
                 }
-                serde_json::to_string(&serde_json::json!({"messages": openai_msgs}))
-                    .map_err(|e| e.to_string())
+                serde_json::to_string(&serde_json::json!({"messages": openai_msgs})).map_err(|e| e.to_string())
             }
             "dpo" => {
                 let mut lines = Vec::new();
                 // Build context prefix (system + user messages up to each rated assistant msg)
                 for (i, m) in messages.iter().enumerate() {
-                    if m.role != "assistant" || m.rating.is_none() { continue; }
+                    if m.role != "assistant" || m.rating.is_none() {
+                        continue;
+                    }
                     // Find the user message that prompted this response
                     let prompt_msgs: Vec<serde_json::Value> = {
                         let mut p = Vec::new();
@@ -532,14 +550,17 @@ pub async fn export_conversation(app: tauri::AppHandle, conversation_id: String,
                         "rating": rating,
                     }));
                 }
-                let result: Vec<String> = lines.iter()
+                let result: Vec<String> = lines
+                    .iter()
                     .map(|l| serde_json::to_string(l).unwrap_or_default())
                     .collect();
                 Ok(result.join("\n"))
             }
             _ => Err(format!("Unknown export format: {format}")),
         }
-    }).await.map_err(|e| e.to_string())??;
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     if let Some(ref path) = output_path {
         std::fs::write(path, &result).map_err(|e| e.to_string())?;
@@ -548,7 +569,11 @@ pub async fn export_conversation(app: tauri::AppHandle, conversation_id: String,
 }
 
 #[tauri::command]
-pub async fn upload_file(app: tauri::AppHandle, conversation_id: String, file_path: String) -> Result<serde_json::Value, String> {
+pub async fn upload_file(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    file_path: String,
+) -> Result<serde_json::Value, String> {
     let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
 
     // Android: handle content:// URIs from SAF file picker
@@ -556,13 +581,17 @@ pub async fn upload_file(app: tauri::AppHandle, conversation_id: String, file_pa
     if file_path.starts_with("content://") {
         let stat = crate::android_bridge::content_stat(&file_path).await?;
         let original_name = stat.name.unwrap_or_else(|| "file".to_string());
-        let ext = original_name.rsplit('.').next()
+        let ext = original_name
+            .rsplit('.')
+            .next()
             .filter(|e| e.len() <= 10 && !e.contains('/'))
             .unwrap_or("bin");
         let (dest_path, uri) = crate::files::alloc_dest(&app_data_dir, &conversation_id, ext)?;
         crate::android_bridge::content_copy(&file_path, dest_path.to_str().ok_or("invalid path")?).await?;
         let mime = stat.mime.unwrap_or_else(|| {
-            mime_guess::from_path(&original_name).first_or_octet_stream().to_string()
+            mime_guess::from_path(&original_name)
+                .first_or_octet_stream()
+                .to_string()
         });
         let content_part = if mime.starts_with("image/") {
             serde_json::json!({
@@ -609,8 +638,7 @@ mod tests {
 
     fn seed(pool: &crate::db::DbPool) {
         let mut conn = pool.get().unwrap();
-        crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1)
-            .unwrap();
+        crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1).unwrap();
     }
 
     fn exported_row(role: &str, content: &str) -> Message {
@@ -619,12 +647,27 @@ mod tests {
             conversation_id: "c1".into(),
             role: role.into(),
             content: content.into(),
-            provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
-            tool_calls: None, tool_call_id: None, sort_order: 0, created_at: 0,
-            reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
-            sender_id: None, parent_id: None, compact_anchor_id: None, source: None,
-            turn_id: None, tool_outcome: None,
-            cache_read_tokens: None, cache_write_tokens: None, provider_name: None,
+            provider_id: None,
+            model_id: None,
+            input_tokens: None,
+            output_tokens: None,
+            tool_calls: None,
+            tool_call_id: None,
+            sort_order: 0,
+            created_at: 0,
+            reasoning_content: None,
+            rating: None,
+            schema_version: 2,
+            is_compact_summary: 0,
+            sender_id: None,
+            parent_id: None,
+            compact_anchor_id: None,
+            source: None,
+            turn_id: None,
+            tool_outcome: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            provider_name: None,
         }
     }
 
@@ -648,7 +691,9 @@ mod tests {
     /// One conversation's reading, in the shape the snapshot carries several of.
     fn holding(conversation_id: &str, held: Option<&str>) -> OwnedLive {
         OwnedLive::Holding(
-            [(conversation_id.to_string(), held.map(str::to_string))].into_iter().collect(),
+            [(conversation_id.to_string(), held.map(str::to_string))]
+                .into_iter()
+                .collect(),
         )
     }
 
@@ -676,8 +721,7 @@ mod tests {
         {
             let mut conn = pool.get().unwrap();
             turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-            turn::set_phase(&mut conn, "t1", TurnPhase::RunningTool, Some("edit_file"), 1001)
-                .unwrap();
+            turn::set_phase(&mut conn, "t1", TurnPhase::RunningTool, Some("edit_file"), 1001).unwrap();
         }
 
         let dead = snapshot(&pool, None);
@@ -703,10 +747,10 @@ mod tests {
         }
 
         let turns = snapshot(&pool, Some("live"));
-        assert_eq!(turns.iter().map(|t| t.status.as_str()).collect::<Vec<_>>(), [
-            "interrupted",
-            "running"
-        ]);
+        assert_eq!(
+            turns.iter().map(|t| t.status.as_str()).collect::<Vec<_>>(),
+            ["interrupted", "running"]
+        );
         assert_eq!(turns[0].id, "dead", "oldest first, as the transcript reads");
     }
 
@@ -729,11 +773,10 @@ mod tests {
         }
 
         let turns = snapshot(&pool, None);
-        assert_eq!(turns.iter().map(|t| t.status.as_str()).collect::<Vec<_>>(), [
-            "done",
-            "cancelled",
-            "failed"
-        ]);
+        assert_eq!(
+            turns.iter().map(|t| t.status.as_str()).collect::<Vec<_>>(),
+            ["done", "cancelled", "failed"]
+        );
         assert_eq!(turns[2].error.as_deref(), Some("API Key not set"));
         assert!(turns.iter().all(|t| t.ended_at == Some(1500)));
     }
@@ -780,9 +823,10 @@ mod tests {
         assert_eq!(snapshot(&pool, None)[0].status, "interrupted");
         // Unsettled, it reads as what the row says and nothing is invented.
         let turns = unsettled(&pool);
-        assert_eq!(turns.iter().map(|t| t.status.as_str()).collect::<Vec<_>>(), [
-            "running", "done"
-        ]);
+        assert_eq!(
+            turns.iter().map(|t| t.status.as_str()).collect::<Vec<_>>(),
+            ["running", "done"]
+        );
     }
 
     /// One read, one state: the turns are the turns of the tree that came back
@@ -829,8 +873,7 @@ mod tests {
         }
 
         let mut conn = pool.get().unwrap();
-        let (conv, tree, turns, runs) =
-            read_snapshot(&mut conn, "c1", &holding("c1", Some("t1"))).unwrap();
+        let (conv, tree, turns, runs) = read_snapshot(&mut conn, "c1", &holding("c1", Some("t1"))).unwrap();
 
         assert_eq!(conv.id, "c1");
         assert_eq!(tree.messages.len(), 1);
@@ -867,8 +910,7 @@ mod tests {
             },
         )
         .unwrap();
-        crate::db::ops::turn::begin(&mut conn, "t-child", "child", TurnOrigin::SubAgent, None, 10)
-            .unwrap();
+        crate::db::ops::turn::begin(&mut conn, "t-child", "child", TurnOrigin::SubAgent, None, 10).unwrap();
 
         // The parent is being read while it holds its own turn. Nobody holds the
         // child's, so the child's `running` row is a run that stopped.
@@ -882,9 +924,12 @@ mod tests {
 
         // Still held: still running.
         let live = OwnedLive::Holding(
-            [("c1".to_string(), None), ("child".to_string(), Some("t-child".to_string()))]
-                .into_iter()
-                .collect(),
+            [
+                ("c1".to_string(), None),
+                ("child".to_string(), Some("t-child".to_string())),
+            ]
+            .into_iter()
+            .collect(),
         );
         let runs = read_snapshot(&mut conn, "c1", &live).unwrap().3;
         assert_eq!(runs[0].status.as_deref(), Some("running"));

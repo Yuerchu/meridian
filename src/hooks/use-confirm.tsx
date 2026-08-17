@@ -37,15 +37,20 @@ export function useConfirm() {
     resolve?.(ok)
   }, [])
 
-  const confirm = useCallback((next: ConfirmOptions) => {
-    // A question already on screen when a second one arrives is answered no.
-    // Nothing does this today; leaving the promise dangling would be a caller
-    // that quietly never resumes.
-    settle(false)
-    setOptions(next)
-    setOpen(true)
-    return new Promise<boolean>((resolve) => { settleRef.current = resolve })
-  }, [settle])
+  const confirm = useCallback(
+    (next: ConfirmOptions) => {
+      // A question already on screen when a second one arrives is answered no.
+      // Nothing does this today; leaving the promise dangling would be a caller
+      // that quietly never resumes.
+      settle(false)
+      setOptions(next)
+      setOpen(true)
+      return new Promise<boolean>((resolve) => {
+        settleRef.current = resolve
+      })
+    },
+    [settle],
+  )
 
   return {
     confirm,
@@ -55,7 +60,12 @@ export function useConfirm() {
       <ConfirmDialog
         {...options}
         isOpen={isOpen}
-        onOpenChange={(open) => { if (!open) { settle(false); setOpen(false) } }}
+        onOpenChange={(open) => {
+          if (!open) {
+            settle(false)
+            setOpen(false)
+          }
+        }}
         onConfirm={() => settle(true)}
       />
     ),

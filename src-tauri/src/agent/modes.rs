@@ -292,12 +292,18 @@ mod tests {
         let plan = resolve(Some("plan"));
         assert_eq!(plan.exit_tool, Some(EXIT_PLAN_TOOL));
         assert_eq!(plan.exit_to, Some(WORK_MODE));
-        assert!(plan.offered_transitions(&tools(&["read_file"])).contains(&EXIT_PLAN_TOOL));
+        assert!(
+            plan.offered_transitions(&tools(&["read_file"]))
+                .contains(&EXIT_PLAN_TOOL)
+        );
         // Neither transition tool is in the whitelist: they are added by the
         // mode itself, since no assistant would have enabled them up front.
         assert!(!READ_ONLY_TOOLS.contains(&EXIT_PLAN_TOOL));
         assert!(!READ_ONLY_TOOLS.contains(&ENTER_PLAN_TOOL));
-        assert!(MODES.iter().any(|m| Some(m.id) == plan.exit_to), "exit_to must name a real mode");
+        assert!(
+            MODES.iter().any(|m| Some(m.id) == plan.exit_to),
+            "exit_to must name a real mode"
+        );
     }
 
     #[test]

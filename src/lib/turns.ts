@@ -120,16 +120,14 @@ export function answerAnchorId(turnId: string): string {
  * Pass `null` for anything in the sequence that is not a tool call, so indexes
  * line up with what the caller is rendering.
  */
-export function markQueued(
-  statuses: readonly (ToolCallDisplay['status'] | null)[],
-): boolean[] {
+export function markQueued(statuses: readonly (ToolCallDisplay['status'] | null)[]): boolean[] {
   let busy = false
   return statuses.map((status) => {
     // Everything else has an outcome, and an outcome means it ran. A call
     // waiting on the conversation above has not run either — it is waiting for
     // an answer like a `pending` one, just not from anyone reading this.
-    const unfinished = status === 'pending' || status === 'approved' || status === 'running'
-      || status === 'awaiting_parent'
+    const unfinished =
+      status === 'pending' || status === 'approved' || status === 'running' || status === 'awaiting_parent'
     if (!unfinished) return false
     if (busy) return true
     busy = true
@@ -247,11 +245,7 @@ export function buildTurns(messages: Message[], ctx: BuildTurnsContext = {}): Tu
   const crashed = ctx.crashedTurnIds
   return groups.map((g, i) => {
     const turnId = crashed === undefined ? null : pathTurnId(g)
-    return finalize(
-      g,
-      i === groups.length - 1 && ctx.streaming === true,
-      turnId !== null && crashed!.has(turnId),
-    )
+    return finalize(g, i === groups.length - 1 && ctx.streaming === true, turnId !== null && crashed!.has(turnId))
   })
 }
 
@@ -293,18 +287,21 @@ function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean): Tur
   // the last *unblocked* tool and render it below the approval it introduces —
   // the wrong way round. It also keeps the text from moving once the call is
   // approved and the turn carries on past it.
-  const { process, conclusion } = pinned.length > 0
-    ? { process: flat.filter((s) => !isPinned(s)), conclusion: [] }
-    : splitAtConclusion(flat)
+  const { process, conclusion } =
+    pinned.length > 0 ? { process: flat.filter((s) => !isPinned(s)), conclusion: [] } : splitAtConclusion(flat)
 
-  const resultOwner = conclusion.length > 0
-    ? assistantMessages.find((m) => m.id === conclusion[conclusion.length - 1].messageId) ?? null
-    : null
+  const resultOwner =
+    conclusion.length > 0
+      ? (assistantMessages.find((m) => m.id === conclusion[conclusion.length - 1].messageId) ?? null)
+      : null
 
   const result: TurnResult | null = resultOwner
     ? {
         messageId: resultOwner.id,
-        text: conclusion.map((s) => (s.kind === 'text' ? s.text : '')).join('\n\n').trim(),
+        text: conclusion
+          .map((s) => (s.kind === 'text' ? s.text : ''))
+          .join('\n\n')
+          .trim(),
         blocks: conclusion.flatMap((s) => (s.kind === 'text' ? [{ type: 'text' as const, text: s.text }] : [])),
         modelId: resultOwner.model_id,
         inputTokens: resultOwner.input_tokens,

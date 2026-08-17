@@ -17,7 +17,6 @@ use super::{McpTransport, TransportError};
 const STDERR_TAIL_LINES: usize = 5;
 const STDERR_LINE_CHARS: usize = 400;
 
-
 pub struct StdioTransport {
     child: Child,
     writer: BufWriter<ChildStdin>,
@@ -75,9 +74,9 @@ impl StdioTransport {
         let stdin = child.stdin.take().ok_or("failed to get stdin")?;
         let stdout = child.stdout.take().ok_or("failed to get stdout")?;
 
-        let stderr_tail = std::sync::Arc::new(std::sync::Mutex::new(
-            std::collections::VecDeque::with_capacity(STDERR_TAIL_LINES),
-        ));
+        let stderr_tail = std::sync::Arc::new(std::sync::Mutex::new(std::collections::VecDeque::with_capacity(
+            STDERR_TAIL_LINES,
+        )));
         if let Some(stderr) = child.stderr.take() {
             let tail = stderr_tail.clone();
             let command = command.to_string();
@@ -88,8 +87,7 @@ impl StdioTransport {
                 let mut lines = BufReader::new(stderr).lines();
                 while let Ok(Some(line)) = lines.next_line().await {
                     let line = crate::secrets::sanitizer::redact_secrets(line);
-                    let line = crate::util::take_bytes_at_char_boundary(&line, STDERR_LINE_CHARS)
-                        .to_string();
+                    let line = crate::util::take_bytes_at_char_boundary(&line, STDERR_LINE_CHARS).to_string();
                     tracing::debug!(command = %command, "mcp stderr: {line}");
                     if let Ok(mut tail) = tail.lock() {
                         if tail.len() == STDERR_TAIL_LINES {
@@ -127,8 +125,14 @@ impl StdioTransport {
     // destroy the transport. That is the actor's deadline, and it does exactly
     // that.
     async fn send_raw(&mut self, body: &str) -> Result<(), String> {
-        self.writer.write_all(body.as_bytes()).await.map_err(|e| format!("write body: {e}"))?;
-        self.writer.write_all(b"\n").await.map_err(|e| format!("write newline: {e}"))?;
+        self.writer
+            .write_all(body.as_bytes())
+            .await
+            .map_err(|e| format!("write body: {e}"))?;
+        self.writer
+            .write_all(b"\n")
+            .await
+            .map_err(|e| format!("write newline: {e}"))?;
         self.writer.flush().await.map_err(|e| format!("flush: {e}"))?;
         Ok(())
     }
@@ -139,7 +143,8 @@ impl StdioTransport {
     async fn read_response(&mut self, expected_id: u64) -> Result<Result<serde_json::Value, String>, String> {
         loop {
             let mut line = String::new();
-            let n = self.reader
+            let n = self
+                .reader
                 .read_line(&mut line)
                 .await
                 .map_err(|e| format!("read line: {e}"))?;
@@ -162,7 +167,9 @@ impl StdioTransport {
             // Only accept the response matching *this* request id; skip
             // notifications, server-initiated requests, stray output, and stale
             // responses left over from a prior (e.g. timed-out) request.
-            let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else { continue };
+            let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+                continue;
+            };
             if value.get("id").and_then(|v| v.as_u64()) != Some(expected_id) {
                 continue;
             }
@@ -170,15 +177,14 @@ impl StdioTransport {
                 continue;
             }
 
-            let resp: JsonRpcResponse = serde_json::from_value(value)
-                .map_err(|e| format!("parse response: {e}"))?;
+            let resp: JsonRpcResponse = serde_json::from_value(value).map_err(|e| format!("parse response: {e}"))?;
 
             // Framing held; the server simply said no.
             if let Some(err) = resp.error {
                 return Ok(Err(format!("MCP error {}: {}", err.code, err.message)));
             }
 
-            return Ok(resp.result.ok_or_else(|| "empty result".to_string()).map_err(|e| e));
+            return Ok(resp.result.ok_or_else(|| "empty result".to_string()));
         }
     }
 }
@@ -195,8 +201,7 @@ impl McpTransport for StdioTransport {
         // Serialising our own request cannot fail for any reason the server is
         // responsible for, but nothing has been written yet either — the pipe
         // is still in step.
-        let body = serde_json::to_string(&req)
-            .map_err(|e| TransportError::Rpc(e.to_string()))?;
+        let body = serde_json::to_string(&req).map_err(|e| TransportError::Rpc(e.to_string()))?;
 
         // From here on every failure is fatal: a write that got part way, a
         // read that stopped mid-frame, a closed pipe. There is no way to find
@@ -222,11 +227,7 @@ impl McpTransport for StdioTransport {
         }
     }
 
-    async fn notify(
-        &mut self,
-        method: &str,
-        params: Option<serde_json::Value>,
-    ) -> Result<(), String> {
+    async fn notify(&mut self, method: &str, params: Option<serde_json::Value>) -> Result<(), String> {
         let body = serde_json::json!({
             "jsonrpc": "2.0",
             "method": method,

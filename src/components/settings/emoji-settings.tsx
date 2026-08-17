@@ -48,9 +48,7 @@ function PackCard({
               <span className="flex-1 truncate">{detail.pack.name}</span>
               <span className="text-xs text-muted">{detail.emojis.length}</span>
               {detail.pack.is_builtin === 1 && (
-                <Chip className="shrink-0 text-muted">
-                  {t('settings.template.builtin')}
-                </Chip>
+                <Chip className="shrink-0 text-muted">{t('settings.template.builtin')}</Chip>
               )}
               <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
             </Disclosure.Trigger>
@@ -69,22 +67,17 @@ function PackCard({
                   drops the content in the same frame as the height animation. */}
               {isExpanded && (
                 <>
-                  {detail.pack.description && (
-                    <p className="text-xs text-muted">{detail.pack.description}</p>
-                  )}
+                  {detail.pack.description && <p className="text-xs text-muted">{detail.pack.description}</p>}
 
                   {/* Six across needs 280px of grid before gaps; a 360px phone
                       does not have it once the card's own padding is taken. */}
                   <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
                     {detail.emojis.map((e) => (
                       <div key={e.id} className="group relative">
-                        <img
-                          src={detail.urls[e.id]}
-                          alt={e.name}
-                          className="w-10 h-10 object-contain rounded"
-                        />
+                        <img src={detail.urls[e.id]} alt={e.name} className="w-10 h-10 object-contain rounded" />
                         {editingId === e.id ? (
-                          <Input fullWidth
+                          <Input
+                            fullWidth
                             autoFocus
                             value={editName}
                             onChange={(ev) => setEditName(ev.target.value)}
@@ -104,7 +97,10 @@ function PackCard({
                             variant="ghost"
                             size="sm"
                             className="w-full h-auto min-w-0 rounded-lg px-0 py-0 mt-0.5 text-xs font-normal text-muted hover:text-foreground"
-                            onClick={() => { setEditingId(e.id); setEditName(e.name) }}
+                            onClick={() => {
+                              setEditingId(e.id)
+                              setEditName(e.name)
+                            }}
                             aria-label={`${t('settings.emoji.clickToRename')}: ${e.name}`}
                           >
                             <span className="truncate">{e.name}</span>
@@ -134,11 +130,7 @@ function PackCard({
                       {t('settings.emoji.import')}
                     </Button>
                     {onDelete && detail.pack.is_builtin === 0 && (
-                      <Button
-                        variant="ghost"
-                        className="ml-auto text-danger hover:text-danger"
-                        onClick={onDelete}
-                      >
+                      <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
                         <TrashBin className="w-3.5 h-3.5" />
                         {t('common.delete')}
                       </Button>
@@ -187,35 +179,47 @@ export function EmojiSettings() {
     await refresh()
   }, [newPackName, refresh])
 
-  const handleDelete = useCallback(async (id: string) => {
-    if (!await confirm({ body: t('settings.confirmDelete.emojiPack') })) return
-    await api.deleteEmojiPack(id)
-    await refresh()
-  }, [confirm, t, refresh])
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!(await confirm({ body: t('settings.confirmDelete.emojiPack') }))) return
+      await api.deleteEmojiPack(id)
+      await refresh()
+    },
+    [confirm, t, refresh],
+  )
 
-  const handleImport = useCallback(async (packId: string) => {
-    // Cancelling the picker rejects on Android instead of resolving to null.
-    const files = await dialogOpen({
-      multiple: true,
-      filters: [{ name: 'Images', extensions: ['gif', 'apng', 'png', 'webp', 'jpg', 'jpeg', 'bmp', 'json'] }],
-    }).catch(() => null)
-    if (!files) return
-    const paths = Array.isArray(files) ? files : [files]
-    if (paths.length === 0) return
-    await api.importEmojis(packId, paths)
-    await refresh()
-  }, [refresh])
+  const handleImport = useCallback(
+    async (packId: string) => {
+      // Cancelling the picker rejects on Android instead of resolving to null.
+      const files = await dialogOpen({
+        multiple: true,
+        filters: [{ name: 'Images', extensions: ['gif', 'apng', 'png', 'webp', 'jpg', 'jpeg', 'bmp', 'json'] }],
+      }).catch(() => null)
+      if (!files) return
+      const paths = Array.isArray(files) ? files : [files]
+      if (paths.length === 0) return
+      await api.importEmojis(packId, paths)
+      await refresh()
+    },
+    [refresh],
+  )
 
-  const handleDeleteEmoji = useCallback(async (id: string) => {
-    if (!await confirm({ body: t('settings.confirmDelete.emoji') })) return
-    await api.deleteEmoji(id)
-    await refresh()
-  }, [confirm, t, refresh])
+  const handleDeleteEmoji = useCallback(
+    async (id: string) => {
+      if (!(await confirm({ body: t('settings.confirmDelete.emoji') }))) return
+      await api.deleteEmoji(id)
+      await refresh()
+    },
+    [confirm, t, refresh],
+  )
 
-  const handleRenameEmoji = useCallback(async (id: string, newName: string) => {
-    await api.renameEmoji(id, newName)
-    await refresh()
-  }, [refresh])
+  const handleRenameEmoji = useCallback(
+    async (id: string, newName: string) => {
+      await api.renameEmoji(id, newName)
+      await refresh()
+    },
+    [refresh],
+  )
 
   if (loading) {
     return <SettingsSkeleton />
@@ -223,13 +227,11 @@ export function EmojiSettings() {
 
   return (
     <SettingsPane>
-      <SettingsHeader
-        title={t('settings.emoji.title')}
-        subtitle={t('settings.emoji.subtitle')}
-      />
+      <SettingsHeader title={t('settings.emoji.title')} subtitle={t('settings.emoji.subtitle')} />
 
       <div className="flex gap-2">
-        <Input fullWidth
+        <Input
+          fullWidth
           value={newPackName}
           onChange={(e) => setNewPackName(e.target.value)}
           placeholder={t('settings.emoji.packName')}

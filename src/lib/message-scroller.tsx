@@ -388,23 +388,26 @@ function useScrollerState({
     })
   }, [commitScrollState])
 
-  const markAutoscrolling = React.useCallback((active: boolean) => {
-    if (autoscrollingTimerRef.current !== null) {
-      window.clearTimeout(autoscrollingTimerRef.current)
-      autoscrollingTimerRef.current = null
-    }
-    autoscrollingRef.current = active
-    if (!active) {
-      programmaticTargetRef.current = null
-      return
-    }
-    autoscrollingTimerRef.current = window.setTimeout(() => {
-      autoscrollingTimerRef.current = null
-      autoscrollingRef.current = false
-      programmaticTargetRef.current = null
-      commitScrollState()
-    }, AUTOSCROLL_TIMEOUT_MS)
-  }, [commitScrollState])
+  const markAutoscrolling = React.useCallback(
+    (active: boolean) => {
+      if (autoscrollingTimerRef.current !== null) {
+        window.clearTimeout(autoscrollingTimerRef.current)
+        autoscrollingTimerRef.current = null
+      }
+      autoscrollingRef.current = active
+      if (!active) {
+        programmaticTargetRef.current = null
+        return
+      }
+      autoscrollingTimerRef.current = window.setTimeout(() => {
+        autoscrollingTimerRef.current = null
+        autoscrollingRef.current = false
+        programmaticTargetRef.current = null
+        commitScrollState()
+      }, AUTOSCROLL_TIMEOUT_MS)
+    },
+    [commitScrollState],
+  )
 
   const syncVisibility = React.useCallback(() => {
     if (!visibilityStore.hasListeners() || visibilityFrameRef.current !== null) return
@@ -424,9 +427,10 @@ function useScrollerState({
         if (!id) continue
         const isAnchor = item.dataset.scrollAnchor === 'true'
         const rect = isAnchor || withoutObserver ? item.getBoundingClientRect() : null
-        const onScreen = withoutObserver && rect
-          ? rect.bottom > readingLine && rect.top < bounds.bottom
-          : visibleMessageIdsRef.current.has(id)
+        const onScreen =
+          withoutObserver && rect
+            ? rect.bottom > readingLine && rect.top < bounds.bottom
+            : visibleMessageIdsRef.current.has(id)
         if (onScreen) visible.push(id)
         if (isAnchor && rect && rect.top <= readingLine + EPSILON) currentAnchorId = id
       }
@@ -461,26 +465,29 @@ function useScrollerState({
     return Math.max(0, target + viewport.clientHeight - extent)
   }, [])
 
-  const scrollViewportTo = React.useCallback((top: number, behavior: ScrollBehavior = 'auto') => {
-    const viewport = viewportRef.current
-    if (!viewport) return
-    // Clamped rather than left to the browser so the target is always a
-    // position the viewport can actually reach, which is what lets the scroll
-    // event recognise the landing.
-    const next = Math.min(Math.max(0, top), Math.max(0, viewport.scrollHeight - viewport.clientHeight))
-    if (Math.abs(viewport.scrollTop - next) <= EPSILON) {
-      commitScrollState()
-      return
-    }
-    programmaticTargetRef.current = next
-    markAutoscrolling(true)
-    viewport.scrollTo({ top: next, behavior })
-    // `lastScrollTop` is deliberately left to the scroll event. Writing the
-    // target here would make a smooth scroll look like it was travelling
-    // backwards on its way there, and reading the transcript as the reader
-    // taking over.
-    scheduleStateCommit()
-  }, [commitScrollState, markAutoscrolling, scheduleStateCommit])
+  const scrollViewportTo = React.useCallback(
+    (top: number, behavior: ScrollBehavior = 'auto') => {
+      const viewport = viewportRef.current
+      if (!viewport) return
+      // Clamped rather than left to the browser so the target is always a
+      // position the viewport can actually reach, which is what lets the scroll
+      // event recognise the landing.
+      const next = Math.min(Math.max(0, top), Math.max(0, viewport.scrollHeight - viewport.clientHeight))
+      if (Math.abs(viewport.scrollTop - next) <= EPSILON) {
+        commitScrollState()
+        return
+      }
+      programmaticTargetRef.current = next
+      markAutoscrolling(true)
+      viewport.scrollTo({ top: next, behavior })
+      // `lastScrollTop` is deliberately left to the scroll event. Writing the
+      // target here would make a smooth scroll look like it was travelling
+      // backwards on its way there, and reading the transcript as the reader
+      // taking over.
+      scheduleStateCommit()
+    },
+    [commitScrollState, markAutoscrolling, scheduleStateCommit],
+  )
 
   /**
    * Re-solve the spacer and, while following, re-stick to the live edge.
@@ -488,113 +495,132 @@ function useScrollerState({
    * Called for every height change in the transcript, which during a stream is
    * every frame that lands a chunk.
    */
-  const reconcile = React.useCallback((behavior: ScrollBehavior = 'auto') => {
-    const viewport = viewportRef.current
-    const content = contentRef.current
-    if (!viewport || !content) return
-    const wanted = desiredSpacer()
-    if (modeRef.current === 'follow') {
-      setSpacerHeight(wanted)
-      scrollViewportTo(Math.max(0, viewport.scrollHeight - viewport.clientHeight), behavior)
-    } else {
-      // Shrinking the spacer past the reader's own position would have the
-      // browser clamp the scroll offset, which reads as the page lurching.
-      const keep = viewport.scrollTop + viewport.clientHeight
-        - contentExtent(content, spacerRef.current, viewport)
-      setSpacerHeight(Math.max(wanted, keep))
-      commitScrollState()
-    }
-    syncVisibility()
-  }, [commitScrollState, desiredSpacer, scrollViewportTo, setSpacerHeight, syncVisibility])
+  const reconcile = React.useCallback(
+    (behavior: ScrollBehavior = 'auto') => {
+      const viewport = viewportRef.current
+      const content = contentRef.current
+      if (!viewport || !content) return
+      const wanted = desiredSpacer()
+      if (modeRef.current === 'follow') {
+        setSpacerHeight(wanted)
+        scrollViewportTo(Math.max(0, viewport.scrollHeight - viewport.clientHeight), behavior)
+      } else {
+        // Shrinking the spacer past the reader's own position would have the
+        // browser clamp the scroll offset, which reads as the page lurching.
+        const keep = viewport.scrollTop + viewport.clientHeight - contentExtent(content, spacerRef.current, viewport)
+        setSpacerHeight(Math.max(wanted, keep))
+        commitScrollState()
+      }
+      syncVisibility()
+    },
+    [commitScrollState, desiredSpacer, scrollViewportTo, setSpacerHeight, syncVisibility],
+  )
 
-  const enterFollow = React.useCallback((behavior: ScrollBehavior = 'auto') => {
-    modeRef.current = 'follow'
-    reconcile(behavior)
-  }, [reconcile])
+  const enterFollow = React.useCallback(
+    (behavior: ScrollBehavior = 'auto') => {
+      modeRef.current = 'follow'
+      reconcile(behavior)
+    },
+    [reconcile],
+  )
 
   /** Scroll so `element` sits at `align` within the viewport. */
-  const scrollToElement = React.useCallback((
-    element: HTMLElement,
-    { align = 'start', behavior = 'auto', scrollMargin: margin = marginRef.current, onlyWhenAbove = false }: ScrollCommandOptions = {},
-  ): boolean => {
-    const viewport = viewportRef.current
-    const content = contentRef.current
-    if (!viewport || !content || !content.contains(element)) return false
+  const scrollToElement = React.useCallback(
+    (
+      element: HTMLElement,
+      {
+        align = 'start',
+        behavior = 'auto',
+        scrollMargin: margin = marginRef.current,
+        onlyWhenAbove = false,
+      }: ScrollCommandOptions = {},
+    ): boolean => {
+      const viewport = viewportRef.current
+      const content = contentRef.current
+      if (!viewport || !content || !content.contains(element)) return false
 
-    const top = relativeTop(element, viewport)
-    const padding = blockPadding(content)
-    if (onlyWhenAbove && top >= padding.start + margin - EPSILON) return false
+      const top = relativeTop(element, viewport)
+      const padding = blockPadding(content)
+      if (onlyWhenAbove && top >= padding.start + margin - EPSILON) return false
 
-    const offset = offsetTopIn(element, viewport)
-    const height = element.getBoundingClientRect().height
-    let target: number
-    if (align === 'center') {
-      const room = Math.max(0, viewport.clientHeight - padding.start - padding.end)
-      target = offset - padding.start - (room - height) / 2 - margin
-    } else if (align === 'end') {
-      target = offset - viewport.clientHeight + height + padding.end + margin
-    } else if (align === 'nearest') {
-      const bottom = offset + height
-      const top_ = viewport.scrollTop + padding.start
-      const limit = viewport.scrollTop + viewport.clientHeight - padding.end
-      if (offset >= top_ && bottom <= limit) return true
-      target = offset < top_ ? offset - padding.start - margin : bottom - viewport.clientHeight + padding.end + margin
-    } else {
-      target = offset - padding.start - margin
-    }
+      const offset = offsetTopIn(element, viewport)
+      const height = element.getBoundingClientRect().height
+      let target: number
+      if (align === 'center') {
+        const room = Math.max(0, viewport.clientHeight - padding.start - padding.end)
+        target = offset - padding.start - (room - height) / 2 - margin
+      } else if (align === 'end') {
+        target = offset - viewport.clientHeight + height + padding.end + margin
+      } else if (align === 'nearest') {
+        const bottom = offset + height
+        const top_ = viewport.scrollTop + padding.start
+        const limit = viewport.scrollTop + viewport.clientHeight - padding.end
+        if (offset >= top_ && bottom <= limit) return true
+        target = offset < top_ ? offset - padding.start - margin : bottom - viewport.clientHeight + padding.end + margin
+      } else {
+        target = offset - padding.start - margin
+      }
 
-    // Reaching the target may need more room below the transcript than the
-    // resting spacer provides.
-    const extent = contentExtent(content, spacerRef.current, viewport)
-    setSpacerHeight(Math.max(desiredSpacer(), target + viewport.clientHeight - extent))
+      // Reaching the target may need more room below the transcript than the
+      // resting spacer provides.
+      const extent = contentExtent(content, spacerRef.current, viewport)
+      setSpacerHeight(Math.max(desiredSpacer(), target + viewport.clientHeight - extent))
 
-    modeRef.current = 'idle'
-    scrollViewportTo(target, behavior)
-    syncVisibility()
-    return true
-  }, [desiredSpacer, scrollViewportTo, setSpacerHeight, syncVisibility])
-
-  const scrollToEnd = React.useCallback(({ behavior = 'auto' }: ScrollCommandOptions = {}): boolean => {
-    const viewport = viewportRef.current
-    if (!viewport) return false
-    // Returning to the live edge re-arms following, which is what makes the
-    // "jump to latest" button mean "and keep up from here".
-    modeRef.current = autoScrollRef.current ? 'follow' : 'idle'
-    setSpacerHeight(desiredSpacer())
-    scrollViewportTo(Math.max(0, viewport.scrollHeight - viewport.clientHeight), behavior)
-    syncVisibility()
-    return true
-  }, [desiredSpacer, scrollViewportTo, setSpacerHeight, syncVisibility])
-
-  const scrollToStart = React.useCallback(({ behavior = 'auto' }: ScrollCommandOptions = {}): boolean => {
-    if (!viewportRef.current) return false
-    modeRef.current = 'idle'
-    setSpacerHeight(desiredSpacer())
-    scrollViewportTo(0, behavior)
-    syncVisibility()
-    return true
-  }, [desiredSpacer, scrollViewportTo, setSpacerHeight, syncVisibility])
-
-  const scrollToMessage = React.useCallback((
-    messageId: string,
-    options?: ScrollCommandOptions,
-  ): boolean => {
-    const element = messageElementsRef.current.get(messageId)
-    if (element) {
-      defaultAppliedRef.current = true
-      pendingMessageRef.current = null
-      // False here means the command was considered and declined — an
-      // `onlyWhenAbove` target that is already in view — not that it was lost.
-      return scrollToElement(element, options)
-    }
-    // A permalink can resolve before the transcript has mounted; queue it once.
-    if (itemCountRef.current === 0) {
-      pendingMessageRef.current = { messageId, options }
-      defaultAppliedRef.current = true
+      modeRef.current = 'idle'
+      scrollViewportTo(target, behavior)
+      syncVisibility()
       return true
-    }
-    return false
-  }, [scrollToElement])
+    },
+    [desiredSpacer, scrollViewportTo, setSpacerHeight, syncVisibility],
+  )
+
+  const scrollToEnd = React.useCallback(
+    ({ behavior = 'auto' }: ScrollCommandOptions = {}): boolean => {
+      const viewport = viewportRef.current
+      if (!viewport) return false
+      // Returning to the live edge re-arms following, which is what makes the
+      // "jump to latest" button mean "and keep up from here".
+      modeRef.current = autoScrollRef.current ? 'follow' : 'idle'
+      setSpacerHeight(desiredSpacer())
+      scrollViewportTo(Math.max(0, viewport.scrollHeight - viewport.clientHeight), behavior)
+      syncVisibility()
+      return true
+    },
+    [desiredSpacer, scrollViewportTo, setSpacerHeight, syncVisibility],
+  )
+
+  const scrollToStart = React.useCallback(
+    ({ behavior = 'auto' }: ScrollCommandOptions = {}): boolean => {
+      if (!viewportRef.current) return false
+      modeRef.current = 'idle'
+      setSpacerHeight(desiredSpacer())
+      scrollViewportTo(0, behavior)
+      syncVisibility()
+      return true
+    },
+    [desiredSpacer, scrollViewportTo, setSpacerHeight, syncVisibility],
+  )
+
+  const scrollToMessage = React.useCallback(
+    (messageId: string, options?: ScrollCommandOptions): boolean => {
+      const element = messageElementsRef.current.get(messageId)
+      if (element) {
+        defaultAppliedRef.current = true
+        pendingMessageRef.current = null
+        // False here means the command was considered and declined — an
+        // `onlyWhenAbove` target that is already in view — not that it was lost.
+        return scrollToElement(element, options)
+      }
+      // A permalink can resolve before the transcript has mounted; queue it once.
+      if (itemCountRef.current === 0) {
+        pendingMessageRef.current = { messageId, options }
+        defaultAppliedRef.current = true
+        return true
+      }
+      return false
+    },
+    [scrollToElement],
+  )
 
   const flushPendingMessage = React.useCallback((): boolean => {
     const pending = pendingMessageRef.current
@@ -657,39 +683,43 @@ function useScrollerState({
 
   /* -- lifecycle -------------------------------------------------------- */
 
-  const applyContentChange = React.useCallback((
-    items: HTMLElement[],
-    previousCount: number,
-    previousFirst: HTMLElement | null,
-  ) => {
-    if (flushPendingMessage()) return
-    if (previousCount === 0) {
-      if (applyDefaultPosition()) return
-      commitScrollState()
-      syncVisibility()
-      return
-    }
-    // Older rows arriving above the transcript must not move what is on screen.
-    const previousIndex = previousFirst ? items.indexOf(previousFirst) : -1
-    if (preserveScrollOnPrependRef.current && previousIndex > 0) {
-      restorePrepend()
-      return
-    }
-    // A new turn is the one event that overrides the reader: it exists because
-    // they just sent something.
-    if (items.length > previousCount && firstAnchorFrom(items, previousCount)) {
-      enterFollow()
-      return
-    }
-    // Everything else — a row re-keyed by a reload, a branch swap, an error
-    // appearing — leaves the viewport where the reader put it. Upstream
-    // re-anchored here, which is what jumped to the top of the conversation
-    // when the optimistic user row was swapped for the persisted one.
-    reconcile()
-  }, [
-    applyDefaultPosition, commitScrollState, enterFollow, flushPendingMessage,
-    reconcile, restorePrepend, syncVisibility,
-  ])
+  const applyContentChange = React.useCallback(
+    (items: HTMLElement[], previousCount: number, previousFirst: HTMLElement | null) => {
+      if (flushPendingMessage()) return
+      if (previousCount === 0) {
+        if (applyDefaultPosition()) return
+        commitScrollState()
+        syncVisibility()
+        return
+      }
+      // Older rows arriving above the transcript must not move what is on screen.
+      const previousIndex = previousFirst ? items.indexOf(previousFirst) : -1
+      if (preserveScrollOnPrependRef.current && previousIndex > 0) {
+        restorePrepend()
+        return
+      }
+      // A new turn is the one event that overrides the reader: it exists because
+      // they just sent something.
+      if (items.length > previousCount && firstAnchorFrom(items, previousCount)) {
+        enterFollow()
+        return
+      }
+      // Everything else — a row re-keyed by a reload, a branch swap, an error
+      // appearing — leaves the viewport where the reader put it. Upstream
+      // re-anchored here, which is what jumped to the top of the conversation
+      // when the optimistic user row was swapped for the persisted one.
+      reconcile()
+    },
+    [
+      applyDefaultPosition,
+      commitScrollState,
+      enterFollow,
+      flushPendingMessage,
+      reconcile,
+      restorePrepend,
+      syncVisibility,
+    ],
+  )
 
   const handleContentChange = React.useCallback(() => {
     const content = contentRef.current
@@ -775,19 +805,22 @@ function useScrollerState({
       return
     }
     if (!observerRef.current) {
-      observerRef.current = new IntersectionObserver((entries) => {
-        for (const entry of entries) {
-          const id = (entry.target as HTMLElement).dataset.messageId
-          if (!id) continue
-          if (entry.isIntersecting) visibleMessageIdsRef.current.add(id)
-          else visibleMessageIdsRef.current.delete(id)
-        }
-        syncVisibility()
-      }, {
-        root: viewport,
-        rootMargin: `${-(marginRef.current + peekRef.current)}px 0px 0px 0px`,
-        threshold: [0, 0.01, 0.5, 1],
-      })
+      observerRef.current = new IntersectionObserver(
+        (entries) => {
+          for (const entry of entries) {
+            const id = (entry.target as HTMLElement).dataset.messageId
+            if (!id) continue
+            if (entry.isIntersecting) visibleMessageIdsRef.current.add(id)
+            else visibleMessageIdsRef.current.delete(id)
+          }
+          syncVisibility()
+        },
+        {
+          root: viewport,
+          rootMargin: `${-(marginRef.current + peekRef.current)}px 0px 0px 0px`,
+          threshold: [0, 0.01, 0.5, 1],
+        },
+      )
     }
     for (const id of trackedMessagesRef.current) {
       const el = messageElementsRef.current.get(id)
@@ -807,37 +840,46 @@ function useScrollerState({
     visibilityStore.setSnapshot(NO_VISIBILITY)
   }, [visibilityStore])
 
-  const registerMessage = React.useCallback<RegisterMessage>((messageId, element, previous, track) => {
-    if (element) {
-      messageElementsRef.current.set(messageId, element)
-      if (track) {
-        trackedMessagesRef.current.add(messageId)
-        observerRef.current?.observe(element)
-        syncVisibility()
+  const registerMessage = React.useCallback<RegisterMessage>(
+    (messageId, element, previous, track) => {
+      if (element) {
+        messageElementsRef.current.set(messageId, element)
+        if (track) {
+          trackedMessagesRef.current.add(messageId)
+          observerRef.current?.observe(element)
+          syncVisibility()
+        }
+        if (pendingMessageRef.current?.messageId === messageId) flushPendingMessage()
+        return
       }
-      if (pendingMessageRef.current?.messageId === messageId) flushPendingMessage()
-      return
-    }
-    if (previous && messageElementsRef.current.get(messageId) === previous) {
-      messageElementsRef.current.delete(messageId)
-      trackedMessagesRef.current.delete(messageId)
-      visibleMessageIdsRef.current.delete(messageId)
-      observerRef.current?.unobserve(previous)
-      if (track) syncVisibility()
-    }
-  }, [flushPendingMessage, syncVisibility])
+      if (previous && messageElementsRef.current.get(messageId) === previous) {
+        messageElementsRef.current.delete(messageId)
+        trackedMessagesRef.current.delete(messageId)
+        visibleMessageIdsRef.current.delete(messageId)
+        observerRef.current?.unobserve(previous)
+        if (track) syncVisibility()
+      }
+    },
+    [flushPendingMessage, syncVisibility],
+  )
 
   /* -- wiring ----------------------------------------------------------- */
 
-  const setRootElement = React.useCallback((el: HTMLDivElement | null) => {
-    rootRef.current = el
-    if (el) writeStateAttributes(stateStore.getSnapshot())
-  }, [stateStore, writeStateAttributes])
+  const setRootElement = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      rootRef.current = el
+      if (el) writeStateAttributes(stateStore.getSnapshot())
+    },
+    [stateStore, writeStateAttributes],
+  )
 
-  const setViewportElement = React.useCallback((el: HTMLDivElement | null) => {
-    viewportRef.current = el
-    if (el) writeStateAttributes(stateStore.getSnapshot())
-  }, [stateStore, writeStateAttributes])
+  const setViewportElement = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      viewportRef.current = el
+      if (el) writeStateAttributes(stateStore.getSnapshot())
+    },
+    [stateStore, writeStateAttributes],
+  )
 
   const setContentElement = React.useCallback((el: HTMLDivElement | null) => {
     contentRef.current = el
@@ -857,41 +899,59 @@ function useScrollerState({
     else commitScrollState()
   }, [autoScroll, commitScrollState, reconcile])
 
-  React.useEffect(() => () => {
-    for (const frame of [stateFrameRef, visibilityFrameRef, resizeFrameRef]) {
-      if (frame.current !== null) window.cancelAnimationFrame(frame.current)
-      frame.current = null
-    }
-    if (autoscrollingTimerRef.current !== null) window.clearTimeout(autoscrollingTimerRef.current)
-    observerRef.current?.disconnect()
-    observerRef.current = null
-  }, [])
+  React.useEffect(
+    () => () => {
+      for (const frame of [stateFrameRef, visibilityFrameRef, resizeFrameRef]) {
+        if (frame.current !== null) window.cancelAnimationFrame(frame.current)
+        frame.current = null
+      }
+      if (autoscrollingTimerRef.current !== null) window.clearTimeout(autoscrollingTimerRef.current)
+      observerRef.current?.disconnect()
+      observerRef.current = null
+    },
+    [],
+  )
 
-  const context = React.useMemo<ScrollerContextValue>(() => ({
-    setRootElement,
-    setViewportElement,
-    setContentElement,
-    setSpacerElement,
-    viewportRef,
-    preserveScrollOnPrependRef,
-    handleContentChange,
-    handleResize,
-    syncAfterScroll,
-    userScrollIntent,
-    scrollToEnd,
-    scrollToStart,
-    scrollToMessage,
-    isFollowing,
-    stateStore,
-    visibilityStore,
-    observeVisibility,
-    unobserveVisibility,
-  }), [
-    handleContentChange, handleResize, isFollowing, observeVisibility, scrollToEnd,
-    scrollToMessage, scrollToStart, setContentElement, setRootElement, setSpacerElement,
-    setViewportElement, stateStore, syncAfterScroll, unobserveVisibility, userScrollIntent,
-    visibilityStore,
-  ])
+  const context = React.useMemo<ScrollerContextValue>(
+    () => ({
+      setRootElement,
+      setViewportElement,
+      setContentElement,
+      setSpacerElement,
+      viewportRef,
+      preserveScrollOnPrependRef,
+      handleContentChange,
+      handleResize,
+      syncAfterScroll,
+      userScrollIntent,
+      scrollToEnd,
+      scrollToStart,
+      scrollToMessage,
+      isFollowing,
+      stateStore,
+      visibilityStore,
+      observeVisibility,
+      unobserveVisibility,
+    }),
+    [
+      handleContentChange,
+      handleResize,
+      isFollowing,
+      observeVisibility,
+      scrollToEnd,
+      scrollToMessage,
+      scrollToStart,
+      setContentElement,
+      setRootElement,
+      setSpacerElement,
+      setViewportElement,
+      stateStore,
+      syncAfterScroll,
+      unobserveVisibility,
+      userScrollIntent,
+      visibilityStore,
+    ],
+  )
 
   return { context, registerMessage }
 }
@@ -909,7 +969,11 @@ function Provider({ children, ...props }: MessageScrollerProviderProps) {
 
 function Root({ children, ...props }: React.ComponentProps<'div'>) {
   const { setRootElement } = useScrollerContext()
-  return <div ref={setRootElement} {...props}>{children}</div>
+  return (
+    <div ref={setRootElement} {...props}>
+      {children}
+    </div>
+  )
 }
 
 interface ViewportProps extends React.ComponentProps<'div'> {
@@ -930,15 +994,22 @@ function Viewport({
   ...props
 }: ViewportProps) {
   const {
-    handleResize, preserveScrollOnPrependRef, setViewportElement,
-    syncAfterScroll, userScrollIntent, viewportRef,
+    handleResize,
+    preserveScrollOnPrependRef,
+    setViewportElement,
+    syncAfterScroll,
+    userScrollIntent,
+    viewportRef,
   } = useScrollerContext()
   preserveScrollOnPrependRef.current = preserveScrollOnPrepend
 
-  const setRef = React.useCallback((el: HTMLDivElement | null) => {
-    setViewportElement(el)
-    mergeRefs(ref)?.(el)
-  }, [ref, setViewportElement])
+  const setRef = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      setViewportElement(el)
+      mergeRefs(ref)?.(el)
+    },
+    [ref, setViewportElement],
+  )
 
   React.useEffect(() => {
     const viewport = viewportRef.current
@@ -985,11 +1056,14 @@ function Content({ children, ref, role, spacerClassName, 'aria-relevant': ariaRe
   const { handleContentChange, handleResize, setContentElement, setSpacerElement } = useScrollerContext()
   const localRef = React.useRef<HTMLDivElement | null>(null)
 
-  const setRef = React.useCallback((el: HTMLDivElement | null) => {
-    localRef.current = el
-    setContentElement(el)
-    mergeRefs(ref)?.(el)
-  }, [ref, setContentElement])
+  const setRef = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      localRef.current = el
+      setContentElement(el)
+      mergeRefs(ref)?.(el)
+    },
+    [ref, setContentElement],
+  )
 
   React.useLayoutEffect(() => {
     const content = localRef.current
@@ -1032,20 +1106,18 @@ function Item({ messageId, ref, scrollAnchor = false, ...props }: MessageScrolle
   const register = React.useContext(RegisterContext)
   const previousRef = React.useRef<HTMLDivElement | null>(null)
 
-  const setRef = React.useCallback((el: HTMLDivElement | null) => {
-    const previous = previousRef.current
-    previousRef.current = el
-    if (messageId && register) register(messageId, el, previous, true)
-    mergeRefs(ref)?.(el)
-  }, [messageId, ref, register])
+  const setRef = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      const previous = previousRef.current
+      previousRef.current = el
+      if (messageId && register) register(messageId, el, previous, true)
+      mergeRefs(ref)?.(el)
+    },
+    [messageId, ref, register],
+  )
 
   return (
-    <div
-      ref={setRef}
-      data-message-id={messageId}
-      data-scroll-anchor={scrollAnchor ? 'true' : 'false'}
-      {...props}
-    />
+    <div ref={setRef} data-message-id={messageId} data-scroll-anchor={scrollAnchor ? 'true' : 'false'} {...props} />
   )
 }
 
@@ -1068,12 +1140,15 @@ function Anchor({ messageId, ref, ...props }: MessageScrollerAnchorProps) {
   const register = React.useContext(RegisterContext)
   const previousRef = React.useRef<HTMLDivElement | null>(null)
 
-  const setRef = React.useCallback((el: HTMLDivElement | null) => {
-    const previous = previousRef.current
-    previousRef.current = el
-    if (register) register(messageId, el, previous, false)
-    mergeRefs(ref)?.(el)
-  }, [messageId, ref, register])
+  const setRef = React.useCallback(
+    (el: HTMLDivElement | null) => {
+      const previous = previousRef.current
+      previousRef.current = el
+      if (register) register(messageId, el, previous, false)
+      mergeRefs(ref)?.(el)
+    },
+    [messageId, ref, register],
+  )
 
   return <div ref={setRef} data-message-anchor={messageId} {...props} />
 }
@@ -1101,8 +1176,14 @@ function Button({
 
   const active = React.useSyncExternalStore(
     React.useCallback((listener) => stateStore.subscribe(listener), [stateStore]),
-    React.useCallback(() => (direction === 'start' ? stateStore.getSnapshot().start : stateStore.getSnapshot().end), [direction, stateStore]),
-    React.useCallback(() => (direction === 'start' ? stateStore.getSnapshot().start : stateStore.getSnapshot().end), [direction, stateStore]),
+    React.useCallback(
+      () => (direction === 'start' ? stateStore.getSnapshot().start : stateStore.getSnapshot().end),
+      [direction, stateStore],
+    ),
+    React.useCallback(
+      () => (direction === 'start' ? stateStore.getSnapshot().start : stateStore.getSnapshot().end),
+      [direction, stateStore],
+    ),
   )
 
   return (

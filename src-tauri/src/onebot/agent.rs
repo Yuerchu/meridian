@@ -5,6 +5,10 @@ use std::sync::Arc;
 use tauri::{Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
+use crate::agent::engine::{self};
+use crate::agent::{
+    TokenBudget, build_messages_with_senders, microcompact, resolve_provider_config, trim_to_context_limit,
+};
 use crate::db::DbPool;
 use crate::db::models::message::NewMessage;
 use crate::db::models::turn::TurnPhase;
@@ -13,11 +17,6 @@ use crate::provider::{self, ChatMessage, ToolCall};
 use crate::secrets::SecretsManager;
 use crate::tools::{self, ToolRegistry};
 use crate::util::{get_conn, now_ms};
-use crate::agent::engine::{self};
-use crate::agent::{
-    build_messages_with_senders, microcompact, resolve_provider_config, trim_to_context_limit,
-    TokenBudget,
-};
 
 /// `(tool_call, sandbox_block_reason)` → what the user typed, or `None` if
 /// nobody answered. The reason is `Some` only for the retry-without-sandbox
@@ -45,7 +44,11 @@ pub enum AskKind {
 
 impl AskKind {
     pub fn of(tool: &str) -> Self {
-        if tool == "ask_user" { Self::Question } else { Self::Permission }
+        if tool == "ask_user" {
+            Self::Question
+        } else {
+            Self::Permission
+        }
     }
 
     /// The per-tool mapping the ports describe, in the one place it happens.
@@ -266,11 +269,12 @@ pub(super) async fn oneshot_completion(
         let conv_id = conversation_id.to_string();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
-            Ok::<_, String>(conv.assistant_id.and_then(|id| {
-                crate::db::ops::assistant::get_assistant(&mut conn, &id).ok()
-            }))
+            let conv =
+                crate::db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
+            Ok::<_, String>(
+                conv.assistant_id
+                    .and_then(|id| crate::db::ops::assistant::get_assistant(&mut conn, &id).ok()),
+            )
         })
         .await
         .map_err(|e| e.to_string())??
@@ -288,28 +292,32 @@ pub(super) async fn oneshot_completion(
         let assistant2 = assistant.clone();
         tokio::task::spawn_blocking(move || {
             let crate::agent::ResolvedProvider {
-                provider_type, base_url, api_key, model, api_format, ..
+                provider_type,
+                base_url,
+                api_key,
+                model,
+                api_format,
+                ..
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
-            let effective_model = assistant2
-                .as_ref()
-                .and_then(|a| a.model_id.clone())
-                .unwrap_or(model);
-            let turn = crate::agent::resolve_turn_params(&pool2, crate::agent::TurnParamsInput {
-                assistant: assistant2.as_ref(),
-                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
-                provider_type: &provider_type,
-                api_format: &api_format,
-                model: &effective_model,
-                thinking_level: None,
-                fast: false,
-            })?;
+            let effective_model = assistant2.as_ref().and_then(|a| a.model_id.clone()).unwrap_or(model);
+            let turn = crate::agent::resolve_turn_params(
+                &pool2,
+                crate::agent::TurnParamsInput {
+                    assistant: assistant2.as_ref(),
+                    provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                    provider_type: &provider_type,
+                    api_format: &api_format,
+                    model: &effective_model,
+                    thinking_level: None,
+                    fast: false,
+                },
+            )?;
             Ok::<_, String>((provider_type, base_url, api_key, api_format, turn))
         })
         .await
         .map_err(|e| e.to_string())??
     };
-    let provider =
-        provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
+    let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
 
     let messages = vec![
         ChatMessage {
@@ -367,9 +375,25 @@ pub async fn headless_chat(
     // anywhere and still leave the caller enough to close the turn out.
     let mut progress = TurnProgress::default();
     let reply = headless_chat_inner(
-        pool, secrets, tool_registry, mcp_registry, conversation_id, turn_id, project_id,
-        incoming, assistant_id, model_override, is_admin, approval_fn, interim_text_fn,
-        cancel, app, qq_tools, session_inbox, coordinator, &mut progress,
+        pool,
+        secrets,
+        tool_registry,
+        mcp_registry,
+        conversation_id,
+        turn_id,
+        project_id,
+        incoming,
+        assistant_id,
+        model_override,
+        is_admin,
+        approval_fn,
+        interim_text_fn,
+        cancel,
+        app,
+        qq_tools,
+        session_inbox,
+        coordinator,
+        &mut progress,
     )
     .await;
     HeadlessOutcome { reply, progress }
@@ -417,8 +441,13 @@ async fn headless_chat_inner(
             let pool = pool.clone();
             tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().ok()?;
-                crate::db::ops::preference::get_preference(&mut conn, "sleep_inhibitor.enabled").ok().flatten()
-            }).await.ok().flatten()
+                crate::db::ops::preference::get_preference(&mut conn, "sleep_inhibitor.enabled")
+                    .ok()
+                    .flatten()
+            })
+            .await
+            .ok()
+            .flatten()
         };
         app.filter(|_| sleep_pref.as_deref() != Some("false"))
             .map(|a| a.state::<crate::sleep_inhibitor::AppSleepInhibitor>().begin_turn())
@@ -431,13 +460,11 @@ async fn headless_chat_inner(
         let aid = assistant_id.map(String::from);
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
+            let conv =
+                crate::db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
             let effective_aid = aid.as_deref().or(conv.assistant_id.as_deref());
-            let assistant = effective_aid
-                .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
-            let history = crate::db::ops::message::list_messages(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
+            let assistant = effective_aid.and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
+            let history = crate::db::ops::message::list_messages(&mut conn, &conv_id).map_err(|e| e.to_string())?;
             // Resolved once and carried for the turn; see the desktop loop for
             // why the head is not re-read per row.
             let ctx = crate::db::ops::message::active_context(&history, conv.head_message_id.as_deref());
@@ -451,14 +478,20 @@ async fn headless_chat_inner(
     // reads the OS credential store, either of which can block for as long as
     // the pool's acquire timeout.
     let crate::agent::ResolvedProvider {
-        provider_type, base_url, api_key, model, api_format, provider_id, provider_name,
+        provider_type,
+        base_url,
+        api_key,
+        model,
+        api_format,
+        provider_id,
+        provider_name,
     } = {
         let pool2 = pool.clone();
         let secrets2 = secrets.clone();
         let assistant2 = assistant.clone();
-        tokio::task::spawn_blocking(move || {
-            resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())
-        }).await.map_err(|e| e.to_string())??
+        tokio::task::spawn_blocking(move || resolve_provider_config(&secrets2, &pool2, assistant2.as_ref()))
+            .await
+            .map_err(|e| e.to_string())??
     };
     let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
 
@@ -514,16 +547,21 @@ async fn headless_chat_inner(
         let af = api_format.clone();
         let em = effective_model.clone();
         tokio::task::spawn_blocking(move || {
-            crate::agent::resolve_turn_params(&pool2, crate::agent::TurnParamsInput {
-                assistant: assistant2.as_ref(),
-                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
-                provider_type: &pt,
-                api_format: &af,
-                model: &em,
-                thinking_level: None,
-                fast: false,
-            })
-        }).await.map_err(|e| e.to_string())??
+            crate::agent::resolve_turn_params(
+                &pool2,
+                crate::agent::TurnParamsInput {
+                    assistant: assistant2.as_ref(),
+                    provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                    provider_type: &pt,
+                    api_format: &af,
+                    model: &em,
+                    thinking_level: None,
+                    fast: false,
+                },
+            )
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
     let context_limit = turn_params.context_limit;
     // Off `turn_params` rather than a second `get_capabilities` call. That one
@@ -564,7 +602,9 @@ async fn headless_chat_inner(
         tokio::task::spawn_blocking(move || {
             let mut conn = pool2.get().map_err(|e| e.to_string())?;
             Ok::<_, String>(crate::agent::turn_config::resolve(&mut conn, &registry, input))
-        }).await.map_err(|e| e.to_string())??
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
     let mut tool_defs = turn.tool_defs;
     let system_prompt = turn.system_prompt;
@@ -583,26 +623,18 @@ async fn headless_chat_inner(
         .collect();
     let budget_tokens = crate::agent::memory_budget(context_limit);
     let memory_request = if is_group {
-        crate::agent::MemoryRequest::onebot_group(
-            project_id.map(|s| s.to_string()),
-            subjects,
-            budget_tokens,
-        )
+        crate::agent::MemoryRequest::onebot_group(project_id.map(|s| s.to_string()), subjects, budget_tokens)
     } else {
         match subjects.into_iter().next() {
             Some(subject) => crate::agent::MemoryRequest::onebot_private(subject, budget_tokens),
-            None => crate::agent::MemoryRequest::desktop(
-                project_id.map(|s| s.to_string()),
-                budget_tokens,
-            ),
+            None => crate::agent::MemoryRequest::desktop(project_id.map(|s| s.to_string()), budget_tokens),
         }
     };
     // No auto-compaction on this side, so there is no later point at which the
     // path could change under us — see the desktop loop, where this has to wait.
     let t0 = now_ms();
     let roster = crate::agent::roster_block(&memory_request);
-    let injection =
-        crate::agent::plan_injection_async(pool, memory_request, ctx.live().to_vec(), t0).await;
+    let injection = crate::agent::plan_injection_async(pool, memory_request, ctx.live().to_vec(), t0).await;
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
     let budget = TokenBudget::new(
@@ -619,8 +651,7 @@ async fn headless_chat_inner(
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool2)?;
-            let subjects = crate::db::ops::memory::list_subjects(&mut conn)
-                .map_err(|e| e.to_string())?;
+            let subjects = crate::db::ops::memory::list_subjects(&mut conn).map_err(|e| e.to_string())?;
             Ok::<_, String>(
                 subjects
                     .into_iter()
@@ -670,16 +701,13 @@ async fn headless_chat_inner(
         trailing.push(provider::ChatMessage::system_context(roster.trim_start()));
     }
 
-    let mut chat_messages = build_messages_with_senders(
-        &system_prompt,
-        &ctx,
-        trailing,
-        &sender_names,
-    );
-    let files_root = app.and_then(|a| {
-        use tauri::Manager;
-        a.path().app_data_dir().ok()
-    }).map(|d| crate::files::files_dir(&d));
+    let mut chat_messages = build_messages_with_senders(&system_prompt, &ctx, trailing, &sender_names);
+    let files_root = app
+        .and_then(|a| {
+            use tauri::Manager;
+            a.path().app_data_dir().ok()
+        })
+        .map(|d| crate::files::files_dir(&d));
     crate::agent::resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref());
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
@@ -728,10 +756,8 @@ async fn headless_chat_inner(
     // Ahead of the messages, because that is where it was sent and where the next
     // turn has to find it.
     if let Some(ref injection) = injection {
-        parent_cursor = crate::agent::persist_injection(
-            pool, injection, conversation_id, turn_id, parent_cursor, now,
-        )
-        .await;
+        parent_cursor =
+            crate::agent::persist_injection(pool, injection, conversation_id, turn_id, parent_cursor, now).await;
     }
     {
         let pool = pool.clone();
@@ -741,7 +767,11 @@ async fn headless_chat_inner(
             .iter()
             .enumerate()
             .map(|(i, m)| {
-                let id = if i == 0 { first_id.clone() } else { uuid::Uuid::new_v4().to_string() };
+                let id = if i == 0 {
+                    first_id.clone()
+                } else {
+                    uuid::Uuid::new_v4().to_string()
+                };
                 (id, m.text.clone(), m.sender.as_ref().map(|s| s.user_id))
             })
             .collect();
@@ -751,23 +781,46 @@ async fn headless_chat_inner(
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
             for (msg_id, msg, sender_id) in &rows {
-                crate::db::ops::message::append_message(&mut conn, &NewMessage {
-                    id: msg_id, conversation_id: &conv_id, role: "user", content: msg,
-                    provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
-                    tool_calls: None, tool_call_id: None, sort_order: 0, created_at: now,
-                    reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
-                    sender_id: *sender_id,
-                    parent_id: None, compact_anchor_id: None, source: None,
-                    turn_id: Some(&turn), tool_outcome: None,
-                    // What someone said cost no tokens and came from no upstream.
-                    cache_read_tokens: None, cache_write_tokens: None,
-                    provider_name: None,
-                }, parent.as_deref()).map_err(|e| e.to_string())?;
+                crate::db::ops::message::append_message(
+                    &mut conn,
+                    &NewMessage {
+                        id: msg_id,
+                        conversation_id: &conv_id,
+                        role: "user",
+                        content: msg,
+                        provider_id: None,
+                        model_id: None,
+                        input_tokens: None,
+                        output_tokens: None,
+                        tool_calls: None,
+                        tool_call_id: None,
+                        sort_order: 0,
+                        created_at: now,
+                        reasoning_content: None,
+                        rating: None,
+                        schema_version: 2,
+                        is_compact_summary: 0,
+                        sender_id: *sender_id,
+                        parent_id: None,
+                        compact_anchor_id: None,
+                        source: None,
+                        turn_id: Some(&turn),
+                        tool_outcome: None,
+                        // What someone said cost no tokens and came from no upstream.
+                        cache_read_tokens: None,
+                        cache_write_tokens: None,
+                        provider_name: None,
+                    },
+                    parent.as_deref(),
+                )
+                .map_err(|e| e.to_string())?;
                 // Queued messages chain to each other, not all to the same parent.
                 parent = Some(msg_id.clone());
             }
             Ok::<_, String>(())
-        }).await.map_err(|e| e.to_string())??;
+        })
+        .await
+        .map_err(|e| e.to_string())??;
     }
 
     // Build tool context
@@ -775,10 +828,18 @@ async fn headless_chat_inner(
         let pool2 = pool.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = pool2.get().ok()?;
-            let shell = crate::db::ops::preference::get_preference(&mut conn, "shell").ok().flatten();
-            let sandbox = crate::db::ops::preference::get_preference(&mut conn, "sandbox.enabled").ok().flatten();
+            let shell = crate::db::ops::preference::get_preference(&mut conn, "shell")
+                .ok()
+                .flatten();
+            let sandbox = crate::db::ops::preference::get_preference(&mut conn, "sandbox.enabled")
+                .ok()
+                .flatten();
             Some((shell, sandbox))
-        }).await.ok().flatten().unwrap_or((None, None))
+        })
+        .await
+        .ok()
+        .flatten()
+        .unwrap_or((None, None))
     };
     // Missing preference means enabled. Headless sessions have no project dir,
     // so writable roots shrink to TEMP — failures surface as escalation asks.
@@ -787,7 +848,8 @@ async fn headless_chat_inner(
     let _ = sandbox_enabled;
     let tool_context = tools::ToolContext {
         working_directory: None,
-        shell: shell_type.map(|s| tools::ShellType::from_str(&s))
+        shell: shell_type
+            .map(|s| tools::ShellType::from_str(&s))
             .unwrap_or_else(tools::ShellType::default_for_platform),
         // Headless (QQ) sessions have no project dir, and Unrestricted access
         // with no directory to be restricted to is the whole host filesystem.
@@ -797,14 +859,14 @@ async fn headless_chat_inner(
         conversation_id: Some(conversation_id.to_string()),
         assistant_id: assistant_id.map(|s| s.to_string()),
         db_pool: Some(pool.clone()),
-        edit_session: None,
         #[cfg(not(target_os = "android"))]
         sandbox_policy: crate::sandbox::default_policy_if_enabled(sandbox_enabled, None),
         tool_secrets: {
             let pool2 = pool.clone();
             let secrets2 = secrets.clone();
             tokio::task::spawn_blocking(move || crate::agent::build_tool_secrets(&secrets2, &pool2))
-                .await.map_err(|e| e.to_string())?
+                .await
+                .map_err(|e| e.to_string())?
         },
         cancel: cancel.clone(),
     };
@@ -833,7 +895,11 @@ async fn headless_chat_inner(
     });
 
     let outcome = engine::run_turn(
-        &engine::TurnServices { pool, tools: tool_registry, mcp: mcp_registry },
+        &engine::TurnServices {
+            pool,
+            tools: tool_registry,
+            mcp: mcp_registry,
+        },
         engine::TurnSetup {
             provider: &*provider,
             params,
@@ -911,7 +977,10 @@ mod tests {
     fn outcome(reply: Result<String, String>, aborted: bool) -> HeadlessOutcome {
         HeadlessOutcome {
             reply,
-            progress: TurnProgress { aborted, ..Default::default() },
+            progress: TurnProgress {
+                aborted,
+                ..Default::default()
+            },
         }
     }
 
@@ -936,8 +1005,12 @@ mod tests {
         assert!(failed.progress.message_id.is_none());
 
         let payload = turn_stop_payload(
-            "conv-1", "turn-1", failed.progress.message_id.as_deref(),
-            failed.stop_reason(), 0, 0,
+            "conv-1",
+            "turn-1",
+            failed.progress.message_id.as_deref(),
+            failed.stop_reason(),
+            0,
+            0,
         );
 
         assert_eq!(payload["type"], "stop");
@@ -976,12 +1049,8 @@ mod tests {
             let pool = test_db();
             {
                 let mut conn = pool.get().unwrap();
-                crate::db::ops::conversation::create_conversation(
-                    &mut conn, "c1", Some("t"), None, None, 1,
-                )
-                .unwrap();
-                crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::OneBot, None, 1000)
-                    .unwrap();
+                crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1).unwrap();
+                crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::OneBot, None, 1000).unwrap();
             }
             let approval_fn: ApprovalFn = Box::new(move |_, _| {
                 let said = said.clone();
@@ -1049,7 +1118,7 @@ mod tests {
         #[test]
         fn nobody_answering_is_not_a_refusal() {
             for tool in ["ask_user", "run_command"] {
-                assert!(matches!(asked(None, tool), None), "{tool}");
+                assert!(asked(None, tool).is_none(), "{tool}");
             }
         }
 

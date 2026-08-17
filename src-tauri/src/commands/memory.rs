@@ -1,9 +1,7 @@
 use tauri::Manager;
 
 use crate::db;
-use crate::db::models::memory::{
-    DeletedBy, MemoryScope, Origin, Visibility, GLOBAL_SCOPE_ID,
-};
+use crate::db::models::memory::{DeletedBy, GLOBAL_SCOPE_ID, MemoryScope, Origin, Visibility};
 use crate::state::AppDb;
 use crate::util::now_ms;
 
@@ -36,8 +34,7 @@ pub async fn list_memories(
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::memory::list_by_scope(&mut conn, MemoryScope::Project, &project_id)
-            .map_err(|e| e.to_string())
+        db::ops::memory::list_by_scope(&mut conn, MemoryScope::Project, &project_id).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -80,8 +77,7 @@ pub async fn save_memory_scoped(
 ) -> Result<db::models::memory::Memory, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
-        let (scope, scope_id) =
-            resolve_scope(&scope, project_id.as_deref(), subject_scope_id.as_deref())?;
+        let (scope, scope_id) = resolve_scope(&scope, project_id.as_deref(), subject_scope_id.as_deref())?;
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::memory::validate_memory(&mut conn, scope, &scope_id, &key, &content)?;
 
@@ -154,7 +150,9 @@ pub async fn update_memory(
                 content,
                 memory_type,
                 visibility: owner_only.map(|o| {
-                    if o { Visibility::OwnerOnly } else { Visibility::Normal }.as_str().to_string()
+                    if o { Visibility::OwnerOnly } else { Visibility::Normal }
+                        .as_str()
+                        .to_string()
                 }),
                 updated_at: Some(now_ms()),
             },
@@ -177,8 +175,7 @@ pub async fn delete_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::memory::soft_delete_memories(&mut conn, &ids, DeletedBy::Admin, now_ms())
-            .map_err(|e| e.to_string())
+        db::ops::memory::soft_delete_memories(&mut conn, &ids, DeletedBy::Admin, now_ms()).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -188,9 +185,7 @@ pub async fn delete_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<
 /// per-project fan-out both cost one IPC round trip per project and could never
 /// return the bot-wide or per-person layers at all.
 #[tauri::command]
-pub async fn list_all_memories(
-    app: tauri::AppHandle,
-) -> Result<Vec<db::models::memory::Memory>, String> {
+pub async fn list_all_memories(app: tauri::AppHandle) -> Result<Vec<db::models::memory::Memory>, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
@@ -201,9 +196,7 @@ pub async fn list_all_memories(
 }
 
 #[tauri::command]
-pub async fn list_memory_subjects(
-    app: tauri::AppHandle,
-) -> Result<Vec<db::models::memory::MemorySubject>, String> {
+pub async fn list_memory_subjects(app: tauri::AppHandle) -> Result<Vec<db::models::memory::MemorySubject>, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
@@ -214,10 +207,7 @@ pub async fn list_memory_subjects(
 }
 
 #[tauri::command]
-pub async fn forget_memory_subject(
-    app: tauri::AppHandle,
-    subject_scope_id: String,
-) -> Result<usize, String> {
+pub async fn forget_memory_subject(app: tauri::AppHandle, subject_scope_id: String) -> Result<usize, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
@@ -240,13 +230,12 @@ pub async fn set_memory_subject_flags(
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::memory::set_subject_flags(&mut conn, &subject_scope_id, is_pinned, opted_out)
-            .map_err(|_| {
-                format!(
-                    "Cannot pin more than {} people",
-                    db::models::memory::MAX_PINNED_SUBJECTS
-                )
-            })
+        db::ops::memory::set_subject_flags(&mut conn, &subject_scope_id, is_pinned, opted_out).map_err(|_| {
+            format!(
+                "Cannot pin more than {} people",
+                db::models::memory::MAX_PINNED_SUBJECTS
+            )
+        })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -271,8 +260,7 @@ pub async fn restore_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::memory::restore_memories(&mut conn, &ids, crate::util::now_ms())
-            .map_err(|e| e.to_string())
+        db::ops::memory::restore_memories(&mut conn, &ids, crate::util::now_ms()).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?

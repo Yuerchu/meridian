@@ -1,17 +1,12 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::plan::{NewPlan, Plan, PlanStatus, KIND_PLAN};
+use crate::db::models::plan::{KIND_PLAN, NewPlan, Plan, PlanStatus};
 use crate::db::schema::mode_artifacts;
 
 /// Store an artifact the model just proposed. It starts `pending`; the user's
 /// decision moves it on.
-pub fn record_plan(
-    conn: &mut SqliteConnection,
-    conversation_id: &str,
-    content: &str,
-    now: i64,
-) -> QueryResult<Plan> {
+pub fn record_plan(conn: &mut SqliteConnection, conversation_id: &str, content: &str, now: i64) -> QueryResult<Plan> {
     let id = uuid::Uuid::new_v4().to_string();
     diesel::insert_into(mode_artifacts::table)
         .values(&NewPlan {
@@ -63,18 +58,19 @@ fn retire_approved(
             .filter(mode_artifacts::kind.eq(kind))
             .filter(mode_artifacts::status.eq(PlanStatus::Approved.as_str())),
     )
-    .set((mode_artifacts::status.eq(to.as_str()), mode_artifacts::updated_at.eq(now)))
+    .set((
+        mode_artifacts::status.eq(to.as_str()),
+        mode_artifacts::updated_at.eq(now),
+    ))
     .execute(conn)
 }
 
-fn set_status(
-    conn: &mut SqliteConnection,
-    id: &str,
-    status: PlanStatus,
-    now: i64,
-) -> QueryResult<Plan> {
+fn set_status(conn: &mut SqliteConnection, id: &str, status: PlanStatus, now: i64) -> QueryResult<Plan> {
     diesel::update(mode_artifacts::table.find(id))
-        .set((mode_artifacts::status.eq(status.as_str()), mode_artifacts::updated_at.eq(now)))
+        .set((
+            mode_artifacts::status.eq(status.as_str()),
+            mode_artifacts::updated_at.eq(now),
+        ))
         .execute(conn)?;
     mode_artifacts::table.find(id).first::<Plan>(conn)
 }
@@ -89,6 +85,10 @@ pub fn get_active(conn: &mut SqliteConnection, conversation_id: &str) -> QueryRe
         .optional()
 }
 
+/// Every plan row of a conversation, oldest first. Test-only: production reads
+/// go through `get_active_plan` / `get_approved_plan`, but tests verify row
+/// history directly.
+#[cfg(test)]
 pub fn list_plans(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<Plan>> {
     mode_artifacts::table
         .filter(mode_artifacts::conversation_id.eq(conversation_id))
@@ -142,7 +142,9 @@ mod tests {
 
         crate::db::ops::conversation::update_mode(&mut conn, "c1", None, 3).unwrap();
         assert_eq!(
-            crate::db::ops::conversation::get_conversation(&mut conn, "c1").unwrap().mode,
+            crate::db::ops::conversation::get_conversation(&mut conn, "c1")
+                .unwrap()
+                .mode,
             None,
         );
     }

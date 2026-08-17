@@ -14,7 +14,11 @@ pub fn get_preference(conn: &mut SqliteConnection, key: &str) -> QueryResult<Opt
 
 pub fn set_preference(conn: &mut SqliteConnection, key: &str, value: &str, now: i64) -> QueryResult<()> {
     diesel::replace_into(preferences::table)
-        .values(&NewPreference { key, value, updated_at: now })
+        .values(&NewPreference {
+            key,
+            value,
+            updated_at: now,
+        })
         .execute(conn)?;
     Ok(())
 }

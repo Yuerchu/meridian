@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::project_instructions::{compute_mtime_hash, read_file_utf8, MAX_FILE_SIZE};
+use super::project_instructions::{MAX_FILE_SIZE, compute_mtime_hash, read_file_utf8};
 
 /// Cap on how much of SKILL.md is read while scanning. Frontmatter sits at the
 /// top, so scanning never needs the body — this bounds a directory sweep to a
@@ -42,7 +42,10 @@ pub(crate) fn preserve_user_directory(dir: &Path) -> std::io::Result<()> {
     if !skill_file.exists() {
         return Ok(());
     }
-    if std::fs::read_to_string(&skill_file).unwrap_or_default().contains(GENERATED_MARKER) {
+    if std::fs::read_to_string(&skill_file)
+        .unwrap_or_default()
+        .contains(GENERATED_MARKER)
+    {
         return Ok(());
     }
 
@@ -71,7 +74,8 @@ pub struct SkillMeta {
 pub fn is_valid_slug(s: &str) -> bool {
     !s.is_empty()
         && s.len() <= 64
-        && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
         && !s.starts_with('-')
         && !s.ends_with('-')
 }
@@ -89,7 +93,9 @@ pub fn parse_frontmatter(content: &str) -> Option<(String, String)> {
     let mut description = None;
     for line in rest[..end].lines() {
         let line = line.trim_end_matches('\r');
-        let Some((key, value)) = line.split_once(':') else { continue };
+        let Some((key, value)) = line.split_once(':') else {
+            continue;
+        };
         let value = value.trim().trim_matches('"').trim_matches('\'').trim();
         if value.is_empty() {
             continue;
@@ -150,12 +156,14 @@ pub fn scan_skills(root: &Path) -> Vec<SkillMeta> {
             continue;
         }
         // Refuse anything that resolves outside the root, e.g. a symlinked directory.
-        if let Ok(canon) = std::fs::canonicalize(&path) {
-            if !canon.starts_with(&canon_root) {
-                continue;
-            }
+        if let Ok(canon) = std::fs::canonicalize(&path)
+            && !canon.starts_with(&canon_root)
+        {
+            continue;
         }
-        let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+        let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
         if !is_valid_slug(dir_name) {
             continue;
         }
@@ -164,8 +172,12 @@ pub fn scan_skills(root: &Path) -> Vec<SkillMeta> {
         if !skill_md.is_file() {
             continue;
         }
-        let Some(head) = read_head(&skill_md, FRONTMATTER_SCAN_BYTES) else { continue };
-        let Some((llm_name, llm_description)) = parse_frontmatter(&head) else { continue };
+        let Some(head) = read_head(&skill_md, FRONTMATTER_SCAN_BYTES) else {
+            continue;
+        };
+        let Some((llm_name, llm_description)) = parse_frontmatter(&head) else {
+            continue;
+        };
         if !is_valid_slug(&llm_name) {
             continue;
         }
@@ -203,7 +215,9 @@ pub fn read_skill_body(root: &Path, dir_name: &str) -> Option<String> {
 /// Relative paths of bundled resources, so the model can ask for one by name
 /// without us shipping their contents up front.
 pub fn list_skill_resources(root: &Path, dir_name: &str) -> Vec<String> {
-    let Some(dir) = skill_dir(root, dir_name) else { return Vec::new() };
+    let Some(dir) = skill_dir(root, dir_name) else {
+        return Vec::new();
+    };
     let refs = dir.join(REFERENCES_DIR);
     let mut out = Vec::new();
     collect_files(&refs, &refs, &mut out);
@@ -221,10 +235,14 @@ fn collect_files(dir: &Path, base: &Path, out: &mut Vec<String>) {
         let path = entry.path();
         if path.is_dir() {
             collect_files(&path, base, out);
-        } else if path.is_file() {
-            if let Ok(rel) = path.strip_prefix(base) {
-                out.push(format!("{}/{}", REFERENCES_DIR, rel.to_string_lossy().replace('\\', "/")));
-            }
+        } else if path.is_file()
+            && let Ok(rel) = path.strip_prefix(base)
+        {
+            out.push(format!(
+                "{}/{}",
+                REFERENCES_DIR,
+                rel.to_string_lossy().replace('\\', "/")
+            ));
         }
     }
 }
@@ -239,14 +257,13 @@ pub fn read_skill_resource(root: &Path, dir_name: &str, rel_path: &str) -> Resul
 
     let target = dir.join(rel_path.replace('\\', "/"));
     let canon_dir = std::fs::canonicalize(&dir).map_err(|e| e.to_string())?;
-    let canon_target = std::fs::canonicalize(&target)
-        .map_err(|_| format!("resource '{rel_path}' not found in skill '{dir_name}'"))?;
+    let canon_target =
+        std::fs::canonicalize(&target).map_err(|_| format!("resource '{rel_path}' not found in skill '{dir_name}'"))?;
     if !canon_target.starts_with(&canon_dir) {
         return Err(format!("invalid resource path '{rel_path}'"));
     }
 
-    read_file_utf8(&canon_target)
-        .ok_or_else(|| format!("resource '{rel_path}' is not readable UTF-8 text"))
+    read_file_utf8(&canon_target).ok_or_else(|| format!("resource '{rel_path}' is not readable UTF-8 text"))
 }
 
 /// Write a skill's `SKILL.md`, composing frontmatter from the structured fields
@@ -274,8 +291,10 @@ pub fn write_skill_file(
 
     let dir = root.join(dir_name);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let content =
-        format!("---\nname: {llm_name}\ndescription: {description}\n---\n\n{}\n", body.trim());
+    let content = format!(
+        "---\nname: {llm_name}\ndescription: {description}\n---\n\n{}\n",
+        body.trim()
+    );
     std::fs::write(dir.join(SKILL_FILE), content).map_err(|e| e.to_string())
 }
 
@@ -320,9 +339,11 @@ mod tests {
 
     #[test]
     fn parse_tolerates_quotes_extra_keys_and_crlf() {
-        let content =
-            "---\r\nname: \"my-skill\"\r\nversion: 3\r\ndescription: 'Does things'\r\n---\r\nBody";
-        assert_eq!(parse_frontmatter(content), Some(("my-skill".into(), "Does things".into())));
+        let content = "---\r\nname: \"my-skill\"\r\nversion: 3\r\ndescription: 'Does things'\r\n---\r\nBody";
+        assert_eq!(
+            parse_frontmatter(content),
+            Some(("my-skill".into(), "Does things".into()))
+        );
     }
 
     #[test]
@@ -378,7 +399,12 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         let long = "x".repeat(500);
-        write_skill(root, "verbose", &format!("---\nname: verbose\ndescription: {long}\n---\n"), "b");
+        write_skill(
+            root,
+            "verbose",
+            &format!("---\nname: verbose\ndescription: {long}\n---\n"),
+            "b",
+        );
 
         let found = scan_skills(root);
         assert_eq!(found[0].llm_description.chars().count(), MAX_DESCRIPTION_LEN);
@@ -444,8 +470,7 @@ mod tests {
     #[test]
     fn written_skill_round_trips_through_the_scanner() {
         let dir = tempfile::tempdir().unwrap();
-        write_skill_file(dir.path(), "my-skill", "my-skill", "Does a thing", "# Steps\n1. Go")
-            .unwrap();
+        write_skill_file(dir.path(), "my-skill", "my-skill", "Does a thing", "# Steps\n1. Go").unwrap();
 
         let found = scan_skills(dir.path());
         assert_eq!(found.len(), 1);

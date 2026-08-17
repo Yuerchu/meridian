@@ -53,20 +53,44 @@ import { languageIconUrl } from '@/lib/file-icon'
 /** Feature detections, each phrased so `true` means "WebView2 will render it". */
 const PROBES: Array<{ name: string; note?: string; test: () => boolean }> = [
   { name: 'oklch()', note: 'Meridian 自己的 token 已在用', test: () => CSS.supports('color', 'oklch(0.5 0.1 200)') },
-  { name: 'color-mix()', note: 'HeroUI 5 个文件用到', test: () => CSS.supports('color', 'color-mix(in oklab, red, blue)') },
+  {
+    name: 'color-mix()',
+    note: 'HeroUI 5 个文件用到',
+    test: () => CSS.supports('color', 'color-mix(in oklab, red, blue)'),
+  },
   { name: ':has()', note: 'HeroUI 19 个文件用到', test: () => CSS.supports('selector(:has(*))') },
-  { name: '@property', note: 'HeroUI 1 个文件用到', test: () => typeof CSS !== 'undefined' && 'registerProperty' in CSS },
+  {
+    name: '@property',
+    note: 'HeroUI 1 个文件用到',
+    test: () => typeof CSS !== 'undefined' && 'registerProperty' in CSS,
+  },
   { name: 'backdrop-filter', test: () => CSS.supports('backdrop-filter', 'blur(4px)') },
   { name: 'view transitions', note: 'HeroUI 3 个文件用到', test: () => 'startViewTransition' in document },
-  { name: 'content-visibility', note: '⚠️ 本项目曾在此崩溃；HeroUI 自身不用', test: () => CSS.supports('content-visibility', 'auto') },
+  {
+    name: 'content-visibility',
+    note: '⚠️ 本项目曾在此崩溃；HeroUI 自身不用',
+    test: () => CSS.supports('content-visibility', 'auto'),
+  },
   { name: 'contain', note: '⚠️ 本项目曾在此错位；HeroUI 自身不用', test: () => CSS.supports('contain', 'content') },
   // Pro 用到而 OSS 不用的几个。前两个决定 TextShimmer 能不能上：它的渐变宽度
   // 是 `calc(… * tan(角度))`，颜色是 `oklch(from currentColor …)`。任一不支持，
   // 整条 background 简写就解析失败，而 `-webkit-text-fill-color: transparent`
   // 是独立声明照样生效 —— 结果不是降级，是那段文字直接看不见。
-  { name: 'oklch(from …) 相对颜色', note: 'Pro TextShimmer 用；不支持则文字消失', test: () => CSS.supports('color', 'oklch(from red l c h)') },
-  { name: 'tan() 三角函数', note: 'Pro TextShimmer 用；不支持则文字消失', test: () => CSS.supports('width', 'calc(1px * tan(15deg))') },
-  { name: 'display: contents', note: 'Pro PromptInput 的 compact/inline 布局', test: () => CSS.supports('display', 'contents') },
+  {
+    name: 'oklch(from …) 相对颜色',
+    note: 'Pro TextShimmer 用；不支持则文字消失',
+    test: () => CSS.supports('color', 'oklch(from red l c h)'),
+  },
+  {
+    name: 'tan() 三角函数',
+    note: 'Pro TextShimmer 用；不支持则文字消失',
+    test: () => CSS.supports('width', 'calc(1px * tan(15deg))'),
+  },
+  {
+    name: 'display: contents',
+    note: 'Pro PromptInput 的 compact/inline 布局',
+    test: () => CSS.supports('display', 'contents'),
+  },
   { name: 'overflow: clip', note: 'Pro Sidebar / ContextMenu.Menu', test: () => CSS.supports('overflow', 'clip') },
   { name: 'svh 单位', note: 'Pro Sidebar 的 min-height:100svh', test: () => CSS.supports('height', '100svh') },
   { name: 'inert 属性', note: 'Pro Sidebar.Page', test: () => 'inert' in HTMLElement.prototype },
@@ -120,8 +144,17 @@ plain fence
 
 /** Tokens whose name exists on both sides, so whoever wins is worth knowing. */
 const CONTESTED_TOKENS = [
-  '--background', '--foreground', '--muted', '--accent', '--default',
-  '--surface', '--overlay', '--danger', '--focus', '--radius', '--border',
+  '--background',
+  '--foreground',
+  '--muted',
+  '--accent',
+  '--default',
+  '--surface',
+  '--overlay',
+  '--danger',
+  '--focus',
+  '--radius',
+  '--border',
 ]
 
 interface Report {
@@ -168,7 +201,10 @@ function SidebarProbe() {
 
   return (
     <div className="space-y-2">
-      <div ref={rootRef} className="h-64 overflow-hidden rounded-lg border [&_.sidebar]:h-full [&_.sidebar\_\_provider]:h-full">
+      <div
+        ref={rootRef}
+        className="h-64 overflow-hidden rounded-lg border [&_.sidebar]:h-full [&_.sidebar\_\_provider]:h-full"
+      >
         <ProSidebar.Provider open collapsible="none" onOpenChange={() => {}}>
           <ProSidebar>
             <ProSidebar.Content>
@@ -181,7 +217,8 @@ function SidebarProbe() {
                   <ContextMenuTrigger
                     data-slot="probe-trigger"
                     onContextMenu={(e: React.MouseEvent) => {
-                      hitRef.current = (e.target as HTMLElement).closest('[data-row-id]')?.getAttribute('data-row-id') ?? null
+                      hitRef.current =
+                        (e.target as HTMLElement).closest('[data-row-id]')?.getAttribute('data-row-id') ?? null
                     }}
                   >
                     <ProSidebar.Menu aria-label="行">
@@ -205,23 +242,29 @@ function SidebarProbe() {
               </ProSidebar.Group>
             </ProSidebar.Content>
           </ProSidebar>
-          <ProSidebar.Main><span /></ProSidebar.Main>
+          <ProSidebar.Main>
+            <span />
+          </ProSidebar.Main>
         </ProSidebar.Provider>
       </div>
       <div className="flex flex-wrap gap-2">
         <HButton
           size="sm"
           variant="secondary"
-          onClick={() => setAttrs(
-            Array.from(rootRef.current?.querySelectorAll('[data-row-id]') ?? [])
-              .map((el) => el.getAttribute('data-row-id') ?? '?'),
-          )}
+          onClick={() =>
+            setAttrs(
+              Array.from(rootRef.current?.querySelectorAll('[data-row-id]') ?? []).map(
+                (el) => el.getAttribute('data-row-id') ?? '?',
+              ),
+            )
+          }
         >
           读 data-row-id
         </HButton>
       </div>
       <p className="font-mono text-xs" data-slot="probe-readout">
-        onAction: {acted ?? '(未点)'} ／ 菜单开在: {hit ?? '(关着)'} ／ DOM 上的 row id: {attrs ? (attrs.length ? attrs.join(',') : '一个都没有') : '(未读)'}
+        onAction: {acted ?? '(未点)'} ／ 菜单开在: {hit ?? '(关着)'} ／ DOM 上的 row id:{' '}
+        {attrs ? (attrs.length ? attrs.join(',') : '一个都没有') : '(未读)'}
       </p>
     </div>
   )
@@ -239,28 +282,47 @@ function PromptInputProbe() {
       <Composer
         value={value}
         onChange={setValue}
-        onSubmit={() => { setSubmits((n) => n + 1); setValue('') }}
-        onStop={() => { setStops((n) => n + 1); setStreaming(false) }}
+        onSubmit={() => {
+          setSubmits((n) => n + 1)
+          setValue('')
+        }}
+        onStop={() => {
+          setStops((n) => n + 1)
+          setStreaming(false)
+        }}
         streaming={streaming}
         steerable={steerable}
         ariaLabel="探测输入框"
         placeholder="打几个字，试 Enter / Shift+Enter / 组词中的 Enter"
-        toolbarStart={<span data-testid="slot-start" className="text-xs text-muted">工具槽</span>}
+        toolbarStart={
+          <span data-testid="slot-start" className="text-xs text-muted">
+            工具槽
+          </span>
+        }
         toolbarEnd={
           <>
-            <span data-testid="slot-end" className="text-xs text-muted">右槽</span>
+            <span data-testid="slot-end" className="text-xs text-muted">
+              右槽
+            </span>
             {/* Same shape as the composer's context gauge, which went missing
                 after the move. */}
             <HPopover>
               <HPopover.Trigger aria-label="上下文用量" className="inline-flex items-center rounded-full outline-none">
-                <HProgressCircle aria-hidden value={40} maxValue={100} className="[--progress-circle-stroke:var(--muted)]">
+                <HProgressCircle
+                  aria-hidden
+                  value={40}
+                  maxValue={100}
+                  className="[--progress-circle-stroke:var(--muted)]"
+                >
                   <HProgressCircle.Track className="size-4.5">
                     <HProgressCircle.TrackCircle />
                     <HProgressCircle.FillCircle />
                   </HProgressCircle.Track>
                 </HProgressCircle>
               </HPopover.Trigger>
-              <HPopover.Content placement="top" className="p-3 text-xs">用量面板</HPopover.Content>
+              <HPopover.Content placement="top" className="p-3 text-xs">
+                用量面板
+              </HPopover.Content>
             </HPopover>
           </>
         }
@@ -385,8 +447,13 @@ export default function HeroUiLab() {
               onClick={() => {
                 setReport(collect())
                 navigator.clipboard?.writeText(asText).then(
-                  () => { setCopied(true); setTimeout(() => setCopied(false), 1500) },
-                  () => { /* 剪贴板不可用时下面的文本可以手选 */ },
+                  () => {
+                    setCopied(true)
+                    setTimeout(() => setCopied(false), 1500)
+                  },
+                  () => {
+                    /* 剪贴板不可用时下面的文本可以手选 */
+                  },
                 )
               }}
             >
@@ -442,7 +509,9 @@ export default function HeroUiLab() {
               <HButton className="h-6 px-1.5">h-6</HButton>
               <HButton className="size-6 p-0">size-6</HButton>
               <HButton className="h-auto p-1">h-auto p-1</HButton>
-              <HButton isIconOnly className="size-8">size-8</HButton>
+              <HButton isIconOnly className="size-8">
+                size-8
+              </HButton>
             </div>
 
             <HSlider defaultValue={40} className="max-w-xs" aria-label="滑块">
@@ -462,9 +531,7 @@ export default function HeroUiLab() {
                 <HPopover.Trigger>
                   <HButton variant="secondary">点开 Popover</HButton>
                 </HPopover.Trigger>
-                <HPopover.Content className="p-3 text-sm">
-                  这里应该有边框和阴影
-                </HPopover.Content>
+                <HPopover.Content className="p-3 text-sm">这里应该有边框和阴影</HPopover.Content>
               </HPopover>
 
               {/* Trigger 得自己放 Value 和 Indicator，否则是个空框；集合项必须带
@@ -636,9 +703,13 @@ export default function HeroUiLab() {
                           />
                         </div>
                         <HInputGroup.Suffix className="w-full items-center gap-1 border-0 px-3 py-0">
-                          <HButton isIconOnly size="sm" variant="ghost" aria-label="加号" className="rounded-lg">+</HButton>
+                          <HButton isIconOnly size="sm" variant="ghost" aria-label="加号" className="rounded-lg">
+                            +
+                          </HButton>
                           <span className="flex-1" />
-                          <HButton isIconOnly size="sm" aria-label="发送" className="rounded-full">↑</HButton>
+                          <HButton isIconOnly size="sm" aria-label="发送" className="rounded-full">
+                            ↑
+                          </HButton>
                         </HInputGroup.Suffix>
                       </HInputGroup>
                     </HTextField>
@@ -695,9 +766,7 @@ export default function HeroUiLab() {
             <Bubble>
               <BubbleContent>气泡的圆角、底色、内边距应当和迁移前一致。</BubbleContent>
             </Bubble>
-            <p className="text-xs text-muted">
-              这行是 text-muted，应当是灰的；如果变成正文色，说明 --muted 被抢了。
-            </p>
+            <p className="text-xs text-muted">这行是 text-muted，应当是灰的；如果变成正文色，说明 --muted 被抢了。</p>
           </div>
         </Section>
 
@@ -709,7 +778,9 @@ export default function HeroUiLab() {
             `}</style>
             <div className="probe-host flex flex-wrap gap-1">
               {Array.from({ length: 200 }, (_, i) => (
-                <span key={i} className="probe-item rounded bg-default px-1 text-xs">{i}</span>
+                <span key={i} className="probe-item rounded bg-default px-1 text-xs">
+                  {i}
+                </span>
               ))}
             </div>
           </div>

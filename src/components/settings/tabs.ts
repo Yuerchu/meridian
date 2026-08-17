@@ -1,6 +1,18 @@
 import {
-  Bulb, BroadcastSignal, ChartColumn, CircleInfo, Cloud, FaceRobot, FaceSmile, LogoMcp,
-  Flask, Link, Microphone, Sliders, Sparkles, Wrench,
+  Bulb,
+  BroadcastSignal,
+  ChartColumn,
+  CircleInfo,
+  Cloud,
+  FaceRobot,
+  FaceSmile,
+  LogoMcp,
+  Flask,
+  Link,
+  Microphone,
+  Sliders,
+  Sparkles,
+  Wrench,
 } from '@gravity-ui/icons'
 
 /**
@@ -13,8 +25,20 @@ import {
  * eslint rule forbids taking values from the barrel for the same reason.
  */
 export type SettingsTab =
-  | 'provider' | 'usage' | 'assistants' | 'emoji' | 'tools' | 'skills' | 'mcp'
-  | 'memories' | 'voice' | 'onebot' | 'hooks' | 'general' | 'developer' | 'about'
+  | 'provider'
+  | 'usage'
+  | 'assistants'
+  | 'emoji'
+  | 'tools'
+  | 'skills'
+  | 'mcp'
+  | 'memories'
+  | 'voice'
+  | 'onebot'
+  | 'hooks'
+  | 'general'
+  | 'developer'
+  | 'about'
 
 export interface SettingsTabDef {
   id: SettingsTab
@@ -22,7 +46,7 @@ export interface SettingsTabDef {
   icon: React.ElementType
 }
 
-export const settingsTabs: SettingsTabDef[] = [
+const settingsTabs: SettingsTabDef[] = [
   { id: 'provider', labelKey: 'settings.provider', icon: Cloud },
   // Beside the providers rather than near the logs: it is priced entirely by
   // what that page was filled in with, and the two are read together.

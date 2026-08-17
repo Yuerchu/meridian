@@ -5,8 +5,9 @@ use crate::db::schema::{todo_items, todo_lists};
 
 /// Lifecycle of a checklist. A conversation may hold many lists but only one
 /// `InProgress` at a time — enforced by a partial unique index, not by code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, strum::IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum ListStatus {
     InProgress,
     Completed,
@@ -14,16 +15,14 @@ pub enum ListStatus {
 
 impl ListStatus {
     pub fn as_str(&self) -> &'static str {
-        match self {
-            ListStatus::InProgress => "in_progress",
-            ListStatus::Completed => "completed",
-        }
+        self.into()
     }
 }
 
 /// Per-item state. `InProgress` marks the single step being worked on right now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, strum::IntoStaticStr, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum ItemStatus {
     Pending,
     InProgress,
@@ -32,22 +31,13 @@ pub enum ItemStatus {
 
 impl ItemStatus {
     pub fn as_str(&self) -> &'static str {
-        match self {
-            ItemStatus::Pending => "pending",
-            ItemStatus::InProgress => "in_progress",
-            ItemStatus::Completed => "completed",
-        }
+        self.into()
     }
 
     pub fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "pending" => Ok(ItemStatus::Pending),
-            "in_progress" => Ok(ItemStatus::InProgress),
-            "completed" => Ok(ItemStatus::Completed),
-            other => Err(format!(
-                "unknown todo status '{other}'; expected pending, in_progress or completed"
-            )),
-        }
+        value
+            .parse()
+            .map_err(|_| format!("unknown todo status '{value}'; expected pending, in_progress or completed"))
     }
 }
 

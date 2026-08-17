@@ -1,8 +1,9 @@
+mod agent;
 #[cfg(target_os = "android")]
 mod android_bridge;
 mod client;
+mod commands;
 mod db;
-mod edit_session;
 mod emoji;
 mod files;
 /// The endpoint another coding agent's hooks call into. Desktop only: it is a
@@ -20,25 +21,25 @@ mod provider;
 mod sandbox;
 mod secrets;
 mod sleep_inhibitor;
+mod state;
 mod template;
 mod tools;
 mod turn;
 mod util;
 mod voice;
-mod state;
-mod agent;
-mod commands;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
+use agent::provider_secret_name;
 use db::models::assistant::{AssistantUpdate, NewAssistant};
+use db::models::provider::NewProvider;
 use db::models::tool_category::NewToolCategory;
 use db::models::tool_preset::NewToolPreset;
-use db::models::provider::NewProvider;
 use secrets::{SecretName, SecretScope, SecretsManager};
-use tauri::{Emitter, Manager};
+use state::{APP_HANDLE, AppDb, AppMcp, AppSecrets, AppTools, ApprovalWaiters};
+use tauri::Manager;
 #[cfg(desktop)]
 use tauri::image::Image;
 #[cfg(desktop)]
@@ -47,8 +48,6 @@ use tauri::menu::{MenuBuilder, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tokio::sync::Mutex;
 use util::now_ms;
-use state::{AppSecrets, AppDb, AppTools, AppMcp, APP_HANDLE, ApprovalWaiters, EditSessions};
-use agent::provider_secret_name;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -120,8 +119,8 @@ pub fn run() {
             {
                 let mut conn = pool.get().expect("db connection");
                 let count = db::ops::provider::count_providers(&mut conn).unwrap_or(0);
-                if count == 0 {
-                    if let Some(api_key) = mgr
+                if count == 0
+                    && let Some(api_key) = mgr
                         .get(&SecretScope::Global, &SecretName::new("API_KEY").unwrap())
                         .ok()
                         .flatten()
@@ -181,7 +180,6 @@ pub fn run() {
                             }
                         }
                     }
-                }
             }
 
             // `prompt_templates` is user-owned storage for reusable persona
@@ -324,7 +322,6 @@ pub fn run() {
             // state, and an occupancy table that resets when QQ restarts would
             // hand out a conversation a desktop turn is still writing.
             app.manage(state::AppTurns(Arc::new(turn::TurnCoordinator::new())));
-            app.manage(EditSessions(Mutex::new(HashMap::new())));
             app.manage(state::CompactBreakers(Mutex::new(HashMap::new())));
             app.manage(AppMcp(mcp::McpRegistry::new()));
             app.manage(sleep_inhibitor::AppSleepInhibitor::new());
@@ -386,7 +383,6 @@ pub fn run() {
                         }
                     });
                     futures::future::join_all(attempts).await;
-                    let _ = handle.emit("mcp-connections-changed", ());
                 });
             }
 
@@ -509,8 +505,6 @@ pub fn run() {
             commands::memory::restore_memories,
             commands::memory::purge_memories,
             commands::memory::memory_enums,
-            commands::audit::list_audit_messages,
-            commands::audit::purge_audit_before,
             commands::usage::usage_report,
             commands::preference::get_preference,
             commands::preference::set_preference,
@@ -523,10 +517,6 @@ pub fn run() {
             commands::mcp::list_mcp_tools,
             commands::mcp::list_mcp_connection_statuses,
             commands::mcp::list_all_tool_names,
-            commands::edit_session::list_staged_edits,
-            commands::edit_session::approve_staged_edit,
-            commands::edit_session::approve_all_staged_edits,
-            commands::edit_session::reject_staged_edit,
             commands::approval::approve_tool_call,
             commands::approval::deny_tool_call,
             commands::approval::respond_to_ask,
@@ -673,9 +663,9 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_initNdkContext(
     _class: jni::objects::JObject,
     context: jni::objects::JObject,
 ) {
+    use jni::objects::GlobalRef;
     use std::ffi::c_void;
     use std::sync::OnceLock;
-    use jni::objects::GlobalRef;
 
     static REF: OnceLock<Option<GlobalRef>> = OnceLock::new();
     REF.get_or_init(|| match env.new_global_ref(&context) {

@@ -49,28 +49,39 @@ export function EmojiPicker({
     }
 
     load()
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [open, assistantId])
 
-  const handleSearch = useCallback(async (q: string) => {
-    setSearch(q)
-    if (q.trim().length < 1) { setSearchResults([]); return }
-    const results = await api.searchEmojis(q.trim())
-    setSearchResults(results)
-    const urlMap = { ...urls }
-    for (const e of results) {
-      if (!urlMap[e.id]) {
-        const path = await api.getEmojiFileUrl(e.id)
-        urlMap[e.id] = path
+  const handleSearch = useCallback(
+    async (q: string) => {
+      setSearch(q)
+      if (q.trim().length < 1) {
+        setSearchResults([])
+        return
       }
-    }
-    setUrls(urlMap)
-  }, [urls])
+      const results = await api.searchEmojis(q.trim())
+      setSearchResults(results)
+      const urlMap = { ...urls }
+      for (const e of results) {
+        if (!urlMap[e.id]) {
+          const path = await api.getEmojiFileUrl(e.id)
+          urlMap[e.id] = path
+        }
+      }
+      setUrls(urlMap)
+    },
+    [urls],
+  )
 
-  const handleSelect = useCallback((emoji: Emoji) => {
-    onSelect(`[emoji:${emoji.name}]`)
-    setOpen(false)
-  }, [onSelect])
+  const handleSelect = useCallback(
+    (emoji: Emoji) => {
+      onSelect(`[emoji:${emoji.name}]`)
+      setOpen(false)
+    },
+    [onSelect],
+  )
 
   if (!assistantId) return null
 
@@ -86,7 +97,8 @@ export function EmojiPicker({
         <div className="p-2 border-b border-border">
           <div className="relative">
             <Magnifier className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
-            <Input fullWidth
+            <Input
+              fullWidth
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
               placeholder={t('chat.emojiSearch')}
@@ -95,62 +107,48 @@ export function EmojiPicker({
           </div>
         </div>
 
-        <div data-slot="emoji-picker-list" className="max-h-56 overflow-y-auto overscroll-contain"><div className="p-2">
-          {search.trim() ? (
-            <div className="grid grid-cols-6 gap-1">
-              {searchResults.map((e) => (
-                <Button
-                  key={e.id}
-                  variant="ghost"
-                  className="h-auto p-1 rounded hover:bg-default/50 transition-colors"
-                  onClick={() => handleSelect(e)}
-                >
-                  <img
-                    src={urls[e.id]}
-                    alt={e.name}
-                    className="w-7 h-7 object-contain"
-                    title={e.name}
-                  />
-                </Button>
-              ))}
-              {searchResults.length === 0 && (
-                <p className="col-span-6 text-xs text-muted text-center py-3">
-                  {t('chat.emojiNotFound')}
-                </p>
-              )}
-            </div>
-          ) : (
-            packs.map(({ pack, emojis }) => (
-              <div key={pack.id} className="mb-2">
-                <p className="text-xs text-muted font-medium mb-1 px-1">
-                  {pack.name}
-                </p>
-                <div className="grid grid-cols-6 gap-1">
-                  {emojis.map((e) => (
-                    <Button
-                      key={e.id}
-                      variant="ghost"
-                      className="h-auto rounded p-1 transition-colors hover:bg-default/50"
-                      onClick={() => handleSelect(e)}
-                    >
-                      <img
-                        src={urls[e.id]}
-                        alt={e.name}
-                        className="w-7 h-7 object-contain"
-                        title={e.name}
-                      />
-                    </Button>
-                  ))}
-                </div>
+        <div data-slot="emoji-picker-list" className="max-h-56 overflow-y-auto overscroll-contain">
+          <div className="p-2">
+            {search.trim() ? (
+              <div className="grid grid-cols-6 gap-1">
+                {searchResults.map((e) => (
+                  <Button
+                    key={e.id}
+                    variant="ghost"
+                    className="h-auto p-1 rounded hover:bg-default/50 transition-colors"
+                    onClick={() => handleSelect(e)}
+                  >
+                    <img src={urls[e.id]} alt={e.name} className="w-7 h-7 object-contain" title={e.name} />
+                  </Button>
+                ))}
+                {searchResults.length === 0 && (
+                  <p className="col-span-6 text-xs text-muted text-center py-3">{t('chat.emojiNotFound')}</p>
+                )}
               </div>
-            ))
-          )}
-          {packs.length === 0 && !search.trim() && (
-            <p className="text-xs text-muted text-center py-4">
-              {t('chat.emojiNoPacks')}
-            </p>
-          )}
-        </div></div>
+            ) : (
+              packs.map(({ pack, emojis }) => (
+                <div key={pack.id} className="mb-2">
+                  <p className="text-xs text-muted font-medium mb-1 px-1">{pack.name}</p>
+                  <div className="grid grid-cols-6 gap-1">
+                    {emojis.map((e) => (
+                      <Button
+                        key={e.id}
+                        variant="ghost"
+                        className="h-auto rounded p-1 transition-colors hover:bg-default/50"
+                        onClick={() => handleSelect(e)}
+                      >
+                        <img src={urls[e.id]} alt={e.name} className="w-7 h-7 object-contain" title={e.name} />
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
+            {packs.length === 0 && !search.trim() && (
+              <p className="text-xs text-muted text-center py-4">{t('chat.emojiNoPacks')}</p>
+            )}
+          </div>
+        </div>
       </Popover.Content>
     </Popover>
   )

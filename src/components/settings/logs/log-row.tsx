@@ -23,9 +23,7 @@ function formatLocalTime(tsMs: number): string {
   const clock = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`
   const now = new Date()
   const sameDay =
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
+    d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
   return sameDay ? clock : `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${clock}`
 }
 
@@ -40,10 +38,7 @@ function LogRowImpl({ entry }: { entry: LogEntry }) {
 
   // Span fields first: they say which conversation or request this belongs to,
   // which is what a reader is usually scanning for.
-  const fields = [
-    ...Object.entries(entry.span_fields ?? {}),
-    ...Object.entries(entry.fields ?? {}),
-  ]
+  const fields = [...Object.entries(entry.span_fields ?? {}), ...Object.entries(entry.fields ?? {})]
 
   const isError = entry.level === 'ERROR'
   // Rendered in local time. The record stores UTC so the file sorts lexically,

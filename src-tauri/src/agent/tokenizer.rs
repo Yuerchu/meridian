@@ -1,5 +1,5 @@
-use std::sync::{Arc, OnceLock};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, OnceLock};
 
 use tiktoken::CoreBpe;
 
@@ -137,9 +137,7 @@ fn safe_threshold(context_limit: usize, max_output: usize) -> usize {
     // Never below half the window. A configuration that would put it there is
     // one no amount of compacting can rescue — the reply simply does not fit —
     // and compacting on every single turn would hide that rather than fix it.
-    context_limit
-        .saturating_sub(reserve + headroom)
-        .max(context_limit / 2)
+    context_limit.saturating_sub(reserve + headroom).max(context_limit / 2)
 }
 
 /// The smallest reply worth making a request for.
@@ -151,9 +149,7 @@ pub const MIN_REPLY_TOKENS: usize = 256;
 
 pub struct TokenBudget {
     pub context_limit: usize,
-    pub max_output: usize,
     pub compact_threshold: usize,
-    pub hard_limit: usize,
     pub current_estimate: usize,
     pub counter: TokenCounter,
 }
@@ -173,12 +169,9 @@ impl TokenBudget {
         // same number — and a stored value that outran the window is exactly the
         // shape that stopped compaction firing at all.
         let compact_threshold = compact_threshold_override.map_or(safe, |t| t.min(safe));
-        let hard_limit = context_limit * 95 / 100;
         Self {
             context_limit,
-            max_output,
             compact_threshold,
-            hard_limit,
             current_estimate: 0,
             counter: TokenCounter::for_model(provider_type, model),
         }
@@ -213,19 +206,16 @@ impl TokenBudget {
     }
 
     pub fn calibrate_from_usage(&mut self, usage: &crate::provider::TokenUsage) {
-        if let Some(prompt) = usage.prompt_tokens {
-            if prompt > 0 && self.current_estimate > 0 {
-                self.counter.calibrate(self.current_estimate, prompt as usize);
-            }
+        if let Some(prompt) = usage.prompt_tokens
+            && prompt > 0
+            && self.current_estimate > 0
+        {
+            self.counter.calibrate(self.current_estimate, prompt as usize);
         }
     }
 
     pub fn needs_compact(&self) -> bool {
         self.current_estimate > self.compact_threshold
-    }
-
-    pub fn is_blocked(&self) -> bool {
-        self.current_estimate > self.hard_limit
     }
 }
 
@@ -243,8 +233,14 @@ mod tests {
     #[test]
     fn test_tokenizer_for_model_cl100k() {
         assert_eq!(tokenizer_for_model("openai", "gpt-4o"), TokenizerKind::Cl100kBase);
-        assert_eq!(tokenizer_for_model("anthropic", "claude-sonnet-4-20250514"), TokenizerKind::Cl100kBase);
-        assert_eq!(tokenizer_for_model("deepseek", "deepseek-chat"), TokenizerKind::Cl100kBase);
+        assert_eq!(
+            tokenizer_for_model("anthropic", "claude-sonnet-4-20250514"),
+            TokenizerKind::Cl100kBase
+        );
+        assert_eq!(
+            tokenizer_for_model("deepseek", "deepseek-chat"),
+            TokenizerKind::Cl100kBase
+        );
     }
 
     #[test]
@@ -284,7 +280,6 @@ mod tests {
         // Reserve is the model's own maximum here, being under the cap.
         let budget = TokenBudget::new("openai", "gpt-4o", 128_000, 16_384, None);
         assert_eq!(budget.compact_threshold, 128_000 - 16_384 - 6_400);
-        assert_eq!(budget.hard_limit, 128_000 * 95 / 100);
     }
 
     /// The case that made a large window unusable: reserving all of a model's
@@ -355,10 +350,18 @@ mod tests {
         let mut budget = TokenBudget::new("openai", "gpt-4o", 256_000, 128_000, None);
 
         budget.current_estimate = 10_000;
-        assert_eq!(budget.reply_ceiling(Some(128_000)), Some(128_000), "plenty of room, ask for it all");
+        assert_eq!(
+            budget.reply_ceiling(Some(128_000)),
+            Some(128_000),
+            "plenty of room, ask for it all"
+        );
 
         budget.current_estimate = 200_000;
-        assert_eq!(budget.reply_ceiling(Some(128_000)), Some(56_000), "trimmed to the room left");
+        assert_eq!(
+            budget.reply_ceiling(Some(128_000)),
+            Some(56_000),
+            "trimmed to the room left"
+        );
     }
 
     /// The ceiling is never a floor. A small remainder is a reason to stop, not
@@ -376,7 +379,10 @@ mod tests {
                 "{estimate}: asked for {asked} with {} left",
                 budget.room_for_reply(),
             );
-            assert!(asked <= budget.room_for_reply(), "{estimate}: asked for more than is left");
+            assert!(
+                asked <= budget.room_for_reply(),
+                "{estimate}: asked for more than is left"
+            );
         }
     }
 

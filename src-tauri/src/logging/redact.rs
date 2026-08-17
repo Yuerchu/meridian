@@ -15,11 +15,23 @@ use serde_json::Value;
 /// something harmless costs a field in a log nobody was reading; missing a real
 /// credential costs the credential. The false positives stay.
 const SENSITIVE_FIELDS: &[&str] = &[
-    "api_key", "apikey", "api-key",
-    "authorization", "auth_header", "bearer",
-    "token", "credential", "signature", "sign",
-    "secret", "password", "passwd", "passphrase",
-    "cookie", "session_id", "private_key",
+    "api_key",
+    "apikey",
+    "api-key",
+    "authorization",
+    "auth_header",
+    "bearer",
+    "token",
+    "credential",
+    "signature",
+    "sign",
+    "secret",
+    "password",
+    "passwd",
+    "passphrase",
+    "cookie",
+    "session_id",
+    "private_key",
 ];
 
 fn is_sensitive(name: &str) -> bool {
@@ -44,9 +56,7 @@ pub(crate) fn scrub_field(name: &str, value: Value) -> Value {
     match value {
         // The name looked innocent, so fall back to matching the value itself.
         Value::String(s) => Value::String(scrub_text(&s)),
-        Value::Array(items) => Value::Array(
-            items.into_iter().map(|v| scrub_field(name, v)).collect(),
-        ),
+        Value::Array(items) => Value::Array(items.into_iter().map(|v| scrub_field(name, v)).collect()),
         other => other,
     }
 }
@@ -67,7 +77,16 @@ mod tests {
 
     #[test]
     fn sensitive_names_are_replaced_whatever_the_case_or_prefix() {
-        for name in ["api_key", "API_KEY", "provider_api_key", "Authorization", "x-api-key", "db_password", "refresh_token", "session_id"] {
+        for name in [
+            "api_key",
+            "API_KEY",
+            "provider_api_key",
+            "Authorization",
+            "x-api-key",
+            "db_password",
+            "refresh_token",
+            "session_id",
+        ] {
             let out = scrub(name, json!("hunter2hunter2hunter2"));
             assert!(out.contains("REDACTED"), "{name} was not redacted: {out}");
             assert!(!out.contains("hunter2"), "{name} leaked its value: {out}");
@@ -91,7 +110,10 @@ mod tests {
     #[test]
     fn an_innocent_name_still_gets_its_value_scanned() {
         // The name says nothing, but the value is unmistakably a key.
-        let out = scrub("detail", json!("request failed with sk-abcdefghijklmnopqrstuvwxyz012345"));
+        let out = scrub(
+            "detail",
+            json!("request failed with sk-abcdefghijklmnopqrstuvwxyz012345"),
+        );
         assert!(!out.contains("sk-abcdefghijklmnop"), "{out}");
         assert!(out.contains("REDACTED"), "{out}");
     }

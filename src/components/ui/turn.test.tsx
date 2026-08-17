@@ -32,9 +32,7 @@ describe('TurnBranchPager', () => {
   })
 
   it('stops at both ends', () => {
-    const { rerender } = render(
-      <TurnBranchPager index={1} total={3} previousLabel="prev" nextLabel="next" />,
-    )
+    const { rerender } = render(<TurnBranchPager index={1} total={3} previousLabel="prev" nextLabel="next" />)
     expect(screen.getByLabelText('prev')).toBeDisabled()
     expect(screen.getByLabelText('next')).toBeEnabled()
 
@@ -76,9 +74,6 @@ describe('Turn', () => {
         <TurnTrigger>Waiting for you</TurnTrigger>
       </Turn>,
     )
-    expect(container.querySelector('[data-slot="turn-collapsible"]')).toHaveAttribute(
-      'data-status',
-      'awaiting-input',
-    )
+    expect(container.querySelector('[data-slot="turn-collapsible"]')).toHaveAttribute('data-status', 'awaiting-input')
   })
 })

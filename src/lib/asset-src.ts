@@ -21,7 +21,7 @@ export function assetSrc(url?: string): string | undefined {
 /** Extensions the WebView will render as an image. */
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'svg', 'ico'])
 
-export function isImageName(name: string): boolean {
+function isImageName(name: string): boolean {
   const ext = name.split('.').pop()?.toLowerCase()
   return !!ext && IMAGE_EXTENSIONS.has(ext)
 }

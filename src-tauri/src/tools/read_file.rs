@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use super::{Permission, Tool, ToolContext};
+use async_trait::async_trait;
 
 pub struct ReadFileTool;
 
@@ -40,9 +40,7 @@ impl Tool for ReadFileTool {
     }
 
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
-        let path_str = args["path"]
-            .as_str()
-            .ok_or("missing 'path' argument")?;
+        let path_str = args["path"].as_str().ok_or("missing 'path' argument")?;
         // Opened rather than merely resolved: reads are the one thing that runs
         // without asking once the path is inside the project, so the check has
         // to apply to the handle that does the reading.
@@ -51,13 +49,13 @@ impl Tool for ReadFileTool {
         let capped = super::backend::read_capped_opened(target, MAX_OUTPUT_BYTES).await?;
 
         if capped.truncated {
-            let size_info = capped.total_size
+            let size_info = capped
+                .total_size
                 .map(|s| format!(", total {} bytes", s))
                 .unwrap_or_default();
             return Ok(format!(
                 "{}...\n\n(file truncated at 256KB{})",
-                capped.content,
-                size_info
+                capped.content, size_info
             ));
         }
 
@@ -79,7 +77,6 @@ mod tests {
             conversation_id: None,
             assistant_id: None,
             db_pool: None,
-            edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),
@@ -109,7 +106,11 @@ mod tests {
             .execute(serde_json::json!({"path": "big.txt"}), &ctx(dir.path()))
             .await
             .unwrap();
-        assert!(out.contains("file truncated"), "got tail: {}", &out[out.len().saturating_sub(80)..]);
+        assert!(
+            out.contains("file truncated"),
+            "got tail: {}",
+            &out[out.len().saturating_sub(80)..]
+        );
     }
 
     #[tokio::test]

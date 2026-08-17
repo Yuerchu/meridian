@@ -46,22 +46,54 @@ static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
 });
 
 fn apply(base: &mut ProviderCapabilities, entry: &CatalogEntry) {
-    if let Some(v) = entry.supports_tools { base.supports_tools = v; }
-    if let Some(v) = entry.supports_streaming_tools { base.supports_streaming_tools = v; }
-    if let Some(v) = entry.supports_thinking { base.supports_thinking = v; }
-    if let Some(v) = entry.supports_images { base.supports_images = v; }
-    if let Some(v) = entry.supports_pdf { base.supports_pdf = v; }
-    if let Some(v) = entry.supports_temperature { base.supports_temperature = v; }
-    if let Some(v) = entry.supports_top_p { base.supports_top_p = v; }
-    if let Some(v) = entry.max_context_tokens { base.max_context_tokens = Some(v); }
-    if let Some(v) = entry.max_output_tokens { base.max_output_tokens = Some(v); }
-    if let Some(v) = entry.max_temperature { base.max_temperature = Some(v); }
-    if let Some(v) = entry.thinking_style { base.thinking_style = v; }
-    if let Some(ref v) = entry.supported_efforts { base.supported_efforts = v.clone(); }
-    if let Some(ref v) = entry.default_effort { base.default_effort = Some(v.clone()); }
-    if let Some(v) = entry.supports_fast { base.supports_fast = v; }
-    if let Some(v) = entry.supports_verbosity { base.supports_verbosity = v; }
-    if let Some(ref v) = entry.default_verbosity { base.default_verbosity = Some(v.clone()); }
+    if let Some(v) = entry.supports_tools {
+        base.supports_tools = v;
+    }
+    if let Some(v) = entry.supports_streaming_tools {
+        base.supports_streaming_tools = v;
+    }
+    if let Some(v) = entry.supports_thinking {
+        base.supports_thinking = v;
+    }
+    if let Some(v) = entry.supports_images {
+        base.supports_images = v;
+    }
+    if let Some(v) = entry.supports_pdf {
+        base.supports_pdf = v;
+    }
+    if let Some(v) = entry.supports_temperature {
+        base.supports_temperature = v;
+    }
+    if let Some(v) = entry.supports_top_p {
+        base.supports_top_p = v;
+    }
+    if let Some(v) = entry.max_context_tokens {
+        base.max_context_tokens = Some(v);
+    }
+    if let Some(v) = entry.max_output_tokens {
+        base.max_output_tokens = Some(v);
+    }
+    if let Some(v) = entry.max_temperature {
+        base.max_temperature = Some(v);
+    }
+    if let Some(v) = entry.thinking_style {
+        base.thinking_style = v;
+    }
+    if let Some(ref v) = entry.supported_efforts {
+        base.supported_efforts = v.clone();
+    }
+    if let Some(ref v) = entry.default_effort {
+        base.default_effort = Some(v.clone());
+    }
+    if let Some(v) = entry.supports_fast {
+        base.supports_fast = v;
+    }
+    if let Some(v) = entry.supports_verbosity {
+        base.supports_verbosity = v;
+    }
+    if let Some(ref v) = entry.default_verbosity {
+        base.default_verbosity = Some(v.clone());
+    }
 }
 
 fn find_longest_prefix_match<'a>(provider: &str, model: &str) -> Option<&'a CatalogEntry> {
@@ -192,15 +224,51 @@ pub fn apply_overrides(caps: &mut ProviderCapabilities, overrides: Option<&str>)
     let as_bool = |v: &serde_json::Value| v.as_bool();
     for (key, value) in &map {
         match key.as_str() {
-            "supports_tools" => if let Some(v) = as_bool(value) { caps.supports_tools = v },
-            "supports_streaming_tools" => if let Some(v) = as_bool(value) { caps.supports_streaming_tools = v },
-            "supports_thinking" => if let Some(v) = as_bool(value) { caps.supports_thinking = v },
-            "supports_images" => if let Some(v) = as_bool(value) { caps.supports_images = v },
-            "supports_pdf" => if let Some(v) = as_bool(value) { caps.supports_pdf = v },
-            "supports_temperature" => if let Some(v) = as_bool(value) { caps.supports_temperature = v },
-            "supports_top_p" => if let Some(v) = as_bool(value) { caps.supports_top_p = v },
-            "supports_fast" => if let Some(v) = as_bool(value) { caps.supports_fast = v },
-            "supports_verbosity" => if let Some(v) = as_bool(value) { caps.supports_verbosity = v },
+            "supports_tools" => {
+                if let Some(v) = as_bool(value) {
+                    caps.supports_tools = v
+                }
+            }
+            "supports_streaming_tools" => {
+                if let Some(v) = as_bool(value) {
+                    caps.supports_streaming_tools = v
+                }
+            }
+            "supports_thinking" => {
+                if let Some(v) = as_bool(value) {
+                    caps.supports_thinking = v
+                }
+            }
+            "supports_images" => {
+                if let Some(v) = as_bool(value) {
+                    caps.supports_images = v
+                }
+            }
+            "supports_pdf" => {
+                if let Some(v) = as_bool(value) {
+                    caps.supports_pdf = v
+                }
+            }
+            "supports_temperature" => {
+                if let Some(v) = as_bool(value) {
+                    caps.supports_temperature = v
+                }
+            }
+            "supports_top_p" => {
+                if let Some(v) = as_bool(value) {
+                    caps.supports_top_p = v
+                }
+            }
+            "supports_fast" => {
+                if let Some(v) = as_bool(value) {
+                    caps.supports_fast = v
+                }
+            }
+            "supports_verbosity" => {
+                if let Some(v) = as_bool(value) {
+                    caps.supports_verbosity = v
+                }
+            }
             "thinking_style" => {
                 if let Ok(style) = serde_json::from_value::<ThinkingStyle>(value.clone()) {
                     caps.thinking_style = style;
@@ -322,10 +390,10 @@ pub fn filter_params(params: &mut ChatParams, caps: &ProviderCapabilities) {
     } else {
         params.verbosity = None;
     }
-    if let (Some(max_temp), Some(temp)) = (caps.max_temperature, params.temperature) {
-        if temp > max_temp as f64 {
-            params.temperature = Some(max_temp as f64);
-        }
+    if let (Some(max_temp), Some(temp)) = (caps.max_temperature, params.temperature)
+        && temp > max_temp as f64
+    {
+        params.temperature = Some(max_temp as f64);
     }
 }
 
@@ -543,7 +611,10 @@ mod tests {
         };
         filter_params(&mut params, &caps);
         assert!(params.temperature.is_none(), "sampling params are a 400 on Opus 4.7+");
-        assert!(params.thinking_budget.is_none(), "budget_tokens is a 400 on adaptive models");
+        assert!(
+            params.thinking_budget.is_none(),
+            "budget_tokens is a 400 on adaptive models"
+        );
         assert_eq!(params.thinking_effort, Some("xhigh".into()));
     }
 
@@ -577,7 +648,10 @@ mod tests {
 
     #[test]
     fn nearest_supported_effort_cases() {
-        let full: Vec<String> = ["low", "medium", "high", "xhigh", "max"].iter().map(|s| s.to_string()).collect();
+        let full: Vec<String> = ["low", "medium", "high", "xhigh", "max"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         assert_eq!(nearest_supported_effort("xhigh", &full), Some("xhigh".into()));
         assert_eq!(nearest_supported_effort("minimal", &full), Some("high".into()));
         assert_eq!(nearest_supported_effort("high", &[]), None);
@@ -589,7 +663,11 @@ mod tests {
     #[test]
     fn fast_is_stripped_when_unsupported() {
         let caps = resolve("openai", Some("responses"), "gpt-5.2");
-        let mut params = ChatParams { model: "gpt-5.2".into(), fast: true, ..Default::default() };
+        let mut params = ChatParams {
+            model: "gpt-5.2".into(),
+            fast: true,
+            ..Default::default()
+        };
         filter_params(&mut params, &caps);
         assert!(!params.fast);
     }
@@ -597,7 +675,10 @@ mod tests {
     #[test]
     fn verbosity_defaults_from_catalog_and_is_stripped_when_unsupported() {
         let caps = resolve("openai", Some("responses"), "gpt-5.6-sol");
-        let mut params = ChatParams { model: "gpt-5.6-sol".into(), ..Default::default() };
+        let mut params = ChatParams {
+            model: "gpt-5.6-sol".into(),
+            ..Default::default()
+        };
         filter_params(&mut params, &caps);
         assert_eq!(params.verbosity, Some("low".into()));
 
@@ -632,7 +713,10 @@ mod tests {
     fn overrides_patch_catalog() {
         let mut caps = resolve("anthropic", None, "claude-haiku-4-5");
         assert!(caps.supported_efforts.is_empty());
-        apply_overrides(&mut caps, Some(r#"{"supported_efforts":["high","low"],"supports_fast":true}"#));
+        apply_overrides(
+            &mut caps,
+            Some(r#"{"supported_efforts":["high","low"],"supports_fast":true}"#),
+        );
         // Rebuilt through the ladder, so ascending order regardless of input order.
         assert_eq!(caps.supported_efforts, vec!["low", "high"]);
         assert!(caps.supports_reasoning_effort);

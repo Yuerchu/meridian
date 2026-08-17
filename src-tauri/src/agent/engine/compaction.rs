@@ -20,7 +20,7 @@
 
 use std::sync::Arc;
 
-use crate::agent::{microcompact, mid_turn_compact, trim_to_context_limit, CompactCircuitBreaker, TokenBudget};
+use crate::agent::{CompactCircuitBreaker, TokenBudget, microcompact, mid_turn_compact, trim_to_context_limit};
 use crate::provider::{ChatMessage, ChatParams, ChatProvider};
 
 use super::Emit;
@@ -57,11 +57,7 @@ impl Compacting<'_> {
     /// the time anything calls this the alternative is a request that will be
     /// refused again.
     fn trim(&mut self) {
-        trim_to_context_limit(
-            self.messages,
-            self.context_limit / 2,
-            (self.keep_recent / 2).max(2),
-        );
+        trim_to_context_limit(self.messages, self.context_limit / 2, (self.keep_recent / 2).max(2));
         // Re-measured here rather than at each of the four call sites. Trimming
         // is the one step that always changes what the estimate describes, and
         // the caller sizes the retry's output allowance from it — a stale one
@@ -144,19 +140,18 @@ impl CompactionPolicy {
                     return;
                 }
                 c.announce("compact-start", serde_json::json!({ "trigger": "api_error" }));
-                let rung =
-                    match mid_turn_compact(c.messages, c.budget, c.provider, c.params, c.keep_recent).await {
-                        Ok(_) => {
-                            breaker.record_success();
-                            c.budget.update_estimate(c.messages);
-                            "summary"
-                        }
-                        Err(_) => {
-                            breaker.record_failure();
-                            c.trim();
-                            "trim"
-                        }
-                    };
+                let rung = match mid_turn_compact(c.messages, c.budget, c.provider, c.params, c.keep_recent).await {
+                    Ok(_) => {
+                        breaker.record_success();
+                        c.budget.update_estimate(c.messages);
+                        "summary"
+                    }
+                    Err(_) => {
+                        breaker.record_failure();
+                        c.trim();
+                        "trim"
+                    }
+                };
                 c.announce("compact-done", serde_json::json!({ "trigger": "api_error" }));
                 c.report("api_error", before, rung);
             }
@@ -176,9 +171,7 @@ impl CompactionPolicy {
                 let mut rung = "microcompact";
                 if c.budget.needs_compact() {
                     rung = "summary";
-                    if let Err(e) =
-                        mid_turn_compact(c.messages, c.budget, c.provider, c.params, c.keep_recent).await
-                    {
+                    if let Err(e) = mid_turn_compact(c.messages, c.budget, c.provider, c.params, c.keep_recent).await {
                         tracing::warn!("OneBot mid-turn compact failed: {e}");
                         rung = "trim";
                         c.trim();
@@ -254,11 +247,7 @@ mod tests {
             panic!("recovery asked the model to stream")
         }
 
-        async fn chat(
-            &self,
-            _messages: Vec<ChatMessage>,
-            _params: ChatParams,
-        ) -> Result<String, ProviderError> {
+        async fn chat(&self, _messages: Vec<ChatMessage>, _params: ChatParams) -> Result<String, ProviderError> {
             panic!("recovery asked the model for a summary")
         }
 
@@ -297,7 +286,10 @@ mod tests {
     }
 
     fn system(text: &str) -> ChatMessage {
-        ChatMessage { role: "system".into(), ..ChatMessage::user(text) }
+        ChatMessage {
+            role: "system".into(),
+            ..ChatMessage::user(text)
+        }
     }
 
     /// A history whose weight is one old tool result, with a short tail behind
@@ -326,11 +318,20 @@ mod tests {
         let was = budget.current_estimate;
 
         CompactionPolicy::OneBot
-            .on_overflow(compacting(&mut messages, &mut budget, &NeverAsked, &ChatParams::default()))
+            .on_overflow(compacting(
+                &mut messages,
+                &mut budget,
+                &NeverAsked,
+                &ChatParams::default(),
+            ))
             .await;
 
         assert_eq!(messages.len(), before, "discarded turns it did not have to");
-        assert!(budget.current_estimate < was, "freed nothing: {was} -> {}", budget.current_estimate);
+        assert!(
+            budget.current_estimate < was,
+            "freed nothing: {was} -> {}",
+            budget.current_estimate
+        );
     }
 
     /// And it is still only the first rung. A history with nothing truncatable
@@ -345,10 +346,18 @@ mod tests {
         budget.update_estimate(&messages);
 
         CompactionPolicy::OneBot
-            .on_overflow(compacting(&mut messages, &mut budget, &NeverAsked, &ChatParams::default()))
+            .on_overflow(compacting(
+                &mut messages,
+                &mut budget,
+                &NeverAsked,
+                &ChatParams::default(),
+            ))
             .await;
 
-        assert!(messages.len() < before, "nothing came out of a history that had to shrink");
+        assert!(
+            messages.len() < before,
+            "nothing came out of a history that had to shrink"
+        );
     }
 
     /// The caller sizes the retry's output allowance from the estimate, so an
@@ -361,7 +370,12 @@ mod tests {
             budget.update_estimate(&messages);
 
             CompactionPolicy::OneBot
-                .on_overflow(compacting(&mut messages, &mut budget, &NeverAsked, &ChatParams::default()))
+                .on_overflow(compacting(
+                    &mut messages,
+                    &mut budget,
+                    &NeverAsked,
+                    &ChatParams::default(),
+                ))
                 .await;
 
             assert_eq!(budget.current_estimate, budget.counter.count_messages(&messages));

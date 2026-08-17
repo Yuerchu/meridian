@@ -26,8 +26,6 @@ pub fn parse_frame(text: &str) -> Option<OneBotFrame> {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct OneBotEvent {
-    #[serde(default)]
-    pub time: i64,
     pub self_id: Option<i64>,
     pub post_type: String,
     pub message_type: Option<String>,
@@ -54,7 +52,6 @@ pub struct OneBotEvent {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Sender {
-    pub user_id: Option<i64>,
     pub nickname: Option<String>,
     pub card: Option<String>,
     pub role: Option<String>,
@@ -165,30 +162,28 @@ impl OneBotAction {
         }
     }
 
-    pub fn get_group_msg_history(
-        group_id: i64,
-        message_seq: Option<i64>,
-        count: i64,
-        echo: String,
-    ) -> Self {
+    pub fn get_group_msg_history(group_id: i64, message_seq: Option<i64>, count: i64, echo: String) -> Self {
         let mut params = serde_json::json!({ "group_id": group_id, "count": count });
         if let Some(seq) = message_seq {
             params["message_seq"] = seq.into();
         }
-        Self { action: "get_group_msg_history".into(), params, echo: Some(echo) }
+        Self {
+            action: "get_group_msg_history".into(),
+            params,
+            echo: Some(echo),
+        }
     }
 
-    pub fn get_friend_msg_history(
-        user_id: i64,
-        message_seq: Option<i64>,
-        count: i64,
-        echo: String,
-    ) -> Self {
+    pub fn get_friend_msg_history(user_id: i64, message_seq: Option<i64>, count: i64, echo: String) -> Self {
         let mut params = serde_json::json!({ "user_id": user_id, "count": count });
         if let Some(seq) = message_seq {
             params["message_seq"] = seq.into();
         }
-        Self { action: "get_friend_msg_history".into(), params, echo: Some(echo) }
+        Self {
+            action: "get_friend_msg_history".into(),
+            params,
+            echo: Some(echo),
+        }
     }
 
     pub fn set_friend_add_request(flag: &str, approve: bool, remark: Option<&str>, echo: String) -> Self {
@@ -196,7 +191,11 @@ impl OneBotAction {
         if let Some(r) = remark.filter(|r| !r.is_empty()) {
             params["remark"] = r.into();
         }
-        Self { action: "set_friend_add_request".into(), params, echo: Some(echo) }
+        Self {
+            action: "set_friend_add_request".into(),
+            params,
+            echo: Some(echo),
+        }
     }
 
     pub fn set_group_add_request(
@@ -210,7 +209,11 @@ impl OneBotAction {
         if let Some(r) = reason.filter(|r| !r.is_empty()) {
             params["reason"] = r.into();
         }
-        Self { action: "set_group_add_request".into(), params, echo: Some(echo) }
+        Self {
+            action: "set_group_add_request".into(),
+            params,
+            echo: Some(echo),
+        }
     }
 
     pub fn get_group_info(group_id: i64, echo: String) -> Self {
@@ -275,7 +278,11 @@ impl OneBotAction {
         if let Some(g) = group_id {
             params["group_id"] = g.into();
         }
-        Self { action: "send_poke".into(), params, echo: Some(echo) }
+        Self {
+            action: "send_poke".into(),
+            params,
+            echo: Some(echo),
+        }
     }
 
     pub fn send_like(user_id: i64, times: i64, echo: String) -> Self {
@@ -365,7 +372,7 @@ impl MessageSegment {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_frame, OneBotFrame};
+    use super::{OneBotFrame, parse_frame};
 
     #[test]
     fn test_parse_notice_event_fields() {

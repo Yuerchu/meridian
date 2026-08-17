@@ -24,17 +24,13 @@ impl ProcThreadAttributeList {
             InitializeProcThreadAttributeList(std::ptr::null_mut(), attr_count, 0, &mut size);
         }
         if size == 0 {
-            return Err(io::Error::from_raw_os_error(unsafe {
-                GetLastError() as i32
-            }));
+            return Err(io::Error::from_raw_os_error(unsafe { GetLastError() as i32 }));
         }
         let mut buffer = vec![0u8; size];
         let list = buffer.as_mut_ptr() as LPPROC_THREAD_ATTRIBUTE_LIST;
         let ok = unsafe { InitializeProcThreadAttributeList(list, attr_count, 0, &mut size) };
         if ok == 0 {
-            return Err(io::Error::from_raw_os_error(unsafe {
-                GetLastError() as i32
-            }));
+            return Err(io::Error::from_raw_os_error(unsafe { GetLastError() as i32 }));
         }
         Ok(Self {
             buffer,
@@ -61,9 +57,7 @@ impl ProcThreadAttributeList {
             )
         };
         if ok == 0 {
-            return Err(io::Error::from_raw_os_error(unsafe {
-                GetLastError() as i32
-            }));
+            return Err(io::Error::from_raw_os_error(unsafe { GetLastError() as i32 }));
         }
         Ok(())
     }
@@ -89,9 +83,7 @@ impl ProcThreadAttributeList {
             )
         };
         if ok == 0 {
-            return Err(io::Error::from_raw_os_error(unsafe {
-                GetLastError() as i32
-            }));
+            return Err(io::Error::from_raw_os_error(unsafe { GetLastError() as i32 }));
         }
         Ok(())
     }
@@ -114,9 +106,7 @@ impl ProcThreadAttributeList {
             )
         };
         if ok == 0 {
-            return Err(io::Error::from_raw_os_error(unsafe {
-                GetLastError() as i32
-            }));
+            return Err(io::Error::from_raw_os_error(unsafe { GetLastError() as i32 }));
         }
         Ok(())
     }

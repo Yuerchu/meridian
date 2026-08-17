@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{Permission, Tool, ToolContext};
 use crate::logging::reader::{self, LogEntry, LogQuery};
@@ -112,10 +112,7 @@ impl Tool for ReadAppLogsTool {
             .and_then(Value::as_i64)
             .unwrap_or(DEFAULT_SINCE_MINUTES)
             .clamp(1, MAX_SINCE_MINUTES);
-        let this_conversation = args
-            .get("this_conversation")
-            .and_then(Value::as_bool)
-            .unwrap_or(false);
+        let this_conversation = args.get("this_conversation").and_then(Value::as_bool).unwrap_or(false);
 
         let since_ts_ms = now_ms() - since_minutes * 60_000;
         let query = LogQuery {
@@ -266,7 +263,10 @@ mod tests {
             file: None,
             line: None,
             raw: None,
-            cursor: reader::Cursor { file_index: 0, byte_offset: 0 },
+            cursor: reader::Cursor {
+                file_index: 0,
+                byte_offset: 0,
+            },
         }
     }
 
@@ -284,7 +284,10 @@ mod tests {
         e.span_fields.insert("conversation_id".into(), Value::from("c-42"));
 
         let out = render(&[e], "warn", 60, false);
-        assert!(out.contains("[09:58:31.204] ERROR meridian_lib::provider — HTTP 401"), "{out}");
+        assert!(
+            out.contains("[09:58:31.204] ERROR meridian_lib::provider — HTTP 401"),
+            "{out}"
+        );
         assert!(out.contains("conversation_id=c-42"), "{out}");
         assert!(out.contains("status=401"), "{out}");
     }

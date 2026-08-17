@@ -12,6 +12,16 @@ authors = ["于小丘 Yuerchu <admin@yuxiaoqiu.cn>"]
 name = "meridian_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
+[lints.clippy]
+# Provider and OneBot errors are large enums by design — they carry the body of
+# what failed. Boxing every Err to please the lint would spread `Box` through
+# every provider signature for a path that is not hot.
+result_large_err = "allow"
+large_enum_variant = "allow"
+# Tauri command signatures mirror their IPC payloads; bundling arguments into
+# structs would decouple the handler from what the frontend actually sends.
+too_many_arguments = "allow"
+
 [[bin]]
 name = "meridian"
 path = "src/main.rs"
@@ -58,7 +68,6 @@ libsqlite3-sys = { version = "0.37", features = ["bundled"] }
 diesel_migrations = "2"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
-similar = "2"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6"
 tiktoken = "3.5"

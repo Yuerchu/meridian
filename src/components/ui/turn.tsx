@@ -1,5 +1,5 @@
-import * as React from "react"
-import { Disclosure } from "@heroui/react"
+import * as React from 'react'
+import { Disclosure } from '@heroui/react'
 import {
   Ban,
   ChevronLeft,
@@ -8,16 +8,16 @@ import {
   CircleDashed,
   CircleExclamation,
   TriangleExclamation,
-} from "@gravity-ui/icons"
+} from '@gravity-ui/icons'
 
-import { cn } from "@/lib/utils"
+import { cn } from '@/lib/utils'
 
 // Imported rather than restated. This used to be a copy of the union in
 // `lib/turns`, structurally identical by luck, which meant a new status had to
 // be added in two places and nothing failed if it was added in one.
-import type { TurnStatus } from "@/lib/turns"
+import type { TurnStatus } from '@/lib/turns'
 
-const TurnStatusContext = React.createContext<TurnStatus>("complete")
+const TurnStatusContext = React.createContext<TurnStatus>('complete')
 
 interface TurnProps extends React.ComponentProps<typeof Disclosure> {
   status?: TurnStatus
@@ -32,19 +32,18 @@ interface TurnProps extends React.ComponentProps<typeof Disclosure> {
  */
 function Turn({ status, className, ...props }: TurnProps) {
   return (
-    <TurnStatusContext.Provider value={status ?? "complete"}>
+    <TurnStatusContext.Provider value={status ?? 'complete'}>
       <Disclosure
         data-slot="turn-collapsible"
-        data-status={status ?? "complete"}
-        className={cn("flex w-full min-w-0 flex-col", className)}
+        data-status={status ?? 'complete'}
+        className={cn('flex w-full min-w-0 flex-col', className)}
         {...props}
       />
     </TurnStatusContext.Provider>
   )
 }
 
-interface TurnTriggerProps
-  extends Omit<React.ComponentProps<typeof Disclosure.Trigger>, "children"> {
+interface TurnTriggerProps extends Omit<React.ComponentProps<typeof Disclosure.Trigger>, 'children'> {
   /** Sits between the label and the chevron — a duration, a step count. Mirrors
    *  `ChatToolTrigger`'s slot of the same name; an `ml-auto` child would fight
    *  the label row, which already absorbs the free space. */
@@ -64,15 +63,12 @@ function TurnTrigger({ className, children, endContent, ...props }: TurnTriggerP
       <Disclosure.Trigger
         data-slot="turn-trigger"
         className={cn(
-          "flex w-full items-center gap-1.5 rounded-md py-1 text-left text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50",
-          className
+          'flex w-full items-center gap-1.5 rounded-md py-1 text-left text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50',
+          className,
         )}
         {...props}
       >
-        <span
-          data-slot="turn-trigger-label"
-          className={cn("min-w-0 truncate", status === "streaming" && "shimmer")}
-        >
+        <span data-slot="turn-trigger-label" className={cn('min-w-0 truncate', status === 'streaming' && 'shimmer')}>
           {children}
         </span>
         {endContent}
@@ -87,24 +83,24 @@ function TurnTrigger({ className, children, endContent, ...props }: TurnTriggerP
 
 function TurnStatusIcon({ className }: { className?: string }) {
   const status = React.useContext(TurnStatusContext)
-  const shared = cn("size-3.5 shrink-0", className)
+  const shared = cn('size-3.5 shrink-0', className)
   switch (status) {
-    case "streaming":
-      return <CircleDashed aria-hidden className={cn(shared, "animate-spin text-muted")} />
-    case "awaiting-input":
-      return <CircleExclamation aria-hidden className={cn(shared, "text-warning-soft-foreground")} />
+    case 'streaming':
+      return <CircleDashed aria-hidden className={cn(shared, 'animate-spin text-muted')} />
+    case 'awaiting-input':
+      return <CircleExclamation aria-hidden className={cn(shared, 'text-warning-soft-foreground')} />
     // Warning-coloured, unlike `interrupted`, which is grey. A turn the user
     // stopped needs no attention; one that stopped unexpectedly, part way
     // through whatever it was doing, may have left something half-done.
-    case "crashed":
-      return <TriangleExclamation aria-hidden className={cn(shared, "text-warning-soft-foreground")} />
-    case "interrupted":
-      return <Ban aria-hidden className={cn(shared, "text-muted")} />
-    case "empty":
-      return <Ban aria-hidden className={cn(shared, "text-muted")} />
-    case "complete":
+    case 'crashed':
+      return <TriangleExclamation aria-hidden className={cn(shared, 'text-warning-soft-foreground')} />
+    case 'interrupted':
+      return <Ban aria-hidden className={cn(shared, 'text-muted')} />
+    case 'empty':
+      return <Ban aria-hidden className={cn(shared, 'text-muted')} />
+    case 'complete':
     default:
-      return <CircleCheck aria-hidden className={cn(shared, "text-muted")} />
+      return <CircleCheck aria-hidden className={cn(shared, 'text-muted')} />
   }
 }
 
@@ -121,7 +117,7 @@ function TurnContent({ className, children, disableTransition, ...props }: TurnC
     // would take `height: 0` and still render full size.
     <Disclosure.Content
       data-slot="turn-content"
-      data-no-transition={disableTransition ? "" : undefined}
+      data-no-transition={disableTransition ? '' : undefined}
       className="min-h-0 w-full data-[no-transition]:transition-none"
       {...props}
     >
@@ -130,9 +126,7 @@ function TurnContent({ className, children, disableTransition, ...props }: TurnC
           `aria-expanded`.
           gap rather than space-y: children may zero out their own margins, and
           Tailwind v4's space-y sits inside `:where()`, so a plain `my-0` wins. */}
-      <Disclosure.Body
-        className={cn("mt-2 ml-1.5 flex flex-col gap-3 border-l-2 border-border pl-4", className)}
-      >
+      <Disclosure.Body className={cn('mt-2 ml-1.5 flex flex-col gap-3 border-l-2 border-border pl-4', className)}>
         {children}
       </Disclosure.Body>
     </Disclosure.Content>
@@ -141,23 +135,19 @@ function TurnContent({ className, children, disableTransition, ...props }: TurnC
 
 /** Steps that stay outside the panel because they are waiting on the user —
  *  an approval prompt hidden behind a collapsed header cannot be answered. */
-function TurnPinned({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div data-slot="turn-pinned" className={cn("mt-3 flex flex-col gap-3", className)} {...props} />
-  )
+function TurnPinned({ className, ...props }: React.ComponentProps<'div'>) {
+  return <div data-slot="turn-pinned" className={cn('mt-3 flex flex-col gap-3', className)} {...props} />
 }
 
-function TurnResult({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div data-slot="turn-result" className={cn("mt-3 min-w-0", className)} {...props} />
-  )
+function TurnResult({ className, ...props }: React.ComponentProps<'div'>) {
+  return <div data-slot="turn-result" className={cn('mt-3 min-w-0', className)} {...props} />
 }
 
-function TurnFooter({ className, ...props }: React.ComponentProps<"div">) {
+function TurnFooter({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="turn-footer"
-      className={cn("mt-1 flex min-w-0 items-center gap-1 text-xs text-muted", className)}
+      className={cn('mt-1 flex min-w-0 items-center gap-1 text-xs text-muted', className)}
       {...props}
     />
   )
@@ -165,20 +155,20 @@ function TurnFooter({ className, ...props }: React.ComponentProps<"div">) {
 
 /** Hover-revealed half of the footer. The pager sits outside it: it carries
  *  information, not an action, so it has to stay legible at rest. */
-function TurnActions({ className, ...props }: React.ComponentProps<"div">) {
+function TurnActions({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="turn-actions"
       className={cn(
-        "flex items-center gap-1 opacity-0 transition-opacity group-hover/turn:opacity-100 pointer-coarse:opacity-100",
-        className
+        'flex items-center gap-1 opacity-0 transition-opacity group-hover/turn:opacity-100 pointer-coarse:opacity-100',
+        className,
       )}
       {...props}
     />
   )
 }
 
-interface TurnBranchPagerProps extends Omit<React.ComponentProps<"div">, "onSelect"> {
+interface TurnBranchPagerProps extends Omit<React.ComponentProps<'div'>, 'onSelect'> {
   /** 1-based, to match what is rendered. */
   index: number
   total: number
@@ -206,7 +196,7 @@ function TurnBranchPager({
   return (
     <div
       data-slot="turn-branch-pager"
-      className={cn("flex items-center gap-0.5 text-xs text-muted", className)}
+      className={cn('flex items-center gap-0.5 text-xs text-muted', className)}
       {...props}
     >
       <button

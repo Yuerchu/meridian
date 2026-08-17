@@ -22,8 +22,9 @@ use crate::db::schema::turns;
 /// it for a `running` row the coordinator is not holding — it means less than
 /// that: a task that panicked or was dropped while the application carried on
 /// looks identical. Nothing may read a cause into either.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, strum::IntoStaticStr, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum TurnStatus {
     Running,
     Done,
@@ -34,24 +35,11 @@ pub enum TurnStatus {
 
 impl TurnStatus {
     pub fn as_str(&self) -> &'static str {
-        match self {
-            TurnStatus::Running => "running",
-            TurnStatus::Done => "done",
-            TurnStatus::Cancelled => "cancelled",
-            TurnStatus::Failed => "failed",
-            TurnStatus::Interrupted => "interrupted",
-        }
+        self.into()
     }
 
     pub fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "running" => Ok(TurnStatus::Running),
-            "done" => Ok(TurnStatus::Done),
-            "cancelled" => Ok(TurnStatus::Cancelled),
-            "failed" => Ok(TurnStatus::Failed),
-            "interrupted" => Ok(TurnStatus::Interrupted),
-            other => Err(format!("unknown turn status '{other}'")),
-        }
+        value.parse().map_err(|_| format!("unknown turn status '{value}'"))
     }
 }
 
@@ -73,8 +61,9 @@ pub const ERROR_LOOP_DETECTED: &str = "loop_detected";
 /// `RunningTool` is the one that matters. It means a tool had started — a file
 /// may already be written, a command may already have run — and nothing
 /// recorded how it went.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, strum::IntoStaticStr, strum::EnumString)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum TurnPhase {
     Streaming,
     AwaitingApproval,
@@ -84,22 +73,11 @@ pub enum TurnPhase {
 
 impl TurnPhase {
     pub fn as_str(&self) -> &'static str {
-        match self {
-            TurnPhase::Streaming => "streaming",
-            TurnPhase::AwaitingApproval => "awaiting_approval",
-            TurnPhase::RunningTool => "running_tool",
-            TurnPhase::Compacting => "compacting",
-        }
+        self.into()
     }
 
     pub fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "streaming" => Ok(TurnPhase::Streaming),
-            "awaiting_approval" => Ok(TurnPhase::AwaitingApproval),
-            "running_tool" => Ok(TurnPhase::RunningTool),
-            "compacting" => Ok(TurnPhase::Compacting),
-            other => Err(format!("unknown turn phase '{other}'")),
-        }
+        value.parse().map_err(|_| format!("unknown turn phase '{value}'"))
     }
 }
 

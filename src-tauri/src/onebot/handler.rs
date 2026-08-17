@@ -4,26 +4,24 @@ use tauri::Emitter;
 use tokio::sync::oneshot;
 
 use super::agent::{self, ApprovalFn, TextNotifyFn};
-use crate::db::models::turn::{TurnStatus, ERROR_LOOP_DETECTED};
 use super::command::{self, SlashCommand};
 use super::format;
 use super::protocol::{MessageSegment, OneBotAction, OneBotEvent};
 use super::session::{SessionKey, SessionKind};
-use super::{call_api, SharedState};
+use super::{SharedState, call_api};
+use crate::db::models::turn::{ERROR_LOOP_DETECTED, TurnStatus};
 
-pub async fn handle_message(
-    event: &OneBotEvent,
-    state: &Arc<SharedState>,
-    conn_id: u64,
-) -> Vec<OneBotAction> {
+pub async fn handle_message(event: &OneBotEvent, state: &Arc<SharedState>, conn_id: u64) -> Vec<OneBotAction> {
     let user_id = match event.user_id {
         Some(id) => id,
         None => return vec![],
     };
 
-    let message = match event.message.as_ref().or_else(|| {
-        event.raw_message.as_ref().map(|_| &serde_json::Value::Null)
-    }) {
+    let message = match event
+        .message
+        .as_ref()
+        .or_else(|| event.raw_message.as_ref().map(|_| &serde_json::Value::Null))
+    {
         Some(m) if !m.is_null() => m,
         _ => {
             // Fallback for clients that only send raw_message. In a group this
@@ -49,7 +47,9 @@ pub async fn handle_message(
         let session_key = SessionKey::group(event.group_id.unwrap_or(0));
         // Only the user who triggered a pending approval may answer it without
         // @mentioning the bot; everyone else's un-addressed messages are ignored.
-        let is_initiator = state.pending_approvals.lock()
+        let is_initiator = state
+            .pending_approvals
+            .lock()
             .get(&session_key.to_string())
             .is_some_and(|p| p.initiator == user_id);
         if is_initiator {
@@ -64,9 +64,7 @@ pub async fn handle_message(
                     ..format::ParsedMessage::from_text(&text)
                 };
                 // What it quoted travels with it too, for the same reason.
-                return handle_text_message(
-                    event, state, user_id, parsed, reply_message_id, conn_id,
-                ).await;
+                return handle_text_message(event, state, user_id, parsed, reply_message_id, conn_id).await;
             }
         }
         return vec![];
@@ -114,9 +112,9 @@ async fn handle_text_message(
     // and a bare "y" among that used to approve whatever was waiting.
     let answering_approval = {
         let approvals = state.pending_approvals.lock();
-        approvals.get(&session_key.to_string()).is_some_and(|p| {
-            p.initiator == user_id && p.answered_by(reply_to_message_id)
-        })
+        approvals
+            .get(&session_key.to_string())
+            .is_some_and(|p| p.initiator == user_id && p.answered_by(reply_to_message_id))
     };
 
     // Admin decision on anything numbered ("同意 N" / "拒绝 N [理由]"): friend and
@@ -130,14 +128,14 @@ async fn handle_text_message(
     // Allowed in groups too: reaching this point already required an @mention,
     // which is intent enough, and it lets the operator confirm without leaving
     // the conversation the proposal came from.
-    if is_admin && !answering_approval {
-        if let Some(decision) = command::parse_request_decision(text) {
-            if let Some(actions) = dispatch_decision(event, state, decision, user_id).await {
-                return actions;
-            }
-            // No queue knew the id — fall through and treat it as ordinary chat.
-        }
+    if is_admin
+        && !answering_approval
+        && let Some(decision) = command::parse_request_decision(text)
+        && let Some(actions) = dispatch_decision(event, state, decision, user_id).await
+    {
+        return actions;
     }
+    // No queue knew the id — fall through and treat it as ordinary chat.
 
     if answering_approval {
         let pending = state.pending_approvals.lock().remove(&session_key.to_string());
@@ -171,7 +169,9 @@ async fn handle_text_message(
         }
     }
 
-    let nickname = event.sender.as_ref()
+    let nickname = event
+        .sender
+        .as_ref()
         .and_then(|s| s.card.as_deref().or(s.nickname.as_deref()))
         .unwrap_or("Unknown");
     let title = match session_key.kind {
@@ -182,8 +182,16 @@ async fn handle_text_message(
     // Slash command dispatch
     if let Some((cmd, args)) = command::parse_command(text) {
         return dispatch_command(
-            event, state, &session_key, &title, is_admin, cmd, args, event_message_id,
-        ).await;
+            event,
+            state,
+            &session_key,
+            &title,
+            is_admin,
+            cmd,
+            args,
+            event_message_id,
+        )
+        .await;
     }
 
     // --- Normal message processing ---
@@ -192,10 +200,11 @@ async fn handle_text_message(
     // Fire-and-forget; failures are silent.
     if is_group {
         let emoji = &state.config.ack_emoji_id;
-        if !emoji.is_empty() && emoji != "0" {
-            if let Some(mid) = event_message_id {
-                super::send_action_nowait(state, &OneBotAction::set_msg_emoji_like(mid, emoji)).await;
-            }
+        if !emoji.is_empty()
+            && emoji != "0"
+            && let Some(mid) = event_message_id
+        {
+            super::send_action_nowait(state, &OneBotAction::set_msg_emoji_like(mid, emoji)).await;
         }
     } else {
         super::send_action_nowait(state, &OneBotAction::set_input_status(user_id, 1)).await;
@@ -240,9 +249,7 @@ async fn handle_text_message(
         None
     };
 
-    let media = super::media::process_media(
-        state, event, &parsed, &conversation_id, model_override.as_deref(),
-    ).await;
+    let media = super::media::process_media(state, event, &parsed, &conversation_id, model_override.as_deref()).await;
 
     let enriched_text = format::format_enriched_message(
         &media.text,
@@ -256,9 +263,12 @@ async fn handle_text_message(
         enriched_text
     } else {
         let mut parts = vec![serde_json::json!({ "type": "text", "text": enriched_text })];
-        parts.extend(media.image_uris.iter().map(|uri| {
-            serde_json::json!({ "type": "image_url", "image_url": { "url": uri } })
-        }));
+        parts.extend(
+            media
+                .image_uris
+                .iter()
+                .map(|uri| serde_json::json!({ "type": "image_url", "image_url": { "url": uri } })),
+        );
         serde_json::Value::Array(parts).to_string()
     };
 
@@ -318,9 +328,7 @@ fn make_approval_fn(
                     truncate_args(&tc.arguments, 500),
                     truncate_args(&reason, 300),
                 ),
-                (None, super::agent::AskKind::Question) => {
-                    super::format::ask_user_prompt(&tc.arguments)
-                }
+                (None, super::agent::AskKind::Question) => super::format::ask_user_prompt(&tc.arguments),
                 (None, super::agent::AskKind::Permission) => format!(
                     "🔧 工具调用请求:\n工具: {}\n参数: {}\n\n引用本条消息回复 Y 批准，其他内容拒绝并作为理由转达（60秒超时）",
                     tc.name,
@@ -346,13 +354,10 @@ fn make_approval_fn(
             // fails or answers nothing leaves it unknown, and the approval falls
             // back to accepting anything from the initiator -- worse, but
             // answerable.
-            let prompt_message_id = super::call_api(
-                &state,
-                approval_msg.with_echo(uuid::Uuid::new_v4().to_string()),
-            )
-            .await
-            .ok()
-            .and_then(|d| d.get("message_id").and_then(|v| v.as_i64()));
+            let prompt_message_id = super::call_api(&state, approval_msg.with_echo(uuid::Uuid::new_v4().to_string()))
+                .await
+                .ok()
+                .and_then(|d| d.get("message_id").and_then(|v| v.as_i64()));
             if prompt_message_id.is_none() {
                 tracing::warn!(
                     tool = %tc.name,
@@ -475,11 +480,7 @@ pub(super) async fn run_agent_turn(
                 reason = %busy,
                 "OneBot turn refused: the conversation is held elsewhere"
             );
-            return build_session_reply(
-                session_key,
-                "这个对话正在电脑端处理,请等它结束后再发。",
-                reply_to,
-            );
+            return build_session_reply(session_key, "这个对话正在电脑端处理,请等它结束后再发。", reply_to);
         }
     };
 
@@ -494,7 +495,11 @@ pub(super) async fn run_agent_turn(
         let _ = tokio::task::spawn_blocking(move || {
             if let Ok(mut conn) = pool.get() {
                 let _ = crate::db::ops::memory::touch_subject(
-                    &mut conn, &scope_id, display.as_deref(), protected, crate::util::now_ms(),
+                    &mut conn,
+                    &scope_id,
+                    display.as_deref(),
+                    protected,
+                    crate::util::now_ms(),
                 );
             }
         })
@@ -554,11 +559,7 @@ pub(super) async fn run_agent_turn(
         // arrives *during* a round is the steering port's business instead —
         // see `InboxSteering`.
         let round_is_admin = round_authority(is_admin, &incoming);
-        let qq_tools = super::qq_tools::QqToolExecutor::new(
-            state.clone(),
-            session_key.clone(),
-            round_is_admin,
-        );
+        let qq_tools = super::qq_tools::QqToolExecutor::new(state.clone(), session_key.clone(), round_is_admin);
 
         let outcome = agent::headless_chat(
             &state.pool,
@@ -596,10 +597,14 @@ pub(super) async fn run_agent_turn(
             Ok(reply_text) if reply_text.is_empty() => vec![],
             Ok(reply_text) => {
                 let chunks = format::split_long_message(&reply_text);
-                chunks.iter().enumerate().flat_map(|(i, chunk)| {
-                    let reply_id = if i == 0 { reply_anchor } else { None };
-                    build_session_reply(session_key, chunk, reply_id)
-                }).collect()
+                chunks
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(i, chunk)| {
+                        let reply_id = if i == 0 { reply_anchor } else { None };
+                        build_session_reply(session_key, chunk, reply_id)
+                    })
+                    .collect()
             }
             Err(e) => {
                 tracing::error!("Chat error for {}: {e}", session_key);
@@ -667,19 +672,12 @@ pub(super) async fn run_agent_turn(
 /// A notice lowers nothing. Nobody said it, so there is no one to hold it
 /// against — it is the system talking to itself.
 fn round_authority(opened_by_admin: bool, incoming: &[super::IncomingMessage]) -> bool {
-    opened_by_admin
-        && incoming
-            .iter()
-            .all(|m| m.sender.as_ref().is_none_or(|s| s.is_admin))
+    opened_by_admin && incoming.iter().all(|m| m.sender.as_ref().is_none_or(|s| s.is_admin))
 }
 
 /// Like `build_reply` but routed from the session key instead of an event
 /// (used by poke-triggered turns and follow-up turns with no source event).
-fn build_session_reply(
-    session_key: &SessionKey,
-    text: &str,
-    reply_to_id: Option<i64>,
-) -> Vec<OneBotAction> {
+fn build_session_reply(session_key: &SessionKey, text: &str, reply_to_id: Option<i64>) -> Vec<OneBotAction> {
     let mut segments = Vec::new();
     if let Some(id) = reply_to_id {
         segments.push(MessageSegment::reply(id));
@@ -697,10 +695,7 @@ fn build_session_reply(
 // ---------------------------------------------------------------------------
 
 /// Handle an incoming request event: number it, stash it, notify admins.
-pub async fn handle_request(
-    event: &OneBotEvent,
-    state: &Arc<SharedState>,
-) -> Vec<OneBotAction> {
+pub async fn handle_request(event: &OneBotEvent, state: &Arc<SharedState>) -> Vec<OneBotAction> {
     use super::{PendingRequest, RequestKind};
 
     let Some(flag) = event.flag.clone() else {
@@ -730,13 +725,16 @@ pub async fn handle_request(
     {
         let mut pending = state.pending_requests.lock().await;
         pending.retain(|_, r| now - r.created_at < 24 * 3600 * 1000);
-        pending.insert(id, PendingRequest {
-            kind,
-            flag,
-            user_id,
-            group_id: event.group_id,
-            created_at: now,
-        });
+        pending.insert(
+            id,
+            PendingRequest {
+                kind,
+                flag,
+                user_id,
+                group_id: event.group_id,
+                created_at: now,
+            },
+        );
     }
 
     if state.config.admin_users.is_empty() {
@@ -751,7 +749,8 @@ pub async fn handle_request(
             event.via.as_deref().filter(|s| !s.is_empty()).unwrap_or("(未知)"),
         ),
         RequestKind::GroupAdd => {
-            let invitor = event.invitor_id
+            let invitor = event
+                .invitor_id
                 .filter(|i| *i > 0)
                 .map(|i| format!("\n邀请人: {i}"))
                 .unwrap_or_default();
@@ -761,7 +760,8 @@ pub async fn handle_request(
             )
         }
         RequestKind::GroupInvite => {
-            let source = event.source_group_id
+            let source = event
+                .source_group_id
                 .filter(|g| *g > 0)
                 .map(|g| format!("\n来源群: {g}"))
                 .unwrap_or_default();
@@ -772,7 +772,10 @@ pub async fn handle_request(
         }
     };
 
-    state.config.admin_users.iter()
+    state
+        .config
+        .admin_users
+        .iter()
         .map(|admin| OneBotAction::send_private_msg(*admin, format::text_to_rich_segments(&text)))
         .collect()
 }
@@ -789,9 +792,7 @@ fn spawn_extraction(
     incoming: Vec<super::IncomingMessage>,
 ) {
     tokio::spawn(async move {
-        let actions =
-            run_extraction_pass(&state, &session_key, &conversation_id, &project_id, &incoming)
-                .await;
+        let actions = run_extraction_pass(&state, &session_key, &conversation_id, &project_id, &incoming).await;
         for action in actions {
             super::send_action_nowait(&state, &action).await;
         }
@@ -873,16 +874,15 @@ async fn run_extraction_pass(
 
     let user_prompt = format!(
         "Conversation:\n{transcript}\n\nAlready remembered:\n{}\n\nWhat, if anything, is worth remembering?",
-        if existing.is_empty() { "(nothing yet)" } else { &existing },
+        if existing.is_empty() {
+            "(nothing yet)"
+        } else {
+            &existing
+        },
     );
 
-    let raw = match super::agent::oneshot_completion(
-        state,
-        conversation_id,
-        extract::EXTRACTION_PROMPT,
-        &user_prompt,
-    )
-    .await
+    let raw = match super::agent::oneshot_completion(state, conversation_id, extract::EXTRACTION_PROMPT, &user_prompt)
+        .await
     {
         Ok(text) => text,
         Err(e) => {
@@ -912,7 +912,7 @@ async fn run_extraction_pass(
         Some(
             ids.iter()
                 .filter_map(|id| crate::db::ops::memory::get_proposal(&mut conn, *id).ok().flatten())
-.map(|p| format!("M{} {}: {}", p.id, p.key, p.content))
+                .map(|p| format!("M{} {}: {}", p.id, p.key, p.content))
                 .collect::<Vec<_>>(),
         )
     })
@@ -966,11 +966,7 @@ async fn dispatch_decision(
                 // Report the miss rather than letting it fall through to the
                 // model, which would answer conversationally and read as
                 // confirmation while the request stays pending.
-                None => Some(build_reply(
-                    event,
-                    &format!("没有找到编号 {id} 的待处理请求。"),
-                    None,
-                )),
+                None => Some(build_reply(event, &format!("没有找到编号 {id} 的待处理请求。"), None)),
             };
         }
         command::DecisionTarget::MemoryProposal(id) => id,
@@ -1020,15 +1016,19 @@ async fn handle_request_decision(
             // stranger and fails the whole action, so only send it on approval.
             &req.flag,
             decision.approve,
-            if decision.approve { decision.reason.as_deref() } else { None },
+            if decision.approve {
+                decision.reason.as_deref()
+            } else {
+                None
+            },
             echo,
         ),
-        RequestKind::GroupAdd => OneBotAction::set_group_add_request(
-            &req.flag, "add", decision.approve, decision.reason.as_deref(), echo,
-        ),
-        RequestKind::GroupInvite => OneBotAction::set_group_add_request(
-            &req.flag, "invite", decision.approve, decision.reason.as_deref(), echo,
-        ),
+        RequestKind::GroupAdd => {
+            OneBotAction::set_group_add_request(&req.flag, "add", decision.approve, decision.reason.as_deref(), echo)
+        }
+        RequestKind::GroupInvite => {
+            OneBotAction::set_group_add_request(&req.flag, "invite", decision.approve, decision.reason.as_deref(), echo)
+        }
     };
 
     let verb = if decision.approve { "同意" } else { "拒绝" };
@@ -1036,7 +1036,9 @@ async fn handle_request_decision(
         RequestKind::Friend => format!("好友申请 #{}(QQ {})", decision.target.label(), req.user_id),
         RequestKind::GroupAdd => format!(
             "入群申请 #{}(QQ {} → 群 {})",
-            decision.target.label(), req.user_id, req.group_id.unwrap_or(0),
+            decision.target.label(),
+            req.user_id,
+            req.group_id.unwrap_or(0),
         ),
         RequestKind::GroupInvite => format!("群邀请 #{}(群 {})", decision.target.label(), req.group_id.unwrap_or(0)),
     };
@@ -1208,9 +1210,7 @@ async fn dispatch_memory(
 
             let text = match counts {
                 Some((_, true)) => "你已选择不被记住。输入 /memory optin 可恢复。".to_string(),
-                Some((n, false)) => format!(
-                    "关于你的记忆: {n} 条\n输入 /memory me 查看,/memory optout 停止被记住。"
-                ),
+                Some((n, false)) => format!("关于你的记忆: {n} 条\n输入 /memory me 查看,/memory optout 停止被记住。"),
                 None => "读取失败。".to_string(),
             };
             build_reply(event, &text, reply_to)
@@ -1237,7 +1237,12 @@ async fn dispatch_memory(
                 format!("关于你的记忆({} 条):", rows.len())
             };
             let text = present_listing(
-                state, session_key, user_id, super::MemoryListingKind::Own, &rows, &header,
+                state,
+                session_key,
+                user_id,
+                super::MemoryListingKind::Own,
+                &rows,
+                &header,
                 "\n/memory forget N 删除 · /memory optout 完全退出",
             )
             .await;
@@ -1245,15 +1250,12 @@ async fn dispatch_memory(
         }
 
         command::MemorySub::Forget(indices) => {
-            match resolve_listing(
-                state, session_key, user_id, super::MemoryListingKind::Own, &indices,
-            ).await {
+            match resolve_listing(state, session_key, user_id, super::MemoryListingKind::Own, &indices).await {
                 Err(e) => build_reply(event, &e, reply_to),
                 Ok(ids) => {
                     let n = tokio::task::spawn_blocking(move || {
                         let mut conn = pool.get().ok()?;
-                        mem_ops::soft_delete_memories(&mut conn, &ids, DeletedBy::SelfRemoved, now)
-                            .ok()
+                        mem_ops::soft_delete_memories(&mut conn, &ids, DeletedBy::SelfRemoved, now).ok()
                     })
                     .await
                     .ok()
@@ -1306,8 +1308,7 @@ async fn dispatch_memory(
                     .filter(|m| {
                         m.deleted_by.as_deref() == Some(DeletedBy::SelfRemoved.as_str())
                             && m.deleted_at.is_some_and(|t| t >= cutoff)
-                            && (m.subject_scope_id.as_deref() == Some(sid.as_str())
-                                || m.scope_id == sid)
+                            && (m.subject_scope_id.as_deref() == Some(sid.as_str()) || m.scope_id == sid)
                     })
                     .map(|m| m.id)
                     .collect();
@@ -1369,7 +1370,11 @@ async fn dispatch_memory(
             .is_ok();
             build_reply(
                 event,
-                if ok { "好的,我会重新开始记住你说的事。" } else { "操作失败。" },
+                if ok {
+                    "好的,我会重新开始记住你说的事。"
+                } else {
+                    "操作失败。"
+                },
                 reply_to,
             )
         }
@@ -1390,15 +1395,14 @@ async fn dispatch_memory(
             };
 
             if let command::MemorySub::GroupForget(indices) = sub {
-                return match resolve_listing(state, session_key, user_id, super::MemoryListingKind::Group, &indices).await {
+                return match resolve_listing(state, session_key, user_id, super::MemoryListingKind::Group, &indices)
+                    .await
+                {
                     Err(e) => build_reply(event, &e, reply_to),
                     Ok(ids) => {
                         let n = tokio::task::spawn_blocking(move || {
                             let mut conn = pool.get().ok()?;
-                            mem_ops::soft_delete_memories(
-                                &mut conn, &ids, DeletedBy::SelfRemoved, now,
-                            )
-                            .ok()
+                            mem_ops::soft_delete_memories(&mut conn, &ids, DeletedBy::SelfRemoved, now).ok()
                         })
                         .await
                         .ok()
@@ -1428,7 +1432,12 @@ async fn dispatch_memory(
                 format!("本群记忆({} 条):", rows.len())
             };
             let text = present_listing(
-                state, session_key, user_id, super::MemoryListingKind::Group, &rows, &header,
+                state,
+                session_key,
+                user_id,
+                super::MemoryListingKind::Group,
+                &rows,
+                &header,
                 "\n/memory group forget N 删除",
             )
             .await;
@@ -1450,18 +1459,28 @@ async fn dispatch_memory(
             } else {
                 format!("关于 {target} 的全部记忆({} 条):", rows.len())
             };
-            let text = present_listing(state, session_key, user_id, super::MemoryListingKind::Operator, &rows, &header, "").await;
+            let text = present_listing(
+                state,
+                session_key,
+                user_id,
+                super::MemoryListingKind::Operator,
+                &rows,
+                &header,
+                "",
+            )
+            .await;
             build_reply(event, &text, reply_to)
         }
 
-        command::MemorySub::UserAdd { user_id: target, content } => {
+        command::MemorySub::UserAdd {
+            user_id: target,
+            content,
+        } => {
             let target_scope = crate::db::models::memory::onebot_user_scope_id(target);
             let key = format!("note_{}", now % 100_000);
             let result = tokio::task::spawn_blocking(move || {
                 let mut conn = pool.get().map_err(|e| e.to_string())?;
-                mem_ops::validate_memory(
-                    &mut conn, MemoryScope::OnebotUser, &target_scope, &key, &content,
-                )?;
+                mem_ops::validate_memory(&mut conn, MemoryScope::OnebotUser, &target_scope, &key, &content)?;
                 let id = uuid::Uuid::new_v4().to_string();
                 mem_ops::upsert_memory(
                     &mut conn,
@@ -1514,7 +1533,16 @@ async fn dispatch_memory(
             } else {
                 format!("全局记忆({} 条):", rows.len())
             };
-            let text = present_listing(state, session_key, user_id, super::MemoryListingKind::Operator, &rows, &header, "").await;
+            let text = present_listing(
+                state,
+                session_key,
+                user_id,
+                super::MemoryListingKind::Operator,
+                &rows,
+                &header,
+                "",
+            )
+            .await;
             build_reply(event, &text, reply_to)
         }
 
@@ -1611,7 +1639,9 @@ async fn dispatch_command(
     // Resetting or compacting the conversation while a turn is writing to it
     // would corrupt the running loop's view of history.
     if matches!(cmd, SlashCommand::New | SlashCommand::Compact) {
-        let busy = state.session_states.lock()
+        let busy = state
+            .session_states
+            .lock()
             .get(&session_key.to_string())
             .is_some_and(|s| s.turn_active);
         if busy {
@@ -1620,22 +1650,12 @@ async fn dispatch_command(
     }
 
     match cmd {
-        SlashCommand::Help => {
-            build_reply(event, &SlashCommand::help_text(is_admin, is_group), reply_to)
-        }
-        SlashCommand::Memory => {
-            dispatch_memory(event, state, session_key, is_admin, args, reply_to).await
-        }
+        SlashCommand::Help => build_reply(event, &SlashCommand::help_text(is_admin, is_group), reply_to),
+        SlashCommand::Memory => dispatch_memory(event, state, session_key, is_admin, args, reply_to).await,
         SlashCommand::New => dispatch_new(event, state, session_key, title, reply_to).await,
-        SlashCommand::Compact => {
-            dispatch_compact(event, state, session_key, title, args, reply_to).await
-        }
-        SlashCommand::Model => {
-            dispatch_model(event, state, session_key, title, args, reply_to).await
-        }
-        SlashCommand::Status => {
-            dispatch_status(event, state, session_key, title, is_admin, reply_to).await
-        }
+        SlashCommand::Compact => dispatch_compact(event, state, session_key, title, args, reply_to).await,
+        SlashCommand::Model => dispatch_model(event, state, session_key, title, args, reply_to).await,
+        SlashCommand::Status => dispatch_status(event, state, session_key, title, is_admin, reply_to).await,
     }
 }
 
@@ -1676,7 +1696,10 @@ async fn dispatch_new(
 
     let mut sessions = state.sessions.lock().await;
     let reset = sessions.reset_conversation(
-        session_key, title, state.config.assistant_id.as_deref(), &conversation_id,
+        session_key,
+        title,
+        state.config.assistant_id.as_deref(),
+        &conversation_id,
     );
     match reset {
         Ok(_) => build_reply(event, "已重置对话。新的对话已创建。", reply_to),
@@ -1723,20 +1746,33 @@ async fn dispatch_compact(
         let conv_id = conversation_id.clone();
         match tokio::task::spawn_blocking(move || {
             let mut conn = crate::util::get_conn(&pool)?;
-            let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
-            let assistant = conv.assistant_id.as_deref()
+            let conv =
+                crate::db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
+            let assistant = conv
+                .assistant_id
+                .as_deref()
                 .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
             let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
             Ok::<_, String>((assistant, keep_recent))
-        }).await {
+        })
+        .await
+        {
             Ok(Ok(r)) => r,
             Ok(Err(e)) => return build_reply(event, &format!("Compact 失败: {e}"), reply_to),
             Err(e) => return build_reply(event, &format!("Compact 失败: {e}"), reply_to),
         }
     };
 
-    match crate::agent::do_compact(pool, secrets, &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await {
+    match crate::agent::do_compact(
+        pool,
+        secrets,
+        &conversation_id,
+        assistant.as_ref(),
+        keep_recent,
+        custom_instructions.as_deref(),
+    )
+    .await
+    {
         Ok(_) => build_reply(event, "对话上下文已压缩。", reply_to),
         Err(e) => build_reply(event, &format!("Compact 失败: {e}"), reply_to),
     }
@@ -1765,7 +1801,11 @@ async fn dispatch_model(
 
         if !args.is_empty() {
             sessions.set_model_override(session_key, Some(args.to_string()));
-            return build_reply(event, &format!("已切换模型: {}\n发送 /model reset 恢复默认", args), reply_to);
+            return build_reply(
+                event,
+                &format!("已切换模型: {}\n发送 /model reset 恢复默认", args),
+                reply_to,
+            );
         }
 
         let ovr = sessions.get_model_override(session_key);
@@ -1778,21 +1818,25 @@ async fn dispatch_model(
     let conv_id = conversation_id;
     let info = tokio::task::spawn_blocking(move || {
         let mut conn = crate::util::get_conn(&pool)?;
-        let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
-            .map_err(|e| e.to_string())?;
+        let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
         let effective_aid = assistant_id.as_deref().or(conv.assistant_id.as_deref());
-        let assistant = effective_aid
-            .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
-        let model = assistant.as_ref().and_then(|a| a.model_id.clone())
+        let assistant = effective_aid.and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
+        let model = assistant
+            .as_ref()
+            .and_then(|a| a.model_id.clone())
             .unwrap_or_else(|| "未配置".into());
         let name = assistant.as_ref().map(|a| a.name.clone());
         Ok::<_, String>((model, name))
-    }).await;
+    })
+    .await;
 
     match info {
         Ok(Ok((default_model, assistant_name))) => {
             let reply = if let Some(ref ovr) = model_override {
-                format!("当前模型: {} (手动切换)\n助手默认: {}\n发送 /model reset 恢复默认", ovr, default_model)
+                format!(
+                    "当前模型: {} (手动切换)\n助手默认: {}\n发送 /model reset 恢复默认",
+                    ovr, default_model
+                )
             } else {
                 let source = assistant_name
                     .map(|n| format!("来源: 助手「{}」", n))
@@ -1829,14 +1873,16 @@ async fn dispatch_status(
     let conv_id = conversation_id;
     let info = tokio::task::spawn_blocking(move || {
         let mut conn = crate::util::get_conn(&pool)?;
-        let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
-            .map_err(|e| e.to_string())?;
+        let conv = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
         let effective_aid = assistant_id.as_deref().or(conv.assistant_id.as_deref());
-        let assistant = effective_aid
-            .and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
-        let assistant_name = assistant.as_ref().map(|a| a.name.clone())
+        let assistant = effective_aid.and_then(|aid| crate::db::ops::assistant::get_assistant(&mut conn, aid).ok());
+        let assistant_name = assistant
+            .as_ref()
+            .map(|a| a.name.clone())
             .unwrap_or_else(|| "未配置".into());
-        let model = assistant.as_ref().and_then(|a| a.model_id.clone())
+        let model = assistant
+            .as_ref()
+            .and_then(|a| a.model_id.clone())
             .unwrap_or_else(|| "未配置".into());
         let context_limit = assistant.as_ref().map(|a| a.context_limit).unwrap_or(128000);
         // The active path, not every row: counting branches the user has
@@ -1853,14 +1899,19 @@ async fn dispatch_status(
             })
             .unwrap_or(0);
         Ok::<_, String>((assistant_name, model, context_limit, msg_count))
-    }).await;
+    })
+    .await;
 
     match info {
         Ok(Ok((assistant_name, default_model, context_limit, msg_count))) => {
             let model_display = model_override
                 .map(|ovr| format!("{} (手动切换)", ovr))
                 .unwrap_or(default_model);
-            let tools_display = if is_admin { "已启用" } else { "仅本会话查询(聊天记录/群信息/成员资料)" };
+            let tools_display = if is_admin {
+                "已启用"
+            } else {
+                "仅本会话查询(聊天记录/群信息/成员资料)"
+            };
             let reply = format!(
                 "助手: {}\n模型: {}\n消息: {} 条\n上下文上限: {}\n工具: {}",
                 assistant_name, model_display, msg_count, context_limit, tools_display,
@@ -1880,22 +1931,26 @@ fn pool_clone(pool: &crate::db::DbPool) -> crate::db::DbPool {
     pool.clone()
 }
 
-async fn fetch_quoted_message(
-    state: &Arc<SharedState>,
-    message_id: i64,
-) -> Option<(String, String)> {
+async fn fetch_quoted_message(state: &Arc<SharedState>, message_id: i64) -> Option<(String, String)> {
     let echo = uuid::Uuid::new_v4().to_string();
     let action = OneBotAction::get_msg(message_id, echo);
     let data = call_api(state, action).await.ok()?;
 
-    let sender = data.get("sender").and_then(|s| {
-        s.get("card").and_then(|v| v.as_str()).filter(|s| !s.is_empty())
-            .or_else(|| s.get("nickname").and_then(|v| v.as_str()))
-    }).unwrap_or("Unknown").to_string();
+    let sender = data
+        .get("sender")
+        .and_then(|s| {
+            s.get("card")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .or_else(|| s.get("nickname").and_then(|v| v.as_str()))
+        })
+        .unwrap_or("Unknown")
+        .to_string();
 
-    let content = data.get("message").and_then(|m| {
-        Some(format::segments_to_text(m, None))
-    }).filter(|s| !s.is_empty())?;
+    let content = data
+        .get("message")
+        .map(|m| format::segments_to_text(m, None))
+        .filter(|s| !s.is_empty())?;
 
     Some((sender, content))
 }
@@ -1928,7 +1983,7 @@ fn truncate_args(args: &str, max_len: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use crate::onebot::{IncomingMessage, InboxItem, InboxKind, SenderContext};
+    use crate::onebot::{InboxItem, InboxKind, IncomingMessage, SenderContext};
 
     fn sender(user_id: i64, nick: &str) -> SenderContext {
         SenderContext {
@@ -1942,7 +1997,12 @@ mod tests {
     }
 
     fn item(text: &str, sender: Option<SenderContext>) -> InboxItem {
-        InboxItem { text: text.into(), kind: InboxKind::UserMessage, created_at: 0, sender }
+        InboxItem {
+            text: text.into(),
+            kind: InboxKind::UserMessage,
+            created_at: 0,
+            sender,
+        }
     }
 
     /// Whoever triggered a turn is not the only person in it, and authority is
@@ -1956,7 +2016,10 @@ mod tests {
     /// and `qq_get_friend_list` is a read that needs no approval.
     #[test]
     fn a_round_runs_on_the_least_authority_in_it() {
-        let admin = SenderContext { is_admin: true, ..sender(1, "管理员") };
+        let admin = SenderContext {
+            is_admin: true,
+            ..sender(1, "管理员")
+        };
         let member = sender(2, "群友");
 
         let msg = |s: SenderContext| IncomingMessage::new("...", Some(s));
@@ -1982,7 +2045,7 @@ mod tests {
     /// what. Each must survive as its own message with its own speaker.
     #[test]
     fn queued_messages_keep_their_own_speakers() {
-        let items = vec![
+        let items = [
             item("你好", Some(sender(1, "张三"))),
             item("我也要", Some(sender(2, "李四"))),
             item("[系统提示] 2 加入了群聊", None),

@@ -6,15 +6,13 @@
 
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::memory::{
-    onebot_user_scope_id, Memory, MemoryScope, Visibility, GLOBAL_SCOPE_ID,
-};
+use crate::db::DbPool;
+use crate::db::models::memory::{GLOBAL_SCOPE_ID, Memory, MemoryScope, Visibility, onebot_user_scope_id};
 use crate::db::models::message::Message;
 use crate::db::ops::memory::{
-    escape_attr, format_memory_section, list_by_scopes, list_deleted_by_scopes, Cursor, ReadWindow,
-    VisibilityCtx, TRASH_RETENTION_MS,
+    Cursor, ReadWindow, TRASH_RETENTION_MS, VisibilityCtx, escape_attr, format_memory_section, list_by_scopes,
+    list_deleted_by_scopes,
 };
-use crate::db::DbPool;
 
 use super::context::estimate_tokens;
 
@@ -72,7 +70,12 @@ pub(crate) struct MemorySubjectRef {
 
 impl MemorySubjectRef {
     pub fn from_user(user_id: i64, display_name: Option<String>) -> Self {
-        Self { scope_id: onebot_user_scope_id(user_id), display_name, role: None, title: None }
+        Self {
+            scope_id: onebot_user_scope_id(user_id),
+            display_name,
+            role: None,
+            title: None,
+        }
     }
 
     pub fn with_standing(mut self, role: Option<String>, title: Option<String>) -> Self {
@@ -128,11 +131,7 @@ impl MemoryRequest {
 
     /// A QQ group: the room's own memory plus profiles of whoever is talking,
     /// filtered so nothing learned in a private chat can surface here.
-    pub fn onebot_group(
-        project_id: Option<String>,
-        subjects: Vec<MemorySubjectRef>,
-        budget_tokens: usize,
-    ) -> Self {
+    pub fn onebot_group(project_id: Option<String>, subjects: Vec<MemorySubjectRef>, budget_tokens: usize) -> Self {
         Self {
             project_id,
             include_onebot_global: true,
@@ -373,7 +372,10 @@ impl Injection {
 
 fn parse_cursor(field: &str) -> Option<Cursor> {
     let (ts, id) = field.split_once('.')?;
-    Some(Cursor { ts: ts.parse().ok()?, id: id.to_string() })
+    Some(Cursor {
+        ts: ts.parse().ok()?,
+        id: id.to_string(),
+    })
 }
 
 /// `(kind, state)` off a row's `source`, or `None` if it cannot be read.
@@ -438,9 +440,7 @@ fn scan_prior_state(live: &[Message], t0: i64) -> Option<InjectionState> {
         }
         if kind == InjectionKind::Full {
             let mut state = newest?;
-            let stale = |c: &Option<Cursor>| {
-                c.as_ref().is_some_and(|c| c.ts < t0 - TRASH_RETENTION_MS)
-            };
+            let stale = |c: &Option<Cursor>| c.as_ref().is_some_and(|c| c.ts < t0 - TRASH_RETENTION_MS);
             if stale(&state.upsert) || stale(&state.delete) {
                 return None;
             }
@@ -550,13 +550,7 @@ pub(crate) fn load_memory_block_sync(
     let subject_rows = if scope_ids.is_empty() {
         Vec::new()
     } else {
-        match list_by_scopes(
-            conn,
-            MemoryScope::OnebotUser,
-            &scope_ids,
-            &req.subject_visibility,
-            None,
-        ) {
+        match list_by_scopes(conn, MemoryScope::OnebotUser, &scope_ids, &req.subject_visibility, None) {
             Ok(rows) => rows,
             Err(e) => {
                 tracing::warn!(
@@ -664,8 +658,10 @@ pub(crate) fn load_memory_block_sync(
             acct.complete.push(scope_id.clone());
             match format_memory_section(&rows, "person", Some(&person_attrs(scope_id))) {
                 Some(s) => people.push_str(&s),
-                None => people
-                    .push_str(&format!("\n\n<person {} first_time=\"true\" />", person_attrs(scope_id))),
+                None => people.push_str(&format!(
+                    "\n\n<person {} first_time=\"true\" />",
+                    person_attrs(scope_id)
+                )),
             }
         }
         if !people.is_empty() {
@@ -750,12 +746,7 @@ fn subject_scope_ids(req: &MemoryRequest) -> Vec<String> {
 /// Decide what this turn injects. Reads only — the caller persists the result if
 /// it is running a real turn, and the context estimator uses the same answer
 /// without writing anything.
-pub(crate) fn plan_injection(
-    conn: &mut SqliteConnection,
-    req: &MemoryRequest,
-    live: &[Message],
-    t0: i64,
-) -> Injection {
+pub(crate) fn plan_injection(conn: &mut SqliteConnection, req: &MemoryRequest, live: &[Message], t0: i64) -> Injection {
     match scan_prior_state(live, t0) {
         Some(prior) => delta_injection(conn, req, &prior, t0),
         None => full_injection(conn, req, t0),
@@ -783,12 +774,11 @@ fn full_injection(conn: &mut SqliteConnection, req: &MemoryRequest, t0: i64) -> 
 
 /// The most recent delete anyone could have been told about, for a full block to
 /// resume from.
-fn latest_delete_cursor(
-    conn: &mut SqliteConnection,
-    req: &MemoryRequest,
-    t0: i64,
-) -> Option<Cursor> {
-    let window = ReadWindow { after: None, before_ts: t0 };
+fn latest_delete_cursor(conn: &mut SqliteConnection, req: &MemoryRequest, t0: i64) -> Option<Cursor> {
+    let window = ReadWindow {
+        after: None,
+        before_ts: t0,
+    };
     let mut all: Vec<(i64, String)> = Vec::new();
     for (scope, ids, ctx) in delete_layers(req) {
         if let Ok(rows) = list_deleted_by_scopes(conn, scope, &ids, &ctx, &window) {
@@ -829,15 +819,13 @@ fn delete_layers(req: &MemoryRequest) -> Vec<(MemoryScope, Vec<String>, Visibili
 /// someone the model has already been told about, "what changed" is a window on
 /// the cursor. For someone it has not, the answer is everything — their memories
 /// are as old as they are, so no cursor would ever reach back far enough.
-fn delta_injection(
-    conn: &mut SqliteConnection,
-    req: &MemoryRequest,
-    prior: &InjectionState,
-    t0: i64,
-) -> Injection {
+fn delta_injection(conn: &mut SqliteConnection, req: &MemoryRequest, prior: &InjectionState, t0: i64) -> Injection {
     let budgets = layer_budgets(req.budget_tokens);
     let mut acct = Accounting::default();
-    let window = ReadWindow { after: prior.upsert.as_ref(), before_ts: t0 };
+    let window = ReadWindow {
+        after: prior.upsert.as_ref(),
+        before_ts: t0,
+    };
     let mut out = String::new();
 
     let changed = |conn: &mut SqliteConnection, scope, ids: Vec<String>, ctx: &VisibilityCtx| {
@@ -848,8 +836,12 @@ fn delta_injection(
     };
 
     let mut owner_notes: Vec<Memory> = Vec::new();
-    let section = |out: &mut String, rows: Vec<Memory>, tag: &str, budget: usize,
-                   acct: &mut Accounting, notes: &mut Vec<Memory>| {
+    let section = |out: &mut String,
+                   rows: Vec<Memory>,
+                   tag: &str,
+                   budget: usize,
+                   acct: &mut Accounting,
+                   notes: &mut Vec<Memory>| {
         let (rows, mine): (Vec<Memory>, Vec<Memory>) =
             rows.into_iter().partition(|m| m.visibility() != Visibility::OwnerOnly);
         notes.extend(mine);
@@ -867,12 +859,36 @@ fn delta_injection(
     };
 
     if let Some(scope) = global_scope(req) {
-        let rows = changed(conn, scope, vec![GLOBAL_SCOPE_ID.to_string()], &VisibilityCtx::private_injection());
-        section(&mut out, rows, "bot_memories", budgets.global, &mut acct, &mut owner_notes);
+        let rows = changed(
+            conn,
+            scope,
+            vec![GLOBAL_SCOPE_ID.to_string()],
+            &VisibilityCtx::private_injection(),
+        );
+        section(
+            &mut out,
+            rows,
+            "bot_memories",
+            budgets.global,
+            &mut acct,
+            &mut owner_notes,
+        );
     }
     if let Some(pid) = req.project_id.as_ref() {
-        let rows = changed(conn, MemoryScope::Project, vec![pid.clone()], &VisibilityCtx::private_injection());
-        section(&mut out, rows, "chat_memories", budgets.project, &mut acct, &mut owner_notes);
+        let rows = changed(
+            conn,
+            MemoryScope::Project,
+            vec![pid.clone()],
+            &VisibilityCtx::private_injection(),
+        );
+        section(
+            &mut out,
+            rows,
+            "chat_memories",
+            budgets.project,
+            &mut acct,
+            &mut owner_notes,
+        );
     }
 
     // People, in two groups: newcomers get everything, everyone else gets the
@@ -881,10 +897,16 @@ fn delta_injection(
     let mut people = String::new();
     if !scope_ids.is_empty() {
         let per_subject = budgets.subjects / scope_ids.len().max(1);
-        let known: Vec<String> =
-            scope_ids.iter().filter(|id| prior.people.contains(id)).cloned().collect();
-        let newcomers: Vec<String> =
-            scope_ids.iter().filter(|id| !prior.people.contains(id)).cloned().collect();
+        let known: Vec<String> = scope_ids
+            .iter()
+            .filter(|id| prior.people.contains(id))
+            .cloned()
+            .collect();
+        let newcomers: Vec<String> = scope_ids
+            .iter()
+            .filter(|id| !prior.people.contains(id))
+            .cloned()
+            .collect();
 
         let mut rows: Vec<Memory> = Vec::new();
         if !known.is_empty() {
@@ -901,8 +923,7 @@ fn delta_injection(
         owner_notes.extend(notes);
 
         for scope_id in &scope_ids {
-            let mine: Vec<Memory> =
-                rows.iter().filter(|m| &m.scope_id == scope_id).cloned().collect();
+            let mine: Vec<Memory> = rows.iter().filter(|m| &m.scope_id == scope_id).cloned().collect();
             let is_newcomer = !prior.people.contains(scope_id);
             if mine.is_empty() && !is_newcomer {
                 continue;
@@ -961,14 +982,17 @@ fn delta_injection(
         prior.upsert.clone()
     };
 
-    let text = (!out.is_empty())
-        .then(|| format!("<memory_update>{out}\n</memory_update>"));
+    let text = (!out.is_empty()).then(|| format!("<memory_update>{out}\n</memory_update>"));
     let mut people_seen = prior.people.clone();
     people_seen.extend(acct.complete.iter().cloned());
     Injection {
         text,
         kind: InjectionKind::Delta,
-        state: InjectionState { upsert, delete, people: people_seen },
+        state: InjectionState {
+            upsert,
+            delete,
+            people: people_seen,
+        },
     }
 }
 
@@ -984,7 +1008,10 @@ fn forgotten_section(
     t0: i64,
     budget: usize,
 ) -> (Option<String>, Option<Cursor>) {
-    let window = ReadWindow { after: prior.delete.as_ref(), before_ts: t0 };
+    let window = ReadWindow {
+        after: prior.delete.as_ref(),
+        before_ts: t0,
+    };
     let mut rows: Vec<(String, Memory)> = Vec::new();
     for (scope, ids, ctx) in delete_layers(req) {
         let label = match scope {
@@ -1027,7 +1054,10 @@ fn forgotten_section(
         return (None, prior.delete.clone());
     }
     let cursor = advance_cursor(sent, unsent);
-    ((!body.is_empty()).then(|| format!("\n\n<memory_forgotten>{body}\n</memory_forgotten>")), cursor)
+    (
+        (!body.is_empty()).then(|| format!("\n\n<memory_forgotten>{body}\n</memory_forgotten>")),
+        cursor,
+    )
 }
 
 /// Freeze this turn's injection into the history, and answer with the row the
@@ -1049,12 +1079,18 @@ pub(crate) async fn persist_injection(
     parent: Option<String>,
     now: i64,
 ) -> Option<String> {
-    let Some(text) = injection.text.as_ref() else { return parent };
+    let Some(text) = injection.text.as_ref() else {
+        return parent;
+    };
     let text = text.trim_start().to_string();
     let source = injection.source();
     let id = uuid::Uuid::new_v4().to_string();
-    let (pool2, conv, turn, hang_on) =
-        (pool.clone(), conversation_id.to_string(), turn_id.to_string(), parent.clone());
+    let (pool2, conv, turn, hang_on) = (
+        pool.clone(),
+        conversation_id.to_string(),
+        turn_id.to_string(),
+        parent.clone(),
+    );
     let written = tokio::task::spawn_blocking(move || {
         let mut conn = pool2.get().map_err(|e| e.to_string())?;
         crate::db::ops::message::append_message(
@@ -1135,8 +1171,15 @@ mod tests {
         crate::db::ops::project::create_project(
             conn,
             &NewProject {
-                id, name: "P", path: None, source_type: "local", source_id: None,
-                assistant_id: None, description: None, created_at: 1, updated_at: 1,
+                id,
+                name: "P",
+                path: None,
+                source_type: "local",
+                source_id: None,
+                assistant_id: None,
+                description: None,
+                created_at: 1,
+                updated_at: 1,
             },
         )
         .unwrap();
@@ -1157,10 +1200,18 @@ mod tests {
         upsert_memory(
             conn,
             &NewMemory {
-                id, scope_type: scope.as_str(), scope_id, key, content,
-                memory_type: "general", subject_scope_id: subject,
-                origin: origin.as_str(), visibility: vis.as_str(),
-                source_session_id: None, created_at: 1, updated_at: 1,
+                id,
+                scope_type: scope.as_str(),
+                scope_id,
+                key,
+                content,
+                memory_type: "general",
+                subject_scope_id: subject,
+                origin: origin.as_str(),
+                visibility: vis.as_str(),
+                source_session_id: None,
+                created_at: 1,
+                updated_at: 1,
             },
         )
         .unwrap();
@@ -1173,22 +1224,23 @@ mod tests {
     }
 
     /// One person, one memory, written at `updated_at`.
-    fn add_at(
-        conn: &mut SqliteConnection,
-        id: &str,
-        scope: MemoryScope,
-        scope_id: &str,
-        key: &str,
-        updated_at: i64,
-    ) {
+    fn add_at(conn: &mut SqliteConnection, id: &str, scope: MemoryScope, scope_id: &str, key: &str, updated_at: i64) {
         let subject = (scope == MemoryScope::OnebotUser).then_some(scope_id);
         upsert_memory(
             conn,
             &NewMemory {
-                id, scope_type: scope.as_str(), scope_id, key, content: "v",
-                memory_type: "general", subject_scope_id: subject,
-                origin: Origin::Group.as_str(), visibility: Visibility::Normal.as_str(),
-                source_session_id: None, created_at: 1, updated_at,
+                id,
+                scope_type: scope.as_str(),
+                scope_id,
+                key,
+                content: "v",
+                memory_type: "general",
+                subject_scope_id: subject,
+                origin: Origin::Group.as_str(),
+                visibility: Visibility::Normal.as_str(),
+                source_session_id: None,
+                created_at: 1,
+                updated_at,
             },
         )
         .unwrap();
@@ -1201,13 +1253,27 @@ mod tests {
             conversation_id: "c".into(),
             role: "context".into(),
             content: injection.text.clone().unwrap_or_default(),
-            provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
-            tool_calls: None, tool_call_id: None, sort_order: 0, created_at: 0,
-            reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
-            sender_id: None, parent_id: None, compact_anchor_id: None,
+            provider_id: None,
+            model_id: None,
+            input_tokens: None,
+            output_tokens: None,
+            tool_calls: None,
+            tool_call_id: None,
+            sort_order: 0,
+            created_at: 0,
+            reasoning_content: None,
+            rating: None,
+            schema_version: 2,
+            is_compact_summary: 0,
+            sender_id: None,
+            parent_id: None,
+            compact_anchor_id: None,
             source: Some(injection.source()),
-            turn_id: None, tool_outcome: None,
-            cache_read_tokens: None, cache_write_tokens: None, provider_name: None,
+            turn_id: None,
+            tool_outcome: None,
+            cache_read_tokens: None,
+            cache_write_tokens: None,
+            provider_name: None,
         }
     }
 
@@ -1230,12 +1296,7 @@ mod tests {
 
         /// Run a round the way a surface would: plan against the rows frozen so
         /// far, then append this round's row to them.
-        fn round(
-            conn: &mut SqliteConnection,
-            req: &MemoryRequest,
-            history: &mut Vec<Message>,
-            t0: i64,
-        ) -> Injection {
+        fn round(conn: &mut SqliteConnection, req: &MemoryRequest, history: &mut Vec<Message>, t0: i64) -> Injection {
             let injection = plan_injection(conn, req, history, t0);
             if injection.text.is_some() {
                 history.push(frozen(&injection));
@@ -1329,7 +1390,14 @@ mod tests {
             let conn = &mut pool.get().unwrap();
             let alice = onebot_user_scope_id(1);
             for i in 0..5 {
-                add_at(conn, &format!("m{i}"), MemoryScope::OnebotUser, &alice, &format!("k{i}"), 100);
+                add_at(
+                    conn,
+                    &format!("m{i}"),
+                    MemoryScope::OnebotUser,
+                    &alice,
+                    &format!("k{i}"),
+                    100,
+                );
             }
             // Small enough that a round carries one or two entries, not five.
             let req = group_req(None, &[1], 60);
@@ -1371,7 +1439,10 @@ mod tests {
             assert!(!first.contains("zzz"), "the budget was too small to be a test");
 
             let second = round(conn, &req, &mut history, 2_000).text.expect("zzz still owed");
-            assert!(second.contains("zzz"), "the cursor stepped over a dropped entry: {second}");
+            assert!(
+                second.contains("zzz"),
+                "the cursor stepped over a dropped entry: {second}"
+            );
         }
 
         /// Everything that cuts the history — compaction moving the anchor,
@@ -1414,7 +1485,10 @@ mod tests {
 
             round(conn, &req, &mut history, 1_000);
             let much_later = 1_000 + TRASH_RETENTION_MS + 1;
-            assert_eq!(plan_injection(conn, &req, &history, much_later).kind, InjectionKind::Full);
+            assert_eq!(
+                plan_injection(conn, &req, &history, much_later).kind,
+                InjectionKind::Full
+            );
         }
 
         /// The window's upper bound is exclusive, so a write landing in the very
@@ -1466,7 +1540,14 @@ mod tests {
             // his timestamps. So nothing sent this round sorts before what was
             // left behind, and the cursor has no foothold anywhere in it.
             for i in 0..4 {
-                add_at(conn, &format!("b{i}"), MemoryScope::OnebotUser, &bob, &format!("bob_{i}"), 100 - i * 10);
+                add_at(
+                    conn,
+                    &format!("b{i}"),
+                    MemoryScope::OnebotUser,
+                    &bob,
+                    &format!("bob_{i}"),
+                    100 - i * 10,
+                );
             }
             // Alice also changes, so the round has something recent to send too —
             // that recent row is what a naive cursor would resume from.
@@ -1516,18 +1597,21 @@ mod tests {
         let pool = test_db();
         let conn = &mut pool.get().unwrap();
         project(conn, "p1");
-        add(conn, "m1", MemoryScope::Project, "p1", "stack", "Rust + Tauri",
-            Origin::Desktop, Visibility::Normal);
-
-        let block = block(
+        add(
             conn,
-            &MemoryRequest::desktop(Some("p1".into()), 8_000),
-        )
-        .unwrap();
+            "m1",
+            MemoryScope::Project,
+            "p1",
+            "stack",
+            "Rust + Tauri",
+            Origin::Desktop,
+            Visibility::Normal,
+        );
+
+        let block = block(conn, &MemoryRequest::desktop(Some("p1".into()), 8_000)).unwrap();
 
         assert_eq!(
-            block,
-            "\n\n<project_memories>\n- [general] stack: Rust + Tauri\n</project_memories>",
+            block, "\n\n<project_memories>\n- [general] stack: Rust + Tauri\n</project_memories>",
             "desktop keeps the legacy single-section block byte for byte"
         );
     }
@@ -1539,8 +1623,16 @@ mod tests {
     fn desktop_reads_global_memories_without_the_policy_preamble() {
         let pool = test_db();
         let conn = &mut pool.get().unwrap();
-        add(conn, "g1", MemoryScope::ClientGlobal, GLOBAL_SCOPE_ID, "editor_choice",
-            "用 Zed 写代码", Origin::Desktop, Visibility::Normal);
+        add(
+            conn,
+            "g1",
+            MemoryScope::ClientGlobal,
+            GLOBAL_SCOPE_ID,
+            "editor_choice",
+            "用 Zed 写代码",
+            Origin::Desktop,
+            Visibility::Normal,
+        );
 
         let block = block(conn, &MemoryRequest::desktop(None, 8_000)).unwrap();
 
@@ -1558,16 +1650,28 @@ mod tests {
         let pool = test_db();
         let conn = &mut pool.get().unwrap();
         project(conn, "p1");
-        add(conn, "g1", MemoryScope::ClientGlobal, GLOBAL_SCOPE_ID, "editor_choice",
-            "用 Zed 写代码", Origin::Desktop, Visibility::Normal);
-        add(conn, "m1", MemoryScope::Project, "p1", "stack", "Rust + Tauri",
-            Origin::Desktop, Visibility::Normal);
-
-        let block = block(
+        add(
             conn,
-            &MemoryRequest::desktop(Some("p1".into()), 8_000),
-        )
-        .unwrap();
+            "g1",
+            MemoryScope::ClientGlobal,
+            GLOBAL_SCOPE_ID,
+            "editor_choice",
+            "用 Zed 写代码",
+            Origin::Desktop,
+            Visibility::Normal,
+        );
+        add(
+            conn,
+            "m1",
+            MemoryScope::Project,
+            "p1",
+            "stack",
+            "Rust + Tauri",
+            Origin::Desktop,
+            Visibility::Normal,
+        );
+
+        let block = block(conn, &MemoryRequest::desktop(Some("p1".into()), 8_000)).unwrap();
 
         let global_at = block.find("<global_memories>").unwrap();
         let project_at = block.find("<project_memories>").unwrap();
@@ -1581,14 +1685,30 @@ mod tests {
     fn the_two_global_layers_do_not_leak_into_each_other() {
         let pool = test_db();
         let conn = &mut pool.get().unwrap();
-        add(conn, "bot", MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID, "bot_rule",
-            "群里少说话", Origin::Admin, Visibility::Normal);
+        add(
+            conn,
+            "bot",
+            MemoryScope::OnebotGlobal,
+            GLOBAL_SCOPE_ID,
+            "bot_rule",
+            "群里少说话",
+            Origin::Admin,
+            Visibility::Normal,
+        );
 
         // Desktop sees nothing: the only row lives on the bot side.
         assert!(block(conn, &MemoryRequest::desktop(None, 8_000)).is_none());
 
-        add(conn, "client", MemoryScope::ClientGlobal, GLOBAL_SCOPE_ID, "editor_choice",
-            "用 Zed 写代码", Origin::Desktop, Visibility::Normal);
+        add(
+            conn,
+            "client",
+            MemoryScope::ClientGlobal,
+            GLOBAL_SCOPE_ID,
+            "editor_choice",
+            "用 Zed 写代码",
+            Origin::Desktop,
+            Visibility::Normal,
+        );
 
         let desktop = block(conn, &MemoryRequest::desktop(None, 8_000)).unwrap();
         assert!(desktop.contains("editor_choice"));
@@ -1596,10 +1716,7 @@ mod tests {
 
         let private = block(
             conn,
-            &MemoryRequest::onebot_private(
-                MemorySubjectRef::from_user(1, None),
-                8_000,
-            ),
+            &MemoryRequest::onebot_private(MemorySubjectRef::from_user(1, None), 8_000),
         )
         .unwrap();
         assert!(private.contains("bot_rule"));
@@ -1612,18 +1729,30 @@ mod tests {
         let pool = test_db();
         let conn = &mut pool.get().unwrap();
         let alice = onebot_user_scope_id(1);
-        add(conn, "priv", MemoryScope::OnebotUser, &alice, "secret", "told in DM",
-            Origin::Private, Visibility::Normal);
-        add(conn, "grp", MemoryScope::OnebotUser, &alice, "style", "likes terse",
-            Origin::Group, Visibility::Normal);
+        add(
+            conn,
+            "priv",
+            MemoryScope::OnebotUser,
+            &alice,
+            "secret",
+            "told in DM",
+            Origin::Private,
+            Visibility::Normal,
+        );
+        add(
+            conn,
+            "grp",
+            MemoryScope::OnebotUser,
+            &alice,
+            "style",
+            "likes terse",
+            Origin::Group,
+            Visibility::Normal,
+        );
 
         let block = block(
             conn,
-            &MemoryRequest::onebot_group(
-                None,
-                vec![MemorySubjectRef::from_user(1, Some("Alice".into()))],
-                8_000,
-            ),
+            &MemoryRequest::onebot_group(None, vec![MemorySubjectRef::from_user(1, Some("Alice".into()))], 8_000),
         )
         .unwrap();
 
@@ -1640,18 +1769,30 @@ mod tests {
         let pool = test_db();
         let conn = &mut pool.get().unwrap();
         let alice = onebot_user_scope_id(1);
-        add(conn, "note", MemoryScope::OnebotUser, &alice, "debt", "owes money",
-            Origin::Admin, Visibility::OwnerOnly);
-        add(conn, "pref", MemoryScope::OnebotUser, &alice, "style", "likes terse",
-            Origin::Group, Visibility::Normal);
+        add(
+            conn,
+            "note",
+            MemoryScope::OnebotUser,
+            &alice,
+            "debt",
+            "owes money",
+            Origin::Admin,
+            Visibility::OwnerOnly,
+        );
+        add(
+            conn,
+            "pref",
+            MemoryScope::OnebotUser,
+            &alice,
+            "style",
+            "likes terse",
+            Origin::Group,
+            Visibility::Normal,
+        );
 
         let block = block(
             conn,
-            &MemoryRequest::onebot_group(
-                None,
-                vec![MemorySubjectRef::from_user(1, Some("Alice".into()))],
-                8_000,
-            ),
+            &MemoryRequest::onebot_group(None, vec![MemorySubjectRef::from_user(1, Some("Alice".into()))], 8_000),
         )
         .unwrap();
 
@@ -1669,8 +1810,7 @@ mod tests {
     fn person_attributes_are_escaped() {
         let roster = roster_block(&MemoryRequest::onebot_group(
             None,
-            vec![MemorySubjectRef::from_user(5, Some(r#"a"<b>"#.into()))
-                .with_standing(Some(r#"own"er"#.into()), None)],
+            vec![MemorySubjectRef::from_user(5, Some(r#"a"<b>"#.into())).with_standing(Some(r#"own"er"#.into()), None)],
             8_000,
         ))
         .unwrap();
@@ -1687,8 +1827,16 @@ mod tests {
         let pool = test_db();
         let conn = &mut pool.get().unwrap();
         let known = onebot_user_scope_id(1);
-        add(conn, "k", MemoryScope::OnebotUser, &known, "style", "likes terse",
-            Origin::Group, Visibility::Normal);
+        add(
+            conn,
+            "k",
+            MemoryScope::OnebotUser,
+            &known,
+            "style",
+            "likes terse",
+            Origin::Group,
+            Visibility::Normal,
+        );
 
         let block = block(
             conn,
@@ -1721,9 +1869,11 @@ mod tests {
 
         assert!(roster_block(&req).unwrap().contains(r#"qq="7" name="Newcomer""#));
         // And the frozen half still says it has met nobody.
-        assert!(block(conn, &req)
-            .unwrap()
-            .contains(r#"<person qq="7" first_time="true" />"#));
+        assert!(
+            block(conn, &req)
+                .unwrap()
+                .contains(r#"<person qq="7" first_time="true" />"#)
+        );
     }
 
     /// Standing describes now, so it goes on the roster — which is redrawn every
@@ -1734,8 +1884,10 @@ mod tests {
     fn standing_is_declared_on_the_roster() {
         let roster = roster_block(&MemoryRequest::onebot_group(
             None,
-            vec![MemorySubjectRef::from_user(1, Some("Alice".into()))
-                .with_standing(Some("owner".into()), Some("摸鱼冠军".into()))],
+            vec![
+                MemorySubjectRef::from_user(1, Some("Alice".into()))
+                    .with_standing(Some("owner".into()), Some("摸鱼冠军".into())),
+            ],
             8_000,
         ))
         .unwrap();
@@ -1750,8 +1902,9 @@ mod tests {
     fn blank_standing_is_left_out() {
         let roster = roster_block(&MemoryRequest::onebot_group(
             None,
-            vec![MemorySubjectRef::from_user(1, Some("Alice".into()))
-                .with_standing(Some("".into()), Some("   ".into()))],
+            vec![
+                MemorySubjectRef::from_user(1, Some("Alice".into())).with_standing(Some("".into()), Some("   ".into())),
+            ],
             8_000,
         ))
         .unwrap();
@@ -1767,15 +1920,26 @@ mod tests {
         let conn = &mut pool.get().unwrap();
         for uid in [2i64, 1] {
             let scope = onebot_user_scope_id(uid);
-            add(conn, &format!("m{uid}"), MemoryScope::OnebotUser, &scope, "k",
-                &format!("about {uid}"), Origin::Group, Visibility::Normal);
+            add(
+                conn,
+                &format!("m{uid}"),
+                MemoryScope::OnebotUser,
+                &scope,
+                "k",
+                &format!("about {uid}"),
+                Origin::Group,
+                Visibility::Normal,
+            );
         }
 
         let a = block(
             conn,
             &MemoryRequest::onebot_group(
                 None,
-                vec![MemorySubjectRef::from_user(2, None), MemorySubjectRef::from_user(1, None)],
+                vec![
+                    MemorySubjectRef::from_user(2, None),
+                    MemorySubjectRef::from_user(1, None),
+                ],
                 8_000,
             ),
         )
@@ -1784,7 +1948,10 @@ mod tests {
             conn,
             &MemoryRequest::onebot_group(
                 None,
-                vec![MemorySubjectRef::from_user(1, None), MemorySubjectRef::from_user(2, None)],
+                vec![
+                    MemorySubjectRef::from_user(1, None),
+                    MemorySubjectRef::from_user(2, None),
+                ],
                 8_000,
             ),
         )
@@ -1797,15 +1964,19 @@ mod tests {
         let pool = test_db();
         let conn = &mut pool.get().unwrap();
         for i in 0..40 {
-            add(conn, &format!("g{i}"), MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID,
-                &format!("k{i:02}"), &"word ".repeat(60), Origin::Admin, Visibility::Normal);
+            add(
+                conn,
+                &format!("g{i}"),
+                MemoryScope::OnebotGlobal,
+                GLOBAL_SCOPE_ID,
+                &format!("k{i:02}"),
+                &"word ".repeat(60),
+                Origin::Admin,
+                Visibility::Normal,
+            );
         }
 
-        let block = block(
-            conn,
-            &MemoryRequest::onebot_group(None, vec![], 512),
-        )
-        .unwrap();
+        let block = block(conn, &MemoryRequest::onebot_group(None, vec![], 512)).unwrap();
 
         assert!(
             estimate_tokens(&block) < 1_200,
@@ -1828,18 +1999,38 @@ mod tests {
         let pool = test_db();
         let conn = &mut pool.get().unwrap();
         project(conn, "p1");
-        add(conn, "pub", MemoryScope::Project, "p1", "slang", "in-joke",
-            Origin::Group, Visibility::Normal);
-        add(conn, "note", MemoryScope::Project, "p1", "client", "do not mention pricing",
-            Origin::Desktop, Visibility::OwnerOnly);
-        add(conn, "gnote", MemoryScope::OnebotGlobal, GLOBAL_SCOPE_ID, "quirk",
-            "operator only", Origin::Admin, Visibility::OwnerOnly);
-
-        let block = block(
+        add(
             conn,
-            &MemoryRequest::onebot_group(Some("p1".into()), vec![], 8_000),
-        )
-        .unwrap();
+            "pub",
+            MemoryScope::Project,
+            "p1",
+            "slang",
+            "in-joke",
+            Origin::Group,
+            Visibility::Normal,
+        );
+        add(
+            conn,
+            "note",
+            MemoryScope::Project,
+            "p1",
+            "client",
+            "do not mention pricing",
+            Origin::Desktop,
+            Visibility::OwnerOnly,
+        );
+        add(
+            conn,
+            "gnote",
+            MemoryScope::OnebotGlobal,
+            GLOBAL_SCOPE_ID,
+            "quirk",
+            "operator only",
+            Origin::Admin,
+            Visibility::OwnerOnly,
+        );
+
+        let block = block(conn, &MemoryRequest::onebot_group(Some("p1".into()), vec![], 8_000)).unwrap();
 
         let notes_at = block.find("\n\n<owner_notes>\n").expect("owner notes section");
         assert!(block.contains("in-joke"));
@@ -1856,12 +2047,18 @@ mod tests {
         let pool = test_db();
         let conn = &mut pool.get().unwrap();
         project(conn, "p1");
-        add(conn, "note", MemoryScope::Project, "p1", "private", "hidden thing",
-            Origin::Desktop, Visibility::OwnerOnly);
+        add(
+            conn,
+            "note",
+            MemoryScope::Project,
+            "p1",
+            "private",
+            "hidden thing",
+            Origin::Desktop,
+            Visibility::OwnerOnly,
+        );
 
-        let block =
-            block(conn, &MemoryRequest::desktop(Some("p1".into()), 8_000))
-                .unwrap();
+        let block = block(conn, &MemoryRequest::desktop(Some("p1".into()), 8_000)).unwrap();
 
         assert!(block.contains("<owner_notes>"), "must not be silently dropped");
         assert!(!block.contains("<project_memories>"));
@@ -1875,16 +2072,19 @@ mod tests {
         let conn = &mut pool.get().unwrap();
         project(conn, "p1");
         for i in 0..40 {
-            add(conn, &format!("n{i}"), MemoryScope::Project, "p1",
-                &format!("k{i:02}"), &"word ".repeat(60),
-                Origin::Desktop, Visibility::OwnerOnly);
+            add(
+                conn,
+                &format!("n{i}"),
+                MemoryScope::Project,
+                "p1",
+                &format!("k{i:02}"),
+                &"word ".repeat(60),
+                Origin::Desktop,
+                Visibility::OwnerOnly,
+            );
         }
 
-        let block = block(
-            conn,
-            &MemoryRequest::onebot_group(Some("p1".into()), vec![], 512),
-        )
-        .unwrap();
+        let block = block(conn, &MemoryRequest::onebot_group(Some("p1".into()), vec![], 512)).unwrap();
 
         assert!(estimate_tokens(&block) < 1_200);
     }
@@ -1899,12 +2099,7 @@ mod placement_tests {
     /// must not be attributed to anyone: it is not something a user said.
     #[test]
     fn memory_precedes_the_current_message_and_has_no_speaker() {
-        let msgs = trailing_with_memory(
-            Some("\n\n<bot_memories>\n- x\n</bot_memories>"),
-            None,
-            "hi",
-            None,
-        );
+        let msgs = trailing_with_memory(Some("\n\n<bot_memories>\n- x\n</bot_memories>"), None, "hi", None);
 
         assert_eq!(msgs.len(), 2);
         assert!(matches!(msgs[0].origin, MessageOrigin::SystemContext));
@@ -1972,8 +2167,7 @@ mod placement_tests {
     /// With no memory it still lands, and still ahead of the message.
     #[test]
     fn an_interrupted_turn_does_not_need_memory_to_come_with_it() {
-        let msgs =
-            trailing_with_memory(None, Some("<interrupted_turn>x</interrupted_turn>"), "hi", None);
+        let msgs = trailing_with_memory(None, Some("<interrupted_turn>x</interrupted_turn>"), "hi", None);
         assert_eq!(msgs.len(), 2);
         assert!(msgs[0].content.starts_with("<interrupted_turn>"));
         assert_eq!(msgs[1].content, "hi");

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{Permission, Tool, ToolContext};
 use crate::db::models::todo::ItemStatus;
@@ -8,9 +8,7 @@ use crate::db::ops::todo::TodoItemInput;
 const MAX_ITEMS: usize = 50;
 const MAX_CONTENT_LEN: usize = 200;
 
-fn get_pool_and_conversation(
-    context: &ToolContext,
-) -> Result<(crate::db::DbPool, String), String> {
+fn get_pool_and_conversation(context: &ToolContext) -> Result<(crate::db::DbPool, String), String> {
     let pool = context
         .db_pool
         .as_ref()
@@ -178,14 +176,8 @@ impl Tool for UpdateTodosTool {
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
             let now = crate::util::now_ms();
-            let view = crate::db::ops::todo::replace_active_list(
-                &mut conn,
-                &conversation_id,
-                &title,
-                &items,
-                now,
-            )
-            .map_err(|e| e.to_string())?;
+            let view = crate::db::ops::todo::replace_active_list(&mut conn, &conversation_id, &title, &items, now)
+                .map_err(|e| e.to_string())?;
 
             let total = view.items.len();
             let done = view
@@ -211,11 +203,7 @@ impl Tool for UpdateTodosTool {
                     "Checklist \"{title}\" finished ({done}/{total}). The next update starts a new one.{plan_note}"
                 ));
             }
-            match view
-                .items
-                .iter()
-                .find(|i| i.status == ItemStatus::InProgress.as_str())
-            {
+            match view.items.iter().find(|i| i.status == ItemStatus::InProgress.as_str()) {
                 Some(current) => Ok(format!(
                     "Checklist \"{title}\" updated ({done}/{total} done). Now: {}",
                     current.content
@@ -245,7 +233,6 @@ mod tests {
             conversation_id: Some(conversation_id.to_string()),
             assistant_id: None,
             db_pool: Some(pool),
-            edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),
@@ -296,9 +283,7 @@ mod tests {
         assert!(out.contains("Now: Extract token check"), "{out}");
 
         let mut conn = pool.get().unwrap();
-        let view = crate::db::ops::todo::get_active_view(&mut conn, "c1")
-            .unwrap()
-            .unwrap();
+        let view = crate::db::ops::todo::get_active_view(&mut conn, "c1").unwrap().unwrap();
         assert_eq!(view.items.len(), 2);
     }
 
@@ -322,9 +307,11 @@ mod tests {
         assert!(err.contains("Only one step may be in_progress"), "{err}");
         // Nothing was written, so the model can retry from a clean slate.
         let mut conn = pool.get().unwrap();
-        assert!(crate::db::ops::todo::get_active_view(&mut conn, "c1")
-            .unwrap()
-            .is_none());
+        assert!(
+            crate::db::ops::todo::get_active_view(&mut conn, "c1")
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -334,19 +321,13 @@ mod tests {
         let ctx = ctx(pool.clone(), "c1");
 
         let blank = UpdateTodosTool
-            .execute(
-                json!({ "title": "T", "todos": [step("   ", "pending")] }),
-                &ctx,
-            )
+            .execute(json!({ "title": "T", "todos": [step("   ", "pending")] }), &ctx)
             .await
             .unwrap_err();
         assert!(blank.contains("todos[1].content"), "{blank}");
 
         let bad_status = UpdateTodosTool
-            .execute(
-                json!({ "title": "T", "todos": [step("a", "doing")] }),
-                &ctx,
-            )
+            .execute(json!({ "title": "T", "todos": [step("a", "doing")] }), &ctx)
             .await
             .unwrap_err();
         assert!(bad_status.contains("unknown todo status"), "{bad_status}");
@@ -372,10 +353,7 @@ mod tests {
         }
 
         UpdateTodosTool
-            .execute(
-                json!({ "title": "Ship it", "todos": [step("a", "in_progress")] }),
-                &ctx,
-            )
+            .execute(json!({ "title": "Ship it", "todos": [step("a", "in_progress")] }), &ctx)
             .await
             .unwrap();
         {
@@ -481,10 +459,7 @@ mod tests {
         ctx.conversation_id = None;
 
         let err = UpdateTodosTool
-            .execute(
-                json!({ "title": "T", "todos": [step("a", "pending")] }),
-                &ctx,
-            )
+            .execute(json!({ "title": "T", "todos": [step("a", "pending")] }), &ctx)
             .await
             .unwrap_err();
 

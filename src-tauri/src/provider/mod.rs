@@ -92,24 +92,72 @@ pub struct ChatMessage {
 
 impl ChatMessage {
     pub fn user(content: &str) -> Self {
-        Self { role: "user".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None, origin: MessageOrigin::LegacyUser }
+        Self {
+            role: "user".into(),
+            content: content.into(),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            signature: None,
+            origin: MessageOrigin::LegacyUser,
+        }
     }
     /// A user-role message with a known speaker.
     pub fn user_from(content: &str, sender: SenderRef) -> Self {
-        Self { role: "user".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None, origin: MessageOrigin::User(sender) }
+        Self {
+            role: "user".into(),
+            content: content.into(),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            signature: None,
+            origin: MessageOrigin::User(sender),
+        }
     }
     /// Background context we injected ourselves.
     pub fn system_context(content: &str) -> Self {
-        Self { role: "user".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None, origin: MessageOrigin::SystemContext }
+        Self {
+            role: "user".into(),
+            content: content.into(),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            signature: None,
+            origin: MessageOrigin::SystemContext,
+        }
     }
     pub fn assistant(content: &str) -> Self {
-        Self { role: "assistant".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: None, signature: None, origin: MessageOrigin::Assistant }
+        Self {
+            role: "assistant".into(),
+            content: content.into(),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: None,
+            signature: None,
+            origin: MessageOrigin::Assistant,
+        }
     }
     pub fn assistant_with_tools(content: &str, reasoning_content: Option<String>, tool_calls: Vec<ToolCall>) -> Self {
-        Self { role: "assistant".into(), content: content.into(), reasoning_content, tool_calls: Some(tool_calls), tool_call_id: None, signature: None, origin: MessageOrigin::Assistant }
+        Self {
+            role: "assistant".into(),
+            content: content.into(),
+            reasoning_content,
+            tool_calls: Some(tool_calls),
+            tool_call_id: None,
+            signature: None,
+            origin: MessageOrigin::Assistant,
+        }
     }
     pub fn tool_result(tool_call_id: &str, content: &str) -> Self {
-        Self { role: "tool".into(), content: content.into(), reasoning_content: None, tool_calls: None, tool_call_id: Some(tool_call_id.into()), signature: None, origin: MessageOrigin::Tool }
+        Self {
+            role: "tool".into(),
+            content: content.into(),
+            reasoning_content: None,
+            tool_calls: None,
+            tool_call_id: Some(tool_call_id.into()),
+            signature: None,
+            origin: MessageOrigin::Tool,
+        }
     }
 }
 
@@ -241,7 +289,10 @@ pub fn render_message(m: &ChatMessage, rendering: SenderRendering) -> RenderedMe
                 if let Some(content) = prefix_multimodal(parts, sender) {
                     return RenderedMessage { content, name };
                 }
-                return RenderedMessage { content: m.content.clone(), name };
+                return RenderedMessage {
+                    content: m.content.clone(),
+                    name,
+                };
             }
             RenderedMessage {
                 content: format!(
@@ -258,7 +309,10 @@ pub fn render_message(m: &ChatMessage, rendering: SenderRendering) -> RenderedMe
         },
         // Desktop chats and history predating the pipeline are passed through
         // untouched: rewriting them would change every existing conversation.
-        _ => RenderedMessage { content: m.content.clone(), name: None },
+        _ => RenderedMessage {
+            content: m.content.clone(),
+            name: None,
+        },
     }
 }
 
@@ -423,6 +477,9 @@ pub struct ProviderCapabilities {
     pub default_verbosity: Option<String>,
 }
 
+/// Returned by the non-streaming `chat_with_tools` path, which no caller has
+/// switched to yet. Kept with the trait surface it belongs to.
+#[allow(dead_code)]
 pub struct AgentResponse {
     pub text: String,
     pub reasoning_content: Option<String>,
@@ -438,6 +495,8 @@ pub enum ProviderError {
     Api { status: u16, body: String },
     #[error("parse: {0}")]
     Parse(String),
+    /// For providers that decline a capability; none do yet.
+    #[allow(dead_code)]
     #[error("not implemented: {0}")]
     NotImplemented(String),
 }
@@ -446,6 +505,9 @@ pub type ChatStream = Pin<Box<dyn futures::Stream<Item = Result<StreamEvent, Pro
 
 #[async_trait]
 pub trait ChatProvider: Send + Sync {
+    /// Unqueried today: turn parameters come from `resolve_turn_params`, not
+    /// from asking the provider. Part of the multi-provider surface.
+    #[allow(dead_code)]
     fn capabilities(&self, _model: &str) -> ProviderCapabilities {
         ProviderCapabilities {
             supports_tools: true,
@@ -461,20 +523,16 @@ pub trait ChatProvider: Send + Sync {
         params: ChatParams,
     ) -> Result<ChatStream, ProviderError>;
 
-    async fn stream_chat(
-        &self,
-        messages: Vec<ChatMessage>,
-        params: ChatParams,
-    ) -> Result<ChatStream, ProviderError> {
+    /// Every live caller sends tools; the tool-less forms are the trait's
+    /// completeness, not a code path.
+    #[allow(dead_code)]
+    async fn stream_chat(&self, messages: Vec<ChatMessage>, params: ChatParams) -> Result<ChatStream, ProviderError> {
         self.stream_chat_with_tools(messages, vec![], params).await
     }
 
-    async fn chat(
-        &self,
-        messages: Vec<ChatMessage>,
-        params: ChatParams,
-    ) -> Result<String, ProviderError>;
+    async fn chat(&self, messages: Vec<ChatMessage>, params: ChatParams) -> Result<String, ProviderError>;
 
+    #[allow(dead_code)]
     async fn chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,
@@ -488,21 +546,15 @@ mod usage_tests {
     use super::*;
 
     fn openai_style(json: &str) -> TokenUsage {
-        openai_compat::normalise_openai_usage(
-            &serde_json::from_str(json).expect("a chat-completions usage body"),
-        )
+        openai_compat::normalise_openai_usage(&serde_json::from_str(json).expect("a chat-completions usage body"))
     }
 
     fn responses_style(json: &str) -> TokenUsage {
-        openai_responses::normalise_responses_usage(
-            &serde_json::from_str(json).expect("a Responses usage body"),
-        )
+        openai_responses::normalise_responses_usage(&serde_json::from_str(json).expect("a Responses usage body"))
     }
 
     fn anthropic_style(json: &str) -> TokenUsage {
-        anthropic::normalise_anthropic_usage(
-            &serde_json::from_str(json).expect("a Messages usage body"),
-        )
+        anthropic::normalise_anthropic_usage(&serde_json::from_str(json).expect("a Messages usage body"))
     }
 
     #[test]
@@ -597,9 +649,7 @@ mod usage_tests {
             ),
             (
                 "openai_compat",
-                openai_style(
-                    r#"{"prompt_tokens":2000,"prompt_tokens_details":{"cached_tokens":1792}}"#,
-                ),
+                openai_style(r#"{"prompt_tokens":2000,"prompt_tokens_details":{"cached_tokens":1792}}"#),
                 1792 + 208,
             ),
             (
@@ -645,7 +695,10 @@ mod sender_tests {
     use super::*;
 
     fn alice() -> SenderRef {
-        SenderRef { user_id: 10001, nickname: Some("Alice".into()) }
+        SenderRef {
+            user_id: 10001,
+            nickname: Some("Alice".into()),
+        }
     }
 
     /// Both formats label the speaker in the body. `name` is an extra signal for
@@ -671,13 +724,13 @@ mod sender_tests {
     /// images through as plain text.
     #[test]
     fn multimodal_bodies_stay_parseable() {
-        let body = r#"[{"type":"text","text":"look"},{"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}}]"#;
+        let body =
+            r#"[{"type":"text","text":"look"},{"type":"image_url","image_url":{"url":"data:image/png;base64,AAAA"}}]"#;
         let m = ChatMessage::user_from(body, alice());
 
         for rendering in [SenderRendering::NameField, SenderRendering::Prefix] {
             let r = render_message(&m, rendering);
-            let parts: Vec<serde_json::Value> =
-                serde_json::from_str(&r.content).expect("still an array of parts");
+            let parts: Vec<serde_json::Value> = serde_json::from_str(&r.content).expect("still an array of parts");
             assert_eq!(parts.len(), 3);
             assert_eq!(parts[0]["text"], "<sender>Alice(10001)</sender>: ");
             assert_eq!(parts[2]["type"], "image_url", "the image survived");
@@ -700,7 +753,10 @@ mod sender_tests {
     /// character set that real nicknames routinely violate.
     #[test]
     fn wire_token_is_an_id_not_a_nickname() {
-        let s = SenderRef { user_id: 7, nickname: Some("张 三 <b>".into()) };
+        let s = SenderRef {
+            user_id: 7,
+            nickname: Some("张 三 <b>".into()),
+        };
         assert_eq!(s.wire_token(), "qq_7");
     }
 

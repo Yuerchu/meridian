@@ -28,7 +28,9 @@ function applyInsets(i: NativeInsets) {
 
 function subscribeIme(cb: () => void) {
   imeListeners.add(cb)
-  return () => { imeListeners.delete(cb) }
+  return () => {
+    imeListeners.delete(cb)
+  }
 }
 
 function getImeSnapshot() {
@@ -48,7 +50,9 @@ export function useAndroidInsets() {
       const p = await api.getPlatform().catch(() => null)
       if (!disposed) setPlatform(p)
     })()
-    return () => { disposed = true }
+    return () => {
+      disposed = true
+    }
   }, [])
 
   useEffect(() => {
@@ -57,8 +61,7 @@ export function useAndroidInsets() {
     let unlistenInsets: (() => void) | null = null
 
     void (async () => {
-      const unlisten = await listen<NativeInsets>('insets-changed', (e) => applyInsets(e.payload))
-        .catch(() => null)
+      const unlisten = await listen<NativeInsets>('insets-changed', (e) => applyInsets(e.payload)).catch(() => null)
       if (disposed) {
         unlisten?.()
         return
@@ -69,7 +72,9 @@ export function useAndroidInsets() {
       if (insets && !disposed) applyInsets(insets)
     })()
 
-    const resetScroll = () => { window.scrollTo(0, 0) }
+    const resetScroll = () => {
+      window.scrollTo(0, 0)
+    }
     window.addEventListener('scroll', resetScroll, { passive: true })
     return () => {
       disposed = true

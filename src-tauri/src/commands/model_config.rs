@@ -6,16 +6,14 @@ use crate::state::AppDb;
 use crate::util::{get_conn, now_ms};
 
 #[tauri::command]
-pub async fn list_model_configs(
-    app: tauri::AppHandle,
-    provider_id: String,
-) -> Result<Vec<ModelConfig>, String> {
+pub async fn list_model_configs(app: tauri::AppHandle, provider_id: String) -> Result<Vec<ModelConfig>, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
-        db::ops::model_config::list_by_provider(&mut conn, &provider_id)
-            .map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+        db::ops::model_config::list_by_provider(&mut conn, &provider_id).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -27,16 +25,14 @@ pub async fn get_model_config(
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
-        db::ops::model_config::get_by_provider_and_model(&mut conn, &provider_id, &model_id)
-            .map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+        db::ops::model_config::get_by_provider_and_model(&mut conn, &provider_id, &model_id).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub async fn save_model_config(
-    app: tauri::AppHandle,
-    input: ModelConfigInput,
-) -> Result<ModelConfig, String> {
+pub async fn save_model_config(app: tauri::AppHandle, input: ModelConfigInput) -> Result<ModelConfig, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
@@ -59,18 +55,19 @@ pub async fn save_model_config(
             capability_overrides: input.capability_overrides.as_deref(),
         };
         db::ops::model_config::upsert(&mut conn, &new).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub async fn delete_model_config(
-    app: tauri::AppHandle,
-    id: String,
-) -> Result<(), String> {
+pub async fn delete_model_config(app: tauri::AppHandle, id: String) -> Result<(), String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
         db::ops::model_config::delete(&mut conn, &id).map_err(|e| e.to_string())?;
         Ok::<_, String>(())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

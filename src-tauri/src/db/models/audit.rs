@@ -9,6 +9,7 @@ use crate::db::schema::audit_messages;
 /// Self-contained on purpose: every id here names a row that may already be
 /// gone, and the facts needed to read this one are copied in beside them. See
 /// migration 29 for why none of it is a foreign key.
+#[cfg_attr(not(test), allow(dead_code))]
 #[derive(Debug, Clone, Queryable, Selectable, Serialize)]
 #[diesel(table_name = audit_messages)]
 pub struct AuditMessage {

@@ -12,7 +12,11 @@ use std::sync::OnceLock;
 pub type ByteStream = BoxStream<'static, Result<Bytes, TransportError>>;
 
 pub struct StreamResponse {
+    /// As on `Response`: errors carry their own status, so nothing reads these
+    /// on the success path yet. Ported surface.
+    #[allow(dead_code)]
     pub status: StatusCode,
+    #[allow(dead_code)]
     pub headers: HeaderMap,
     pub bytes: ByteStream,
 }
@@ -180,9 +184,7 @@ impl HttpTransport for ReqwestTransport {
                 body,
             });
         }
-        let stream = resp
-            .bytes_stream()
-            .map(|result| result.map_err(Self::map_error));
+        let stream = resp.bytes_stream().map(|result| result.map_err(Self::map_error));
         Ok(StreamResponse {
             status,
             headers,

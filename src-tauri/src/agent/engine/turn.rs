@@ -30,22 +30,18 @@ use std::collections::HashSet;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::modes::ModeSpec;
-use crate::agent::{
-    is_context_window_error, is_retryable_stream_error, MAX_STREAM_RETRIES, STREAM_RETRY_BASE,
-};
 use crate::agent::tokenizer::MIN_REPLY_TOKENS;
-use crate::agent::{serialize_tool_calls_openai, TokenBudget};
+use crate::agent::{MAX_STREAM_RETRIES, STREAM_RETRY_BASE, is_context_window_error, is_retryable_stream_error};
+use crate::agent::{TokenBudget, serialize_tool_calls_openai};
+use crate::db::DbPool;
 use crate::db::models::message::MessageUsage;
 use crate::db::models::turn::TurnPhase;
-use crate::db::DbPool;
 use crate::mcp::McpRegistry;
 use crate::provider::{ChatMessage, ChatParams, ChatProvider, ToolDefinition};
 use crate::tools::{self, ToolContext, ToolRegistry};
 
 use super::compaction::{Compacting, CompactionPolicy};
-use super::ports::{
-    Steered, SteeredOrigin, Steering, SubAgentReport, SubAgentSpec, SubAgentStatus, TurnPorts,
-};
+use super::ports::{Steered, SteeredOrigin, Steering, SubAgentReport, SubAgentSpec, SubAgentStatus, TurnPorts};
 
 /// How many times a finished answer may be reopened by something that arrived
 /// while it was being written.
@@ -57,8 +53,8 @@ use super::ports::{
 /// caller accounts for them.
 const MAX_TAIL_CONTINUATIONS: usize = 3;
 use super::{
-    append_steering, append_tool_result, begin_assistant, complete_assistant, consume_stream,
-    in_phase, transitions, ApprovalDecision,
+    ApprovalDecision, append_steering, append_tool_result, begin_assistant, complete_assistant, consume_stream,
+    in_phase, transitions,
 };
 
 /// Why no request was made. Counts only -- this reaches a window, and the
@@ -79,11 +75,7 @@ fn no_room(budget: &TokenBudget) -> String {
 /// instead rather than just what was wrong. They come back as a tool result, not
 /// as an error that ends the turn: naming a model that has not been configured
 /// is an ordinary mistake, and the answer to it is to pick another one.
-fn parse_sub_agent(
-    arguments: &str,
-    parent_message_id: &str,
-    parent_call_id: &str,
-) -> Result<SubAgentSpec, String> {
+fn parse_sub_agent(arguments: &str, parent_message_id: &str, parent_call_id: &str) -> Result<SubAgentSpec, String> {
     let args: serde_json::Value =
         serde_json::from_str(arguments).map_err(|e| format!("arguments were not valid JSON: {e}"))?;
     let text = |key: &str| -> Result<String, String> {
@@ -320,7 +312,10 @@ impl TurnOutcome {
     /// nothing, which is a different thing from a turn that failed partway —
     /// and why a caller is handed progress either way.
     pub(crate) fn failed(error: String) -> Self {
-        Self { reply: Err(error), progress: TurnProgress::default() }
+        Self {
+            reply: Err(error),
+            progress: TurnProgress::default(),
+        }
     }
 
     /// What to tell the front end this turn ended as.
@@ -341,11 +336,7 @@ impl TurnOutcome {
 /// progress a failed turn made is exactly what the caller needs to report it —
 /// and a caller that had to write `let outcome = run_turn(..).await?` would
 /// throw that away at the only moment it matters.
-pub(crate) async fn run_turn(
-    services: &TurnServices<'_>,
-    setup: TurnSetup<'_>,
-    ports: TurnPorts<'_>,
-) -> TurnOutcome {
+pub(crate) async fn run_turn(services: &TurnServices<'_>, setup: TurnSetup<'_>, ports: TurnPorts<'_>) -> TurnOutcome {
     let mut progress = TurnProgress::default();
     let reply = run(services, setup, ports, &mut progress).await;
     TurnOutcome { reply, progress }
@@ -523,9 +514,7 @@ async fn run(
                     )
                     .await;
                 let read = match opened {
-                    Ok(stream) => {
-                        consume_stream(stream, &cancel, emit, &assistant_msg_id, &conversation_id).await
-                    }
+                    Ok(stream) => consume_stream(stream, &cancel, emit, &assistant_msg_id, &conversation_id).await,
                     Err(e) => Err(e.to_string()),
                 };
                 match read {
@@ -543,10 +532,10 @@ async fn run(
                         // Taken rather than read, so it is settled once — the
                         // block itself is already baked into `chat_messages` and
                         // rides along with every later iteration.
-                        if r.ran_to_completion {
-                            if let Some(report) = interrupted.take() {
-                                crate::agent::interrupted::confirm_delivered(pool, report).await;
-                            }
+                        if r.ran_to_completion
+                            && let Some(report) = interrupted.take()
+                        {
+                            crate::agent::interrupted::confirm_delivered(pool, report).await;
                         }
                         break r;
                     }
@@ -575,10 +564,7 @@ async fn run(
                         // here rather than passed on as whatever the provider
                         // calls an empty output allowance.
                         if budget.room_for_reply() < MIN_REPLY_TOKENS {
-                            return Err(format!(
-                                "Context overflow recovery failed: {}",
-                                no_room(&budget)
-                            ));
+                            return Err(format!("Context overflow recovery failed: {}", no_room(&budget)));
                         }
                         // Recomputed, not reused: the recovery above is what just
                         // made room, and asking with the pre-compaction ceiling
@@ -594,18 +580,17 @@ async fn run(
                             )
                             .await
                             .map_err(|e| format!("Context overflow recovery failed: {e}"))?;
-                        let recovered =
-                            consume_stream(stream, &cancel, emit, &assistant_msg_id, &conversation_id)
-                                .await
-                                .map_err(|e| format!("Context overflow recovery failed: {e}"))?;
+                        let recovered = consume_stream(stream, &cancel, emit, &assistant_msg_id, &conversation_id)
+                            .await
+                            .map_err(|e| format!("Context overflow recovery failed: {e}"))?;
                         // The same rule, and reachable without the request above
                         // ever having succeeded: a provider that refuses an
                         // oversized request outright makes this the first stream
                         // anyone reads to the end.
-                        if recovered.ran_to_completion {
-                            if let Some(report) = interrupted.take() {
-                                crate::agent::interrupted::confirm_delivered(pool, report).await;
-                            }
+                        if recovered.ran_to_completion
+                            && let Some(report) = interrupted.take()
+                        {
+                            crate::agent::interrupted::confirm_delivered(pool, report).await;
                         }
                         break recovered;
                     }
@@ -640,8 +625,7 @@ async fn run(
         let has_tool_calls = !result.tool_calls.is_empty()
             && !matches!(result.finish_reason.as_deref(), Some("length") | Some("max_tokens"));
 
-        let tool_calls_json =
-            has_tool_calls.then(|| serialize_tool_calls_openai(&result.tool_calls));
+        let tool_calls_json = has_tool_calls.then(|| serialize_tool_calls_openai(&result.tool_calls));
         complete_assistant(
             pool,
             &assistant_msg_id,
@@ -696,10 +680,10 @@ async fn run(
         // Only the final iteration's text is returned to the caller, so on a
         // runner that does not stream, everything said on the way to a tool call
         // would otherwise exist solely in the database.
-        if !result.text.is_empty() {
-            if let Some(interim) = ports.interim {
-                interim.say(result.text.clone()).await;
-            }
+        if !result.text.is_empty()
+            && let Some(interim) = ports.interim
+        {
+            interim.say(result.text.clone()).await;
         }
 
         let mut assistant_msg = ChatMessage::assistant_with_tools(
@@ -738,227 +722,219 @@ async fn run(
             // attention on the same dialog forty times.
             let verdict = loop_guard.observe(&tc.name, &tc.arguments);
 
-            let (output, outcome): (String, &'static str) =
-                if let crate::agent::LoopVerdict::Warn(n) = verdict {
-                    (crate::agent::loop_warning_message(&tc.name, n), "error")
-                } else if let crate::agent::LoopVerdict::Abort(n) = verdict {
-                    turn_aborted = true;
-                    (crate::agent::loop_abort_message(&tc.name, n), "error")
-                } else if !allowed {
-                    (withheld.say(&tc.name), "error")
-                } else if let Some(surface) = surface {
-                    // Read-only query tools are scope-locked and go straight
-                    // through; the ones that change a group ask first.
-                    let approved = !surface.requires_approval(&tc.name)
-                        || matches!(
-                            ports.approvals.ask(&assistant_msg_id, tc, None).await?,
-                            Some(ApprovalDecision::Approved)
-                        );
-                    if approved {
+            let (output, outcome): (String, &'static str) = if let crate::agent::LoopVerdict::Warn(n) = verdict {
+                (crate::agent::loop_warning_message(&tc.name, n), "error")
+            } else if let crate::agent::LoopVerdict::Abort(n) = verdict {
+                turn_aborted = true;
+                (crate::agent::loop_abort_message(&tc.name, n), "error")
+            } else if !allowed {
+                (withheld.say(&tc.name), "error")
+            } else if let Some(surface) = surface {
+                // Read-only query tools are scope-locked and go straight
+                // through; the ones that change a group ask first.
+                let approved = !surface.requires_approval(&tc.name)
+                    || matches!(
+                        ports.approvals.ask(&assistant_msg_id, tc, None).await?,
+                        Some(ApprovalDecision::Approved)
+                    );
+                if approved {
+                    let ran = in_phase(
+                        pool,
+                        &turn_id,
+                        TurnPhase::RunningTool,
+                        Some(&tc.name),
+                        surface.execute(&tc.name, &tc.arguments),
+                    )
+                    .await;
+                    match ran {
+                        Ok(o) => (o, "success"),
+                        Err(e) => (format!("Error: {e}"), "error"),
+                    }
+                } else {
+                    ("Tool call denied by user.".to_string(), "denied")
+                }
+            } else if tc.name == "ask_user" {
+                match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
+                    Some(ApprovalDecision::Response(text)) => (text, "success"),
+                    _ => ("User did not respond.".to_string(), "denied"),
+                }
+            } else if let (crate::agent::sub_agents::RUN_AGENT_TOOL, Some(sub_agents)) =
+                (tc.name.as_str(), ports.sub_agents)
+            {
+                // The phase is the parent's: for as long as the sub-agent
+                // runs, this turn is running a tool called `run_agent`. A
+                // crash here reads as "that call may have half-happened",
+                // which is exactly what it means.
+                match parse_sub_agent(&tc.arguments, &assistant_msg_id, &tc.id) {
+                    Err(e) => (format!("Error: {e}"), "error"),
+                    Ok(spec) => {
                         let ran = in_phase(
                             pool,
                             &turn_id,
                             TurnPhase::RunningTool,
                             Some(&tc.name),
-                            surface.execute(&tc.name, &tc.arguments),
+                            sub_agents.run(spec),
                         )
                         .await;
                         match ran {
-                            Ok(o) => (o, "success"),
+                            Ok(report) => {
+                                let outcome = report.status.outcome();
+                                (sub_agent_result(&report), outcome)
+                            }
                             Err(e) => (format!("Error: {e}"), "error"),
                         }
-                    } else {
-                        ("Tool call denied by user.".to_string(), "denied")
                     }
-                } else if tc.name == "ask_user" {
-                    match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
-                        Some(ApprovalDecision::Response(text)) => (text, "success"),
-                        _ => ("User did not respond.".to_string(), "denied"),
-                    }
-                } else if let (crate::agent::sub_agents::RUN_AGENT_TOOL, Some(sub_agents)) =
-                    (tc.name.as_str(), ports.sub_agents)
-                {
-                    // The phase is the parent's: for as long as the sub-agent
-                    // runs, this turn is running a tool called `run_agent`. A
-                    // crash here reads as "that call may have half-happened",
-                    // which is exactly what it means.
-                    match parse_sub_agent(&tc.arguments, &assistant_msg_id, &tc.id) {
-                        Err(e) => (format!("Error: {e}"), "error"),
-                        Ok(spec) => {
-                            let ran = in_phase(
-                                pool,
-                                &turn_id,
-                                TurnPhase::RunningTool,
-                                Some(&tc.name),
-                                sub_agents.run(spec),
-                            )
-                            .await;
-                            match ran {
-                                Ok(report) => {
-                                    let outcome = report.status.outcome();
-                                    (sub_agent_result(&report), outcome)
-                                }
-                                Err(e) => (format!("Error: {e}"), "error"),
-                            }
-                        }
-                    }
-                } else if let Some(target) = ports
-                    .transitions
-                    .and_then(|_| crate::agent::modes::by_enter_tool(&tc.name))
-                {
-                    // Guarded on the port, and the tool set is too: a runner
-                    // with no transitions is offered no transition tool
-                    // (`Modes::Fixed`), so the model has no way to name one and
-                    // this is the only path that ever reaches one. The guard
-                    // stays because the two are decided in different places, and
-                    // falling past it lands on the registry tool, whose refusal
-                    // to be called outside the loop would be read as a result.
-                    let decision = ports.approvals.ask(&assistant_msg_id, tc, None).await?;
-                    transitions::enter(
-                        pool,
-                        ports.transitions.expect("guarded above"),
-                        emit,
-                        &conversation_id,
-                        target,
-                        decision,
-                    )
-                    .await?
-                    .apply(&mut mode, &mut chat_messages, &mut tool_defs, &mut offered)
-                } else if ports.transitions.is_some() && mode.exit_tool == Some(tc.name.as_str()) {
-                    let asked = ports.approvals.ask(&assistant_msg_id, tc, None);
-                    transitions::exit(
-                        pool,
-                        ports.transitions.expect("guarded above"),
-                        emit,
-                        &conversation_id,
-                        mode,
-                        &tc.arguments,
-                        asked,
-                    )
-                    .await?
-                    .apply(&mut mode, &mut chat_messages, &mut tool_defs, &mut offered)
-                } else if is_mcp {
-                    // External tools ask, always. They are the one class the
-                    // authorizer knows nothing about.
-                    match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
-                        Some(ApprovalDecision::Approved) => {
-                            let args: serde_json::Value = serde_json::from_str(&tc.arguments)
-                                .unwrap_or_else(|_| serde_json::json!({}));
-                            // Awaited with nothing locked: the registry hands
-                            // back a handle and the call runs outside it.
-                            let called = in_phase(
-                                pool,
-                                &turn_id,
-                                TurnPhase::RunningTool,
-                                Some(&tc.name),
-                                services.mcp.call_tool(&tc.name, args),
-                            )
-                            .await;
-                            match called {
-                                Ok(o) => (o, "success"),
-                                Err(e) => (format!("MCP error: {e}"), "error"),
-                            }
-                        }
-                        Some(ApprovalDecision::Denied(Some(reason))) => {
-                            (format!("Tool call denied by user. Reason: {reason}"), "denied")
-                        }
-                        _ => ("Tool call denied by user.".to_string(), "denied"),
-                    }
-                } else if let Some(tool) = tool {
-                    let args: serde_json::Value = serde_json::from_str(&tc.arguments)
-                        .unwrap_or_else(|_| serde_json::json!({}));
-                    let permission = tool.default_permission();
-                    let must_ask = match &approval_rule {
-                        // `reach` is advisory: it decides whether to prompt, not
-                        // what the tool may touch. `tools::verified` enforces
-                        // that against the handle when the I/O happens.
-                        ApprovalRule::ByReach { accept_edits } => tools::reach::needs_approval(
-                            permission,
-                            tool.reach(&args, &tool_context),
-                            *accept_edits,
-                        ),
-                        ApprovalRule::ByPermission => permission == tools::Permission::Ask,
-                    };
-                    let (approved, deny_reason): (bool, Option<String>) =
-                        if permission == tools::Permission::Never {
-                            (false, None)
-                        } else if !must_ask {
-                            (true, None)
-                        } else {
-                            match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
-                                Some(ApprovalDecision::Approved) => (true, None),
-                                Some(ApprovalDecision::Denied(reason)) => (false, reason),
-                                // Typed words are an answer to a question, and
-                                // only `ask_user` asked one. Reaching here with
-                                // some means the card was answered by something
-                                // that had no permission to grant, so it is not
-                                // one. Nothing said at all reads the same way.
-                                Some(ApprovalDecision::Response(_)) | None => (false, None),
-                            }
-                        };
-                    if !approved {
-                        match deny_reason {
-                            Some(reason) => {
-                                (format!("Tool call denied by user. Reason: {reason}"), "denied")
-                            }
-                            None => ("Tool call denied by user.".to_string(), "denied"),
-                        }
-                    } else {
-                        // The one phase that describes something outside the
-                        // database. A turn found dead here may already have
-                        // written the file or run the command.
-                        let executed = in_phase(
+                }
+            } else if let Some(target) = ports
+                .transitions
+                .and_then(|_| crate::agent::modes::by_enter_tool(&tc.name))
+            {
+                // Guarded on the port, and the tool set is too: a runner
+                // with no transitions is offered no transition tool
+                // (`Modes::Fixed`), so the model has no way to name one and
+                // this is the only path that ever reaches one. The guard
+                // stays because the two are decided in different places, and
+                // falling past it lands on the registry tool, whose refusal
+                // to be called outside the loop would be read as a result.
+                let decision = ports.approvals.ask(&assistant_msg_id, tc, None).await?;
+                transitions::enter(
+                    pool,
+                    ports.transitions.expect("guarded above"),
+                    emit,
+                    &conversation_id,
+                    target,
+                    decision,
+                )
+                .await?
+                .apply(&mut mode, &mut chat_messages, &mut tool_defs, &mut offered)
+            } else if let Some(transition_ports) = ports.transitions
+                && mode.exit_tool == Some(tc.name.as_str())
+            {
+                let asked = ports.approvals.ask(&assistant_msg_id, tc, None);
+                transitions::exit(
+                    pool,
+                    transition_ports,
+                    emit,
+                    &conversation_id,
+                    mode,
+                    &tc.arguments,
+                    asked,
+                )
+                .await?
+                .apply(&mut mode, &mut chat_messages, &mut tool_defs, &mut offered)
+            } else if is_mcp {
+                // External tools ask, always. They are the one class the
+                // authorizer knows nothing about.
+                match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
+                    Some(ApprovalDecision::Approved) => {
+                        let args: serde_json::Value =
+                            serde_json::from_str(&tc.arguments).unwrap_or_else(|_| serde_json::json!({}));
+                        // Awaited with nothing locked: the registry hands
+                        // back a handle and the call runs outside it.
+                        let called = in_phase(
                             pool,
                             &turn_id,
                             TurnPhase::RunningTool,
                             Some(&tc.name),
-                            tool.execute(args.clone(), &tool_context),
+                            services.mcp.call_tool(&tc.name, args),
                         )
                         .await;
-                        match executed {
+                        match called {
                             Ok(o) => (o, "success"),
-                            Err(e) => match tools::decode_sandbox_denied(&e) {
-                                None => (format!("Error: {e}"), "error"),
-                                Some(blocked) => {
-                                    // The same call under the same id: it is the
-                                    // approval that is new, and that has an
-                                    // identity of its own.
-                                    let retry = ports
-                                        .approvals
-                                        .ask(&assistant_msg_id, tc, Some(blocked))
-                                        .await?;
-                                    if matches!(retry, Some(ApprovalDecision::Approved)) {
-                                        let escalated = tool_context.without_sandbox();
-                                        let retried = in_phase(
-                                            pool,
-                                            &turn_id,
-                                            TurnPhase::RunningTool,
-                                            Some(&tc.name),
-                                            tool.execute(args, &escalated),
-                                        )
-                                        .await;
-                                        match retried {
-                                            Ok(o) => (o, "success"),
-                                            Err(e2) => (format!("Error: {e2}"), "error"),
-                                        }
-                                    } else {
-                                        (
-                                            format!("{blocked}\n[blocked by sandbox; user declined to retry without sandbox]"),
-                                            "denied",
-                                        )
-                                    }
-                                }
-                            },
+                            Err(e) => (format!("MCP error: {e}"), "error"),
                         }
                     }
-                } else {
-                    (format!("Unknown tool: {}", tc.name), "error")
+                    Some(ApprovalDecision::Denied(Some(reason))) => {
+                        (format!("Tool call denied by user. Reason: {reason}"), "denied")
+                    }
+                    _ => ("Tool call denied by user.".to_string(), "denied"),
+                }
+            } else if let Some(tool) = tool {
+                let args: serde_json::Value =
+                    serde_json::from_str(&tc.arguments).unwrap_or_else(|_| serde_json::json!({}));
+                let permission = tool.default_permission();
+                let must_ask = match &approval_rule {
+                    // `reach` is advisory: it decides whether to prompt, not
+                    // what the tool may touch. `tools::verified` enforces
+                    // that against the handle when the I/O happens.
+                    ApprovalRule::ByReach { accept_edits } => {
+                        tools::reach::needs_approval(permission, tool.reach(&args, &tool_context), *accept_edits)
+                    }
+                    ApprovalRule::ByPermission => permission == tools::Permission::Ask,
                 };
+                let (approved, deny_reason): (bool, Option<String>) = if permission == tools::Permission::Never {
+                    (false, None)
+                } else if !must_ask {
+                    (true, None)
+                } else {
+                    match ports.approvals.ask(&assistant_msg_id, tc, None).await? {
+                        Some(ApprovalDecision::Approved) => (true, None),
+                        Some(ApprovalDecision::Denied(reason)) => (false, reason),
+                        // Typed words are an answer to a question, and
+                        // only `ask_user` asked one. Reaching here with
+                        // some means the card was answered by something
+                        // that had no permission to grant, so it is not
+                        // one. Nothing said at all reads the same way.
+                        Some(ApprovalDecision::Response(_)) | None => (false, None),
+                    }
+                };
+                if !approved {
+                    match deny_reason {
+                        Some(reason) => (format!("Tool call denied by user. Reason: {reason}"), "denied"),
+                        None => ("Tool call denied by user.".to_string(), "denied"),
+                    }
+                } else {
+                    // The one phase that describes something outside the
+                    // database. A turn found dead here may already have
+                    // written the file or run the command.
+                    let executed = in_phase(
+                        pool,
+                        &turn_id,
+                        TurnPhase::RunningTool,
+                        Some(&tc.name),
+                        tool.execute(args.clone(), &tool_context),
+                    )
+                    .await;
+                    match executed {
+                        Ok(o) => (o, "success"),
+                        Err(e) => match tools::decode_sandbox_denied(&e) {
+                            None => (format!("Error: {e}"), "error"),
+                            Some(blocked) => {
+                                // The same call under the same id: it is the
+                                // approval that is new, and that has an
+                                // identity of its own.
+                                let retry = ports.approvals.ask(&assistant_msg_id, tc, Some(blocked)).await?;
+                                if matches!(retry, Some(ApprovalDecision::Approved)) {
+                                    let escalated = tool_context.without_sandbox();
+                                    let retried = in_phase(
+                                        pool,
+                                        &turn_id,
+                                        TurnPhase::RunningTool,
+                                        Some(&tc.name),
+                                        tool.execute(args, &escalated),
+                                    )
+                                    .await;
+                                    match retried {
+                                        Ok(o) => (o, "success"),
+                                        Err(e2) => (format!("Error: {e2}"), "error"),
+                                    }
+                                } else {
+                                    (
+                                        format!(
+                                            "{blocked}\n[blocked by sandbox; user declined to retry without sandbox]"
+                                        ),
+                                        "denied",
+                                    )
+                                }
+                            }
+                        },
+                    }
+                }
+            } else {
+                (format!("Unknown tool: {}", tc.name), "error")
+            };
 
-            let output = crate::agent::formatted_truncate_text(
-                &output,
-                crate::agent::TOOL_OUTPUT_TRUNCATION,
-            );
+            let output = crate::agent::formatted_truncate_text(&output, crate::agent::TOOL_OUTPUT_TRUNCATION);
 
             announce(serde_json::json!({
                 "type": "tool_result",
@@ -1014,10 +990,7 @@ async fn run(
                 )
                 .await;
                 narrow_offered(&mut offered, ports.steering);
-                whisper(
-                    "conversation-updated",
-                    serde_json::json!({ "id": &conversation_id }),
-                );
+                whisper("conversation-updated", serde_json::json!({ "id": &conversation_id }));
             }
         }
 
@@ -1052,7 +1025,9 @@ async fn run(
 /// point where somebody else joins. Intersects rather than assigns: a port that
 /// answers may only take tools away, never hand back one the turn never had.
 fn narrow_offered(offered: &mut HashSet<String>, steering: Option<&dyn Steering>) {
-    let Some(narrowed) = steering.and_then(|s| s.narrowed()) else { return };
+    let Some(narrowed) = steering.and_then(|s| s.narrowed()) else {
+        return;
+    };
     let before = offered.len();
     offered.retain(|name| narrowed.contains(name));
     if offered.len() != before {
@@ -1105,9 +1080,9 @@ async fn inject_steering(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use super::super::ports::{Approvals, Steered, Steering, SurfaceTools};
     use super::super::Emit;
+    use super::super::ports::{Approvals, Steered, Steering, SurfaceTools};
+    use super::*;
     use crate::agent::turn_config::TurnConfig;
     use crate::db::test_db;
     use crate::provider::{ProviderError, SenderRef, StreamEvent, TokenUsage, ToolCall};
@@ -1121,16 +1096,31 @@ mod tests {
     /// One request's worth of stream.
     fn says(text: &str) -> Vec<StreamEvent> {
         vec![
-            StreamEvent::Text { content: text.to_string() },
-            StreamEvent::Stop { reason: "stop".into(), usage: None },
+            StreamEvent::Text {
+                content: text.to_string(),
+            },
+            StreamEvent::Stop {
+                reason: "stop".into(),
+                usage: None,
+            },
         ]
     }
 
     fn calls(id: &str, name: &str, arguments: &str) -> Vec<StreamEvent> {
         vec![
-            StreamEvent::ToolCallStart { index: 0, id: id.into(), name: name.into() },
-            StreamEvent::ToolCallDone { index: 0, arguments: arguments.into() },
-            StreamEvent::Stop { reason: "tool_calls".into(), usage: None },
+            StreamEvent::ToolCallStart {
+                index: 0,
+                id: id.into(),
+                name: name.into(),
+            },
+            StreamEvent::ToolCallDone {
+                index: 0,
+                arguments: arguments.into(),
+            },
+            StreamEvent::Stop {
+                reason: "tool_calls".into(),
+                usage: None,
+            },
         ]
     }
 
@@ -1160,16 +1150,25 @@ mod tests {
 
     impl Scripted {
         fn of(rounds: Vec<Vec<StreamEvent>>) -> Self {
-            Self { script: Mutex::new(rounds.into()), ..Default::default() }
+            Self {
+                script: Mutex::new(rounds.into()),
+                ..Default::default()
+            }
         }
         fn summarising_to(self, summary: &str) -> Self {
-            Self { summary: Some(summary.to_string()), ..self }
+            Self {
+                summary: Some(summary.to_string()),
+                ..self
+            }
         }
         /// Says its piece and then nothing, the way a provider that has stopped
         /// sending does. The only way to leave cancellation as the sole branch
         /// that can fire.
         fn stalling(rounds: Vec<Vec<StreamEvent>>) -> Self {
-            Self { stalls: true, ..Self::of(rounds) }
+            Self {
+                stalls: true,
+                ..Self::of(rounds)
+            }
         }
         fn requests(&self) -> Vec<(Vec<ChatMessage>, Vec<String>)> {
             self.sent.lock().unwrap().clone()
@@ -1211,11 +1210,7 @@ mod tests {
             }
         }
 
-        async fn chat(
-            &self,
-            _messages: Vec<ChatMessage>,
-            _params: ChatParams,
-        ) -> Result<String, ProviderError> {
+        async fn chat(&self, _messages: Vec<ChatMessage>, _params: ChatParams) -> Result<String, ProviderError> {
             match self.summary {
                 Some(ref s) => Ok(s.clone()),
                 None => Err(ProviderError::NotImplemented("not used by the loop".into())),
@@ -1285,7 +1280,10 @@ mod tests {
 
     impl Answers {
         fn saying(answer: Option<ApprovalDecision>) -> Self {
-            Self { answer, asked: Mutex::new(Vec::new()) }
+            Self {
+                answer,
+                asked: Mutex::new(Vec::new()),
+            }
         }
         fn nobody() -> Self {
             Self::saying(None)
@@ -1367,10 +1365,7 @@ mod tests {
 
     #[async_trait::async_trait]
     impl transitions::Transitions for Rebuilt {
-        async fn rebuild(
-            &self,
-            _mode: &'static ModeSpec,
-        ) -> Result<Result<TurnConfig, String>, String> {
+        async fn rebuild(&self, _mode: &'static ModeSpec) -> Result<Result<TurnConfig, String>, String> {
             Ok(Ok(TurnConfig {
                 tool_defs: self.0.tool_defs.clone(),
                 system_prompt: self.0.system_prompt.clone(),
@@ -1383,8 +1378,7 @@ mod tests {
 
     fn conversation(pool: &DbPool) {
         let mut conn = pool.get().unwrap();
-        crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1)
-            .unwrap();
+        crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1).unwrap();
         crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
     }
 
@@ -1423,7 +1417,6 @@ mod tests {
             conversation_id: Some("c1".into()),
             assistant_id: None,
             db_pool: Some(pool.clone()),
-            edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
             tool_secrets: Default::default(),
@@ -1431,15 +1424,13 @@ mod tests {
         }
     }
 
-    fn setup<'a>(
-        provider: &'a Scripted,
-        pool: &DbPool,
-        cancel: &CancellationToken,
-        offered: &[&str],
-    ) -> TurnSetup<'a> {
+    fn setup<'a>(provider: &'a Scripted, pool: &DbPool, cancel: &CancellationToken, offered: &[&str]) -> TurnSetup<'a> {
         TurnSetup {
             provider,
-            params: ChatParams { model: "m".into(), ..Default::default() },
+            params: ChatParams {
+                model: "m".into(),
+                ..Default::default()
+            },
             chat_messages: vec![system("you are helpful"), ChatMessage::user("do the thing")],
             tool_defs: offered.iter().map(|n| def(n)).collect(),
             offered: offered.iter().map(|n| n.to_string()).collect(),
@@ -1477,11 +1468,7 @@ mod tests {
         }
     }
 
-    fn services<'a>(
-        pool: &'a DbPool,
-        tools: &'a ToolRegistry,
-        mcp: &'a McpRegistry,
-    ) -> TurnServices<'a> {
+    fn services<'a>(pool: &'a DbPool, tools: &'a ToolRegistry, mcp: &'a McpRegistry) -> TurnServices<'a> {
         TurnServices { pool, tools, mcp }
     }
 
@@ -1536,11 +1523,11 @@ mod tests {
         }
     }
 
-    fn delegating<'a>(
-        approvals: &'a Answers,
-        sub_agents: &'a Delegate,
-    ) -> TurnPorts<'a> {
-        TurnPorts { sub_agents: Some(sub_agents), ..ports(approvals, None) }
+    fn delegating<'a>(approvals: &'a Answers, sub_agents: &'a Delegate) -> TurnPorts<'a> {
+        TurnPorts {
+            sub_agents: Some(sub_agents),
+            ..ports(approvals, None)
+        }
     }
 
     fn run_agent_call(id: &str, args: &str) -> Vec<StreamEvent> {
@@ -1580,7 +1567,11 @@ mod tests {
         // The verdict and the count travel with the text; the model is not left
         // to infer either from prose.
         let tool_row = rows(&pool).into_iter().find(|r| r.role == "tool").unwrap();
-        assert!(tool_row.content.contains("finished after 4 steps"), "{}", tool_row.content);
+        assert!(
+            tool_row.content.contains("finished after 4 steps"),
+            "{}",
+            tool_row.content
+        );
         assert!(tool_row.content.contains("Three callers."));
         assert_eq!(tool_row.tool_outcome.as_deref(), Some("success"));
     }
@@ -1607,7 +1598,10 @@ mod tests {
         let tool_row = rows(&pool).into_iter().find(|r| r.role == "tool").unwrap();
         assert!(tool_row.content.contains("stopped"), "{}", tool_row.content);
         assert!(tool_row.content.contains("do not treat it as a conclusion"));
-        assert!(tool_row.content.contains("I found two so far"), "the partial text is still there");
+        assert!(
+            tool_row.content.contains("I found two so far"),
+            "the partial text is still there"
+        );
         assert_eq!(
             tool_row.tool_outcome.as_deref(),
             Some("error"),
@@ -1648,7 +1642,10 @@ mod tests {
         for (args, expected) in [
             (r#"{"agent":"researcher","description":"d","prompt":"p"}"#, "explore"),
             (r#"{"agent":"explore","description":"d"}"#, "`prompt` is required"),
-            (r#"{"agent":"explore","description":"  ","prompt":"p"}"#, "`description` is required"),
+            (
+                r#"{"agent":"explore","description":"  ","prompt":"p"}"#,
+                "`description` is required",
+            ),
             ("not json at all", "not valid JSON"),
         ] {
             let pool = test_db();
@@ -1739,10 +1736,7 @@ mod tests {
         let pool = test_db();
         conversation(&pool);
         let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
-        let provider = Scripted::of(vec![
-            calls("call-1", "fixture", r#"{"x":1}"#),
-            says("that worked"),
-        ]);
+        let provider = Scripted::of(vec![calls("call-1", "fixture", r#"{"x":1}"#), says("that worked")]);
         let approvals = Answers::nobody();
         let fixture = Fixture::returning("42");
         let emit = Recorder::default();
@@ -1750,13 +1744,19 @@ mod tests {
         let outcome = run_turn(
             &services(&pool, &tools, &mcp),
             setup(&provider, &pool, &cancel, &["fixture"]),
-            TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, Some(&emit)) },
+            TurnPorts {
+                surface_tools: Some(&fixture),
+                ..ports(&approvals, Some(&emit))
+            },
         )
         .await;
 
         assert_eq!(outcome.reply.as_deref(), Ok("that worked"));
         assert_eq!(*fixture.ran.lock().unwrap(), [r#"{"x":1}"#]);
-        assert!(approvals.asked.lock().unwrap().is_empty(), "a read-only tool does not ask");
+        assert!(
+            approvals.asked.lock().unwrap().is_empty(),
+            "a read-only tool does not ask"
+        );
         assert_eq!(provider.rounds(), 2);
 
         let second = &provider.requests()[1].0;
@@ -1770,9 +1770,10 @@ mod tests {
         );
         assert_eq!(rows[1].parent_id.as_deref(), Some(rows[0].id.as_str()));
         assert_eq!(rows[2].parent_id.as_deref(), Some(rows[1].id.as_str()));
-        assert_eq!(emit.kinds(), [
-            "message_start", "tool_call", "tool_result", "message_start", "text",
-        ]);
+        assert_eq!(
+            emit.kinds(),
+            ["message_start", "tool_call", "tool_result", "message_start", "text",]
+        );
     }
 
     /// Cancelling is a decision, not a failure: whatever the model managed to
@@ -1783,10 +1784,7 @@ mod tests {
         let pool = test_db();
         conversation(&pool);
         let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
-        let provider = Scripted::of(vec![
-            calls("call-1", "fixture", "{}"),
-            says("never asked for"),
-        ]);
+        let provider = Scripted::of(vec![calls("call-1", "fixture", "{}"), says("never asked for")]);
         let approvals = Answers::nobody();
         let stop = cancel.clone();
         let fixture = Fixture::returning("done").doing(move || stop.cancel());
@@ -1794,7 +1792,10 @@ mod tests {
         let outcome = run_turn(
             &services(&pool, &tools, &mcp),
             setup(&provider, &pool, &cancel, &["fixture"]),
-            TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, None) },
+            TurnPorts {
+                surface_tools: Some(&fixture),
+                ..ports(&approvals, None)
+            },
         )
         .await;
 
@@ -1825,7 +1826,10 @@ mod tests {
         let outcome = run_turn(
             &services(&pool, &tools, &mcp),
             setup(&provider, &pool, &cancel, &["fixture"]),
-            TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, None) },
+            TurnPorts {
+                surface_tools: Some(&fixture),
+                ..ports(&approvals, None)
+            },
         )
         .await;
 
@@ -1837,8 +1841,10 @@ mod tests {
             crate::agent::loop_guard::LOOP_ABORT_AFTER as usize,
             "it stops on the call that trips the guard, not a round later",
         );
-        assert!(fixture.ran.lock().unwrap().len() < crate::agent::loop_guard::LOOP_ABORT_AFTER as usize,
-            "and the call it aborted on is not executed");
+        assert!(
+            fixture.ran.lock().unwrap().len() < crate::agent::loop_guard::LOOP_ABORT_AFTER as usize,
+            "and the call it aborted on is not executed"
+        );
     }
 
     /// The one write the loop is allowed to lose. By the time it runs the tool
@@ -1857,17 +1863,17 @@ mod tests {
             .unwrap();
         }
         let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
-        let provider = Scripted::of(vec![
-            calls("call-1", "fixture", "{}"),
-            says("carried on"),
-        ]);
+        let provider = Scripted::of(vec![calls("call-1", "fixture", "{}"), says("carried on")]);
         let approvals = Answers::nobody();
         let fixture = Fixture::returning("the tool still ran");
 
         let outcome = run_turn(
             &services(&pool, &tools, &mcp),
             setup(&provider, &pool, &cancel, &["fixture"]),
-            TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, None) },
+            TurnPorts {
+                surface_tools: Some(&fixture),
+                ..ports(&approvals, None)
+            },
         )
         .await;
 
@@ -1877,7 +1883,10 @@ mod tests {
         assert_eq!(provider.requests()[1].0.last().unwrap().content, "the tool still ran");
 
         let rows = rows(&pool);
-        assert_eq!(rows.iter().map(|r| r.role.as_str()).collect::<Vec<_>>(), ["assistant", "assistant"]);
+        assert_eq!(
+            rows.iter().map(|r| r.role.as_str()).collect::<Vec<_>>(),
+            ["assistant", "assistant"]
+        );
         assert_eq!(
             rows[1].parent_id.as_deref(),
             Some(rows[0].id.as_str()),
@@ -1903,15 +1912,17 @@ mod tests {
             let pool = test_db();
             conversation(&pool);
             let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
-            let provider =
-                Scripted::of(vec![calls("call-1", "fixture", "{}"), says("carried on")]);
+            let provider = Scripted::of(vec![calls("call-1", "fixture", "{}"), says("carried on")]);
             let approvals = Answers::nobody();
             let fixture = Fixture::returning("ok");
 
             let outcome = run_turn(
                 &services(&pool, &tools, &mcp),
                 setup(&provider, &pool, &cancel, &["fixture"]),
-                TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, Some(emit)) },
+                TurnPorts {
+                    surface_tools: Some(&fixture),
+                    ..ports(&approvals, Some(emit))
+                },
             )
             .await;
 
@@ -1974,8 +1985,16 @@ mod tests {
 
         let outcome = run_turn(
             &services(&pool, &tools, &mcp),
-            setup(&provider, &pool, &cancel, &[crate::agent::modes::ENTER_PLAN_TOOL, "write_file"]),
-            TurnPorts { transitions: Some(&rebuilt), ..ports(&approvals, None) },
+            setup(
+                &provider,
+                &pool,
+                &cancel,
+                &[crate::agent::modes::ENTER_PLAN_TOOL, "write_file"],
+            ),
+            TurnPorts {
+                transitions: Some(&rebuilt),
+                ..ports(&approvals, None)
+            },
         )
         .await;
 
@@ -1994,18 +2013,21 @@ mod tests {
         let pool = test_db();
         conversation(&pool);
         let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
-        let provider = Scripted::of(vec![
-            calls("call-1", "fixture", "{}"),
-            says("noted"),
-        ]);
+        let provider = Scripted::of(vec![calls("call-1", "fixture", "{}"), says("noted")]);
         let approvals = Answers::nobody();
         let fixture = Fixture::returning("ok");
         let inbox = Inbox(Mutex::new(vec![
             Steered {
                 text: "one more thing".into(),
-                origin: SteeredOrigin::User(Some(SenderRef { user_id: 7, nickname: None })),
+                origin: SteeredOrigin::User(Some(SenderRef {
+                    user_id: 7,
+                    nickname: None,
+                })),
             },
-            Steered { text: "they left the group".into(), origin: SteeredOrigin::System },
+            Steered {
+                text: "they left the group".into(),
+                origin: SteeredOrigin::System,
+            },
         ]));
 
         run_turn(
@@ -2066,7 +2088,10 @@ mod tests {
         let fixture = Fixture::returning("ok");
         let joins = Joins(Mutex::new(vec![Steered {
             text: "and while you are at it, list his friends".into(),
-            origin: SteeredOrigin::User(Some(SenderRef { user_id: 9, nickname: None })),
+            origin: SteeredOrigin::User(Some(SenderRef {
+                user_id: 9,
+                nickname: None,
+            })),
         }]));
 
         run_turn(
@@ -2109,7 +2134,10 @@ mod tests {
         let outcome = run_turn(
             &services(&pool, &tools, &mcp),
             setup(&provider, &pool, &cancel, &[]),
-            TurnPorts { steering: Some(&inbox), ..ports(&approvals, None) },
+            TurnPorts {
+                steering: Some(&inbox),
+                ..ports(&approvals, None)
+            },
         )
         .await;
 
@@ -2146,15 +2174,17 @@ mod tests {
         conversation(&pool);
         let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
         // Enough replies for every continuation plus the one that stops.
-        let provider =
-            Scripted::of((0..MAX_TAIL_CONTINUATIONS + 1).map(|_| says("ok")).collect::<Vec<_>>());
+        let provider = Scripted::of((0..MAX_TAIL_CONTINUATIONS + 1).map(|_| says("ok")).collect::<Vec<_>>());
         let approvals = Answers::nobody();
         // Never empties: something new is waiting every single time.
         struct Endless(Mutex<usize>);
         impl Steering for Endless {
             fn drain(&self) -> Vec<Steered> {
                 *self.0.lock().unwrap() += 1;
-                vec![Steered { text: "and another".into(), origin: SteeredOrigin::User(None) }]
+                vec![Steered {
+                    text: "and another".into(),
+                    origin: SteeredOrigin::User(None),
+                }]
             }
         }
         let endless = Endless(Mutex::new(0));
@@ -2162,7 +2192,10 @@ mod tests {
         let outcome = run_turn(
             &services(&pool, &tools, &mcp),
             setup(&provider, &pool, &cancel, &[]),
-            TurnPorts { steering: Some(&endless), ..ports(&approvals, None) },
+            TurnPorts {
+                steering: Some(&endless),
+                ..ports(&approvals, None)
+            },
         )
         .await;
 
@@ -2202,7 +2235,10 @@ mod tests {
         let outcome = run_turn(
             &services(&pool, &tools, &mcp),
             setup(&provider, &pool, &cancel, &["fixture"]),
-            TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, None) },
+            TurnPorts {
+                surface_tools: Some(&fixture),
+                ..ports(&approvals, None)
+            },
         )
         .await;
 
@@ -2232,10 +2268,7 @@ mod tests {
             let pool = test_db();
             conversation(&pool);
             let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
-            let provider = Scripted::of(vec![
-                run_agent_call("call-1", ERRAND),
-                says("understood"),
-            ]);
+            let provider = Scripted::of(vec![run_agent_call("call-1", ERRAND), says("understood")]);
             let approvals = Answers::nobody();
             let delegate = Delegate::stranding(accepted, unrecorded);
 
@@ -2259,10 +2292,7 @@ mod tests {
         let pool = test_db();
         conversation(&pool);
         let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
-        let provider = Scripted::of(vec![
-            run_agent_call("call-1", ERRAND),
-            says("understood"),
-        ]);
+        let provider = Scripted::of(vec![run_agent_call("call-1", ERRAND), says("understood")]);
         let approvals = Answers::nobody();
         let delegate = Delegate::returning(SubAgentStatus::Done, "had a look", 2);
 
@@ -2305,8 +2335,7 @@ mod tests {
             let mut conn = pool.get().unwrap();
             crate::db::ops::turn::begin(&mut conn, "t0", "c1", TurnOrigin::Desktop, None, 500).unwrap();
         }
-        let report = owed(&pool, "t1")
-            .expect("t0 is running and held by nobody, so it counts as cut off");
+        let report = owed(&pool, "t1").expect("t0 is running and held by nobody, so it counts as cut off");
         let (tools, mcp) = (registry(), McpRegistry::new());
         let approvals = Answers::nobody();
 
@@ -2314,13 +2343,16 @@ mod tests {
         let cancel = CancellationToken::new();
         let stopper = StopOnText(cancel.clone());
         let interrupted_run = Scripted::stalling(vec![vec![
-            StreamEvent::Text { content: "I was about to".into() },
-            StreamEvent::Text { content: "never sent".into() },
+            StreamEvent::Text {
+                content: "I was about to".into(),
+            },
+            StreamEvent::Text {
+                content: "never sent".into(),
+            },
         ]]);
         let mut first = setup(&interrupted_run, &pool, &cancel, &[]);
         first.interrupted = Some(report);
-        let outcome =
-            run_turn(&services(&pool, &tools, &mcp), first, ports(&approvals, Some(&stopper))).await;
+        let outcome = run_turn(&services(&pool, &tools, &mcp), first, ports(&approvals, Some(&stopper))).await;
         assert!(outcome.reply.is_ok(), "being stopped is not a failure");
 
         ended(&pool, "t1", crate::db::models::turn::TurnStatus::Cancelled, 1500);
@@ -2340,10 +2372,12 @@ mod tests {
             let mut conn = pool.get().unwrap();
             crate::db::ops::turn::begin(&mut conn, "t2", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
         }
-        assert!(run_turn(&services(&pool, &tools, &mcp), second, ports(&approvals, None))
-            .await
-            .reply
-            .is_ok());
+        assert!(
+            run_turn(&services(&pool, &tools, &mcp), second, ports(&approvals, None))
+                .await
+                .reply
+                .is_ok()
+        );
 
         ended(&pool, "t2", crate::db::models::turn::TurnStatus::Done, 2500);
         assert!(owed(&pool, "t3").is_none(), "and that one does retire it");
@@ -2417,9 +2451,15 @@ mod tests {
 
         let out = run_turn(&services(&pool, &tools, &mcp), s, ports(&approvals, None)).await;
 
-        let err = out.reply.expect_err("a turn with no room to answer in is not a success");
+        let err = out
+            .reply
+            .expect_err("a turn with no room to answer in is not a success");
         assert!(err.contains("fills the context window"), "unhelpful: {err}");
-        assert!(provider.ceilings().is_empty(), "a request was sent anyway: {:?}", provider.ceilings());
+        assert!(
+            provider.ceilings().is_empty(),
+            "a request was sent anyway: {:?}",
+            provider.ceilings()
+        );
     }
 
     /// Recovery gets one attempt, so a second request that cannot be served
@@ -2494,8 +2534,15 @@ mod tests {
         };
         let provider = Scripted::of(vec![
             vec![
-                StreamEvent::ToolCallStart { index: 0, id: "c".into(), name: "fixture".into() },
-                StreamEvent::ToolCallDone { index: 0, arguments: "{}".into() },
+                StreamEvent::ToolCallStart {
+                    index: 0,
+                    id: "c".into(),
+                    name: "fixture".into(),
+                },
+                StreamEvent::ToolCallDone {
+                    index: 0,
+                    arguments: "{}".into(),
+                },
                 used(100, 10),
             ],
             vec![StreamEvent::Text { content: "done".into() }, used(200, 20)],
@@ -2506,7 +2553,10 @@ mod tests {
         let outcome = run_turn(
             &services(&pool, &tools, &mcp),
             setup(&provider, &pool, &cancel, &["fixture"]),
-            TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, None) },
+            TurnPorts {
+                surface_tools: Some(&fixture),
+                ..ports(&approvals, None)
+            },
         )
         .await;
 
@@ -2537,8 +2587,15 @@ mod tests {
         };
         let provider = Scripted::of(vec![
             vec![
-                StreamEvent::ToolCallStart { index: 0, id: "c".into(), name: "fixture".into() },
-                StreamEvent::ToolCallDone { index: 0, arguments: "{}".into() },
+                StreamEvent::ToolCallStart {
+                    index: 0,
+                    id: "c".into(),
+                    name: "fixture".into(),
+                },
+                StreamEvent::ToolCallDone {
+                    index: 0,
+                    arguments: "{}".into(),
+                },
                 used(100, 10, 0),
             ],
             vec![StreamEvent::Text { content: "done".into() }, used(200, 20, 180)],
@@ -2549,13 +2606,15 @@ mod tests {
         let outcome = run_turn(
             &services(&pool, &tools, &mcp),
             setup(&provider, &pool, &cancel, &["fixture"]),
-            TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, None) },
+            TurnPorts {
+                surface_tools: Some(&fixture),
+                ..ports(&approvals, None)
+            },
         )
         .await;
         assert!(outcome.reply.is_ok());
 
-        let assistant: Vec<_> =
-            rows(&pool).into_iter().filter(|m| m.role == "assistant").collect();
+        let assistant: Vec<_> = rows(&pool).into_iter().filter(|m| m.role == "assistant").collect();
         assert_eq!(assistant.len(), 2, "one row per round");
         // The cold round is stored as a reported zero, not as absent: the
         // provider said nothing was cached, which is a different claim from
@@ -2614,10 +2673,7 @@ mod tests {
         let pool = test_db();
         conversation(&pool);
         let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
-        let provider = Scripted::of(vec![
-            calls("call-1", "fixture", "{}"),
-            says("fine then"),
-        ]);
+        let provider = Scripted::of(vec![calls("call-1", "fixture", "{}"), says("fine then")]);
         let approvals = Answers::nobody();
         let fixture = Fixture::returning("should not happen");
 
@@ -2625,7 +2681,10 @@ mod tests {
             &services(&pool, &tools, &mcp),
             // Deliberately not offered.
             setup(&provider, &pool, &cancel, &[]),
-            TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, None) },
+            TurnPorts {
+                surface_tools: Some(&fixture),
+                ..ports(&approvals, None)
+            },
         )
         .await;
 
@@ -2634,7 +2693,10 @@ mod tests {
         let requests = provider.requests();
         let told = &requests[1].0.last().unwrap().content;
         assert!(told.contains("not available"), "{told}");
-        assert!(told.contains("another tool"), "and it is told not to route around it: {told}");
+        assert!(
+            told.contains("another tool"),
+            "and it is told not to route around it: {told}"
+        );
     }
 
     /// Answering a question is not granting permission.
@@ -2665,17 +2727,27 @@ mod tests {
         run_turn(
             &services(&pool, &tools, &mcp),
             setup(&provider, &pool, &cancel, &["fixture", "mcp__server__do", "ask_user"]),
-            TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, None) },
+            TurnPorts {
+                surface_tools: Some(&fixture),
+                ..ports(&approvals, None)
+            },
         )
         .await;
 
         let said = |round: usize| provider.requests()[round].0.last().unwrap().content.clone();
 
-        assert!(fixture.ran.lock().unwrap().is_empty(), "a surface tool is not authorised");
+        assert!(
+            fixture.ran.lock().unwrap().is_empty(),
+            "a surface tool is not authorised"
+        );
         assert_eq!(said(1), "Tool call denied by user.");
         // Never reached the registry, so the refusal is the approval's and not
         // an "unknown MCP server" from further down.
-        assert_eq!(said(2), "Tool call denied by user.", "an MCP tool is not authorised either");
+        assert_eq!(
+            said(2),
+            "Tool call denied by user.",
+            "an MCP tool is not authorised either"
+        );
         assert_eq!(said(3), "go on then", "but the question that was asked gets its answer");
     }
 
@@ -2693,7 +2765,10 @@ mod tests {
         run_turn(
             &services(&pool, &tools, &mcp),
             setup(&provider, &pool, &cancel, &["fixture"]),
-            TurnPorts { surface_tools: Some(&fixture), ..ports(&approvals, None) },
+            TurnPorts {
+                surface_tools: Some(&fixture),
+                ..ports(&approvals, None)
+            },
         )
         .await;
 

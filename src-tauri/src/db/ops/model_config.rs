@@ -3,10 +3,7 @@ use diesel::prelude::*;
 use crate::db::models::model_config::{ModelConfig, NewModelConfig};
 use crate::db::schema::model_configs;
 
-pub fn list_by_provider(
-    conn: &mut SqliteConnection,
-    provider_id: &str,
-) -> QueryResult<Vec<ModelConfig>> {
+pub fn list_by_provider(conn: &mut SqliteConnection, provider_id: &str) -> QueryResult<Vec<ModelConfig>> {
     model_configs::table
         .filter(model_configs::provider_id.eq(provider_id))
         .order(model_configs::model_id.asc())
@@ -23,10 +20,6 @@ pub fn get_by_provider_and_model(
         .filter(model_configs::model_id.eq(model_id))
         .first(conn)
         .optional()
-}
-
-pub fn get(conn: &mut SqliteConnection, id: &str) -> QueryResult<ModelConfig> {
-    model_configs::table.find(id).first(conn)
 }
 
 pub fn upsert(conn: &mut SqliteConnection, new: &NewModelConfig) -> QueryResult<ModelConfig> {
@@ -53,9 +46,7 @@ pub fn upsert(conn: &mut SqliteConnection, new: &NewModelConfig) -> QueryResult<
             .execute(conn)?;
         model_configs::table.find(&existing.id).first(conn)
     } else {
-        diesel::insert_into(model_configs::table)
-            .values(new)
-            .execute(conn)?;
+        diesel::insert_into(model_configs::table).values(new).execute(conn)?;
         model_configs::table.find(new.id).first(conn)
     }
 }

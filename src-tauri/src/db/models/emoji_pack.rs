@@ -28,13 +28,3 @@ pub struct NewEmojiPack<'a> {
     pub created_at: i64,
     pub updated_at: i64,
 }
-
-#[derive(Debug, AsChangeset, Default)]
-#[diesel(table_name = emoji_packs)]
-pub struct EmojiPackUpdate {
-    pub name: Option<String>,
-    pub description: Option<Option<String>>,
-    pub cover_image: Option<Option<String>>,
-    pub sort_order: Option<i32>,
-    pub updated_at: Option<i64>,
-}

@@ -19,7 +19,8 @@ pub(crate) const RUN_AGENT_TOOL: &str = "run_agent";
 /// because its tool set cannot change anything; `Agent` inherits whatever the
 /// main assistant may do, including the user's standing yes to edits. A third
 /// kind is a settings feature, not a loop feature.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, strum::IntoStaticStr, strum::EnumString)]
+#[strum(serialize_all = "snake_case")]
 pub(crate) enum SubAgentKind {
     Explore,
     Agent,
@@ -29,21 +30,16 @@ impl SubAgentKind {
     /// Stored on the sub-agent's conversation, and named in the event the card
     /// is drawn from.
     pub(crate) fn as_str(&self) -> &'static str {
-        match self {
-            SubAgentKind::Explore => "explore",
-            SubAgentKind::Agent => "agent",
-        }
+        self.into()
     }
 
     pub(crate) fn parse(value: &str) -> Result<Self, String> {
-        match value {
-            "explore" => Ok(SubAgentKind::Explore),
-            "agent" => Ok(SubAgentKind::Agent),
-            other => Err(format!(
-                "unknown agent '{other}'. Use \"explore\" for read-only investigation \
+        value.parse().map_err(|_| {
+            format!(
+                "unknown agent '{value}'. Use \"explore\" for read-only investigation \
                  or \"agent\" for work that changes things."
-            )),
-        }
+            )
+        })
     }
 }
 
@@ -144,16 +140,12 @@ pub(crate) fn catalog(conn: &mut SqliteConnection) -> SubAgentCatalog {
 
     for p in providers.into_iter().filter(|p| p.is_enabled != 0) {
         let cached = crate::db::ops::cached_model::list_by_provider(conn, &p.id).unwrap_or_default();
-        let configs =
-            crate::db::ops::model_config::list_by_provider(conn, &p.id).unwrap_or_default();
+        let configs = crate::db::ops::model_config::list_by_provider(conn, &p.id).unwrap_or_default();
 
         for c in cached {
             let cfg = configs.iter().find(|m| m.model_id == c.model_id);
             let mut caps = capabilities::resolve(&p.provider_type, Some(&p.api_format), &c.model_id);
-            capabilities::apply_overrides(
-                &mut caps,
-                cfg.and_then(|m| m.capability_overrides.as_deref()),
-            );
+            capabilities::apply_overrides(&mut caps, cfg.and_then(|m| m.capability_overrides.as_deref()));
             if !caps.supports_tools {
                 continue;
             }
@@ -210,7 +202,11 @@ mod tests {
     fn unpriced_models_sort_last_and_say_so() {
         let catalog = SubAgentCatalog {
             models: {
-                let mut m = vec![model("expensive", Some(3.0)), model("free", None), model("cheap", Some(0.14))];
+                let mut m = vec![
+                    model("expensive", Some(3.0)),
+                    model("free", None),
+                    model("cheap", Some(0.14)),
+                ];
                 m.sort_by(|a, b| match (a.input_price, b.input_price) {
                     (Some(x), Some(y)) => x.partial_cmp(&y).unwrap(),
                     (Some(_), None) => std::cmp::Ordering::Less,

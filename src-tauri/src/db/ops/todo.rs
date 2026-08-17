@@ -1,9 +1,7 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
-use crate::db::models::todo::{
-    ItemStatus, ListStatus, NewTodoItem, NewTodoList, TodoItem, TodoList, TodoListView,
-};
+use crate::db::models::todo::{ItemStatus, ListStatus, NewTodoItem, NewTodoList, TodoItem, TodoList, TodoListView};
 use crate::db::schema::{todo_items, todo_lists};
 
 /// One step as the model supplied it, before it gets an id and a position.
@@ -13,10 +11,7 @@ pub struct TodoItemInput {
     pub status: ItemStatus,
 }
 
-pub fn get_active_list(
-    conn: &mut SqliteConnection,
-    conversation_id: &str,
-) -> QueryResult<Option<TodoList>> {
+pub fn get_active_list(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Option<TodoList>> {
     todo_lists::table
         .filter(todo_lists::conversation_id.eq(conversation_id))
         .filter(todo_lists::status.eq(ListStatus::InProgress.as_str()))
@@ -33,10 +28,7 @@ pub fn list_items(conn: &mut SqliteConnection, list_id: &str) -> QueryResult<Vec
 
 /// The active list plus its items, or `None` once every step is done and the
 /// list has been archived.
-pub fn get_active_view(
-    conn: &mut SqliteConnection,
-    conversation_id: &str,
-) -> QueryResult<Option<TodoListView>> {
+pub fn get_active_view(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Option<TodoListView>> {
     let Some(list) = get_active_list(conn, conversation_id)? else {
         return Ok(None);
     };
@@ -44,6 +36,7 @@ pub fn get_active_view(
     Ok(Some(TodoListView { list, items }))
 }
 
+#[cfg(test)]
 pub fn list_lists(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<TodoList>> {
     todo_lists::table
         .filter(todo_lists::conversation_id.eq(conversation_id))
@@ -97,9 +90,7 @@ pub fn replace_active_list(
 
         diesel::delete(todo_items::table.filter(todo_items::list_id.eq(&list_id))).execute(conn)?;
 
-        let ids: Vec<String> = (0..items.len())
-            .map(|_| uuid::Uuid::new_v4().to_string())
-            .collect();
+        let ids: Vec<String> = (0..items.len()).map(|_| uuid::Uuid::new_v4().to_string()).collect();
         let rows: Vec<NewTodoItem> = items
             .iter()
             .zip(&ids)
@@ -115,9 +106,7 @@ pub fn replace_active_list(
             })
             .collect();
         if !rows.is_empty() {
-            diesel::insert_into(todo_items::table)
-                .values(&rows)
-                .execute(conn)?;
+            diesel::insert_into(todo_items::table).values(&rows).execute(conn)?;
         }
 
         if items.iter().all(|i| i.status == ItemStatus::Completed) {
@@ -260,11 +249,9 @@ mod tests {
         seed_conversation(&mut conn, "c1");
 
         let first =
-            replace_active_list(&mut conn, "c1", "Phase one", &[input("a", ItemStatus::InProgress)], 10)
-                .unwrap();
+            replace_active_list(&mut conn, "c1", "Phase one", &[input("a", ItemStatus::InProgress)], 10).unwrap();
         let second =
-            replace_active_list(&mut conn, "c1", "Phase two", &[input("b", ItemStatus::InProgress)], 20)
-                .unwrap();
+            replace_active_list(&mut conn, "c1", "Phase two", &[input("b", ItemStatus::InProgress)], 20).unwrap();
 
         assert_ne!(first.list.id, second.list.id);
         let lists = list_lists(&mut conn, "c1").unwrap();
@@ -299,8 +286,7 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         seed_conversation(&mut conn, "c1");
-        replace_active_list(&mut conn, "c1", "Phase one", &[input("a", ItemStatus::Pending)], 10)
-            .unwrap();
+        replace_active_list(&mut conn, "c1", "Phase one", &[input("a", ItemStatus::Pending)], 10).unwrap();
 
         // Bypassing replace_active_list is the only way to attempt this; the
         // partial unique index is what stops it, not the code above.
@@ -324,8 +310,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         seed_conversation(&mut conn, "c1");
         let view =
-            replace_active_list(&mut conn, "c1", "Refactor auth", &[input("a", ItemStatus::Pending)], 10)
-                .unwrap();
+            replace_active_list(&mut conn, "c1", "Refactor auth", &[input("a", ItemStatus::Pending)], 10).unwrap();
 
         crate::db::ops::conversation::delete_conversation(&mut conn, "c1").unwrap();
 

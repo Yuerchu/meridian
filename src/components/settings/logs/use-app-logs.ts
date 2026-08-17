@@ -48,7 +48,10 @@ export function useAppLogs() {
   }, [search])
 
   useEffect(() => {
-    api.getLogSettings().then(setSettings).catch(() => setSettings(null))
+    api
+      .getLogSettings()
+      .then(setSettings)
+      .catch(() => setSettings(null))
   }, [])
 
   /** Guards against a slow first page landing after a newer one. */
@@ -109,9 +112,12 @@ export function useAppLogs() {
 
   const capped = entries.length >= MAX_RENDERED
   return {
-    level, setLevel,
-    range, setRange,
-    search, setSearch,
+    level,
+    setLevel,
+    range,
+    setRange,
+    search,
+    setSearch,
     entries,
     settings,
     loading,

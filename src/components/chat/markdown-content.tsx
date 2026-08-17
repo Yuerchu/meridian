@@ -52,7 +52,11 @@ function fenceLanguage(className: string | undefined): string {
 const CodeBlock: Components['code'] = ({ className, children, node, ...props }) => {
   const start = node?.position?.start.line
   if (!start || start === node?.position?.end.line) {
-    return <code className={cn('rounded bg-default px-1.5 py-0.5 text-xs', className)} {...props}>{children}</code>
+    return (
+      <code className={cn('rounded bg-default px-1.5 py-0.5 text-xs', className)} {...props}>
+        {children}
+      </code>
+    )
   }
 
   const language = fenceLanguage(className)
@@ -102,42 +106,46 @@ function preprocessMentions(content: string): string {
   return content.replace(/\[@([^\]]*)\((\d+)\)\]/g, '**@$1**')
 }
 
-export const MarkdownContent = React.memo(function MarkdownContent({ content, isStreaming, oneBot, emojiMap, className, blockId }: { content: string; isStreaming?: boolean; oneBot?: boolean; emojiMap?: EmojiMap; className?: string; blockId?: string }) {
+export const MarkdownContent = React.memo(function MarkdownContent({
+  content,
+  isStreaming,
+  oneBot,
+  emojiMap,
+  className,
+  blockId,
+}: {
+  content: string
+  isStreaming?: boolean
+  oneBot?: boolean
+  emojiMap?: EmojiMap
+  className?: string
+  blockId?: string
+}) {
   const processed = useMemo(() => {
     let result = preprocessEmojis(content, emojiMap)
     if (oneBot) result = preprocessMentions(result)
     return result
   }, [content, emojiMap, oneBot])
 
-  const components = useMemo<Partial<Components>>(() => ({
-    code: CodeBlock,
-    img: ({ alt, src, ...props }) => {
-      if (alt?.startsWith('sticker:')) {
-        return (
-          <img
-            src={src}
-            alt={alt.slice(8)}
-            title={alt.slice(8)}
-            className="emoji-sticker rounded"
-            {...props}
-          />
-        )
-      }
-      return <img alt={alt} src={src} {...props} />
-    },
-    // A link in an answer is a link to the web, and this is a WebView: left
-    // alone it would navigate the app itself to the page, with no way back.
-    a: ({ href, children, ...props }) => (
-      <a
-        href={href}
-        rel="noreferrer noopener"
-        onClick={(e) => openExternally(href, e)}
-        {...props}
-      >
-        {children}
-      </a>
-    ),
-  }), [])
+  const components = useMemo<Partial<Components>>(
+    () => ({
+      code: CodeBlock,
+      img: ({ alt, src, ...props }) => {
+        if (alt?.startsWith('sticker:')) {
+          return <img src={src} alt={alt.slice(8)} title={alt.slice(8)} className="emoji-sticker rounded" {...props} />
+        }
+        return <img alt={alt} src={src} {...props} />
+      },
+      // A link in an answer is a link to the web, and this is a WebView: left
+      // alone it would navigate the app itself to the page, with no way back.
+      a: ({ href, children, ...props }) => (
+        <a href={href} rel="noreferrer noopener" onClick={(e) => openExternally(href, e)} {...props}>
+          {children}
+        </a>
+      ),
+    }),
+    [],
+  )
 
   return (
     <div className={cn(markdownClasses, className)}>
@@ -147,9 +155,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({ content, is
       <ProMarkdown components={components} id={blockId}>
         {processed}
       </ProMarkdown>
-      {isStreaming && (
-        <span className="inline-block w-2 h-4 ml-0.5 bg-muted animate-pulse" />
-      )}
+      {isStreaming && <span className="inline-block w-2 h-4 ml-0.5 bg-muted animate-pulse" />}
     </div>
   )
 })

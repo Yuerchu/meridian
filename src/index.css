@@ -294,7 +294,8 @@ body {
        this only declines the browser's own zoom gestures. */
     touch-action: manipulation;
   }
-  body, #root {
+  body,
+  #root {
     @apply h-full overflow-hidden;
     overscroll-behavior: none;
   }

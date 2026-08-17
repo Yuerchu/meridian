@@ -53,12 +53,33 @@ const LOADERS: Record<string, () => Promise<unknown>> = {
 
 /** What a fence label or a file extension goes by above. */
 const ALIASES: Record<string, string> = {
-  ts: 'typescript', js: 'javascript', mjs: 'javascript', cjs: 'javascript',
-  py: 'python', rb: 'ruby', rs: 'rust', golang: 'go', cs: 'csharp',
-  'c++': 'cpp', 'c#': 'csharp', h: 'c', hpp: 'cpp', kt: 'kotlin',
-  sh: 'bash', shell: 'bash', zsh: 'bash', console: 'bash', ps1: 'powershell',
-  yml: 'yaml', md: 'markdown', dockerfile: 'docker', htm: 'html',
-  patch: 'diff', svelte: 'html', scss: 'css', less: 'css',
+  ts: 'typescript',
+  js: 'javascript',
+  mjs: 'javascript',
+  cjs: 'javascript',
+  py: 'python',
+  rb: 'ruby',
+  rs: 'rust',
+  golang: 'go',
+  cs: 'csharp',
+  'c++': 'cpp',
+  'c#': 'csharp',
+  h: 'c',
+  hpp: 'cpp',
+  kt: 'kotlin',
+  sh: 'bash',
+  shell: 'bash',
+  zsh: 'bash',
+  console: 'bash',
+  ps1: 'powershell',
+  yml: 'yaml',
+  md: 'markdown',
+  dockerfile: 'docker',
+  htm: 'html',
+  patch: 'diff',
+  svelte: 'html',
+  scss: 'css',
+  less: 'css',
 }
 
 export const PLAIN = 'plaintext'
@@ -108,7 +129,10 @@ export async function ensureLanguage(language: string): Promise<void> {
   if (!pending) {
     // A failed grammar must not poison the map, or the language stays broken
     // for the rest of the session.
-    pending = core.loadLanguage(loader as never).catch(() => {}).finally(() => loading.delete(language))
+    pending = core
+      .loadLanguage(loader as never)
+      .catch(() => {})
+      .finally(() => loading.delete(language))
     loading.set(language, pending)
   }
   await pending

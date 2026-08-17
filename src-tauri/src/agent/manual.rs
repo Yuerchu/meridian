@@ -22,7 +22,10 @@ pub fn render(tool_defs: &[ToolDefinition]) -> String {
     out.push_str(FRONTMATTER);
     // Identifies the file as generated, so a launch can tell it from a skill a
     // user happened to put under the same directory name.
-    out.push_str(&format!("<!-- {}; edits are overwritten on launch -->\n\n", super::skills::GENERATED_MARKER));
+    out.push_str(&format!(
+        "<!-- {}; edits are overwritten on launch -->\n\n",
+        super::skills::GENERATED_MARKER
+    ));
     out.push_str(PROSE.trim_end());
 
     out.push_str("\n\n## Tools in this build\n\n");
@@ -158,10 +161,7 @@ mod tests {
         write_manual(dir.path(), &[def("read_file", "Read a file.")]).unwrap();
         write_manual(dir.path(), &[def("write_file", "Write a file.")]).unwrap();
 
-        let body = std::fs::read_to_string(
-            dir.path().join(MANUAL_DIR).join(crate::agent::skills::SKILL_FILE),
-        )
-        .unwrap();
+        let body = std::fs::read_to_string(dir.path().join(MANUAL_DIR).join(crate::agent::skills::SKILL_FILE)).unwrap();
         assert!(body.contains("`write_file`"));
         assert!(!body.contains("`read_file`"));
     }

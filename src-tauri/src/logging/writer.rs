@@ -149,7 +149,11 @@ impl RollingWriter {
             Self::report(st, format_args!("rotate failed: {e}"));
         }
 
-        match OpenOptions::new().create(true).append(true).open(self.dir.join(BASE_NAME)) {
+        match OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(self.dir.join(BASE_NAME))
+        {
             Ok(f) => {
                 st.written = f.metadata().map(|m| m.len()).unwrap_or(0);
                 st.file = Some(f);
@@ -228,10 +232,8 @@ pub(crate) fn prune_on_startup(dir: &Path) {
 
     for (index, path, size) in archives.iter().rev() {
         // Oldest first: over the retained count, or still over budget.
-        if *index > MAX_ARCHIVES || total > budget {
-            if fs::remove_file(path).is_ok() {
-                total = total.saturating_sub(*size);
-            }
+        if (*index > MAX_ARCHIVES || total > budget) && fs::remove_file(path).is_ok() {
+            total = total.saturating_sub(*size);
         }
     }
 }
@@ -370,7 +372,12 @@ mod tests {
 
     #[test]
     fn failure_reports_are_throttled() {
-        let mut st = State { file: None, written: 0, last_err_ms: 0, suppressed_errs: 0 };
+        let mut st = State {
+            file: None,
+            written: 0,
+            last_err_ms: 0,
+            suppressed_errs: 0,
+        };
         RollingWriter::report(&mut st, format_args!("first"));
         RollingWriter::report(&mut st, format_args!("second"));
         RollingWriter::report(&mut st, format_args!("third"));

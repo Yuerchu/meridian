@@ -87,11 +87,7 @@ pub unsafe fn fetch_dacl_handle(path: &Path) -> Result<(*mut ACL, *mut c_void)> 
     );
     CloseHandle(h);
     if code != ERROR_SUCCESS {
-        return Err(anyhow!(
-            "GetSecurityInfo failed for {}: {}",
-            path.display(),
-            code
-        ));
+        return Err(anyhow!("GetSecurityInfo failed for {}: {}", path.display(), code));
     }
     Ok((p_dacl, p_sd))
 }
@@ -136,8 +132,7 @@ pub unsafe fn dacl_mask_allows(
             continue;
         }
         let base = p_ace as usize;
-        let sid_ptr =
-            (base + std::mem::size_of::<ACE_HEADER>() + std::mem::size_of::<u32>()) as *mut c_void;
+        let sid_ptr = (base + std::mem::size_of::<ACE_HEADER>() + std::mem::size_of::<u32>()) as *mut c_void;
         let mut matched = false;
         for sid in psids {
             if EqualSid(sid_ptr, *sid) != 0 {
@@ -161,12 +156,7 @@ pub unsafe fn dacl_mask_allows(
 }
 
 /// Path-based wrapper around the mask check (single DACL fetch).
-pub fn path_mask_allows(
-    path: &Path,
-    psids: &[*mut c_void],
-    desired_mask: u32,
-    require_all_bits: bool,
-) -> Result<bool> {
+pub fn path_mask_allows(path: &Path, psids: &[*mut c_void], desired_mask: u32, require_all_bits: bool) -> Result<bool> {
     unsafe {
         let (p_dacl, sd) = fetch_dacl_handle(path)?;
         let has = dacl_mask_allows(p_dacl, psids, desired_mask, require_all_bits);
@@ -208,8 +198,7 @@ pub unsafe fn dacl_has_write_allow_for_sid(p_dacl: *mut ACL, psid: *mut c_void) 
         let ace = &*(p_ace as *const ACCESS_ALLOWED_ACE);
         let mask = ace.Mask;
         let base = p_ace as usize;
-        let sid_ptr =
-            (base + std::mem::size_of::<ACE_HEADER>() + std::mem::size_of::<u32>()) as *mut c_void;
+        let sid_ptr = (base + std::mem::size_of::<ACE_HEADER>() + std::mem::size_of::<u32>()) as *mut c_void;
         let eq = EqualSid(sid_ptr, psid);
         if eq != 0 && (mask & FILE_GENERIC_WRITE) != 0 {
             return true;
@@ -254,8 +243,7 @@ pub unsafe fn dacl_has_write_deny_for_sid(p_dacl: *mut ACL, psid: *mut c_void) -
         }
         let ace = &*(p_ace as *const ACCESS_DENIED_ACE);
         let base = p_ace as usize;
-        let sid_ptr =
-            (base + std::mem::size_of::<ACE_HEADER>() + std::mem::size_of::<u32>()) as *mut c_void;
+        let sid_ptr = (base + std::mem::size_of::<ACE_HEADER>() + std::mem::size_of::<u32>()) as *mut c_void;
         if EqualSid(sid_ptr, psid) != 0 && (ace.Mask & deny_write_mask) != 0 {
             return true;
         }
@@ -292,8 +280,7 @@ pub unsafe fn dacl_has_read_deny_for_sid(p_dacl: *mut ACL, psid: *mut c_void) ->
         }
         let ace = &*(p_ace as *const ACCESS_DENIED_ACE);
         let base = p_ace as usize;
-        let sid_ptr =
-            (base + std::mem::size_of::<ACE_HEADER>() + std::mem::size_of::<u32>()) as *mut c_void;
+        let sid_ptr = (base + std::mem::size_of::<ACE_HEADER>() + std::mem::size_of::<u32>()) as *mut c_void;
         if EqualSid(sid_ptr, psid) != 0 && (ace.Mask & deny_read_mask) != 0 {
             return true;
         }
@@ -332,12 +319,7 @@ unsafe fn ensure_allow_mask_aces_with_inheritance_impl(
     let mut added = false;
     if !entries.is_empty() {
         let mut p_new_dacl: *mut ACL = std::ptr::null_mut();
-        let code2 = SetEntriesInAclW(
-            entries.len() as u32,
-            entries.as_ptr(),
-            p_dacl,
-            &mut p_new_dacl,
-        );
+        let code2 = SetEntriesInAclW(entries.len() as u32, entries.as_ptr(), p_dacl, &mut p_new_dacl);
         if code2 == ERROR_SUCCESS {
             let code3 = SetNamedSecurityInfoW(
                 to_wide(path).as_ptr() as *mut u16,
@@ -394,17 +376,8 @@ pub unsafe fn ensure_allow_mask_aces_with_inheritance(
 ///
 /// # Safety
 /// Caller must pass valid SID pointers and an existing path; free the returned security descriptor with `LocalFree`.
-pub unsafe fn ensure_allow_mask_aces(
-    path: &Path,
-    sids: &[*mut c_void],
-    allow_mask: u32,
-) -> Result<bool> {
-    ensure_allow_mask_aces_with_inheritance(
-        path,
-        sids,
-        allow_mask,
-        CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE,
-    )
+pub unsafe fn ensure_allow_mask_aces(path: &Path, sids: &[*mut c_void], allow_mask: u32) -> Result<bool> {
+    ensure_allow_mask_aces_with_inheritance(path, sids, allow_mask, CONTAINER_INHERIT_ACE | OBJECT_INHERIT_ACE)
 }
 
 /// Ensure all provided SIDs have a write-capable allow ACE on the path.
@@ -681,8 +654,7 @@ pub unsafe fn allow_null_device(psid: *mut c_void) {
             ptstrName: psid as *mut u16,
         };
         let mut explicit: EXPLICIT_ACCESS_W = std::mem::zeroed();
-        explicit.grfAccessPermissions =
-            FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE;
+        explicit.grfAccessPermissions = FILE_GENERIC_READ | FILE_GENERIC_WRITE | FILE_GENERIC_EXECUTE;
         explicit.grfAccessMode = 2; // SET_ACCESS
         explicit.grfInheritance = 0;
         explicit.Trustee = trustee;

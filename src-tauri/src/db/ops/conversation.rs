@@ -11,10 +11,7 @@ use crate::db::schema::conversations;
 /// archive flag is a user's decision and can be undone, and the project view
 /// deliberately concatenates archived rows onto active ones, which would spill
 /// them back into the list. Being spawned is not a decision anyone can reverse.
-pub fn list_conversations(
-    conn: &mut SqliteConnection,
-    archived: bool,
-) -> QueryResult<Vec<Conversation>> {
+pub fn list_conversations(conn: &mut SqliteConnection, archived: bool) -> QueryResult<Vec<Conversation>> {
     let archived_val = if archived { 1 } else { 0 };
     conversations::table
         .filter(conversations::is_archived.eq(archived_val))
@@ -23,10 +20,7 @@ pub fn list_conversations(
         .load::<Conversation>(conn)
 }
 
-pub fn get_conversation(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> QueryResult<Conversation> {
+pub fn get_conversation(conn: &mut SqliteConnection, id: &str) -> QueryResult<Conversation> {
     conversations::table.find(id).first::<Conversation>(conn)
 }
 
@@ -55,14 +49,9 @@ pub fn create_conversation(
 /// Insert a prepared row. Split out so a sub-agent can fill the spawned-by
 /// columns without `create_conversation` growing seven more parameters that
 /// every ordinary caller would pass `None` to.
-pub fn insert(
-    conn: &mut SqliteConnection,
-    new: NewConversation<'_>,
-) -> QueryResult<Conversation> {
+pub fn insert(conn: &mut SqliteConnection, new: NewConversation<'_>) -> QueryResult<Conversation> {
     let id = new.id.to_string();
-    diesel::insert_into(conversations::table)
-        .values(&new)
-        .execute(conn)?;
+    diesel::insert_into(conversations::table).values(&new).execute(conn)?;
     conversations::table.find(&id).first::<Conversation>(conn)
 }
 
@@ -80,17 +69,9 @@ pub fn list_conversations_by_project(
         .load::<Conversation>(conn)
 }
 
-pub fn update_title(
-    conn: &mut SqliteConnection,
-    id: &str,
-    title: &str,
-    now: i64,
-) -> QueryResult<()> {
+pub fn update_title(conn: &mut SqliteConnection, id: &str, title: &str, now: i64) -> QueryResult<()> {
     diesel::update(conversations::table.find(id))
-        .set((
-            conversations::title.eq(title),
-            conversations::updated_at.eq(now),
-        ))
+        .set((conversations::title.eq(title), conversations::updated_at.eq(now)))
         .execute(conn)?;
     Ok(())
 }
@@ -110,11 +91,7 @@ pub fn update_assistant(
     Ok(())
 }
 
-pub fn toggle_pin(
-    conn: &mut SqliteConnection,
-    id: &str,
-    now: i64,
-) -> QueryResult<Conversation> {
+pub fn toggle_pin(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<Conversation> {
     let conv = conversations::table.find(id).first::<Conversation>(conn)?;
     let new_pinned = if conv.is_pinned == 0 { 1 } else { 0 };
     diesel::update(conversations::table.find(id))
@@ -126,31 +103,9 @@ pub fn toggle_pin(
     conversations::table.find(id).first::<Conversation>(conn)
 }
 
-pub fn archive_conversation(
-    conn: &mut SqliteConnection,
-    id: &str,
-    now: i64,
-) -> QueryResult<()> {
+pub fn archive_conversation(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<()> {
     diesel::update(conversations::table.find(id))
-        .set((
-            conversations::is_archived.eq(1),
-            conversations::updated_at.eq(now),
-        ))
-        .execute(conn)?;
-    Ok(())
-}
-
-pub fn update_compact_cursor(
-    conn: &mut SqliteConnection,
-    id: &str,
-    cursor: Option<i32>,
-    now: i64,
-) -> QueryResult<()> {
-    diesel::update(conversations::table.find(id))
-        .set((
-            conversations::compact_cursor.eq(cursor),
-            conversations::updated_at.eq(now),
-        ))
+        .set((conversations::is_archived.eq(1), conversations::updated_at.eq(now)))
         .execute(conn)?;
     Ok(())
 }
@@ -180,12 +135,7 @@ pub fn update_reasoning_prefs(
 /// `update_reasoning_prefs`: that one already writes two fields at once, which
 /// forces every caller to pass the current value of the other. A third field
 /// would make all three callers depend on each other.
-pub fn update_mode(
-    conn: &mut SqliteConnection,
-    id: &str,
-    mode: Option<&str>,
-    now: i64,
-) -> QueryResult<()> {
+pub fn update_mode(conn: &mut SqliteConnection, id: &str, mode: Option<&str>, now: i64) -> QueryResult<()> {
     diesel::update(conversations::table.find(id))
         .set((conversations::mode.eq(mode), conversations::updated_at.eq(now)))
         .execute(conn)?;
@@ -196,12 +146,7 @@ pub fn update_mode(
 /// for a second one: a mode narrows what the assistant can do, this widens what
 /// it can do without asking. Writing both through one call would suggest they
 /// are two settings of the same kind.
-pub fn update_accept_edits(
-    conn: &mut SqliteConnection,
-    id: &str,
-    accept_edits: bool,
-    now: i64,
-) -> QueryResult<()> {
+pub fn update_accept_edits(conn: &mut SqliteConnection, id: &str, accept_edits: bool, now: i64) -> QueryResult<()> {
     diesel::update(conversations::table.find(id))
         .set((
             conversations::accept_edits.eq(i32::from(accept_edits)),
@@ -216,10 +161,7 @@ pub fn update_accept_edits(
 /// Ordered by creation so that a caller comparing two readings of this list can
 /// compare them element by element, and so leases are always taken in the same
 /// order.
-pub fn sub_agent_conversation_ids(
-    conn: &mut SqliteConnection,
-    parent_id: &str,
-) -> QueryResult<Vec<String>> {
+pub fn sub_agent_conversation_ids(conn: &mut SqliteConnection, parent_id: &str) -> QueryResult<Vec<String>> {
     conversations::table
         .filter(conversations::parent_conversation_id.eq(parent_id))
         .order(conversations::created_at.asc())
@@ -234,25 +176,32 @@ pub fn sub_agent_conversation_ids(
 /// conversation's latest. A sub-agent's transcript stays writable after the run
 /// ends, so "latest" would let a follow-up chat decide what the parent's card
 /// says about a run that finished long ago.
-pub fn sub_agent_runs(
-    conn: &mut SqliteConnection,
-    parent_id: &str,
-) -> QueryResult<Vec<SubAgentRun>> {
+/// One spawned conversation as selected: id, spawning message/call, title,
+/// last turn's status and error.
+type SubAgentRunRow = (
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+pub fn sub_agent_runs(conn: &mut SqliteConnection, parent_id: &str) -> QueryResult<Vec<SubAgentRun>> {
     use crate::db::schema::{messages, turns};
 
-    let rows: Vec<(String, Option<String>, Option<String>, Option<String>, Option<String>, Option<String>)> =
-        conversations::table
-            .filter(conversations::parent_conversation_id.eq(parent_id))
-            .order(conversations::created_at.asc())
-            .select((
-                conversations::id,
-                conversations::spawned_by_message_id,
-                conversations::spawned_by_call_id,
-                conversations::spawned_turn_id,
-                conversations::agent_kind,
-                conversations::title,
-            ))
-            .load(conn)?;
+    let rows: Vec<SubAgentRunRow> = conversations::table
+        .filter(conversations::parent_conversation_id.eq(parent_id))
+        .order(conversations::created_at.asc())
+        .select((
+            conversations::id,
+            conversations::spawned_by_message_id,
+            conversations::spawned_by_call_id,
+            conversations::spawned_turn_id,
+            conversations::agent_kind,
+            conversations::title,
+        ))
+        .load(conn)?;
 
     let turn_ids: Vec<String> = rows.iter().filter_map(|r| r.3.clone()).collect();
 
@@ -278,7 +227,10 @@ pub fn sub_agent_runs(
             let steps = turn_id
                 .as_ref()
                 .and_then(|id| {
-                    counts.iter().find(|(t, _)| t.as_deref() == Some(id.as_str())).map(|(_, n)| *n)
+                    counts
+                        .iter()
+                        .find(|(t, _)| t.as_deref() == Some(id.as_str()))
+                        .map(|(_, n)| *n)
                 })
                 .unwrap_or(0);
             let turn = turn_id
@@ -332,17 +284,13 @@ pub fn descendants(conn: &mut SqliteConnection, id: &str) -> QueryResult<Vec<Str
 /// One transaction, because half a tree is worse than either outcome: what
 /// survives is unreachable, and what went was the only record of what the
 /// survivors were for.
-pub fn delete_conversation(
-    conn: &mut SqliteConnection,
-    id: &str,
-) -> QueryResult<()> {
+pub fn delete_conversation(conn: &mut SqliteConnection, id: &str) -> QueryResult<()> {
     conn.transaction(|conn| {
         let mut doomed = descendants(conn, id)?;
         doomed.push(id.to_string());
         // Everything inside each one — messages, turns, todo lists, plans — is
         // reached by the foreign keys those do have.
-        diesel::delete(conversations::table.filter(conversations::id.eq_any(&doomed)))
-            .execute(conn)?;
+        diesel::delete(conversations::table.filter(conversations::id.eq_any(&doomed))).execute(conn)?;
         Ok(())
     })
 }
@@ -377,14 +325,7 @@ mod tests {
 
     /// Everything a delegated run needs in the database, written the way
     /// `commands::sub_agent` will write it.
-    fn spawn(
-        conn: &mut SqliteConnection,
-        id: &str,
-        parent: &str,
-        message_id: &str,
-        call_id: &str,
-        turn_id: &str,
-    ) {
+    fn spawn(conn: &mut SqliteConnection, id: &str, parent: &str, message_id: &str, call_id: &str, turn_id: &str) {
         // The project is inherited, the way `commands::sub_agent` will inherit
         // it: tools resolve their paths through it.
         let project_id = conversations::table
@@ -411,8 +352,7 @@ mod tests {
             },
         )
         .unwrap();
-        crate::db::ops::turn::begin(conn, turn_id, id, crate::turn::TurnOrigin::SubAgent, None, 10)
-            .unwrap();
+        crate::db::ops::turn::begin(conn, turn_id, id, crate::turn::TurnOrigin::SubAgent, None, 10).unwrap();
     }
 
     fn assistant_row(conn: &mut SqliteConnection, id: &str, conv: &str, turn_id: &str) {
@@ -526,14 +466,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         create_conversation(&mut conn, "parent", Some("t"), None, None, 1).unwrap();
         spawn(&mut conn, "child", "parent", "m1", "0", "t-run");
-        crate::db::ops::turn::finish(
-            &mut conn,
-            "t-run",
-            crate::db::models::turn::TurnStatus::Done,
-            None,
-            20,
-        )
-        .unwrap();
+        crate::db::ops::turn::finish(&mut conn, "t-run", crate::db::models::turn::TurnStatus::Done, None, 20).unwrap();
 
         // The user opens the sub-agent's transcript and keeps talking. That is a
         // desktop turn in the same conversation, and it is still running.
@@ -618,7 +551,10 @@ mod tests {
         let parent = get_conversation(&mut conn, "parent").unwrap();
         let unchanged = parent.pin_model(Some(big.clone())).unwrap();
         assert_eq!(unchanged.model_id.as_deref(), Some("mythos"));
-        assert_eq!(unchanged.context_limit, 200_000, "an ordinary conversation keeps its own");
+        assert_eq!(
+            unchanged.context_limit, 200_000,
+            "an ordinary conversation keeps its own"
+        );
 
         let child = get_conversation(&mut conn, "child").unwrap();
         let pinned = child.pin_model(Some(big)).unwrap();

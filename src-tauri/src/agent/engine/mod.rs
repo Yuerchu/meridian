@@ -27,20 +27,17 @@ pub(crate) mod transitions;
 pub(crate) mod turn;
 
 pub(crate) use approval::ApprovalDecision;
-pub(crate) use stream::consume_stream;
-pub(crate) use transcript::{
-    append_steering, append_tool_result, begin_assistant, complete_assistant, in_phase,
-    write_steering,
-};
 pub(crate) use compaction::CompactionPolicy;
 pub(crate) use ports::{
-    Approvals, Commentary, Steered, SteeredOrigin, Steering, Stranded, SubAgentReport,
-    SubAgentSpec, SubAgentStatus, SubAgents, SurfaceTools, TurnPorts,
+    Approvals, Commentary, Steered, SteeredOrigin, Steering, Stranded, SubAgentReport, SubAgentSpec, SubAgentStatus,
+    SubAgents, SurfaceTools, TurnPorts,
+};
+pub(crate) use stream::consume_stream;
+pub(crate) use transcript::{
+    append_steering, append_tool_result, begin_assistant, complete_assistant, in_phase, write_steering,
 };
 pub(crate) use transitions::Transitions;
-pub(crate) use turn::{
-    run_turn, ApprovalRule, TurnOutcome, TurnProgress, TurnServices, TurnSetup, WithheldWording,
-};
+pub(crate) use turn::{ApprovalRule, TurnOutcome, TurnProgress, TurnServices, TurnSetup, WithheldWording, run_turn};
 
 /// Where a turn's progress goes while it is still happening.
 ///

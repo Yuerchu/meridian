@@ -39,7 +39,10 @@ function KindRow({ kind, providers }: { kind: Kind; providers: Provider[] }) {
 
   useEffect(() => {
     if (providerId) {
-      api.fetchProviderModels(providerId).then(setModels).catch(() => setModels([]))
+      api
+        .fetchProviderModels(providerId)
+        .then(setModels)
+        .catch(() => setModels([]))
     } else {
       setModels([])
     }
@@ -61,7 +64,10 @@ function KindRow({ kind, providers }: { kind: Kind; providers: Provider[] }) {
         models={models}
         providerId={providerId}
         modelId={modelId}
-        onChange={(provider, model) => { setProviderId(provider); setModelId(model) }}
+        onChange={(provider, model) => {
+          setProviderId(provider)
+          setModelId(model)
+        }}
         // No Save button here: the preference is written as soon as the pair
         // settles. `onChange` alone would write one per keystroke in the
         // fallback field.
@@ -86,10 +92,7 @@ export function SubAgentSettings({ providers }: { providers: Provider[] }) {
 
   return (
     <div className="space-y-4">
-      <SettingsHeader
-        title={t('settings.subAgent.title')}
-        subtitle={t('settings.subAgent.subtitle')}
-      />
+      <SettingsHeader title={t('settings.subAgent.title')} subtitle={t('settings.subAgent.subtitle')} />
       {KINDS.map((kind) => (
         <KindRow key={kind} kind={kind} providers={providers} />
       ))}

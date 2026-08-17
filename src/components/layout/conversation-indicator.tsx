@@ -6,7 +6,10 @@ import { useConversationStore } from '@/stores/conversation-store'
  * Shared by the desktop sidebar and the mobile list: the precedence below is a
  * product rule, and two copies of it would drift.
  */
-export function ConversationIndicator({ conversationId, activeId }: {
+export function ConversationIndicator({
+  conversationId,
+  activeId,
+}: {
   conversationId: string
   activeId: string | null
 }) {

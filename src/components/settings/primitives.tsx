@@ -20,9 +20,7 @@ import { cn } from '@/lib/utils'
  */
 
 export function SettingsPane({ className, ...props }: React.ComponentProps<'div'>) {
-  return (
-    <div data-slot="settings-pane" className={cn('space-y-6 max-w-lg', className)} {...props} />
-  )
+  return <div data-slot="settings-pane" className={cn('space-y-6 max-w-lg', className)} {...props} />
 }
 
 export function SettingsHeader({
@@ -37,11 +35,7 @@ export function SettingsHeader({
   actions?: React.ReactNode
 }) {
   return (
-    <div
-      data-slot="settings-header"
-      className={cn('flex items-start justify-between gap-2', className)}
-      {...props}
-    >
+    <div data-slot="settings-header" className={cn('flex items-start justify-between gap-2', className)} {...props}>
       <div className="min-w-0">
         <h2 className="text-lg font-medium">{title}</h2>
         {subtitle && <p className="mt-1 text-xs text-muted">{subtitle}</p>}
@@ -142,11 +136,7 @@ export function SavedHint({ className, ...props }: React.ComponentProps<'span'>)
  * from a column of grey boxes — it is the one thing the line of text it
  * replaces did better. `aria-busy` rather than announcing every row.
  */
-export function SettingsSkeleton({
-  rows = 4,
-  className,
-  ...props
-}: React.ComponentProps<'div'> & { rows?: number }) {
+export function SettingsSkeleton({ rows = 4, className, ...props }: React.ComponentProps<'div'> & { rows?: number }) {
   const { t } = useTranslation()
   return (
     <div
@@ -231,7 +221,9 @@ export function SettingsSelect<T extends string>({
       isDisabled={isDisabled}
       placeholder={placeholder}
       value={value}
-      onChange={(key) => { if (key != null) onChange(String(key) as T) }}
+      onChange={(key) => {
+        if (key != null) onChange(String(key) as T)
+      }}
     >
       {label && <Label>{label}</Label>}
       <Select.Trigger className={triggerClassName}>
@@ -241,12 +233,7 @@ export function SettingsSelect<T extends string>({
       <Select.Popover>
         <ListBox>
           {options.map((option) => (
-            <ListBox.Item
-              key={option.value}
-              id={option.value}
-              textValue={option.label}
-              className={itemClassName}
-            >
+            <ListBox.Item key={option.value} id={option.value} textValue={option.label} className={itemClassName}>
               {option.label}
               <ListBox.ItemIndicator />
             </ListBox.Item>

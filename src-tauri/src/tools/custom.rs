@@ -88,12 +88,7 @@ impl Tool for CustomToolExecutor {
                 let raw = args_obj
                     .get(key)
                     .and_then(|v| v.as_str().map(|s| s.to_string()))
-                    .unwrap_or_else(|| {
-                        args_obj
-                            .get(key)
-                            .map(|v| v.to_string())
-                            .unwrap_or_default()
-                    });
+                    .unwrap_or_else(|| args_obj.get(key).map(|v| v.to_string()).unwrap_or_default());
                 shell_escape(&raw)
             });
             resolved.into_owned()
@@ -144,9 +139,7 @@ impl Tool for CustomToolExecutor {
         } else {
             Err(format!(
                 "Command exited with code {}.\nstdout: {}\nstderr: {}",
-                res.exit_code,
-                stdout,
-                stderr,
+                res.exit_code, stdout, stderr,
             ))
         }
     }

@@ -1,15 +1,54 @@
 import { invoke } from '@tauri-apps/api/core'
-import type { Assistant, ChatMode, ContextInfo, Conversation, ConversationSnapshot, CustomTool, Emoji, EmojiPack, HooksConfig, HooksStatus, LogFileInfo, LogPage, LogQuery, LogSettings, McpConnectionStatus, McpServer, McpToolDef, Memory, MemoryEnums, MemorySubject, ModelConfig, ModelConfigInput, ModelInfo, Project, PromptTemplate, Provider, ProviderCapabilities, SafRootEntry, Skill, SkillLayer, TemplateVariable, TodoListView, ToolCategory, ToolInfo, ToolPreset, UsageBucket, UsageDimension, UsageFilter, VoiceModelStatus, VoiceTranscript } from './types'
+import type {
+  Assistant,
+  ChatMode,
+  ContextInfo,
+  Conversation,
+  ConversationSnapshot,
+  CustomTool,
+  Emoji,
+  EmojiPack,
+  HooksConfig,
+  HooksStatus,
+  LogFileInfo,
+  LogPage,
+  LogQuery,
+  LogSettings,
+  McpConnectionStatus,
+  McpServer,
+  McpToolDef,
+  Memory,
+  MemoryEnums,
+  MemorySubject,
+  ModelConfig,
+  ModelConfigInput,
+  ModelInfo,
+  Project,
+  PromptTemplate,
+  Provider,
+  ProviderCapabilities,
+  SafRootEntry,
+  Skill,
+  SkillLayer,
+  TemplateVariable,
+  TodoListView,
+  ToolCategory,
+  ToolInfo,
+  ToolPreset,
+  UsageBucket,
+  UsageDimension,
+  UsageFilter,
+  VoiceModelStatus,
+  VoiceTranscript,
+} from './types'
 
 export const api = {
-  listConversations: (archived = false) =>
-    invoke<Conversation[]>('list_conversations', { archived }),
+  listConversations: (archived = false) => invoke<Conversation[]>('list_conversations', { archived }),
 
   createConversation: (title?: string, projectId?: string) =>
     invoke<Conversation>('create_conversation', { title: title ?? null, projectId: projectId ?? null }),
 
-  updateConversationTitle: (id: string, title: string) =>
-    invoke<void>('update_conversation_title', { id, title }),
+  updateConversationTitle: (id: string, title: string) => invoke<void>('update_conversation_title', { id, title }),
 
   setConversationAssistant: (id: string, assistantId: string | null) =>
     invoke<void>('set_conversation_assistant', { id, assistantId }),
@@ -19,8 +58,7 @@ export const api = {
 
   // Its own setter rather than another field on the one above: that one writes
   // two columns at once, so every caller has to pass the other's current value.
-  setConversationMode: (id: string, mode: ChatMode | null) =>
-    invoke<void>('set_conversation_mode', { id, mode }),
+  setConversationMode: (id: string, mode: ChatMode | null) => invoke<void>('set_conversation_mode', { id, mode }),
 
   // Also its own setter, and kept apart from the mode for a second reason: a
   // mode narrows what the assistant may do, this widens what it may do without
@@ -28,11 +66,9 @@ export const api = {
   setConversationAcceptEdits: (id: string, acceptEdits: boolean) =>
     invoke<void>('set_conversation_accept_edits', { id, acceptEdits }),
 
-  togglePinConversation: (id: string) =>
-    invoke<Conversation>('toggle_pin_conversation', { id }),
+  togglePinConversation: (id: string) => invoke<Conversation>('toggle_pin_conversation', { id }),
 
-  deleteConversation: (id: string) =>
-    invoke<void>('delete_conversation', { id }),
+  deleteConversation: (id: string) => invoke<void>('delete_conversation', { id }),
 
   compact: (conversationId: string, customInstructions?: string) =>
     invoke<void>('compact', {
@@ -40,20 +76,16 @@ export const api = {
       customInstructions: customInstructions ?? null,
     }),
 
-  getContextInfo: (conversationId: string) =>
-    invoke<ContextInfo>('get_context_info', { conversationId }),
+  getContextInfo: (conversationId: string) => invoke<ContextInfo>('get_context_info', { conversationId }),
 
-  listModelConfigs: (providerId: string) =>
-    invoke<ModelConfig[]>('list_model_configs', { providerId }),
+  listModelConfigs: (providerId: string) => invoke<ModelConfig[]>('list_model_configs', { providerId }),
 
   getModelConfig: (providerId: string, modelId: string) =>
     invoke<ModelConfig | null>('get_model_config', { providerId, modelId }),
 
-  saveModelConfig: (input: ModelConfigInput) =>
-    invoke<ModelConfig>('save_model_config', { input }),
+  saveModelConfig: (input: ModelConfigInput) => invoke<ModelConfig>('save_model_config', { input }),
 
-  deleteModelConfig: (id: string) =>
-    invoke<void>('delete_model_config', { id }),
+  deleteModelConfig: (id: string) => invoke<void>('delete_model_config', { id }),
 
   /** Everything needed to draw a conversation, read as one state.
    *
@@ -71,11 +103,9 @@ export const api = {
 
   /** Deletes the message and everything descended from it. Read the result back
    *  with `conversationSnapshot`, same as a branch switch. */
-  deleteMessage: (conversationId: string, id: string) =>
-    invoke<void>('delete_message', { conversationId, id }),
+  deleteMessage: (conversationId: string, id: string) => invoke<void>('delete_message', { conversationId, id }),
 
-  rateMessage: (id: string, rating: number | null) =>
-    invoke<void>('rate_message', { id, rating }),
+  rateMessage: (id: string, rating: number | null) => invoke<void>('rate_message', { id, rating }),
 
   exportConversation: (conversationId: string, format: string, outputPath?: string) =>
     invoke<string>('export_conversation', { conversationId, format, outputPath: outputPath ?? null }),
@@ -144,17 +174,13 @@ export const api = {
       voice: opts.voice ?? null,
     }),
 
-  setSecret: (key: string, value: string) =>
-    invoke<void>('set_secret', { key, value }),
+  setSecret: (key: string, value: string) => invoke<void>('set_secret', { key, value }),
 
-  getSecret: (key: string) =>
-    invoke<string | null>('get_secret', { key }),
+  getSecret: (key: string) => invoke<string | null>('get_secret', { key }),
 
-  deleteSecret: (key: string) =>
-    invoke<boolean>('delete_secret', { key }),
+  deleteSecret: (key: string) => invoke<boolean>('delete_secret', { key }),
 
-  listAssistants: () =>
-    invoke<Assistant[]>('list_assistants'),
+  listAssistants: () => invoke<Assistant[]>('list_assistants'),
 
   createAssistant: (name: string, systemPrompt: string, modelId?: string) =>
     invoke<Assistant>('create_assistant', {
@@ -166,38 +192,41 @@ export const api = {
       maxTokens: null,
     }),
 
-  updateAssistant: (id: string, updates: {
-    name?: string
-    systemPrompt?: string
-    providerId?: string | null
-    modelId?: string | null
-    temperature?: number | null
-    contextLimit?: number | null
-    enabledTools?: string | null
-    thinkingEnabled?: number
-    thinkingBudget?: number | null
-    toolPresetId?: string | null
-    autoCompactEnabled?: number
-  }) =>
-    invoke<Assistant>('update_assistant', { id, updates }),
+  updateAssistant: (
+    id: string,
+    updates: {
+      name?: string
+      systemPrompt?: string
+      providerId?: string | null
+      modelId?: string | null
+      temperature?: number | null
+      contextLimit?: number | null
+      enabledTools?: string | null
+      thinkingEnabled?: number
+      thinkingBudget?: number | null
+      toolPresetId?: string | null
+      autoCompactEnabled?: number
+    },
+  ) => invoke<Assistant>('update_assistant', { id, updates }),
 
-  deleteAssistant: (id: string) =>
-    invoke<void>('delete_assistant', { id }),
+  deleteAssistant: (id: string) => invoke<void>('delete_assistant', { id }),
 
   // Providers
-  listProviders: () =>
-    invoke<Provider[]>('list_providers'),
+  listProviders: () => invoke<Provider[]>('list_providers'),
 
   createProvider: (name: string, providerType: string, baseUrl: string, apiFormat?: string) =>
     invoke<Provider>('create_provider', { name, providerType, baseUrl, apiFormat: apiFormat ?? null }),
 
-  updateProvider: (id: string, updates: {
-    name?: string
-    providerType?: string
-    baseUrl?: string
-    isEnabled?: number
-    apiFormat?: string
-  }) =>
+  updateProvider: (
+    id: string,
+    updates: {
+      name?: string
+      providerType?: string
+      baseUrl?: string
+      isEnabled?: number
+      apiFormat?: string
+    },
+  ) =>
     invoke<Provider>('update_provider', {
       id,
       name: updates.name ?? null,
@@ -207,14 +236,11 @@ export const api = {
       apiFormat: updates.apiFormat ?? null,
     }),
 
-  deleteProvider: (id: string) =>
-    invoke<void>('delete_provider', { id }),
+  deleteProvider: (id: string) => invoke<void>('delete_provider', { id }),
 
-  setProviderKey: (providerId: string, apiKey: string) =>
-    invoke<void>('set_provider_key', { providerId, apiKey }),
+  setProviderKey: (providerId: string, apiKey: string) => invoke<void>('set_provider_key', { providerId, apiKey }),
 
-  getProviderKeyExists: (providerId: string) =>
-    invoke<boolean>('get_provider_key_exists', { providerId }),
+  getProviderKeyExists: (providerId: string) => invoke<boolean>('get_provider_key_exists', { providerId }),
 
   fetchProviderModels: (providerId: string, forceRefresh?: boolean) =>
     invoke<ModelInfo[]>('fetch_provider_models', { providerId, forceRefresh: forceRefresh ?? null }),
@@ -225,32 +251,24 @@ export const api = {
   // All three address an `approval_id` the backend minted, not the provider's
   // tool call id, and all three reject when nothing is waiting on it any more —
   // the caller turns that into an `orphaned` card rather than spinning.
-  approveToolCall: (approvalId: string) =>
-    invoke<void>('approve_tool_call', { approvalId }),
+  approveToolCall: (approvalId: string) => invoke<void>('approve_tool_call', { approvalId }),
 
   denyToolCall: (approvalId: string, reason?: string) =>
     invoke<void>('deny_tool_call', { approvalId, reason: reason ?? null }),
 
-  respondToAsk: (approvalId: string, response: string) =>
-    invoke<void>('respond_to_ask', { approvalId, response }),
-
-  listStagedEdits: (conversationId: string) =>
-    invoke<Array<{ path: string; diff: string; tool_name: string }>>('list_staged_edits', { conversationId }),
-
-  approveStagedEdit: (conversationId: string, path: string) =>
-    invoke<void>('approve_staged_edit', { conversationId, path }),
-
-  approveAllStagedEdits: (conversationId: string) =>
-    invoke<number>('approve_all_staged_edits', { conversationId }),
-
-  rejectStagedEdit: (conversationId: string, path: string) =>
-    invoke<void>('reject_staged_edit', { conversationId, path }),
+  respondToAsk: (approvalId: string, response: string) => invoke<void>('respond_to_ask', { approvalId, response }),
 
   // Projects
-  listProjects: () =>
-    invoke<Project[]>('list_projects'),
+  listProjects: () => invoke<Project[]>('list_projects'),
 
-  createProject: (name: string, path?: string, sourceType?: string, sourceId?: string, assistantId?: string, description?: string) =>
+  createProject: (
+    name: string,
+    path?: string,
+    sourceType?: string,
+    sourceId?: string,
+    assistantId?: string,
+    description?: string,
+  ) =>
     invoke<Project>('create_project', {
       name,
       path: path ?? null,
@@ -269,15 +287,13 @@ export const api = {
       description: updates.description ?? null,
     }),
 
-  deleteProject: (id: string) =>
-    invoke<void>('delete_project', { id }),
+  deleteProject: (id: string) => invoke<void>('delete_project', { id }),
 
   listConversationsByProject: (projectId: string, archived = false) =>
     invoke<Conversation[]>('list_conversations_by_project', { projectId, archived }),
 
   // Memories
-  listMemories: (projectId: string) =>
-    invoke<Memory[]>('list_memories', { projectId }),
+  listMemories: (projectId: string) => invoke<Memory[]>('list_memories', { projectId }),
 
   saveMemory: (projectId: string, key: string, content: string, memoryType?: string) =>
     invoke<Memory>('save_memory', { projectId, key, content, memoryType: memoryType ?? null }),
@@ -290,8 +306,7 @@ export const api = {
       ownerOnly: ownerOnly ?? null,
     }),
 
-  deleteMemory: (id: string) =>
-    invoke<void>('delete_memory', { id }),
+  deleteMemory: (id: string) => invoke<void>('delete_memory', { id }),
 
   // Todos
   getActiveTodoList: (conversationId: string) =>
@@ -324,8 +339,7 @@ export const api = {
 
   listMemorySubjects: () => invoke<MemorySubject[]>('list_memory_subjects'),
 
-  forgetMemorySubject: (subjectScopeId: string) =>
-    invoke<number>('forget_memory_subject', { subjectScopeId }),
+  forgetMemorySubject: (subjectScopeId: string) => invoke<number>('forget_memory_subject', { subjectScopeId }),
 
   setMemorySubjectFlags: (subjectScopeId: string, isPinned?: boolean, optedOut?: boolean) =>
     invoke<void>('set_memory_subject_flags', {
@@ -334,8 +348,7 @@ export const api = {
       optedOut: optedOut ?? null,
     }),
 
-  listMemoryTrash: (limit?: number) =>
-    invoke<Memory[]>('list_memory_trash', { limit: limit ?? null }),
+  listMemoryTrash: (limit?: number) => invoke<Memory[]>('list_memory_trash', { limit: limit ?? null }),
 
   restoreMemories: (ids: string[]) => invoke<number>('restore_memories', { ids }),
 
@@ -344,48 +357,35 @@ export const api = {
   memoryEnums: () => invoke<MemoryEnums>('memory_enums'),
 
   // Preferences
-  getPreference: (key: string) =>
-    invoke<string | null>('get_preference', { key }),
+  getPreference: (key: string) => invoke<string | null>('get_preference', { key }),
 
-  setPreference: (key: string, value: string) =>
-    invoke<void>('set_preference', { key, value }),
+  setPreference: (key: string, value: string) => invoke<void>('set_preference', { key, value }),
 
   // Voice input (desktop only)
   /** Open the microphone early so the first word is not lost to device latency. */
-  voicePrewarm: () =>
-    invoke<void>('voice_prewarm'),
+  voicePrewarm: () => invoke<void>('voice_prewarm'),
 
-  voiceReleasePrewarm: () =>
-    invoke<void>('voice_release_prewarm'),
+  voiceReleasePrewarm: () => invoke<void>('voice_release_prewarm'),
 
-  voiceStartRecording: () =>
-    invoke<void>('voice_start_recording'),
+  voiceStartRecording: () => invoke<void>('voice_start_recording'),
 
-  voiceStopAndTranscribe: () =>
-    invoke<VoiceTranscript>('voice_stop_and_transcribe'),
+  voiceStopAndTranscribe: () => invoke<VoiceTranscript>('voice_stop_and_transcribe'),
 
-  voiceCancelRecording: () =>
-    invoke<void>('voice_cancel_recording'),
+  voiceCancelRecording: () => invoke<void>('voice_cancel_recording'),
 
-  voiceModelStatus: () =>
-    invoke<VoiceModelStatus>('voice_model_status'),
+  voiceModelStatus: () => invoke<VoiceModelStatus>('voice_model_status'),
 
-  voiceDownloadModel: (url?: string) =>
-    invoke<void>('voice_download_model', { url: url ?? null }),
+  voiceDownloadModel: (url?: string) => invoke<void>('voice_download_model', { url: url ?? null }),
 
-  voiceCancelDownload: () =>
-    invoke<void>('voice_cancel_download'),
+  voiceCancelDownload: () => invoke<void>('voice_cancel_download'),
 
-  voiceImportModel: (archivePath: string) =>
-    invoke<VoiceModelStatus>('voice_import_model', { archivePath }),
+  voiceImportModel: (archivePath: string) => invoke<VoiceModelStatus>('voice_import_model', { archivePath }),
 
-  voiceDeleteModel: () =>
-    invoke<void>('voice_delete_model'),
+  voiceDeleteModel: () => invoke<void>('voice_delete_model'),
 
   /** Decodes and counts the samples, nothing more. Measures what a base64 PCM
    *  payload actually costs over the bridge — Android has no raw IPC. */
-  voiceProbeEcho: (sampleRate: number, pcm: string) =>
-    invoke<number>('voice_probe_echo', { sampleRate, pcm }),
+  voiceProbeEcho: (sampleRate: number, pcm: string) => invoke<number>('voice_probe_echo', { sampleRate, pcm }),
 
   /** Android's transcription entry point: capture happens in the WebView, so
    *  the samples arrive as base64 16-bit PCM rather than from a Rust session. */
@@ -393,154 +393,152 @@ export const api = {
     invoke<VoiceTranscript>('voice_transcribe_pcm', { sampleRate, pcm }),
 
   // Platform / Android file access
-  getPlatform: () =>
-    invoke<string>('get_platform'),
+  getPlatform: () => invoke<string>('get_platform'),
 
   getWindowInsets: () =>
     invoke<{ top: number; bottom: number; left: number; right: number; imeBottom: number }>('get_window_insets'),
 
-  getManageStorageStatus: () =>
-    invoke<boolean>('get_manage_storage_status'),
+  getManageStorageStatus: () => invoke<boolean>('get_manage_storage_status'),
 
-  requestManageStorage: () =>
-    invoke<void>('request_manage_storage'),
+  requestManageStorage: () => invoke<void>('request_manage_storage'),
 
-  pickSafDirectory: () =>
-    invoke<SafRootEntry[]>('pick_saf_directory'),
+  pickSafDirectory: () => invoke<SafRootEntry[]>('pick_saf_directory'),
 
-  listSafRoots: () =>
-    invoke<SafRootEntry[]>('list_saf_roots'),
+  listSafRoots: () => invoke<SafRootEntry[]>('list_saf_roots'),
 
-  removeSafRoot: (uri: string) =>
-    invoke<SafRootEntry[]>('remove_saf_root', { uri }),
+  removeSafRoot: (uri: string) => invoke<SafRootEntry[]>('remove_saf_root', { uri }),
 
-  takePhoto: () =>
-    invoke<string | null>('take_photo'),
+  takePhoto: () => invoke<string | null>('take_photo'),
 
-  pickGalleryImage: () =>
-    invoke<string | null>('pick_gallery_image'),
+  pickGalleryImage: () => invoke<string | null>('pick_gallery_image'),
 
-  resolveFileName: (path: string) =>
-    invoke<string>('resolve_file_name', { path }),
+  resolveFileName: (path: string) => invoke<string>('resolve_file_name', { path }),
 
   // MCP servers
-  listMcpServers: () =>
-    invoke<McpServer[]>('list_mcp_servers'),
+  listMcpServers: () => invoke<McpServer[]>('list_mcp_servers'),
 
-  createMcpServer: (name: string, transportType: string, opts?: {
-    command?: string, args?: string, env?: string, url?: string, headers?: string
-  }) =>
+  createMcpServer: (
+    name: string,
+    transportType: string,
+    opts?: {
+      command?: string
+      args?: string
+      env?: string
+      url?: string
+      headers?: string
+    },
+  ) =>
     invoke<McpServer>('create_mcp_server', {
-      name, transportType,
-      command: opts?.command ?? null, args: opts?.args ?? null,
-      env: opts?.env ?? null, url: opts?.url ?? null,
+      name,
+      transportType,
+      command: opts?.command ?? null,
+      args: opts?.args ?? null,
+      env: opts?.env ?? null,
+      url: opts?.url ?? null,
       headers: opts?.headers ?? null,
     }),
 
-  updateMcpServer: (id: string, updates: {
-    name?: string
-    transportType?: string
-    command?: string | null
-    args?: string | null
-    env?: string | null
-    url?: string | null
-    headers?: string | null
-    isEnabled?: number
-  }) =>
-    invoke<McpServer>('update_mcp_server', { id, updates }),
+  updateMcpServer: (
+    id: string,
+    updates: {
+      name?: string
+      transportType?: string
+      command?: string | null
+      args?: string | null
+      env?: string | null
+      url?: string | null
+      headers?: string | null
+      isEnabled?: number
+    },
+  ) => invoke<McpServer>('update_mcp_server', { id, updates }),
 
-  deleteMcpServer: (id: string) =>
-    invoke<void>('delete_mcp_server', { id }),
+  deleteMcpServer: (id: string) => invoke<void>('delete_mcp_server', { id }),
 
-  connectMcpServer: (id: string) =>
-    invoke<void>('connect_mcp_server', { id }),
+  connectMcpServer: (id: string) => invoke<void>('connect_mcp_server', { id }),
 
-  disconnectMcpServer: (id: string) =>
-    invoke<void>('disconnect_mcp_server', { id }),
+  disconnectMcpServer: (id: string) => invoke<void>('disconnect_mcp_server', { id }),
 
-  listMcpTools: (serverId?: string) =>
-    invoke<McpToolDef[]>('list_mcp_tools', { serverId: serverId ?? null }),
+  listMcpTools: (serverId?: string) => invoke<McpToolDef[]>('list_mcp_tools', { serverId: serverId ?? null }),
 
   // Only servers with a live entry come back. Anything absent is disconnected —
   // the caller already has the full list from the database.
-  listMcpConnectionStatuses: () =>
-    invoke<McpConnectionStatus[]>('list_mcp_connection_statuses'),
+  listMcpConnectionStatuses: () => invoke<McpConnectionStatus[]>('list_mcp_connection_statuses'),
 
-  listAllToolNames: () =>
-    invoke<ToolInfo[]>('list_all_tool_names'),
+  listAllToolNames: () => invoke<ToolInfo[]>('list_all_tool_names'),
 
   // OneBot
   getOneBotStatus: () =>
-    invoke<{ enabled: boolean; running: boolean; connected_clients: number; host: string; port: number }>('get_onebot_status'),
+    invoke<{ enabled: boolean; running: boolean; connected_clients: number; host: string; port: number }>(
+      'get_onebot_status',
+    ),
 
   getOneBotConfig: () =>
     invoke<{
-      enabled: boolean; host: string; port: number;
-      access_token: string | null; assistant_id: string | null;
-      admin_users: number[]; ack_emoji_id: string;
+      enabled: boolean
+      host: string
+      port: number
+      access_token: string | null
+      assistant_id: string | null
+      admin_users: number[]
+      ack_emoji_id: string
     }>('get_onebot_config'),
 
   saveOneBotConfig: (config: {
-    enabled: boolean; host: string; port: number;
-    access_token: string | null; assistant_id: string | null;
-    admin_users: number[]; ack_emoji_id: string;
-  }) =>
-    invoke<void>('save_onebot_config', { config }),
+    enabled: boolean
+    host: string
+    port: number
+    access_token: string | null
+    assistant_id: string | null
+    admin_users: number[]
+    ack_emoji_id: string
+  }) => invoke<void>('save_onebot_config', { config }),
 
-  startOneBot: () =>
-    invoke<void>('start_onebot'),
+  startOneBot: () => invoke<void>('start_onebot'),
 
-  stopOneBot: () =>
-    invoke<void>('stop_onebot'),
+  stopOneBot: () => invoke<void>('stop_onebot'),
 
   // Claude Code hook endpoint
-  getHooksStatus: () =>
-    invoke<HooksStatus>('get_hooks_status'),
+  getHooksStatus: () => invoke<HooksStatus>('get_hooks_status'),
 
-  getHooksConfig: () =>
-    invoke<HooksConfig>('get_hooks_config'),
+  getHooksConfig: () => invoke<HooksConfig>('get_hooks_config'),
 
   // Returns the stored config, which is how the caller learns the token the
   // backend minted on first save.
-  saveHooksConfig: (config: HooksConfig) =>
-    invoke<HooksConfig>('save_hooks_config', { config }),
+  saveHooksConfig: (config: HooksConfig) => invoke<HooksConfig>('save_hooks_config', { config }),
 
-  regenerateHooksToken: () =>
-    invoke<string>('regenerate_hooks_token'),
+  regenerateHooksToken: () => invoke<string>('regenerate_hooks_token'),
 
-  startHooks: () =>
-    invoke<void>('start_hooks'),
+  startHooks: () => invoke<void>('start_hooks'),
 
-  stopHooks: () =>
-    invoke<void>('stop_hooks'),
+  stopHooks: () => invoke<void>('stop_hooks'),
 
   // Prompt Templates
-  listPromptTemplates: () =>
-    invoke<PromptTemplate[]>('list_prompt_templates'),
+  listPromptTemplates: () => invoke<PromptTemplate[]>('list_prompt_templates'),
 
   createPromptTemplate: (name: string, category: string, templateText: string, description?: string) =>
     invoke<PromptTemplate>('create_prompt_template', {
-      name, category, templateText,
+      name,
+      category,
+      templateText,
       description: description ?? null,
     }),
 
-  updatePromptTemplate: (id: string, updates: {
-    name?: string
-    description?: string | null
-    category?: string
-    templateText?: string
-  }) =>
-    invoke<PromptTemplate>('update_prompt_template', { id, updates }),
+  updatePromptTemplate: (
+    id: string,
+    updates: {
+      name?: string
+      description?: string | null
+      category?: string
+      templateText?: string
+    },
+  ) => invoke<PromptTemplate>('update_prompt_template', { id, updates }),
 
-  deletePromptTemplate: (id: string) =>
-    invoke<void>('delete_prompt_template', { id }),
+  deletePromptTemplate: (id: string) => invoke<void>('delete_prompt_template', { id }),
 
-  listTemplateVariables: () =>
-    invoke<TemplateVariable[]>('list_template_variables'),
+  listTemplateVariables: () => invoke<TemplateVariable[]>('list_template_variables'),
 
   // Emoji Packs
-  listEmojiPacks: () =>
-    invoke<EmojiPack[]>('list_emoji_packs'),
+  listEmojiPacks: () => invoke<EmojiPack[]>('list_emoji_packs'),
 
   createEmojiPack: (name: string, description?: string) =>
     invoke<EmojiPack>('create_emoji_pack', {
@@ -548,42 +546,31 @@ export const api = {
       description: description ?? null,
     }),
 
-  deleteEmojiPack: (id: string) =>
-    invoke<void>('delete_emoji_pack', { id }),
+  deleteEmojiPack: (id: string) => invoke<void>('delete_emoji_pack', { id }),
 
-  listEmojis: (packId: string) =>
-    invoke<Emoji[]>('list_emojis', { packId }),
+  listEmojis: (packId: string) => invoke<Emoji[]>('list_emojis', { packId }),
 
-  importEmojis: (packId: string, filePaths: string[]) =>
-    invoke<Emoji[]>('import_emojis', { packId, filePaths }),
+  importEmojis: (packId: string, filePaths: string[]) => invoke<Emoji[]>('import_emojis', { packId, filePaths }),
 
-  deleteEmoji: (id: string) =>
-    invoke<void>('delete_emoji', { id }),
+  deleteEmoji: (id: string) => invoke<void>('delete_emoji', { id }),
 
-  renameEmoji: (id: string, newName: string) =>
-    invoke<Emoji>('rename_emoji', { id, newName }),
+  renameEmoji: (id: string, newName: string) => invoke<Emoji>('rename_emoji', { id, newName }),
 
-  searchEmojis: (query: string) =>
-    invoke<Emoji[]>('search_emojis', { query }),
+  searchEmojis: (query: string) => invoke<Emoji[]>('search_emojis', { query }),
 
-  assignEmojiPack: (assistantId: string, packId: string) =>
-    invoke<void>('assign_emoji_pack', { assistantId, packId }),
+  assignEmojiPack: (assistantId: string, packId: string) => invoke<void>('assign_emoji_pack', { assistantId, packId }),
 
   unassignEmojiPack: (assistantId: string, packId: string) =>
     invoke<void>('unassign_emoji_pack', { assistantId, packId }),
 
-  listAssistantEmojiPacks: (assistantId: string) =>
-    invoke<EmojiPack[]>('list_assistant_emoji_packs', { assistantId }),
+  listAssistantEmojiPacks: (assistantId: string) => invoke<EmojiPack[]>('list_assistant_emoji_packs', { assistantId }),
 
-  getEmojiFileUrl: (emojiId: string) =>
-    invoke<string>('get_emoji_file_url', { emojiId }),
+  getEmojiFileUrl: (emojiId: string) => invoke<string>('get_emoji_file_url', { emojiId }),
 
   // Tool System
-  listToolCategories: () =>
-    invoke<ToolCategory[]>('list_tool_categories'),
+  listToolCategories: () => invoke<ToolCategory[]>('list_tool_categories'),
 
-  listCustomTools: () =>
-    invoke<CustomTool[]>('list_custom_tools'),
+  listCustomTools: () => invoke<CustomTool[]>('list_custom_tools'),
 
   createCustomTool: (params: {
     name: string
@@ -608,25 +595,25 @@ export const api = {
       permission: params.permission ?? null,
     }),
 
-  updateCustomTool: (id: string, updates: {
-    name?: string
-    description?: string
-    command?: string
-    categoryId?: string | null
-    parametersSchema?: string
-    argsTemplate?: string | null
-    workingDirectory?: string | null
-    timeoutMs?: number | null
-    permission?: string
-    isEnabled?: number
-  }) =>
-    invoke<CustomTool>('update_custom_tool', { id, updates }),
+  updateCustomTool: (
+    id: string,
+    updates: {
+      name?: string
+      description?: string
+      command?: string
+      categoryId?: string | null
+      parametersSchema?: string
+      argsTemplate?: string | null
+      workingDirectory?: string | null
+      timeoutMs?: number | null
+      permission?: string
+      isEnabled?: number
+    },
+  ) => invoke<CustomTool>('update_custom_tool', { id, updates }),
 
-  deleteCustomTool: (id: string) =>
-    invoke<void>('delete_custom_tool', { id }),
+  deleteCustomTool: (id: string) => invoke<void>('delete_custom_tool', { id }),
 
-  listToolPresets: () =>
-    invoke<ToolPreset[]>('list_tool_presets'),
+  listToolPresets: () => invoke<ToolPreset[]>('list_tool_presets'),
 
   createToolPreset: (name: string, toolNames: string, description?: string) =>
     invoke<ToolPreset>('create_tool_preset', {
@@ -635,25 +622,23 @@ export const api = {
       description: description ?? null,
     }),
 
-  updateToolPreset: (id: string, updates: {
-    name?: string
-    description?: string | null
-    toolNames?: string
-  }) =>
-    invoke<ToolPreset>('update_tool_preset', { id, updates }),
+  updateToolPreset: (
+    id: string,
+    updates: {
+      name?: string
+      description?: string | null
+      toolNames?: string
+    },
+  ) => invoke<ToolPreset>('update_tool_preset', { id, updates }),
 
-  deleteToolPreset: (id: string) =>
-    invoke<void>('delete_tool_preset', { id }),
+  deleteToolPreset: (id: string) => invoke<void>('delete_tool_preset', { id }),
 
   // Skills
-  listSkills: () =>
-    invoke<Skill[]>('list_skills'),
+  listSkills: () => invoke<Skill[]>('list_skills'),
 
-  rescanSkills: () =>
-    invoke<Skill[]>('rescan_skills'),
+  rescanSkills: () => invoke<Skill[]>('rescan_skills'),
 
-  getSkillBody: (dirName: string) =>
-    invoke<string>('get_skill_body', { dirName }),
+  getSkillBody: (dirName: string) => invoke<string>('get_skill_body', { dirName }),
 
   createSkill: (dirName: string, llmDescription: string, body: string, displayName?: string) =>
     invoke<Skill>('create_skill', {
@@ -663,16 +648,17 @@ export const api = {
       displayName: displayName ?? null,
     }),
 
-  updateSkill: (dirName: string, updates: {
-    displayName?: string
-    llmDescription?: string
-    body?: string
-    isEnabled?: boolean
-  }) =>
-    invoke<Skill>('update_skill', { dirName, updates }),
+  updateSkill: (
+    dirName: string,
+    updates: {
+      displayName?: string
+      llmDescription?: string
+      body?: string
+      isEnabled?: boolean
+    },
+  ) => invoke<Skill>('update_skill', { dirName, updates }),
 
-  deleteSkill: (dirName: string) =>
-    invoke<void>('delete_skill', { dirName }),
+  deleteSkill: (dirName: string) => invoke<void>('delete_skill', { dirName }),
 
   listSkillBindings: (layer: SkillLayer, anchorId?: string) =>
     invoke<string[]>('list_skill_bindings', { layer, anchorId: anchorId ?? null }),
@@ -705,11 +691,9 @@ export const api = {
   exportLogs: (outputPath: string) => invoke<number>('export_logs', { outputPath }),
 
   // Service Keys (for tool services like Tavily, Zhipu search)
-  setServiceKey: (service: string, key: string) =>
-    invoke<void>('set_service_key', { service, key }),
+  setServiceKey: (service: string, key: string) => invoke<void>('set_service_key', { service, key }),
 
-  getServiceKeyExists: (service: string) =>
-    invoke<boolean>('get_service_key_exists', { service }),
+  getServiceKeyExists: (service: string) => invoke<boolean>('get_service_key_exists', { service }),
 
   /**
    * Tokens and cost, grouped by `dimension`.

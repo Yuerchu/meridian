@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use super::{Permission, Tool, ToolContext};
+use async_trait::async_trait;
 use regex::Regex;
 
 pub struct SearchFilesTool;
@@ -54,22 +54,16 @@ impl Tool for SearchFilesTool {
             .as_str()
             .ok_or("missing 'pattern' argument")?
             .to_string();
-        let path_str = args["path"]
-            .as_str()
-            .ok_or("missing 'path' argument")?;
+        let path_str = args["path"].as_str().ok_or("missing 'path' argument")?;
         let path_buf = match context.resolve_and_validate(path_str)? {
             super::ResolvedTarget::Real(p) => p,
             super::ResolvedTarget::Saf { .. } => {
-                return Err(
-                    "recursive search is not supported in SAF-authorized directories; \
+                return Err("recursive search is not supported in SAF-authorized directories; \
                      enable 'All files access' in Settings to search there"
-                        .to_string(),
-                );
+                    .to_string());
             }
         };
-        let max_results = args["max_results"]
-            .as_u64()
-            .unwrap_or(50) as usize;
+        let max_results = args["max_results"].as_u64().unwrap_or(50) as usize;
 
         tokio::task::spawn_blocking(move || search(&path_buf, &pattern, max_results))
             .await
@@ -78,22 +72,28 @@ impl Tool for SearchFilesTool {
 }
 
 const SKIP_DIRS: &[&str] = &[
-    ".git", "node_modules", "target", "__pycache__", ".venv",
-    "dist", "build", ".next", ".nuxt", "vendor",
+    ".git",
+    "node_modules",
+    "target",
+    "__pycache__",
+    ".venv",
+    "dist",
+    "build",
+    ".next",
+    ".nuxt",
+    "vendor",
 ];
 
 const MAX_DEPTH: usize = 10;
 const MAX_LINE_LEN: usize = 500;
 
 fn search(root: &std::path::Path, pattern: &str, max_results: usize) -> Result<String, String> {
-    let re = Regex::new(pattern)
-        .map_err(|e| format!("invalid regex pattern: {e}"))?;
+    let re = Regex::new(pattern).map_err(|e| format!("invalid regex pattern: {e}"))?;
 
     let mut matches = Vec::new();
     // Models routinely aim this at one file rather than a tree. Walking a file
     // would surface as a bare "os error 3" on Windows, so search it directly.
-    let meta = std::fs::metadata(root)
-        .map_err(|e| format!("failed to read '{}': {}", root.display(), e))?;
+    let meta = std::fs::metadata(root).map_err(|e| format!("failed to read '{}': {}", root.display(), e))?;
     if meta.is_file() {
         search_file(root, &re, max_results, &mut matches);
     } else {
@@ -124,8 +124,7 @@ fn walk_and_search(
         return Ok(());
     }
 
-    let entries = std::fs::read_dir(dir)
-        .map_err(|e| format!("failed to read '{}': {}", dir.display(), e))?;
+    let entries = std::fs::read_dir(dir).map_err(|e| format!("failed to read '{}': {}", dir.display(), e))?;
 
     for entry in entries {
         if matches.len() >= max_results {
@@ -164,12 +163,7 @@ fn walk_and_search(
 
 const MAX_FILE_SIZE: u64 = 2 * 1024 * 1024; // 2 MB
 
-fn search_file(
-    path: &std::path::Path,
-    re: &Regex,
-    max_results: usize,
-    matches: &mut Vec<String>,
-) {
+fn search_file(path: &std::path::Path, re: &Regex, max_results: usize, matches: &mut Vec<String>) {
     // Skip files larger than 2 MB
     let meta = match std::fs::metadata(path) {
         Ok(m) => m,

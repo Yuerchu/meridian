@@ -69,15 +69,18 @@ export function useMasterDetail<Aux extends string = never>(): MasterDetailNav<A
   // can never be true.
   useHistoryLevel(showsDetail, back)
 
-  return useMemo(() => ({
-    isMobile,
-    selectedId,
-    aux,
-    showsDetail,
-    showsList: !isMobile || !showsDetail,
-    openItem,
-    openAux,
-    select,
-    back,
-  }), [isMobile, selectedId, aux, showsDetail, openItem, openAux, select, back])
+  return useMemo(
+    () => ({
+      isMobile,
+      selectedId,
+      aux,
+      showsDetail,
+      showsList: !isMobile || !showsDetail,
+      openItem,
+      openAux,
+      select,
+      back,
+    }),
+    [isMobile, selectedId, aux, showsDetail, openItem, openAux, select, back],
+  )
 }

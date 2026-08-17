@@ -1,6 +1,6 @@
-import * as React from "react"
+import * as React from 'react'
 
-import { Button, Tooltip } from "@heroui/react"
+import { Button, Tooltip } from '@heroui/react'
 
 /**
  * An icon button with a tooltip. Lives here rather than beside the message
@@ -10,7 +10,12 @@ import { Button, Tooltip } from "@heroui/react"
  * `delay={0}` because these sit in dense rows of icons: a tooltip that waits
  * before appearing reads as the interface being slow to answer.
  */
-function ActionButton({ label, onClick, className, children }: {
+function ActionButton({
+  label,
+  onClick,
+  className,
+  children,
+}: {
   label: string
   onClick?: () => void
   className?: string

@@ -16,20 +16,12 @@ pub fn get_provider(conn: &mut SqliteConnection, id: &str) -> QueryResult<Provid
 }
 
 pub fn create_provider(conn: &mut SqliteConnection, new: &NewProvider) -> QueryResult<Provider> {
-    diesel::insert_into(providers::table)
-        .values(new)
-        .execute(conn)?;
+    diesel::insert_into(providers::table).values(new).execute(conn)?;
     providers::table.find(new.id).first::<Provider>(conn)
 }
 
-pub fn update_provider(
-    conn: &mut SqliteConnection,
-    id: &str,
-    changeset: &ProviderUpdate,
-) -> QueryResult<Provider> {
-    diesel::update(providers::table.find(id))
-        .set(changeset)
-        .execute(conn)?;
+pub fn update_provider(conn: &mut SqliteConnection, id: &str, changeset: &ProviderUpdate) -> QueryResult<Provider> {
+    diesel::update(providers::table.find(id)).set(changeset).execute(conn)?;
     providers::table.find(id).first::<Provider>(conn)
 }
 

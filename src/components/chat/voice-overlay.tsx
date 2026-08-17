@@ -63,11 +63,7 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
       aria-live="polite"
     >
       <div className="flex flex-col items-center gap-3">
-        {cancelling ? (
-          <TrashBin className="size-8" />
-        ) : (
-          <Microphone className="size-8" />
-        )}
+        {cancelling ? <TrashBin className="size-8" /> : <Microphone className="size-8" />}
         <span className="text-base font-medium">
           {starting
             ? t('chat.voice.preparing')

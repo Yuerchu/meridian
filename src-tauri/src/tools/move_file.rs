@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use super::{Permission, ResolvedTarget, Tool, ToolContext};
+use async_trait::async_trait;
 
 pub struct MoveFileTool;
 
@@ -36,12 +36,8 @@ impl Tool for MoveFileTool {
     }
 
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
-        let from_str = args["from"]
-            .as_str()
-            .ok_or("missing 'from' argument")?;
-        let to_str = args["to"]
-            .as_str()
-            .ok_or("missing 'to' argument")?;
+        let from_str = args["from"].as_str().ok_or("missing 'from' argument")?;
+        let to_str = args["to"].as_str().ok_or("missing 'to' argument")?;
 
         if context.is_access_root(from_str) {
             tracing::warn!(
@@ -58,12 +54,12 @@ impl Tool for MoveFileTool {
         let from = context.resolve_and_validate(from_str)?;
         let to = context.resolve_and_validate(to_str)?;
 
-        if let ResolvedTarget::Real(ref dst) = to {
-            if tokio::fs::symlink_metadata(dst).await.is_ok() {
-                return Err(format!(
-                    "destination '{to_str}' already exists; delete it first or choose another name"
-                ));
-            }
+        if let ResolvedTarget::Real(ref dst) = to
+            && tokio::fs::symlink_metadata(dst).await.is_ok()
+        {
+            return Err(format!(
+                "destination '{to_str}' already exists; delete it first or choose another name"
+            ));
         }
 
         super::backend::rename(&from, &to).await?;
@@ -86,7 +82,6 @@ mod tests {
             conversation_id: None,
             assistant_id: None,
             db_pool: None,
-            edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),
@@ -126,7 +121,10 @@ mod tests {
         std::fs::write(dir.path().join("a.txt"), "x").unwrap();
 
         let result = MoveFileTool
-            .execute(serde_json::json!({"from": "a.txt", "to": "../escaped.txt"}), &ctx(dir.path()))
+            .execute(
+                serde_json::json!({"from": "a.txt", "to": "../escaped.txt"}),
+                &ctx(dir.path()),
+            )
             .await;
         assert!(result.is_err());
         assert!(dir.path().join("a.txt").exists());

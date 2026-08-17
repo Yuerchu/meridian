@@ -143,8 +143,12 @@ export function Composer({
               placeholder={placeholder}
               autoFocus={autoFocus}
               onKeyDownCapture={guardEnter}
-              onCompositionStart={() => { composingRef.current = true }}
-              onCompositionEnd={() => { composingRef.current = false }}
+              onCompositionStart={() => {
+                composingRef.current = true
+              }}
+              onCompositionEnd={() => {
+                composingRef.current = false
+              }}
             />
           </PromptInput.Content>
           <PromptInput.Toolbar>

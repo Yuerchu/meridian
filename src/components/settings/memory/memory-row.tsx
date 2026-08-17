@@ -23,12 +23,7 @@ interface MemoryRowProps {
   onChanged: () => void
 }
 
-export function MemoryRow({
-  memory,
-  checked,
-  onToggleCheck,
-  onChanged,
-}: MemoryRowProps) {
+export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryRowProps) {
   const { t } = useTranslation()
   const [draft, setDraft] = useState(memory.content)
   const [saving, setSaving] = useState(false)
@@ -38,23 +33,14 @@ export function MemoryRow({
   return (
     // The enclosing DisclosureGroup names the open row by this id, which is
     // what keeps one open at a time.
-    <Disclosure
-      id={memory.id}
-      data-slot="memory-row"
-      className="flex w-full flex-col rounded-lg border border-border"
-    >
+    <Disclosure id={memory.id} data-slot="memory-row" className="flex w-full flex-col rounded-lg border border-border">
       {/* Wraps rather than overflows: a key, three or four badges and a date do
           not fit one line on a phone, and this scroller shares its horizontal
           overflow with the whole settings page — one long key here used to drag
           every other panel sideways with it. */}
       <div data-slot="memory-row-header" className="flex flex-wrap items-center gap-2 p-3">
         {/* No label of its own — the row's key names it. */}
-        <Checkbox
-          data-slot="memory-row-check"
-          aria-label={memory.key}
-          isSelected={checked}
-          onChange={onToggleCheck}
-        >
+        <Checkbox data-slot="memory-row-check" aria-label={memory.key} isSelected={checked} onChange={onToggleCheck}>
           <Checkbox.Content>
             <Checkbox.Control>
               <Checkbox.Indicator />
@@ -75,9 +61,7 @@ export function MemoryRow({
           </Disclosure.Trigger>
         </Disclosure.Heading>
         <span className="min-w-0 truncate font-mono text-sm">{memory.key}</span>
-        <Chip color="default">
-          {memory.scope_type.replace('onebot_', '').replace('client_global', 'client')}
-        </Chip>
+        <Chip color="default">{memory.scope_type.replace('onebot_', '').replace('client_global', 'client')}</Chip>
         {/* `--info` is a project token with no HeroUI colour behind it, so the
             property the component reads is set directly rather than through a
             `color` that does not exist. */}
@@ -114,12 +98,7 @@ export function MemoryRow({
           className="space-y-2"
           render={(props) => <div {...props} className="border-t border-border p-3" />}
         >
-          <TextArea fullWidth
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={3}
-            className="resize-y"
-          />
+          <TextArea fullWidth value={draft} onChange={(e) => setDraft(e.target.value)} rows={3} className="resize-y" />
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
             <span>
               {t('settings.memory.learnedAt')}: {formatDate(memory.created_at)}

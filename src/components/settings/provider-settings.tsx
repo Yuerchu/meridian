@@ -35,9 +35,7 @@ function parseOverrides(raw: string | null | undefined): Record<string, unknown>
   if (!raw) return {}
   try {
     const parsed: unknown = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, unknown>)
-      : {}
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {}
   } catch {
     return {}
   }
@@ -59,15 +57,7 @@ function safeThreshold(contextWindow: number, maxOutput: number | null): number 
   return Math.max(contextWindow - reserve - headroom, Math.floor(contextWindow / 2))
 }
 
-function CapabilityTriRow({
-  label,
-  value,
-  onChange,
-}: {
-  label: string
-  value: Tri
-  onChange: (next: Tri) => void
-}) {
+function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tri; onChange: (next: Tri) => void }) {
   const { t } = useTranslation()
   const options: Array<{ value: Tri; label: string }> = [
     { value: 'auto', label: t('settings.model.capAuto') },
@@ -106,7 +96,10 @@ function ModelConfigEditor({
   const [caps, setCaps] = useState<ProviderCapabilities | null>(null)
 
   useEffect(() => {
-    api.getProviderCapabilities(providerId, modelId).then(setCaps).catch(() => {})
+    api
+      .getProviderCapabilities(providerId, modelId)
+      .then(setCaps)
+      .catch(() => {})
   }, [providerId, modelId])
 
   const defaultCtx = existing?.context_window ?? caps?.max_context_tokens ?? 128000
@@ -119,9 +112,7 @@ function ModelConfigEditor({
   const [inputPrice, setInputPrice] = useState(existing?.input_price?.toString() ?? '0')
   const [outputPrice, setOutputPrice] = useState(existing?.output_price?.toString() ?? '0')
   const [cachePrice, setCachePrice] = useState(existing?.cache_price?.toString() ?? '')
-  const [cacheWritePrice, setCacheWritePrice] = useState(
-    existing?.cache_write_price?.toString() ?? '',
-  )
+  const [cacheWritePrice, setCacheWritePrice] = useState(existing?.cache_write_price?.toString() ?? '')
 
   const [showCaps, setShowCaps] = useState(false)
   const [efforts, setEfforts] = useState<ThinkingEffort[]>([])
@@ -136,9 +127,7 @@ function ModelConfigEditor({
   useEffect(() => {
     if (!existing && caps) {
       setContextWindow((caps.max_context_tokens ?? 128000).toString())
-      setCompactThreshold(
-        safeThreshold(caps.max_context_tokens ?? 128000, caps.max_output_tokens ?? null).toString(),
-      )
+      setCompactThreshold(safeThreshold(caps.max_context_tokens ?? 128000, caps.max_output_tokens ?? null).toString())
       if (caps.max_output_tokens) setMaxOutput(caps.max_output_tokens.toString())
     }
   }, [caps, existing])
@@ -199,12 +188,21 @@ function ModelConfigEditor({
         </TextField>
         <TextField fullWidth>
           <Label>{t('settings.model.compactThreshold')}</Label>
-          <Input value={compactThreshold} onChange={(e) => setCompactThreshold(e.target.value)} className="h-7 text-xs" />
+          <Input
+            value={compactThreshold}
+            onChange={(e) => setCompactThreshold(e.target.value)}
+            className="h-7 text-xs"
+          />
         </TextField>
       </div>
       <TextField fullWidth>
         <Label>{t('settings.model.maxOutput')}</Label>
-        <Input value={maxOutput} onChange={(e) => setMaxOutput(e.target.value)} placeholder={t('settings.model.optional')} className="h-7 text-xs" />
+        <Input
+          value={maxOutput}
+          onChange={(e) => setMaxOutput(e.target.value)}
+          placeholder={t('settings.model.optional')}
+          className="h-7 text-xs"
+        />
       </TextField>
       {/* Four rates, all per million tokens. The two cache boxes are blank by
           default and blank means "priced like input" — which is what every
@@ -220,12 +218,22 @@ function ModelConfigEditor({
         </TextField>
         <TextField fullWidth>
           <Label>{t('settings.model.cachePrice')}</Label>
-          <Input value={cachePrice} onChange={(e) => setCachePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
+          <Input
+            value={cachePrice}
+            onChange={(e) => setCachePrice(e.target.value)}
+            placeholder="—"
+            className="h-7 text-xs"
+          />
           <Description className="text-xs">{t('settings.model.cachePriceHint')}</Description>
         </TextField>
         <TextField fullWidth>
           <Label>{t('settings.model.cacheWritePrice')}</Label>
-          <Input value={cacheWritePrice} onChange={(e) => setCacheWritePrice(e.target.value)} placeholder="—" className="h-7 text-xs" />
+          <Input
+            value={cacheWritePrice}
+            onChange={(e) => setCacheWritePrice(e.target.value)}
+            placeholder="—"
+            className="h-7 text-xs"
+          />
           <Description className="text-xs">{t('settings.model.cacheWritePriceHint')}</Description>
         </TextField>
       </div>
@@ -289,7 +297,9 @@ function ModelConfigEditor({
         </Disclosure.Content>
       </Disclosure>
       <div className="flex items-center gap-2 pt-1">
-        <Button size="sm" className="h-7 text-xs" onClick={handleSave}>{t('common.save')}</Button>
+        <Button size="sm" className="h-7 text-xs" onClick={handleSave}>
+          {t('common.save')}
+        </Button>
         {onDelete && (
           <Button size="sm" variant="ghost" className="h-7 text-xs text-danger" onClick={onDelete}>
             {t('common.delete')}
@@ -337,7 +347,7 @@ function ProviderEditor({
   // delete looks like a click that did not register, and a second click races
   // the first.
   const handleDelete = useCallback(async () => {
-    if (!await confirm({ body: t('settings.confirmDelete.provider') })) return
+    if (!(await confirm({ body: t('settings.confirmDelete.provider') }))) return
     setDeleting(true)
     try {
       await onDelete(provider.id)
@@ -358,7 +368,9 @@ function ProviderEditor({
         console.error('Failed to check for a saved key:', err)
         if (!cancelled) setKeyStatus('error')
       })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+    }
   }, [provider.id])
 
   const handleSave = useCallback(async () => {
@@ -389,7 +401,9 @@ function ProviderEditor({
       const map = new Map<string, ModelConfig>()
       for (const c of configs) map.set(c.model_id, c)
       setModelConfigs(map)
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }, [provider.id])
 
   const handleFetchModels = useCallback(async () => {
@@ -405,20 +419,28 @@ function ProviderEditor({
     setFetchingModels(false)
   }, [provider.id, loadModelConfigs])
 
-  useEffect(() => { loadModelConfigs() }, [loadModelConfigs])
-
-  const handleSaveModelConfig = useCallback(async (input: ModelConfigInput) => {
-    await api.saveModelConfig(input)
-    await loadModelConfigs()
-    setEditingModelId(null)
+  useEffect(() => {
+    loadModelConfigs()
   }, [loadModelConfigs])
 
-  const handleDeleteModelConfig = useCallback(async (id: string) => {
-    if (!await confirm({ body: t('settings.confirmDelete.modelConfig') })) return
-    await api.deleteModelConfig(id)
-    await loadModelConfigs()
-    setEditingModelId(null)
-  }, [confirm, t, loadModelConfigs])
+  const handleSaveModelConfig = useCallback(
+    async (input: ModelConfigInput) => {
+      await api.saveModelConfig(input)
+      await loadModelConfigs()
+      setEditingModelId(null)
+    },
+    [loadModelConfigs],
+  )
+
+  const handleDeleteModelConfig = useCallback(
+    async (id: string) => {
+      if (!(await confirm({ body: t('settings.confirmDelete.modelConfig') }))) return
+      await api.deleteModelConfig(id)
+      await loadModelConfigs()
+      setEditingModelId(null)
+    },
+    [confirm, t, loadModelConfigs],
+  )
 
   const typeOptions = [
     { value: 'openai', label: t('settings.provider.typeOpenAI') },
@@ -469,9 +491,7 @@ function ProviderEditor({
 
       <div className="flex items-center gap-2">
         <Button onClick={handleSave}>{t('common.save')}</Button>
-        {saved && (
-          <SavedHint />
-        )}
+        {saved && <SavedHint />}
       </div>
 
       <div className="border-t border-border pt-4 space-y-3">
@@ -518,18 +538,12 @@ function ProviderEditor({
       <div className="border-t border-border pt-4 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted">{t('settings.provider.models')}</p>
-          <Button
-            variant="outline"
-            onClick={handleFetchModels}
-            isDisabled={fetchingModels || keyStatus !== 'set'}
-          >
-            <ArrowsRotateRight className={cn("w-3.5 h-3.5", fetchingModels && "animate-spin")} />
+          <Button variant="outline" onClick={handleFetchModels} isDisabled={fetchingModels || keyStatus !== 'set'}>
+            <ArrowsRotateRight className={cn('w-3.5 h-3.5', fetchingModels && 'animate-spin')} />
             {t('settings.provider.fetchModels')}
           </Button>
         </div>
-        {modelsError && (
-          <p className="text-xs text-danger break-all">{modelsError}</p>
-        )}
+        {modelsError && <p className="text-xs text-danger break-all">{modelsError}</p>}
         {models.length > 0 && (
           <div
             data-slot="provider-model-list"
@@ -541,14 +555,16 @@ function ProviderEditor({
               return (
                 <div key={m.id} className="border-b border-border last:border-0">
                   <div className="flex items-center justify-between px-3 py-1.5">
-                    <span className={cn("text-xs", cfg ? "text-foreground" : "text-muted")}>
+                    <span className={cn('text-xs', cfg ? 'text-foreground' : 'text-muted')}>
                       {m.name}
                       {/* The dot is decoration; the name it carries is the
                           part a screen reader can use. On its own it was read
                           out as "black circle". */}
                       {cfg && (
                         <>
-                          <span aria-hidden className="ml-1.5 text-xs text-success-soft-foreground">●</span>
+                          <span aria-hidden className="ml-1.5 text-xs text-success-soft-foreground">
+                            ●
+                          </span>
                           <span className="sr-only">{t('settings.provider.modelConfigured')}</span>
                         </>
                       )}
@@ -582,12 +598,7 @@ function ProviderEditor({
       </div>
 
       <div className="border-t border-border pt-4">
-        <Button
-          variant="ghost"
-          className="text-danger hover:text-danger"
-          onClick={handleDelete}
-          isDisabled={deleting}
-        >
+        <Button variant="ghost" className="text-danger hover:text-danger" onClick={handleDelete} isDisabled={deleting}>
           {deleting ? <Spinner className="w-3.5 h-3.5" /> : <TrashBin className="w-3.5 h-3.5" />}
           {deleting ? t('settings.provider.deletingProvider') : t('settings.provider.deleteProvider')}
         </Button>
@@ -631,13 +642,16 @@ export function ProviderSettings() {
     nav.openItem(p.id)
   }, [refresh, nav])
 
-  const handleDelete = useCallback(async (id: string) => {
-    await api.deleteProvider(id)
-    const list = await refresh()
-    if (selectedId === id) {
-      nav.select(list.length > 0 ? list[0].id : null)
-    }
-  }, [selectedId, refresh, nav])
+  const handleDelete = useCallback(
+    async (id: string) => {
+      await api.deleteProvider(id)
+      const list = await refresh()
+      if (selectedId === id) {
+        nav.select(list.length > 0 ? list[0].id : null)
+      }
+    },
+    [selectedId, refresh, nav],
+  )
 
   if (loading) {
     // Wider than the default: this panel is a `MasterDetail`, which is
@@ -665,7 +679,9 @@ export function ProviderSettings() {
         // The text used to point at the "+" in the header, which is what an
         // empty state has an action slot for.
         <EmptyState size="sm">
-          <EmptyState.Media variant="icon"><Cloud /></EmptyState.Media>
+          <EmptyState.Media variant="icon">
+            <Cloud />
+          </EmptyState.Media>
           <EmptyState.Header>
             <EmptyState.Title>{t('settings.provider.noProviders')}</EmptyState.Title>
           </EmptyState.Header>
@@ -686,12 +702,7 @@ export function ProviderSettings() {
       title={t('settings.provider.title')}
       actions={
         <Tooltip delay={0}>
-          <Button
-            isIconOnly
-            aria-label={t('settings.provider.addProvider')}
-            variant="ghost"
-            onClick={handleCreate}
-          >
+          <Button isIconOnly aria-label={t('settings.provider.addProvider')} variant="ghost" onClick={handleCreate}>
             <Plus className="w-4 h-4" />
           </Button>
           <Tooltip.Content placement="top">{t('settings.provider.addProvider')}</Tooltip.Content>
@@ -699,14 +710,11 @@ export function ProviderSettings() {
       }
       list={providerList}
       detailTitle={selected?.name}
-      detail={selected ? (
-        <ProviderEditor
-          key={selected.id}
-          provider={selected}
-          onUpdate={refresh}
-          onDelete={handleDelete}
-        />
-      ) : undefined}
+      detail={
+        selected ? (
+          <ProviderEditor key={selected.id} provider={selected} onUpdate={refresh} onDelete={handleDelete} />
+        ) : undefined
+      }
       emptyDetail={t('settings.provider.selectProvider')}
     />
   )

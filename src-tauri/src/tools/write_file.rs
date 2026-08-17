@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use super::{Permission, Tool, ToolContext};
+use async_trait::async_trait;
 
 pub struct WriteFileTool;
 
@@ -42,56 +42,14 @@ impl Tool for WriteFileTool {
     }
 
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
-        let path_str = args["path"]
-            .as_str()
-            .ok_or("missing 'path' argument")?;
-        let content = args["content"]
-            .as_str()
-            .ok_or("missing 'content' argument")?;
+        let path_str = args["path"].as_str().ok_or("missing 'path' argument")?;
+        let content = args["content"].as_str().ok_or("missing 'content' argument")?;
 
-        if let Some(ref session) = context.edit_session {
-            // Staging resolves rather than opens: `open_write` creates the file
-            // if it is missing, and a staged write that is never approved would
-            // leave that empty file behind. Staging always waits for a person
-            // anyway, which is what makes the path form acceptable here.
-            let target = context.resolve_and_validate(path_str)?;
-            let resolved_path = match &target {
-                super::ResolvedTarget::Real(p) => p.clone(),
-                super::ResolvedTarget::Saf { .. } => {
-                    super::backend::write_string(&target, content).await?;
-                    return Ok(format!("Successfully wrote {} bytes to {}", content.len(), path_str));
-                }
-            };
-            // A file that exists but cannot be read must not be staged as if it
-            // were new: the diff would say "+800 lines, new file" for what is
-            // actually an overwrite, and the user would approve that. Only a
-            // genuinely absent file gets `None`.
-            let original = match super::backend::read_to_string(&target).await {
-                Ok(existing) => Some(existing),
-                Err(e) if resolved_path.exists() => {
-                    tracing::warn!(
-                        tool = "write_file",
-                        error = %e,
-                        "refusing to stage a write over a file whose current contents cannot be read"
-                    );
-                    return Err(format!(
-                        "'{path_str}' exists but could not be read, so the diff shown for approval \
-                         would be wrong. Resolve that first."
-                    ));
-                }
-                Err(_) => None,
-            };
-            let mut session = session.lock().await;
-            session.stage_write(resolved_path.clone(), original, content.to_string(), "write_file");
-            let diff = session.get(&resolved_path).unwrap().diff.clone();
-            Ok(format!("Staged write to {path_str} (pending approval).\n\n{diff}"))
-        } else {
-            // The direct path may run without a prompt, so it writes through
-            // the handle it verified rather than resolving the name again.
-            let target = context.open_write(path_str)?;
-            super::backend::write_opened(target, content).await?;
-            Ok(format!("Successfully wrote {} bytes to {}", content.len(), path_str))
-        }
+        // The write may run without a prompt, so it goes through the handle it
+        // verified rather than resolving the name again.
+        let target = context.open_write(path_str)?;
+        super::backend::write_opened(target, content).await?;
+        Ok(format!("Successfully wrote {} bytes to {}", content.len(), path_str))
     }
 }
 
@@ -109,7 +67,6 @@ mod tests {
             conversation_id: None,
             assistant_id: None,
             db_pool: None,
-            edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),

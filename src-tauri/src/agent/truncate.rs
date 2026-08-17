@@ -77,11 +77,7 @@ pub(crate) fn truncate_middle_with_token_budget(s: &str, max_tokens: usize) -> (
         return (s.to_string(), None);
     }
 
-    let truncated = truncate_with_byte_estimate(
-        s,
-        approx_bytes_for_tokens(max_tokens),
-        /*use_tokens*/ true,
-    );
+    let truncated = truncate_with_byte_estimate(s, approx_bytes_for_tokens(max_tokens), /*use_tokens*/ true);
     let total_tokens = u64::try_from(approx_token_count(s)).unwrap_or(u64::MAX);
 
     if truncated == s {
@@ -99,10 +95,7 @@ fn truncate_with_byte_estimate(s: &str, max_bytes: usize, use_tokens: bool) -> S
     let total_chars = s.chars().count();
 
     if max_bytes == 0 {
-        return format_truncation_marker(
-            use_tokens,
-            removed_units(use_tokens, s.len(), total_chars),
-        );
+        return format_truncation_marker(use_tokens, removed_units(use_tokens, s.len(), total_chars));
     }
 
     if s.len() <= max_bytes {
@@ -114,11 +107,7 @@ fn truncate_with_byte_estimate(s: &str, max_bytes: usize, use_tokens: bool) -> S
     let (removed_chars, left, right) = split_string(s, left_budget, right_budget);
     let marker = format_truncation_marker(
         use_tokens,
-        removed_units(
-            use_tokens,
-            total_bytes.saturating_sub(max_bytes),
-            removed_chars,
-        ),
+        removed_units(use_tokens, total_bytes.saturating_sub(max_bytes), removed_chars),
     );
 
     assemble_truncated_output(left, right, &marker)
@@ -135,8 +124,7 @@ pub(crate) fn approx_bytes_for_tokens(tokens: usize) -> usize {
 
 pub(crate) fn approx_tokens_from_byte_count(bytes: usize) -> u64 {
     let bytes_u64 = bytes as u64;
-    bytes_u64.saturating_add((APPROX_BYTES_PER_TOKEN as u64).saturating_sub(1))
-        / (APPROX_BYTES_PER_TOKEN as u64)
+    bytes_u64.saturating_add((APPROX_BYTES_PER_TOKEN as u64).saturating_sub(1)) / (APPROX_BYTES_PER_TOKEN as u64)
 }
 
 fn split_string(s: &str, beginning_bytes: usize, end_bytes: usize) -> (usize, &str, &str) {
@@ -218,18 +206,12 @@ mod tests {
             split_string("hello world", /*beginning_bytes*/ 5, /*end_bytes*/ 5),
             (1, "hello", "world")
         );
-        assert_eq!(
-            split_string("abc", /*beginning_bytes*/ 0, /*end_bytes*/ 0),
-            (3, "", "")
-        );
+        assert_eq!(split_string("abc", /*beginning_bytes*/ 0, /*end_bytes*/ 0), (3, "", ""));
     }
 
     #[test]
     fn split_string_handles_empty_string() {
-        assert_eq!(
-            split_string("", /*beginning_bytes*/ 4, /*end_bytes*/ 4),
-            (0, "", "")
-        );
+        assert_eq!(split_string("", /*beginning_bytes*/ 4, /*end_bytes*/ 4), (0, "", ""));
     }
 
     #[test]
@@ -311,10 +293,7 @@ mod tests {
     #[test]
     fn formatted_truncate_returns_original_when_under_budget() {
         let s = "short output";
-        assert_eq!(
-            formatted_truncate_text(s, TruncationPolicy::Tokens(100)),
-            s
-        );
+        assert_eq!(formatted_truncate_text(s, TruncationPolicy::Tokens(100)), s);
     }
 
     #[test]

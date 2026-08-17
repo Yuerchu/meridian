@@ -39,12 +39,10 @@ pub fn upsert_skill(conn: &mut SqliteConnection, new: &NewSkill) -> QueryResult<
     skills::table.find(new.dir_name).first::<Skill>(conn)
 }
 
-pub fn update_skill(
-    conn: &mut SqliteConnection,
-    dir_name: &str,
-    changeset: &SkillUpdate,
-) -> QueryResult<Skill> {
-    diesel::update(skills::table.find(dir_name)).set(changeset).execute(conn)?;
+pub fn update_skill(conn: &mut SqliteConnection, dir_name: &str, changeset: &SkillUpdate) -> QueryResult<Skill> {
+    diesel::update(skills::table.find(dir_name))
+        .set(changeset)
+        .execute(conn)?;
     skills::table.find(dir_name).first::<Skill>(conn)
 }
 
@@ -61,6 +59,7 @@ pub fn delete_missing(conn: &mut SqliteConnection, present: &[String]) -> QueryR
 
 /// Skill directories sharing an `llm_name`. A model addresses skills by that
 /// name, so a duplicate makes the name ambiguous and it must not be offered.
+#[cfg(test)]
 pub fn find_name_clashes(conn: &mut SqliteConnection, llm_name: &str) -> QueryResult<Vec<String>> {
     skills::table
         .filter(skills::llm_name.eq(llm_name))
@@ -112,8 +111,15 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         upsert_skill(&mut conn, &make_skill("s", "s")).unwrap();
-        update_skill(&mut conn, "s", &SkillUpdate { is_enabled: Some(0), ..Default::default() })
-            .unwrap();
+        update_skill(
+            &mut conn,
+            "s",
+            &SkillUpdate {
+                is_enabled: Some(0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
 
         upsert_skill(&mut conn, &make_skill("s", "s")).unwrap();
 
@@ -128,8 +134,11 @@ mod tests {
         upsert_skill(&mut conn, &make_skill("alpha", "alpha")).unwrap();
         upsert_skill(&mut conn, &make_skill("middle", "middle")).unwrap();
 
-        let names: Vec<String> =
-            list_skills(&mut conn).unwrap().into_iter().map(|s| s.dir_name).collect();
+        let names: Vec<String> = list_skills(&mut conn)
+            .unwrap()
+            .into_iter()
+            .map(|s| s.dir_name)
+            .collect();
         assert_eq!(names, vec!["alpha", "middle", "zebra"]);
     }
 
@@ -142,8 +151,11 @@ mod tests {
 
         delete_missing(&mut conn, &["kept".to_string()]).unwrap();
 
-        let names: Vec<String> =
-            list_skills(&mut conn).unwrap().into_iter().map(|s| s.dir_name).collect();
+        let names: Vec<String> = list_skills(&mut conn)
+            .unwrap()
+            .into_iter()
+            .map(|s| s.dir_name)
+            .collect();
         assert_eq!(names, vec!["kept"]);
     }
 

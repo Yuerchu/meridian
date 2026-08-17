@@ -30,7 +30,9 @@ pub async fn list_mcp_servers(app: tauri::AppHandle) -> Result<Vec<McpServer>, S
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::mcp_server::list_mcp_servers(&mut conn).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -49,17 +51,30 @@ pub async fn create_mcp_server(
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
-        db::ops::mcp_server::create_mcp_server(&mut conn, &NewMcpServer {
-            id: &id, name: &name, transport_type: &transport_type,
-            command: command.as_deref(), args: args.as_deref(),
-            env: env.as_deref(), url: url.as_deref(),
-            headers: headers.as_deref(),
-            // `is_enabled` now means "connect this one at startup", which is
-            // not something a server should opt into merely by existing. The
-            // user turns it on once they know the configuration works.
-            is_enabled: 0, sort_order: 0, created_at: now, updated_at: now,
-        }).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+        db::ops::mcp_server::create_mcp_server(
+            &mut conn,
+            &NewMcpServer {
+                id: &id,
+                name: &name,
+                transport_type: &transport_type,
+                command: command.as_deref(),
+                args: args.as_deref(),
+                env: env.as_deref(),
+                url: url.as_deref(),
+                headers: headers.as_deref(),
+                // `is_enabled` now means "connect this one at startup", which is
+                // not something a server should opt into merely by existing. The
+                // user turns it on once they know the configuration works.
+                is_enabled: 0,
+                sort_order: 0,
+                created_at: now,
+                updated_at: now,
+            },
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -71,18 +86,25 @@ pub async fn update_mcp_server(
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::mcp_server::update_mcp_server(&mut conn, &id, &McpServerUpdate {
-            name: updates.name,
-            transport_type: updates.transport_type,
-            command: updates.command,
-            args: updates.args,
-            env: updates.env,
-            url: updates.url,
-            headers: updates.headers,
-            is_enabled: updates.is_enabled,
-            updated_at: Some(now_ms()),
-        }).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+        db::ops::mcp_server::update_mcp_server(
+            &mut conn,
+            &id,
+            &McpServerUpdate {
+                name: updates.name,
+                transport_type: updates.transport_type,
+                command: updates.command,
+                args: updates.args,
+                env: updates.env,
+                url: updates.url,
+                headers: updates.headers,
+                is_enabled: updates.is_enabled,
+                updated_at: Some(now_ms()),
+            },
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -92,7 +114,9 @@ pub async fn delete_mcp_server(app: tauri::AppHandle, id: String) -> Result<(), 
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::mcp_server::delete_mcp_server(&mut conn, &id).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -101,7 +125,9 @@ pub async fn connect_mcp_server(app: tauri::AppHandle, id: String) -> Result<(),
     let server = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::mcp_server::get_mcp_server(&mut conn, &id).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())??;
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     let registry = app.state::<AppMcp>().0.clone();
     registry.connect(&server).await
@@ -130,9 +156,7 @@ pub async fn list_mcp_tools(app: tauri::AppHandle, server_id: Option<String>) ->
 /// server that connects and exposes nothing as disconnected while its process
 /// was running quite happily.
 #[tauri::command]
-pub async fn list_mcp_connection_statuses(
-    app: tauri::AppHandle,
-) -> Result<Vec<mcp::McpConnectionStatus>, String> {
+pub async fn list_mcp_connection_statuses(app: tauri::AppHandle) -> Result<Vec<mcp::McpConnectionStatus>, String> {
     Ok(app.state::<AppMcp>().0.all_connection_statuses())
 }
 
@@ -144,11 +168,13 @@ pub async fn list_all_tool_names(app: tauri::AppHandle) -> Result<Vec<serde_json
     // Mode transitions are left out on purpose: which of them is offered follows
     // from the conversation's mode, not from the assistant, so ticking one here
     // would promise something the tool assembly immediately overrides.
-    let mut result: Vec<serde_json::Value> = tool_registry.0.definitions().iter()
+    let mut result: Vec<serde_json::Value> = tool_registry
+        .0
+        .definitions()
+        .iter()
         .filter(|t| !crate::agent::modes::transition_tools().any(|n| n == t.name))
-        .map(|t| {
-            serde_json::json!({"name": t.name, "description": t.description, "source": "builtin"})
-        }).collect();
+        .map(|t| serde_json::json!({"name": t.name, "description": t.description, "source": "builtin"}))
+        .collect();
 
     for t in mcp_tools.iter() {
         result.push(serde_json::json!({

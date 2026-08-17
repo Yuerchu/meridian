@@ -94,10 +94,7 @@ impl PowerRequest {
             return Err(format!("PowerSetRequest failed: {error}"));
         }
 
-        Ok(Self {
-            handle,
-            request_type,
-        })
+        Ok(Self { handle, request_type })
     }
 }
 

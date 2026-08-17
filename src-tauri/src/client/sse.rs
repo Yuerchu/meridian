@@ -1,3 +1,7 @@
+//! Ported SSE reader, unconsumed: every provider reads `eventsource_stream`
+//! directly today. Kept as the other half of the `client` transport surface.
+#![allow(dead_code)]
+
 use crate::client::error::StreamError;
 use crate::client::transport::ByteStream;
 use eventsource_stream::Eventsource;
@@ -6,11 +10,7 @@ use tokio::sync::mpsc;
 use tokio::time::Duration;
 use tokio::time::timeout;
 
-pub fn sse_stream(
-    stream: ByteStream,
-    idle_timeout: Duration,
-    tx: mpsc::Sender<Result<String, StreamError>>,
-) {
+pub fn sse_stream(stream: ByteStream, idle_timeout: Duration, tx: mpsc::Sender<Result<String, StreamError>>) {
     tokio::spawn(async move {
         let mut stream = stream
             .map(|res| res.map_err(|e| StreamError::Stream(e.to_string())))

@@ -1,21 +1,31 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { diffLines } from 'diff'
-import {
-  parsePatchText,
-  splitDiffText,
-  type DiffLine,
-  type DiffLineKind,
-  type FileDiff,
-} from '@/lib/patch-parse'
+import { parsePatchText, splitDiffText, type DiffLine, type DiffLineKind, type FileDiff } from '@/lib/patch-parse'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
 import { highlightInline } from '@/lib/shiki'
 import { ShikiCode } from './shiki-code'
 import { fileIconUrl } from '@/lib/file-icon'
 import {
-  ArrowUturnCcwLeft, Ban, Check, Circle, CircleCheck, CircleDashed,
-  CircleQuestion, Clock, Compass, FileText, ForwardStep, Globe, ListCheck,
-  PaperPlane, Square, SquareCheck, SquareListUl, TriangleExclamation, Xmark,
+  ArrowUturnCcwLeft,
+  Ban,
+  Check,
+  Circle,
+  CircleCheck,
+  CircleDashed,
+  CircleQuestion,
+  Clock,
+  Compass,
+  FileText,
+  ForwardStep,
+  Globe,
+  ListCheck,
+  PaperPlane,
+  Square,
+  SquareCheck,
+  SquareListUl,
+  TriangleExclamation,
+  Xmark,
 } from '@gravity-ui/icons'
 import { Button, Input } from '@heroui/react'
 import {
@@ -70,9 +80,7 @@ function hasContent(a: QuestionAnswer | undefined): boolean {
 function formatAnswer(a: QuestionAnswer | undefined, skipped: boolean): string {
   if (skipped) return '(skipped)'
   if (!a) return '(skipped)'
-  const sel = Array.isArray(a.selected)
-    ? a.selected.join(', ')
-    : a.selected
+  const sel = Array.isArray(a.selected) ? a.selected.join(', ') : a.selected
   const notes = a.notes.trim()
   if (sel && notes) return `${sel}\n\nNotes: ${notes}`
   if (sel) return sel
@@ -113,11 +121,7 @@ function QuestionBlock({
     return (
       <div className="flex items-center justify-between py-1">
         <span className="text-sm text-muted line-through">{q.question}</span>
-        <Button
-          variant="ghost"
-          onClick={() => onUnskip(q.id)}
-          className="text-xs text-muted shrink-0 ml-2"
-        >
+        <Button variant="ghost" onClick={() => onUnskip(q.id)} className="text-xs text-muted shrink-0 ml-2">
           <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
           {t('chat.tool.undo')}
         </Button>
@@ -129,11 +133,7 @@ function QuestionBlock({
     <div className="space-y-1.5">
       <div className="flex items-start justify-between gap-2">
         <div className="text-sm text-foreground font-medium">{q.question}</div>
-        <Button
-          variant="ghost"
-          onClick={() => onSkip(q.id)}
-          className="text-xs text-muted shrink-0 mt-0.5"
-        >
+        <Button variant="ghost" onClick={() => onSkip(q.id)} className="text-xs text-muted shrink-0 mt-0.5">
           <ForwardStep className="w-3.5 h-3.5" />
           {t('chat.tool.skipQuestion')}
         </Button>
@@ -143,35 +143,35 @@ function QuestionBlock({
         <div className="space-y-1">
           {q.options!.map((opt) => {
             const checked = isMulti
-              ? (Array.isArray(value.selected) && value.selected.includes(opt.label))
+              ? Array.isArray(value.selected) && value.selected.includes(opt.label)
               : value.selected === opt.label
 
             return (
               <Button
                 key={opt.label}
                 variant="ghost"
-                onClick={() => isMulti ? toggleMulti(opt.label) : selectSingle(opt.label)}
-                className={`w-full justify-start gap-2 h-auto rounded-lg px-2.5 py-1.5 text-left ${
-                  checked
-                    ? 'bg-default/80 text-default-foreground'
-                    : 'text-muted'
-                }`}
+                onClick={() => (isMulti ? toggleMulti(opt.label) : selectSingle(opt.label))}
+                className={cn(
+                  'w-full justify-start gap-2 h-auto rounded-lg px-2.5 py-1.5 text-left',
+                  checked ? 'bg-default/80 text-default-foreground' : 'text-muted',
+                )}
               >
                 <span className="mt-0.5 shrink-0">
-                  {isMulti
-                    ? (checked
-                      ? <SquareCheck className="w-3.5 h-3.5 text-foreground" />
-                      : <Square className="w-3.5 h-3.5" />)
-                    : (checked
-                      ? <CircleCheck className="w-3.5 h-3.5 text-foreground" />
-                      : <Circle className="w-3.5 h-3.5" />)
-                  }
+                  {isMulti ? (
+                    checked ? (
+                      <SquareCheck className="w-3.5 h-3.5 text-foreground" />
+                    ) : (
+                      <Square className="w-3.5 h-3.5" />
+                    )
+                  ) : checked ? (
+                    <CircleCheck className="w-3.5 h-3.5 text-foreground" />
+                  ) : (
+                    <Circle className="w-3.5 h-3.5" />
+                  )}
                 </span>
                 <span className="flex-1 min-w-0">
                   <span className="text-xs font-medium text-foreground">{opt.label}</span>
-                  {opt.description && (
-                    <span className="block text-xs text-muted">{opt.description}</span>
-                  )}
+                  {opt.description && <span className="block text-xs text-muted">{opt.description}</span>}
                 </span>
               </Button>
             )
@@ -179,7 +179,8 @@ function QuestionBlock({
         </div>
       )}
 
-      <Input fullWidth
+      <Input
+        fullWidth
         type="text"
         value={value.notes}
         onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
@@ -246,9 +247,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
     })
   }, [answers, skippedSet, questions, data.approval_id, markOrphaned])
 
-  const canSubmit = questions.some((q) =>
-    skippedSet.has(q.id) || hasContent(answers[q.id])
-  )
+  const canSubmit = questions.some((q) => skippedSet.has(q.id) || hasContent(answers[q.id]))
 
   return (
     <div className="my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface">
@@ -274,10 +273,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
             />
           ))}
           <div className="pt-1">
-            <Button
-              onClick={handleSubmit}
-              isDisabled={!canSubmit || sending}
-            >
+            <Button onClick={handleSubmit} isDisabled={!canSubmit || sending}>
               <PaperPlane className="w-3.5 h-3.5" />
               {t('chat.tool.askUserSubmit')}
             </Button>
@@ -297,9 +293,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
       {data.result && (
         <div className="border-t border-separator bg-default/40">
           <div className="max-h-40 overflow-y-auto ">
-            <pre className="whitespace-pre-wrap text-foreground px-4 py-3 text-xs">
-              {data.result}
-            </pre>
+            <pre className="whitespace-pre-wrap text-foreground px-4 py-3 text-xs">{data.result}</pre>
           </div>
         </div>
       )}
@@ -315,11 +309,13 @@ function writeFileDiff(args: Record<string, unknown>): FileDiff[] | null {
   const path = typeof args.path === 'string' ? args.path : null
   const content = typeof args.content === 'string' ? args.content : null
   if (path === null || content === null) return null
-  return [{
-    path,
-    op: 'modify',
-    lines: splitDiffText(content).map((text): DiffLine => ({ kind: 'add', text })),
-  }]
+  return [
+    {
+      path,
+      op: 'modify',
+      lines: splitDiffText(content).map((text): DiffLine => ({ kind: 'add', text })),
+    },
+  ]
 }
 
 function editFileDiff(args: Record<string, unknown>): FileDiff[] | null {
@@ -332,12 +328,14 @@ function editFileDiff(args: Record<string, unknown>): FileDiff[] | null {
     const kind: DiffLineKind = change.added ? 'add' : change.removed ? 'remove' : 'context'
     for (const text of splitDiffText(change.value)) lines.push({ kind, text })
   }
-  return [{
-    path,
-    op: 'modify',
-    replaceAll: args.replace_all === true,
-    lines,
-  }]
+  return [
+    {
+      path,
+      op: 'modify',
+      replaceAll: args.replace_all === true,
+      lines,
+    },
+  ]
 }
 
 function applyPatchDiff(args: Record<string, unknown>): FileDiff[] | null {
@@ -346,11 +344,13 @@ function applyPatchDiff(args: Record<string, unknown>): FileDiff[] | null {
   const parsed = parsePatchText(patch)
   if (parsed.length > 0) return parsed
   // Unrecognized format: still show the raw patch with real newlines.
-  return [{
-    path: '',
-    op: 'modify',
-    lines: splitDiffText(patch).map((text): DiffLine => ({ kind: 'context', text })),
-  }]
+  return [
+    {
+      path: '',
+      op: 'modify',
+      lines: splitDiffText(patch).map((text): DiffLine => ({ kind: 'context', text })),
+    },
+  ]
 }
 
 function toolFileDiffs(toolName: string, args: Record<string, unknown>): FileDiff[] | null {
@@ -441,13 +441,12 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
           {/* A move used to arrive as one string with an arrow in the middle,
               which read correctly and could not be used as a path. The parser
               keeps the two apart now; the tooltip puts them back together. */}
-          <span
-            className="font-mono truncate"
-            title={diff.movedFrom ? `${diff.movedFrom} → ${diff.path}` : diff.path}
-          >
+          <span className="font-mono truncate" title={diff.movedFrom ? `${diff.movedFrom} → ${diff.path}` : diff.path}>
             {fileName}
           </span>
-          {diff.op === 'create' && <span className="text-success-soft-foreground shrink-0">{t('chat.tool.diff.newFile')}</span>}
+          {diff.op === 'create' && (
+            <span className="text-success-soft-foreground shrink-0">{t('chat.tool.diff.newFile')}</span>
+          )}
           {diff.op === 'delete' && <span className="text-danger shrink-0">{t('chat.tool.diff.deletedFile')}</span>}
           {diff.replaceAll && <span className="shrink-0">{t('chat.tool.diff.replaceAll')}</span>}
           {(added > 0 || removed > 0) && (
@@ -469,17 +468,15 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
               className={cn('px-3 whitespace-pre', diffLineClass(line.kind, ready))}
             >
               <span className={diffSignClass(line.kind)}>{diffLinePrefix(line.kind)}</span>
-              {ready && line.kind !== 'hunk' && line.text
+              {ready && line.kind !== 'hunk' && line.text ? (
                 // Shiki escapes what it emits, and the sign beside it is ours.
-                ? <span dangerouslySetInnerHTML={{ __html: highlightInline(line.text, language) }} />
-                : line.text || ' '}
+                <span dangerouslySetInnerHTML={{ __html: highlightInline(line.text, language) }} />
+              ) : (
+                line.text || ' '
+              )}
             </div>
           ))}
-          {hidden > 0 && (
-            <div className="px-3 text-muted">
-              {t('chat.tool.diff.moreLines', { count: hidden })}
-            </div>
-          )}
+          {hidden > 0 && <div className="px-3 text-muted">{t('chat.tool.diff.moreLines', { count: hidden })}</div>}
         </div>
       </div>
     </div>
@@ -620,17 +617,19 @@ function ToolResult({ toolName, result, args }: { toolName: string; result: stri
   }
 }
 
-function PendingApproval(
-  { approvalId, retryReason, onAnswered }: {
-    approvalId: string
-    retryReason?: string
-    /** Called once an answer is accepted. Ordinary approvals need nothing here —
-     *  the tool result that follows retires the card — but a delegated run's
-     *  result is emitted on its own conversation, which the card's session
-     *  never hears about. */
-    onAnswered?: () => void
-  },
-) {
+function PendingApproval({
+  approvalId,
+  retryReason,
+  onAnswered,
+}: {
+  approvalId: string
+  retryReason?: string
+  /** Called once an answer is accepted. Ordinary approvals need nothing here —
+   *  the tool result that follows retires the card — but a delegated run's
+   *  result is emitted on its own conversation, which the card's session
+   *  never hears about. */
+  onAnswered?: () => void
+}) {
   const { t } = useTranslation()
   // One state, not two booleans: the pair had combinations that mean nothing
   // ("sent" and "typing a reason" at once) and no way to express "sending
@@ -673,11 +672,7 @@ function PendingApproval(
           </div>
         )}
         <ChatToolApproval>
-          <Button
-            variant="outline"
-            className="text-danger hover:text-danger"
-            onClick={() => setUi('feedback')}
-          >
+          <Button variant="outline" className="text-danger hover:text-danger" onClick={() => setUi('feedback')}>
             <Xmark className="w-3.5 h-3.5" />
             {t('chat.tool.deny')}
           </Button>
@@ -694,7 +689,8 @@ function PendingApproval(
 
   return (
     <div className="space-y-2">
-      <Input fullWidth
+      <Input
+        fullWidth
         type="text"
         value={feedback}
         onChange={(e) => setFeedback(e.target.value)}
@@ -710,11 +706,7 @@ function PendingApproval(
         <Button variant="ghost" onClick={() => setUi('idle')}>
           {t('chat.tool.cancel')}
         </Button>
-        <Button
-          variant="outline"
-          className="text-danger hover:text-danger"
-          onClick={deny}
-        >
+        <Button variant="outline" className="text-danger hover:text-danger" onClick={deny}>
           <Xmark className="w-3.5 h-3.5" />
           {feedback.trim() ? t('chat.tool.denyWithReason') : t('chat.tool.deny')}
         </Button>
@@ -736,7 +728,9 @@ function parseWebSearchResult(result: string): WebSearchSource[] | null {
   try {
     const data = JSON.parse(result)
     if (data && Array.isArray(data.sources)) return data.sources
-  } catch { /* not JSON */ }
+  } catch {
+    /* not JSON */
+  }
   return null
 }
 
@@ -746,13 +740,12 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
   const query = useMemo(() => {
     try {
       return JSON.parse(data.arguments)?.query ?? ''
-    } catch { return '' }
+    } catch {
+      return ''
+    }
   }, [data.arguments])
 
-  const sources = useMemo(
-    () => (data.result ? parseWebSearchResult(data.result) : null),
-    [data.result],
-  )
+  const sources = useMemo(() => (data.result ? parseWebSearchResult(data.result) : null), [data.result])
 
   if (data.status === 'pending') {
     return (
@@ -843,9 +836,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
 
   return (
     <ChatSources className="my-2" defaultExpanded={false}>
-      <ChatSources.Trigger>
-        {t('chat.tool.webSearch.sources', { count: sources.length })}
-      </ChatSources.Trigger>
+      <ChatSources.Trigger>{t('chat.tool.webSearch.sources', { count: sources.length })}</ChatSources.Trigger>
       <ChatSources.Content>
         <ChatSources.List>
           {sources.map((src, i) => (
@@ -859,10 +850,7 @@ function WebSearchBlock({ data }: { data: ToolCallDisplay }) {
               href={src.url}
               title={src.site_name || src.title}
             >
-              <ChatSource.Trigger
-                rel="noreferrer noopener"
-                onClick={(e) => openExternally(src.url, e)}
-              >
+              <ChatSource.Trigger rel="noreferrer noopener" onClick={(e) => openExternally(src.url, e)}>
                 <ChatSource.Icon faviconUrl={src.favicon ?? undefined} />
                 <ChatSource.Title>{src.site_name || src.title}</ChatSource.Title>
               </ChatSource.Trigger>
@@ -890,13 +878,16 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
   const declined = data.status === 'denied'
   const approvalId = data.approval_id
 
-  const decide = useCallback((send: () => Promise<void>) => {
-    setSent(true)
-    send().catch(() => {
-      setSent(false)
-      if (approvalId) markOrphaned(approvalId)
-    })
-  }, [approvalId, markOrphaned])
+  const decide = useCallback(
+    (send: () => Promise<void>) => {
+      setSent(true)
+      send().catch(() => {
+        setSent(false)
+        if (approvalId) markOrphaned(approvalId)
+      })
+    },
+    [approvalId, markOrphaned],
+  )
 
   // Same status ring as `ChatTool`: a HeroUI card carries no edge, so an edge
   // is left to mean "this one is waiting on you". Which is `pending` and only
@@ -974,18 +965,20 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
   // calls really can reject. Falling back to the buttons beats spinning forever
   // on a decision nobody is waiting for — and the card is retired outright,
   // since the answer has nowhere left to go.
-  const decide = useCallback((send: () => Promise<void>) => {
-    setUi('sent')
-    send().catch(() => {
-      setUi('idle')
-      if (approvalId) markOrphaned(approvalId)
-    })
-  }, [approvalId, markOrphaned])
-
-  const sendBack = useCallback(
-    () => { if (approvalId) decide(() => api.denyToolCall(approvalId, feedback.trim() || undefined)) },
-    [decide, approvalId, feedback],
+  const decide = useCallback(
+    (send: () => Promise<void>) => {
+      setUi('sent')
+      send().catch(() => {
+        setUi('idle')
+        if (approvalId) markOrphaned(approvalId)
+      })
+    },
+    [approvalId, markOrphaned],
   )
+
+  const sendBack = useCallback(() => {
+    if (approvalId) decide(() => api.denyToolCall(approvalId, feedback.trim() || undefined))
+  }, [decide, approvalId, feedback])
 
   return (
     <div
@@ -1014,7 +1007,8 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
         <div data-slot="exit-plan-actions" className="border-t border-separator px-4 py-3">
           {ui === 'feedback' ? (
             <div data-slot="exit-plan-feedback" className="space-y-2">
-              <Input fullWidth
+              <Input
+                fullWidth
                 type="text"
                 value={feedback}
                 onChange={(e) => setFeedback(e.target.value)}
@@ -1042,9 +1036,7 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
                 <ArrowUturnCcwLeft className="w-3.5 h-3.5" />
                 {t('chat.plan.revise')}
               </Button>
-              <Button
-                onClick={() => decide(() => api.approveToolCall(approvalId))}
-              >
+              <Button onClick={() => decide(() => api.approveToolCall(approvalId))}>
                 <Check className="w-3.5 h-3.5" />
                 {t('chat.plan.approve')}
               </Button>
@@ -1080,9 +1072,7 @@ function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: s
     <ChatTool state={mapChatToolState(data.status)} defaultExpanded={done < total} className="my-3">
       <ChatToolTrigger
         endContent={
-          <span className="shrink-0 text-muted tabular-nums">
-            {t('chat.todo.progress', { done, total })}
-          </span>
+          <span className="shrink-0 text-muted tabular-nums">{t('chat.todo.progress', { done, total })}</span>
         }
       >
         <ListCheck aria-hidden className="size-3.5 shrink-0 text-muted" />
@@ -1100,32 +1090,25 @@ function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<st
   switch (toolName) {
     case 'read_file':
     case 'list_directory':
-      return args.path
-        ? <span className="text-foreground font-mono text-xs truncate">{String(args.path)}</span>
-        : null
+      return args.path ? <span className="text-foreground font-mono text-xs truncate">{String(args.path)}</span> : null
     case 'run_command':
-      return args.command
-        ? <span className="text-foreground font-mono text-xs truncate">{String(args.command)}</span>
-        : null
+      return args.command ? (
+        <span className="text-foreground font-mono text-xs truncate">{String(args.command)}</span>
+      ) : null
     case 'search_files':
-      return args.pattern
-        ? <span className="text-foreground font-mono text-xs truncate">{String(args.pattern)}</span>
-        : null
+      return args.pattern ? (
+        <span className="text-foreground font-mono text-xs truncate">{String(args.pattern)}</span>
+      ) : null
     case 'write_file':
-      return args.path
-        ? <span className="text-foreground font-mono text-xs truncate">{String(args.path)}</span>
-        : null
+      return args.path ? <span className="text-foreground font-mono text-xs truncate">{String(args.path)}</span> : null
     case 'edit_file':
-      return args.file_path
-        ? <span className="text-foreground font-mono text-xs truncate">{String(args.file_path)}</span>
-        : null
+      return args.file_path ? (
+        <span className="text-foreground font-mono text-xs truncate">{String(args.file_path)}</span>
+      ) : null
     case 'apply_patch': {
       const patch = typeof args.patch === 'string' ? args.patch : ''
-      const m = patch.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/m)
-        ?? patch.match(/^\+\+\+ (?:b\/)?(.+)$/m)
-      return m
-        ? <span className="text-foreground font-mono text-xs truncate">{m[1].trim()}</span>
-        : null
+      const m = patch.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/m) ?? patch.match(/^\+\+\+ (?:b\/)?(.+)$/m)
+      return m ? <span className="text-foreground font-mono text-xs truncate">{m[1].trim()}</span> : null
     }
     default:
       return null
@@ -1144,22 +1127,23 @@ function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<st
  * sub-agent's message list — that list also holds whatever the user typed into
  * the run after it finished, and this card is reporting on one delegation.
  */
-function SubAgentBlock(
-  { data, description, kind, prompt }: {
-    data: ToolCallDisplay
-    description: string
-    kind: string
-    prompt?: string
-  },
-) {
+function SubAgentBlock({
+  data,
+  description,
+  kind,
+  prompt,
+}: {
+  data: ToolCallDisplay
+  description: string
+  kind: string
+  prompt?: string
+}) {
   const { t } = useTranslation()
   const openConversation = useConversationStore((s) => s.openConversation)
   const resolveNested = useConversationStore((s) => s.resolveNestedApproval)
   const activeId = useConversationStore((s) => s.activeId)
   // Live while it runs; the snapshot's count is what survives a reload.
-  const live = useConversationStore((s) =>
-    data.sub_agent ? s.subAgentSteps[data.sub_agent.turn_id] : undefined,
-  )
+  const live = useConversationStore((s) => (data.sub_agent ? s.subAgentSteps[data.sub_agent.turn_id] : undefined))
   const steps = Math.max(live ?? 0, data.sub_agent?.steps ?? 0)
   const nested = data.nested_approval
   const readOnly = kind === 'explore'
@@ -1167,9 +1151,11 @@ function SubAgentBlock(
   return (
     <ChatTool state={mapChatToolState(data.status)} defaultExpanded className="my-3">
       <ChatToolTrigger>
-        {readOnly
-          ? <Compass aria-hidden className="size-3.5 shrink-0 text-muted" />
-          : <ForwardStep aria-hidden className="size-3.5 shrink-0 text-muted" />}
+        {readOnly ? (
+          <Compass aria-hidden className="size-3.5 shrink-0 text-muted" />
+        ) : (
+          <ForwardStep aria-hidden className="size-3.5 shrink-0 text-muted" />
+        )}
         <span className="font-medium text-foreground shrink-0">
           {t(`chat.subAgent.${readOnly ? 'explore' : 'agent'}`)}
         </span>
@@ -1182,9 +1168,7 @@ function SubAgentBlock(
       </ChatToolTrigger>
       <ChatToolContent>
         {prompt && (
-          <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap px-0.5 text-xs text-muted">
-            {prompt}
-          </pre>
+          <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap px-0.5 text-xs text-muted">{prompt}</pre>
         )}
 
         {/* The question the run raised. Asked here because this is where
@@ -1223,22 +1207,19 @@ function SubAgentBlock(
             Two truths for one back gesture; only the system back key on mobile
             can tell, which is why it can wait. */}
         {data.sub_agent && (
-          <Button
-            variant="ghost"
-            className="text-xs"
-            onClick={() => openConversation(data.sub_agent!.conversation_id)}
-          >
+          <Button variant="ghost" className="text-xs" onClick={() => openConversation(data.sub_agent!.conversation_id)}>
             {t('chat.subAgent.viewProcess')}
           </Button>
         )}
 
         {data.status === 'orphaned' && <OrphanedNotice />}
 
-        {data.result && (
-          data.status === 'error'
-            ? <ChatToolError>{data.result}</ChatToolError>
-            : <ChatToolResult>{data.result}</ChatToolResult>
-        )}
+        {data.result &&
+          (data.status === 'error' ? (
+            <ChatToolError>{data.result}</ChatToolError>
+          ) : (
+            <ChatToolResult>{data.result}</ChatToolResult>
+          ))}
       </ChatToolContent>
     </ChatTool>
   )
@@ -1314,9 +1295,7 @@ function CardOutcome({ status, detail }: { status: ToolCallDisplay['status']; de
         <span>{text}</span>
       </div>
       {withDetail && detail?.trim() && (
-        <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap px-0.5 text-xs text-foreground">
-          {detail}
-        </pre>
+        <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap px-0.5 text-xs text-foreground">{detail}</pre>
       )}
     </div>
   )
@@ -1330,19 +1309,12 @@ function CardOutcome({ status, detail }: { status: ToolCallDisplay['status']; de
     case 'denied':
       return notice(<Ban className="w-3.5 h-3.5 shrink-0" />, t('chat.tool.wasDenied'), true)
     case 'error':
-      return notice(
-        <TriangleExclamation className="w-3.5 h-3.5 text-danger shrink-0" />,
-        t('chat.tool.wasError'),
-        true,
-      )
+      return notice(<TriangleExclamation className="w-3.5 h-3.5 text-danger shrink-0" />, t('chat.tool.wasError'), true)
     // `approved` alongside `running` because it means the same thing to a card:
     // decided, not yet finished. Neither has a result to show yet.
     case 'approved':
     case 'running':
-      return notice(
-        <CircleDashed className="w-3.5 h-3.5 animate-spin shrink-0" />,
-        t('chat.tool.running'),
-      )
+      return notice(<CircleDashed className="w-3.5 h-3.5 animate-spin shrink-0" />, t('chat.tool.running'))
     // Still, because it is still. The spinner above is what claims work is
     // happening, and for this one nothing is.
     case 'queued':
@@ -1359,9 +1331,15 @@ function CardOutcome({ status, detail }: { status: ToolCallDisplay['status']; de
   }
 }
 
-export function ToolCallBlock(
-  { data: raw, queued, className }: { data: ToolCallDisplay; queued?: boolean; className?: string },
-) {
+export function ToolCallBlock({
+  data: raw,
+  queued,
+  className,
+}: {
+  data: ToolCallDisplay
+  queued?: boolean
+  className?: string
+}) {
   const { t } = useTranslation()
   // Two corrections, both made once here where every card is dispatched from,
   // so no individual card has to remember either.
@@ -1376,8 +1354,12 @@ export function ToolCallBlock(
     return raw
   }, [raw, queued])
   // Nothing to look at until it starts, so a queued call keeps itself shut.
-  const isCompleted = data.status === 'completed' || data.status === 'denied'
-    || data.status === 'error' || data.status === 'orphaned' || data.status === 'queued'
+  const isCompleted =
+    data.status === 'completed' ||
+    data.status === 'denied' ||
+    data.status === 'error' ||
+    data.status === 'orphaned' ||
+    data.status === 'queued'
 
   const parsedArgs: Record<string, unknown> = useMemo(() => {
     try {
@@ -1385,14 +1367,13 @@ export function ToolCallBlock(
       if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
         return parsed as Record<string, unknown>
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     return {}
   }, [data.arguments])
 
-  const fileDiffs = useMemo(
-    () => toolFileDiffs(data.tool_name, parsedArgs),
-    [data.tool_name, parsedArgs],
-  )
+  const fileDiffs = useMemo(() => toolFileDiffs(data.tool_name, parsedArgs), [data.tool_name, parsedArgs])
 
   if (data.tool_name === 'ask_user') {
     return <AskUserBlock data={data} />
@@ -1450,11 +1431,7 @@ export function ToolCallBlock(
   const showArgs = trimmedArgs !== '' && trimmedArgs !== '{}'
 
   return (
-    <ChatTool
-      state={mapChatToolState(data.status)}
-      defaultExpanded={!isCompleted}
-      className={cn('my-3', className)}
-    >
+    <ChatTool state={mapChatToolState(data.status)} defaultExpanded={!isCompleted} className={cn('my-3', className)}>
       <ChatToolTrigger>
         <ChatToolStatusIcon />
         <span className="font-medium text-foreground shrink-0">{toolLabel}</span>
@@ -1473,24 +1450,19 @@ export function ToolCallBlock(
           : showArgs && <ChatToolArgs text={data.arguments} />}
 
         {data.status === 'pending' && data.approval_id && (
-          <PendingApproval
-            key={data.approval_id}
-            approvalId={data.approval_id}
-            retryReason={data.retry_reason}
-          />
+          <PendingApproval key={data.approval_id} approvalId={data.approval_id} retryReason={data.retry_reason} />
         )}
 
         {data.status === 'orphaned' && <OrphanedNotice />}
 
-        {data.result && (
-          data.status === 'error' ? (
+        {data.result &&
+          (data.status === 'error' ? (
             <ChatToolError>
               {data.result.length > 1000 ? `${data.result.slice(0, 1000)}...` : data.result}
             </ChatToolError>
           ) : (
             <ToolResult toolName={data.tool_name} result={data.result} args={parsedArgs} />
-          )
-        )}
+          ))}
       </ChatToolContent>
     </ChatTool>
   )

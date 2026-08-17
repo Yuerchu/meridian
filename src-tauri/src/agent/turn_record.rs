@@ -5,8 +5,8 @@
 //! synchronous. Every write goes through `spawn_blocking`: these are pooled
 //! connections, and a turn must never block a runtime worker on one.
 
-use crate::db::models::turn::{TurnPhase, TurnStatus};
 use crate::db::DbPool;
+use crate::db::models::turn::{TurnPhase, TurnStatus};
 use crate::turn::TurnOrigin;
 use crate::util::now_ms;
 
@@ -35,10 +35,9 @@ pub(crate) async fn begin(
     let written = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| Failure::Unrecorded(e.to_string()))?;
         crate::db::ops::turn::begin(&mut conn, &id, &conv, origin, self_id, now_ms()).map_err(|e| match e {
-            diesel::result::Error::DatabaseError(
-                diesel::result::DatabaseErrorKind::UniqueViolation,
-                _,
-            ) => Failure::Duplicate,
+            diesel::result::Error::DatabaseError(diesel::result::DatabaseErrorKind::UniqueViolation, _) => {
+                Failure::Duplicate
+            }
             other => Failure::Unrecorded(other.to_string()),
         })
     })
@@ -75,20 +74,14 @@ enum Failure {
 /// window that has already closed. What is stored when the process dies is the
 /// diagnosis — `RunningTool` in particular means a tool had started and the
 /// world outside the database may already have changed.
-pub(crate) async fn note_phase(
-    pool: &DbPool,
-    turn_id: &str,
-    phase: TurnPhase,
-    tool: Option<&str>,
-) {
+pub(crate) async fn note_phase(pool: &DbPool, turn_id: &str, phase: TurnPhase, tool: Option<&str>) {
     let pool = pool.clone();
     let id = turn_id.to_string();
     let tool = tool.map(str::to_string);
     report(
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            crate::db::ops::turn::set_phase(&mut conn, &id, phase, tool.as_deref(), now_ms())
-                .map_err(|e| e.to_string())
+            crate::db::ops::turn::set_phase(&mut conn, &id, phase, tool.as_deref(), now_ms()).map_err(|e| e.to_string())
         })
         .await,
         "could not record the turn phase",
@@ -104,20 +97,14 @@ pub(crate) async fn note_phase(
 /// Only ever called with an id `begin` returned `Ok` for. Called with any other
 /// it would rewrite the ending of whichever turn really owns that id, which is
 /// the same corruption `begin` refuses — reached by the back door.
-pub(crate) async fn finish(
-    pool: &DbPool,
-    turn_id: &str,
-    status: TurnStatus,
-    error: Option<&str>,
-) {
+pub(crate) async fn finish(pool: &DbPool, turn_id: &str, status: TurnStatus, error: Option<&str>) {
     let pool = pool.clone();
     let id = turn_id.to_string();
     let error = error.map(str::to_string);
     report(
         tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            crate::db::ops::turn::finish(&mut conn, &id, status, error.as_deref(), now_ms())
-                .map_err(|e| e.to_string())
+            crate::db::ops::turn::finish(&mut conn, &id, status, error.as_deref(), now_ms()).map_err(|e| e.to_string())
         })
         .await,
         "could not record how the turn ended",
@@ -140,8 +127,7 @@ mod tests {
 
     fn conv(pool: &DbPool, id: &str) {
         let mut conn = pool.get().unwrap();
-        crate::db::ops::conversation::create_conversation(&mut conn, id, Some("t"), None, None, 1)
-            .unwrap();
+        crate::db::ops::conversation::create_conversation(&mut conn, id, Some("t"), None, None, 1).unwrap();
     }
 
     fn stored(pool: &DbPool, id: &str) -> crate::db::models::turn::Turn {
@@ -160,7 +146,9 @@ mod tests {
         let pool = test_db();
         conv(&pool, "c1");
 
-        begin(&pool, "t1", "c1", TurnOrigin::Desktop, None).await.expect("first");
+        begin(&pool, "t1", "c1", TurnOrigin::Desktop, None)
+            .await
+            .expect("first");
         note_phase(&pool, "t1", TurnPhase::RunningTool, Some("edit_file")).await;
         finish(&pool, "t1", TurnStatus::Done, None).await;
         let before = stored(&pool, "t1");

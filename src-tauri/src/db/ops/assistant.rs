@@ -21,21 +21,12 @@ pub fn get_default_assistant(conn: &mut SqliteConnection) -> QueryResult<Option<
         .optional()
 }
 
-pub fn create_assistant(
-    conn: &mut SqliteConnection,
-    new: &NewAssistant,
-) -> QueryResult<Assistant> {
-    diesel::insert_into(assistants::table)
-        .values(new)
-        .execute(conn)?;
+pub fn create_assistant(conn: &mut SqliteConnection, new: &NewAssistant) -> QueryResult<Assistant> {
+    diesel::insert_into(assistants::table).values(new).execute(conn)?;
     assistants::table.find(new.id).first::<Assistant>(conn)
 }
 
-pub fn update_assistant(
-    conn: &mut SqliteConnection,
-    id: &str,
-    changeset: &AssistantUpdate,
-) -> QueryResult<Assistant> {
+pub fn update_assistant(conn: &mut SqliteConnection, id: &str, changeset: &AssistantUpdate) -> QueryResult<Assistant> {
     diesel::update(assistants::table.find(id))
         .set(changeset)
         .execute(conn)?;

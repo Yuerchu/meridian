@@ -45,27 +45,23 @@ function msg(role: Message['role'], over: Partial<Message> = {}): Message {
 }
 
 const text = (t: string): ContentBlock => ({ type: 'text', text: t })
-const toolBlock = (name: string, status: ToolCallDisplay['status'] = 'completed'): ContentBlock =>
-  ({
-    type: 'tool_call',
-    data: {
-      call_id: `${name}-1`,
-      tool_name: name,
-      arguments: '{}',
-      status,
-      // A pending call needs something for its buttons to answer, or it is
-      // rendered as orphaned instead.
-      ...(status === 'pending' ? { approval_id: `${name}-appr-1` } : {}),
-    },
-  })
+const toolBlock = (name: string, status: ToolCallDisplay['status'] = 'completed'): ContentBlock => ({
+  type: 'tool_call',
+  data: {
+    call_id: `${name}-1`,
+    tool_name: name,
+    arguments: '{}',
+    status,
+    // A pending call needs something for its buttons to answer, or it is
+    // rendered as orphaned instead.
+    ...(status === 'pending' ? { approval_id: `${name}-appr-1` } : {}),
+  },
+})
 
 /** A turn with tool calls, which is what gets the collapse treatment. */
 function toolTurn(over: { status?: ToolCallDisplay['status']; conclusion?: boolean } = {}) {
   const u = msg('user', { content: 'q', created_at: 1000 })
-  const blocks: ContentBlock[] = [
-    text('let me check'),
-    toolBlock('read_file', over.status ?? 'completed'),
-  ]
+  const blocks: ContentBlock[] = [text('let me check'), toolBlock('read_file', over.status ?? 'completed')]
   if (over.conclusion !== false) blocks.push(text('the answer'))
   const a = msg('assistant', { _blocks: blocks, content: 'the answer', created_at: 10_000 })
   return buildTurns([u, a])[0]
@@ -260,9 +256,7 @@ describe('TurnItem', () => {
     // Named rather than counted: ActionButton labels its button through
     // `aria-label`, so any other icon showing up in the footer cannot stand in
     // for the edit affordance.
-    const { rerender } = render(
-      <TurnItem turn={turn} conversationId={CONV} onEdit={onEdit} streaming />,
-    )
+    const { rerender } = render(<TurnItem turn={turn} conversationId={CONV} onEdit={onEdit} streaming />)
     expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument()
 
     rerender(<TurnItem turn={turn} conversationId={CONV} onEdit={onEdit} streaming={false} />)
@@ -490,9 +484,7 @@ describe('TurnItem', () => {
         const live = buildTurns([streamingTurn.u, streamingTurn.a], { streaming: true })[0]
         const settled = buildTurns([streamingTurn.u, streamingTurn.a])[0]
 
-        const { rerender } = render(
-          <TurnItem turn={live} conversationId={CONV} streaming isLastTurn />,
-        )
+        const { rerender } = render(<TurnItem turn={live} conversationId={CONV} streaming isLastTurn />)
         expectExpanded(screen.getByRole('button', { name: /Working/ }))
 
         rerender(<TurnItem turn={settled} conversationId={CONV} isLastTurn />)
@@ -500,7 +492,9 @@ describe('TurnItem', () => {
         // collapsing right away would reflow twice.
         expectExpanded(screen.getByRole('button', { name: /Worked for/ }))
 
-        await act(async () => { vi.advanceTimersByTime(400) })
+        await act(async () => {
+          vi.advanceTimersByTime(400)
+        })
         expectCollapsed(screen.getByRole('button', { name: /Worked for/ }))
         expect(screen.getByText('working')).not.toBeVisible()
       } finally {

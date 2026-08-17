@@ -29,7 +29,9 @@ describe('useIsMobile', () => {
     const { result } = renderHook(() => useIsMobile())
     expect(result.current).toBe(false)
 
-    act(() => { resizeTo(500) })
+    act(() => {
+      resizeTo(500)
+    })
     expect(result.current).toBe(true)
   })
 })

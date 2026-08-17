@@ -35,8 +35,11 @@ pub const MAX_PINNED_SUBJECTS: usize = 50;
 
 /// Which anchor a memory hangs off. Separate from `Origin` and `Visibility`:
 /// those answer "where was it learned" and "who may see it".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, strum::IntoStaticStr, strum::EnumString,
+)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum MemoryScope {
     Project,
     /// Everything the user says directly in Meridian, outside any project.
@@ -49,16 +52,11 @@ pub enum MemoryScope {
 
 impl MemoryScope {
     pub fn as_str(&self) -> &'static str {
-        match self {
-            MemoryScope::Project => "project",
-            MemoryScope::ClientGlobal => "client_global",
-            MemoryScope::OnebotGlobal => "onebot_global",
-            MemoryScope::OnebotUser => "onebot_user",
-        }
+        self.into()
     }
 
     pub fn parse(s: &str) -> Option<Self> {
-        Self::iter().find(|v| v.as_str() == s)
+        s.parse().ok()
     }
 
     pub fn all() -> Vec<&'static str> {
@@ -68,8 +66,9 @@ impl MemoryScope {
 
 /// The surface a memory was learned on. Gates injection: what was learned in a
 /// private chat must never surface in a group.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, strum::IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum Origin {
     Private,
     Group,
@@ -83,17 +82,7 @@ pub enum Origin {
 
 impl Origin {
     pub fn as_str(&self) -> &'static str {
-        match self {
-            Origin::Private => "private",
-            Origin::Group => "group",
-            Origin::Admin => "admin",
-            Origin::Desktop => "desktop",
-            Origin::Legacy => "legacy",
-        }
-    }
-
-    pub fn parse(s: &str) -> Option<Self> {
-        Self::iter().find(|v| v.as_str() == s)
+        self.into()
     }
 
     pub fn all() -> Vec<&'static str> {
@@ -105,20 +94,17 @@ impl Origin {
     pub fn group_visible() -> &'static [Origin] {
         &[Origin::Group, Origin::Admin, Origin::Legacy]
     }
-
-    /// True when the memory came from the operator rather than from chat.
-    /// Attribution only — it says nothing about who may see the row.
-    pub fn is_operator_authored(&self) -> bool {
-        matches!(self, Origin::Admin | Origin::Desktop)
-    }
 }
 
 /// Who may see a memory. Kept apart from `Origin` because the operator's private
 /// annotation about a person and the operator's approved bot-wide rule share an
 /// origin but must not share visibility: the model has to be able to quote the
 /// latter, and must never quote the former.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, strum::IntoStaticStr, strum::EnumString,
+)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum Visibility {
     Normal,
     OwnerOnly,
@@ -126,14 +112,11 @@ pub enum Visibility {
 
 impl Visibility {
     pub fn as_str(&self) -> &'static str {
-        match self {
-            Visibility::Normal => "normal",
-            Visibility::OwnerOnly => "owner_only",
-        }
+        self.into()
     }
 
     pub fn parse(s: &str) -> Option<Self> {
-        Self::iter().find(|v| v.as_str() == s)
+        s.parse().ok()
     }
 
     pub fn all() -> Vec<&'static str> {
@@ -141,8 +124,9 @@ impl Visibility {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, strum::IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum MemoryType {
     General,
     Preference,
@@ -153,17 +137,7 @@ pub enum MemoryType {
 
 impl MemoryType {
     pub fn as_str(&self) -> &'static str {
-        match self {
-            MemoryType::General => "general",
-            MemoryType::Preference => "preference",
-            MemoryType::Fact => "fact",
-            MemoryType::Instruction => "instruction",
-            MemoryType::Relationship => "relationship",
-        }
-    }
-
-    pub fn parse(s: &str) -> Option<Self> {
-        Self::iter().find(|v| v.as_str() == s)
+        self.into()
     }
 
     pub fn all() -> Vec<&'static str> {
@@ -173,10 +147,12 @@ impl MemoryType {
 
 /// Why a row was soft-deleted. Surfaced in the trash view so the operator can
 /// tell "the bot forgot this person" apart from "someone deleted it".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, strum::IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum DeletedBy {
     /// The subject removed their own memory.
+    #[strum(serialize = "self")]
     SelfRemoved,
     Admin,
     Lru,
@@ -184,16 +160,13 @@ pub enum DeletedBy {
 
 impl DeletedBy {
     pub fn as_str(&self) -> &'static str {
-        match self {
-            DeletedBy::SelfRemoved => "self",
-            DeletedBy::Admin => "admin",
-            DeletedBy::Lru => "lru",
-        }
+        self.into()
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIter, Serialize, Deserialize, strum::IntoStaticStr)]
 #[serde(rename_all = "snake_case")]
+#[strum(serialize_all = "snake_case")]
 pub enum ProposalStatus {
     Pending,
     Approved,
@@ -203,12 +176,7 @@ pub enum ProposalStatus {
 
 impl ProposalStatus {
     pub fn as_str(&self) -> &'static str {
-        match self {
-            ProposalStatus::Pending => "pending",
-            ProposalStatus::Approved => "approved",
-            ProposalStatus::Rejected => "rejected",
-            ProposalStatus::Expired => "expired",
-        }
+        self.into()
     }
 }
 
@@ -244,10 +212,6 @@ pub struct Memory {
 }
 
 impl Memory {
-    pub fn origin(&self) -> Option<Origin> {
-        Origin::parse(&self.origin)
-    }
-
     pub fn visibility(&self) -> Visibility {
         Visibility::parse(&self.visibility).unwrap_or(Visibility::Normal)
     }

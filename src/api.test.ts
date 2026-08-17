@@ -67,9 +67,7 @@ describe('api', () => {
       const snap = await api.conversationSnapshot('conv-1')
       expect(mockInvoke).toHaveBeenCalledWith('conversation_snapshot', { conversationId: 'conv-1' })
       // Four things, or it is not a snapshot of anything.
-      expect(Object.keys(snap).sort()).toEqual([
-        'conversation', 'pending_approvals', 'tree', 'turns',
-      ])
+      expect(Object.keys(snap).sort()).toEqual(['conversation', 'pending_approvals', 'tree', 'turns'])
     })
 
     it('switchBranch moves the head and reports nothing back', async () => {
@@ -137,19 +135,25 @@ describe('api', () => {
     it('chat regenerates by naming the answer being replaced', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
       await api.chat('conv-1', null, { replaces: 'msg-9' })
-      expect(mockInvoke).toHaveBeenCalledWith('chat', expect.objectContaining({
-        message: null,
-        replaces: 'msg-9',
-      }))
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'chat',
+        expect.objectContaining({
+          message: null,
+          replaces: 'msg-9',
+        }),
+      )
     })
 
     it('chat edits by sending new text alongside the message it replaces', async () => {
       mockInvoke.mockResolvedValueOnce(undefined)
       await api.chat('conv-1', 'reworded', { replaces: 'msg-3' })
-      expect(mockInvoke).toHaveBeenCalledWith('chat', expect.objectContaining({
-        message: 'reworded',
-        replaces: 'msg-3',
-      }))
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'chat',
+        expect.objectContaining({
+          message: 'reworded',
+          replaces: 'msg-3',
+        }),
+      )
     })
   })
 
@@ -267,7 +271,6 @@ describe('api', () => {
       await api.respondToAsk('appr-3', 'my answer')
       expect(mockInvoke).toHaveBeenCalledWith('respond_to_ask', { approvalId: 'appr-3', response: 'my answer' })
     })
-
   })
 
   describe('logs', () => {

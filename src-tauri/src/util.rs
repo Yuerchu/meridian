@@ -18,10 +18,7 @@ pub fn take_bytes_at_char_boundary(s: &str, max_bytes: usize) -> &str {
 }
 
 pub(crate) fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as i64
 }
 
 pub(crate) fn get_conn(pool: &DbPool) -> Result<db::PooledConn, String> {
@@ -74,10 +71,7 @@ pub(crate) fn extract_json_object(text: &str) -> Option<String> {
 /// candidate that closes but fails the predicate is passed over rather than
 /// returned: handing it back would make "found the wrong object" indistinguish-
 /// able from "found the right one" at the call site.
-pub(crate) fn extract_last_json_object(
-    text: &str,
-    accept: impl Fn(&str) -> bool,
-) -> Option<String> {
+pub(crate) fn extract_last_json_object(text: &str, accept: impl Fn(&str) -> bool) -> Option<String> {
     let mut openings: Vec<usize> = text.match_indices('{').map(|(i, _)| i).collect();
     openings.reverse();
     openings

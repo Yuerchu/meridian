@@ -98,10 +98,7 @@ impl BilledTokens {
     /// token count would print a negative price.
     pub fn from_totals(prompt: i64, output: i64, cache_read: i64, cache_write: i64) -> Self {
         Self {
-            uncached_input: prompt
-                .saturating_sub(cache_read)
-                .saturating_sub(cache_write)
-                .max(0),
+            uncached_input: prompt.saturating_sub(cache_read).saturating_sub(cache_write).max(0),
             cache_read,
             cache_write,
             output,
@@ -152,12 +149,7 @@ mod tests {
         priced(input, output, cache, None)
     }
 
-    fn priced(
-        input: f64,
-        output: f64,
-        cache: Option<f64>,
-        cache_write: Option<f64>,
-    ) -> ModelConfig {
+    fn priced(input: f64, output: f64, cache: Option<f64>, cache_write: Option<f64>) -> ModelConfig {
         ModelConfig {
             id: "test".into(),
             provider_id: "p".into(),
@@ -246,7 +238,10 @@ mod tests {
     fn a_cache_write_is_billed_at_its_own_price_when_there_is_one() {
         let cost = compute_cost(&wrote_100k(), &Prices::of(&priced(15.0, 60.0, Some(1.5), Some(18.75))));
         assert!((cost.cache_cost - 1.875).abs() < 0.001, "100k written at 18.75/M");
-        assert!(cost.cache_cost > 1.5, "the premium is what distinguishes this from input");
+        assert!(
+            cost.cache_cost > 1.5,
+            "the premium is what distinguishes this from input"
+        );
     }
 
     /// A provider contradicting itself must not produce a negative bill.

@@ -95,11 +95,15 @@ pub fn finish(
 /// state with a later opinion. The second is reachable today — the desktop turn
 /// records `done` and *then* emits its stop event, and a failed emit sends the
 /// caller down the failure path.
-fn running(id: &str) -> diesel::helper_types::Filter<
+fn running(
+    id: &str,
+) -> diesel::helper_types::Filter<
     diesel::helper_types::Find<turns::table, &str>,
     diesel::dsl::Eq<turns::status, &'static str>,
 > {
-    turns::table.find(id).filter(turns::status.eq(TurnStatus::Running.as_str()))
+    turns::table
+        .find(id)
+        .filter(turns::status.eq(TurnStatus::Running.as_str()))
 }
 
 /// Turns of a conversation that may still owe the model an explanation, newest
@@ -130,15 +134,16 @@ pub fn unreported_for_conversation(
         .filter(turns::conversation_id.eq(conversation_id))
         .filter(turns::id.ne(excluding.unwrap_or("")))
         .filter(turns::reported_at.is_null())
-        .filter(turns::status.eq_any([
-            TurnStatus::Running.as_str(),
-            TurnStatus::Interrupted.as_str(),
-        ]))
+        .filter(turns::status.eq_any([TurnStatus::Running.as_str(), TurnStatus::Interrupted.as_str()]))
         .order((turns::started_at.desc(), insertion_order().desc()))
         .limit(limit)
         .load::<Turn>(conn)?
         .into_iter()
-        .map(|turn| InterruptedCandidate { turn, ledger: Ledger::Own, child_title: None })
+        .map(|turn| InterruptedCandidate {
+            turn,
+            ledger: Ledger::Own,
+            child_title: None,
+        })
         .collect();
 
     // What the conversation delegated. The parent has to hear about these
@@ -162,10 +167,7 @@ pub fn unreported_for_conversation(
             // interruption there was even about.
             .filter(turns::origin.eq(TurnOrigin::SubAgent.as_str()))
             .filter(turns::parent_reported_at.is_null())
-            .filter(turns::status.eq_any([
-                TurnStatus::Running.as_str(),
-                TurnStatus::Interrupted.as_str(),
-            ]))
+            .filter(turns::status.eq_any([TurnStatus::Running.as_str(), TurnStatus::Interrupted.as_str()]))
             .order((turns::started_at.desc(), insertion_order().desc()))
             .limit(limit)
             .load::<Turn>(conn)?;
@@ -174,14 +176,18 @@ pub fn unreported_for_conversation(
                 .iter()
                 .find(|(id, _)| *id == turn.conversation_id)
                 .and_then(|(_, title)| title.clone());
-            InterruptedCandidate { turn, ledger: Ledger::Parent, child_title }
+            InterruptedCandidate {
+                turn,
+                ledger: Ledger::Parent,
+                child_title,
+            }
         }));
     }
 
     // Both halves arrive newest first; merging keeps that. A stable sort settles
     // a shared millisecond in favour of the conversation's own turn, which is
     // the one the reader has actually seen.
-    out.sort_by(|a, b| b.turn.started_at.cmp(&a.turn.started_at));
+    out.sort_by_key(|x| std::cmp::Reverse(x.turn.started_at));
     out.truncate(limit as usize);
     Ok(out)
 }
@@ -224,12 +230,7 @@ pub struct InterruptedCandidate {
 /// The `IS NULL` filter keeps the first telling as the recorded one, which
 /// matters because two runners can read the same unreported turn before either
 /// of them dispatches.
-pub fn mark_reported(
-    conn: &mut SqliteConnection,
-    ids: &[String],
-    ledger: Ledger,
-    now: i64,
-) -> QueryResult<usize> {
+pub fn mark_reported(conn: &mut SqliteConnection, ids: &[String], ledger: Ledger, now: i64) -> QueryResult<usize> {
     if ids.is_empty() {
         return Ok(0);
     }
@@ -259,10 +260,7 @@ fn insertion_order() -> diesel::expression::SqlLiteral<diesel::sql_types::BigInt
 
 /// Every turn of a conversation, oldest first. For the transcript snapshot,
 /// which is what lets the UI say which turn was cut off rather than guessing.
-pub fn list_for_conversation(
-    conn: &mut SqliteConnection,
-    conversation_id: &str,
-) -> QueryResult<Vec<Turn>> {
+pub fn list_for_conversation(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Vec<Turn>> {
     turns::table
         .filter(turns::conversation_id.eq(conversation_id))
         .order((turns::started_at.asc(), insertion_order().asc()))
@@ -341,7 +339,10 @@ mod tests {
         set_phase(&mut conn, "t1", TurnPhase::Streaming, None, 1003).unwrap();
         let t = get(&mut conn, "t1");
         assert_eq!(t.phase(), Some(TurnPhase::Streaming));
-        assert!(t.phase_tool.is_none(), "a phase that names no tool must not keep the last one");
+        assert!(
+            t.phase_tool.is_none(),
+            "a phase that names no tool must not keep the last one"
+        );
     }
 
     /// The whole point. A turn that was killed left its row at `running` with
@@ -421,17 +422,29 @@ mod tests {
         begin(&mut conn, "new", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
         begin(&mut conn, "other", "c2", TurnOrigin::Desktop, None, 3000).unwrap();
 
-        assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()), [
-            "new", "old"
-        ]);
-        assert_eq!(ids(unreported_for_conversation(&mut conn, "c2", None, 10).unwrap()), ["other"]);
-        assert!(unreported_for_conversation(&mut conn, "nope", None, 10).unwrap().is_empty());
+        assert_eq!(
+            ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()),
+            ["new", "old"]
+        );
+        assert_eq!(
+            ids(unreported_for_conversation(&mut conn, "c2", None, 10).unwrap()),
+            ["other"]
+        );
+        assert!(
+            unreported_for_conversation(&mut conn, "nope", None, 10)
+                .unwrap()
+                .is_empty()
+        );
         // The turn asking is never one of the answers.
-        assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", Some("new"), 10).unwrap()), [
-            "old"
-        ]);
+        assert_eq!(
+            ids(unreported_for_conversation(&mut conn, "c1", Some("new"), 10).unwrap()),
+            ["old"]
+        );
         // And the limit keeps the newest, which is where the useful detail is.
-        assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", None, 1).unwrap()), ["new"]);
+        assert_eq!(
+            ids(unreported_for_conversation(&mut conn, "c1", None, 1).unwrap()),
+            ["new"]
+        );
 
         let all: Vec<String> = list_for_conversation(&mut conn, "c1")
             .unwrap()
@@ -461,10 +474,10 @@ mod tests {
         begin(&mut conn, "reconciled", "c1", TurnOrigin::Desktop, None, 3000).unwrap();
         reconcile_interrupted(&mut conn, 3500).unwrap();
 
-        assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()), [
-            "reconciled",
-            "cut-off"
-        ]);
+        assert_eq!(
+            ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()),
+            ["reconciled", "cut-off"]
+        );
     }
 
     /// The record of having been told, which is what stops the same warning
@@ -478,12 +491,21 @@ mod tests {
         begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
         begin(&mut conn, "t2", "c1", TurnOrigin::Desktop, None, 2000).unwrap();
 
-        assert_eq!(mark_reported(&mut conn, &["t1".to_string()], Ledger::Own, 5000).unwrap(), 1);
-        assert_eq!(ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()), ["t2"]);
+        assert_eq!(
+            mark_reported(&mut conn, &["t1".to_string()], Ledger::Own, 5000).unwrap(),
+            1
+        );
+        assert_eq!(
+            ids(unreported_for_conversation(&mut conn, "c1", None, 10).unwrap()),
+            ["t2"]
+        );
 
         // Told once. A second telling finds nothing to record, and the first
         // timestamp stands.
-        assert_eq!(mark_reported(&mut conn, &["t1".to_string()], Ledger::Own, 9000).unwrap(), 0);
+        assert_eq!(
+            mark_reported(&mut conn, &["t1".to_string()], Ledger::Own, 9000).unwrap(),
+            0
+        );
         assert_eq!(get(&mut conn, "t1").reported_at, Some(5000));
         assert_eq!(mark_reported(&mut conn, &[], Ledger::Own, 9000).unwrap(), 0);
 

@@ -42,9 +42,7 @@ export function About() {
           {version && <div className="text-muted mt-0.5">v{version}</div>}
         </div>
 
-        <p className="text-muted leading-relaxed">
-          {t('settings.about.description')}
-        </p>
+        <p className="text-muted leading-relaxed">{t('settings.about.description')}</p>
 
         <Card data-slot="about-logs-card">
           <div className="flex items-start gap-3">

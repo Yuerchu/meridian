@@ -96,9 +96,7 @@ unsafe fn set_default_dacl(h_token: HANDLE, sids: &[*mut c_void]) -> Result<()> 
         if !p_new_dacl.is_null() {
             LocalFree(p_new_dacl as HLOCAL);
         }
-        return Err(anyhow!(
-            "SetTokenInformation(TokenDefaultDacl) failed: {err}",
-        ));
+        return Err(anyhow!("SetTokenInformation(TokenDefaultDacl) failed: {err}",));
     }
     if !p_new_dacl.is_null() {
         LocalFree(p_new_dacl as HLOCAL);
@@ -108,12 +106,7 @@ unsafe fn set_default_dacl(h_token: HANDLE, sids: &[*mut c_void]) -> Result<()> 
 
 pub unsafe fn world_sid() -> Result<Vec<u8>> {
     let mut size: u32 = 0;
-    CreateWellKnownSid(
-        WIN_WORLD_SID,
-        std::ptr::null_mut(),
-        std::ptr::null_mut(),
-        &mut size,
-    );
+    CreateWellKnownSid(WIN_WORLD_SID, std::ptr::null_mut(), std::ptr::null_mut(), &mut size);
     let mut buf: Vec<u8> = vec![0u8; size as usize];
     let ok = CreateWellKnownSid(
         WIN_WORLD_SID,
@@ -146,8 +139,7 @@ pub struct LocalSid {
 
 impl LocalSid {
     pub fn from_string(sid: &str) -> Result<Self> {
-        let psid = unsafe { convert_string_sid_to_sid(sid) }
-            .ok_or_else(|| anyhow!("invalid SID string: {sid}"))?;
+        let psid = unsafe { convert_string_sid_to_sid(sid) }.ok_or_else(|| anyhow!("invalid SID string: {sid}"))?;
         Ok(Self { psid })
     }
 
@@ -178,11 +170,7 @@ pub unsafe fn get_current_token_for_restriction() -> Result<HANDLE> {
     let mut h: HANDLE = 0;
     #[link(name = "advapi32")]
     unsafe extern "system" {
-        fn OpenProcessToken(
-            ProcessHandle: HANDLE,
-            DesiredAccess: u32,
-            TokenHandle: *mut HANDLE,
-        ) -> i32;
+        fn OpenProcessToken(ProcessHandle: HANDLE, DesiredAccess: u32, TokenHandle: *mut HANDLE) -> i32;
     }
     let ok = unsafe { OpenProcessToken(GetCurrentProcess(), desired, &mut h) };
     if ok == 0 {
@@ -199,13 +187,7 @@ pub unsafe fn get_logon_sid_bytes(h_token: HANDLE) -> Result<Vec<u8>> {
             return None;
         }
         let mut buf: Vec<u8> = vec![0u8; needed as usize];
-        let ok = GetTokenInformation(
-            h,
-            TokenGroups,
-            buf.as_mut_ptr() as *mut c_void,
-            needed,
-            &mut needed,
-        );
+        let ok = GetTokenInformation(h, TokenGroups, buf.as_mut_ptr() as *mut c_void, needed, &mut needed);
         if ok == 0 || (needed as usize) < std::mem::size_of::<u32>() {
             return None;
         }
@@ -261,8 +243,7 @@ pub unsafe fn get_logon_sid_bytes(h_token: HANDLE) -> Result<Vec<u8>> {
             &mut ln_needed,
         );
         if ok != 0 {
-            let lt: TOKEN_LINKED_TOKEN =
-                std::ptr::read_unaligned(ln_buf.as_ptr() as *const TOKEN_LINKED_TOKEN);
+            let lt: TOKEN_LINKED_TOKEN = std::ptr::read_unaligned(ln_buf.as_ptr() as *const TOKEN_LINKED_TOKEN);
             if lt.linked_token != 0 {
                 let res = scan_token_groups_for_logon(lt.linked_token);
                 CloseHandle(lt.linked_token);
@@ -291,26 +272,15 @@ unsafe fn get_user_sid_bytes(h_token: HANDLE) -> Result<Vec<u8>> {
         &mut needed,
     );
     if ok == 0 || (needed as usize) < std::mem::size_of::<TOKEN_USER>() {
-        return Err(anyhow!(
-            "GetTokenInformation(TokenUser) failed: {}",
-            GetLastError()
-        ));
+        return Err(anyhow!("GetTokenInformation(TokenUser) failed: {}", GetLastError()));
     }
     let token_user: TOKEN_USER = std::ptr::read_unaligned(user_buf.as_ptr() as *const TOKEN_USER);
     let sid_len = GetLengthSid(token_user.User.Sid);
     if sid_len == 0 {
-        return Err(anyhow!(
-            "GetLengthSid(TokenUser) failed: {}",
-            GetLastError()
-        ));
+        return Err(anyhow!("GetLengthSid(TokenUser) failed: {}", GetLastError()));
     }
     let mut user_sid_bytes = vec![0u8; sid_len as usize];
-    if CopySid(
-        sid_len,
-        user_sid_bytes.as_mut_ptr() as *mut c_void,
-        token_user.User.Sid,
-    ) == 0
-    {
+    if CopySid(sid_len, user_sid_bytes.as_mut_ptr() as *mut c_void, token_user.User.Sid) == 0 {
         return Err(anyhow!("CopySid(TokenUser) failed: {}", GetLastError()));
     }
     Ok(user_sid_bytes)
@@ -329,14 +299,7 @@ unsafe fn enable_single_privilege(h_token: HANDLE, name: &str) -> Result<()> {
     tp.PrivilegeCount = 1;
     tp.Privileges[0].Luid = luid;
     tp.Privileges[0].Attributes = 0x00000002; // SE_PRIVILEGE_ENABLED
-    let ok2 = AdjustTokenPrivileges(
-        h_token,
-        0,
-        &tp,
-        0,
-        std::ptr::null_mut(),
-        std::ptr::null_mut(),
-    );
+    let ok2 = AdjustTokenPrivileges(h_token, 0, &tp, 0, std::ptr::null_mut(), std::ptr::null_mut());
     if ok2 == 0 {
         return Err(anyhow!("AdjustTokenPrivileges failed: {}", GetLastError()));
     }
@@ -349,9 +312,7 @@ unsafe fn enable_single_privilege(h_token: HANDLE, name: &str) -> Result<()> {
 
 /// # Safety
 /// Caller must close the returned token handle.
-pub unsafe fn create_readonly_token_with_cap(
-    psid_capability: *mut c_void,
-) -> Result<(HANDLE, *mut c_void)> {
+pub unsafe fn create_readonly_token_with_cap(psid_capability: *mut c_void) -> Result<(HANDLE, *mut c_void)> {
     let base = get_current_token_for_restriction()?;
     let res = create_readonly_token_with_cap_from(base, psid_capability);
     CloseHandle(base);

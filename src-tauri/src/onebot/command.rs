@@ -1,22 +1,26 @@
 use strum::{EnumIter, IntoEnumIterator};
 
-/// Who may run a command.
+/// Who may run a command. No command claims `AdminOnly` today; the variant is
+/// the domain, not a code path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandAccess {
     Everyone,
+    #[allow(dead_code)]
     AdminOnly,
     /// Fine in a private chat, restricted in a group — for commands that act on
     /// state the whole room shares.
     AdminOnlyInGroup,
 }
 
-/// Where a command makes sense.
+/// Where a command makes sense. Every current command answers `Any`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandScope {
     Any,
     /// Output would expose things learned elsewhere, so it must not be run
     /// where everyone can read it.
+    #[allow(dead_code)]
     PrivateOnly,
+    #[allow(dead_code)]
     GroupOnly,
 }
 
@@ -122,7 +126,9 @@ pub enum MemorySub {
     Me,
     /// Forget entries from the last listing, by number.
     Forget(Vec<usize>),
-    ForgetAll { confirmed: bool },
+    ForgetAll {
+        confirmed: bool,
+    },
     Undo,
     OptOut,
     OptIn,
@@ -131,9 +137,15 @@ pub enum MemorySub {
     GroupForget(Vec<usize>),
     /// Operator views: everything about someone, or the bot-wide layer.
     User(i64),
-    UserAdd { user_id: i64, content: String },
+    UserAdd {
+        user_id: i64,
+        content: String,
+    },
     Global,
-    GlobalAdd { key: String, content: String },
+    GlobalAdd {
+        key: String,
+        content: String,
+    },
     Pending,
     Help,
 }
@@ -228,8 +240,10 @@ pub fn parse_memory_sub(args: &str) -> Option<MemorySub> {
             let user_id = id_str.parse::<i64>().ok()?;
             if let Some(content) = tail.strip_prefix("add") {
                 let content = content.trim();
-                (!content.is_empty())
-                    .then(|| MemorySub::UserAdd { user_id, content: content.to_string() })
+                (!content.is_empty()).then(|| MemorySub::UserAdd {
+                    user_id,
+                    content: content.to_string(),
+                })
             } else if tail.is_empty() {
                 Some(MemorySub::User(user_id))
             } else {
@@ -324,7 +338,11 @@ pub fn parse_request_decision(input: &str) -> Option<RequestDecision> {
     let reason = after.trim();
     let reason = (!reason.is_empty()).then(|| reason.to_string());
 
-    Some(RequestDecision { approve, target, reason })
+    Some(RequestDecision {
+        approve,
+        target,
+        reason,
+    })
 }
 
 pub fn parse_command(input: &str) -> Option<(SlashCommand, &str)> {
@@ -345,11 +363,19 @@ mod tests {
     fn test_parse_request_decision_approve() {
         assert_eq!(
             parse_request_decision("同意 3"),
-            Some(RequestDecision { approve: true, target: DecisionTarget::Request(3), reason: None })
+            Some(RequestDecision {
+                approve: true,
+                target: DecisionTarget::Request(3),
+                reason: None
+            })
         );
         assert_eq!(
             parse_request_decision("同意3"),
-            Some(RequestDecision { approve: true, target: DecisionTarget::Request(3), reason: None })
+            Some(RequestDecision {
+                approve: true,
+                target: DecisionTarget::Request(3),
+                reason: None
+            })
         );
     }
 
@@ -357,7 +383,11 @@ mod tests {
     fn test_parse_request_decision_reject_with_reason() {
         assert_eq!(
             parse_request_decision("拒绝3 广告"),
-            Some(RequestDecision { approve: false, target: DecisionTarget::Request(3), reason: Some("广告".into()) })
+            Some(RequestDecision {
+                approve: false,
+                target: DecisionTarget::Request(3),
+                reason: Some("广告".into())
+            })
         );
     }
 
@@ -376,12 +406,20 @@ mod tests {
         // A space before the reason keeps it a valid decision.
         assert_eq!(
             parse_request_decision("同意 3 广告"),
-            Some(RequestDecision { approve: true, target: DecisionTarget::Request(3), reason: Some("广告".into()) })
+            Some(RequestDecision {
+                approve: true,
+                target: DecisionTarget::Request(3),
+                reason: Some("广告".into())
+            })
         );
         // Bare id with no trailing text is still valid.
         assert_eq!(
             parse_request_decision("同意3"),
-            Some(RequestDecision { approve: true, target: DecisionTarget::Request(3), reason: None })
+            Some(RequestDecision {
+                approve: true,
+                target: DecisionTarget::Request(3),
+                reason: None
+            })
         );
     }
 }
@@ -429,14 +467,20 @@ mod permission_tests {
         assert_eq!(parse_memory_sub("undo"), Some(MemorySub::Undo));
         assert_eq!(parse_memory_sub("optout"), Some(MemorySub::OptOut));
         assert_eq!(parse_memory_sub("group"), Some(MemorySub::Group));
-        assert_eq!(parse_memory_sub("group forget 1"), Some(MemorySub::GroupForget(vec![1])));
+        assert_eq!(
+            parse_memory_sub("group forget 1"),
+            Some(MemorySub::GroupForget(vec![1]))
+        );
         assert_eq!(parse_memory_sub("user 123"), Some(MemorySub::User(123)));
     }
 
     /// Deleting all of someone's memories should not be one keystroke away.
     #[test]
     fn forget_all_needs_confirming() {
-        assert_eq!(parse_memory_sub("forget all"), Some(MemorySub::ForgetAll { confirmed: false }));
+        assert_eq!(
+            parse_memory_sub("forget all"),
+            Some(MemorySub::ForgetAll { confirmed: false })
+        );
         assert_eq!(
             parse_memory_sub("forget all yes"),
             Some(MemorySub::ForgetAll { confirmed: true })

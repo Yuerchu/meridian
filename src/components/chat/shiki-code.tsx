@@ -19,13 +19,23 @@ import { cn } from '@/lib/utils'
  * appears. That matters here: the transcript may be following the live edge
  * while this resolves.
  */
-export function ShikiCode({ code, language, className }: { code: string; language?: string | null; className?: string }) {
+export function ShikiCode({
+  code,
+  language,
+  className,
+}: {
+  code: string
+  language?: string | null
+  className?: string
+}) {
   const { language: lang, ready } = useShikiLanguage(language)
 
   if (!ready) {
     return (
       <div className={cn('code-block__code', className)}>
-        <pre><code>{code}</code></pre>
+        <pre>
+          <code>{code}</code>
+        </pre>
       </div>
     )
   }

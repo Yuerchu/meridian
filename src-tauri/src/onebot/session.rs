@@ -19,11 +19,17 @@ pub enum SessionKind {
 
 impl SessionKey {
     pub fn private(user_id: i64) -> Self {
-        Self { kind: SessionKind::Private, id: user_id }
+        Self {
+            kind: SessionKind::Private,
+            id: user_id,
+        }
     }
 
     pub fn group(group_id: i64) -> Self {
-        Self { kind: SessionKind::Group, id: group_id }
+        Self {
+            kind: SessionKind::Group,
+            id: group_id,
+        }
     }
 
     pub fn pref_key(&self) -> String {
@@ -68,7 +74,10 @@ pub struct SessionManager {
 
 impl SessionManager {
     pub fn new(pool: DbPool) -> Self {
-        Self { cache: HashMap::new(), pool }
+        Self {
+            cache: HashMap::new(),
+            pool,
+        }
     }
 
     /// Get or create a (project_id, conversation_id) for the given session key.
@@ -94,9 +103,9 @@ impl SessionManager {
         let source_id = key.source_id();
 
         // Find or create project for this source
-        let project = match crate::db::ops::project::find_project_by_source(
-            &mut conn, source_type, &source_id,
-        ).map_err(|e| format!("DB error: {e}"))? {
+        let project = match crate::db::ops::project::find_project_by_source(&mut conn, source_type, &source_id)
+            .map_err(|e| format!("DB error: {e}"))?
+        {
             Some(p) => p,
             None => {
                 // Migrate from old preference-based session if exists
@@ -119,20 +128,19 @@ impl SessionManager {
                         created_at: now,
                         updated_at: now,
                     },
-                ).map_err(|e| format!("Failed to create project: {e}"))?;
+                )
+                .map_err(|e| format!("Failed to create project: {e}"))?;
 
                 // If there was a legacy conversation, attach it to the new project
                 if let Some(ref conv_id) = legacy_conv_id {
                     if crate::db::ops::conversation::get_conversation(&mut conn, conv_id).is_ok() {
                         let update_now = now_ms();
-                        let _ = diesel::update(
-                            crate::db::schema::conversations::table.find(conv_id)
-                        )
-                        .set((
-                            crate::db::schema::conversations::project_id.eq(&project_id),
-                            crate::db::schema::conversations::updated_at.eq(update_now),
-                        ))
-                        .execute(&mut conn);
+                        let _ = diesel::update(crate::db::schema::conversations::table.find(conv_id))
+                            .set((
+                                crate::db::schema::conversations::project_id.eq(&project_id),
+                                crate::db::schema::conversations::updated_at.eq(update_now),
+                            ))
+                            .execute(&mut conn);
                     }
                     // Clean up old preference
                     let _ = crate::db::ops::preference::delete_preference(&mut conn, &cache_key);
@@ -143,9 +151,8 @@ impl SessionManager {
         };
 
         // Find the latest active (non-archived) conversation under this project
-        let conversations = crate::db::ops::conversation::list_conversations_by_project(
-            &mut conn, &project.id, false,
-        ).map_err(|e| format!("DB error: {e}"))?;
+        let conversations = crate::db::ops::conversation::list_conversations_by_project(&mut conn, &project.id, false)
+            .map_err(|e| format!("DB error: {e}"))?;
 
         let conversation_id = if let Some(conv) = conversations.first() {
             conv.id.clone()
@@ -160,15 +167,19 @@ impl SessionManager {
                 assistant_id,
                 Some(&project.id),
                 now,
-            ).map_err(|e| format!("Failed to create conversation: {e}"))?;
+            )
+            .map_err(|e| format!("Failed to create conversation: {e}"))?;
             conv_id
         };
 
-        self.cache.insert(cache_key, CachedSession {
-            project_id: project.id.clone(),
-            conversation_id: conversation_id.clone(),
-            model_override: None,
-        });
+        self.cache.insert(
+            cache_key,
+            CachedSession {
+                project_id: project.id.clone(),
+                conversation_id: conversation_id.clone(),
+                model_override: None,
+            },
+        );
         Ok((project.id, conversation_id))
     }
 
@@ -208,11 +219,9 @@ impl SessionManager {
         let mut conn = get_conn(&self.pool)?;
 
         // Find the project
-        let project = crate::db::ops::project::find_project_by_source(
-            &mut conn, source_type, &source_id,
-        )
-        .map_err(|e| format!("DB error: {e}"))?
-        .ok_or("No project found for this session")?;
+        let project = crate::db::ops::project::find_project_by_source(&mut conn, source_type, &source_id)
+            .map_err(|e| format!("DB error: {e}"))?
+            .ok_or("No project found for this session")?;
 
         let now = now_ms();
         let _ = crate::db::ops::conversation::archive_conversation(&mut conn, current, now);
@@ -226,13 +235,17 @@ impl SessionManager {
             assistant_id,
             Some(&project.id),
             now,
-        ).map_err(|e| format!("Failed to create conversation: {e}"))?;
+        )
+        .map_err(|e| format!("Failed to create conversation: {e}"))?;
 
-        self.cache.insert(cache_key, CachedSession {
-            project_id: project.id,
-            conversation_id: conv_id.clone(),
-            model_override: None,
-        });
+        self.cache.insert(
+            cache_key,
+            CachedSession {
+                project_id: project.id,
+                conversation_id: conv_id.clone(),
+                model_override: None,
+            },
+        );
         Ok(conv_id)
     }
 }
@@ -263,8 +276,14 @@ mod tests {
         {
             let mut conn = pool.get().unwrap();
             crate::db::ops::conversation::create_conversation(
-                &mut conn, theirs, Some("mine"), None, Some(&project_id), now_ms(),
-            ).unwrap();
+                &mut conn,
+                theirs,
+                Some("mine"),
+                None,
+                Some(&project_id),
+                now_ms(),
+            )
+            .unwrap();
         }
 
         let fresh = sessions

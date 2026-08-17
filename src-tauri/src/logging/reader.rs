@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::writer::{archive_name, BASE_NAME, MAX_ARCHIVES};
+use super::writer::{BASE_NAME, MAX_ARCHIVES, archive_name};
 use crate::util::take_bytes_at_char_boundary;
 
 /// Read granularity when walking a file backwards.
@@ -250,7 +250,11 @@ fn parse_line(line: &[u8], cursor: Cursor) -> LogEntry {
     LogEntry {
         ts: string_at("ts"),
         ts_ms: obj.get("ts_ms").and_then(Value::as_i64).unwrap_or(0),
-        level: obj.get("level").and_then(Value::as_str).unwrap_or("UNKNOWN").to_string(),
+        level: obj
+            .get("level")
+            .and_then(Value::as_str)
+            .unwrap_or("UNKNOWN")
+            .to_string(),
         target: string_at("target"),
         msg: string_at("msg"),
         fields: map_at("fields"),
@@ -277,15 +281,15 @@ fn matches(entry: &LogEntry, q: &LogQuery) -> bool {
             && q.min_level.is_none();
     }
 
-    if let Some(min) = &q.min_level {
-        if level_rank(&entry.level) < level_rank(min) {
-            return false;
-        }
+    if let Some(min) = &q.min_level
+        && level_rank(&entry.level) < level_rank(min)
+    {
+        return false;
     }
-    if let Some(prefix) = &q.target_prefix {
-        if !entry.target.starts_with(prefix.as_str()) {
-            return false;
-        }
+    if let Some(prefix) = &q.target_prefix
+        && !entry.target.starts_with(prefix.as_str())
+    {
+        return false;
     }
     if let Some(want) = &q.conversation_id {
         let found = entry
@@ -301,16 +305,22 @@ fn matches(entry: &LogEntry, q: &LogQuery) -> bool {
         let needle = needle.to_lowercase();
         let haystack_hit = entry.msg.to_lowercase().contains(&needle)
             || entry.target.to_lowercase().contains(&needle)
-            || Value::Object(entry.fields.clone()).to_string().to_lowercase().contains(&needle)
-            || Value::Object(entry.span_fields.clone()).to_string().to_lowercase().contains(&needle);
+            || Value::Object(entry.fields.clone())
+                .to_string()
+                .to_lowercase()
+                .contains(&needle)
+            || Value::Object(entry.span_fields.clone())
+                .to_string()
+                .to_lowercase()
+                .contains(&needle);
         if !haystack_hit {
             return false;
         }
     }
-    if let Some(until) = q.until_ts_ms {
-        if entry.ts_ms > until {
-            return false;
-        }
+    if let Some(until) = q.until_ts_ms
+        && entry.ts_ms > until
+    {
+        return false;
     }
     true
 }
@@ -333,23 +343,30 @@ pub(crate) fn query(dir: &Path, q: &LogQuery) -> LogPage {
         };
 
         page.files_scanned.push(
-            path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string(),
+            path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_string(),
         );
 
         let mut stopped_early = false;
         let scanned_before = scanned;
         let result = for_each_line_backward(path, from_offset, |line, offset, in_file| {
-            let cursor = Cursor { file_index: *index, byte_offset: offset };
+            let cursor = Cursor {
+                file_index: *index,
+                byte_offset: offset,
+            };
             let entry = parse_line(line, cursor);
 
             // Records are appended in order and files are ordered, so the first
             // record older than the window means nothing older can match. This
             // is what keeps a five-megabyte log to a few kilobytes of reading.
-            if let Some(since) = q.since_ts_ms {
-                if entry.ts_ms != 0 && entry.ts_ms < since {
-                    stopped_early = true;
-                    return false;
-                }
+            if let Some(since) = q.since_ts_ms
+                && entry.ts_ms != 0
+                && entry.ts_ms < since
+            {
+                stopped_early = true;
+                return false;
             }
 
             if matches(&entry, q) {
@@ -416,17 +433,25 @@ mod tests {
     }
 
     fn q(limit: usize) -> LogQuery {
-        LogQuery { limit, include_rotated: true, ..Default::default() }
+        LogQuery {
+            limit,
+            include_rotated: true,
+            ..Default::default()
+        }
     }
 
     #[test]
     fn records_come_back_newest_first() {
         let dir = tempfile::tempdir().unwrap();
-        write_log(dir.path(), BASE_NAME, &[
-            record(1000, "INFO", "a", "oldest"),
-            record(2000, "INFO", "a", "middle"),
-            record(3000, "INFO", "a", "newest"),
-        ]);
+        write_log(
+            dir.path(),
+            BASE_NAME,
+            &[
+                record(1000, "INFO", "a", "oldest"),
+                record(2000, "INFO", "a", "middle"),
+                record(3000, "INFO", "a", "newest"),
+            ],
+        );
 
         let page = query(dir.path(), &q(10));
         let messages: Vec<&str> = page.entries.iter().map(|e| e.msg.as_str()).collect();
@@ -451,11 +476,15 @@ mod tests {
     #[test]
     fn a_corrupt_line_degrades_instead_of_failing_the_page() {
         let dir = tempfile::tempdir().unwrap();
-        write_log(dir.path(), BASE_NAME, &[
-            record(1000, "INFO", "a", "before"),
-            "{not json at all".to_string(),
-            record(3000, "INFO", "a", "after"),
-        ]);
+        write_log(
+            dir.path(),
+            BASE_NAME,
+            &[
+                record(1000, "INFO", "a", "before"),
+                "{not json at all".to_string(),
+                record(3000, "INFO", "a", "after"),
+            ],
+        );
 
         let page = query(dir.path(), &q(10));
         assert_eq!(page.entries.len(), 3);
@@ -467,10 +496,14 @@ mod tests {
     fn a_line_longer_than_one_chunk_is_reassembled() {
         let dir = tempfile::tempdir().unwrap();
         let long_msg = "x".repeat(CHUNK * 2 + 137);
-        write_log(dir.path(), BASE_NAME, &[
-            record(1000, "INFO", "a", "before"),
-            record(2000, "INFO", "a", &long_msg),
-        ]);
+        write_log(
+            dir.path(),
+            BASE_NAME,
+            &[
+                record(1000, "INFO", "a", "before"),
+                record(2000, "INFO", "a", &long_msg),
+            ],
+        );
 
         let page = query(dir.path(), &q(10));
         assert_eq!(page.entries.len(), 2);
@@ -525,7 +558,13 @@ mod tests {
         let first = query(dir.path(), &q(1));
         assert_eq!(first.entries[0].msg, "in current");
 
-        let second = query(dir.path(), &LogQuery { cursor: first.next_cursor, ..q(1) });
+        let second = query(
+            dir.path(),
+            &LogQuery {
+                cursor: first.next_cursor,
+                ..q(1)
+            },
+        );
         assert_eq!(second.entries[0].msg, "in archive");
     }
 
@@ -535,7 +574,13 @@ mod tests {
         write_log(dir.path(), &archive_name(1), &[record(1000, "INFO", "a", "in archive")]);
         write_log(dir.path(), BASE_NAME, &[record(2000, "INFO", "a", "in current")]);
 
-        let page = query(dir.path(), &LogQuery { include_rotated: false, ..q(10) });
+        let page = query(
+            dir.path(),
+            &LogQuery {
+                include_rotated: false,
+                ..q(10)
+            },
+        );
         assert_eq!(page.entries.len(), 1);
         assert_eq!(page.files_scanned, [BASE_NAME]);
     }
@@ -543,13 +588,23 @@ mod tests {
     #[test]
     fn the_level_filter_is_a_floor() {
         let dir = tempfile::tempdir().unwrap();
-        write_log(dir.path(), BASE_NAME, &[
-            record(1000, "INFO", "a", "info"),
-            record(2000, "WARN", "a", "warn"),
-            record(3000, "ERROR", "a", "error"),
-        ]);
+        write_log(
+            dir.path(),
+            BASE_NAME,
+            &[
+                record(1000, "INFO", "a", "info"),
+                record(2000, "WARN", "a", "warn"),
+                record(3000, "ERROR", "a", "error"),
+            ],
+        );
 
-        let page = query(dir.path(), &LogQuery { min_level: Some("warn".into()), ..q(10) });
+        let page = query(
+            dir.path(),
+            &LogQuery {
+                min_level: Some("warn".into()),
+                ..q(10)
+            },
+        );
         let messages: Vec<&str> = page.entries.iter().map(|e| e.msg.as_str()).collect();
         assert_eq!(messages, ["error", "warn"]);
     }
@@ -562,13 +617,29 @@ mod tests {
             "fields": {"model": "gpt-5.6-sol"},
         })
         .to_string();
-        write_log(dir.path(), BASE_NAME, &[record(1000, "INFO", "a", "Provider Rejected"), with_field]);
+        write_log(
+            dir.path(),
+            BASE_NAME,
+            &[record(1000, "INFO", "a", "Provider Rejected"), with_field],
+        );
 
-        let by_msg = query(dir.path(), &LogQuery { contains: Some("provider".into()), ..q(10) });
+        let by_msg = query(
+            dir.path(),
+            &LogQuery {
+                contains: Some("provider".into()),
+                ..q(10)
+            },
+        );
         assert_eq!(by_msg.entries.len(), 1);
         assert_eq!(by_msg.entries[0].msg, "Provider Rejected");
 
-        let by_field = query(dir.path(), &LogQuery { contains: Some("GPT-5.6".into()), ..q(10) });
+        let by_field = query(
+            dir.path(),
+            &LogQuery {
+                contains: Some("GPT-5.6".into()),
+                ..q(10)
+            },
+        );
         assert_eq!(by_field.entries.len(), 1);
         assert_eq!(by_field.entries[0].target, "b");
     }
@@ -581,9 +652,19 @@ mod tests {
             "spans": ["chat"], "span_fields": {"conversation_id": "c-1"},
         })
         .to_string();
-        write_log(dir.path(), BASE_NAME, &[record(1000, "WARN", "chat", "unrelated"), scoped]);
+        write_log(
+            dir.path(),
+            BASE_NAME,
+            &[record(1000, "WARN", "chat", "unrelated"), scoped],
+        );
 
-        let page = query(dir.path(), &LogQuery { conversation_id: Some("c-1".into()), ..q(10) });
+        let page = query(
+            dir.path(),
+            &LogQuery {
+                conversation_id: Some("c-1".into()),
+                ..q(10)
+            },
+        );
         assert_eq!(page.entries.len(), 1);
         assert_eq!(page.entries[0].msg, "compact failed");
     }
@@ -597,11 +678,14 @@ mod tests {
         write_log(dir.path(), BASE_NAME, &lines);
 
         // Nothing matches the text, so only the window can stop the scan.
-        let page = query(dir.path(), &LogQuery {
-            since_ts_ms: Some(1900),
-            contains: Some("no-such-text".into()),
-            ..q(50)
-        });
+        let page = query(
+            dir.path(),
+            &LogQuery {
+                since_ts_ms: Some(1900),
+                contains: Some("no-such-text".into()),
+                ..q(50)
+            },
+        );
 
         assert!(page.entries.is_empty());
         // Having stopped on the window rather than the budget, there is no more
@@ -613,12 +697,19 @@ mod tests {
     #[test]
     fn the_end_time_bound_excludes_newer_records() {
         let dir = tempfile::tempdir().unwrap();
-        write_log(dir.path(), BASE_NAME, &[
-            record(1000, "INFO", "a", "old"),
-            record(5000, "INFO", "a", "new"),
-        ]);
+        write_log(
+            dir.path(),
+            BASE_NAME,
+            &[record(1000, "INFO", "a", "old"), record(5000, "INFO", "a", "new")],
+        );
 
-        let page = query(dir.path(), &LogQuery { until_ts_ms: Some(2000), ..q(10) });
+        let page = query(
+            dir.path(),
+            &LogQuery {
+                until_ts_ms: Some(2000),
+                ..q(10)
+            },
+        );
         assert_eq!(page.entries.len(), 1);
         assert_eq!(page.entries[0].msg, "old");
     }

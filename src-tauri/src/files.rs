@@ -19,9 +19,7 @@ pub fn alloc_dest(app_data_dir: &Path, conversation_id: &str, ext: &str) -> Resu
 }
 
 pub fn store_file(app_data_dir: &Path, conversation_id: &str, src_path: &Path) -> Result<String, String> {
-    let ext = src_path.extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("bin");
+    let ext = src_path.extension().and_then(|e| e.to_str()).unwrap_or("bin");
     let (dest_path, uri) = alloc_dest(app_data_dir, conversation_id, ext)?;
 
     std::fs::copy(src_path, &dest_path).map_err(|e| e.to_string())?;
@@ -32,10 +30,8 @@ pub fn store_file(app_data_dir: &Path, conversation_id: &str, src_path: &Path) -
 pub fn resolve_file_uri(uri: &str) -> Option<PathBuf> {
     if let Some(path) = uri.strip_prefix("file:///") {
         Some(PathBuf::from(path))
-    } else if let Some(path) = uri.strip_prefix("file://") {
-        Some(PathBuf::from(path))
     } else {
-        None
+        uri.strip_prefix("file://").map(PathBuf::from)
     }
 }
 

@@ -1,7 +1,19 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, BookOpen, ArrowsRotateRight } from '@gravity-ui/icons'
-import { Button, Card, Checkbox, Chip, Description, Disclosure, DisclosureGroup, Input, Label, TextArea, TextField } from '@heroui/react'
+import {
+  Button,
+  Card,
+  Checkbox,
+  Chip,
+  Description,
+  Disclosure,
+  DisclosureGroup,
+  Input,
+  Label,
+  TextArea,
+  TextField,
+} from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
@@ -41,10 +53,18 @@ function SkillEditor({
     setBodyLoading(true)
     api
       .getSkillBody(editingDir)
-      .then((text) => { if (!cancelled) setBody(text) })
-      .catch(() => { if (!cancelled) setBody('') })
-      .finally(() => { if (!cancelled) setBodyLoading(false) })
-    return () => { cancelled = true }
+      .then((text) => {
+        if (!cancelled) setBody(text)
+      })
+      .catch(() => {
+        if (!cancelled) setBody('')
+      })
+      .finally(() => {
+        if (!cancelled) setBodyLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
   }, [editingDir])
 
   const dirNameValid = DIR_NAME_RE.test(dirName.trim())
@@ -64,12 +84,7 @@ function SkillEditor({
           ...(isBuiltin ? {} : { llmDescription: description.trim(), body }),
         })
       } else {
-        await api.createSkill(
-          dirName.trim(),
-          description.trim(),
-          body,
-          displayName.trim() || undefined,
-        )
+        await api.createSkill(dirName.trim(), description.trim(), body, displayName.trim() || undefined)
       }
       markSaved()
       await onSave()
@@ -146,16 +161,16 @@ function SkillEditor({
       )}
 
       {error && (
-        <p data-slot="skill-editor-error" className="text-xs text-danger">{error}</p>
+        <p data-slot="skill-editor-error" className="text-xs text-danger">
+          {error}
+        </p>
       )}
 
       <div data-slot="skill-editor-actions" className="flex items-center gap-2">
         <Button onClick={handleSave} isDisabled={!canSave}>
           {t('common.save')}
         </Button>
-        {saved && (
-          <SavedHint data-slot="skill-editor-saved" />
-        )}
+        {saved && <SavedHint data-slot="skill-editor-saved" />}
         {onDelete && !isBuiltin && (
           <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
             <TrashBin className="w-3.5 h-3.5" />
@@ -178,10 +193,7 @@ export function SkillSettings() {
   const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
-    const [list, bound] = await Promise.all([
-      api.listSkills(),
-      api.listSkillBindings('global'),
-    ])
+    const [list, bound] = await Promise.all([api.listSkills(), api.listSkillBindings('global')])
     setSkills(list)
     setGlobalBound(new Set(bound))
   }, [])
@@ -254,13 +266,18 @@ export function SkillSettings() {
       />
 
       {error && (
-        <p data-slot="skill-settings-error" className="text-xs text-danger">{error}</p>
+        <p data-slot="skill-settings-error" className="text-xs text-danger">
+          {error}
+        </p>
       )}
 
       {showCreate && (
         <Card>
           <SkillEditor
-            onSave={async () => { setShowCreate(false); await refresh() }}
+            onSave={async () => {
+              setShowCreate(false)
+              await refresh()
+            }}
           />
         </Card>
       )}
@@ -272,7 +289,7 @@ export function SkillSettings() {
         data-slot="skill-settings-list"
         className="flex flex-col gap-1"
         expandedKeys={expandedDir ? [expandedDir] : []}
-        onExpandedChange={(keys) => setExpandedDir((([...keys][0] as string | undefined) ?? null))}
+        onExpandedChange={(keys) => setExpandedDir(([...keys][0] as string | undefined) ?? null)}
       >
         {skills.map((skill) => {
           const isExpanded = expandedDir === skill.dir_name
@@ -314,7 +331,9 @@ export function SkillSettings() {
                         chevron sit at the right edge without a second auto
                         margin fighting the indicator's own `ms-auto`. */}
                     <div className="flex min-w-0 flex-1 items-center gap-2">
-                      <span data-slot="skill-item-name" className="truncate">{skill.display_name}</span>
+                      <span data-slot="skill-item-name" className="truncate">
+                        {skill.display_name}
+                      </span>
                       <span data-slot="skill-item-slug" className="font-mono text-muted truncate">
                         {skill.llm_name}
                       </span>
@@ -372,17 +391,21 @@ export function SkillSettings() {
                       <SkillEditor
                         skill={skill}
                         onSave={refresh}
-                        onDelete={isBuiltin ? undefined : async () => {
-                          if (!await confirm({ body: t('settings.confirmDelete.skill') })) return
-                          setError(null)
-                          try {
-                            await api.deleteSkill(skill.dir_name)
-                            setExpandedDir(null)
-                            await refresh()
-                          } catch (e) {
-                            setError(String(e))
-                          }
-                        }}
+                        onDelete={
+                          isBuiltin
+                            ? undefined
+                            : async () => {
+                                if (!(await confirm({ body: t('settings.confirmDelete.skill') }))) return
+                                setError(null)
+                                try {
+                                  await api.deleteSkill(skill.dir_name)
+                                  setExpandedDir(null)
+                                  await refresh()
+                                } catch (e) {
+                                  setError(String(e))
+                                }
+                              }
+                        }
                       />
                     </>
                   )}

@@ -6,9 +6,7 @@ use crate::db::models::project::{NewProject, Project, ProjectUpdate};
 use crate::db::schema::projects;
 
 pub fn list_projects(conn: &mut SqliteConnection) -> QueryResult<Vec<Project>> {
-    projects::table
-        .order(projects::updated_at.desc())
-        .load::<Project>(conn)
+    projects::table.order(projects::updated_at.desc()).load::<Project>(conn)
 }
 
 pub fn get_project(conn: &mut SqliteConnection, id: &str) -> QueryResult<Project> {
@@ -35,10 +33,7 @@ pub fn find_project_by_source(
 /// another program's idea of its own working directory. Separator, trailing
 /// slash and — on Windows — case all have to stop mattering, and none of that
 /// survives a `WHERE path = ?`.
-pub fn find_project_by_path(
-    conn: &mut SqliteConnection,
-    path: &str,
-) -> QueryResult<Option<Project>> {
+pub fn find_project_by_path(conn: &mut SqliteConnection, path: &str) -> QueryResult<Option<Project>> {
     let wanted = normalize_path(path);
     if wanted.is_empty() {
         return Ok(None);
@@ -64,20 +59,12 @@ fn normalize_path(path: &str) -> String {
 }
 
 pub fn create_project(conn: &mut SqliteConnection, new: &NewProject) -> QueryResult<Project> {
-    diesel::insert_into(projects::table)
-        .values(new)
-        .execute(conn)?;
+    diesel::insert_into(projects::table).values(new).execute(conn)?;
     projects::table.find(new.id).first::<Project>(conn)
 }
 
-pub fn update_project(
-    conn: &mut SqliteConnection,
-    id: &str,
-    changeset: &ProjectUpdate,
-) -> QueryResult<Project> {
-    diesel::update(projects::table.find(id))
-        .set(changeset)
-        .execute(conn)?;
+pub fn update_project(conn: &mut SqliteConnection, id: &str, changeset: &ProjectUpdate) -> QueryResult<Project> {
+    diesel::update(projects::table.find(id)).set(changeset).execute(conn)?;
     projects::table.find(id).first::<Project>(conn)
 }
 

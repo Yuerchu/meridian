@@ -93,23 +93,6 @@ interface Line {
   detail?: string
 }
 
-function floatToBase64Pcm16(samples: Float32Array): string {
-  const pcm = new Int16Array(samples.length)
-  for (let i = 0; i < samples.length; i++) {
-    const clamped = Math.max(-1, Math.min(1, samples[i]))
-    pcm[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff
-  }
-  const bytes = new Uint8Array(pcm.buffer)
-  // Chunked: String.fromCharCode(...bytes) blows the argument limit somewhere
-  // around a few hundred thousand samples, which a 60s recording clears easily.
-  let binary = ''
-  const CHUNK = 0x8000
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
-  }
-  return btoa(binary)
-}
-
 export function DeveloperSettings() {
   const { t } = useTranslation()
   const isAndroid = usePlatform() === 'android'
@@ -193,131 +176,131 @@ export function DeveloperSettings() {
     }
   }, [say, t])
 
-  const record = useCallback(async (useWorklet: boolean) => {
-    setBusy(true)
-    checkEnvironment()
-    chunksRef.current = []
-    try {
-      const t0 = performance.now()
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-      })
-      streamRef.current = stream
-      const openMs = Math.round(performance.now() - t0)
-      // 300ms is the hold threshold the gesture would use as its warm-up
-      // window; anything slower means the first word is lost.
-      say('open', t('settings.developer.probe.open'), openMs < 300 ? 'pass' : 'fail', `${openMs} ms`)
+  const record = useCallback(
+    async (useWorklet: boolean) => {
+      setBusy(true)
+      checkEnvironment()
+      chunksRef.current = []
+      try {
+        const t0 = performance.now()
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        })
+        streamRef.current = stream
+        const openMs = Math.round(performance.now() - t0)
+        // 300ms is the hold threshold the gesture would use as its warm-up
+        // window; anything slower means the first word is lost.
+        say('open', t('settings.developer.probe.open'), openMs < 300 ? 'pass' : 'fail', `${openMs} ms`)
 
-      const ctx = new AudioContext({ sampleRate: 16000 })
-      ctxRef.current = ctx
-      sampleRateRef.current = ctx.sampleRate
-      say(
-        'rate',
-        t('settings.developer.probe.rate'),
-        'pass',
-        `${ctx.sampleRate} Hz${ctx.sampleRate !== 16000 ? ' (resampled by sherpa)' : ''}`,
-      )
+        const ctx = new AudioContext({ sampleRate: 16000 })
+        ctxRef.current = ctx
+        sampleRateRef.current = ctx.sampleRate
+        say(
+          'rate',
+          t('settings.developer.probe.rate'),
+          'pass',
+          `${ctx.sampleRate} Hz${ctx.sampleRate !== 16000 ? ' (resampled by sherpa)' : ''}`,
+        )
 
-      const source = ctx.createMediaStreamSource(stream)
-      let maxPeak = 0
-      const onBlock = (p: number, samples: Float32Array | null) => {
-        maxPeak = Math.max(maxPeak, p)
-        setPeak(p)
-        if (samples) chunksRef.current.push(samples)
+        const source = ctx.createMediaStreamSource(stream)
+        let maxPeak = 0
+        const onBlock = (p: number, samples: Float32Array | null) => {
+          maxPeak = Math.max(maxPeak, p)
+          setPeak(p)
+          if (samples) chunksRef.current.push(samples)
+        }
+
+        if (useWorklet) {
+          const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'text/javascript' }))
+          try {
+            await ctx.audioWorklet.addModule(url)
+          } finally {
+            URL.revokeObjectURL(url)
+          }
+          say('module', t('settings.developer.probe.module'), 'pass')
+          const node = new AudioWorkletNode(ctx, 'probe')
+          node.port.onmessage = (e) => onBlock(e.data.peak, e.data.samples)
+          node.port.postMessage({ collecting: true })
+          source.connect(node)
+          // Keeps the graph pulling without routing the microphone to the speaker.
+          node.connect(ctx.destination)
+          nodeRef.current = node
+        } else {
+          const node = ctx.createScriptProcessor(4096, 1, 1)
+          node.onaudioprocess = (e) => {
+            const ch = e.inputBuffer.getChannelData(0)
+            let p = 0
+            for (let i = 0; i < ch.length; i++) p = Math.max(p, Math.abs(ch[i]))
+            onBlock(p, new Float32Array(ch))
+          }
+          source.connect(node)
+          node.connect(ctx.destination)
+          nodeRef.current = node
+          say('module', t('settings.developer.probe.scriptProcessor'), 'pass')
+        }
+
+        setRecording(true)
+        await new Promise((r) => setTimeout(r, 5000))
+
+        const total = chunksRef.current.reduce((n, c) => n + c.length, 0)
+        // A worklet that runs but is fed silence is the exact shape of the bug
+        // this probe exists to catch, so "it loaded" is not the question.
+        say(
+          'audio',
+          t('settings.developer.probe.audio'),
+          maxPeak > 0.01 && total > 0 ? 'pass' : 'fail',
+          `peak=${maxPeak.toFixed(3)} samples=${total}`,
+        )
+
+        if (total > 0) {
+          const merged = new Float32Array(total)
+          let at = 0
+          for (const c of chunksRef.current) {
+            merged.set(c, at)
+            at += c.length
+          }
+          const encodeStart = performance.now()
+          const b64 = encodePcm16Base64(merged)
+          const encodeMs = Math.round(performance.now() - encodeStart)
+
+          const ipcStart = performance.now()
+          try {
+            const got = await api.voiceProbeEcho(sampleRateRef.current, b64)
+            const ipcMs = Math.round(performance.now() - ipcStart)
+            say(
+              'ipc',
+              t('settings.developer.probe.ipc'),
+              got === total ? 'pass' : 'fail',
+              `${(b64.length / 1024).toFixed(0)} KB base64 · encode ${encodeMs} ms · ipc ${ipcMs} ms · echoed ${got}/${total}`,
+            )
+          } catch (e) {
+            say('ipc', t('settings.developer.probe.ipc'), 'fail', String(e))
+          }
+
+          // Playback is the only unambiguous proof the samples are real audio.
+          const play = new AudioContext()
+          const buf = play.createBuffer(1, merged.length, sampleRateRef.current)
+          buf.copyToChannel(merged, 0)
+          const src = play.createBufferSource()
+          src.buffer = buf
+          src.connect(play.destination)
+          src.start()
+          src.onended = () => play.close().catch(() => {})
+          say('playback', t('settings.developer.probe.playback'), 'pending', t('settings.developer.probe.playbackHint'))
+        }
+      } catch (e) {
+        say('error', t('settings.developer.probe.failed'), 'fail', String(e))
+      } finally {
+        teardown()
+        setBusy(false)
       }
-
-      if (useWorklet) {
-        const url = URL.createObjectURL(new Blob([WORKLET_SRC], { type: 'text/javascript' }))
-        try {
-          await ctx.audioWorklet.addModule(url)
-        } finally {
-          URL.revokeObjectURL(url)
-        }
-        say('module', t('settings.developer.probe.module'), 'pass')
-        const node = new AudioWorkletNode(ctx, 'probe')
-        node.port.onmessage = (e) => onBlock(e.data.peak, e.data.samples)
-        node.port.postMessage({ collecting: true })
-        source.connect(node)
-        // Keeps the graph pulling without routing the microphone to the speaker.
-        node.connect(ctx.destination)
-        nodeRef.current = node
-      } else {
-        const node = ctx.createScriptProcessor(4096, 1, 1)
-        node.onaudioprocess = (e) => {
-          const ch = e.inputBuffer.getChannelData(0)
-          let p = 0
-          for (let i = 0; i < ch.length; i++) p = Math.max(p, Math.abs(ch[i]))
-          onBlock(p, new Float32Array(ch))
-        }
-        source.connect(node)
-        node.connect(ctx.destination)
-        nodeRef.current = node
-        say('module', t('settings.developer.probe.scriptProcessor'), 'pass')
-      }
-
-      setRecording(true)
-      await new Promise((r) => setTimeout(r, 5000))
-
-      const total = chunksRef.current.reduce((n, c) => n + c.length, 0)
-      // A worklet that runs but is fed silence is the exact shape of the bug
-      // this probe exists to catch, so "it loaded" is not the question.
-      say(
-        'audio',
-        t('settings.developer.probe.audio'),
-        maxPeak > 0.01 && total > 0 ? 'pass' : 'fail',
-        `peak=${maxPeak.toFixed(3)} samples=${total}`,
-      )
-
-      if (total > 0) {
-        const merged = new Float32Array(total)
-        let at = 0
-        for (const c of chunksRef.current) {
-          merged.set(c, at)
-          at += c.length
-        }
-        const encodeStart = performance.now()
-        const b64 = floatToBase64Pcm16(merged)
-        const encodeMs = Math.round(performance.now() - encodeStart)
-
-        const ipcStart = performance.now()
-        try {
-          const got = await api.voiceProbeEcho(sampleRateRef.current, b64)
-          const ipcMs = Math.round(performance.now() - ipcStart)
-          say(
-            'ipc',
-            t('settings.developer.probe.ipc'),
-            got === total ? 'pass' : 'fail',
-            `${(b64.length / 1024).toFixed(0)} KB base64 · encode ${encodeMs} ms · ipc ${ipcMs} ms · echoed ${got}/${total}`,
-          )
-        } catch (e) {
-          say('ipc', t('settings.developer.probe.ipc'), 'fail', String(e))
-        }
-
-        // Playback is the only unambiguous proof the samples are real audio.
-        const play = new AudioContext()
-        const buf = play.createBuffer(1, merged.length, sampleRateRef.current)
-        buf.copyToChannel(merged, 0)
-        const src = play.createBufferSource()
-        src.buffer = buf
-        src.connect(play.destination)
-        src.start()
-        src.onended = () => play.close().catch(() => {})
-        say('playback', t('settings.developer.probe.playback'), 'pending', t('settings.developer.probe.playbackHint'))
-      }
-    } catch (e) {
-      say('error', t('settings.developer.probe.failed'), 'fail', String(e))
-    } finally {
-      teardown()
-      setBusy(false)
-    }
-  }, [checkEnvironment, say, t, teardown])
+    },
+    [checkEnvironment, say, t, teardown],
+  )
 
   return (
     <SettingsPane>
-      <SettingsHeader
-        title={t('settings.developer.title')}
-        subtitle={t('settings.developer.intro')}
-      />
+      <SettingsHeader title={t('settings.developer.title')} subtitle={t('settings.developer.intro')} />
 
       <div className="space-y-1.5">
         <p className="text-xs font-medium text-muted">{t('settings.developer.cssProbe')}</p>
@@ -331,9 +314,11 @@ export function DeveloperSettings() {
               const ok = probe.test()
               return (
                 <div key={probe.name} data-slot="css-probe-line" className="flex items-center gap-2 text-sm">
-                  {ok
-                    ? <CircleCheck className="size-4 shrink-0 text-success" />
-                    : <CircleXmark className="size-4 shrink-0 text-danger" />}
+                  {ok ? (
+                    <CircleCheck className="size-4 shrink-0 text-success" />
+                  ) : (
+                    <CircleXmark className="size-4 shrink-0 text-danger" />
+                  )}
                   <span className="font-mono text-xs">{probe.name}</span>
                   <span className="text-xs text-muted">{probe.note}</span>
                 </div>

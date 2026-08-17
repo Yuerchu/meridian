@@ -2,9 +2,12 @@ use async_trait::async_trait;
 use eventsource_stream::Eventsource;
 use futures::stream::StreamExt;
 
-use crate::client::{HttpTransport, ReqwestTransport, Request, RequestBody};
-use super::{AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ToolCall, ToolDefinition};
 use super::openai_compat::{ChatChunk, ChunkUsage, normalise_openai_usage, parse_openai_sse_events};
+use super::{
+    AgentResponse, ChatMessage, ChatParams, ChatProvider, ChatStream, ProviderError, StreamEvent, ToolCall,
+    ToolDefinition,
+};
+use crate::client::{HttpTransport, Request, RequestBody, ReqwestTransport};
 
 pub struct DeepSeekProvider {
     base_url: String,
@@ -20,34 +23,42 @@ impl DeepSeekProvider {
     }
 
     fn serialize_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
-        messages.iter().map(|m| {
-            let rendered = super::render_message(m, super::SenderRendering::NameField);
-            let mut msg = serde_json::json!({ "role": m.role, "content": rendered.content });
-            if let Some(ref name) = rendered.name {
-                msg["name"] = serde_json::json!(name);
-            }
-            // DeepSeek requires reasoning_content only for assistant messages with
-            // tool_calls; for plain assistant replies it is ignored by the API and
-            // stripping it keeps the prefix shorter → better cache hit rate.
-            if let Some(ref rc) = m.reasoning_content {
-                if m.tool_calls.is_some() {
+        messages
+            .iter()
+            .map(|m| {
+                let rendered = super::render_message(m, super::SenderRendering::NameField);
+                let mut msg = serde_json::json!({ "role": m.role, "content": rendered.content });
+                if let Some(ref name) = rendered.name {
+                    msg["name"] = serde_json::json!(name);
+                }
+                // DeepSeek requires reasoning_content only for assistant messages with
+                // tool_calls; for plain assistant replies it is ignored by the API and
+                // stripping it keeps the prefix shorter → better cache hit rate.
+                if let Some(ref rc) = m.reasoning_content
+                    && m.tool_calls.is_some()
+                {
                     msg["reasoning_content"] = serde_json::json!(rc);
                 }
-            }
-            if let Some(ref tool_calls) = m.tool_calls {
-                msg["tool_calls"] = serde_json::json!(tool_calls.iter().map(|tc| {
-                    serde_json::json!({
-                        "id": tc.id,
-                        "type": "function",
-                        "function": { "name": tc.name, "arguments": tc.arguments }
-                    })
-                }).collect::<Vec<_>>());
-            }
-            if let Some(ref tool_call_id) = m.tool_call_id {
-                msg["tool_call_id"] = serde_json::json!(tool_call_id);
-            }
-            msg
-        }).collect()
+                if let Some(ref tool_calls) = m.tool_calls {
+                    msg["tool_calls"] = serde_json::json!(
+                        tool_calls
+                            .iter()
+                            .map(|tc| {
+                                serde_json::json!({
+                                    "id": tc.id,
+                                    "type": "function",
+                                    "function": { "name": tc.name, "arguments": tc.arguments }
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                    );
+                }
+                if let Some(ref tool_call_id) = m.tool_call_id {
+                    msg["tool_call_id"] = serde_json::json!(tool_call_id);
+                }
+                msg
+            })
+            .collect()
     }
 
     fn build_request(
@@ -74,25 +85,27 @@ impl DeepSeekProvider {
         if let Some(ref effort) = params.thinking_effort {
             body["reasoning_effort"] = serde_json::json!(effort);
         }
-        if let Some(tools) = tools {
-            if !tools.is_empty() {
-                body["tools"] = serde_json::json!(tools.iter().map(|t| {
-                    serde_json::json!({
-                        "type": "function",
-                        "function": {
-                            "name": t.name,
-                            "description": t.description,
-                            "parameters": t.parameters,
-                        }
+        if let Some(tools) = tools
+            && !tools.is_empty()
+        {
+            body["tools"] = serde_json::json!(
+                tools
+                    .iter()
+                    .map(|t| {
+                        serde_json::json!({
+                            "type": "function",
+                            "function": {
+                                "name": t.name,
+                                "description": t.description,
+                                "parameters": t.parameters,
+                            }
+                        })
                     })
-                }).collect::<Vec<_>>());
-            }
+                    .collect::<Vec<_>>()
+            );
         }
 
-        let mut req = Request::new(
-            http::Method::POST,
-            format!("{}/chat/completions", self.base_url),
-        );
+        let mut req = Request::new(http::Method::POST, format!("{}/chat/completions", self.base_url));
         req.headers.insert(
             http::header::AUTHORIZATION,
             super::auth_header_value(&format!("Bearer {}", self.api_key)),
@@ -115,7 +128,8 @@ impl ChatProvider for DeepSeekProvider {
         let req = self.build_request(&messages, tools_opt, &params, true);
         let resp = transport.stream(req).await?;
 
-        let stream = resp.bytes
+        let stream = resp
+            .bytes
             .map(|r| r.map_err(ProviderError::Transport))
             .eventsource()
             .flat_map(move |event| {
@@ -131,7 +145,10 @@ impl ChatProvider for DeepSeekProvider {
                                     stream_events.push(StreamEvent::UsageUpdate { usage: u });
                                 }
                                 if let Some(fr) = finish_reason {
-                                    stream_events.push(StreamEvent::Stop { reason: fr, usage: None });
+                                    stream_events.push(StreamEvent::Stop {
+                                        reason: fr,
+                                        usage: None,
+                                    });
                                 }
                                 stream_events.into_iter().map(Ok).collect()
                             }
@@ -146,17 +163,13 @@ impl ChatProvider for DeepSeekProvider {
         Ok(Box::pin(stream))
     }
 
-    async fn chat(
-        &self,
-        messages: Vec<ChatMessage>,
-        params: ChatParams,
-    ) -> Result<String, ProviderError> {
+    async fn chat(&self, messages: Vec<ChatMessage>, params: ChatParams) -> Result<String, ProviderError> {
         let transport = ReqwestTransport::shared();
         let req = self.build_request(&messages, None, &params, false);
         let resp = transport.execute(req).await?;
 
-        let parsed: serde_json::Value = serde_json::from_slice(&resp.body)
-            .map_err(|e| ProviderError::Parse(e.to_string()))?;
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&resp.body).map_err(|e| ProviderError::Parse(e.to_string()))?;
 
         parsed["choices"][0]["message"]["content"]
             .as_str()
@@ -174,21 +187,23 @@ impl ChatProvider for DeepSeekProvider {
         let req = self.build_request(&messages, Some(&tools), &params, false);
         let resp = transport.execute(req).await?;
 
-        let parsed: serde_json::Value = serde_json::from_slice(&resp.body)
-            .map_err(|e| ProviderError::Parse(e.to_string()))?;
+        let parsed: serde_json::Value =
+            serde_json::from_slice(&resp.body).map_err(|e| ProviderError::Parse(e.to_string()))?;
 
         let message = &parsed["choices"][0]["message"];
         let text = message["content"].as_str().unwrap_or("").to_string();
         let reasoning_content = message["reasoning_content"].as_str().map(|s| s.to_string());
 
         let tool_calls = if let Some(tcs) = message["tool_calls"].as_array() {
-            tcs.iter().filter_map(|tc| {
-                Some(ToolCall {
-                    id: tc["id"].as_str()?.to_string(),
-                    name: tc["function"]["name"].as_str()?.to_string(),
-                    arguments: tc["function"]["arguments"].as_str()?.to_string(),
+            tcs.iter()
+                .filter_map(|tc| {
+                    Some(ToolCall {
+                        id: tc["id"].as_str()?.to_string(),
+                        name: tc["function"]["name"].as_str()?.to_string(),
+                        arguments: tc["function"]["arguments"].as_str()?.to_string(),
+                    })
                 })
-            }).collect()
+                .collect()
         } else {
             Vec::new()
         };
@@ -201,6 +216,11 @@ impl ChatProvider for DeepSeekProvider {
             .and_then(|u| serde_json::from_value::<ChunkUsage>(u.clone()).ok())
             .map(|u| normalise_openai_usage(&u));
 
-        Ok(AgentResponse { text, reasoning_content, tool_calls, usage })
+        Ok(AgentResponse {
+            text,
+            reasoning_content,
+            tool_calls,
+            usage,
+        })
     }
 }

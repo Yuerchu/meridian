@@ -100,7 +100,10 @@ mod tests {
         let mut guard = ToolLoopGuard::default();
         guard.observe("read_file", r#"{"path":"a.txt"}"#);
         guard.observe("read_file", r#"{"path":"a.txt"}"#);
-        assert_eq!(guard.observe("delete_file", r#"{"path":"a.txt"}"#), LoopVerdict::Proceed);
+        assert_eq!(
+            guard.observe("delete_file", r#"{"path":"a.txt"}"#),
+            LoopVerdict::Proceed
+        );
     }
 
     #[test]

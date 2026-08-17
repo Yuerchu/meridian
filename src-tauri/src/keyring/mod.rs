@@ -38,6 +38,8 @@ impl Error for CredentialStoreError {}
 pub trait KeyringStore: Debug + Send + Sync {
     fn load(&self, service: &str, account: &str) -> Result<Option<String>, CredentialStoreError>;
     fn save(&self, service: &str, account: &str, value: &str) -> Result<(), CredentialStoreError>;
+    /// Nothing deletes the passphrase today; part of the ported store contract.
+    #[allow(dead_code)]
     fn delete(&self, service: &str, account: &str) -> Result<bool, CredentialStoreError>;
 }
 
@@ -133,6 +135,8 @@ pub(crate) mod test_support {
             self.loads.load(AtomicOrdering::SeqCst)
         }
 
+        /// Error injection, part of the mock's contract even between users.
+        #[allow(dead_code)]
         pub fn set_error(&self, service: &str, account: &str, msg: &str) {
             self.errors
                 .lock()
@@ -142,30 +146,17 @@ pub(crate) mod test_support {
     }
 
     impl KeyringStore for MockKeyringStore {
-        fn load(
-            &self,
-            service: &str,
-            account: &str,
-        ) -> Result<Option<String>, CredentialStoreError> {
+        fn load(&self, service: &str, account: &str) -> Result<Option<String>, CredentialStoreError> {
             self.loads.fetch_add(1, AtomicOrdering::SeqCst);
             if let Some(msg) = self.errors.lock().unwrap().remove(&Self::key(service, account)) {
-                return Err(CredentialStoreError::Other(
-                    KeyringError::PlatformFailure(msg.into()),
-                ));
+                return Err(CredentialStoreError::Other(KeyringError::PlatformFailure(msg.into())));
             }
             Ok(self.store.lock().unwrap().get(&Self::key(service, account)).cloned())
         }
 
-        fn save(
-            &self,
-            service: &str,
-            account: &str,
-            value: &str,
-        ) -> Result<(), CredentialStoreError> {
+        fn save(&self, service: &str, account: &str, value: &str) -> Result<(), CredentialStoreError> {
             if let Some(msg) = self.errors.lock().unwrap().remove(&Self::key(service, account)) {
-                return Err(CredentialStoreError::Other(
-                    KeyringError::PlatformFailure(msg.into()),
-                ));
+                return Err(CredentialStoreError::Other(KeyringError::PlatformFailure(msg.into())));
             }
             self.store
                 .lock()
@@ -174,17 +165,16 @@ pub(crate) mod test_support {
             Ok(())
         }
 
-        fn delete(
-            &self,
-            service: &str,
-            account: &str,
-        ) -> Result<bool, CredentialStoreError> {
+        fn delete(&self, service: &str, account: &str) -> Result<bool, CredentialStoreError> {
             if let Some(msg) = self.errors.lock().unwrap().remove(&Self::key(service, account)) {
-                return Err(CredentialStoreError::Other(
-                    KeyringError::PlatformFailure(msg.into()),
-                ));
+                return Err(CredentialStoreError::Other(KeyringError::PlatformFailure(msg.into())));
             }
-            Ok(self.store.lock().unwrap().remove(&Self::key(service, account)).is_some())
+            Ok(self
+                .store
+                .lock()
+                .unwrap()
+                .remove(&Self::key(service, account))
+                .is_some())
         }
     }
 }

@@ -27,7 +27,7 @@ use diesel::sql_types::{BigInt, Double, Nullable, Text};
 use diesel::sqlite::SqliteConnection;
 use serde::{Deserialize, Serialize};
 
-use crate::agent::pricing::{cost_of, BilledTokens, Prices};
+use crate::agent::pricing::{BilledTokens, Prices, cost_of};
 use crate::db::schema::{conversations, model_configs, projects};
 
 /// Which window, and whose traffic.
@@ -82,9 +82,7 @@ impl UsageDimension {
             // evening's work under the wrong date, which is immediately visible
             // and reads as the numbers being wrong rather than the grouping.
             UsageDimension::Day => "strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime')",
-            UsageDimension::Hour => {
-                "strftime('%Y-%m-%dT%H', created_at / 1000, 'unixepoch', 'localtime')"
-            }
+            UsageDimension::Hour => "strftime('%Y-%m-%dT%H', created_at / 1000, 'unixepoch', 'localtime')",
         }
     }
 
@@ -257,16 +255,20 @@ fn current_prices(conn: &mut SqliteConnection) -> QueryResult<HashMap<(String, S
     Ok(rows
         .into_iter()
         .map(|(provider, model, input, output, cache_read, cache_write)| {
-            ((provider, model), Prices { input, output, cache_read, cache_write })
+            (
+                (provider, model),
+                Prices {
+                    input,
+                    output,
+                    cache_read,
+                    cache_write,
+                },
+            )
         })
         .collect())
 }
 
-fn grouped(
-    conn: &mut SqliteConnection,
-    dimension: UsageDimension,
-    filter: &UsageFilter,
-) -> QueryResult<Vec<GroupRow>> {
+fn grouped(conn: &mut SqliteConnection, dimension: UsageDimension, filter: &UsageFilter) -> QueryResult<Vec<GroupRow>> {
     // Assistant rows only. A question carries no tokens and no model, so every
     // one of them would land in a single group keyed on nothing and inflate the
     // reply count the other figures are read against.
@@ -309,11 +311,7 @@ fn grouped(
 /// snapshotted or a number. The other two point at rows that may be gone, which
 /// is why this leaves `label` as `None` rather than substituting the id: a
 /// deleted conversation should read as deleted, not as a title nobody chose.
-fn label(
-    conn: &mut SqliteConnection,
-    dimension: UsageDimension,
-    buckets: &mut [UsageBucket],
-) -> QueryResult<()> {
+fn label(conn: &mut SqliteConnection, dimension: UsageDimension, buckets: &mut [UsageBucket]) -> QueryResult<()> {
     match dimension {
         UsageDimension::Conversation => {
             let ids: Vec<&str> = buckets.iter().map(|b| b.key.as_str()).collect();
@@ -411,8 +409,24 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         // A million input tokens at 10/M, then another million at 20/M.
-        reply(&mut conn, "a", "m", 1_000, (1_000_000, 0, 0, 0), Some((10.0, 0.0)), "desktop");
-        reply(&mut conn, "b", "m", 2_000, (1_000_000, 0, 0, 0), Some((20.0, 0.0)), "desktop");
+        reply(
+            &mut conn,
+            "a",
+            "m",
+            1_000,
+            (1_000_000, 0, 0, 0),
+            Some((10.0, 0.0)),
+            "desktop",
+        );
+        reply(
+            &mut conn,
+            "b",
+            "m",
+            2_000,
+            (1_000_000, 0, 0, 0),
+            Some((20.0, 0.0)),
+            "desktop",
+        );
 
         let all = total(&mut conn, &UsageFilter::default());
         assert_eq!(all.messages, 2);
@@ -450,7 +464,15 @@ mod tests {
     fn traffic_with_no_price_is_counted_apart_rather_than_billed_at_nothing() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        reply(&mut conn, "a", "priced", 1_000, (100, 200, 0, 0), Some((10.0, 30.0)), "desktop");
+        reply(
+            &mut conn,
+            "a",
+            "priced",
+            1_000,
+            (100, 200, 0, 0),
+            Some((10.0, 30.0)),
+            "desktop",
+        );
         reply(&mut conn, "b", "free", 2_000, (500, 500, 0, 0), None, "desktop");
 
         let all = total(&mut conn, &UsageFilter::default());
@@ -484,22 +506,25 @@ mod tests {
             })
             .execute(&mut conn)
             .unwrap();
-        crate::db::ops::model_config::upsert(&mut conn, &NewModelConfig {
-            id: "mc1",
-            provider_id: "p1",
-            model_id: "m",
-            display_name: None,
-            context_window: 1,
-            compact_threshold: 1,
-            max_output_tokens: None,
-            input_price: 10.0,
-            output_price: 0.0,
-            cache_price: None,
-            cache_write_price: None,
-            created_at: 0,
-            updated_at: 0,
-            capability_overrides: None,
-        })
+        crate::db::ops::model_config::upsert(
+            &mut conn,
+            &NewModelConfig {
+                id: "mc1",
+                provider_id: "p1",
+                model_id: "m",
+                display_name: None,
+                context_window: 1,
+                compact_threshold: 1,
+                max_output_tokens: None,
+                input_price: 10.0,
+                output_price: 0.0,
+                cache_price: None,
+                cache_write_price: None,
+                created_at: 0,
+                updated_at: 0,
+                capability_overrides: None,
+            },
+        )
         .unwrap();
 
         reply(&mut conn, "a", "m", 1_000, (1_000_000, 0, 0, 0), None, "desktop");
@@ -515,7 +540,15 @@ mod tests {
     fn a_model_left_at_zero_reads_as_unpriced() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        reply(&mut conn, "a", "m", 1_000, (100, 200, 0, 0), Some((0.0, 0.0)), "desktop");
+        reply(
+            &mut conn,
+            "a",
+            "m",
+            1_000,
+            (100, 200, 0, 0),
+            Some((0.0, 0.0)),
+            "desktop",
+        );
 
         assert_eq!(total(&mut conn, &UsageFilter::default()).unpriced_messages, 1);
     }
@@ -529,8 +562,16 @@ mod tests {
         reply(&mut conn, "a", "m", 1_000, (10, 0, 0, 0), Some((1.0, 1.0)), "desktop");
         reply(&mut conn, "b", "m", 2_000, (10, 0, 0, 0), Some((1.0, 1.0)), "desktop");
 
-        let first = UsageFilter { since_ms: None, until_ms: Some(2_000), origin: None };
-        let second = UsageFilter { since_ms: Some(2_000), until_ms: None, origin: None };
+        let first = UsageFilter {
+            since_ms: None,
+            until_ms: Some(2_000),
+            origin: None,
+        };
+        let second = UsageFilter {
+            since_ms: Some(2_000),
+            until_ms: None,
+            origin: None,
+        };
         assert_eq!(total(&mut conn, &first).messages, 1);
         assert_eq!(total(&mut conn, &second).messages, 1);
     }
@@ -543,7 +584,10 @@ mod tests {
         reply(&mut conn, "b", "m", 2_000, (20, 0, 0, 0), Some((1.0, 1.0)), "onebot");
         reply(&mut conn, "c", "m", 3_000, (30, 0, 0, 0), Some((1.0, 1.0)), "onebot");
 
-        let bots = UsageFilter { origin: Some("onebot".into()), ..Default::default() };
+        let bots = UsageFilter {
+            origin: Some("onebot".into()),
+            ..Default::default()
+        };
         assert_eq!(total(&mut conn, &bots).messages, 2);
         assert_eq!(total(&mut conn, &bots).input_tokens, 50);
     }
@@ -554,9 +598,33 @@ mod tests {
     fn a_breakdown_adds_up_to_the_total_above_it() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        reply(&mut conn, "a", "big", 1_000, (1_000, 500, 0, 0), Some((10.0, 30.0)), "desktop");
-        reply(&mut conn, "b", "small", 2_000, (300, 100, 0, 0), Some((2.0, 6.0)), "onebot");
-        reply(&mut conn, "c", "big", 3_000, (700, 200, 0, 0), Some((10.0, 30.0)), "onebot");
+        reply(
+            &mut conn,
+            "a",
+            "big",
+            1_000,
+            (1_000, 500, 0, 0),
+            Some((10.0, 30.0)),
+            "desktop",
+        );
+        reply(
+            &mut conn,
+            "b",
+            "small",
+            2_000,
+            (300, 100, 0, 0),
+            Some((2.0, 6.0)),
+            "onebot",
+        );
+        reply(
+            &mut conn,
+            "c",
+            "big",
+            3_000,
+            (700, 200, 0, 0),
+            Some((10.0, 30.0)),
+            "onebot",
+        );
 
         let all = total(&mut conn, &UsageFilter::default());
         let by_model = report(&mut conn, UsageDimension::Model, &UsageFilter::default()).unwrap();
@@ -574,8 +642,7 @@ mod tests {
     fn a_deleted_conversation_keeps_its_row_and_loses_its_name() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("Named"), None, None, 1)
-            .unwrap();
+        crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("Named"), None, None, 1).unwrap();
         reply(&mut conn, "a", "m", 1_000, (100, 0, 0, 0), Some((10.0, 0.0)), "desktop");
 
         let named = report(&mut conn, UsageDimension::Conversation, &UsageFilter::default()).unwrap();
@@ -583,8 +650,7 @@ mod tests {
 
         crate::db::ops::conversation::delete_conversation(&mut conn, "c1").unwrap();
 
-        let orphaned =
-            report(&mut conn, UsageDimension::Conversation, &UsageFilter::default()).unwrap();
+        let orphaned = report(&mut conn, UsageDimension::Conversation, &UsageFilter::default()).unwrap();
         assert_eq!(orphaned.len(), 1, "the cost outlives the transcript");
         assert_eq!(orphaned[0].key, "c1");
         assert_eq!(orphaned[0].label, None);
@@ -607,8 +673,24 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         // Two days apart, so no timezone puts them in the same bucket.
-        reply(&mut conn, "a", "m", 1_700_000_000_000, (10, 0, 0, 0), Some((1.0, 1.0)), "desktop");
-        reply(&mut conn, "b", "m", 1_700_180_000_000, (20, 0, 0, 0), Some((1.0, 1.0)), "desktop");
+        reply(
+            &mut conn,
+            "a",
+            "m",
+            1_700_000_000_000,
+            (10, 0, 0, 0),
+            Some((1.0, 1.0)),
+            "desktop",
+        );
+        reply(
+            &mut conn,
+            "b",
+            "m",
+            1_700_180_000_000,
+            (20, 0, 0, 0),
+            Some((1.0, 1.0)),
+            "desktop",
+        );
 
         let days = report(&mut conn, UsageDimension::Day, &UsageFilter::default()).unwrap();
         assert_eq!(days.len(), 2);

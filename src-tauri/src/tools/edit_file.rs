@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use super::{Permission, Tool, ToolContext};
+use async_trait::async_trait;
 
 pub struct EditFileTool;
 
@@ -50,15 +50,9 @@ impl Tool for EditFileTool {
     }
 
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
-        let file_path = args["file_path"]
-            .as_str()
-            .ok_or("missing 'file_path' argument")?;
-        let old_string = args["old_string"]
-            .as_str()
-            .ok_or("missing 'old_string' argument")?;
-        let new_string = args["new_string"]
-            .as_str()
-            .ok_or("missing 'new_string' argument")?;
+        let file_path = args["file_path"].as_str().ok_or("missing 'file_path' argument")?;
+        let old_string = args["old_string"].as_str().ok_or("missing 'old_string' argument")?;
+        let new_string = args["new_string"].as_str().ok_or("missing 'new_string' argument")?;
         let replace_all = args["replace_all"].as_bool().unwrap_or(false);
 
         if old_string.is_empty() {
@@ -68,12 +62,12 @@ impl Tool for EditFileTool {
             return Err("old_string and new_string are identical".to_string());
         }
 
-        if let Some(ref session) = context.edit_session {
-            // Staging resolves rather than opens, for the same reason as
-            // write_file: nothing is written now, and a staged edit that is
-            // never approved should leave no trace.
-            let target = context.resolve_and_validate(file_path)?;
-            let content = super::backend::read_to_string(&target).await?;
+        // Read and write ride the same handle, so the text that matched
+        // `old_string` is the text being replaced. `open_edit` also refuses
+        // to create the file: a failed match must not leave an empty one.
+        let target = context.open_edit(file_path)?;
+        let mut replaced = 0usize;
+        super::backend::edit_opened(target, |content| {
             let count = content.matches(old_string).count();
             if count == 0 {
                 return Err(format!(
@@ -82,49 +76,15 @@ impl Tool for EditFileTool {
                     content.len()
                 ));
             }
-            let new_content = if replace_all {
+            replaced = if replace_all { count } else { 1 };
+            Ok(if replace_all {
                 content.replace(old_string, new_string)
             } else {
                 content.replacen(old_string, new_string, 1)
-            };
-            let replaced = if replace_all { count } else { 1 };
-
-            let resolved_path = match &target {
-                super::ResolvedTarget::Real(p) => p.clone(),
-                super::ResolvedTarget::Saf { .. } => {
-                    super::backend::write_string(&target, &new_content).await?;
-                    return Ok(format!("Replaced {} occurrence(s) in {}", replaced, file_path));
-                }
-            };
-            let mut session = session.lock().await;
-            session.stage_write(resolved_path.clone(), Some(content), new_content, "edit_file");
-            let diff = session.get(&resolved_path).unwrap().diff.clone();
-            Ok(format!("Staged edit of {} occurrence(s) in {file_path} (pending approval).\n\n{diff}", replaced))
-        } else {
-            // Read and write ride the same handle, so the text that matched
-            // `old_string` is the text being replaced. `open_edit` also refuses
-            // to create the file: a failed match must not leave an empty one.
-            let target = context.open_edit(file_path)?;
-            let mut replaced = 0usize;
-            super::backend::edit_opened(target, |content| {
-                let count = content.matches(old_string).count();
-                if count == 0 {
-                    return Err(format!(
-                        "old_string not found in '{}'. File has {} bytes.",
-                        file_path,
-                        content.len()
-                    ));
-                }
-                replaced = if replace_all { count } else { 1 };
-                Ok(if replace_all {
-                    content.replace(old_string, new_string)
-                } else {
-                    content.replacen(old_string, new_string, 1)
-                })
             })
-            .await?;
-            Ok(format!("Replaced {} occurrence(s) in {}", replaced, file_path))
-        }
+        })
+        .await?;
+        Ok(format!("Replaced {} occurrence(s) in {}", replaced, file_path))
     }
 }
 
@@ -142,7 +102,6 @@ mod tests {
             conversation_id: None,
             assistant_id: None,
             db_pool: None,
-            edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),

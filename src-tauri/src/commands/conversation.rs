@@ -1,17 +1,17 @@
-use std::sync::Arc;
-
 use diesel::sqlite::SqliteConnection;
 use tauri::{Emitter, Manager};
 
+use crate::agent::{
+    TokenBudget, TurnParamsInput, build_file_access, do_compact, file_access_prompt, instruction_budget,
+    load_project_instructions, resolve_provider_config, resolve_turn_params,
+};
 use crate::db;
 use crate::db::DbPool;
 use crate::db::models::assistant::Assistant;
 use crate::db::models::conversation::Conversation;
-use crate::provider;
 use crate::state::{AppDb, AppMcp, AppSecrets, AppTools, AppTurns, CompactBreakers};
 use crate::template;
 use crate::util::now_ms;
-use crate::agent::{do_compact, resolve_provider_config, resolve_turn_params, base_prompt, build_file_access, build_messages, estimate_tokens, file_access_prompt, instruction_budget, load_project_instructions, CompactCircuitBreaker, TokenBudget, TurnParamsInput};
 
 /// Summarise the conversation's history down to a summary row.
 ///
@@ -25,7 +25,10 @@ pub async fn compact(
     conversation_id: String,
     custom_instructions: Option<String>,
 ) -> Result<(), String> {
-    let _lease = app.state::<AppTurns>().0.clone()
+    let _lease = app
+        .state::<AppTurns>()
+        .0
+        .clone()
         .try_acquire_mutation(&conversation_id, "compaction")
         .map_err(|busy| busy.to_string())?;
     let pool = app.state::<AppDb>().0.clone();
@@ -36,22 +39,37 @@ pub async fn compact(
         let conv_id = conversation_id.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = crate::util::get_conn(&pool)?;
-            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
-            let assistant = conv.assistant_id.as_deref()
+            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
+            let assistant = conv
+                .assistant_id
+                .as_deref()
                 .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok());
             let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
             // Summarised by the model that wrote the transcript, and against
             // that model's window.
             Ok::<_, String>((conv.pin_model(assistant), keep_recent))
-        }).await.map_err(|e| e.to_string())??
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
 
-    app.emit("compact-start", serde_json::json!({
-        "conversation_id": &conversation_id,
-    })).map_err(|e| e.to_string())?;
+    app.emit(
+        "compact-start",
+        serde_json::json!({
+            "conversation_id": &conversation_id,
+        }),
+    )
+    .map_err(|e| e.to_string())?;
 
-    let result = do_compact(&pool, &secrets.0, &conversation_id, assistant.as_ref(), keep_recent, custom_instructions.as_deref()).await;
+    let result = do_compact(
+        &pool,
+        &secrets.0,
+        &conversation_id,
+        assistant.as_ref(),
+        keep_recent,
+        custom_instructions.as_deref(),
+    )
+    .await;
 
     if let Err(ref e) = result {
         // The automatic path logs its failures; this one used to hand the error
@@ -64,9 +82,13 @@ pub async fn compact(
         );
     }
 
-    app.emit("compact-done", serde_json::json!({
-        "conversation_id": &conversation_id,
-    })).map_err(|e| e.to_string())?;
+    app.emit(
+        "compact-done",
+        serde_json::json!({
+            "conversation_id": &conversation_id,
+        }),
+    )
+    .map_err(|e| e.to_string())?;
 
     result?;
     Ok(())
@@ -83,21 +105,35 @@ pub async fn list_conversations(app: tauri::AppHandle, archived: bool) -> Result
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::list_conversations(&mut conn, archived).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub async fn create_conversation(app: tauri::AppHandle, title: Option<String>, project_id: Option<String>) -> Result<Conversation, String> {
+pub async fn create_conversation(
+    app: tauri::AppHandle,
+    title: Option<String>,
+    project_id: Option<String>,
+) -> Result<Conversation, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
-        let default_assistant = db::ops::assistant::get_default_assistant(&mut conn)
-            .map_err(|e| e.to_string())?;
+        let default_assistant = db::ops::assistant::get_default_assistant(&mut conn).map_err(|e| e.to_string())?;
         let assistant_id = default_assistant.as_ref().map(|a| a.id.as_str());
-        db::ops::conversation::create_conversation(&mut conn, &id, title.as_deref(), assistant_id, project_id.as_deref(), now_ms())
-            .map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+        db::ops::conversation::create_conversation(
+            &mut conn,
+            &id,
+            title.as_deref(),
+            assistant_id,
+            project_id.as_deref(),
+            now_ms(),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -111,7 +147,9 @@ pub async fn set_conversation_assistant(
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::update_assistant(&mut conn, &id, assistant_id.as_deref(), now_ms())
             .map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -124,32 +162,25 @@ pub async fn set_conversation_reasoning_prefs(
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::update_reasoning_prefs(
-            &mut conn,
-            &id,
-            thinking_level.as_deref(),
-            fast_mode,
-            now_ms(),
-        )
-        .map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+        db::ops::conversation::update_reasoning_prefs(&mut conn, &id, thinking_level.as_deref(), fast_mode, now_ms())
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Switch the conversation's collaboration mode. `None` is the default (work)
 /// mode. An unrecognised id is stored as-is and degrades to work when read, so
 /// a mode removed in a later build cannot strand a conversation.
 #[tauri::command]
-pub async fn set_conversation_mode(
-    app: tauri::AppHandle,
-    id: String,
-    mode: Option<String>,
-) -> Result<(), String> {
+pub async fn set_conversation_mode(app: tauri::AppHandle, id: String, mode: Option<String>) -> Result<(), String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::update_mode(&mut conn, &id, mode.as_deref(), now_ms())
-            .map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+        db::ops::conversation::update_mode(&mut conn, &id, mode.as_deref(), now_ms()).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Turn the standing approval for ordinary edits on or off.
@@ -168,9 +199,10 @@ pub async fn set_conversation_accept_edits(
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::update_accept_edits(&mut conn, &id, accept_edits, now_ms())
-            .map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+        db::ops::conversation::update_accept_edits(&mut conn, &id, accept_edits, now_ms()).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -179,7 +211,9 @@ pub async fn update_conversation_title(app: tauri::AppHandle, id: String, title:
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::update_title(&mut conn, &id, &title, now_ms()).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -188,7 +222,9 @@ pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Resul
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::toggle_pin(&mut conn, &id, now_ms()).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// Delete a conversation and everything in it.
@@ -253,7 +289,9 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
             }
         }
         Ok::<_, String>(())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[derive(serde::Serialize)]
@@ -282,12 +320,7 @@ pub struct ContextInfo {
 /// The memory block is not part of this — it is sent as a user-role message —
 /// but it still has to be counted, so callers add it to the total separately.
 #[cfg(test)]
-fn compose_system_prompt(
-    base_block: Option<&str>,
-    persona: &str,
-    instructions: &str,
-    file_access: &str,
-) -> String {
+fn compose_system_prompt(base_block: Option<&str>, persona: &str, instructions: &str, file_access: &str) -> String {
     let base = base_block.map(|b| format!("{b}\n\n")).unwrap_or_default();
     format!("{base}{persona}{instructions}{file_access}")
 }
@@ -308,14 +341,11 @@ fn load_persona_and_memory(
 ) -> (String, String) {
     let raw_prompt = assistant.map(|a| a.system_prompt.as_str()).unwrap_or("");
     let user_name = db::ops::preference::get_preference(conn, "user_name").ok().flatten();
-    let mut ctx = template::build_context(
-        assistant.map(|a| a.name.as_str()),
-        user_name.as_deref(),
-    );
-    if let Some(a) = assistant {
-        if let Some(block) = db::ops::emoji::format_emoji_list_block(conn, &a.id) {
-            ctx.set("emoji_list", &block);
-        }
+    let mut ctx = template::build_context(assistant.map(|a| a.name.as_str()), user_name.as_deref());
+    if let Some(a) = assistant
+        && let Some(block) = db::ops::emoji::format_emoji_list_block(conn, &a.id)
+    {
+        ctx.set("emoji_list", &block);
     }
     let persona = template::resolve(raw_prompt, &ctx);
     let req = crate::agent::MemoryRequest::desktop(
@@ -382,9 +412,10 @@ async fn assemble_system_prompt(
     ];
     let live: Vec<db::models::message::Message> = active_path.to_vec();
     tokio::task::spawn_blocking(move || {
-        let Ok(mut conn) = pool2.get() else { return (String::new(), String::new()) };
-        let (persona, memory_block) =
-            load_persona_and_memory(&mut conn, assistant.as_ref(), pid.as_deref(), &live);
+        let Ok(mut conn) = pool2.get() else {
+            return (String::new(), String::new());
+        };
+        let (persona, memory_block) = load_persona_and_memory(&mut conn, assistant.as_ref(), pid.as_deref(), &live);
         let sub_agents = crate::agent::sub_agents::catalog(&mut conn);
         let turn = crate::agent::turn_config::resolve(
             &mut conn,
@@ -414,10 +445,7 @@ async fn assemble_system_prompt(
 }
 
 #[tauri::command]
-pub async fn get_context_info(
-    app: tauri::AppHandle,
-    conversation_id: String,
-) -> Result<ContextInfo, String> {
+pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) -> Result<ContextInfo, String> {
     let pool = app.state::<AppDb>().0.clone();
     let secrets = app.state::<AppSecrets>();
 
@@ -426,13 +454,15 @@ pub async fn get_context_info(
         let conv_id = conversation_id.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = crate::util::get_conn(&pool)?;
-            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
-            let assistant = conv.assistant_id.as_deref()
+            let conv = db::ops::conversation::get_conversation(&mut conn, &conv_id).map_err(|e| e.to_string())?;
+            let assistant = conv
+                .assistant_id
+                .as_deref()
                 .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok());
-            let history = db::ops::message::list_messages(&mut conn, &conv_id)
-                .map_err(|e| e.to_string())?;
-            let project = conv.project_id.as_deref()
+            let history = db::ops::message::list_messages(&mut conn, &conv_id).map_err(|e| e.to_string())?;
+            let project = conv
+                .project_id
+                .as_deref()
                 .and_then(|pid| db::ops::project::get_project(&mut conn, pid).ok());
             let project_path = project.as_ref().and_then(|p| p.path.clone());
             let project_id = project.as_ref().map(|p| p.id.clone());
@@ -448,7 +478,9 @@ pub async fn get_context_info(
                 conv.mode.clone(),
                 conv.agent_kind.clone(),
             ))
-        }).await.map_err(|e| e.to_string())??
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
 
     let auto_compact_enabled = assistant.as_ref().map(|a| a.auto_compact_enabled != 0).unwrap_or(false);
@@ -466,22 +498,36 @@ pub async fn get_context_info(
         let assistant2 = assistant.clone();
         tokio::task::spawn_blocking(move || {
             let crate::agent::ResolvedProvider {
-                provider_type, model, api_format, ..
+                provider_type,
+                model,
+                api_format,
+                ..
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
-            let turn = resolve_turn_params(&pool2, TurnParamsInput {
-                assistant: assistant2.as_ref(),
-                provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
-                provider_type: &provider_type,
-                api_format: &api_format,
-                model: &model,
-                thinking_level: None,
-                fast: false,
-            })?;
+            let turn = resolve_turn_params(
+                &pool2,
+                TurnParamsInput {
+                    assistant: assistant2.as_ref(),
+                    provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                    provider_type: &provider_type,
+                    api_format: &api_format,
+                    model: &model,
+                    thinking_level: None,
+                    fast: false,
+                },
+            )?;
             Ok::<_, String>((provider_type, model, turn))
-        }).await.map_err(|e| e.to_string())??
+        })
+        .await
+        .map_err(|e| e.to_string())??
     };
     let context_limit = turn.context_limit;
-    let budget = TokenBudget::new(&provider_type, &model, context_limit, turn.max_output, turn.compact_threshold);
+    let budget = TokenBudget::new(
+        &provider_type,
+        &model,
+        context_limit,
+        turn.max_output,
+        turn.compact_threshold,
+    );
 
     let (system_prompt, memory_block) = assemble_system_prompt(
         &app,
@@ -493,19 +539,16 @@ pub async fn get_context_info(
         project_id.as_deref(),
         context_limit,
         &ctx.path,
-    ).await;
+    )
+    .await;
 
     // What the next turn would carry, if it started now: no turn is running, so
     // nothing is excluded, and an interrupted turn before this one would be
     // reported to it. Reading costs nothing — only a request that reaches a
     // provider marks anything as told, and an estimate sends none.
-    let interrupted_block = crate::agent::interrupted::load_block(
-        &pool,
-        &app.state::<crate::state::AppTurns>().0,
-        &conversation_id,
-        "",
-    )
-    .await;
+    let interrupted_block =
+        crate::agent::interrupted::load_block(&pool, &app.state::<crate::state::AppTurns>().0, &conversation_id, "")
+            .await;
 
     // Mirrors the chat path exactly, background blocks included, so the figure
     // the UI shows covers what a turn actually sends.
@@ -526,8 +569,7 @@ pub async fn get_context_info(
     // summary itself when one applies.
     // Injected background is not a message anybody sent, and this figure sits
     // next to the conversation in the UI.
-    let message_count = ctx.live().iter().filter(|m| m.role != "context").count()
-        + usize::from(ctx.summary.is_some());
+    let message_count = ctx.live().iter().filter(|m| m.role != "context").count() + usize::from(ctx.summary.is_some());
     let estimated_tokens = budget.counter.count_messages(&msgs);
 
     let cb_state = {
@@ -551,17 +593,25 @@ pub async fn get_context_info(
 }
 
 #[tauri::command]
-pub async fn list_conversations_by_project(app: tauri::AppHandle, project_id: String, archived: bool) -> Result<Vec<Conversation>, String> {
+pub async fn list_conversations_by_project(
+    app: tauri::AppHandle,
+    project_id: String,
+    archived: bool,
+) -> Result<Vec<Conversation>, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::conversation::list_conversations_by_project(&mut conn, &project_id, archived).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+        db::ops::conversation::list_conversations_by_project(&mut conn, &project_id, archived)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::{base_prompt, build_messages};
     use crate::db::models::assistant::NewAssistant;
     use crate::db::models::emoji::NewEmoji;
     use crate::db::models::emoji_pack::NewEmojiPack;
@@ -570,53 +620,56 @@ mod tests {
     use crate::db::test_db;
 
     fn make_assistant(conn: &mut SqliteConnection, id: &str, name: &str, prompt: &str) -> Assistant {
-        db::ops::assistant::create_assistant(conn, &NewAssistant {
-            id,
-            name,
-            description: None,
-            avatar: None,
-            system_prompt: prompt,
-            provider_id: None,
-            model_id: None,
-            temperature: None,
-            top_p: None,
-            max_tokens: None,
-            is_default: 0,
-            sort_order: 0,
-            created_at: 1000,
-            updated_at: 1000,
-            context_limit: 128_000,
-            compact_keep_recent: 10,
-            enabled_tools: None,
-            thinking_enabled: 0,
-            thinking_budget: None,
-            tool_preset_id: None,
-            auto_compact_enabled: 0,
-        }).unwrap()
+        db::ops::assistant::create_assistant(
+            conn,
+            &NewAssistant {
+                id,
+                name,
+                description: None,
+                avatar: None,
+                system_prompt: prompt,
+                provider_id: None,
+                model_id: None,
+                temperature: None,
+                top_p: None,
+                max_tokens: None,
+                is_default: 0,
+                sort_order: 0,
+                created_at: 1000,
+                updated_at: 1000,
+                context_limit: 128_000,
+                compact_keep_recent: 10,
+                enabled_tools: None,
+                thinking_enabled: 0,
+                thinking_budget: None,
+                tool_preset_id: None,
+                auto_compact_enabled: 0,
+            },
+        )
+        .unwrap()
     }
 
     fn make_project(conn: &mut SqliteConnection, id: &str) {
-        db::ops::project::create_project(conn, &NewProject {
-            id,
-            name: "Proj",
-            path: None,
-            source_type: "local",
-            source_id: None,
-            assistant_id: None,
-            description: None,
-            created_at: 1000,
-            updated_at: 1000,
-        }).unwrap();
+        db::ops::project::create_project(
+            conn,
+            &NewProject {
+                id,
+                name: "Proj",
+                path: None,
+                source_type: "local",
+                source_id: None,
+                assistant_id: None,
+                description: None,
+                created_at: 1000,
+                updated_at: 1000,
+            },
+        )
+        .unwrap();
     }
 
     #[test]
     fn compose_keeps_the_chat_path_section_order() {
-        let out = compose_system_prompt(
-            Some("BASE"),
-            "PERSONA",
-            "\n\nINSTRUCTIONS",
-            "\n\nFILEACCESS",
-        );
+        let out = compose_system_prompt(Some("BASE"), "PERSONA", "\n\nINSTRUCTIONS", "\n\nFILEACCESS");
         // Memory is absent by design: it ships as a user-role message now.
         assert_eq!(out, "BASE\n\nPERSONA\n\nINSTRUCTIONS\n\nFILEACCESS");
         // No baseline (no file-editing tools enabled) must not leave padding.
@@ -628,22 +681,31 @@ mod tests {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         db::ops::preference::set_preference(&mut conn, "user_name", "Yuerchu", 1000).unwrap();
-        let assistant = make_assistant(&mut conn, "a1", "Nova", "You are {{assistant_name}} helping {{user_name}}.");
+        let assistant = make_assistant(
+            &mut conn,
+            "a1",
+            "Nova",
+            "You are {{assistant_name}} helping {{user_name}}.",
+        );
         make_project(&mut conn, "p1");
-        db::ops::memory::upsert_memory(&mut conn, &NewMemory {
-            id: "m1",
-            scope_type: "project",
-            scope_id: "p1",
-            key: "stack",
-            content: "Rust + Tauri",
-            memory_type: "general",
-            subject_scope_id: None,
-            origin: "desktop",
-            visibility: "normal",
-            source_session_id: None,
-            created_at: 1000,
-            updated_at: 1000,
-        }).unwrap();
+        db::ops::memory::upsert_memory(
+            &mut conn,
+            &NewMemory {
+                id: "m1",
+                scope_type: "project",
+                scope_id: "p1",
+                key: "stack",
+                content: "Rust + Tauri",
+                memory_type: "general",
+                subject_scope_id: None,
+                origin: "desktop",
+                visibility: "normal",
+                source_session_id: None,
+                created_at: 1000,
+                updated_at: 1000,
+            },
+        )
+        .unwrap();
 
         let (persona, memory) = load_persona_and_memory(&mut conn, Some(&assistant), Some("p1"), &[]);
         assert_eq!(persona, "You are Nova helping Yuerchu.");
@@ -666,26 +728,34 @@ mod tests {
         let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]);
         assert_eq!(persona, "{{emoji_list}}");
 
-        db::ops::emoji_pack::create_pack(&mut conn, &NewEmojiPack {
-            id: "pack1",
-            name: "Pack",
-            description: None,
-            cover_image: None,
-            is_builtin: 0,
-            sort_order: 0,
-            created_at: 1000,
-            updated_at: 1000,
-        }).unwrap();
-        db::ops::emoji::create_emoji(&mut conn, &NewEmoji {
-            id: "e1",
-            pack_id: "pack1",
-            name: "shocked",
-            tags: None,
-            file_name: "shocked.png",
-            file_format: "png",
-            sort_order: 0,
-            created_at: 1000,
-        }).unwrap();
+        db::ops::emoji_pack::create_pack(
+            &mut conn,
+            &NewEmojiPack {
+                id: "pack1",
+                name: "Pack",
+                description: None,
+                cover_image: None,
+                is_builtin: 0,
+                sort_order: 0,
+                created_at: 1000,
+                updated_at: 1000,
+            },
+        )
+        .unwrap();
+        db::ops::emoji::create_emoji(
+            &mut conn,
+            &NewEmoji {
+                id: "e1",
+                pack_id: "pack1",
+                name: "shocked",
+                tags: None,
+                file_name: "shocked.png",
+                file_format: "png",
+                sort_order: 0,
+                created_at: 1000,
+            },
+        )
+        .unwrap();
         db::ops::emoji_pack::assign_pack(&mut conn, "a1", "pack1", 1000).unwrap();
 
         let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]);
@@ -704,28 +774,27 @@ mod tests {
              Answer precisely and cite the files you touched.",
         );
         make_project(&mut conn, "p1");
-        db::ops::memory::upsert_memory(&mut conn, &NewMemory {
-            id: "m1",
-            scope_type: "project",
-            scope_id: "p1",
-            key: "stack",
-            content: "Rust backend, React frontend, SQLite storage",
-            memory_type: "general",
-            subject_scope_id: None,
-            origin: "desktop",
-            visibility: "normal",
-            source_session_id: None,
-            created_at: 1000,
-            updated_at: 1000,
-        }).unwrap();
+        db::ops::memory::upsert_memory(
+            &mut conn,
+            &NewMemory {
+                id: "m1",
+                scope_type: "project",
+                scope_id: "p1",
+                key: "stack",
+                content: "Rust backend, React frontend, SQLite storage",
+                memory_type: "general",
+                subject_scope_id: None,
+                origin: "desktop",
+                visibility: "normal",
+                source_session_id: None,
+                created_at: 1000,
+                updated_at: 1000,
+            },
+        )
+        .unwrap();
 
         let (persona, memory) = load_persona_and_memory(&mut conn, Some(&assistant), Some("p1"), &[]);
-        let system_prompt = compose_system_prompt(
-            base_prompt(&[]).as_deref(),
-            &persona,
-            "",
-            "",
-        );
+        let system_prompt = compose_system_prompt(base_prompt(&[]).as_deref(), &persona, "", "");
 
         let budget = TokenBudget::new("openai", "gpt-4o", 128_000, 16_384, None);
         // Counted the way the chat path sends it: prompt plus the memory block
@@ -736,12 +805,14 @@ mod tests {
             anchor_index: None,
             head_id: None,
         };
-        let with_prompt = budget.counter.count_messages(&crate::agent::build_messages_with_senders(
-            system_prompt.trim(),
-            &empty,
-            crate::agent::trailing_with_memory(Some(&memory), None, "", None),
-            &Default::default(),
-        ));
+        let with_prompt = budget
+            .counter
+            .count_messages(&crate::agent::build_messages_with_senders(
+                system_prompt.trim(),
+                &empty,
+                crate::agent::trailing_with_memory(Some(&memory), None, "", None),
+                &Default::default(),
+            ));
         let history_only = budget.counter.count_messages(&build_messages("", &empty, ""));
 
         // The regression this guards: get_context_info used to pass an empty

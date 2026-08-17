@@ -23,12 +23,10 @@ pub async fn read_to_string(target: &ResolvedTarget) -> Result<String, String> {
             .await
             .map_err(|e| format!("failed to read file '{}': {}", path.display(), e)),
         #[cfg(target_os = "android")]
-        ResolvedTarget::Saf { tree_uri, rel, display } => {
-            crate::android_bridge::saf_read(tree_uri, rel, -1)
-                .await
-                .map(|r| r.content)
-                .map_err(|e| format!("'{display}': {e}"))
-        }
+        ResolvedTarget::Saf { tree_uri, rel, display } => crate::android_bridge::saf_read(tree_uri, rel, -1)
+            .await
+            .map(|r| r.content)
+            .map_err(|e| format!("'{display}': {e}")),
         #[cfg(not(target_os = "android"))]
         ResolvedTarget::Saf { .. } => saf_unsupported(),
     }
@@ -47,10 +45,7 @@ pub struct CappedRead {
 /// fine for tools that always ask the user first. This one exists for the tools
 /// that may skip the prompt: whatever the handle was confirmed to be is what
 /// gets read.
-pub async fn read_capped_opened(
-    target: super::OpenedTarget,
-    max_bytes: usize,
-) -> Result<CappedRead, String> {
+pub async fn read_capped_opened(target: super::OpenedTarget, max_bytes: usize) -> Result<CappedRead, String> {
     match target {
         super::OpenedTarget::Real(vf) => {
             let (mut file, real) = vf.into_parts();
@@ -64,7 +59,11 @@ pub async fn read_capped_opened(
                     .map_err(|e| format!("failed to read '{}': {}", real.display(), e))?;
                 let truncated = total_size.is_some_and(|s| s > read as u64);
                 match String::from_utf8(buf) {
-                    Ok(content) => Ok(CappedRead { content, truncated, total_size }),
+                    Ok(content) => Ok(CappedRead {
+                        content,
+                        truncated,
+                        total_size,
+                    }),
                     // A cap can land mid-character; that is a truncation
                     // artefact, not a binary file.
                     Err(e) => {
@@ -75,18 +74,12 @@ pub async fn read_capped_opened(
                                 truncated,
                                 total_size,
                             }),
-                            Err(u) if truncated && u.error_len().is_none() && u.valid_up_to() > 0 => {
-                                Ok(CappedRead {
-                                    content: String::from_utf8_lossy(&bytes[..u.valid_up_to()])
-                                        .into_owned(),
-                                    truncated,
-                                    total_size,
-                                })
-                            }
-                            Err(_) => Err(format!(
-                                "'{}' is not valid UTF-8 (binary file?)",
-                                real.display()
-                            )),
+                            Err(u) if truncated && u.error_len().is_none() && u.valid_up_to() > 0 => Ok(CappedRead {
+                                content: String::from_utf8_lossy(&bytes[..u.valid_up_to()]).into_owned(),
+                                truncated,
+                                total_size,
+                            }),
+                            Err(_) => Err(format!("'{}' is not valid UTF-8 (binary file?)", real.display())),
                         }
                     }
                 }
@@ -99,7 +92,11 @@ pub async fn read_capped_opened(
             let r = crate::android_bridge::saf_read(&tree_uri, &rel, max_bytes as i64)
                 .await
                 .map_err(|e| format!("'{display}': {e}"))?;
-            Ok(CappedRead { content: r.content, truncated: r.truncated, total_size: r.size })
+            Ok(CappedRead {
+                content: r.content,
+                truncated: r.truncated,
+                total_size: r.size,
+            })
         }
         #[cfg(not(target_os = "android"))]
         super::OpenedTarget::Saf { .. } => saf_unsupported(),
@@ -132,14 +129,18 @@ where
 
             let updated = transform(&content)?;
 
-            f.set_len(0).await.map_err(|e| format!("failed to truncate '{}': {}", real.display(), e))?;
+            f.set_len(0)
+                .await
+                .map_err(|e| format!("failed to truncate '{}': {}", real.display(), e))?;
             f.seek(std::io::SeekFrom::Start(0))
                 .await
                 .map_err(|e| format!("failed to rewind '{}': {}", real.display(), e))?;
             f.write_all(updated.as_bytes())
                 .await
                 .map_err(|e| format!("failed to write '{}': {}", real.display(), e))?;
-            f.flush().await.map_err(|e| format!("failed to flush '{}': {}", real.display(), e))
+            f.flush()
+                .await
+                .map_err(|e| format!("failed to flush '{}': {}", real.display(), e))
         }
         #[cfg(target_os = "android")]
         super::OpenedTarget::Saf { tree_uri, rel, display } => {
@@ -165,12 +166,14 @@ pub async fn write_opened(target: super::OpenedTarget, content: &str) -> Result<
             let content = content.to_string();
             tokio::task::spawn_blocking(move || {
                 use std::io::{Seek, SeekFrom, Write};
-                file.set_len(0).map_err(|e| format!("failed to truncate '{}': {}", real.display(), e))?;
+                file.set_len(0)
+                    .map_err(|e| format!("failed to truncate '{}': {}", real.display(), e))?;
                 file.seek(SeekFrom::Start(0))
                     .map_err(|e| format!("failed to rewind '{}': {}", real.display(), e))?;
                 file.write_all(content.as_bytes())
                     .map_err(|e| format!("failed to write '{}': {}", real.display(), e))?;
-                file.flush().map_err(|e| format!("failed to flush '{}': {}", real.display(), e))
+                file.flush()
+                    .map_err(|e| format!("failed to flush '{}': {}", real.display(), e))
             })
             .await
             .map_err(|e| format!("task failed: {e}"))?
@@ -200,10 +203,9 @@ pub async fn write_string(target: &ResolvedTarget, content: &str) -> Result<(), 
                 .map_err(|e| format!("failed to write file '{}': {}", path.display(), e))
         }
         #[cfg(target_os = "android")]
-        ResolvedTarget::Saf { tree_uri, rel, display } => {
-            crate::android_bridge::saf_write(tree_uri, rel, content).await
-                .map_err(|e| format!("'{}': {}", display, e))
-        }
+        ResolvedTarget::Saf { tree_uri, rel, display } => crate::android_bridge::saf_write(tree_uri, rel, content)
+            .await
+            .map_err(|e| format!("'{}': {}", display, e)),
         #[cfg(not(target_os = "android"))]
         ResolvedTarget::Saf { .. } => saf_unsupported(),
     }
@@ -219,14 +221,12 @@ pub async fn list_dir(target: &ResolvedTarget) -> Result<Vec<DirEntry>, String> 
                 let mut result = Vec::new();
                 for entry in entries {
                     let entry = entry.map_err(|e| format!("failed to read entry: {e}"))?;
-                    let metadata = entry
-                        .metadata()
-                        .map_err(|e| format!("failed to read metadata: {e}"))?;
+                    let metadata = entry.metadata().map_err(|e| format!("failed to read metadata: {e}"))?;
                     result.push(DirEntry {
                         name: entry.file_name().to_string_lossy().to_string(),
                         is_dir: metadata.is_dir(),
                         is_symlink: metadata.is_symlink(),
-                        size: metadata.is_file().then(|| metadata.len()),
+                        size: metadata.is_file().then_some(metadata.len()),
                     });
                 }
                 Ok(result)
@@ -235,10 +235,9 @@ pub async fn list_dir(target: &ResolvedTarget) -> Result<Vec<DirEntry>, String> 
             .map_err(|e| format!("task failed: {e}"))?
         }
         #[cfg(target_os = "android")]
-        ResolvedTarget::Saf { tree_uri, rel, display } => {
-            crate::android_bridge::saf_list(tree_uri, rel).await
-                .map_err(|e| format!("'{}': {}", display, e))
-        }
+        ResolvedTarget::Saf { tree_uri, rel, display } => crate::android_bridge::saf_list(tree_uri, rel)
+            .await
+            .map_err(|e| format!("'{}': {}", display, e)),
         #[cfg(not(target_os = "android"))]
         ResolvedTarget::Saf { .. } => saf_unsupported(),
     }
@@ -273,10 +272,9 @@ pub async fn delete(target: &ResolvedTarget, recursive: bool) -> Result<(), Stri
             }
         }
         #[cfg(target_os = "android")]
-        ResolvedTarget::Saf { tree_uri, rel, display } => {
-            crate::android_bridge::saf_delete(tree_uri, rel, recursive).await
-                .map_err(|e| format!("'{}': {}", display, e))
-        }
+        ResolvedTarget::Saf { tree_uri, rel, display } => crate::android_bridge::saf_delete(tree_uri, rel, recursive)
+            .await
+            .map_err(|e| format!("'{}': {}", display, e)),
         #[cfg(not(target_os = "android"))]
         ResolvedTarget::Saf { .. } => saf_unsupported(),
     }
@@ -299,12 +297,12 @@ pub async fn rename(from: &ResolvedTarget, to: &ResolvedTarget) -> Result<(), St
                         .await
                         .map_err(|e| format!("cannot access '{}': {}", src.display(), e))?;
                     if meta.is_file() {
-                        tokio::fs::copy(src, dst).await.map_err(|e| {
-                            format!("failed to move '{}' to '{}': {}", src.display(), dst.display(), e)
-                        })?;
-                        tokio::fs::remove_file(src).await.map_err(|e| {
-                            format!("moved but failed to remove source '{}': {}", src.display(), e)
-                        })
+                        tokio::fs::copy(src, dst)
+                            .await
+                            .map_err(|e| format!("failed to move '{}' to '{}': {}", src.display(), dst.display(), e))?;
+                        tokio::fs::remove_file(src)
+                            .await
+                            .map_err(|e| format!("moved but failed to remove source '{}': {}", src.display(), e))
                     } else {
                         Err(format!(
                             "failed to move '{}' to '{}': {}",
@@ -318,25 +316,30 @@ pub async fn rename(from: &ResolvedTarget, to: &ResolvedTarget) -> Result<(), St
         }
         #[cfg(target_os = "android")]
         (
-            ResolvedTarget::Saf { tree_uri: from_tree, rel: from_rel, display: from_display },
-            ResolvedTarget::Saf { tree_uri: to_tree, rel: to_rel, display: _to_display },
+            ResolvedTarget::Saf {
+                tree_uri: from_tree,
+                rel: from_rel,
+                display: from_display,
+            },
+            ResolvedTarget::Saf {
+                tree_uri: to_tree,
+                rel: to_rel,
+                display: _to_display,
+            },
         ) => {
             if from_tree != to_tree {
-                return Err(
-                    "moving between different SAF directories is not supported; \
+                return Err("moving between different SAF directories is not supported; \
                      enable 'All files access' in Settings for cross-directory moves"
-                        .to_string(),
-                );
+                    .to_string());
             }
-            crate::android_bridge::saf_rename(from_tree, from_rel, to_rel).await
+            crate::android_bridge::saf_rename(from_tree, from_rel, to_rel)
+                .await
                 .map_err(|e| format!("'{}': {}", from_display, e))
         }
         #[cfg(target_os = "android")]
-        _ => Err(
-            "moving between a SAF directory and a regular path is not supported; \
+        _ => Err("moving between a SAF directory and a regular path is not supported; \
              enable 'All files access' in Settings for cross-location moves"
-                .to_string(),
-        ),
+            .to_string()),
         #[cfg(not(target_os = "android"))]
         _ => saf_unsupported(),
     }

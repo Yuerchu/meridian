@@ -12,7 +12,7 @@
 //! all.
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{Arc, mpsc};
 use std::time::Instant;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
@@ -110,9 +110,7 @@ fn capture_thread(
     let collecting_cb = collecting.clone();
     let stream_setup = (|| {
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or("No microphone found".to_string())?;
+        let device = host.default_input_device().ok_or("No microphone found".to_string())?;
         let config = device
             .default_input_config()
             .map_err(|e| format!("Cannot read microphone config: {e}"))?;
@@ -138,9 +136,7 @@ fn capture_thread(
                 None,
             )
             .map_err(|e| format!("Cannot open microphone: {e}"))?;
-        stream
-            .play()
-            .map_err(|e| format!("Cannot start recording: {e}"))?;
+        stream.play().map_err(|e| format!("Cannot start recording: {e}"))?;
 
         Ok::<_, String>((stream, samples_rx, sample_rate))
     })();

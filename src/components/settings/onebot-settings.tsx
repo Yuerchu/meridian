@@ -28,8 +28,12 @@ interface OneBotStatus {
 export function OneBotSettings() {
   const { t } = useTranslation()
   const [config, setConfig] = useState<OneBotConfig>({
-    enabled: false, host: '127.0.0.1', port: 6700,
-    access_token: null, assistant_id: null, admin_users: [],
+    enabled: false,
+    host: '127.0.0.1',
+    port: 6700,
+    access_token: null,
+    assistant_id: null,
+    admin_users: [],
     ack_emoji_id: '76',
   })
   const [status, setStatus] = useState<OneBotStatus | null>(null)
@@ -41,11 +45,7 @@ export function OneBotSettings() {
 
   const loadData = useCallback(async () => {
     try {
-      const [cfg, sts, assts] = await Promise.all([
-        api.getOneBotConfig(),
-        api.getOneBotStatus(),
-        api.listAssistants(),
-      ])
+      const [cfg, sts, assts] = await Promise.all([api.getOneBotConfig(), api.getOneBotStatus(), api.listAssistants()])
       setConfig(cfg)
       setStatus(sts)
       setAssistants(assts)
@@ -55,7 +55,9 @@ export function OneBotSettings() {
     }
   }, [])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -75,8 +77,8 @@ export function OneBotSettings() {
     try {
       const adminUsers = adminInput
         .split(/[,，\s]+/)
-        .map(s => parseInt(s.trim(), 10))
-        .filter(n => !isNaN(n) && n > 0)
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => !isNaN(n) && n > 0)
 
       const newConfig = { ...config, admin_users: adminUsers }
       await api.saveOneBotConfig(newConfig)
@@ -141,9 +143,7 @@ export function OneBotSettings() {
           <label htmlFor="onebot-enabled" className="text-sm font-medium cursor-pointer">
             {t('settings.onebot.enable')}
           </label>
-          <p className="text-xs text-muted">
-            {t('settings.onebot.enableHint')}
-          </p>
+          <p className="text-xs text-muted">{t('settings.onebot.enableHint')}</p>
         </div>
       </div>
 
@@ -162,7 +162,9 @@ export function OneBotSettings() {
             min={1}
             max={65535}
             value={config.port}
-            onChange={(e) => setConfig({ ...config, port: Math.min(65535, Math.max(1, parseInt(e.target.value, 10) || 6700)) })}
+            onChange={(e) =>
+              setConfig({ ...config, port: Math.min(65535, Math.max(1, parseInt(e.target.value, 10) || 6700)) })
+            }
             placeholder="6700"
           />
         </TextField>
@@ -188,11 +190,7 @@ export function OneBotSettings() {
 
       <TextField fullWidth>
         <Label>{t('settings.onebot.adminUsers')}</Label>
-        <Input
-          value={adminInput}
-          onChange={(e) => setAdminInput(e.target.value)}
-          placeholder="12345, 67890"
-        />
+        <Input value={adminInput} onChange={(e) => setAdminInput(e.target.value)} placeholder="12345, 67890" />
         <Description>{t('settings.onebot.adminUsersHint')}</Description>
       </TextField>
 
@@ -206,9 +204,7 @@ export function OneBotSettings() {
         <Description>{t('settings.onebot.ackEmojiHint')}</Description>
       </TextField>
 
-      {error && (
-        <p className="text-xs text-danger break-all">{error}</p>
-      )}
+      {error && <p className="text-xs text-danger break-all">{error}</p>}
 
       <div className="flex items-center gap-3 pt-2">
         <Button variant="outline" onClick={handleSave} isDisabled={saving}>
@@ -219,9 +215,7 @@ export function OneBotSettings() {
             {t('settings.onebot.stop')}
           </Button>
         ) : (
-          <Button onClick={handleStart}>
-            {t('settings.onebot.start')}
-          </Button>
+          <Button onClick={handleStart}>{t('settings.onebot.start')}</Button>
         )}
       </div>
 

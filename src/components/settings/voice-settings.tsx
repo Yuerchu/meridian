@@ -129,9 +129,7 @@ export function VoiceSettings() {
       <SettingsHeader title={t('settings.voice.title')} subtitle={t('settings.voice.intro')} />
 
       <div className="space-y-1.5">
-        <p className="block text-xs font-medium text-muted">
-          {t('settings.voice.model')}
-        </p>
+        <p className="block text-xs font-medium text-muted">{t('settings.voice.model')}</p>
         <Card>
           {status?.installed ? (
             <div className="flex items-center justify-between gap-2">

@@ -1,5 +1,5 @@
-use async_trait::async_trait;
 use super::{Permission, ResolvedTarget, Tool, ToolContext};
+use async_trait::async_trait;
 
 pub struct DeleteFileTool;
 
@@ -37,9 +37,7 @@ impl Tool for DeleteFileTool {
     }
 
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
-        let path_str = args["path"]
-            .as_str()
-            .ok_or("missing 'path' argument")?;
+        let path_str = args["path"].as_str().ok_or("missing 'path' argument")?;
         let recursive = args["recursive"].as_bool().unwrap_or(false);
 
         // A guard firing is a near miss worth recording: it says what the model
@@ -66,19 +64,14 @@ impl Tool for DeleteFileTool {
         if let ResolvedTarget::Real(ref p) = target {
             if p.parent().is_none() {
                 refused("filesystem_root");
-                return Err(format!(
-                    "refusing to delete '{path_str}': it is a filesystem root"
-                ));
+                return Err(format!("refusing to delete '{path_str}': it is a filesystem root"));
             }
             if let Some(ref wd) = context.working_directory {
-                let wd_canonical =
-                    std::fs::canonicalize(wd).unwrap_or_else(|_| std::path::PathBuf::from(wd));
+                let wd_canonical = std::fs::canonicalize(wd).unwrap_or_else(|_| std::path::PathBuf::from(wd));
                 let target_canonical = std::fs::canonicalize(p).unwrap_or_else(|_| p.clone());
                 if target_canonical == wd_canonical {
                     refused("project_directory");
-                    return Err(format!(
-                        "refusing to delete '{path_str}': it is the project directory"
-                    ));
+                    return Err(format!("refusing to delete '{path_str}': it is the project directory"));
                 }
             }
         }
@@ -103,7 +96,6 @@ mod tests {
             conversation_id: None,
             assistant_id: None,
             db_pool: None,
-            edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),
@@ -150,7 +142,10 @@ mod tests {
         let c = ctx(dir.path());
 
         let result = DeleteFileTool
-            .execute(serde_json::json!({"path": dir.path().to_string_lossy(), "recursive": true}), &c)
+            .execute(
+                serde_json::json!({"path": dir.path().to_string_lossy(), "recursive": true}),
+                &c,
+            )
             .await;
         assert!(result.is_err());
         assert!(dir.path().exists());
@@ -175,7 +170,6 @@ mod tests {
             conversation_id: None,
             assistant_id: None,
             db_pool: None,
-            edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),

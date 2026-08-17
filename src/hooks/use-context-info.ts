@@ -41,21 +41,27 @@ export function useContextInfo(
   useEffect(() => {
     let cancelled = false
     const timer = setTimeout(() => {
-      api.getContextInfo(conversationId).then((info) => {
-        if (cancelled) return
-        setContextInfo({
-          messageCount: info.message_count,
-          estimatedTokens: info.estimated_tokens,
-          contextLimit: info.context_limit,
-          autoCompactEnabled: info.auto_compact_enabled,
-          autoCompactThreshold: info.compact_threshold,
-          compactBreaker: info.circuit_breaker_state,
-          model: info.model,
-          agentKind: info.agent_kind,
+      api
+        .getContextInfo(conversationId)
+        .then((info) => {
+          if (cancelled) return
+          setContextInfo({
+            messageCount: info.message_count,
+            estimatedTokens: info.estimated_tokens,
+            contextLimit: info.context_limit,
+            autoCompactEnabled: info.auto_compact_enabled,
+            autoCompactThreshold: info.compact_threshold,
+            compactBreaker: info.circuit_breaker_state,
+            model: info.model,
+            agentKind: info.agent_kind,
+          })
         })
-      }).catch(() => {})
+        .catch(() => {})
     }, 100)
-    return () => { cancelled = true; clearTimeout(timer) }
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
     // `compacting` is in here for its falling edge. A pass that ran mid-turn
     // changes nothing on disk, so nothing else in this list moves — but it is
     // also where the circuit breaker opens, and a breaker that opened without

@@ -56,39 +56,42 @@ export function useConversationActions(args: {
   const { t } = useTranslation()
   const { onTogglePin, onRequestRename, onRequestDelete } = args
 
-  return useCallback((conversation: Conversation) => [
-    {
-      key: 'pin',
-      icon: conversation.is_pinned ? PinSlash : Pin,
-      label: conversation.is_pinned ? t('contextMenu.unpin') : t('contextMenu.pin'),
-      run: () => onTogglePin(conversation.id),
-    },
-    {
-      key: 'rename',
-      icon: Pencil,
-      label: t('contextMenu.rename'),
-      run: () => onRequestRename(conversation.id),
-    },
-    {
-      key: 'export-sft',
-      icon: ArrowDownToLine,
-      label: t('sidebar.exportSft'),
-      run: () => exportConversation(conversation, 'sft'),
-    },
-    {
-      key: 'export-dpo',
-      icon: ArrowDownToLine,
-      label: t('sidebar.exportDpo'),
-      run: () => exportConversation(conversation, 'dpo'),
-    },
-    {
-      key: 'delete',
-      icon: TrashBin,
-      label: t('chat.delete'),
-      variant: 'destructive',
-      run: () => onRequestDelete(conversation.id),
-    },
-  ], [t, onTogglePin, onRequestRename, onRequestDelete])
+  return useCallback(
+    (conversation: Conversation) => [
+      {
+        key: 'pin',
+        icon: conversation.is_pinned ? PinSlash : Pin,
+        label: conversation.is_pinned ? t('contextMenu.unpin') : t('contextMenu.pin'),
+        run: () => onTogglePin(conversation.id),
+      },
+      {
+        key: 'rename',
+        icon: Pencil,
+        label: t('contextMenu.rename'),
+        run: () => onRequestRename(conversation.id),
+      },
+      {
+        key: 'export-sft',
+        icon: ArrowDownToLine,
+        label: t('sidebar.exportSft'),
+        run: () => exportConversation(conversation, 'sft'),
+      },
+      {
+        key: 'export-dpo',
+        icon: ArrowDownToLine,
+        label: t('sidebar.exportDpo'),
+        run: () => exportConversation(conversation, 'dpo'),
+      },
+      {
+        key: 'delete',
+        icon: TrashBin,
+        label: t('chat.delete'),
+        variant: 'destructive',
+        run: () => onRequestDelete(conversation.id),
+      },
+    ],
+    [t, onTogglePin, onRequestRename, onRequestDelete],
+  )
 }
 
 /** Same shape as {@link useConversationActions}, and for the same reason. */
@@ -99,19 +102,22 @@ export function useProjectActions(args: {
   const { t } = useTranslation()
   const { onRequestRename, onRequestDelete } = args
 
-  return useCallback((project: Project) => [
-    {
-      key: 'rename',
-      icon: Pencil,
-      label: t('contextMenu.rename'),
-      run: () => onRequestRename(project.id),
-    },
-    {
-      key: 'delete',
-      icon: TrashBin,
-      label: t('chat.delete'),
-      variant: 'destructive',
-      run: () => onRequestDelete(project.id),
-    },
-  ], [t, onRequestRename, onRequestDelete])
+  return useCallback(
+    (project: Project) => [
+      {
+        key: 'rename',
+        icon: Pencil,
+        label: t('contextMenu.rename'),
+        run: () => onRequestRename(project.id),
+      },
+      {
+        key: 'delete',
+        icon: TrashBin,
+        label: t('chat.delete'),
+        variant: 'destructive',
+        run: () => onRequestDelete(project.id),
+      },
+    ],
+    [t, onRequestRename, onRequestDelete],
+  )
 }

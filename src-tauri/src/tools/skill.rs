@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 use super::{Permission, Tool, ToolContext};
 use crate::agent::skills;
@@ -71,19 +71,18 @@ impl Tool for LoadSkillTool {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty());
 
-        let pool = context.db_pool.clone().ok_or("Skills are unavailable without a database")?;
+        let pool = context
+            .db_pool
+            .clone()
+            .ok_or("Skills are unavailable without a database")?;
         let project_id = context.project_id.clone();
         let assistant_id = context.assistant_id.clone();
 
         let wanted = skill_name.clone();
         let available = tokio::task::spawn_blocking(move || {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
-            crate::db::ops::skill_binding::resolve_available(
-                &mut conn,
-                project_id.as_deref(),
-                assistant_id.as_deref(),
-            )
-            .map_err(|e| e.to_string())
+            crate::db::ops::skill_binding::resolve_available(&mut conn, project_id.as_deref(), assistant_id.as_deref())
+                .map_err(|e| e.to_string())
         })
         .await
         .map_err(|e| e.to_string())??;
@@ -92,8 +91,7 @@ impl Tool for LoadSkillTool {
         let skill = match matches.len() {
             1 => matches[0],
             0 => {
-                let mut names: Vec<&str> =
-                    available.iter().map(|s| s.llm_name.as_str()).collect();
+                let mut names: Vec<&str> = available.iter().map(|s| s.llm_name.as_str()).collect();
                 names.sort_unstable();
                 names.dedup();
                 return Err(if names.is_empty() {
@@ -129,9 +127,7 @@ impl Tool for LoadSkillTool {
 
         let mut out = format!("# Skill: {}\n\n{}", skill.llm_name, body.trim());
         if !resources.is_empty() {
-            out.push_str(
-                "\n\n## Bundled resources\n\nRead one with load_skill(skill_name, path):\n",
-            );
+            out.push_str("\n\n## Bundled resources\n\nRead one with load_skill(skill_name, path):\n");
             for r in resources {
                 out.push_str(&format!("- {r}\n"));
             }
@@ -145,7 +141,7 @@ mod tests {
     use super::*;
     use crate::db::models::skill::NewSkill;
     use crate::db::models::skill_binding::SkillLayer;
-    use crate::db::{test_db, DbPool};
+    use crate::db::{DbPool, test_db};
     use crate::tools::{FileAccess, ShellType};
     use std::path::Path;
 
@@ -161,19 +157,22 @@ mod tests {
 
     fn index_and_bind(pool: &DbPool, dir: &str, name: &str) {
         let mut conn = pool.get().unwrap();
-        crate::db::ops::skill::upsert_skill(&mut conn, &NewSkill {
-            dir_name: dir,
-            llm_name: name,
-            llm_description: "Test skill",
-            display_name: dir,
-            display_description: None,
-            source: "user",
-            is_enabled: 1,
-            is_builtin: 0,
-            mtime_hash: None,
-            created_at: 1,
-            updated_at: 1,
-        })
+        crate::db::ops::skill::upsert_skill(
+            &mut conn,
+            &NewSkill {
+                dir_name: dir,
+                llm_name: name,
+                llm_description: "Test skill",
+                display_name: dir,
+                display_description: None,
+                source: "user",
+                is_enabled: 1,
+                is_builtin: 0,
+                mtime_hash: None,
+                created_at: 1,
+                updated_at: 1,
+            },
+        )
         .unwrap();
         crate::db::ops::skill_binding::bind(&mut conn, SkillLayer::Global, None, dir).unwrap();
     }
@@ -187,7 +186,6 @@ mod tests {
             conversation_id: None,
             assistant_id: None,
             db_pool: Some(pool),
-            edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
             tool_secrets: std::collections::HashMap::new(),
@@ -246,19 +244,22 @@ mod tests {
         index_and_bind(&pool, "bound", "bound");
         // Indexed but never bound.
         let mut conn = pool.get().unwrap();
-        crate::db::ops::skill::upsert_skill(&mut conn, &NewSkill {
-            dir_name: "unbound",
-            llm_name: "unbound",
-            llm_description: "d",
-            display_name: "unbound",
-            display_description: None,
-            source: "user",
-            is_enabled: 1,
-            is_builtin: 0,
-            mtime_hash: None,
-            created_at: 1,
-            updated_at: 1,
-        })
+        crate::db::ops::skill::upsert_skill(
+            &mut conn,
+            &NewSkill {
+                dir_name: "unbound",
+                llm_name: "unbound",
+                llm_description: "d",
+                display_name: "unbound",
+                display_description: None,
+                source: "user",
+                is_enabled: 1,
+                is_builtin: 0,
+                mtime_hash: None,
+                created_at: 1,
+                updated_at: 1,
+            },
+        )
         .unwrap();
         drop(conn);
 

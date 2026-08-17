@@ -65,10 +65,7 @@ fn file_editing_section(has: &dyn Fn(&str) -> bool) -> String {
          the same call with identical arguments."
             .to_string(),
     );
-    lines.push(
-        "- Make the smallest change that fulfills the request; do not refactor unrelated code."
-            .to_string(),
-    );
+    lines.push("- Make the smallest change that fulfills the request; do not refactor unrelated code.".to_string());
     lines.join("\n")
 }
 

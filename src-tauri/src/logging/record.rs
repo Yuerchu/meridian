@@ -56,7 +56,8 @@ pub(crate) struct JsonVisitor {
 
 impl JsonVisitor {
     fn put(&mut self, field: &Field, value: Value) {
-        self.fields.insert(field.name().to_string(), redact::scrub_field(field.name(), value));
+        self.fields
+            .insert(field.name().to_string(), redact::scrub_field(field.name(), value));
     }
 }
 

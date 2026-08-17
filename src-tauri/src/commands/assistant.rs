@@ -3,7 +3,7 @@ use tauri::Manager;
 use crate::db;
 use crate::db::models::assistant::{Assistant, AssistantUpdate, NewAssistant};
 use crate::state::AppDb;
-use crate::util::{double_option, get_conn, now_ms};
+use crate::util::{double_option, now_ms};
 
 #[tauri::command]
 pub async fn list_assistants(app: tauri::AppHandle) -> Result<Vec<Assistant>, String> {
@@ -11,7 +11,9 @@ pub async fn list_assistants(app: tauri::AppHandle) -> Result<Vec<Assistant>, St
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::assistant::list_assistants(&mut conn).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -53,7 +55,9 @@ pub async fn create_assistant(
             auto_compact_enabled: 0,
         };
         db::ops::assistant::create_assistant(&mut conn, &new).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -79,11 +83,7 @@ pub struct AssistantPatch {
 }
 
 #[tauri::command]
-pub async fn update_assistant(
-    app: tauri::AppHandle,
-    id: String,
-    updates: AssistantPatch,
-) -> Result<Assistant, String> {
+pub async fn update_assistant(app: tauri::AppHandle, id: String, updates: AssistantPatch) -> Result<Assistant, String> {
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
@@ -103,7 +103,9 @@ pub async fn update_assistant(
             ..Default::default()
         };
         db::ops::assistant::update_assistant(&mut conn, &id, &changeset).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -112,5 +114,7 @@ pub async fn delete_assistant(app: tauri::AppHandle, id: String) -> Result<(), S
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::assistant::delete_assistant(&mut conn, &id).map_err(|e| e.to_string())
-    }).await.map_err(|e| e.to_string())?
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }

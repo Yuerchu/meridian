@@ -25,11 +25,8 @@ pub struct SafRootEntry {
 async fn load_saf_roots(pool: &crate::db::DbPool) -> Result<Vec<SafRootEntry>, String> {
     let pool = pool.clone();
     let json = tokio::task::spawn_blocking(move || {
-        let mut conn = pool
-            .get()
-            .map_err(|e| format!("db connection error: {e}"))?;
-        crate::db::ops::preference::get_preference(&mut conn, "android.saf_roots")
-            .map_err(|e| e.to_string())
+        let mut conn = pool.get().map_err(|e| format!("db connection error: {e}"))?;
+        crate::db::ops::preference::get_preference(&mut conn, "android.saf_roots").map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -44,16 +41,9 @@ async fn save_saf_roots(pool: &crate::db::DbPool, roots: &[SafRootEntry]) -> Res
     let pool = pool.clone();
     let json = serde_json::to_string(roots).map_err(|e| e.to_string())?;
     tokio::task::spawn_blocking(move || {
-        let mut conn = pool
-            .get()
-            .map_err(|e| format!("db connection error: {e}"))?;
-        crate::db::ops::preference::set_preference(
-            &mut conn,
-            "android.saf_roots",
-            &json,
-            crate::util::now_ms(),
-        )
-        .map_err(|e| e.to_string())
+        let mut conn = pool.get().map_err(|e| format!("db connection error: {e}"))?;
+        crate::db::ops::preference::set_preference(&mut conn, "android.saf_roots", &json, crate::util::now_ms())
+            .map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -145,7 +135,11 @@ pub async fn pick_saf_directory(app: tauri::AppHandle) -> Result<Vec<SafRootEntr
             n += 1;
         }
 
-        roots.push(SafRootEntry { uri, display_name, virtual_prefix: prefix });
+        roots.push(SafRootEntry {
+            uri,
+            display_name,
+            virtual_prefix: prefix,
+        });
         save_saf_roots(&pool, &roots).await?;
         Ok(roots)
     }

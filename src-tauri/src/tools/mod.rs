@@ -10,8 +10,8 @@ pub mod list_directory;
 pub mod memory;
 pub mod move_file;
 pub mod plan;
-pub mod read_file;
 pub mod reach;
+pub mod read_file;
 #[cfg(not(target_os = "android"))]
 pub mod run_command;
 pub mod search_files;
@@ -49,7 +49,6 @@ pub struct ToolContext {
     /// are anchored on the assistant as well as the project.
     pub assistant_id: Option<String>,
     pub db_pool: Option<crate::db::DbPool>,
-    pub edit_session: Option<Arc<tokio::sync::Mutex<crate::edit_session::EditSession>>>,
     #[cfg(not(target_os = "android"))]
     pub sandbox_policy: Option<crate::sandbox::SandboxPolicy>,
     pub tool_secrets: HashMap<String, String>,
@@ -89,6 +88,9 @@ pub struct AccessRoot {
     pub kind: RootKind,
 }
 
+// Constructed only by `build_file_access`, which is Android-gated; the desktop
+// build still matches on them, so the types themselves stay unconditional.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 #[derive(Debug, Clone)]
 pub enum RootKind {
     /// Directly accessible filesystem path (MANAGE_EXTERNAL_STORAGE mode).
@@ -98,10 +100,15 @@ pub enum RootKind {
 }
 
 /// A validated, resolved file target ready for I/O dispatch.
+#[cfg_attr(not(target_os = "android"), allow(dead_code))]
 #[derive(Debug, Clone, PartialEq)]
 pub enum ResolvedTarget {
     Real(PathBuf),
-    Saf { tree_uri: String, rel: String, display: String },
+    Saf {
+        tree_uri: String,
+        rel: String,
+        display: String,
+    },
 }
 
 /// A target that is not merely validated but *open*, with the check applied to
@@ -115,7 +122,12 @@ pub enum ResolvedTarget {
 #[derive(Debug)]
 pub enum OpenedTarget {
     Real(verified::VerifiedFile),
-    Saf { tree_uri: String, rel: String, display: String },
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    Saf {
+        tree_uri: String,
+        rel: String,
+        display: String,
+    },
 }
 
 /// Lexically normalize a slash-separated path into segments, resolving "." and "..".
@@ -140,6 +152,9 @@ fn prefix_segments(prefix: &str) -> Vec<&str> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShellType {
+    /// Never the default and no preference names it; kept because `run_command`
+    /// still knows how to drive it.
+    #[allow(dead_code)]
     Cmd,
     PowerShell,
     Bash,
@@ -155,11 +170,9 @@ impl ShellType {
     }
 
     pub fn default_for_platform() -> Self {
-        if cfg!(target_os = "windows") {
-            Self::Bash
-        } else {
-            Self::Bash
-        }
+        // Windows included: Git Bash is assumed present, and the prompts the
+        // model sees are written for POSIX syntax on every platform.
+        Self::Bash
     }
 }
 
@@ -182,7 +195,9 @@ impl ToolContext {
     /// open plus one query, and caching it would mean a project directory that
     /// gets replaced mid-session keeps being compared against the old object.
     pub fn verified_root(&self) -> Result<Option<PathBuf>, String> {
-        let Some(ref wd) = self.working_directory else { return Ok(None) };
+        let Some(ref wd) = self.working_directory else {
+            return Ok(None);
+        };
         // A project directory that cannot be opened is a broken configuration,
         // not a traversal attempt; the message should say so rather than
         // blaming the file the model asked for.
@@ -227,8 +242,7 @@ impl ToolContext {
                 // Returns the path the OS confirmed, not the one that was asked
                 // for, so path-based I/O downstream operates on the spelling
                 // that was actually checked.
-                let real = verified::verify_path(&resolved, root.as_deref())
-                    .map_err(|e| e.message())?;
+                let real = verified::verify_path(&resolved, root.as_deref()).map_err(|e| e.message())?;
                 Ok(ResolvedTarget::Real(real))
             }
             FileAccess::Roots(roots) => {
@@ -247,7 +261,11 @@ impl ToolContext {
                 for root in roots {
                     let prefix = prefix_segments(&root.virtual_prefix);
                     if segs.len() >= prefix.len()
-                        && segs.iter().map(String::as_str).take(prefix.len()).eq(prefix.iter().copied())
+                        && segs
+                            .iter()
+                            .map(String::as_str)
+                            .take(prefix.len())
+                            .eq(prefix.iter().copied())
                     {
                         let rest = &segs[prefix.len()..];
                         return Ok(match &root.kind {
@@ -285,9 +303,7 @@ impl ToolContext {
                 let vf = verified::open_read(&p, root.as_deref()).map_err(|e| e.message())?;
                 Ok(OpenedTarget::Real(vf))
             }
-            ResolvedTarget::Saf { tree_uri, rel, display } => {
-                Ok(OpenedTarget::Saf { tree_uri, rel, display })
-            }
+            ResolvedTarget::Saf { tree_uri, rel, display } => Ok(OpenedTarget::Saf { tree_uri, rel, display }),
         }
     }
 
@@ -300,9 +316,7 @@ impl ToolContext {
                 let vf = verified::open_write(&p, root.as_deref()).map_err(|e| e.message())?;
                 Ok(OpenedTarget::Real(vf))
             }
-            ResolvedTarget::Saf { tree_uri, rel, display } => {
-                Ok(OpenedTarget::Saf { tree_uri, rel, display })
-            }
+            ResolvedTarget::Saf { tree_uri, rel, display } => Ok(OpenedTarget::Saf { tree_uri, rel, display }),
         }
     }
 
@@ -316,9 +330,7 @@ impl ToolContext {
                 let vf = verified::open_create_new(&p, root.as_deref()).map_err(|e| e.message())?;
                 Ok(OpenedTarget::Real(vf))
             }
-            ResolvedTarget::Saf { tree_uri, rel, display } => {
-                Ok(OpenedTarget::Saf { tree_uri, rel, display })
-            }
+            ResolvedTarget::Saf { tree_uri, rel, display } => Ok(OpenedTarget::Saf { tree_uri, rel, display }),
         }
     }
 
@@ -330,22 +342,19 @@ impl ToolContext {
                 let vf = verified::open_edit(&p, root.as_deref()).map_err(|e| e.message())?;
                 Ok(OpenedTarget::Real(vf))
             }
-            ResolvedTarget::Saf { tree_uri, rel, display } => {
-                Ok(OpenedTarget::Saf { tree_uri, rel, display })
-            }
+            ResolvedTarget::Saf { tree_uri, rel, display } => Ok(OpenedTarget::Saf { tree_uri, rel, display }),
         }
     }
 
     /// True if the path refers to an access root itself (used to protect roots from deletion/move).
     pub fn is_access_root(&self, path: &str) -> bool {
-        if let FileAccess::Roots(roots) = &self.file_access {
-            if let Some(segs) = normalize_segments(path) {
-                return roots.iter().any(|r| {
-                    let prefix = prefix_segments(&r.virtual_prefix);
-                    segs.len() == prefix.len()
-                        && segs.iter().map(String::as_str).eq(prefix.iter().copied())
-                });
-            }
+        if let FileAccess::Roots(roots) = &self.file_access
+            && let Some(segs) = normalize_segments(path)
+        {
+            return roots.iter().any(|r| {
+                let prefix = prefix_segments(&r.virtual_prefix);
+                segs.len() == prefix.len() && segs.iter().map(String::as_str).eq(prefix.iter().copied())
+            });
         }
         false
     }
@@ -444,7 +453,10 @@ impl ToolRegistry {
         ];
         #[cfg(not(target_os = "android"))]
         tools.push(Arc::new(run_command::RunCommandTool));
-        Self { builtin: tools, custom: std::sync::RwLock::new(Vec::new()) }
+        Self {
+            builtin: tools,
+            custom: std::sync::RwLock::new(Vec::new()),
+        }
     }
 
     /// Replace the set of user-defined tools. Called at startup and after every
@@ -487,7 +499,6 @@ mod tests {
             conversation_id: None,
             assistant_id: None,
             db_pool: None,
-            edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
             tool_secrets: HashMap::new(),
@@ -505,7 +516,9 @@ mod tests {
     fn saf_root(prefix: &str, uri: &str) -> AccessRoot {
         AccessRoot {
             virtual_prefix: prefix.to_string(),
-            kind: RootKind::SafTree { tree_uri: uri.to_string() },
+            kind: RootKind::SafTree {
+                tree_uri: uri.to_string(),
+            },
         }
     }
 
@@ -520,7 +533,6 @@ mod tests {
             conversation_id: None,
             assistant_id: None,
             db_pool: None,
-            edit_session: None,
             #[cfg(not(target_os = "android"))]
             sandbox_policy: None,
             tool_secrets: HashMap::new(),
@@ -541,7 +553,10 @@ mod tests {
         );
 
         // .. escaping the root prefix is rejected
-        assert!(ctx.resolve_and_validate("/storage/emulated/0/../../etc/passwd").is_err());
+        assert!(
+            ctx.resolve_and_validate("/storage/emulated/0/../../etc/passwd")
+                .is_err()
+        );
         // .. escaping the filesystem root entirely is rejected
         assert!(ctx.resolve_and_validate("/../etc/passwd").is_err());
         // relative paths are rejected in roots mode

@@ -100,25 +100,28 @@ impl Tool for WebSearchTool {
     }
 
     async fn execute(&self, args: serde_json::Value, context: &ToolContext) -> Result<String, String> {
-        let query = args["query"]
-            .as_str()
-            .ok_or("missing 'query' argument")?
-            .to_string();
+        let query = args["query"].as_str().ok_or("missing 'query' argument")?.to_string();
         let max_results = args["max_results"].as_u64().unwrap_or(5).min(20) as usize;
         let time_range = args["time_range"].as_str().map(|s| s.to_string());
 
-        let provider = context.tool_secrets.get("SEARCH_PROVIDER")
+        let provider = context
+            .tool_secrets
+            .get("SEARCH_PROVIDER")
             .map(|s| s.as_str())
             .unwrap_or("tavily");
 
         let sources = match provider {
             "zhipu" => {
-                let api_key = context.tool_secrets.get("SERVICE_ZHIPU_SEARCH_KEY")
+                let api_key = context
+                    .tool_secrets
+                    .get("SERVICE_ZHIPU_SEARCH_KEY")
                     .ok_or("Zhipu Web Search API key not configured. Please set it in Settings > General.")?;
                 search_zhipu(&self.client, api_key, &query, max_results, time_range.as_deref()).await?
             }
             _ => {
-                let api_key = context.tool_secrets.get("SERVICE_TAVILY_KEY")
+                let api_key = context
+                    .tool_secrets
+                    .get("SERVICE_TAVILY_KEY")
                     .ok_or("Tavily API key not configured. Please set it in Settings > General.")?;
                 search_tavily(&self.client, api_key, &query, max_results, time_range.as_deref()).await?
             }
@@ -128,7 +131,10 @@ impl Tool for WebSearchTool {
         for (i, src) in sources.iter().enumerate() {
             llm_text.push_str(&format!(
                 "[{}] {}\nURL: {}\n{}\n\n",
-                i + 1, src.title, src.url, src.content
+                i + 1,
+                src.title,
+                src.url,
+                src.content
             ));
         }
         if sources.is_empty() {
@@ -189,19 +195,23 @@ async fn search_tavily(
         return Err(format!("Tavily API error {status}: {text}"));
     }
 
-    let data: TavilyResponse = serde_json::from_slice(&body)
-        .map_err(|e| format!("failed to parse Tavily response: {e}"))?;
+    let data: TavilyResponse =
+        serde_json::from_slice(&body).map_err(|e| format!("failed to parse Tavily response: {e}"))?;
 
-    Ok(data.results.into_iter().map(|r| {
-        let site_name = extract_domain(&r.url);
-        SearchSource {
-            title: r.title,
-            url: r.url,
-            content: r.content,
-            favicon: r.favicon,
-            site_name,
-        }
-    }).collect())
+    Ok(data
+        .results
+        .into_iter()
+        .map(|r| {
+            let site_name = extract_domain(&r.url);
+            SearchSource {
+                title: r.title,
+                url: r.url,
+                content: r.content,
+                favicon: r.favicon,
+                site_name,
+            }
+        })
+        .collect())
 }
 
 // --- Zhipu Web Search ---
@@ -267,17 +277,21 @@ async fn search_zhipu(
         return Err(format!("Zhipu API error {status}: {text}"));
     }
 
-    let data: ZhipuResponse = serde_json::from_slice(&body)
-        .map_err(|e| format!("failed to parse Zhipu response: {e}"))?;
+    let data: ZhipuResponse =
+        serde_json::from_slice(&body).map_err(|e| format!("failed to parse Zhipu response: {e}"))?;
 
-    Ok(data.search_result.into_iter().map(|r| {
-        let site_name = r.media.or_else(|| extract_domain(&r.link));
-        SearchSource {
-            title: r.title,
-            url: r.link,
-            content: r.content,
-            favicon: r.icon,
-            site_name,
-        }
-    }).collect())
+    Ok(data
+        .search_result
+        .into_iter()
+        .map(|r| {
+            let site_name = r.media.or_else(|| extract_domain(&r.link));
+            SearchSource {
+                title: r.title,
+                url: r.link,
+                content: r.content,
+                favicon: r.icon,
+                site_name,
+            }
+        })
+        .collect())
 }

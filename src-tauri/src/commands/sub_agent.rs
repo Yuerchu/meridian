@@ -18,11 +18,11 @@ use crate::agent::engine::{self, Stranded, SubAgentReport, SubAgentSpec, SubAgen
 use crate::agent::sub_agents::SubAgentKind;
 use crate::agent::turn_record;
 use crate::db;
+use crate::db::DbPool;
 use crate::db::models::assistant::Assistant;
 use crate::db::models::conversation::NewConversation;
 use crate::db::models::message::NewMessage;
-use crate::db::models::turn::{TurnStatus, ERROR_LOOP_DETECTED};
-use crate::db::DbPool;
+use crate::db::models::turn::{ERROR_LOOP_DETECTED, TurnStatus};
 use crate::secrets::SecretsManager;
 use crate::state::{AppSubAgentInboxes, ApprovalWaiters, SubAgentInbox};
 use crate::tools::{self, ToolRegistry};
@@ -64,19 +64,13 @@ fn default_model_preference(kind: SubAgentKind) -> String {
 /// should not turn up in the transcript as though it had been received. The
 /// caller has it and can say so.
 #[tauri::command]
-pub async fn steer_conversation(
-    app: tauri::AppHandle,
-    conversation_id: String,
-    text: String,
-) -> Result<(), String> {
+pub async fn steer_conversation(app: tauri::AppHandle, conversation_id: String, text: String) -> Result<(), String> {
     if text.trim().is_empty() {
         return Err("There is nothing to send.".to_string());
     }
     match app.state::<AppSubAgentInboxes>().append(&conversation_id, text) {
         crate::state::Accept::Queued => Ok(()),
-        crate::state::Accept::Closed(_) => {
-            Err("This run has already finished, so it did not see that.".to_string())
-        }
+        crate::state::Accept::Closed(_) => Err("This run has already finished, so it did not see that.".to_string()),
     }
 }
 
@@ -199,9 +193,7 @@ impl DesktopSubAgents {
             SubAgentStatus::Done => (TurnStatus::Done, None),
             SubAgentStatus::Cancelled => (TurnStatus::Cancelled, None),
             SubAgentStatus::Aborted => (TurnStatus::Failed, Some(ERROR_LOOP_DETECTED.to_string())),
-            SubAgentStatus::Failed => {
-                (TurnStatus::Failed, outcome.reply.as_ref().err().cloned())
-            }
+            SubAgentStatus::Failed => (TurnStatus::Failed, outcome.reply.as_ref().err().cloned()),
         };
         turn_record::finish(&self.pool, &turn_id, stored, error.as_deref()).await;
 
@@ -209,11 +201,7 @@ impl DesktopSubAgents {
         // is what makes this the last word: nothing can be added after it, so
         // nothing can go missing between here and the report.
         let stranded = self
-            .persist_stranded(
-                &sub_conversation_id,
-                &turn_id,
-                outcome.progress.final_cursor.as_deref(),
-            )
+            .persist_stranded(&sub_conversation_id, &turn_id, outcome.progress.final_cursor.as_deref())
             .await;
 
         // Sent even when no assistant row was ever written. Anyone with the
@@ -252,14 +240,12 @@ impl DesktopSubAgents {
     /// ended on a tool call has that result as its last reachable row, and
     /// attaching here to the assistant row above it would open a branch that
     /// pushes the result off the active path.
-    async fn persist_stranded(
-        &self,
-        sub_conversation_id: &str,
-        turn_id: &str,
-        final_cursor: Option<&str>,
-    ) -> Stranded {
+    async fn persist_stranded(&self, sub_conversation_id: &str, turn_id: &str, final_cursor: Option<&str>) -> Stranded {
         let leftover = self.app.state::<AppSubAgentInboxes>().close(sub_conversation_id);
-        let mut stranded = Stranded { accepted: leftover.len(), unrecorded: 0 };
+        let mut stranded = Stranded {
+            accepted: leftover.len(),
+            unrecorded: 0,
+        };
         let mut cursor = final_cursor.map(str::to_string);
         for item in leftover {
             match engine::write_steering(
@@ -290,10 +276,7 @@ impl DesktopSubAgents {
     ///
     /// Three answers in order: what the caller named, what the user configured
     /// for this kind, and failing both, whatever the parent is using.
-    async fn resolve_model(
-        &self,
-        spec: &SubAgentSpec,
-    ) -> Result<(Assistant, crate::agent::TurnParams), String> {
+    async fn resolve_model(&self, spec: &SubAgentSpec) -> Result<(Assistant, crate::agent::TurnParams), String> {
         let base = self
             .assistant
             .clone()
@@ -311,9 +294,9 @@ impl DesktopSubAgents {
         let chosen = spec.model.clone().or(configured).filter(|s| !s.trim().is_empty());
         let (provider_id, model_id) = match chosen.as_deref() {
             Some(q) => {
-                let (p, m) = q.split_once(':').ok_or_else(|| {
-                    format!("`{q}` is not a model name. Use one of the values listed on `model`.")
-                })?;
+                let (p, m) = q
+                    .split_once(':')
+                    .ok_or_else(|| format!("`{q}` is not a model name. Use one of the values listed on `model`."))?;
                 (Some(p.to_string()), Some(m.to_string()))
             }
             None => (base.provider_id.clone(), base.model_id.clone()),
@@ -324,10 +307,7 @@ impl DesktopSubAgents {
         Ok((assistant, params))
     }
 
-    async fn resolve_params(
-        &self,
-        assistant: &Assistant,
-    ) -> Result<crate::agent::TurnParams, String> {
+    async fn resolve_params(&self, assistant: &Assistant) -> Result<crate::agent::TurnParams, String> {
         let pool = self.pool.clone();
         let secrets = self.secrets.clone();
         let configured_max = self.assistant.as_ref().and_then(|a| a.max_tokens);
@@ -384,10 +364,12 @@ impl DesktopSubAgents {
         let project_id = self.project_id.clone();
         let (message_id, prompt) = (uuid::Uuid::new_v4().to_string(), spec.prompt.clone());
         let (title, kind) = (spec.description.clone(), spec.kind.as_str());
-        let (parent_message_id, parent_call_id) =
-            (spec.parent_message_id.clone(), spec.parent_call_id.clone());
-        let (assistant_id, provider_id, model_id) =
-            (assistant.id.clone(), assistant.provider_id.clone(), assistant.model_id.clone());
+        let (parent_message_id, parent_call_id) = (spec.parent_message_id.clone(), spec.parent_call_id.clone());
+        let (assistant_id, provider_id, model_id) = (
+            assistant.id.clone(),
+            assistant.provider_id.clone(),
+            assistant.model_id.clone(),
+        );
         let returned = message_id.clone();
 
         tokio::task::spawn_blocking(move || {
@@ -527,7 +509,11 @@ impl DesktopSubAgents {
         };
 
         engine::run_turn(
-            &engine::TurnServices { pool: &self.pool, tools: &self.registry, mcp: &self.mcp },
+            &engine::TurnServices {
+                pool: &self.pool,
+                tools: &self.registry,
+                mcp: &self.mcp,
+            },
             engine::TurnSetup {
                 provider: &*provider.0,
                 params: turn_params.params.clone(),
@@ -673,8 +659,13 @@ fn effective_assistant(
     provider_id: Option<String>,
     model_id: Option<String>,
 ) -> Assistant {
-    let mut a =
-        Assistant { provider_id, model_id, context_limit: 0, max_tokens: None, ..base };
+    let mut a = Assistant {
+        provider_id,
+        model_id,
+        context_limit: 0,
+        max_tokens: None,
+        ..base
+    };
     if kind == SubAgentKind::Explore {
         a.tool_preset_id = None;
         a.enabled_tools = serde_json::to_string(EXPLORE_TOOLS).ok();
@@ -795,7 +786,7 @@ impl Drop for ChildTurnGuard {
 mod tests {
     use super::*;
     use crate::agent::modes::Modes;
-    use crate::agent::turn_config::{resolve, TurnConfigInput};
+    use crate::agent::turn_config::{TurnConfigInput, resolve};
     use crate::db::test_db;
 
     fn parent(preset: Option<&str>, enabled: Option<&str>) -> Assistant {
@@ -834,8 +825,7 @@ mod tests {
     fn config_for(child: Assistant) -> crate::agent::turn_config::TurnConfig {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        crate::db::ops::conversation::create_conversation(&mut conn, "sub-1", None, None, None, 1)
-            .unwrap();
+        crate::db::ops::conversation::create_conversation(&mut conn, "sub-1", None, None, None, 1).unwrap();
         resolve(
             &mut conn,
             &registry(),
@@ -910,7 +900,10 @@ mod tests {
     #[test]
     fn a_working_agent_inherits_the_assistants_tools() {
         let child = effective_assistant(parent(None, None), SubAgentKind::Agent, None, None);
-        assert!(child.enabled_tools.is_none(), "an unrestricted parent stays unrestricted");
+        assert!(
+            child.enabled_tools.is_none(),
+            "an unrestricted parent stays unrestricted"
+        );
 
         let offered = config_for(child).offered;
         assert!(offered.contains("write_file"), "it is the one that may change things");
@@ -931,7 +924,10 @@ mod tests {
             classify(
                 &engine::TurnOutcome {
                     reply,
-                    progress: engine::TurnProgress { aborted, ..Default::default() },
+                    progress: engine::TurnProgress {
+                        aborted,
+                        ..Default::default()
+                    },
                 },
                 &cancel,
             )
@@ -939,7 +935,10 @@ mod tests {
 
         assert_eq!(ended(Ok("done".into()), false, false), SubAgentStatus::Done);
         assert_eq!(ended(Ok("half".into()), false, true), SubAgentStatus::Cancelled);
-        assert_eq!(ended(Ok("round and round".into()), true, false), SubAgentStatus::Aborted);
+        assert_eq!(
+            ended(Ok("round and round".into()), true, false),
+            SubAgentStatus::Aborted
+        );
         assert_eq!(ended(Err("no key".into()), false, false), SubAgentStatus::Failed);
         // A failure while cancelled is still a failure: the error is the more
         // specific thing to report.
@@ -947,14 +946,21 @@ mod tests {
 
         // And only one of them is a successful tool call.
         assert_eq!(SubAgentStatus::Done.outcome(), "success");
-        for bad in [SubAgentStatus::Cancelled, SubAgentStatus::Aborted, SubAgentStatus::Failed] {
+        for bad in [
+            SubAgentStatus::Cancelled,
+            SubAgentStatus::Aborted,
+            SubAgentStatus::Failed,
+        ] {
             assert_eq!(bad.outcome(), "error", "{bad:?}");
         }
     }
 
     #[test]
     fn each_kind_reads_its_own_configured_default() {
-        assert_eq!(default_model_preference(SubAgentKind::Explore), "sub_agent.explore.model");
+        assert_eq!(
+            default_model_preference(SubAgentKind::Explore),
+            "sub_agent.explore.model"
+        );
         assert_eq!(default_model_preference(SubAgentKind::Agent), "sub_agent.agent.model");
     }
 }

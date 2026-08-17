@@ -44,8 +44,7 @@ mod tests {
     #[test]
     fn the_skill_parses_as_a_skill() {
         let rendered = render();
-        let (name, description) =
-            crate::agent::skills::parse_frontmatter(&rendered).expect("frontmatter parses");
+        let (name, description) = crate::agent::skills::parse_frontmatter(&rendered).expect("frontmatter parses");
         assert_eq!(name, DIAGNOSTICS_DIR);
         assert!(crate::agent::skills::is_valid_slug(&name));
         assert!(!description.is_empty());
@@ -88,8 +87,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         write_diagnostics(dir.path()).unwrap();
 
-        let resources =
-            crate::agent::skills::list_skill_resources(dir.path(), DIAGNOSTICS_DIR);
+        let resources = crate::agent::skills::list_skill_resources(dir.path(), DIAGNOSTICS_DIR);
         assert!(
             resources.iter().any(|r| r == "references/error-catalog.md"),
             "{resources:?}"
@@ -102,10 +100,8 @@ mod tests {
         write_diagnostics(dir.path()).unwrap();
         write_diagnostics(dir.path()).unwrap();
 
-        let body = std::fs::read_to_string(
-            dir.path().join(DIAGNOSTICS_DIR).join(crate::agent::skills::SKILL_FILE),
-        )
-        .unwrap();
+        let body =
+            std::fs::read_to_string(dir.path().join(DIAGNOSTICS_DIR).join(crate::agent::skills::SKILL_FILE)).unwrap();
         assert_eq!(body.matches("name: meridian-diagnostics").count(), 1);
     }
 
@@ -123,8 +119,7 @@ mod tests {
         write_diagnostics(dir.path()).unwrap();
 
         let backup = dir.path().join(format!("{DIAGNOSTICS_DIR}.user-backup"));
-        let saved =
-            std::fs::read_to_string(backup.join(crate::agent::skills::SKILL_FILE)).unwrap();
+        let saved = std::fs::read_to_string(backup.join(crate::agent::skills::SKILL_FILE)).unwrap();
         assert!(saved.contains("years of notes"), "{saved}");
         // And ours took the original name.
         let ours = std::fs::read_to_string(theirs.join(crate::agent::skills::SKILL_FILE)).unwrap();

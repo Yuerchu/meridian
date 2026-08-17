@@ -26,7 +26,10 @@ export function MemoryTrash({ open, onOpenChange, onChanged }: MemoryTrashProps)
   const hintId = useId()
 
   const load = useCallback(() => {
-    api.listMemoryTrash(200).then(setRows).catch(() => setRows([]))
+    api
+      .listMemoryTrash(200)
+      .then(setRows)
+      .catch(() => setRows([]))
   }, [])
 
   useEffect(() => {

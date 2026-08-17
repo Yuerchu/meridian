@@ -47,7 +47,10 @@ const FILLER_WORDS: &[&str] = &[
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
     /// A filler word candidate (single-char flag distinguishes interjections).
-    Filler { text: String, single: bool },
+    Filler {
+        text: String,
+        single: bool,
+    },
     Word(String),
     Punct(String),
 }
@@ -85,7 +88,9 @@ pub fn clean(text: &str, level: FilterLevel) -> String {
                 // confirmation step in front of the send.
                 let mut prev: Option<&str> = None;
                 for t in run {
-                    let Token::Filler { text, single } = t else { unreachable!() };
+                    let Token::Filler { text, single } = t else {
+                        unreachable!()
+                    };
                     if *single {
                         prev = None;
                         continue;
@@ -138,7 +143,10 @@ fn tokenize(text: &str) -> Vec<Token> {
             continue;
         }
         if FILLER_CHARS.contains(&c) {
-            tokens.push(Token::Filler { text: c.to_string(), single: true });
+            tokens.push(Token::Filler {
+                text: c.to_string(),
+                single: true,
+            });
             i += 1;
             continue;
         }
@@ -155,7 +163,10 @@ fn tokenize(text: &str) -> Vec<Token> {
         for w in FILLER_WORDS {
             let wc: Vec<char> = w.chars().collect();
             if i + wc.len() <= chars.len() && chars[i..i + wc.len()] == wc[..] {
-                tokens.push(Token::Filler { text: (*w).to_string(), single: false });
+                tokens.push(Token::Filler {
+                    text: (*w).to_string(),
+                    single: false,
+                });
                 i += wc.len();
                 continue 'outer;
             }

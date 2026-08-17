@@ -5,6 +5,9 @@ use std::future::Future;
 use std::time::Duration;
 use tokio::time::sleep;
 
+/// Ported policy surface nothing drives yet: providers hand-roll their loops
+/// around bare `backoff`, which is the one live export of this file.
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct RetryPolicy {
     pub max_attempts: u64,
@@ -12,6 +15,7 @@ pub struct RetryPolicy {
     pub retry_on: RetryOn,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct RetryOn {
     pub retry_429: bool,
@@ -20,14 +24,14 @@ pub struct RetryOn {
 }
 
 impl RetryOn {
+    #[allow(dead_code)]
     pub fn should_retry(&self, err: &TransportError, attempt: u64, max_attempts: u64) -> bool {
         if attempt >= max_attempts {
             return false;
         }
         match err {
             TransportError::Http { status, .. } => {
-                (self.retry_429 && status.as_u16() == 429)
-                    || (self.retry_5xx && status.is_server_error())
+                (self.retry_429 && status.as_u16() == 429) || (self.retry_5xx && status.is_server_error())
             }
             TransportError::Timeout | TransportError::Network(_) => self.retry_transport,
             _ => false,
@@ -46,6 +50,7 @@ pub fn backoff(base: Duration, attempt: u64) -> Duration {
     Duration::from_millis((raw as f64 * jitter) as u64)
 }
 
+#[allow(dead_code)]
 pub async fn run_with_retry<T, F, Fut>(
     policy: RetryPolicy,
     mut make_req: impl FnMut() -> Request,
@@ -59,11 +64,7 @@ where
         let req = make_req();
         match op(req, attempt).await {
             Ok(resp) => return Ok(resp),
-            Err(err)
-                if policy
-                    .retry_on
-                    .should_retry(&err, attempt, policy.max_attempts) =>
-            {
+            Err(err) if policy.retry_on.should_retry(&err, attempt, policy.max_attempts) => {
                 sleep(backoff(policy.base_delay, attempt + 1)).await;
             }
             Err(err) => return Err(err),
@@ -104,7 +105,11 @@ mod tests {
     }
 
     fn make_retry_on(retry_429: bool, retry_5xx: bool, retry_transport: bool) -> RetryOn {
-        RetryOn { retry_429, retry_5xx, retry_transport }
+        RetryOn {
+            retry_429,
+            retry_5xx,
+            retry_transport,
+        }
     }
 
     fn http_err(status: u16) -> TransportError {
