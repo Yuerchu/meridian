@@ -53,6 +53,34 @@ fn active() -> memories::BoxedQuery<'static, diesel::sqlite::Sqlite> {
     memories::table.filter(memories::deleted_at.is_null()).into_boxed()
 }
 
+/// Where an incremental read left off: the timestamp *and* id of the last row
+/// that was actually sent to the model.
+///
+/// The id is not decoration. A batch write stamps every row it touches with the
+/// same millisecond, and a cursor that cannot tell those rows apart re-reads the
+/// same prefix every round — with a budget that only fits some of them, the tail
+/// never gets its turn. Ordering by `(ts, id)` makes the sequence a total order,
+/// which is what lets the cursor advance strictly and therefore terminate.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cursor {
+    pub ts: i64,
+    pub id: String,
+}
+
+/// The half-open window an incremental read covers: strictly after `after`,
+/// strictly before `before_ts`.
+///
+/// The upper bound is the reader's own start time, and it is exclusive so that
+/// the whole millisecond it names is left for the next read. Writes here are
+/// concurrent — OneBot's extraction pass is detached — and without that bound a
+/// row written during the read, carrying exactly that timestamp, could land on
+/// either side of the cursor depending on the id it happened to be given.
+#[derive(Debug, Clone)]
+pub struct ReadWindow<'a> {
+    pub after: Option<&'a Cursor>,
+    pub before_ts: i64,
+}
+
 // ---------------------------------------------------------------------------
 // Reads
 // ---------------------------------------------------------------------------
@@ -70,11 +98,18 @@ pub fn list_by_scope(
 }
 
 /// One round trip for every participant in a turn rather than N.
+///
+/// `window` of `None` reads the whole layer, ordered so the block it renders is
+/// stable between turns — scope_id then key, never anything that moves
+/// (`last_seen_at` in particular). `Some` reads only what changed since a
+/// cursor, ordered by the cursor's own key so that a budget which cannot fit
+/// everything still makes progress; the caller re-groups for display.
 pub fn list_by_scopes(
     conn: &mut SqliteConnection,
     scope: MemoryScope,
     scope_ids: &[String],
     ctx: &VisibilityCtx,
+    window: Option<&ReadWindow<'_>>,
 ) -> QueryResult<Vec<Memory>> {
     if scope_ids.is_empty() {
         return Ok(Vec::new());
@@ -89,10 +124,61 @@ pub fn list_by_scopes(
     if !ctx.include_owner_only {
         q = q.filter(memories::visibility.ne(Visibility::OwnerOnly.as_str()));
     }
-    // scope_id first, then key: the block sits in a cached prompt prefix, so the
-    // order must not depend on anything that changes between turns (last_seen_at
-    // in particular).
-    q.order((memories::scope_id.asc(), memories::key.asc()))
+    let Some(window) = window else {
+        return q
+            .order((memories::scope_id.asc(), memories::key.asc()))
+            .load::<Memory>(conn);
+    };
+    q = q.filter(memories::updated_at.lt(window.before_ts));
+    if let Some(after) = window.after {
+        q = q.filter(
+            memories::updated_at.gt(after.ts).or(memories::updated_at
+                .eq(after.ts)
+                .and(memories::id.gt(after.id.clone()))),
+        );
+    }
+    q.order((memories::updated_at.asc(), memories::id.asc()))
+        .load::<Memory>(conn)
+}
+
+/// What was soft-deleted inside `window`, so the model can be told to forget it.
+///
+/// A separate read with a separate cursor because a delete leaves a different
+/// trace: `soft_delete_memories` sets `deleted_at` and does **not** touch
+/// `updated_at`. A memory written months ago and deleted today therefore has an
+/// `updated_at` older than any cursor — read the upsert side alone and its
+/// removal is never reported at all.
+pub fn list_deleted_by_scopes(
+    conn: &mut SqliteConnection,
+    scope: MemoryScope,
+    scope_ids: &[String],
+    ctx: &VisibilityCtx,
+    window: &ReadWindow<'_>,
+) -> QueryResult<Vec<Memory>> {
+    if scope_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut q = memories::table
+        .into_boxed()
+        .filter(memories::deleted_at.is_not_null())
+        .filter(memories::scope_type.eq(scope.as_str()))
+        .filter(memories::scope_id.eq_any(scope_ids.to_vec()))
+        .filter(memories::deleted_at.lt(window.before_ts));
+    if let Some(ref origins) = ctx.origins {
+        let allowed: Vec<&str> = origins.iter().map(|o| o.as_str()).collect();
+        q = q.filter(memories::origin.eq_any(allowed));
+    }
+    if !ctx.include_owner_only {
+        q = q.filter(memories::visibility.ne(Visibility::OwnerOnly.as_str()));
+    }
+    if let Some(after) = window.after {
+        q = q.filter(
+            memories::deleted_at.gt(after.ts).or(memories::deleted_at
+                .eq(after.ts)
+                .and(memories::id.gt(after.id.clone()))),
+        );
+    }
+    q.order((memories::deleted_at.asc(), memories::id.asc()))
         .load::<Memory>(conn)
 }
 
@@ -102,7 +188,7 @@ pub fn visible_user_memories(
     subject_scope_id: &str,
     ctx: &VisibilityCtx,
 ) -> QueryResult<Vec<Memory>> {
-    list_by_scopes(conn, MemoryScope::OnebotUser, &[subject_scope_id.to_string()], ctx)
+    list_by_scopes(conn, MemoryScope::OnebotUser, &[subject_scope_id.to_string()], ctx, None)
 }
 
 pub fn get_memory(conn: &mut SqliteConnection, id: &str) -> QueryResult<Memory> {
@@ -263,7 +349,20 @@ pub fn soft_delete_memories(
     .execute(conn)
 }
 
-pub fn restore_memories(conn: &mut SqliteConnection, ids: &[String]) -> QueryResult<usize> {
+/// Bring rows back from the trash.
+///
+/// `updated_at` moves too, and it has to. Restoring is a change like any other,
+/// but the only trace it used to leave was `deleted_at` going back to NULL —
+/// which no reader can find. Anything reading the memory table incrementally
+/// (`ReadWindow`) would see a row whose `updated_at` predates its cursor and
+/// whose `deleted_at` is gone, and would therefore never mention it again: the
+/// memory exists, the model has been told to forget it, and nothing will ever
+/// tell it otherwise.
+pub fn restore_memories(
+    conn: &mut SqliteConnection,
+    ids: &[String],
+    now: i64,
+) -> QueryResult<usize> {
     if ids.is_empty() {
         return Ok(0);
     }
@@ -271,6 +370,7 @@ pub fn restore_memories(conn: &mut SqliteConnection, ids: &[String]) -> QueryRes
         .set((
             memories::deleted_at.eq(None::<i64>),
             memories::deleted_by.eq(None::<String>),
+            memories::updated_at.eq(now),
         ))
         .execute(conn)
 }
@@ -725,7 +825,7 @@ mod tests {
         assert!(list_by_scope(conn, MemoryScope::OnebotUser, &scope).unwrap().is_empty());
         assert_eq!(list_trash(conn, 10).unwrap().len(), 1);
 
-        restore_memories(conn, &["a".into()]).unwrap();
+        restore_memories(conn, &["a".into()], 9_000).unwrap();
         assert_eq!(list_by_scope(conn, MemoryScope::OnebotUser, &scope).unwrap().len(), 1);
     }
 
@@ -823,7 +923,7 @@ mod tests {
 
         let ids = vec![onebot_user_scope_id(2), onebot_user_scope_id(1)];
         let rows =
-            list_by_scopes(conn, MemoryScope::OnebotUser, &ids, &VisibilityCtx::group_injection())
+            list_by_scopes(conn, MemoryScope::OnebotUser, &ids, &VisibilityCtx::group_injection(), None)
                 .unwrap();
         // onebot:1 sorts before onebot:2 regardless of the order asked for.
         assert_eq!(rows.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(), ["a", "b"]);

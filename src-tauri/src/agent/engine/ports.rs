@@ -209,6 +209,22 @@ pub(crate) enum SteeredOrigin {
 /// await inside the loop's hottest branch for no reason anyone can name.
 pub(crate) trait Steering: Send + Sync {
     fn drain(&self) -> Vec<Steered>;
+
+    /// What may still be run now that those messages have joined the turn.
+    ///
+    /// A turn is opened by one person and can be continued by another — a group
+    /// drains whatever arrived while it was running — and the permission that
+    /// opened it does not extend to whoever spoke next. Without this, an
+    /// ordinary member could talk into a turn an admin had started and inherit
+    /// its authority, which for a read like `qq_get_friend_list` needs no
+    /// approval to become a leak.
+    ///
+    /// The loop intersects rather than replaces, so an answer here can only
+    /// ever take tools away. `None` is a surface with one speaker, where the
+    /// question does not arise.
+    fn narrowed(&self) -> Option<std::collections::HashSet<String>> {
+        None
+    }
 }
 
 /// Everything the loop is allowed to reach outside itself.

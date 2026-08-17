@@ -402,7 +402,7 @@ pub fn existing_for_extraction(
     let mut lines: Vec<String> = Vec::new();
     if let Some(pid) = facts.project_id.as_ref() {
         if let Ok(rows) =
-            crate::db::ops::memory::list_by_scopes(conn, MemoryScope::Project, std::slice::from_ref(pid), &ctx)
+            crate::db::ops::memory::list_by_scopes(conn, MemoryScope::Project, std::slice::from_ref(pid), &ctx, None)
         {
             for m in rows {
                 lines.push(format!("- [chat] {}: {}", m.key, m.content));
@@ -411,7 +411,7 @@ pub fn existing_for_extraction(
     }
     if !scope_ids.is_empty() {
         if let Ok(rows) =
-            crate::db::ops::memory::list_by_scopes(conn, MemoryScope::OnebotUser, &scope_ids, &ctx)
+            crate::db::ops::memory::list_by_scopes(conn, MemoryScope::OnebotUser, &scope_ids, &ctx, None)
         {
             for m in rows {
                 let uid = m

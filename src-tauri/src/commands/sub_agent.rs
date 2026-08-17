@@ -491,7 +491,7 @@ impl DesktopSubAgents {
                 anchor_index: None,
                 head_id: None,
             },
-            crate::agent::trailing_with_memory(None, None, &spec.prompt),
+            crate::agent::trailing_with_memory(None, None, &spec.prompt, None),
             &Default::default(),
         );
 
