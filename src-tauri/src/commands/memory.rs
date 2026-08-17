@@ -271,7 +271,8 @@ pub async fn restore_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result
     let pool = app.state::<AppDb>().0.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::memory::restore_memories(&mut conn, &ids).map_err(|e| e.to_string())
+        db::ops::memory::restore_memories(&mut conn, &ids, crate::util::now_ms())
+            .map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?

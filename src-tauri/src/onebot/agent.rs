@@ -200,12 +200,40 @@ impl crate::agent::engine::SurfaceTools for QqSurface<'_> {
 }
 
 /// What arrived while the turn was running.
-struct InboxSteering<'a>(&'a super::InboxHandle);
+///
+/// Also where a turn loses authority. The permission a turn opened with belongs
+/// to whoever opened it, and a group hands the floor to anyone: an ordinary
+/// member talking into a turn an admin started used to inherit its tools, and
+/// `qq_get_friend_list` / `qq_get_group_list` need no approval, so inheriting
+/// them was a leak that needed nobody's consent. Once someone without admin
+/// standing has spoken, the rest of the turn runs on the ordinary set — it does
+/// not climb back, because the admin cannot vouch for a request they have not
+/// seen.
+struct InboxSteering<'a> {
+    inbox: &'a super::InboxHandle,
+    /// What an ordinary member of this session may run. Empty when the turn has
+    /// no QQ tools to fall back to, which is the safe reading of "no idea".
+    ordinary: std::collections::HashSet<String>,
+    /// Set by `drain`, read by `narrowed`. Atomic rather than `Cell` because
+    /// the port is held across an await and must stay `Sync`.
+    demoted: std::sync::atomic::AtomicBool,
+}
 
 impl crate::agent::engine::Steering for InboxSteering<'_> {
+    fn narrowed(&self) -> Option<std::collections::HashSet<String>> {
+        self.demoted
+            .load(std::sync::atomic::Ordering::Relaxed)
+            .then(|| self.ordinary.clone())
+    }
+
     fn drain(&self) -> Vec<crate::agent::engine::Steered> {
-        self.0
-            .drain()
+        let items = self.inbox.drain();
+        // A notice carries no sender — nobody said it, so it cannot lower
+        // anything. Only a person who is not an admin does.
+        if items.iter().any(|i| i.sender.as_ref().is_some_and(|s| !s.is_admin)) {
+            self.demoted.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        items
             .into_iter()
             .map(|item| crate::agent::engine::Steered {
                 text: item.text,
@@ -442,9 +470,28 @@ async fn headless_chat_inner(
     // Collaboration modes stay off: a headless turn has no way to switch them,
     // and a QQ session already cannot touch the filesystem (its file access is
     // an empty root set), so plan mode would guard nothing.
+    // What the model is *shown* has to belong to the session, while what this
+    // turn's speaker may *run* is `offered`. The two used to be the same set,
+    // and because `is_admin` is decided per message, a group where an admin and
+    // an ordinary member both speak alternated between two tool arrays — and so
+    // between two system prompts, `base_prompt` being derived from the tool set.
+    // Every alternation was a full cache miss on a prefix that had not
+    // otherwise changed.
+    //
+    // Resolving that by showing everyone everything would have been a different
+    // mistake: a registry or MCP definition carries the user's own server names
+    // and argument schemas, and a group cannot show them to its admin without
+    // showing them to everyone in it. So these stay off in a group entirely —
+    // `qq_tools` covers what a group session can actually reach anyway, its
+    // file access being an empty root set — and a private chat keeps them,
+    // where the one counterpart makes `is_admin` constant for the session and
+    // the prefix stays put either way.
+    let full_toolset = qq_tools
+        .map(|q| super::qq_tools::exposes_full_toolset(q.session_kind(), is_admin))
+        .unwrap_or(false);
     // Read off the published snapshot rather than through the connection lock,
     // so a server that is mid-call cannot hold up this turn from starting.
-    let mcp_defs = if is_admin {
+    let mcp_defs = if full_toolset {
         mcp_registry.tool_definitions().as_ref().clone()
     } else {
         Vec::new()
@@ -507,9 +554,9 @@ async fn headless_chat_inner(
             // to put the approvals it would raise.
             sub_agents: None,
             mcp_defs,
-            // Non-admin sessions get no registry or MCP tools at all; the
-            // scope-locked QQ tools are appended further down.
-            include_tools: is_admin && supports_tools,
+            // Session-scoped, not speaker-scoped — see `full_toolset` above.
+            // The QQ tools are appended further down, on the same footing.
+            include_tools: full_toolset && supports_tools,
             persona: assistant.as_ref().map(|a| a.system_prompt.clone()).unwrap_or_default(),
             // Memory is absent on purpose — it ships as a user-role message.
             context_blocks: Vec::new(),
@@ -550,7 +597,12 @@ async fn headless_chat_inner(
             ),
         }
     };
-    let memory_block = crate::agent::load_memory_block(pool, memory_request).await;
+    // No auto-compaction on this side, so there is no later point at which the
+    // path could change under us — see the desktop loop, where this has to wait.
+    let t0 = now_ms();
+    let roster = crate::agent::roster_block(&memory_request);
+    let injection =
+        crate::agent::plan_injection_async(pool, memory_request, ctx.live().to_vec(), t0).await;
     let keep_recent = assistant.as_ref().map(|a| a.compact_keep_recent as usize).unwrap_or(10);
 
     let budget = TokenBudget::new(
@@ -594,12 +646,17 @@ async fn headless_chat_inner(
         None => None,
     };
 
-    // Background first, then what was just said: these are context for reading
-    // the message, not a reply to it.
+    // Background first, then what was just said, then who is in the room. The
+    // order matters and is explained on `trailing_with_memory`, whose shape this
+    // reproduces — it cannot be called directly, because a QQ turn can open with
+    // several messages from several people and that function takes one.
     let mut trailing: Vec<provider::ChatMessage> = Vec::new();
-    for block in [memory_block.as_deref(), interrupted.as_ref().map(|r| r.text())]
-        .into_iter()
-        .flatten()
+    for block in [
+        injection.as_ref().and_then(|i| i.text.as_deref()),
+        interrupted.as_ref().map(|r| r.text()),
+    ]
+    .into_iter()
+    .flatten()
     {
         if !block.trim().is_empty() {
             trailing.push(provider::ChatMessage::system_context(block.trim_start()));
@@ -609,6 +666,9 @@ async fn headless_chat_inner(
         Some(s) => provider::ChatMessage::user_from(&m.text, s.into()),
         None => provider::ChatMessage::user(&m.text),
     }));
+    if let Some(roster) = roster.as_deref().filter(|r| !r.trim().is_empty()) {
+        trailing.push(provider::ChatMessage::system_context(roster.trim_start()));
+    }
 
     let mut chat_messages = build_messages_with_senders(
         &system_prompt,
@@ -633,10 +693,27 @@ async fn headless_chat_inner(
     if let Some(qq) = qq_tools.filter(|_| supports_tools) {
         tool_defs.extend(qq.definitions());
     }
-    // Only tools actually offered this turn may execute; blocks non-admin (and
-    // enabled_tools-filtered) sessions from invoking registry/MCP tools by name.
-    let offered: std::collections::HashSet<String> =
-        tool_defs.iter().map(|t| t.name.clone()).collect();
+    // What may actually execute, which is where this turn's speaker is
+    // weighed. An ordinary member in a group is held to the scope-locked
+    // read-only QQ tools exactly as before; what changed is that the refusal
+    // happens at dispatch rather than by withholding the definition, so the
+    // prefix does not change shape depending on who spoke. `run_turn` checks
+    // this ahead of every path — surface tools included — and `execute`
+    // re-checks it.
+    //
+    // `ordinary_names` rather than `permitted_names`: the executor was built
+    // with the authority this *turn* opened with, and a round that a plain
+    // member started or joined must not read its permissions off that.
+    let offered: std::collections::HashSet<String> = if is_admin {
+        tool_defs.iter().map(|t| t.name.clone()).collect()
+    } else {
+        qq_tools
+            .filter(|_| supports_tools)
+            .map(|q| q.ordinary_names())
+            .unwrap_or_default()
+            .into_iter()
+            .collect()
+    };
 
     // Persist this turn's inbound messages, one row each so every speaker keeps
     // their own attribution. They share one timestamp because they were drained
@@ -648,6 +725,14 @@ async fn headless_chat_inner(
     // several user rows, and steering can add more mid-flight, so this has to be
     // a cursor rather than one precomputed parent.
     let mut parent_cursor: Option<String> = ctx.head_id.clone();
+    // Ahead of the messages, because that is where it was sent and where the next
+    // turn has to find it.
+    if let Some(ref injection) = injection {
+        parent_cursor = crate::agent::persist_injection(
+            pool, injection, conversation_id, turn_id, parent_cursor, now,
+        )
+        .await;
+    }
     {
         let pool = pool.clone();
         let conv_id = conversation_id.to_string();
@@ -736,7 +821,16 @@ async fn headless_chat_inner(
     };
     let commentary = interim_text_fn.map(ChatCommentary);
     let surface = qq_tools.map(QqSurface);
-    let steering = session_inbox.map(InboxSteering);
+    let steering = session_inbox.map(|inbox| InboxSteering {
+        inbox,
+        ordinary: qq_tools
+            .filter(|_| supports_tools)
+            .map(|q| q.ordinary_names())
+            .unwrap_or_default()
+            .into_iter()
+            .collect(),
+        demoted: std::sync::atomic::AtomicBool::new(false),
+    });
 
     let outcome = engine::run_turn(
         &engine::TurnServices { pool, tools: tool_registry, mcp: mcp_registry },
@@ -769,7 +863,12 @@ async fn headless_chat_inner(
             // standing yes to project edits — there is no project. The desktop
             // consults both. On the drift list.
             approval_rule: engine::ApprovalRule::ByPermission,
-            withheld: engine::WithheldWording::Terse,
+            // Was `Terse` — "Unknown tool" — which was true while a tool the
+            // speaker could not run was also absent from the definitions. It is
+            // no longer: the model can now see a tool it is refused, and being
+            // told it does not exist invites both a retry and a workaround
+            // through whatever tool does.
+            withheld: engine::WithheldWording::Explained,
             // Steering resolves image URIs against this, which is why it is here
             // rather than only in the setup above.
             files_root,

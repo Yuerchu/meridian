@@ -136,6 +136,18 @@ fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message, names: &Sender
                 msgs.push(ChatMessage::tool_result(call_id, &m.content));
             }
         }
+        // Background we injected on an earlier turn and then froze into the
+        // history. The wire role is `user` either way — see
+        // `ChatMessage::system_context` — and going back through it here is what
+        // makes the bytes identical to the turn that first sent it. They have to
+        // be: this row exists so that the prefix in front of it stays cached, and
+        // a single character of drift undoes exactly that.
+        //
+        // Not `MessageOrigin::LegacyUser` with the wrapper baked into `content`,
+        // which would render the same but would put the row outside everything
+        // that treats injected context as different from conversation —
+        // `take_injected_context` above all.
+        "context" => msgs.push(ChatMessage::system_context(&m.content)),
         _ => {}
     }
 }
@@ -581,6 +593,23 @@ mod injected_context_tests {
         (0..n).map(|i| ChatMessage::user(&"word ".repeat(200).repeat(i % 2 + 1))).collect()
     }
 
+    /// A stored row carrying an injection frozen by an earlier turn.
+    fn frozen_row(content: &str, source: &str) -> Message {
+        Message {
+            id: "m1".into(),
+            conversation_id: "c".into(),
+            role: "context".into(),
+            content: content.into(),
+            provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
+            tool_calls: None, tool_call_id: None, sort_order: 0, created_at: 0,
+            reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
+            sender_id: None, parent_id: None, compact_anchor_id: None,
+            source: Some(source.into()),
+            turn_id: None, tool_outcome: None,
+            cache_read_tokens: None, cache_write_tokens: None, provider_name: None,
+        }
+    }
+
     /// The memory block must survive a trim that drops old turns. Before this
     /// guard it sat in the middle of history and was dropped with everything
     /// else, so the model silently lost every memory mid-turn.
@@ -607,6 +636,55 @@ mod injected_context_tests {
         // And it stays ahead of the recent tail rather than at the very end.
         let idx = msgs.iter().position(|m| m.origin.is_system_context()).unwrap();
         assert!(idx < msgs.len() - 1);
+    }
+
+    /// A frozen memory row has to come back off the history as the exact bytes
+    /// the turn that wrote it put on the wire.
+    ///
+    /// This is what the whole design rests on. The row exists so the prefix in
+    /// front of it stays in the provider's cache; one character of drift and the
+    /// payloads diverge at that point, which costs more than never having frozen
+    /// it. Nothing else in the test suite would notice — the conversation still
+    /// reads correctly either way, it just stops being cheap.
+    #[test]
+    fn a_frozen_memory_row_is_replayed_byte_for_byte() {
+        let block = "<bot_memories>\n- [general] k: v\n</bot_memories>";
+
+        // What the turn that first assembled it sent.
+        let fresh = ChatMessage::system_context(block);
+        // What the next turn reads back off the history.
+        let mut replayed = Vec::new();
+        let row = frozen_row(block, "memory|full|100.abc|-|onebot:user:1");
+        push_history_message(&mut replayed, &row, &SenderNames::new());
+
+        assert_eq!(replayed.len(), 1);
+        assert_eq!(replayed[0].content, fresh.content);
+        assert_eq!(replayed[0].role, fresh.role);
+        assert!(matches!(replayed[0].origin, MessageOrigin::SystemContext));
+
+        // And on the wire, which is where it actually matters.
+        for rendering in [provider::SenderRendering::NameField, provider::SenderRendering::Prefix] {
+            assert_eq!(
+                provider::render_message(&replayed[0], rendering).content,
+                provider::render_message(&fresh, rendering).content,
+            );
+        }
+    }
+
+    /// It also has to keep the protection injected context gets: a frozen block
+    /// carries `<owner_notes>`, and a summariser paraphrasing those out of the
+    /// wrapper that forbids quoting them is the one outcome worth designing
+    /// against.
+    #[test]
+    fn a_frozen_memory_row_is_still_injected_context() {
+        let row = frozen_row("<owner_notes>\n- [general] k: v\n</owner_notes>", "memory|full|100.abc|-|");
+        let mut msgs = Vec::new();
+        push_history_message(&mut msgs, &row, &SenderNames::new());
+        msgs.push(ChatMessage::user("hi"));
+
+        let taken = take_injected_context(&mut msgs);
+        assert_eq!(taken.len(), 1, "a frozen block must be liftable like a fresh one");
+        assert_eq!(msgs.len(), 1);
     }
 
     #[test]

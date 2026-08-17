@@ -35,6 +35,60 @@ src-tauri/
 - **The transcript follows the stream, then hands it back.** `src/lib/message-scroller.tsx` is a fork of `@shadcn/react/message-scroller` (the package is gone; the styled wrapper in `components/ui` is unchanged). Upstream anchors a new turn to the top of the viewport and holds it there for as long as the answer streams — with a question taller than the viewport that hold never releases, so the whole answer is written off-screen. Here there are two modes: `follow` sticks to the live edge, `idle` moves for nobody but the reader. Anchoring falls out of following instead of competing with it — a spacer re-solved every frame makes "scrolled to the end" and "question at the top" the same position until the answer outgrows the viewport. A turn that stops streaming while the reader is still following scrolls back to the top of its answer (`MessageScrollerAnchor` / `answerAnchorId`); one they had scrolled away from does not move. Row identity is not a scroll trigger: re-keying a row when its reload lands used to jump to the top of the conversation. Drive changes through the harness at `#playground/scroll` — "跑全部场景" replays every behaviour above and asserts it.
 - **One shell, on every platform.** `components/layout/app-shell.tsx` is the whole frame; there is no mobile variant and nothing branches on width. The sidebar *is* the conversation list — a panel above 768px, `Sidebar.Mobile`'s sheet below it, both rendered from the same tree — and settings is a page beside the chat rather than a screen over it. The chat stays mounted underneath, `inert`, because unmounting it loses the composer draft and the transcript's scroll position. There used to be a stack of screens for phones, selected by a width read once at startup; that seam is what made a narrow Windows window and a tablet in landscape both wrong. What survives of it is `useHistoryLevel`, which is about the back gesture and not about layout.
 - **Branches switch the transcript, not the world.** The todo list, approved plan and collaboration mode stay per-conversation and do not follow a branch switch. Files edited and commands run cannot be rewound either, so making these alone branch-aware would imply more than actually happens.
+- **A cached prefix belongs to the session, not to whoever spoke.** The tool
+  array and the system prompt are the front of what a provider caches, and
+  `base_prompt` is derived from the tool set, so anything that reshapes the
+  tools reshapes the prompt too. OneBot decides `is_admin` per *message*
+  (`handler.rs` reads it off the sender), and that used to select the tool
+  definitions — so a group where an admin and an ordinary member both talk
+  alternated between two prefixes and threw the cache away on every
+  alternation. Measured against the desktop's ~80%, QQ sat under 50%. Now the
+  definitions are fixed per session and the speaker is weighed at dispatch
+  instead, through `offered`, which `run_turn` checks ahead of every path
+  including surface tools. Fixed does not mean *everything*, though: a group
+  gets one tool array shared by everyone in it, so its contents have to be safe
+  for all of them. QQ tools are (our own fixed prose about the room the reader
+  is in); registry and MCP definitions are not, carrying the user's own server
+  names and argument schemas, so a group is sent none of them and an admin who
+  wants them opens a private chat. A private chat narrows by `is_admin` as it
+  always did — one counterpart means it cannot change under the session, so
+  narrowing costs no cache. `shown_as_admin` and `exposes_full_toolset` in
+  `qq_tools.rs` are the two decisions, kept out of the call sites.
+
+  The other half of that split is that **authority follows the speaker, and a
+  turn has more than one.** A round can open with several people's queued
+  messages, a `TurnEnd::Continue` round is whoever spoke next, and steering adds
+  people mid-flight — so `offered` is the conjunction over everyone in the
+  round (`round_authority`), and joining mid-turn can only take tools away
+  (`Steering::narrowed`, intersected by `narrow_offered`, never assigned). Read
+  off whoever happened to trigger the turn instead, an ordinary member gets
+  answered with an admin's tools, and `qq_get_friend_list` is a read that needs
+  no approval — so the leak needs nobody's consent.
+- **Memory is frozen into the history, then only what changed is sent.** The
+  block used to be rebuilt every turn and injected *between* the history and the
+  new message without ever being stored — so each turn's payload diverged from
+  the last one's cache at exactly the point the previous turn began, and nothing
+  after it could be reused. Now `plan_injection` writes it as a `role="context"`
+  row (`memory_context.rs`) and later turns send only the difference.
+  Consequences, each of which has a test because none of them fail loudly:
+  - **The database role is `context`, not `user`.** Half a dozen places sort by
+    role — `prepare_compact_input`, `audit_copy`, title generation,
+    `chat-view.tsx` — and every one of them would otherwise treat injected
+    background as something a person said. Wire role is still `user`;
+    `push_history_message` translates, and the bytes it produces must equal what
+    `system_context` produced the first time or the cache breaks at that row.
+  - **Change detection is two keyset cursors, not a timestamp.** A delete sets
+    `deleted_at` and leaves `updated_at` alone, so deletes need their own cursor;
+    ids break ties because a batch write shares one millisecond; the window's
+    upper bound is exclusive so a concurrent write cannot land on the boundary;
+    and the cursor stops before anything the budget refused, since trimming
+    drops in an order unrelated to when rows were written. Being asked about
+    counts as delivered even when the budget only took part — requiring a whole
+    delivery cannot converge, and anyone with more memories than their slice
+    stays a stranger for ever.
+  - **The roster goes after the message.** Who is present changes every turn and
+    is never persisted, so placing it before the message re-creates the very
+    divergence the frozen row removes.
 - **A bill is priced once, in `agent::pricing`.** `compute_cost` carries a rule no summation expresses: a cached token bills at the cache rate *instead of* the input rate, not on top of it. That formula has been wrong once — the old one reported a DeepSeek turn at a 90% hit rate as costing nearly six times what it did — and three tests now stand on it. So nothing else computes a cost: not SQL, not the front end. `db::ops::usage` reduces millions of audit rows to a few dozen groups and hands each to `cost_of`, which is the same function behind the stop event's `cost_breakdown`. Two implementations would disagree in exactly the case the tests exist for. Report totals with `UsageDimension::Total` rather than adding a breakdown up, for the same reason.
 - **What a reply cost is a fact about the past, so the price travels with it.** `audit_messages` snapshots the four rates at write time (migration 30), beside the `provider_name` and `sender_name` it already copied. Joining `model_configs` at read time instead would mean correcting a typo in a rate silently rewrites what last month cost. Rows older than that migration have NULL there and fall back to today's configuration — the retroactive answer, kept only because it is the sole number those rows have. A model priced `0/0` is one nobody has filled in, not one that is free (the editor opens at zero): `Prices::known()` is the single definition, and traffic that fails it is counted into `unpriced_messages` and surfaced. A cost shown without that count is smaller than the truth with nothing to say so.
 - **`--chart-1`..`--chart-4` are ours.** Pro's charts read them and Pro defines them in its base theme, which this project does not import — only the per-component CSS files. Undefined, every series draws transparent. They are categorical rather than a ramp, and deliberately clear of `--success` / `--warning` / `--danger`, which mean something here: a series that landed on the warning colour would read as a warning.

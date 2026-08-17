@@ -437,15 +437,43 @@ pub struct BranchPoint {
 /// Only points with more than one version are reported, so a conversation that
 /// has never been regenerated yields an empty list and the front end renders no
 /// pagers at all.
+/// The parent a version comparison should be made against.
+///
+/// Injected background (`role = "context"`) is written into the path like any
+/// other row, but it is not a step anybody took — so a message written after one
+/// is still a version of whatever preceded it, not a child of somewhere else.
+/// Walking past those rows is what keeps that true: without it, editing a
+/// message on a turn that also froze a memory block leaves the new version
+/// hanging off the context row while the old one hangs off its parent, the two
+/// stop being siblings, and the version pager silently disappears from a
+/// message that certainly has more than one version.
+fn effective_parent(history: &[Message], m: &Message) -> Option<String> {
+    let mut cursor = m.parent_id.clone();
+    while let Some(id) = cursor {
+        // A parent that is not in `history` is as far as this can go.
+        let Some(parent) = history.iter().find(|h| h.id == id) else { return Some(id) };
+        if parent.role != "context" {
+            return Some(id);
+        }
+        cursor = parent.parent_id.clone();
+    }
+    None
+}
+
 pub fn branch_points(history: &[Message], path: &[Message]) -> Vec<BranchPoint> {
     let mut out = Vec::new();
     for m in path {
+        // Injected background has no versions to page through.
+        if m.role == "context" {
+            continue;
+        }
+        let parent = effective_parent(history, m);
         // Roots are grouped together: editing the opening message produces a
         // second one, which is a version of the same step.
         let mut siblings: Vec<&Message> = history
             .iter()
-            .filter(|s| s.is_compact_summary == 0)
-            .filter(|s| s.parent_id == m.parent_id)
+            .filter(|s| s.is_compact_summary == 0 && s.role != "context")
+            .filter(|s| effective_parent(history, s) == parent)
             .collect();
         if siblings.len() < 2 {
             continue;
@@ -538,6 +566,67 @@ mod tests {
             cache_write_tokens: None,
             provider_name: None,
         }
+    }
+
+    /// Editing a message on a turn that also froze a memory block must still
+    /// leave two versions of that message, not one.
+    ///
+    /// The frozen row lands between the branch point and the new version, so by
+    /// `parent_id` alone the two versions have different parents and neither
+    /// looks like it has a sibling. What the user sees is the version pager
+    /// vanishing from a message they just created a second version of — and
+    /// their earlier text is still there, just unreachable.
+    #[test]
+    fn a_frozen_memory_row_does_not_hide_the_other_version() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 0).unwrap();
+
+        // A question and its answer.
+        append_message(&mut conn, &row("q", "c1", "user"), None).unwrap();
+        append_message(&mut conn, &row("a", "c1", "assistant"), Some("q")).unwrap();
+
+        // The question is edited on a turn that also froze a memory block, so
+        // the new version hangs off the context row rather than off nothing.
+        let mut ctx = row("mem", "c1", "context");
+        ctx.source = Some("memory|delta|100.x|-|");
+        append_message(&mut conn, &ctx, None).unwrap();
+        append_message(&mut conn, &row("q2", "c1", "user"), Some("mem")).unwrap();
+
+        let history = list_messages(&mut conn, "c1").unwrap();
+        let path = active_context(&history, Some("q2")).path;
+        let points = branch_points(&history, &path);
+
+        let q2 = points.iter().find(|p| p.message_id == "q2").expect("q2 has a sibling");
+        assert_eq!(q2.total, 2, "both versions of the question must be reachable");
+        assert_eq!(q2.sibling_ids, vec!["q".to_string(), "q2".to_string()]);
+        // And the frozen row itself is not a version of anything.
+        assert!(points.iter().all(|p| p.message_id != "mem"));
+    }
+
+    /// The audit table holds what people said, for billing and for keeping a
+    /// copy where deleting a conversation cannot reach it. Injected background
+    /// is neither: nobody said it, nobody was billed for it, and it carries
+    /// `<owner_notes>`, which exist on the understanding that they stay where
+    /// they were put.
+    #[test]
+    fn injected_background_is_not_audited() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 0).unwrap();
+
+        let mut ctx = row("m1", "c1", "context");
+        ctx.content = "<owner_notes>\n- [general] x\n</owner_notes>";
+        ctx.source = Some("memory|full|100.abc|-|");
+        append_message(&mut conn, &ctx, None).unwrap();
+
+        let mut said = row("m2", "c1", "user");
+        said.content = "hi";
+        append_message(&mut conn, &said, Some("m1")).unwrap();
+
+        let audited = crate::db::ops::audit::list_recent(&mut conn, 10).unwrap();
+        assert_eq!(audited.len(), 1, "only the user row belongs in the audit table");
+        assert_eq!(audited[0].content, "hi");
     }
 
     /// Every field handed to `append_message` comes back out of it.

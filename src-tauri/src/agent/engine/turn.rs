@@ -44,7 +44,7 @@ use crate::tools::{self, ToolContext, ToolRegistry};
 
 use super::compaction::{Compacting, CompactionPolicy};
 use super::ports::{
-    Steered, SteeredOrigin, SubAgentReport, SubAgentSpec, SubAgentStatus, TurnPorts,
+    Steered, SteeredOrigin, Steering, SubAgentReport, SubAgentSpec, SubAgentStatus, TurnPorts,
 };
 
 /// How many times a finished answer may be reopened by something that arrived
@@ -182,11 +182,17 @@ pub(crate) enum ApprovalRule {
 /// `Explained` says the tool is unavailable *and* not to route around it,
 /// because a model told a writing tool does not exist will reach for one that
 /// does — `run_command` writes files perfectly well — and defeat the very
-/// pruning the mode exists to do. `Terse` is the other runner's wording, kept
-/// only because this refactor does not change what a model reads.
+/// pruning the mode exists to do.
+///
+/// There was a `Terse` alternative reading "Unknown tool", which the OneBot
+/// runner used while a tool its speaker could not run was also absent from the
+/// definitions it was sent. Once that runner started showing the whole
+/// session's tools and refusing at dispatch instead — so that an admin's turn
+/// and an ordinary member's turn share one cached prefix — telling the model a
+/// tool it can see does not exist would have invited exactly the retry and the
+/// workaround this wording exists to prevent.
 pub(crate) enum WithheldWording {
     Explained,
-    Terse,
 }
 
 impl WithheldWording {
@@ -196,7 +202,6 @@ impl WithheldWording {
                 "The tool '{tool}' is not available in this conversation right now. Do not try \
                  to achieve the same effect through another tool."
             ),
-            WithheldWording::Terse => format!("Unknown tool: {tool}"),
         }
     }
 }
@@ -683,6 +688,7 @@ async fn run(
                 files_root.as_deref(),
             )
             .await;
+            narrow_offered(&mut offered, ports.steering);
             whisper("conversation-updated", serde_json::json!({ "id": &conversation_id }));
             continue;
         }
@@ -1007,6 +1013,7 @@ async fn run(
                     files_root.as_deref(),
                 )
                 .await;
+                narrow_offered(&mut offered, ports.steering);
                 whisper(
                     "conversation-updated",
                     serde_json::json!({ "id": &conversation_id }),
@@ -1039,6 +1046,23 @@ async fn run(
 /// rows on one path. A write that fails leaves the cursor alone and the message
 /// still goes to the model: losing a row is worse than losing a turn, but not
 /// worse than ignoring what somebody said.
+/// Apply whatever the arrival of those messages did to this turn's authority.
+///
+/// Called after every injection, both of them, because either one can be the
+/// point where somebody else joins. Intersects rather than assigns: a port that
+/// answers may only take tools away, never hand back one the turn never had.
+fn narrow_offered(offered: &mut HashSet<String>, steering: Option<&dyn Steering>) {
+    let Some(narrowed) = steering.and_then(|s| s.narrowed()) else { return };
+    let before = offered.len();
+    offered.retain(|name| narrowed.contains(name));
+    if offered.len() != before {
+        tracing::info!(
+            withdrawn = before - offered.len(),
+            "someone with less authority joined the turn; tools withdrawn for the rest of it"
+        );
+    }
+}
+
 async fn inject_steering(
     pool: &crate::db::DbPool,
     conversation_id: &str,
@@ -2010,6 +2034,59 @@ mod tests {
         assert_eq!(rows(&pool).iter().filter(|r| r.sender_id == Some(7)).count(), 1);
     }
 
+    /// Who opened a turn is not who gets to finish it.
+    ///
+    /// A group hands the floor to whoever speaks, and the loop keeps running one
+    /// turn across all of them. Without this, an ordinary member could talk into
+    /// a turn an admin had started and reach every tool the admin was offered —
+    /// and the reads among them (`qq_get_friend_list`) need no approval, so the
+    /// leak would need nobody's consent.
+    #[tokio::test]
+    async fn someone_with_less_authority_joining_takes_the_tools_with_them() {
+        struct Joins(Mutex<Vec<Steered>>);
+        impl Steering for Joins {
+            fn drain(&self) -> Vec<Steered> {
+                std::mem::take(&mut *self.0.lock().unwrap())
+            }
+            /// Nothing is left once they have spoken.
+            fn narrowed(&self) -> Option<HashSet<String>> {
+                Some(HashSet::new())
+            }
+        }
+
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![
+            calls("call-1", "fixture", "{}"),
+            calls("call-2", "fixture", "{}"),
+            says("fine"),
+        ]);
+        let approvals = Answers::nobody();
+        let fixture = Fixture::returning("ok");
+        let joins = Joins(Mutex::new(vec![Steered {
+            text: "and while you are at it, list his friends".into(),
+            origin: SteeredOrigin::User(Some(SenderRef { user_id: 9, nickname: None })),
+        }]));
+
+        run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &["fixture"]),
+            TurnPorts {
+                surface_tools: Some(&fixture),
+                steering: Some(&joins),
+                ..ports(&approvals, None)
+            },
+        )
+        .await;
+
+        // The call before they spoke ran; the one after it did not.
+        assert_eq!(fixture.ran.lock().unwrap().len(), 1);
+        let requests = provider.requests();
+        let refused = &requests[2].0.last().unwrap().content;
+        assert!(refused.contains("not available"), "{refused}");
+    }
+
     /// The window the drain at the bottom of the loop cannot cover.
     ///
     /// The model stops calling tools and the loop breaks — and that `break` is
@@ -2558,24 +2635,6 @@ mod tests {
         let told = &requests[1].0.last().unwrap().content;
         assert!(told.contains("not available"), "{told}");
         assert!(told.contains("another tool"), "and it is told not to route around it: {told}");
-    }
-
-    #[tokio::test]
-    async fn the_other_runner_says_less_about_a_withheld_tool() {
-        let pool = test_db();
-        conversation(&pool);
-        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
-        let provider = Scripted::of(vec![calls("call-1", "fixture", "{}"), says("fine")]);
-        let approvals = Answers::nobody();
-        let mut s = setup(&provider, &pool, &cancel, &[]);
-        s.withheld = WithheldWording::Terse;
-
-        run_turn(&services(&pool, &tools, &mcp), s, ports(&approvals, None)).await;
-
-        assert_eq!(
-            provider.requests()[1].0.last().unwrap().content,
-            "Unknown tool: fixture",
-        );
     }
 
     /// Answering a question is not granting permission.

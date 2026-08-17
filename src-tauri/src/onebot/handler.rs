@@ -543,13 +543,23 @@ pub(super) async fn run_agent_turn(
 
     let approval_fn = make_approval_fn(state, session_key, initiator_user_id, &turn_id);
     let interim_text_fn = make_interim_text_fn(state, session_key);
-    let qq_tools = super::qq_tools::QqToolExecutor::new(state.clone(), session_key.clone(), is_admin);
     let inbox = super::InboxHandle::new(state.session_states.clone(), session_key.clone());
 
     let mut incoming = vec![super::IncomingMessage::new(user_content, Some(sender.clone()))];
     let mut reply_anchor = reply_to;
 
     loop {
+        // Rebuilt per round rather than hoisted, because the executor carries
+        // this round's authority into its own defence-in-depth check. What
+        // arrives *during* a round is the steering port's business instead —
+        // see `InboxSteering`.
+        let round_is_admin = round_authority(is_admin, &incoming);
+        let qq_tools = super::qq_tools::QqToolExecutor::new(
+            state.clone(),
+            session_key.clone(),
+            round_is_admin,
+        );
+
         let outcome = agent::headless_chat(
             &state.pool,
             &state.secrets,
@@ -561,7 +571,7 @@ pub(super) async fn run_agent_turn(
             &incoming,
             state.config.assistant_id.as_deref(),
             model_override.as_deref(),
-            is_admin,
+            round_is_admin,
             &approval_fn,
             Some(&interim_text_fn),
             &cancel,
@@ -643,6 +653,24 @@ pub(super) async fn run_agent_turn(
             }
         }
     }
+}
+
+/// What one round of a turn may do, given who is in it.
+///
+/// A round can open with several people's messages — they queue up while an
+/// earlier turn is running — and a `TurnEnd::Continue` round is whoever spoke
+/// next rather than whoever started. Authority is the conjunction, not the
+/// union: one message from someone without admin standing and the whole round
+/// runs without it. Taking it off the person who happened to trigger the turn
+/// let an ordinary member be answered with an admin's tools.
+///
+/// A notice lowers nothing. Nobody said it, so there is no one to hold it
+/// against — it is the system talking to itself.
+fn round_authority(opened_by_admin: bool, incoming: &[super::IncomingMessage]) -> bool {
+    opened_by_admin
+        && incoming
+            .iter()
+            .all(|m| m.sender.as_ref().is_none_or(|s| s.is_admin))
 }
 
 /// Like `build_reply` but routed from the session key instead of an event
@@ -1283,7 +1311,7 @@ async fn dispatch_memory(
                     })
                     .map(|m| m.id)
                     .collect();
-                mem_ops::restore_memories(&mut conn, &ids).ok()
+                mem_ops::restore_memories(&mut conn, &ids, crate::util::now_ms()).ok()
             })
             .await
             .ok()
@@ -1818,7 +1846,10 @@ async fn dispatch_status(
             .map(|history| {
                 crate::db::ops::message::active_context(&history, conv.head_message_id.as_deref())
                     .path
-                    .len() as i64
+                    .iter()
+                    // Injected background is not a message anybody sent.
+                    .filter(|m| m.role != "context")
+                    .count() as i64
             })
             .unwrap_or(0);
         Ok::<_, String>((assistant_name, model, context_limit, msg_count))
@@ -1912,6 +1943,38 @@ mod tests {
 
     fn item(text: &str, sender: Option<SenderContext>) -> InboxItem {
         InboxItem { text: text.into(), kind: InboxKind::UserMessage, created_at: 0, sender }
+    }
+
+    /// Whoever triggered a turn is not the only person in it, and authority is
+    /// the conjunction over everyone who is.
+    ///
+    /// Two ways someone else gets into a round: their message queued up while an
+    /// earlier turn was running and opens this one alongside the trigger's, or
+    /// they spoke while the turn ran and it continued into a follow-up round
+    /// carrying their message. Both used to keep the authority of whoever had
+    /// gone first — so a plain member could be answered with an admin's tools,
+    /// and `qq_get_friend_list` is a read that needs no approval.
+    #[test]
+    fn a_round_runs_on_the_least_authority_in_it() {
+        let admin = SenderContext { is_admin: true, ..sender(1, "管理员") };
+        let member = sender(2, "群友");
+
+        let msg = |s: SenderContext| IncomingMessage::new("...", Some(s));
+        let notice = IncomingMessage::new("有人退群了", None);
+
+        assert!(super::round_authority(true, &[msg(admin.clone())]));
+        assert!(
+            !super::round_authority(true, &[msg(admin.clone()), msg(member.clone())]),
+            "an admin's round that a member also spoke into is not an admin's round",
+        );
+        assert!(
+            !super::round_authority(true, &[msg(member.clone())]),
+            "a follow-up round is whoever spoke next",
+        );
+        // Nobody said a notice, so there is no one to hold it against.
+        assert!(super::round_authority(true, &[msg(admin), notice]));
+        // And nothing here can promote a round that never had it.
+        assert!(!super::round_authority(false, &[msg(member)]));
     }
 
     /// Queued messages used to be concatenated into one string before the

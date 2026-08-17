@@ -297,7 +297,10 @@ export interface VoiceTranscript {
 export interface Message {
   id: string
   conversation_id: string
-  role: 'user' | 'assistant' | 'system' | 'tool'
+  /** `context` is background the backend injected and froze into the history —
+   *  memories, mostly. Nobody said it, so it is not drawn: `chat-view` keeps
+   *  only user and assistant rows. */
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'context'
   content: string
   provider_id: string | null
   model_id: string | null

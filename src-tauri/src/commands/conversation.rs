@@ -295,10 +295,16 @@ fn compose_system_prompt(
 /// The persona (template variables resolved) and the project memory block — the
 /// system-prompt parts that come straight out of the database. Split out from
 /// `assemble_system_prompt` so it can be exercised without an app handle.
+/// `live` is what a turn starting now would actually carry, which is what makes
+/// the memory figure honest: with the block frozen into the history, most turns
+/// inject nothing at all, and counting a full block every time would report a
+/// cost no turn pays. Reads only — an estimate is not a turn, so it must not
+/// write a row or move a cursor.
 fn load_persona_and_memory(
     conn: &mut SqliteConnection,
     assistant: Option<&Assistant>,
     project_id: Option<&str>,
+    live: &[db::models::message::Message],
 ) -> (String, String) {
     let raw_prompt = assistant.map(|a| a.system_prompt.as_str()).unwrap_or("");
     let user_name = db::ops::preference::get_preference(conn, "user_name").ok().flatten();
@@ -312,16 +318,15 @@ fn load_persona_and_memory(
         }
     }
     let persona = template::resolve(raw_prompt, &ctx);
-    let memory = crate::agent::load_memory_block_sync(
-        conn,
-        &crate::agent::MemoryRequest::desktop(
-            project_id.map(|s| s.to_string()),
-            // Counting uses the largest bracket: an under-reported figure is
-            // worse than a slightly generous one.
-            crate::agent::memory_budget(usize::MAX),
-        ),
-    )
-    .unwrap_or_default();
+    let req = crate::agent::MemoryRequest::desktop(
+        project_id.map(|s| s.to_string()),
+        // Counting uses the largest bracket: an under-reported figure is worse
+        // than a slightly generous one.
+        crate::agent::memory_budget(usize::MAX),
+    );
+    let memory = crate::agent::plan_injection(conn, &req, live, crate::util::now_ms())
+        .text
+        .unwrap_or_default();
     (persona, memory)
 }
 
@@ -375,10 +380,11 @@ async fn assemble_system_prompt(
         // Same function the chat loop calls, so the estimate covers the block.
         crate::voice::prompt::voice_context_block(active_path, false).unwrap_or_default(),
     ];
+    let live: Vec<db::models::message::Message> = active_path.to_vec();
     tokio::task::spawn_blocking(move || {
         let Ok(mut conn) = pool2.get() else { return (String::new(), String::new()) };
         let (persona, memory_block) =
-            load_persona_and_memory(&mut conn, assistant.as_ref(), pid.as_deref());
+            load_persona_and_memory(&mut conn, assistant.as_ref(), pid.as_deref(), &live);
         let sub_agents = crate::agent::sub_agents::catalog(&mut conn);
         let turn = crate::agent::turn_config::resolve(
             &mut conn,
@@ -510,12 +516,18 @@ pub async fn get_context_info(
             Some(&memory_block),
             interrupted_block.as_ref().map(|r| r.text()),
             "",
+            // A desktop conversation has one implicit speaker, so there is no
+            // roster to draw and nothing to count for it.
+            None,
         ),
         &Default::default(),
     );
     // What the next turn would carry: the tail past the summary, plus the
     // summary itself when one applies.
-    let message_count = ctx.live().len() + usize::from(ctx.summary.is_some());
+    // Injected background is not a message anybody sent, and this figure sits
+    // next to the conversation in the UI.
+    let message_count = ctx.live().iter().filter(|m| m.role != "context").count()
+        + usize::from(ctx.summary.is_some());
     let estimated_tokens = budget.counter.count_messages(&msgs);
 
     let cb_state = {
@@ -633,13 +645,13 @@ mod tests {
             updated_at: 1000,
         }).unwrap();
 
-        let (persona, memory) = load_persona_and_memory(&mut conn, Some(&assistant), Some("p1"));
+        let (persona, memory) = load_persona_and_memory(&mut conn, Some(&assistant), Some("p1"), &[]);
         assert_eq!(persona, "You are Nova helping Yuerchu.");
         assert!(memory.contains("<project_memories>"), "got: {memory}");
         assert!(memory.contains("stack: Rust + Tauri"), "got: {memory}");
 
         // Without a project there is no memory block at all.
-        let (_, none) = load_persona_and_memory(&mut conn, Some(&assistant), None);
+        let (_, none) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]);
         assert!(none.is_empty());
     }
 
@@ -651,7 +663,7 @@ mod tests {
 
         // Nothing assigned: the variable stays literal rather than expanding to
         // an instruction about an empty set.
-        let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None);
+        let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]);
         assert_eq!(persona, "{{emoji_list}}");
 
         db::ops::emoji_pack::create_pack(&mut conn, &NewEmojiPack {
@@ -676,7 +688,7 @@ mod tests {
         }).unwrap();
         db::ops::emoji_pack::assign_pack(&mut conn, "a1", "pack1", 1000).unwrap();
 
-        let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None);
+        let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]);
         assert!(persona.contains("[emoji:shocked]"), "got: {persona}");
     }
 
@@ -707,7 +719,7 @@ mod tests {
             updated_at: 1000,
         }).unwrap();
 
-        let (persona, memory) = load_persona_and_memory(&mut conn, Some(&assistant), Some("p1"));
+        let (persona, memory) = load_persona_and_memory(&mut conn, Some(&assistant), Some("p1"), &[]);
         let system_prompt = compose_system_prompt(
             base_prompt(&[]).as_deref(),
             &persona,
@@ -727,7 +739,7 @@ mod tests {
         let with_prompt = budget.counter.count_messages(&crate::agent::build_messages_with_senders(
             system_prompt.trim(),
             &empty,
-            crate::agent::trailing_with_memory(Some(&memory), None, ""),
+            crate::agent::trailing_with_memory(Some(&memory), None, "", None),
             &Default::default(),
         ));
         let history_only = budget.counter.count_messages(&build_messages("", &empty, ""));

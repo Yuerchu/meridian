@@ -505,14 +505,10 @@ async fn chat_inner(
     }
     let system_prompt_resolved = template::resolve(raw_prompt, &tmpl_ctx);
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
-    let memory_block = crate::agent::load_memory_block(
-        &pool,
-        crate::agent::MemoryRequest::desktop(
-            project_id.clone(),
-            crate::agent::memory_budget(context_limit),
-        ),
-    )
-    .await;
+    let memory_request = crate::agent::MemoryRequest::desktop(
+        project_id.clone(),
+        crate::agent::memory_budget(context_limit),
+    );
     // How the previous turns stopped, for any that did not stop cleanly. Read
     // here rather than at the top because it is background about the
     // conversation, like the memory block, and travels the same way.
@@ -676,10 +672,20 @@ async fn chat_inner(
     // Auto-compact: if enabled and tokens exceed threshold, compact before sending
     let mut compacted = false;
     if auto_compact && circuit_breaker.can_compact() {
+        // Only to size the window. The real decision is taken after compaction,
+        // against the path compaction leaves behind — see below.
+        let probe = crate::agent::plan_injection_async(
+            &pool, memory_request.clone(), ctx.live().to_vec(), now_ms(),
+        ).await;
         let pre_msgs = build_messages_with_senders(
             system_prompt.trim(),
             &ctx,
-            trailing_with_memory(memory_block.as_deref(), interrupted.as_ref().map(|r| r.text()), payload_message.as_deref().unwrap_or("")),
+            trailing_with_memory(
+                probe.as_ref().and_then(|i| i.text.as_deref()),
+                interrupted.as_ref().map(|r| r.text()),
+                payload_message.as_deref().unwrap_or(""),
+                None,
+            ),
             &Default::default(),
         );
         budget.update_estimate(&pre_msgs);
@@ -746,10 +752,26 @@ async fn chat_inner(
         ctx
     };
 
+    // After compaction, never before it: compaction moves the summary anchor, and
+    // with it what `live()` returns. A plan made against the old path would be
+    // reasoning about rows the model can no longer see — and since a cut history
+    // is exactly the signal that everything has to be re-sent, getting this
+    // ordering wrong is silent rather than loud.
+    let t0 = now_ms();
+    let injection = crate::agent::plan_injection_async(
+        &pool, memory_request, ctx.live().to_vec(), t0,
+    ).await;
+    let injected = injection.as_ref().and_then(|i| i.text.clone());
+
     let mut chat_messages = build_messages_with_senders(
         system_prompt.trim(),
         &ctx,
-        trailing_with_memory(memory_block.as_deref(), interrupted.as_ref().map(|r| r.text()), payload_message.as_deref().unwrap_or("")),
+        trailing_with_memory(
+            injected.as_deref(),
+            interrupted.as_ref().map(|r| r.text()),
+            payload_message.as_deref().unwrap_or(""),
+            None,
+        ),
         &Default::default(),
     );
     let files_root = app.path().app_data_dir().ok().map(|d| crate::files::files_dir(&d));
@@ -778,6 +800,15 @@ async fn chat_inner(
     } else {
         ctx.head_id.clone()
     };
+
+    // Ahead of the message, because that is where it was sent and where the next
+    // turn has to find it.
+    if let Some(ref injection) = injection {
+        parent_cursor = crate::agent::persist_injection(
+            &pool, injection, &conversation_id, &turn_id, parent_cursor, now,
+        )
+        .await;
+    }
 
     // Absent only when regenerating, which re-answers a question that is already
     // on record.

@@ -129,7 +129,18 @@ pub(crate) async fn do_compact(
         }).await.map_err(|e| e.to_string())??
     };
 
-    let active_messages: Vec<&db::models::message::Message> = ctx.path.iter().collect();
+    // Injected background is not conversation and takes no part in any of the
+    // arithmetic below. Counted, it inflates `path.len()` and brings compaction
+    // on early; kept in the tail, it eats into the turns `keep_recent` is meant
+    // to preserve; and worst, it can *be* `anchor_id` — leaving `live()` to start
+    // at a delta row whose own cursor claims a history that is no longer there.
+    //
+    // Dropping it from the summary input is the other half: `prepare_compact_input`
+    // only labels user/assistant/tool and would skip these anyway, but that is a
+    // property of a match arm rather than a decision, and `<owner_notes>` going
+    // through a summariser is not something to leave resting on one.
+    let active_messages: Vec<&db::models::message::Message> =
+        ctx.path.iter().filter(|m| m.role != "context").collect();
 
     let min_messages = keep_recent * 2 + 2;
     if active_messages.len() < min_messages {
@@ -858,6 +869,37 @@ mod tests {
         let result = prepare_compact_input(&[&msg]);
         assert!(result.contains("truncated"));
         assert!(result.len() < 5000);
+    }
+
+    /// Frozen injections must not reach the summariser.
+    ///
+    /// `<owner_notes>` are kept behind a tag the model is told never to quote
+    /// from; a summariser reading them has no such instruction and would
+    /// paraphrase them into ordinary prose, at which point the protection is
+    /// gone and nothing says so. `do_compact` filters these out before it counts
+    /// or slices anything — this pins the second line of defence, which is that
+    /// the summariser would ignore the row even if one got through.
+    #[test]
+    fn a_frozen_memory_row_never_reaches_the_summariser() {
+        let mut row = crate::db::models::message::Message {
+            id: "1".into(),
+            conversation_id: "c".into(),
+            role: "context".into(),
+            content: "<owner_notes>\n- [general] 他在找工作\n</owner_notes>".into(),
+            provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
+            tool_calls: None, tool_call_id: None, sort_order: 0, created_at: 0,
+            reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
+            sender_id: None, parent_id: None, compact_anchor_id: None,
+            source: Some("memory|full|100.abc|-|".into()),
+            turn_id: None, tool_outcome: None,
+            cache_read_tokens: None, cache_write_tokens: None, provider_name: None,
+        };
+        assert_eq!(prepare_compact_input(&[&row]), "");
+
+        // The same text as an ordinary user row *would* go in, which is what
+        // makes the role the thing doing the work here.
+        row.role = "user".into();
+        assert!(prepare_compact_input(&[&row]).contains("找工作"));
     }
 
     #[test]

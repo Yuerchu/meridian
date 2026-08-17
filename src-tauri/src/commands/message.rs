@@ -416,6 +416,18 @@ pub async fn rate_message(app: tauri::AppHandle, id: String, rating: Option<i32>
     }).await.map_err(|e| e.to_string())?
 }
 
+/// What an export may contain: turns somebody took.
+///
+/// Injected background sits on the active path like everything else, but nobody
+/// said it. It has to come off here rather than further down, because
+/// `msg_to_openai` ends in a catch-all arm that writes any unrecognised role
+/// straight out — so a memory block would become a training example, carrying
+/// `<owner_notes>`, which exist on the understanding that they are never even
+/// quoted back to the person they are about.
+fn exportable(path: Vec<Message>) -> Vec<Message> {
+    path.into_iter().filter(|m| m.role != "context").collect()
+}
+
 #[tauri::command]
 pub async fn export_conversation(app: tauri::AppHandle, conversation_id: String, format: String, output_path: Option<String>) -> Result<String, String> {
     let pool = app.state::<AppDb>().0.clone();
@@ -434,7 +446,7 @@ pub async fn export_conversation(app: tauri::AppHandle, conversation_id: String,
         // not: a summary is a token-budget device, and the rows it stands in for
         // are exactly the training data being exported.
         let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
-        let messages: Vec<Message> = ctx.path;
+        let messages: Vec<Message> = exportable(ctx.path);
         let system_prompt = conv.assistant_id.as_deref()
             .and_then(|aid| db::ops::assistant::get_assistant(&mut conn, aid).ok())
             .map(|a| a.system_prompt)
@@ -599,6 +611,38 @@ mod tests {
         let mut conn = pool.get().unwrap();
         crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1)
             .unwrap();
+    }
+
+    fn exported_row(role: &str, content: &str) -> Message {
+        Message {
+            id: role.into(),
+            conversation_id: "c1".into(),
+            role: role.into(),
+            content: content.into(),
+            provider_id: None, model_id: None, input_tokens: None, output_tokens: None,
+            tool_calls: None, tool_call_id: None, sort_order: 0, created_at: 0,
+            reasoning_content: None, rating: None, schema_version: 2, is_compact_summary: 0,
+            sender_id: None, parent_id: None, compact_anchor_id: None, source: None,
+            turn_id: None, tool_outcome: None,
+            cache_read_tokens: None, cache_write_tokens: None, provider_name: None,
+        }
+    }
+
+    /// An export is training data. Injected background is not a turn anybody
+    /// took, and it carries `<owner_notes>` — the one thing in the whole memory
+    /// system that is never meant to be repeated anywhere.
+    #[test]
+    fn injected_background_is_not_exported() {
+        let path = vec![
+            exported_row("user", "hi"),
+            exported_row("context", "<owner_notes>\n- [general] 他在找工作\n</owner_notes>"),
+            exported_row("assistant", "hello"),
+        ];
+
+        let kept = exportable(path);
+        assert_eq!(kept.len(), 2);
+        assert!(kept.iter().all(|m| !m.content.contains("找工作")));
+        assert!(kept.iter().all(|m| m.role != "context"));
     }
 
     /// One conversation's reading, in the shape the snapshot carries several of.
