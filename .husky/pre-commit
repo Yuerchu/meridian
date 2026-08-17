@@ -1,0 +1,7 @@
+pnpm exec lint-staged
+
+# lint-staged 按文件派发,而 cargo fmt 以 crate 为单位;暂存里有 Rust 改动
+# 就整体查一遍(增量编译缓存下不到一秒)。
+if git diff --cached --name-only | grep -q '^src-tauri/.*\.rs$'; then
+  cargo fmt --all --manifest-path src-tauri/Cargo.toml --check
+fi

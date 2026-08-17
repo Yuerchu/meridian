@@ -19,21 +19,24 @@
          uses, and `src/lib/theme.tsx` narrows a junk value the same way —
          diverge here and the two fight over `<html>`. -->
     <script>
-      (function () {
+      ;(function () {
         try {
-          var stored = localStorage.getItem('heroui-theme');
-          if (stored !== 'light' && stored !== 'dark') stored = 'system';
-          var resolved = stored === 'system'
-            ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-            : stored;
-          var root = document.documentElement;
-          root.classList.remove('light', 'dark');
-          root.classList.add(resolved);
-          root.setAttribute('data-theme', resolved);
+          var stored = localStorage.getItem('heroui-theme')
+          if (stored !== 'light' && stored !== 'dark') stored = 'system'
+          var resolved =
+            stored === 'system'
+              ? window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+              : stored
+          var root = document.documentElement
+          root.classList.remove('light', 'dark')
+          root.classList.add(resolved)
+          root.setAttribute('data-theme', resolved)
         } catch (e) {
-          document.documentElement.classList.add('dark');
+          document.documentElement.classList.add('dark')
         }
-      })();
+      })()
     </script>
     <!-- Painted before the stylesheet arrives, so the window does not flash the
          wrong colour on the way to the app. Both values are `--background` from
@@ -41,8 +44,12 @@
          to be changed with it. The window's own colour is set in
          tauri.conf.json for the frame before that. -->
     <style>
-      html { background-color: #f5f5f5; }
-      html.dark { background-color: #0a0a0a; }
+      html {
+        background-color: #f5f5f5;
+      }
+      html.dark {
+        background-color: #0a0a0a;
+      }
     </style>
   </head>
   <body>

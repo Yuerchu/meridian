@@ -43,6 +43,10 @@ jobs:
           cache: pnpm
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          # The action installs a minimal profile; the style gates below need
+          # both components.
+          components: rustfmt, clippy
 
       - uses: swatinem/rust-cache@v2
         with:
@@ -66,12 +70,32 @@ jobs:
       - name: TypeScript check
         run: pnpm exec tsc -b
 
+      # Style gates run on the Linux leg only: they are platform-independent,
+      # and a Windows minute costs twice a Linux one.
+      - name: ESLint
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm lint
+
+      - name: Prettier check
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm format:check
+
+      - name: rustfmt check
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: src-tauri
+        run: cargo fmt --all --check
+
       - name: Frontend tests
         run: pnpm test
 
       - name: Drop a half-restored sherpa-onnx unpack
         shell: bash
         run: bash .github/scripts/require-sherpa-libs.sh
+
+      - name: Clippy
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: src-tauri
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Rust tests
         working-directory: src-tauri

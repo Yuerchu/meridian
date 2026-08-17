@@ -12,7 +12,19 @@
     "test": "vitest run --configLoader native --pool threads",
     "test:watch": "vitest --configLoader native --pool threads",
     "test:coverage": "vitest run --configLoader native --pool threads --coverage",
-    "doctor": "react-doctor"
+    "doctor": "react-doctor",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "*.{css,json,html}": [
+      "prettier --write"
+    ]
   },
   "license": "LicenseRef-Proprietary-Yuerchu",
   "author": "于小丘 Yuerchu <admin@yuxiaoqiu.cn>",
@@ -23,6 +35,8 @@
     }
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.1",
+    "@commitlint/config-conventional": "^21.2.0",
     "@eslint/js": "^10.0.1",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2.11.4",
@@ -36,7 +50,10 @@
     "eslint": "^10.7.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
+    "husky": "^9.1.7",
     "jsdom": "^29.1.1",
+    "lint-staged": "^17.3.0",
+    "prettier": "^3.9.6",
     "react-doctor": "0.9.11",
     "shadcn": "^4.15.0",
     "tailwindcss": "^4.3.3",

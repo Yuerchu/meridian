@@ -19,10 +19,10 @@ ignoredBuiltDependencies:
   # the presence of a pnpm-workspace.yaml to mean a monorepo, and this one only
   # exists to hold the settings above. pnpm reads no such key, so the block is
   # inert — delete it when it reappears.
-  - "@heroui-pro/react"
+  - '@heroui-pro/react'
   # Pulled in by the official `heroui-pro` CLI to keep a GitHub login in the OS
   # keychain. We never log in that way, so the native build buys nothing.
-  - "@zowe/secrets-for-zowe-sdk"
+  - '@zowe/secrets-for-zowe-sdk'
 trustPolicy: no-downgrade
 trustPolicyIgnoreAfter: 10080
 trustPolicyExclude: []
