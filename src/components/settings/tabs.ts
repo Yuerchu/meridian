@@ -11,6 +11,7 @@ import {
   Link,
   Microphone,
   Sliders,
+  Smartphone,
   Sparkles,
   Wrench,
 } from '@gravity-ui/icons'
@@ -36,6 +37,7 @@ export type SettingsTab =
   | 'voice'
   | 'onebot'
   | 'hooks'
+  | 'remote'
   | 'general'
   | 'developer'
   | 'about'
@@ -60,19 +62,27 @@ const settingsTabs: SettingsTabDef[] = [
   { id: 'voice', labelKey: 'settings.voice', icon: Microphone },
   { id: 'onebot', labelKey: 'settings.onebot', icon: BroadcastSignal },
   { id: 'hooks', labelKey: 'settings.hooks', icon: Link },
+  // Last of the three panels that open a socket, and beside them for that
+  // reason: OneBot, the hook endpoint and this one are the same decision made
+  // three times, and a user looking for "what is this machine serving" should
+  // find them together.
+  { id: 'remote', labelKey: 'settings.remote', icon: Smartphone },
   { id: 'general', labelKey: 'settings.general', icon: Sliders },
   { id: 'developer', labelKey: 'settings.developer', icon: Flask },
   { id: 'about', labelKey: 'settings.about', icon: CircleInfo },
 ]
 
 /** Panels backed by a listening socket, which Android does not have. */
-const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks']
+const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks', 'remote']
 
 /**
  * Android has no OneBot connection and nothing to serve the hook endpoint to,
- * so both panels would open onto nothing there. Voice input is not in the same
- * position: recording happens in the WebView, and the model has to be
- * downloaded from this screen before anything can be transcribed.
+ * so both panels would open onto nothing there. Remote access is the same
+ * answer for a different reason: the phone is the client in that arrangement —
+ * it is what connects to a desktop, not what another device connects to — so
+ * serving from it is backwards even where the socket would bind. Voice input is
+ * not in the same position: recording happens in the WebView, and the model has
+ * to be downloaded from this screen before anything can be transcribed.
  *
  * `platform` is null for the first frame — `usePlatform` resolves over IPC — and
  * that frame shows the full list. Filtering on an unknown platform would hide a

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { listen } from '@tauri-apps/api/event'
+import { listen } from '@/lib/transport'
 import { open } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
 import { Button, Card, Description, Input, Label, ProgressCircle, TextField } from '@heroui/react'

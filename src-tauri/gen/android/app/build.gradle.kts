@@ -27,7 +27,18 @@ android {
     // single path, so a multi-ABI build would link the others wrongly.
     sourceSets["main"].jniLibs.srcDir("../../../target/sherpa-onnx-android/jniLibs")
     defaultConfig {
-        manifestPlaceholders["usesCleartextTraffic"] = "false"
+        // Remote access dials a desktop on the LAN -- `http://192.168.1.5:8787`
+        // -- and Android blocks cleartext by default, which would make the
+        // feature work in debug and fail in every shipped build.
+        //
+        // A `networkSecurityConfig` allowing only private ranges would be the
+        // narrower answer and is not available: `domain-config` matches
+        // hostnames, not CIDR, and the address is whatever the user's router
+        // handed out. So it is permitted globally, and the boundary is the
+        // bearer token instead -- which `listen_guard` refuses to let be short.
+        // Tailscale is the answer for anyone who wants the transport encrypted
+        // as well; it moves the problem to a layer that can actually solve it.
+        manifestPlaceholders["usesCleartextTraffic"] = "true"
         applicationId = "cn.yuxiaoqiu.meridian"
         minSdk = 24
         targetSdk = 36
@@ -48,7 +59,6 @@ android {
     }
     buildTypes {
         getByName("debug") {
-            manifestPlaceholders["usesCleartextTraffic"] = "true"
             isDebuggable = true
             isJniDebuggable = true
             isMinifyEnabled = false

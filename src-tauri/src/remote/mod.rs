@@ -64,7 +64,6 @@ impl Default for ListenConfig {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ListenStatus {
     pub enabled: bool,
     pub running: bool,

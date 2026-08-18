@@ -469,6 +469,29 @@ export interface HooksStatus {
   handshake_path: string | null
 }
 
+/** The server a second device connects to in order to use this desktop. */
+export interface ListenConfig {
+  enabled: boolean
+  /** `0.0.0.0` by default: a remote access server on loopback is reachable only
+   *  by the machine that already has the app open. */
+  host: string
+  port: number
+  /** Minted by the backend on first enable; the settings page only displays it.
+   *  The backend refuses to bind a non-loopback address with a token shorter
+   *  than 16 characters, which is why nothing here lets one be typed. */
+  token: string | null
+}
+
+export interface ListenStatus {
+  enabled: boolean
+  running: boolean
+  host: string
+  port: number
+  /** Live websocket connections. The one number that says whether the phone on
+   *  the sofa is actually attached, which `running` does not. */
+  connections: number
+}
+
 export interface EmojiPack {
   id: string
   name: string

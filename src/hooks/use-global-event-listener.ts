@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { listen } from '@tauri-apps/api/event'
+import { listen } from '@/lib/transport'
 import { isPermissionGranted, requestPermission, sendNotification } from '@tauri-apps/plugin-notification'
 import { useConversationStore } from '@/stores/conversation-store'
 import type { StreamChunk } from '@/types'
