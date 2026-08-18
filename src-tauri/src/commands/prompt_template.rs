@@ -81,7 +81,7 @@ pub fn delete_prompt_template(app: tauri::AppHandle, id: String) -> Result<(), S
 }
 
 #[tauri::command]
-pub fn list_template_variables() -> Result<serde_json::Value, String> {
+pub fn list_template_variables(_app: tauri::AppHandle) -> Result<serde_json::Value, String> {
     let vars: Vec<serde_json::Value> = template::available_variables()
         .into_iter()
         .map(|v| {

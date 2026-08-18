@@ -18,6 +18,7 @@
 //! review. This one answers a device across the room, has to satisfy a browser's
 //! preflight, and fails closed: no token, no answer.
 
+pub(crate) mod dispatch;
 pub(crate) mod http;
 pub(crate) mod ws;
 
@@ -110,6 +111,15 @@ pub fn save_config(pool: &DbPool, config: &ListenConfig) -> Result<(), String> {
 pub(crate) struct SharedState {
     pub config: ListenConfig,
     pub services: Services,
+    /// What the dispatcher hands to a command.
+    ///
+    /// The commands take an `AppHandle` and this is the shell, so there is no
+    /// reason to make them take anything else: a remote call ends up in exactly
+    /// the same function the window calls, with the same argument. It is the
+    /// one place in here that touches Tauri, and it is why moving this module
+    /// into a headless build means changing this field rather than rewriting
+    /// the dispatcher.
+    pub app: tauri::AppHandle,
     /// Where events go once this server is listening.
     pub fanout: Arc<ws::WsFanout>,
     /// Mirrors `fanout.len()` so `status` can be answered without taking that
@@ -128,12 +138,13 @@ pub struct RemoteServer {
 }
 
 impl RemoteServer {
-    pub fn new(services: Services, config: ListenConfig) -> Self {
+    pub fn new(services: Services, config: ListenConfig, app: tauri::AppHandle) -> Self {
         let (shutdown_tx, _) = watch::channel(false);
         Self {
             state: Arc::new(SharedState {
                 config,
                 services,
+                app,
                 fanout: Arc::new(ws::WsFanout::default()),
                 connections: AtomicUsize::new(0),
             }),
@@ -240,11 +251,11 @@ impl RemoteServer {
 
 /// Start the server if the user has it enabled, and hand it back either way, so
 /// the IPC commands always have something to talk to.
-pub(crate) async fn maybe_start(services: Services) -> AppRemote {
+pub(crate) async fn maybe_start(services: Services, app: tauri::AppHandle) -> AppRemote {
     let config = load_config(&services.db);
     let enabled = config.enabled;
 
-    let server = RemoteServer::new(services, config);
+    let server = RemoteServer::new(services, config, app);
     if enabled {
         if let Err(e) = server.start() {
             tracing::error!(error = %e, "failed to auto-start remote access");

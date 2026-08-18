@@ -18,9 +18,10 @@
 use std::sync::Arc;
 
 use axum::Router;
-use axum::http::header;
+use axum::extract::State;
+use axum::http::{StatusCode, header};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, post};
 use meridian_core::listen_guard::constant_time_eq;
 use tower_http::cors::{Any, CorsLayer};
 
@@ -38,6 +39,7 @@ pub(crate) fn router(state: Arc<SharedState>) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/events", get(super::ws::handler))
+        .route("/rpc/invoke", post(invoke))
         .layer(
             // No credentials: the token travels in a header the client sets by
             // hand, never in a cookie, so there is nothing for a browser to
@@ -64,6 +66,63 @@ async fn healthz() -> Response {
         "minClientRev": MIN_CLIENT_REV,
     }))
     .into_response()
+}
+
+/// One command, named and with its arguments, exactly as `invoke()` would have
+/// sent it to Tauri.
+#[derive(serde::Deserialize)]
+struct Invoke {
+    cmd: String,
+    #[serde(default)]
+    args: serde_json::Value,
+}
+
+/// Run a command and answer with what it returned.
+///
+/// The two shapes are `{"ok": <value>}` and `{"err": "<message>"}`, mirroring
+/// the `Result<T, String>` every command returns, so the client has one thing
+/// to look at rather than a status code *and* a body. The HTTP status stays 200
+/// for a command that ran and failed: that is not a transport error, and
+/// treating it as one would make a refused tool call indistinguishable from a
+/// dropped connection.
+async fn invoke(State(state): State<Arc<SharedState>>, headers: axum::http::HeaderMap, body: String) -> Response {
+    if let Some(refusal) = authorize(&state.config, &headers) {
+        return refusal;
+    }
+    let Ok(call) = serde_json::from_str::<Invoke>(&body) else {
+        return refuse(StatusCode::BAD_REQUEST, "malformed invoke payload");
+    };
+
+    match super::dispatch::dispatch(&state.app, &call.cmd, &call.args).await {
+        Ok(value) => axum::Json(serde_json::json!({ "ok": value })).into_response(),
+        Err(message) => axum::Json(serde_json::json!({ "err": message })).into_response(),
+    }
+}
+
+/// Whether a request carries the configured token, as a refusal or nothing.
+///
+/// `Some` is the response to send back; `None` means carry on. Phrased that way
+/// round rather than as a `Result` because the refusal is a whole HTTP
+/// response, and a `Result` that large is one clippy objects to at every call
+/// site that propagates it.
+pub(crate) fn authorize(config: &super::ListenConfig, headers: &axum::http::HeaderMap) -> Option<Response> {
+    let presented = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.strip_prefix("Bearer "))
+        .unwrap_or("");
+
+    if token_ok(config, presented) {
+        None
+    } else {
+        Some(refuse(StatusCode::UNAUTHORIZED, "bad or missing token"))
+    }
+}
+
+/// A refusal, in the shape the client already knows how to read.
+pub(crate) fn refuse(status: StatusCode, message: &str) -> Response {
+    tracing::debug!(%status, %message, "remote request refused");
+    (status, axum::Json(serde_json::json!({ "err": message }))).into_response()
 }
 
 /// Whether a presented token is the configured one.

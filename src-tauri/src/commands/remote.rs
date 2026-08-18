@@ -70,7 +70,7 @@ pub async fn stop_listen(app: tauri::AppHandle) -> Result<ListenStatus, String> 
 /// interface first is not worth the trouble — they are shown as a list and the
 /// user picks the one their phone is on.
 #[tauri::command]
-pub fn get_listen_addresses() -> Result<Vec<String>, String> {
+pub fn get_listen_addresses(_app: tauri::AppHandle) -> Result<Vec<String>, String> {
     Ok(local_addresses())
 }
 
@@ -118,7 +118,7 @@ async fn restart(app: &tauri::AppHandle, config: ListenConfig) -> Result<ListenS
     guard.stop();
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-    let server = RemoteServer::new(services, config);
+    let server = RemoteServer::new(services, config, app.clone());
     let enabled = server.config().enabled;
     if enabled {
         server.start()?;

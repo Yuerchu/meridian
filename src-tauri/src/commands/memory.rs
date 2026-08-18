@@ -297,7 +297,7 @@ pub struct MemoryEnums {
 }
 
 #[tauri::command]
-pub async fn memory_enums() -> Result<MemoryEnums, String> {
+pub async fn memory_enums(_app: tauri::AppHandle) -> Result<MemoryEnums, String> {
     Ok(MemoryEnums {
         scopes: MemoryScope::all(),
         origins: Origin::all(),

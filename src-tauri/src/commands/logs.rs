@@ -30,7 +30,7 @@ const MAX_LIMIT: usize = 1000;
 const DEFAULT_LIMIT: usize = 200;
 
 #[tauri::command]
-pub async fn read_logs(query: LogQueryInput) -> Result<reader::LogPage, String> {
+pub async fn read_logs(_app: tauri::AppHandle, query: LogQueryInput) -> Result<reader::LogPage, String> {
     let Some(dir) = logging::log_dir() else {
         return Err("Logging is not available in this session.".into());
     };
@@ -59,7 +59,7 @@ pub struct LogFileInfo {
 }
 
 #[tauri::command]
-pub async fn list_log_files() -> Result<Vec<LogFileInfo>, String> {
+pub async fn list_log_files(_app: tauri::AppHandle) -> Result<Vec<LogFileInfo>, String> {
     let Some(dir) = logging::log_dir() else {
         return Ok(Vec::new());
     };

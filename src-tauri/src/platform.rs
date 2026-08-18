@@ -48,8 +48,8 @@ async fn save_saf_roots(pool: &meridian_core::db::DbPool, roots: &[SafRootEntry]
 }
 
 #[tauri::command]
-pub fn get_platform() -> &'static str {
-    if cfg!(target_os = "android") {
+pub fn get_platform(_app: tauri::AppHandle) -> Result<&'static str, String> {
+    Ok(if cfg!(target_os = "android") {
         "android"
     } else if cfg!(target_os = "windows") {
         "windows"
@@ -61,7 +61,7 @@ pub fn get_platform() -> &'static str {
         "ios"
     } else {
         "unknown"
-    }
+    })
 }
 
 #[tauri::command]
