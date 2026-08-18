@@ -1,7 +1,6 @@
-use tauri::Manager;
+use crate::ServicesExt;
 
-use crate::agent::engine::ApprovalDecision;
-use crate::state::ApprovalWaiters;
+use meridian_core::agent::engine::ApprovalDecision;
 
 /// Hand a decision to the turn waiting on it.
 ///
@@ -13,7 +12,8 @@ use crate::state::ApprovalWaiters;
 /// made a dead approval card look like a live one, so the front end could keep
 /// clicking a button that would never do anything.
 fn decide(app: &tauri::AppHandle, approval_id: &str, decision: ApprovalDecision) -> Result<(), String> {
-    let waiters = app.state::<ApprovalWaiters>();
+    let services = app.services();
+    let waiters = &services.approvals;
     let entry = waiters.lock().remove(approval_id);
     match entry {
         Some(pending) => {
@@ -99,7 +99,8 @@ pub struct PendingApprovalInfo {
 /// `approval_id`, so there is exactly one place it can be answered from and no
 /// race between two cards.
 pub(crate) fn pending_for(app: &tauri::AppHandle, conversation_id: &str) -> Vec<PendingApprovalInfo> {
-    let waiters = app.state::<ApprovalWaiters>();
+    let services = app.services();
+    let waiters = &services.approvals;
     let map = waiters.lock();
     views_for(&map, conversation_id)
 }
@@ -110,7 +111,7 @@ pub(crate) fn pending_for(app: &tauri::AppHandle, conversation_id: &str) -> Vec<
 /// different in each — is worth pinning down without a running application
 /// around it.
 fn views_for(
-    map: &std::collections::HashMap<String, crate::state::PendingApproval>,
+    map: &std::collections::HashMap<String, meridian_core::state::PendingApproval>,
     conversation_id: &str,
 ) -> Vec<PendingApprovalInfo> {
     let mut out = Vec::new();
@@ -156,7 +157,7 @@ fn views_for(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{Bubble, PendingApproval};
+    use meridian_core::state::{Bubble, PendingApproval};
     use std::collections::HashMap;
 
     /// One approval in the register, as a delegated run would leave it.

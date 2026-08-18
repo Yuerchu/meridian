@@ -265,6 +265,10 @@ export function hydrateBlocks(
                   : undefined,
               },
             })
+            if (toolMsg && outcomeOf(toolMsg) === 'completed' && tc.function.name === 'send_sticker') {
+              const sticker = stickerBlockFrom(tc.function.arguments, toolMsg.content)
+              if (sticker) blocks.push(sticker)
+            }
           }
         } catch {
           /* ignore */
@@ -283,6 +287,28 @@ export function hydrateBlocks(
     }
     return m
   })
+}
+
+function stickerBlockFrom(
+  argumentsJson: string,
+  resultJson?: string,
+): Extract<ContentBlock, { type: 'sticker' }> | null {
+  for (const raw of [resultJson, argumentsJson]) {
+    if (!raw) continue
+    try {
+      const value = JSON.parse(raw) as { sticker_id?: unknown; name?: unknown }
+      if (typeof value.sticker_id === 'string' && value.sticker_id) {
+        return {
+          type: 'sticker',
+          sticker_id: value.sticker_id,
+          name: typeof value.name === 'string' ? value.name : undefined,
+        }
+      }
+    } catch {
+      /* tool output may be plain text */
+    }
+  }
+  return null
 }
 
 /**
@@ -601,6 +627,7 @@ export interface ConversationStore {
   setActiveProjectId: (id: string | null) => void
   refreshConversations: () => Promise<Conversation[]>
   refreshProjects: () => Promise<void>
+  resyncAfterReconnect: () => Promise<void>
 
   ensureSession: (convId: string) => void
   loadMessages: (convId: string) => Promise<void>
@@ -713,6 +740,37 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
   setActiveProjectId: (id) => {
     set({ activeProjectId: id, activeId: null, navigationStack: [] })
+  },
+
+  /**
+   * Rebuild from the server after a connection came back.
+   *
+   * Events are not replayed, so anything that happened while the socket was
+   * down is simply gone — and the one that matters is `stop`. Missing it leaves
+   * a session marked `streaming` for ever: the composer stays locked and the
+   * transcript keeps waiting for an answer that arrived while nobody was
+   * listening.
+   *
+   * Clearing the flag first is what makes the reload able to fix it.
+   * `adoptLiveTurn` returns early when a session already claims to be
+   * streaming — correct when a live stream is feeding it, wrong here, where
+   * that claim is exactly the thing that cannot be trusted. Cleared, the
+   * snapshot's turn records decide instead: still `running` and it comes back,
+   * finished and it does not.
+   */
+  resyncAfterReconnect: async () => {
+    const { activeId } = get()
+    set(
+      produce((state: ConversationStore) => {
+        for (const session of Object.values(state.sessions)) {
+          session.streaming = false
+          session.activeTurnId = null
+          session.candidateTurnId = null
+        }
+      }),
+    )
+    await get().refreshConversations()
+    if (activeId) await get().loadMessages(activeId)
   },
 
   refreshConversations: async () => {
@@ -1180,6 +1238,15 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           // a rejected one left the stored list untouched.
           if (card.data.tool_name === 'update_todos' && status === 'completed') {
             session.activeTodos = readTodoArgs(card.data.arguments)
+          }
+          if (card.data.tool_name === 'send_sticker' && status === 'completed') {
+            const sticker = stickerBlockFrom(card.data.arguments, result)
+            if (
+              sticker &&
+              !target?._blocks?.some((block) => block.type === 'sticker' && block.sticker_id === sticker.sticker_id)
+            ) {
+              target?._blocks?.push(sticker)
+            }
           }
         } else {
           // No card left to update — the transcript was rebuilt without one.

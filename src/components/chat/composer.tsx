@@ -33,6 +33,8 @@ interface ComposerProps {
   className?: string
   /** Attachment previews, above the field. */
   attachments?: ReactNode
+  /** Enables Send for a structured part even when the textarea is empty. */
+  hasPayload?: boolean
   /** Left of the toolbar: the tool menu. */
   toolbarStart?: ReactNode
   /** Right of the toolbar, before Send: emoji, voice, context usage. */
@@ -74,6 +76,7 @@ export function Composer({
   autoFocus,
   className,
   attachments,
+  hasPayload,
   toolbarStart,
   toolbarEnd,
   notice,
@@ -164,7 +167,10 @@ export function Composer({
               )}
               {/* Pro would label it "Send message" / "Stop" in English, and it
                   decides which one it is from the same three values below. */}
-              <PromptInput.Send aria-label={sendIsStop ? t('chat.stop') : t('chat.send')} />
+              <PromptInput.Send
+                aria-label={sendIsStop ? t('chat.stop') : t('chat.send')}
+                isDisabled={hasPayload && !streaming ? false : undefined}
+              />
             </PromptInput.ToolbarEnd>
           </PromptInput.Toolbar>
         </PromptInput.Shell>

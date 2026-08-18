@@ -236,7 +236,10 @@ export function ComposerMenu(props: ComposerMenuProps) {
       value: t(`toolbar.thinking.${props.thinkingLevel}`),
       tone: props.thinkingLevel === 'default' ? 'muted' : 'info',
       options: THINKING_LEVELS.filter(
-        (l) => l === 'default' || l === 'off' || efforts.includes(l as ThinkingEffort),
+        (l) =>
+          l === 'default' ||
+          (l === 'off' && props.capabilities?.supports_thinking_off !== false) ||
+          efforts.includes(l as ThinkingEffort),
       ).map((l) => ({
         value: l,
         label: t(`toolbar.thinking.${l}`),

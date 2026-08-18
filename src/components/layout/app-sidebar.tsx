@@ -22,6 +22,7 @@ import { Button, Input } from '@heroui/react'
 import { Sidebar, useSidebar } from '@heroui-pro/react/sidebar'
 import { Archive, ArrowLeft, Comment, FolderOpen, FolderPlus, Gear, Pin, Plus } from '@gravity-ui/icons'
 
+import { can } from '@/lib/capabilities'
 import type { Conversation, Project } from '@/types'
 import type { Page } from './shell-props'
 // Not from the settings barrel: this is a value import, and the barrel would
@@ -103,10 +104,32 @@ function NewProjectForm({
           else if (e.key === 'Escape') onCancel()
         }}
       />
-      <Button type="button" variant="outline" onClick={handleBrowse} className="w-full justify-start text-xs">
-        <FolderOpen className="text-muted" />
-        <span className={path ? 'text-foreground truncate' : 'text-muted'}>{path || t('sidebar.browsePath')}</span>
-      </Button>
+      {/* A project's working directory is read and written by the machine the
+          backend is on, so browsing for it means browsing *that* filesystem —
+          which the picker here cannot see. Typed instead, and said so: an
+          address book of the wrong computer's folders would be worse than no
+          picker at all. */}
+      {can.browseForDirectory ? (
+        <Button type="button" variant="outline" onClick={handleBrowse} className="w-full justify-start text-xs">
+          <FolderOpen className="text-muted" />
+          <span className={path ? 'text-foreground truncate' : 'text-muted'}>{path || t('sidebar.browsePath')}</span>
+        </Button>
+      ) : (
+        <Input
+          fullWidth
+          type="text"
+          aria-label={t('sidebar.hostPath')}
+          value={path}
+          onChange={(e) => setPath(e.target.value)}
+          placeholder={t('sidebar.hostPathPlaceholder')}
+          className="text-xs"
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return
+            if (e.key === 'Enter' && name.trim() && path.trim()) onSubmit(name.trim(), path.trim())
+            else if (e.key === 'Escape') onCancel()
+          }}
+        />
+      )}
       <div className="flex gap-1">
         <Button
           variant="secondary"
@@ -146,10 +169,15 @@ function RowActionItems({ actions }: { actions: RowAction[] }) {
           {i > 0 && GROUP_STARTS.has(action.key) && <ContextMenuSeparator />}
           <ContextMenuItem
             variant={action.variant === 'destructive' ? 'destructive' : undefined}
+            disabled={Boolean(action.disabledReason)}
             onClick={() => void action.run()}
           >
             <action.icon />
             {action.label}
+            {/* Beside the label rather than in a tooltip — see `RowAction`. */}
+            {action.disabledReason && (
+              <span className="ml-auto shrink-0 text-xs text-muted">{action.disabledReason}</span>
+            )}
           </ContextMenuItem>
         </Fragment>
       ))}

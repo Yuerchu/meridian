@@ -21,3 +21,6 @@ tsconfig.tsbuildinfo
 
 # Playwright MCP scratch output (page snapshots, console logs, screenshots)
 .playwright-mcp/
+
+# Remote agent attachment cache
+.codex-remote-attachments/

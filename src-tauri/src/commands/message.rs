@@ -1,10 +1,73 @@
 use diesel::Connection;
-use tauri::Manager;
 
-use crate::agent::extract_tool_calls_from_blocks;
-use crate::db;
-use crate::db::models::message::Message;
-use crate::state::{AppDb, AppTurns};
+use crate::ServicesExt;
+use meridian_core::agent::extract_tool_calls_from_blocks;
+use meridian_core::db;
+use meridian_core::db::models::message::Message;
+
+/// The public transcript shape. Database rows are not serializable: adding an
+/// internal column must require an explicit decision here before it can cross
+/// the Tauri boundary.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MessageDto {
+    pub id: String,
+    pub conversation_id: String,
+    pub role: String,
+    pub content: String,
+    pub provider_id: Option<String>,
+    pub model_id: Option<String>,
+    pub input_tokens: Option<i32>,
+    pub output_tokens: Option<i32>,
+    pub tool_calls: Option<String>,
+    pub tool_call_id: Option<String>,
+    pub sort_order: i32,
+    pub created_at: i64,
+    pub reasoning_content: Option<String>,
+    pub rating: Option<i32>,
+    pub schema_version: i32,
+    pub is_compact_summary: i32,
+    pub sender_id: Option<i64>,
+    pub parent_id: Option<String>,
+    pub compact_anchor_id: Option<String>,
+    pub source: Option<String>,
+    pub turn_id: Option<String>,
+    pub tool_outcome: Option<String>,
+    pub cache_read_tokens: Option<i32>,
+    pub cache_write_tokens: Option<i32>,
+    pub provider_name: Option<String>,
+}
+
+impl From<Message> for MessageDto {
+    fn from(row: Message) -> Self {
+        Self {
+            id: row.id,
+            conversation_id: row.conversation_id,
+            role: row.role,
+            content: row.content,
+            provider_id: row.provider_id,
+            model_id: row.model_id,
+            input_tokens: row.input_tokens,
+            output_tokens: row.output_tokens,
+            tool_calls: row.tool_calls,
+            tool_call_id: row.tool_call_id,
+            sort_order: row.sort_order,
+            created_at: row.created_at,
+            reasoning_content: row.reasoning_content,
+            rating: row.rating,
+            schema_version: row.schema_version,
+            is_compact_summary: row.is_compact_summary,
+            sender_id: row.sender_id,
+            parent_id: row.parent_id,
+            compact_anchor_id: row.compact_anchor_id,
+            source: row.source,
+            turn_id: row.turn_id,
+            tool_outcome: row.tool_outcome,
+            cache_read_tokens: row.cache_read_tokens,
+            cache_write_tokens: row.cache_write_tokens,
+            provider_name: row.provider_name,
+        }
+    }
+}
 
 /// The active path, the summary that applies to it, and where it can be paged.
 ///
@@ -16,7 +79,7 @@ pub struct MessageTree {
     /// The summary, when one applies, is appended rather than placed in order —
     /// the front end picks it out by `is_compact_summary` and draws it as a
     /// boundary marker, not as part of the transcript.
-    pub messages: Vec<Message>,
+    pub messages: Vec<MessageDto>,
     pub head_message_id: Option<String>,
     pub branches: Vec<db::ops::message::BranchPoint>,
 }
@@ -30,8 +93,8 @@ fn read_tree_with_conversation(
     let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
     let branches = db::ops::message::branch_points(&history, &ctx.path);
     let head_message_id = ctx.head_id.clone();
-    let mut messages = ctx.path;
-    messages.extend(ctx.summary);
+    let mut messages = ctx.path.into_iter().map(MessageDto::from).collect::<Vec<_>>();
+    messages.extend(ctx.summary.map(MessageDto::from));
     Ok((
         conv,
         MessageTree {
@@ -131,8 +194,9 @@ pub async fn conversation_snapshot(
     app: tauri::AppHandle,
     conversation_id: String,
 ) -> Result<ConversationSnapshot, String> {
-    let coordinator = app.state::<AppTurns>().0.clone();
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let coordinator = services.turns.clone();
+    let pool = services.db.clone();
 
     let mut settled = None;
     for attempt in 0..SNAPSHOT_ATTEMPTS {
@@ -238,7 +302,7 @@ async fn read_off_thread(pool: &db::DbPool, conversation_id: &str, live: Live<'_
 /// own conversation.
 #[derive(Clone)]
 enum Live<'a> {
-    Holding(&'a [crate::turn::Observed]),
+    Holding(&'a [meridian_core::turn::Observed]),
     /// It kept moving. No row is called interrupted on this pass.
     Unsettled,
 }
@@ -272,7 +336,7 @@ impl OwnedLive {
     fn cut_off(&self, turn: &db::models::turn::Turn) -> bool {
         match self {
             OwnedLive::Holding(held) => match held.get(&turn.conversation_id) {
-                Some(h) => crate::agent::interrupted::was_cut_off(turn, h.as_deref()),
+                Some(h) => meridian_core::agent::interrupted::was_cut_off(turn, h.as_deref()),
                 None => false,
             },
             OwnedLive::Unsettled => false,
@@ -353,13 +417,13 @@ fn effective_status(turn: &db::models::turn::Turn, live: &OwnedLive) -> String {
 /// half-answer that command exists to replace.
 #[tauri::command]
 pub async fn switch_branch(app: tauri::AppHandle, conversation_id: String, message_id: String) -> Result<(), String> {
-    let _lease = app
-        .state::<AppTurns>()
-        .0
+    let services = app.services();
+    let _lease = services
+        .turns
         .clone()
         .try_acquire_mutation(&conversation_id, "a branch switch")
         .map_err(|busy| busy.to_string())?;
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::message::switch_branch(&mut conn, &conversation_id, &message_id)
@@ -395,13 +459,13 @@ pub async fn switch_branch(app: tauri::AppHandle, conversation_id: String, messa
 /// is not a state anything can be drawn from.
 #[tauri::command]
 pub async fn delete_message(app: tauri::AppHandle, conversation_id: String, id: String) -> Result<(), String> {
-    let _lease = app
-        .state::<AppTurns>()
-        .0
+    let services = app.services();
+    let _lease = services
+        .turns
         .clone()
         .try_acquire_mutation(&conversation_id, "a delete")
         .map_err(|busy| busy.to_string())?;
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::message::delete_subtree(&mut conn, &conversation_id, &id)
@@ -414,7 +478,8 @@ pub async fn delete_message(app: tauri::AppHandle, conversation_id: String, id: 
 
 #[tauri::command]
 pub async fn rate_message(app: tauri::AppHandle, id: String, rating: Option<i32>) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::message::update_rating(&mut conn, &id, rating).map_err(|e| e.to_string())
@@ -442,7 +507,8 @@ pub async fn export_conversation(
     format: String,
     output_path: Option<String>,
 ) -> Result<String, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     let result: String = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let conv = db::ops::conversation::get_conversation(&mut conn, &conversation_id).map_err(|e| e.to_string())?;
@@ -574,20 +640,21 @@ pub async fn upload_file(
     conversation_id: String,
     file_path: String,
 ) -> Result<serde_json::Value, String> {
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let services = app.services();
+    let app_data_dir = services.paths.data_dir.clone();
 
     // Android: handle content:// URIs from SAF file picker
     #[cfg(target_os = "android")]
     if file_path.starts_with("content://") {
-        let stat = crate::android_bridge::content_stat(&file_path).await?;
+        let stat = meridian_core::android_bridge::content_stat(&file_path).await?;
         let original_name = stat.name.unwrap_or_else(|| "file".to_string());
         let ext = original_name
             .rsplit('.')
             .next()
             .filter(|e| e.len() <= 10 && !e.contains('/'))
             .unwrap_or("bin");
-        let (dest_path, uri) = crate::files::alloc_dest(&app_data_dir, &conversation_id, ext)?;
-        crate::android_bridge::content_copy(&file_path, dest_path.to_str().ok_or("invalid path")?).await?;
+        let (dest_path, uri) = meridian_core::files::alloc_dest(&app_data_dir, &conversation_id, ext)?;
+        meridian_core::android_bridge::content_copy(&file_path, dest_path.to_str().ok_or("invalid path")?).await?;
         let mime = stat.mime.unwrap_or_else(|| {
             mime_guess::from_path(&original_name)
                 .first_or_octet_stream()
@@ -608,7 +675,7 @@ pub async fn upload_file(
     }
 
     let src = std::path::Path::new(&file_path);
-    let uri = crate::files::store_file(&app_data_dir, &conversation_id, src)?;
+    let uri = meridian_core::files::store_file(&app_data_dir, &conversation_id, src)?;
 
     let mime = mime_guess::from_path(src).first_or_octet_stream().to_string();
     let name = src.file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
@@ -631,14 +698,14 @@ pub async fn upload_file(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::models::turn::{TurnPhase, TurnStatus};
-    use crate::db::ops::turn;
-    use crate::db::test_db;
-    use crate::turn::TurnOrigin;
+    use meridian_core::db::models::turn::{TurnPhase, TurnStatus};
+    use meridian_core::db::ops::turn;
+    use meridian_core::db::test_db;
+    use meridian_core::turn::TurnOrigin;
 
-    fn seed(pool: &crate::db::DbPool) {
+    fn seed(pool: &meridian_core::db::DbPool) {
         let mut conn = pool.get().unwrap();
-        crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1).unwrap();
+        meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1).unwrap();
     }
 
     fn exported_row(role: &str, content: &str) -> Message {
@@ -668,6 +735,7 @@ mod tests {
             cache_read_tokens: None,
             cache_write_tokens: None,
             provider_name: None,
+            provider_state: None,
         }
     }
 
@@ -688,6 +756,16 @@ mod tests {
         assert!(kept.iter().all(|m| m.role != "context"));
     }
 
+    #[test]
+    fn message_dto_is_an_explicit_public_projection() {
+        let mut row = exported_row("assistant", "answer");
+        row.provider_state = Some("opaque-provider-state".into());
+        let json = serde_json::to_value(MessageDto::from(row)).unwrap();
+        assert_eq!(json["content"], "answer");
+        assert!(json.get("provider_state").is_none());
+        assert!(!json.to_string().contains("opaque-provider-state"));
+    }
+
     /// One conversation's reading, in the shape the snapshot carries several of.
     fn holding(conversation_id: &str, held: Option<&str>) -> OwnedLive {
         OwnedLive::Holding(
@@ -697,7 +775,7 @@ mod tests {
         )
     }
 
-    fn snapshot(pool: &crate::db::DbPool, held: Option<&str>) -> Vec<TurnView> {
+    fn snapshot(pool: &meridian_core::db::DbPool, held: Option<&str>) -> Vec<TurnView> {
         let mut conn = pool.get().unwrap();
         read_snapshot(&mut conn, "c1", &holding("c1", held)).unwrap().2
     }
@@ -705,7 +783,7 @@ mod tests {
     /// When the coordinator will not hold still, nothing is called interrupted.
     /// A crash that really happened is still on record at the next open; a live
     /// turn labelled as crashed is a lie the user reads now.
-    fn unsettled(pool: &crate::db::DbPool) -> Vec<TurnView> {
+    fn unsettled(pool: &meridian_core::db::DbPool) -> Vec<TurnView> {
         let mut conn = pool.get().unwrap();
         read_snapshot(&mut conn, "c1", &OwnedLive::Unsettled).unwrap().2
     }
@@ -792,8 +870,8 @@ mod tests {
         {
             let mut conn = pool.get().unwrap();
             turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-            diesel::update(crate::db::schema::turns::table.find("t1"))
-                .set(crate::db::schema::turns::status.eq("from_the_future"))
+            diesel::update(meridian_core::db::schema::turns::table.find("t1"))
+                .set(meridian_core::db::schema::turns::status.eq("from_the_future"))
                 .execute(&mut conn)
                 .unwrap();
         }
@@ -838,9 +916,9 @@ mod tests {
         {
             let mut conn = pool.get().unwrap();
             turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-            crate::db::ops::message::append_message(
+            meridian_core::db::ops::message::append_message(
                 &mut conn,
-                &crate::db::models::message::NewMessage {
+                &meridian_core::db::models::message::NewMessage {
                     id: "m1",
                     conversation_id: "c1",
                     role: "user",
@@ -890,13 +968,13 @@ mod tests {
     /// spinning on the card for ever.
     #[test]
     fn a_child_that_stopped_without_saying_so_is_judged_against_its_own_conversation() {
-        let pool = crate::db::test_db();
+        let pool = meridian_core::db::test_db();
         seed(&pool);
         let mut conn = pool.get().unwrap();
 
-        crate::db::ops::conversation::insert(
+        meridian_core::db::ops::conversation::insert(
             &mut conn,
-            crate::db::models::conversation::NewConversation {
+            meridian_core::db::models::conversation::NewConversation {
                 id: "child",
                 title: Some("look it up"),
                 created_at: 10,
@@ -910,7 +988,7 @@ mod tests {
             },
         )
         .unwrap();
-        crate::db::ops::turn::begin(&mut conn, "t-child", "child", TurnOrigin::SubAgent, None, 10).unwrap();
+        meridian_core::db::ops::turn::begin(&mut conn, "t-child", "child", TurnOrigin::SubAgent, None, 10).unwrap();
 
         // The parent is being read while it holds its own turn. Nobody holds the
         // child's, so the child's `running` row is a run that stopped.

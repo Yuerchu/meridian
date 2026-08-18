@@ -1,0 +1,253 @@
+use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
+
+use super::ProviderError;
+use super::dto::{ExtraIgnore, warn_extra_fields};
+use crate::client::{HttpTransport, Request, ReqwestTransport};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub id: String,
+    pub name: String,
+}
+
+pub async fn fetch_models(
+    provider_type: &str,
+    api_format: Option<&str>,
+    base_url: &str,
+    api_key: &str,
+) -> Result<Vec<ModelInfo>, ProviderError> {
+    match provider_type {
+        "anthropic" => fetch_anthropic_models(base_url, api_key).await,
+        "google" => {
+            let models = if api_format == Some("gemini_generate_content") {
+                fetch_google_models(base_url, api_key).await?
+            } else {
+                fetch_openai_models(base_url, api_key).await?
+            };
+            Ok(models
+                .into_iter()
+                .filter(|model| is_google_agent_model(&model.id))
+                .collect())
+        }
+        _ => fetch_openai_models(base_url, api_key).await,
+    }
+}
+
+fn is_google_agent_model(id: &str) -> bool {
+    let lower = id.to_ascii_lowercase();
+    let id = lower.strip_prefix("models/").unwrap_or(&lower);
+    if !id.starts_with("gemini-3") {
+        return false;
+    }
+    if ["image", "live", "tts", "audio", "embedding", "embed"]
+        .iter()
+        .any(|part| id.contains(part))
+    {
+        return false;
+    }
+    id.contains("-flash-lite") || id.contains("-flash") || id.contains("-pro")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_google_agent_model;
+
+    #[test]
+    fn google_filter_keeps_general_gemini_3_models() {
+        assert!(is_google_agent_model("gemini-3.7-flash"));
+        assert!(is_google_agent_model("gemini-3.5-flash-lite"));
+        assert!(is_google_agent_model("gemini-3.1-pro-preview-customtools"));
+        assert!(is_google_agent_model("models/gemini-3-flash-preview"));
+    }
+
+    #[test]
+    fn google_filter_drops_other_families_and_modalities() {
+        assert!(!is_google_agent_model("gemini-2.5-flash"));
+        assert!(!is_google_agent_model("gemini-3-pro-image-preview"));
+        assert!(!is_google_agent_model("gemini-3-live-preview"));
+        assert!(!is_google_agent_model("gemini-embedding-001"));
+    }
+}
+
+#[derive(Deserialize)]
+struct OpenAIModelsResponse {
+    data: Vec<OpenAIModel>,
+    #[serde(default, flatten)]
+    extra: ExtraIgnore,
+}
+
+#[derive(Deserialize)]
+struct OpenAIModel {
+    id: String,
+    #[serde(default, flatten)]
+    extra: ExtraIgnore,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GoogleModelsResponse {
+    models: Vec<GoogleModel>,
+    next_page_token: Option<String>,
+    #[serde(default, flatten)]
+    extra: ExtraIgnore,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct GoogleModel {
+    name: String,
+    display_name: Option<String>,
+    #[serde(default, flatten)]
+    extra: ExtraIgnore,
+}
+
+async fn fetch_google_models(base_url: &str, api_key: &str) -> Result<Vec<ModelInfo>, ProviderError> {
+    let root = super::google_generate_content::google_api_root(base_url);
+    let transport = ReqwestTransport::shared();
+    let mut page_token = None::<String>;
+    let mut seen_tokens = HashSet::new();
+    let mut all_models = Vec::new();
+    loop {
+        let url = match page_token.as_deref() {
+            Some(token) => format!(
+                "{root}/v1beta/models?pageToken={}",
+                percent_encoding::utf8_percent_encode(token, percent_encoding::NON_ALPHANUMERIC)
+            ),
+            None => format!("{root}/v1beta/models"),
+        };
+        let mut req = Request::new(http::Method::GET, url);
+        req.headers.insert("x-goog-api-key", super::auth_header_value(api_key));
+        let resp = transport.execute(req).await.inspect_err(|error| {
+            tracing::error!(api = "gemini", error = %error, "could not fetch the model list");
+        })?;
+        let parsed: GoogleModelsResponse = serde_json::from_slice(&resp.body).map_err(|error| {
+            tracing::warn!(
+                api = "gemini",
+                body_len = resp.body.len(),
+                error = %error,
+                "the model list response was not in the expected shape"
+            );
+            ProviderError::Parse(error.to_string())
+        })?;
+        warn_extra_fields("gemini_models_response", &parsed.extra);
+        for model in &parsed.models {
+            warn_extra_fields("gemini_model", &model.extra);
+        }
+        all_models.extend(parsed.models);
+        let Some(next) = parsed.next_page_token.filter(|token| !token.is_empty()) else {
+            break;
+        };
+        if !seen_tokens.insert(next.clone()) {
+            return Err(ProviderError::Parse("Gemini model list repeated a page token".into()));
+        }
+        page_token = Some(next);
+    }
+    let mut models = all_models
+        .into_iter()
+        .map(|model| ModelInfo {
+            id: model.name.clone(),
+            name: model.display_name.unwrap_or(model.name),
+        })
+        .collect::<Vec<_>>();
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(models)
+}
+
+async fn fetch_openai_models(base_url: &str, api_key: &str) -> Result<Vec<ModelInfo>, ProviderError> {
+    let base_url = base_url.trim_end_matches('/');
+    let transport = ReqwestTransport::shared();
+
+    let mut req = Request::new(http::Method::GET, format!("{base_url}/models"));
+    req.headers.insert(
+        http::header::AUTHORIZATION,
+        super::auth_header_value(&format!("Bearer {api_key}")),
+    );
+
+    // The HTTP failure itself is recorded by the transport; what that cannot say
+    // is that this was the model list — the first button pressed after adding a
+    // provider, and where a wrong base URL or key usually shows up.
+    let resp = transport.execute(req).await.inspect_err(|e| {
+        tracing::error!(api = "openai", error = %e, "could not fetch the model list");
+    })?;
+    let parsed: OpenAIModelsResponse = serde_json::from_slice(&resp.body).map_err(|e| {
+        // Relays often answer /models with a non-standard shape, and the user
+        // just sees an empty dropdown with no error at all.
+        tracing::warn!(
+            api = "openai",
+            body_len = resp.body.len(),
+            error = %e,
+            "the model list response was not in the expected shape"
+        );
+        ProviderError::Parse(e.to_string())
+    })?;
+    warn_extra_fields("openai_models_response", &parsed.extra);
+    for model in &parsed.data {
+        warn_extra_fields("openai_model", &model.extra);
+    }
+
+    let mut models: Vec<ModelInfo> = parsed
+        .data
+        .into_iter()
+        .map(|m| ModelInfo {
+            name: m.id.clone(),
+            id: m.id,
+        })
+        .collect();
+
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(models)
+}
+
+#[derive(Deserialize)]
+struct AnthropicModelsResponse {
+    data: Vec<AnthropicModel>,
+    #[serde(default, flatten)]
+    extra: ExtraIgnore,
+}
+
+#[derive(Deserialize)]
+struct AnthropicModel {
+    id: String,
+    display_name: Option<String>,
+    #[serde(default, flatten)]
+    extra: ExtraIgnore,
+}
+
+async fn fetch_anthropic_models(base_url: &str, api_key: &str) -> Result<Vec<ModelInfo>, ProviderError> {
+    let base_url = base_url.trim_end_matches('/');
+    let transport = ReqwestTransport::shared();
+
+    let mut req = Request::new(http::Method::GET, format!("{base_url}/v1/models"));
+    req.headers.insert("x-api-key", super::auth_header_value(api_key));
+    req.headers.insert("anthropic-version", "2023-06-01".parse().unwrap());
+
+    let resp = transport.execute(req).await.inspect_err(|e| {
+        tracing::error!(api = "anthropic", error = %e, "could not fetch the model list");
+    })?;
+    let parsed: AnthropicModelsResponse = serde_json::from_slice(&resp.body).map_err(|e| {
+        tracing::warn!(
+            api = "anthropic",
+            body_len = resp.body.len(),
+            error = %e,
+            "the model list response was not in the expected shape"
+        );
+        ProviderError::Parse(e.to_string())
+    })?;
+    warn_extra_fields("anthropic_models_response", &parsed.extra);
+    for model in &parsed.data {
+        warn_extra_fields("anthropic_model", &model.extra);
+    }
+
+    let mut models: Vec<ModelInfo> = parsed
+        .data
+        .into_iter()
+        .map(|m| ModelInfo {
+            name: m.display_name.unwrap_or_else(|| m.id.clone()),
+            id: m.id,
+        })
+        .collect();
+
+    models.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(models)
+}

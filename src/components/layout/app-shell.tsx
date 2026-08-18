@@ -13,6 +13,7 @@ import { useHotkey } from '@/hooks/use-hotkey'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { AppSidebar } from './app-sidebar'
 import { CommandPalette } from './command-palette'
+import { RemoteStatus } from './remote-status'
 import type { ShellProps } from './shell-props'
 
 const SettingsPage = lazy(() => import('@/components/settings'))
@@ -145,6 +146,10 @@ export function AppShell(props: ShellProps) {
               is sized for a thumb rather than for a pointer. */}
           <Sidebar.Trigger className="-ml-1 size-10 md:size-8" />
           <span className="text-sm font-medium truncate">{headerTitle}</span>
+          {/* Beside the title rather than in the group of buttons on the right:
+              it is not something to press, and it renders nothing at all while
+              the connection is healthy — which on a desktop is always. */}
+          <RemoteStatus />
           {/* The palette's other door. A phone has no `mod` key to press, and
               on a desktop a shortcut nobody has written down is a shortcut
               nobody uses — the tooltip is where it gets written down. */}

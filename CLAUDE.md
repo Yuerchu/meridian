@@ -17,20 +17,43 @@ Multi-provider AI desktop client with coding agent capabilities.
 ## Architecture
 
 ```
-src/                  # React frontend
+src/                        # React frontend
 src-tauri/
-  src/
-    lib.rs            # Tauri app entry, IPC commands
-    provider/         # AI provider implementations
-      openai_compat.rs  # OpenAI-compatible SSE streaming
+  src/                      # the shell: the only place that knows about Tauri
+    lib.rs                  # setup, tray, window, generate_handler!, APP_HANDLE
+    commands/               # #[tauri::command] entry points
+    platform.rs             # platform detection + Android storage commands
+    android_bridge.rs       # the Java_* symbols MainActivity.kt calls back into
+  crates/core/              # meridian-core: everything framework-free
+    migrations/             # embed_migrations! resolves against this crate root
+    src/
+      agent/engine/         # the turn loop, and the ports the runners plug into
+      db/ provider/ tools/ mcp/ secrets/ …
+      onebot/ hooks/        # the two non-desktop runners
+      services.rs           # every long-lived thing, in one value
+      events.rs             # EventBus: where an event goes once it has happened
+      bootstrap.rs          # bootstrap(data_dir, events) -> Services
+  crates/sandbox-types/     # sandbox policy types
+  crates/sandbox-windows/   # Windows sandbox implementation
 ```
 
 ## Key Design Decisions
 
 - **Pure Rust backend**: No Python sidecar, no Codex submodule. Selectively port useful patterns from Codex (Apache 2.0) into our own code.
 - **Local-first + optional cloud**: Default standalone desktop app. Optional connection to foxline-pro backend for billing, collaboration, multimedia generation.
-- **Streaming via Tauri events**: Rust backend streams AI responses via `app.emit("chat-stream", ...)`, frontend listens with `listen()`.
+- **Streaming via events**: the backend streams answers on the `chat-stream` channel and the frontend `listen()`s. Emit through `services.events`, never `app.emit` — see the bus below.
 - **Multi-provider**: OpenAI-compatible base, extend to Anthropic/Google/Ollama etc.
+- **The shell is what knows about Tauri; nothing under it does.** `agent/engine` carried this as a rule in its header for a long time — nothing in the turn loop may know about the framework — and noted that the rule is about the *import graph* rather than the text, because a file with no `tauri::` in it can still pull the whole thing in through one type. It had already been broken exactly that way once. It is a crate boundary now: `meridian-core` has no tauri dependency, so a violation is a build failure rather than something review has to catch.
+
+  What that leaves in `src-tauri/src` is `lib.rs`, the IPC commands, `platform.rs` and the `Java_*` entry points. Everything a turn actually does is below the line. The one global, `APP_HANDLE`, lives up here for `android_bridge`, which is called from Java on a thread the app did not start and so has nowhere else to reach the app from.
+
+  Reaching the app is otherwise `Services` (`services.rs`): one `Arc`, cheap to clone, holding the pool, registries, coordinators and `paths`. The shell converts a handle into one with `app.services()` and that is the only place a handle is used as a locator. `bootstrap(data_dir, events)` builds it; the shell answers only the question the framework alone can — where `data_dir` is.
+
+  `commands/` stays in the shell whole. Splitting it into core functions plus wrappers was planned and turned out not to be needed: core's only dependency on it was two pure functions that belonged in `agent::skills` anyway. It becomes necessary the day something without a window needs to serve commands — a headless server — and not before.
+
+- **`EventBus` is a sink registry, not a broadcast channel, and that is load-bearing.** The desktop's events *are* its answer: a window that missed one is showing a transcript that never catches up, so the turn producing it has to fail. A `broadcast` makes every send infallible from the sender's side and cannot express that. So delivery is synchronous and a sink is registered `critical` or not — `WindowSink` is, and that registration is where the rule now lives.
+
+  The opposite case is just as deliberate. OneBot, the hook reviewer and sub-agents each emit to a window that may not be looking, and for them a failed send costs nothing; their `Emit` implementations swallow it and return `Ok`. Handing those three `BusEmit` would quietly turn "the window is closed" into "the sub-agent's turn failed". If you add a runner, decide which of the two it is before wiring the bus in.
 - **Messages are a tree, read as one path.** Each row has a `parent_id`; each conversation has a `head_message_id` naming the leaf its active path ends at. Regenerating or editing writes a sibling and leaves the original reachable. Read a conversation with `db::ops::message::active_context` — `sort_order` is insertion order, not transcript position, once branches interleave. Write only through `append_message`, which links the row and moves the head in one transaction. Delete only whole subtrees: dropping a lone row strands its tool results or leaves an answer to nothing. `parent_id` carries no foreign key on purpose (see migration 21).
 - **The transcript follows the stream, then hands it back.** `src/lib/message-scroller.tsx` is a fork of `@shadcn/react/message-scroller` (the package is gone; the styled wrapper in `components/ui` is unchanged). Upstream anchors a new turn to the top of the viewport and holds it there for as long as the answer streams — with a question taller than the viewport that hold never releases, so the whole answer is written off-screen. Here there are two modes: `follow` sticks to the live edge, `idle` moves for nobody but the reader. Anchoring falls out of following instead of competing with it — a spacer re-solved every frame makes "scrolled to the end" and "question at the top" the same position until the answer outgrows the viewport. A turn that stops streaming while the reader is still following scrolls back to the top of its answer (`MessageScrollerAnchor` / `answerAnchorId`); one they had scrolled away from does not move. Row identity is not a scroll trigger: re-keying a row when its reload lands used to jump to the top of the conversation. Drive changes through the harness at `#playground/scroll` — "跑全部场景" replays every behaviour above and asserts it.
 - **One shell, on every platform.** `components/layout/app-shell.tsx` is the whole frame; there is no mobile variant and nothing branches on width. The sidebar *is* the conversation list — a panel above 768px, `Sidebar.Mobile`'s sheet below it, both rendered from the same tree — and settings is a page beside the chat rather than a screen over it. The chat stays mounted underneath, `inert`, because unmounting it loses the composer draft and the transcript's scroll position. There used to be a stack of screens for phones, selected by a width read once at startup; that seam is what made a narrow Windows window and a tablet in landscape both wrong. What survives of it is `useHistoryLevel`, which is about the back gesture and not about layout.
@@ -127,6 +150,51 @@ here usually needs a commit there too.**
   token and settings. Each server generation only deletes the file it wrote — a restart
   used to have the outgoing generation delete the incoming one's.
 
+## Remote access
+
+`src-tauri/src/remote/` serves this desktop to another device: the phone runs the same
+frontend, the turn runs here. No synchronisation anywhere — a connected client reads the
+same rows the window does, and closing it does not stop a turn. It lives in the shell
+rather than in core because what it dispatches to are the Tauri commands.
+
+- **One command table, two consumers.** `command_table.rs` is expanded by both
+  `generate_handler!` and `remote::dispatch`. A second list is the one that would quietly
+  fall behind — a command added for the window works at once, and nobody finds out it is
+  unreachable from a phone until they try. Rows say `async` / `sync` (a dispatcher cannot
+  `.await` a plain `fn`) or `local`.
+- **`local` and `LOCAL_COMMANDS` are different things.** `local` in the table means the
+  *server* refuses it. `LOCAL_COMMANDS` in `lib/transport.ts` means the *client* answers it
+  itself. Most rows are one or the other; the pickers are both, and for unrelated reasons:
+  `take_photo` runs on the phone because that is where the camera is, and its `content://`
+  result is unreadable to the host — so remote mode routes attachments through a real
+  `<input type="file">` and `/upload` instead.
+- **The generic key-value commands are a hole in `local`.** All three listeners keep their
+  configuration in `preferences`, so `set_preference` reaches what `save_listen_config` is
+  marked `local` to protect. `guard_preference` refuses the `remote.` / `hooks.` /
+  `onebot.` prefixes for remote callers. Two of those keys are worse than self-lockout:
+  `hooks.token` and `onebot.access_token` are other servers' credentials, and
+  `onebot.admin_users` decides who is an admin in QQ — writing it is escalation against a
+  third party.
+- **The guard is the inverse of the hook endpoint's, deliberately.** `hooks/http.rs`
+  refuses anything carrying an `Origin`, because its only legitimate caller is a local
+  process. Here the caller *is* a page on another device and its `fetch` is cross-origin by
+  construction, so preflights are answered and the bearer token is the whole boundary. Do
+  not copy either guard into the other.
+- **Three credentials, three shapes, and none of them interchangeable.** HTTP takes a
+  bearer header. The websocket takes its token in the first frame — a browser cannot set a
+  header on a `WebSocket`, and a query string ends up in logs. `/assets` takes a ticket,
+  minted per socket and dropped when it closes, because an `<img src>` cannot carry a
+  header either and the bearer token must not be spent in a URL.
+- **A client that stops reading is disconnected, not waited for.** Bounded queue per
+  connection, `try_send`, full queue closes it, nothing replayed. The fan-out is registered
+  non-critical, so none of it can fail the turn that was emitting — the same `critical` flag
+  the window uses, for the opposite purpose. A reconnect emits `remote-resync` and the
+  client refetches; a transcript with a hole in it is worse than one that reloads.
+- **Android permits cleartext in every build.** Remote access dials `http://192.168.x.x`
+  and `networkSecurityConfig` matches hostnames, not the CIDR a router hands out. The
+  boundary is the token, which `listen_guard` refuses to let be shorter than 16 characters
+  off loopback. Tailscale is the answer for anyone wanting the transport encrypted.
+
 ## Logging
 
 `tracing` events at info and above go to `{app_data_dir}/logs/meridian.log` as JSONL, rotated by size (5 MB × 5). The user reads them in Settings → About → View logs; the assistant reads them through the `read_app_logs` tool, which the `meridian-diagnostics` skill drives. All three share `logging::reader::query`.
@@ -210,6 +278,7 @@ script — which is the same reason it should not hold one across two platforms.
 - **The back key is the web history.** `WryActivity` routes it through `WebView.canGoBack()`, the generated `TauriActivity` disables that, and `MainActivity` turns it back on. So something is undone by the back gesture exactly when it pushed a `history` entry for itself — `useHistoryLevel` is the only way to do that, and `lib/history-bridge.ts` the only writer of history. Never call `history.back()` anywhere else: the store is updated from `popstate` alone, which is what keeps it from drifting. There are no screens to go back to any more, only levels inside one — a drawer, a detail pane, a non-empty selection. `useBackGesture`, called once by the shell, decides whether the gesture is ours at all; everything below it is inert on a desktop.
 - **History is reconciled, not commanded.** A level changes the store and calls `syncHistory`, which brings `window.history` to `levels.length` on the next microtask. It is deferred because a hand-over — the drawer closing as a page opens, which is every row in the mobile sheet — changes the store twice in one commit, and the two eager operations that used to produce do not commute: `history.go(-n)` resolves its target against the entry current when it is *called*, so a `pushState` landing in between is skipped and the traversal overshoots. Settings opened and was closed again by the popstate its own drawer had queued, which read as the page flashing and bouncing back. Coalesced, a hand-over costs no history operation at all. Nothing else may call `pushState` or `go`, and a level's effect must not assume its entry exists yet — it does not until the microtask runs, which is why the tests need an awaited `act` around anything that opens a level.
 - **Build**: `pnpm tauri android build --target aarch64`. Rust-only check: `cargo check --target aarch64-linux-android` with NDK clang env vars.
+- **Run that check before calling a refactor done.** A desktop build never compiles a line inside `#[cfg(target_os = "android")]`, so anything wrong in one is invisible to `cargo test`, to clippy, and to review. The core extraction hit this twice in a day: four state lookups in `platform.rs` and two `crate::` paths in `android_bridge.rs` that had been rewritten to `meridian_core::`, all of them inside android-only blocks and all of them green on the desktop. It needs `SHERPA_ONNX_LIB_DIR` from `scripts/fetch-sherpa-android.sh`, which must be exported into a subshell and not the session — see the Packaging note on why that variable must not outlive the build that set it.
 
 ## Reference Projects
 
@@ -297,6 +366,26 @@ means rewriting it for the second.
    Settle the timeout semantics first.
 3. Hosting a session in-process — last, because it is the only step that asks the user to
    move their daily coding into Meridian.
+
+**Deferred from remote access**, roughly in order of how much they are missed:
+
+- **Tools run wherever the turn runs, which is the host.** Choosing a device per
+  conversation means turning the tool surface into a port a device registers against, and
+  approval cards naming which machine a command lands on. It is the prerequisite for
+  editing the desktop's files from a phone, and the reason `run_command` is not offered a
+  choice today.
+- **Per-connection event filtering.** Every authenticated client gets every event and
+  filters by conversation as the window already does. Fine for one owner; it is both the
+  privacy prerequisite for more than one and a bandwidth win on mobile.
+- **Attachment thumbnails in remote mode** — needs an object URL per `File` and a
+  revocation lifecycle. They fall back to the extension icon.
+- **Pairing by QR and mDNS discovery**, so the address and token are not typed by hand.
+- **Transport encryption** — a self-signed certificate with fingerprint pinning, or making
+  "LAN cleartext, use Tailscale if you want more" the documented position.
+- **Remote voice input**: PCM over a binary frame, which would let the microphone stay on
+  the device the user is holding.
+- **A headless `meridian-server`.** `bootstrap` is already framework-free; what it needs is
+  `commands/` moved into core, which is the one thing PR1 found it did not have to do.
 
 **On hosting, correct a common wrong turn.** VS Code and Zed do not GUI-ify the CLI. The
 *editor* drops a lockfile in `~/.claude/ide/` and acts as the server; Claude Code runs as

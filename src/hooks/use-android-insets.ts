@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react'
-import { listen } from '@tauri-apps/api/event'
+import { listen } from '@/lib/transport'
 import { api } from '@/api'
 
 export interface NativeInsets {

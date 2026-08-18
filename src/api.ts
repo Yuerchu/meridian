@@ -1,4 +1,7 @@
-import { invoke } from '@tauri-apps/api/core'
+// Not `@tauri-apps/api/core`. Every method below is unchanged by that: the
+// transport keeps Tauri's signature and answers locally unless this session was
+// pointed at another machine. See `lib/transport.ts`.
+import { invoke } from '@/lib/transport'
 import type {
   Assistant,
   ChatMode,
@@ -10,6 +13,8 @@ import type {
   EmojiPack,
   HooksConfig,
   HooksStatus,
+  ListenConfig,
+  ListenStatus,
   LogFileInfo,
   LogPage,
   LogQuery,
@@ -512,6 +517,27 @@ export const api = {
 
   stopHooks: () => invoke<void>('stop_hooks'),
 
+  // Remote access: serving this desktop to another device
+  getListenStatus: () => invoke<ListenStatus>('get_listen_status'),
+
+  getListenConfig: () => invoke<ListenConfig>('get_listen_config'),
+
+  // The four calls that change anything restart the server, so each answers
+  // with the status it left behind rather than making the caller ask again.
+  // The token is minted by the backend on first enable, so the config has to be
+  // re-read after any of them that could have created one.
+  saveListenConfig: (config: ListenConfig) => invoke<ListenStatus>('save_listen_config', { config }),
+
+  startListen: () => invoke<ListenStatus>('start_listen'),
+
+  stopListen: () => invoke<ListenStatus>('stop_listen'),
+
+  // Answers with the whole config, which is how the caller learns the new token.
+  regenerateListenToken: () => invoke<ListenConfig>('regenerate_listen_token'),
+
+  // The addresses another device could dial, so nobody has to read `ipconfig`.
+  getListenAddresses: () => invoke<string[]>('get_listen_addresses'),
+
   // Prompt Templates
   listPromptTemplates: () => invoke<PromptTemplate[]>('list_prompt_templates'),
 
@@ -555,6 +581,11 @@ export const api = {
   deleteEmoji: (id: string) => invoke<void>('delete_emoji', { id }),
 
   renameEmoji: (id: string, newName: string) => invoke<Emoji>('rename_emoji', { id, newName }),
+
+  suggestStickerSemantics: (id: string) => invoke<Emoji>('suggest_sticker_semantics', { id }),
+
+  confirmStickerSemantics: (id: string, name: string, tags?: string) =>
+    invoke<Emoji>('confirm_sticker_semantics', { id, name, tags: tags ?? null }),
 
   searchEmojis: (query: string) => invoke<Emoji[]>('search_emojis', { query }),
 

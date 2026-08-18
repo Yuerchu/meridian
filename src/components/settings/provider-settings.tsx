@@ -20,6 +20,23 @@ import type { ModelConfig, ModelConfigInput, Provider, ModelInfo, ProviderCapabi
  */
 type Tri = 'auto' | 'on' | 'off'
 
+const PROVIDER_DEFAULT_URLS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com',
+  deepseek: 'https://api.deepseek.com',
+  google: 'https://generativelanguage.googleapis.com',
+}
+
+const GOOGLE_FORMAT_DEFAULT_URLS: Record<string, string> = {
+  gemini_generate_content: 'https://generativelanguage.googleapis.com',
+  chat_completions: 'https://generativelanguage.googleapis.com/v1beta/openai',
+}
+
+const GOOGLE_FORMAT_PLACEHOLDERS: Record<string, string> = {
+  gemini_generate_content: 'https://api.example.com',
+  chat_completions: 'https://api.example.com/v1',
+}
+
 function triFrom(value: unknown): Tri {
   // Anything that isn't a real boolean (missing key, or a hand-edited override
   // holding junk) reads as "inherit".
@@ -379,6 +396,34 @@ function ProviderEditor({
     onUpdate()
   }, [provider.id, name, providerType, baseUrl, apiFormat, onUpdate, markSaved])
 
+  const handleProviderTypeChange = useCallback(
+    (next: string) => {
+      const nextFormat =
+        next === 'google' ? 'gemini_generate_content' : next === 'openai' ? 'responses' : 'chat_completions'
+      setProviderType(next)
+      setBaseUrl((current) => {
+        const oldDefault =
+          providerType === 'google' ? GOOGLE_FORMAT_DEFAULT_URLS[apiFormat] : PROVIDER_DEFAULT_URLS[providerType]
+        return !current || current === oldDefault ? (PROVIDER_DEFAULT_URLS[next] ?? current) : current
+      })
+      setApiFormat(nextFormat)
+    },
+    [providerType, apiFormat],
+  )
+
+  const handleApiFormatChange = useCallback(
+    (next: string) => {
+      if (providerType === 'google') {
+        setBaseUrl((current) => {
+          const oldDefault = GOOGLE_FORMAT_DEFAULT_URLS[apiFormat]
+          return !current || current === oldDefault ? (GOOGLE_FORMAT_DEFAULT_URLS[next] ?? current) : current
+        })
+      }
+      setApiFormat(next)
+    },
+    [providerType, apiFormat],
+  )
+
   const handleSaveKey = useCallback(async () => {
     if (!apiKey.trim()) return
     setSavingKey(true)
@@ -448,12 +493,23 @@ function ProviderEditor({
     // Previously unreachable from the UI, which silently sent every DeepSeek
     // provider down the generic path with reasoning support switched off.
     { value: 'deepseek', label: t('settings.provider.typeDeepSeek') },
+    { value: 'google', label: t('settings.provider.typeGoogle') },
   ]
   const formatOptions = [
     { value: 'responses', label: t('settings.provider.apiFormatResponses') },
     { value: 'chat_completions', label: t('settings.provider.apiFormatChatCompletions') },
     { value: 'gemma_tool', label: t('settings.provider.apiFormatGemmaTool') },
   ]
+  const googleFormatOptions = [
+    { value: 'gemini_generate_content', label: t('settings.provider.apiFormatGeminiGenerateContent') },
+    { value: 'chat_completions', label: t('settings.provider.apiFormatOpenAICompatible') },
+  ]
+  const formatDescription =
+    providerType === 'google'
+      ? apiFormat === 'gemini_generate_content'
+        ? t('settings.provider.apiFormatGeminiGenerateContentHint')
+        : t('settings.provider.apiFormatOpenAICompatibleHint')
+      : undefined
 
   return (
     <div className="space-y-5">
@@ -466,7 +522,7 @@ function ProviderEditor({
         label={t('settings.provider.type')}
         value={providerType}
         options={typeOptions}
-        onChange={setProviderType}
+        onChange={handleProviderTypeChange}
         fullWidth
       />
 
@@ -475,7 +531,11 @@ function ProviderEditor({
         <Input
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
-          placeholder={providerType === 'anthropic' ? 'https://api.anthropic.com' : 'https://api.openai.com/v1'}
+          placeholder={
+            providerType === 'google'
+              ? (GOOGLE_FORMAT_PLACEHOLDERS[apiFormat] ?? GOOGLE_FORMAT_PLACEHOLDERS.gemini_generate_content)
+              : (PROVIDER_DEFAULT_URLS[providerType] ?? PROVIDER_DEFAULT_URLS.openai)
+          }
         />
       </TextField>
 
@@ -483,8 +543,9 @@ function ProviderEditor({
         <SettingsSelect
           label={t('settings.provider.apiFormat')}
           value={apiFormat}
-          options={formatOptions}
-          onChange={setApiFormat}
+          options={providerType === 'google' ? googleFormatOptions : formatOptions}
+          onChange={handleApiFormatChange}
+          description={formatDescription}
           fullWidth
         />
       )}

@@ -19,7 +19,7 @@ DEST="$ROOT/src-tauri/target/sherpa-onnx-android"
 
 # Must match the crate, or the headers the bindings were generated against stop
 # describing the library they are linked to.
-VERSION="$(sed -n 's/^sherpa-onnx = { version = "\([^"]*\)".*/\1/p' "$ROOT/src-tauri/Cargo.toml")"
+VERSION="$(sed -n 's/^sherpa-onnx = { version = "\([^"]*\)".*/\1/p' "$ROOT/src-tauri/crates/core/Cargo.toml")"
 if [ -z "$VERSION" ]; then
   echo "could not read the sherpa-onnx version out of Cargo.toml" >&2
   exit 1

@@ -272,7 +272,10 @@ export interface PendingApprovalInfo {
 }
 
 export type ContentBlock =
-  { type: 'text'; text: string } | { type: 'thinking'; text: string } | { type: 'tool_call'; data: ToolCallDisplay }
+  | { type: 'text'; text: string }
+  | { type: 'thinking'; text: string }
+  | { type: 'tool_call'; data: ToolCallDisplay }
+  | { type: 'sticker'; sticker_id: string; name?: string }
 
 export interface OpenAIToolCall {
   id: string
@@ -469,6 +472,29 @@ export interface HooksStatus {
   handshake_path: string | null
 }
 
+/** The server a second device connects to in order to use this desktop. */
+export interface ListenConfig {
+  enabled: boolean
+  /** `0.0.0.0` by default: a remote access server on loopback is reachable only
+   *  by the machine that already has the app open. */
+  host: string
+  port: number
+  /** Minted by the backend on first enable; the settings page only displays it.
+   *  The backend refuses to bind a non-loopback address with a token shorter
+   *  than 16 characters, which is why nothing here lets one be typed. */
+  token: string | null
+}
+
+export interface ListenStatus {
+  enabled: boolean
+  running: boolean
+  host: string
+  port: number
+  /** Live websocket connections. The one number that says whether the phone on
+   *  the sofa is actually attached, which `running` does not. */
+  connections: number
+}
+
 export interface EmojiPack {
   id: string
   name: string
@@ -478,6 +504,8 @@ export interface EmojiPack {
   sort_order: number
   created_at: number
   updated_at: number
+  kind: 'manual' | 'onebot'
+  source_account_id: string | null
 }
 
 export interface Emoji {
@@ -489,6 +517,21 @@ export interface Emoji {
   file_format: string
   sort_order: number
   created_at: number
+  source: 'local' | 'onebot_face' | 'onebot_mface' | 'onebot_image'
+  source_key: string | null
+  native_payload: string | null
+  semantic_status: 'pending' | 'suggested' | 'confirmed'
+  suggested_name: string | null
+  suggested_tags: string | null
+  file_size: number
+  seen_count: number
+  last_seen_at: number | null
+}
+
+export interface StickerContentPart {
+  type: 'sticker'
+  sticker_id: string
+  name?: string
 }
 
 export interface PromptTemplate {
@@ -571,6 +614,8 @@ export interface ProviderCapabilities {
   supports_tools: boolean
   supports_streaming_tools: boolean
   supports_thinking: boolean
+  /** False for always-thinking models such as Gemini 3.x. */
+  supports_thinking_off?: boolean
   supports_images: boolean
   max_context_tokens: number | null
   max_output_tokens: number | null
@@ -688,7 +733,7 @@ export interface LogCursor {
 export interface LogEntry {
   /** RFC3339, UTC. */
   ts: string
-  ts_ms: number
+  tsMs: number
   level: LogLevel
   /** Tracing target, e.g. "meridian_lib::provider::openai_compat". */
   target: string
@@ -698,7 +743,7 @@ export interface LogEntry {
   /** Enclosing span names, outermost first. */
   spans?: string[]
   /** Fields inherited from those spans, such as conversation_id. */
-  span_fields?: Record<string, unknown>
+  spanFields?: Record<string, unknown>
   file?: string
   line?: number
   /** Present instead of the parsed fields when the line could not be read. */

@@ -12,21 +12,14 @@ pub struct WindowInsets {
     pub ime_bottom: f32,
 }
 
-/// Persisted SAF root entry, stored as a JSON array under the
-/// "android.saf_roots" preference key.
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
-pub struct SafRootEntry {
-    pub uri: String,
-    pub display_name: String,
-    pub virtual_prefix: String,
-}
+pub use meridian_core::agent::file_access::SafRootEntry;
 
 #[cfg(target_os = "android")]
-async fn load_saf_roots(pool: &crate::db::DbPool) -> Result<Vec<SafRootEntry>, String> {
+async fn load_saf_roots(pool: &meridian_core::db::DbPool) -> Result<Vec<SafRootEntry>, String> {
     let pool = pool.clone();
     let json = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| format!("db connection error: {e}"))?;
-        crate::db::ops::preference::get_preference(&mut conn, "android.saf_roots").map_err(|e| e.to_string())
+        meridian_core::db::ops::preference::get_preference(&mut conn, "android.saf_roots").map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())??;
@@ -37,21 +30,26 @@ async fn load_saf_roots(pool: &crate::db::DbPool) -> Result<Vec<SafRootEntry>, S
 }
 
 #[cfg(target_os = "android")]
-async fn save_saf_roots(pool: &crate::db::DbPool, roots: &[SafRootEntry]) -> Result<(), String> {
+async fn save_saf_roots(pool: &meridian_core::db::DbPool, roots: &[SafRootEntry]) -> Result<(), String> {
     let pool = pool.clone();
     let json = serde_json::to_string(roots).map_err(|e| e.to_string())?;
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| format!("db connection error: {e}"))?;
-        crate::db::ops::preference::set_preference(&mut conn, "android.saf_roots", &json, crate::util::now_ms())
-            .map_err(|e| e.to_string())
+        meridian_core::db::ops::preference::set_preference(
+            &mut conn,
+            "android.saf_roots",
+            &json,
+            meridian_core::util::now_ms(),
+        )
+        .map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
-pub fn get_platform() -> &'static str {
-    if cfg!(target_os = "android") {
+pub fn get_platform(_app: tauri::AppHandle) -> Result<&'static str, String> {
+    Ok(if cfg!(target_os = "android") {
         "android"
     } else if cfg!(target_os = "windows") {
         "windows"
@@ -63,7 +61,7 @@ pub fn get_platform() -> &'static str {
         "ios"
     } else {
         "unknown"
-    }
+    })
 }
 
 #[tauri::command]
@@ -83,7 +81,7 @@ pub fn get_window_insets() -> WindowInsets {
 pub fn get_manage_storage_status() -> Result<bool, String> {
     #[cfg(target_os = "android")]
     {
-        crate::android_bridge::is_manage_storage_granted()
+        meridian_core::android_bridge::is_manage_storage_granted()
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -96,7 +94,7 @@ pub fn get_manage_storage_status() -> Result<bool, String> {
 pub fn request_manage_storage() -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
-        crate::android_bridge::open_manage_storage_settings()
+        meridian_core::android_bridge::open_manage_storage_settings()
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -110,14 +108,14 @@ pub fn request_manage_storage() -> Result<(), String> {
 pub async fn pick_saf_directory(app: tauri::AppHandle) -> Result<Vec<SafRootEntry>, String> {
     #[cfg(target_os = "android")]
     {
-        use tauri::Manager;
-        let Some((uri, display_name)) = crate::android_bridge::pick_directory().await? else {
+        use crate::ServicesExt;
+        let Some((uri, display_name)) = meridian_core::android_bridge::pick_directory().await? else {
             // user cancelled; return the unchanged list
-            let pool = app.state::<crate::state::AppDb>().0.clone();
+            let pool = app.services().db.clone();
             return load_saf_roots(&pool).await;
         };
 
-        let pool = app.state::<crate::state::AppDb>().0.clone();
+        let pool = app.services().db.clone();
         let mut roots = load_saf_roots(&pool).await?;
         if roots.iter().any(|r| r.uri == uri) {
             return Ok(roots);
@@ -155,8 +153,8 @@ pub async fn pick_saf_directory(app: tauri::AppHandle) -> Result<Vec<SafRootEntr
 pub async fn list_saf_roots(app: tauri::AppHandle) -> Result<Vec<SafRootEntry>, String> {
     #[cfg(target_os = "android")]
     {
-        use tauri::Manager;
-        let pool = app.state::<crate::state::AppDb>().0.clone();
+        use crate::ServicesExt;
+        let pool = app.services().db.clone();
         load_saf_roots(&pool).await
     }
     #[cfg(not(target_os = "android"))]
@@ -172,7 +170,7 @@ pub async fn list_saf_roots(app: tauri::AppHandle) -> Result<Vec<SafRootEntry>, 
 pub async fn take_photo() -> Result<Option<String>, String> {
     #[cfg(target_os = "android")]
     {
-        crate::android_bridge::take_photo().await
+        meridian_core::android_bridge::take_photo().await
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -186,7 +184,7 @@ pub async fn take_photo() -> Result<Option<String>, String> {
 pub async fn pick_gallery_image() -> Result<Option<String>, String> {
     #[cfg(target_os = "android")]
     {
-        crate::android_bridge::pick_gallery().await
+        meridian_core::android_bridge::pick_gallery().await
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -201,7 +199,7 @@ pub async fn resolve_file_name(path: String) -> Result<String, String> {
     #[cfg(target_os = "android")]
     {
         if path.starts_with("content://") {
-            let stat = crate::android_bridge::content_stat(&path).await?;
+            let stat = meridian_core::android_bridge::content_stat(&path).await?;
             return Ok(stat.name.unwrap_or_else(|| "file".to_string()));
         }
     }
@@ -217,13 +215,13 @@ pub async fn resolve_file_name(path: String) -> Result<String, String> {
 pub async fn remove_saf_root(app: tauri::AppHandle, uri: String) -> Result<Vec<SafRootEntry>, String> {
     #[cfg(target_os = "android")]
     {
-        use tauri::Manager;
-        let pool = app.state::<crate::state::AppDb>().0.clone();
+        use crate::ServicesExt;
+        let pool = app.services().db.clone();
         let mut roots = load_saf_roots(&pool).await?;
         roots.retain(|r| r.uri != uri);
         save_saf_roots(&pool, &roots).await?;
         // Best-effort: the grant may already be gone (e.g. directory deleted)
-        let _ = crate::android_bridge::release_persisted_uri(&uri);
+        let _ = meridian_core::android_bridge::release_persisted_uri(&uri);
         Ok(roots)
     }
     #[cfg(not(target_os = "android"))]

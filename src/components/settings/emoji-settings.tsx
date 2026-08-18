@@ -4,6 +4,7 @@ import { Plus, TrashBin, ArrowUpFromLine, Sticker } from '@gravity-ui/icons'
 import { Button, Chip, Disclosure, Input } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
+import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
@@ -21,16 +22,22 @@ function PackCard({
   onImport,
   onDeleteEmoji,
   onRenameEmoji,
+  onSuggest,
+  onConfirm,
 }: {
   detail: PackDetail
   onDelete?: () => void
-  onImport: () => void
+  onImport?: () => void
   onDeleteEmoji: (id: string) => void
   onRenameEmoji: (id: string, newName: string) => void
+  onSuggest: (id: string) => Promise<void>
+  onConfirm: (id: string, name: string, tags?: string) => Promise<void>
 }) {
   const { t } = useTranslation()
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
+  const candidates = detail.emojis.filter((emoji) => emoji.semantic_status !== 'confirmed')
+  const confirmed = detail.emojis.filter((emoji) => emoji.semantic_status === 'confirmed')
 
   return (
     // Render prop rather than a controlled `isExpanded`: the open state is only
@@ -47,6 +54,9 @@ function PackCard({
               <Sticker className="w-3.5 h-3.5 shrink-0 text-muted" />
               <span className="flex-1 truncate">{detail.pack.name}</span>
               <span className="text-xs text-muted">{detail.emojis.length}</span>
+              {candidates.length > 0 && (
+                <Chip color="warning">{t('settings.emoji.pendingCount', { count: candidates.length })}</Chip>
+              )}
               {detail.pack.is_builtin === 1 && (
                 <Chip className="shrink-0 text-muted">{t('settings.template.builtin')}</Chip>
               )}
@@ -69,10 +79,25 @@ function PackCard({
                 <>
                   {detail.pack.description && <p className="text-xs text-muted">{detail.pack.description}</p>}
 
+                  {candidates.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium">{t('settings.emoji.reviewTitle')}</p>
+                      {candidates.map((emoji) => (
+                        <CandidateSticker
+                          key={emoji.id}
+                          emoji={emoji}
+                          url={detail.urls[emoji.id]}
+                          onSuggest={onSuggest}
+                          onConfirm={onConfirm}
+                        />
+                      ))}
+                    </div>
+                  )}
+
                   {/* Six across needs 280px of grid before gaps; a 360px phone
                       does not have it once the card's own padding is taken. */}
                   <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-                    {detail.emojis.map((e) => (
+                    {confirmed.map((e) => (
                       <div key={e.id} className="group relative">
                         <img src={detail.urls[e.id]} alt={e.name} className="w-10 h-10 object-contain rounded" />
                         {editingId === e.id ? (
@@ -125,10 +150,14 @@ function PackCard({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" onClick={onImport}>
-                      <ArrowUpFromLine className="w-3.5 h-3.5" />
-                      {t('settings.emoji.import')}
-                    </Button>
+                    {onImport && (
+                      // The picker returns paths on this device and the import
+                      // is read by whichever machine the backend is on.
+                      <Button variant="outline" onClick={onImport} isDisabled={!can.importFromDisk}>
+                        <ArrowUpFromLine className="w-3.5 h-3.5" />
+                        {t('settings.emoji.import')}
+                      </Button>
+                    )}
                     {onDelete && detail.pack.is_builtin === 0 && (
                       <Button variant="ghost" className="ml-auto text-danger hover:text-danger" onClick={onDelete}>
                         <TrashBin className="w-3.5 h-3.5" />
@@ -136,6 +165,9 @@ function PackCard({
                       </Button>
                     )}
                   </div>
+                  {onImport && !can.importFromDisk && (
+                    <p className="text-xs text-muted">{t('capability.importFromDisk')}</p>
+                  )}
                 </>
               )}
             </Disclosure.Body>
@@ -143,6 +175,88 @@ function PackCard({
         </>
       )}
     </Disclosure>
+  )
+}
+
+function CandidateSticker({
+  emoji,
+  url,
+  onSuggest,
+  onConfirm,
+}: {
+  emoji: Emoji
+  url?: string
+  onSuggest: (id: string) => Promise<void>
+  onConfirm: (id: string, name: string, tags?: string) => Promise<void>
+}) {
+  const { t } = useTranslation()
+  const [name, setName] = useState(emoji.suggested_name ?? '')
+  const [tags, setTags] = useState(emoji.suggested_tags ?? '')
+  const [busy, setBusy] = useState<'suggest' | 'confirm' | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setName(emoji.suggested_name ?? '')
+    setTags(emoji.suggested_tags ?? '')
+  }, [emoji.suggested_name, emoji.suggested_tags])
+
+  return (
+    <div className="grid grid-cols-[4rem_1fr] gap-3 rounded-xl border border-border p-3">
+      {url ? (
+        <img src={url} alt="" className="size-16 object-contain" />
+      ) : (
+        <div className="size-16 rounded-lg bg-default/40" />
+      )}
+      <div className="min-w-0 space-y-2">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Input
+            fullWidth
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder={t('settings.emoji.semanticName')}
+          />
+          <Input
+            fullWidth
+            value={tags}
+            onChange={(event) => setTags(event.target.value)}
+            placeholder={t('settings.emoji.semanticTags')}
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="mr-auto text-xs text-muted">
+            {t('settings.emoji.seenCount', { count: emoji.seen_count })}
+          </span>
+          <Button
+            size="sm"
+            variant="outline"
+            isDisabled={busy !== null || !url || !emoji.file_name}
+            onClick={() => {
+              setError(null)
+              setBusy('suggest')
+              void onSuggest(emoji.id)
+                .catch((reason) => setError(String(reason)))
+                .finally(() => setBusy(null))
+            }}
+          >
+            {busy === 'suggest' ? t('settings.emoji.suggesting') : t('settings.emoji.suggest')}
+          </Button>
+          <Button
+            size="sm"
+            isDisabled={busy !== null || !name.trim()}
+            onClick={() => {
+              setError(null)
+              setBusy('confirm')
+              void onConfirm(emoji.id, name.trim(), tags.trim() || undefined)
+                .catch((reason) => setError(String(reason)))
+                .finally(() => setBusy(null))
+            }}
+          >
+            {t('settings.emoji.confirmSemantic')}
+          </Button>
+        </div>
+        {error && <p className="text-xs text-danger">{error}</p>}
+      </div>
+    </div>
   )
 }
 
@@ -160,8 +274,8 @@ export function EmojiSettings() {
       const emojis = await api.listEmojis(pack.id)
       const urls: Record<string, string> = {}
       for (const e of emojis) {
-        const path = await api.getEmojiFileUrl(e.id)
-        urls[e.id] = path
+        const path = await api.getEmojiFileUrl(e.id).catch(() => null)
+        if (path) urls[e.id] = path
       }
       result.push({ pack, emojis, urls })
     }
@@ -221,6 +335,22 @@ export function EmojiSettings() {
     [refresh],
   )
 
+  const handleSuggest = useCallback(
+    async (id: string) => {
+      await api.suggestStickerSemantics(id)
+      await refresh()
+    },
+    [refresh],
+  )
+
+  const handleConfirm = useCallback(
+    async (id: string, name: string, tags?: string) => {
+      await api.confirmStickerSemantics(id, name, tags)
+      await refresh()
+    },
+    [refresh],
+  )
+
   if (loading) {
     return <SettingsSkeleton />
   }
@@ -253,9 +383,11 @@ export function EmojiSettings() {
             key={d.pack.id}
             detail={d}
             onDelete={() => handleDelete(d.pack.id)}
-            onImport={() => handleImport(d.pack.id)}
+            onImport={d.pack.kind === 'manual' ? () => handleImport(d.pack.id) : undefined}
             onDeleteEmoji={handleDeleteEmoji}
             onRenameEmoji={handleRenameEmoji}
+            onSuggest={handleSuggest}
+            onConfirm={handleConfirm}
           />
         ))}
         {details.length === 0 && (

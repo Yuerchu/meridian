@@ -1,4 +1,5 @@
 import { convertFileSrc } from '@tauri-apps/api/core'
+import { remoteConnection } from './transport'
 
 /**
  * Turns a stored attachment URL into one the WebView will actually load.
@@ -7,10 +8,19 @@ import { convertFileSrc } from '@tauri-apps/api/core'
  * origin and blocks `file://` subresources — they have to go through the asset
  * protocol instead. Anything already addressable (http, data, the asset
  * protocol itself) is passed through untouched.
+ *
+ * Connected to another machine, the file is not on this one at all and the
+ * asset protocol has nothing to open: the URL becomes a request to that
+ * machine's `/assets` route. It carries a ticket rather than the bearer token,
+ * because this string ends up in an `<img src>` — see `SharedState::tickets`.
+ * Before the websocket has finished connecting there is no ticket and so no
+ * answer, which reads as the image loading a moment late rather than as a
+ * broken one.
  */
 export function assetSrc(url?: string): string | undefined {
   if (!url) return undefined
   if (!url.startsWith('file://')) return url
+  if (remoteConnection) return remoteConnection.assetUrl(url)
   let path = url.slice('file://'.length)
   // `file:///C:/x` — the authority is empty and the drive letter follows the
   // third slash, which is not part of the path.

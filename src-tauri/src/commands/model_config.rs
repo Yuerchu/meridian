@@ -1,13 +1,12 @@
-use tauri::Manager;
-
-use crate::db;
-use crate::db::models::model_config::{ModelConfig, ModelConfigInput, NewModelConfig};
-use crate::state::AppDb;
-use crate::util::{get_conn, now_ms};
+use crate::ServicesExt;
+use meridian_core::db;
+use meridian_core::db::models::model_config::{ModelConfig, ModelConfigInput, NewModelConfig};
+use meridian_core::util::{get_conn, now_ms};
 
 #[tauri::command]
 pub async fn list_model_configs(app: tauri::AppHandle, provider_id: String) -> Result<Vec<ModelConfig>, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
         db::ops::model_config::list_by_provider(&mut conn, &provider_id).map_err(|e| e.to_string())
@@ -22,7 +21,8 @@ pub async fn get_model_config(
     provider_id: String,
     model_id: String,
 ) -> Result<Option<ModelConfig>, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
         db::ops::model_config::get_by_provider_and_model(&mut conn, &provider_id, &model_id).map_err(|e| e.to_string())
@@ -33,7 +33,8 @@ pub async fn get_model_config(
 
 #[tauri::command]
 pub async fn save_model_config(app: tauri::AppHandle, input: ModelConfigInput) -> Result<ModelConfig, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
         let id = uuid::Uuid::new_v4().to_string();
@@ -62,7 +63,8 @@ pub async fn save_model_config(app: tauri::AppHandle, input: ModelConfigInput) -
 
 #[tauri::command]
 pub async fn delete_model_config(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
         db::ops::model_config::delete(&mut conn, &id).map_err(|e| e.to_string())?;

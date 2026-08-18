@@ -11,12 +11,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tauri::Manager;
 use tokio_util::sync::CancellationToken;
 
-use crate::db;
-use crate::state::{AppDb, VoiceState};
-use crate::voice;
+use crate::ServicesExt;
+use meridian_core::db;
+use meridian_core::state::VoiceState;
+use meridian_core::voice;
 
 /// Recordings shorter than this are almost certainly accidental taps.
 const MIN_DURATION_MS: u64 = 1000;
@@ -30,7 +30,8 @@ pub struct VoiceTranscript {
 }
 
 fn data_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    app.path().app_data_dir().map_err(|e| e.to_string())
+    let services = app.services();
+    Ok(services.paths.data_dir.clone())
 }
 
 /// Fetch the cached engine or load it. The engine lock is held across the
@@ -68,10 +69,10 @@ async fn transcribe_samples(
     }
 
     let dir = data_dir(app)?;
-    let state = app.state::<VoiceState>();
-    let engine = get_or_load_engine(&state, dir).await?;
+    let services = app.services();
+    let engine = get_or_load_engine(&services.voice, dir).await?;
 
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = services.db.clone();
     let text = tokio::task::spawn_blocking(move || {
         let level = {
             let mut conn = pool.get().map_err(|e| e.to_string())?;
@@ -113,7 +114,8 @@ async fn transcribe_samples(
 #[tauri::command]
 pub async fn voice_prewarm(app: tauri::AppHandle) -> Result<(), String> {
     let dir = data_dir(&app)?;
-    let state = app.state::<VoiceState>();
+    let services = app.services();
+    let state = &services.voice;
     if !voice::model::status(&dir).installed {
         return Ok(());
     }
@@ -195,7 +197,8 @@ pub async fn voice_transcribe_pcm(
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn voice_release_prewarm(app: tauri::AppHandle) -> Result<(), String> {
-    let state = app.state::<VoiceState>();
+    let services = app.services();
+    let state = &services.voice;
     let mut inner = state.inner.lock().await;
     if inner.session.as_ref().is_some_and(|s| s.is_idle())
         && let Some(session) = inner.session.take()
@@ -213,7 +216,8 @@ pub async fn voice_start_recording(app: tauri::AppHandle) -> Result<(), String> 
         return Err("model_not_installed".into());
     }
 
-    let state = app.state::<VoiceState>();
+    let services = app.services();
+    let state = &services.voice;
     let mut inner = state.inner.lock().await;
     match inner.session.as_mut() {
         // Prewarmed: the device is already running, so this is instant and the
@@ -247,7 +251,8 @@ pub async fn voice_start_recording(app: tauri::AppHandle) -> Result<(), String> 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn voice_stop_and_transcribe(app: tauri::AppHandle) -> Result<VoiceTranscript, String> {
-    let state = app.state::<VoiceState>();
+    let services = app.services();
+    let state = &services.voice;
     let session = state.inner.lock().await.session.take().ok_or("Not recording")?;
 
     let duration_ms = session.started_at.elapsed().as_millis() as u64;
@@ -258,7 +263,8 @@ pub async fn voice_stop_and_transcribe(app: tauri::AppHandle) -> Result<VoiceTra
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn voice_cancel_recording(app: tauri::AppHandle) -> Result<(), String> {
-    let state = app.state::<VoiceState>();
+    let services = app.services();
+    let state = &services.voice;
     if let Some(session) = state.inner.lock().await.session.take() {
         session.cancel();
     }
@@ -268,7 +274,8 @@ pub async fn voice_cancel_recording(app: tauri::AppHandle) -> Result<(), String>
 #[tauri::command]
 pub async fn voice_model_status(app: tauri::AppHandle) -> Result<voice::model::ModelStatus, String> {
     let dir = data_dir(&app)?;
-    let downloading = app.state::<VoiceState>().inner.lock().await.download.is_some();
+    let services = app.services();
+    let downloading = services.voice.inner.lock().await.download.is_some();
     let mut status = tokio::task::spawn_blocking(move || voice::model::status(&dir))
         .await
         .map_err(|e| e.to_string())?;
@@ -279,7 +286,8 @@ pub async fn voice_model_status(app: tauri::AppHandle) -> Result<voice::model::M
 #[tauri::command]
 pub async fn voice_download_model(app: tauri::AppHandle, url: Option<String>) -> Result<(), String> {
     let dir = data_dir(&app)?;
-    let state = app.state::<VoiceState>();
+    let services = app.services();
+    let state = &services.voice;
     let mut inner = state.inner.lock().await;
     if inner.download.is_some() {
         return Err("Download already in progress".into());
@@ -290,8 +298,9 @@ pub async fn voice_download_model(app: tauri::AppHandle, url: Option<String>) ->
 
     let inner_ref = state.inner.clone();
     let engine_ref = state.engine.clone();
+    let events = services.events.clone();
     tokio::spawn(async move {
-        voice::download::run(app.clone(), dir, url, token).await;
+        voice::download::run(events, dir, url, token).await;
         // Fresh files on disk: drop any engine built from the old ones.
         *engine_ref.lock().await = None;
         inner_ref.lock().await.download = None;
@@ -301,7 +310,8 @@ pub async fn voice_download_model(app: tauri::AppHandle, url: Option<String>) ->
 
 #[tauri::command]
 pub async fn voice_cancel_download(app: tauri::AppHandle) -> Result<(), String> {
-    let state = app.state::<VoiceState>();
+    let services = app.services();
+    let state = &services.voice;
     if let Some(token) = state.inner.lock().await.download.take() {
         token.cancel();
     }
@@ -314,7 +324,8 @@ pub async fn voice_import_model(
     archive_path: String,
 ) -> Result<voice::model::ModelStatus, String> {
     let dir = data_dir(&app)?;
-    let state = app.state::<VoiceState>();
+    let services = app.services();
+    let state = &services.voice;
 
     let import_dir = dir.clone();
     tokio::task::spawn_blocking(move || voice::model::import_archive(&import_dir, std::path::Path::new(&archive_path)))
@@ -328,7 +339,8 @@ pub async fn voice_import_model(
 #[tauri::command]
 pub async fn voice_delete_model(app: tauri::AppHandle) -> Result<(), String> {
     let dir = data_dir(&app)?;
-    let state = app.state::<VoiceState>();
+    let services = app.services();
+    let state = &services.voice;
     if state.inner.lock().await.download.is_some() {
         return Err("Cannot delete while a download is in progress".into());
     }

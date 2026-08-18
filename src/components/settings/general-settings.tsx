@@ -8,6 +8,7 @@ import { useAppTheme, type ThemePreference } from '@/lib/theme'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { AndroidFileAccess } from './android-file-access'
+import { RemoteClientSettings } from './remote-client-settings'
 import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
 
 const LANGUAGE_OPTIONS = LANGUAGES.map((lang) => ({ value: lang.code, label: lang.label }))
@@ -98,6 +99,12 @@ export function GeneralSettings() {
   return (
     <SettingsPane>
       <SettingsHeader title={t('settings.general.title')} />
+
+      {/* First, and above the language: in remote mode every other control on
+          this page is editing the *other* machine's preferences, and this is
+          the only one that is still about the device in your hand — including
+          when that other machine has stopped answering. */}
+      <RemoteClientSettings />
 
       <SettingsSelect
         label={t('settings.general.language')}

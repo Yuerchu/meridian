@@ -1,0 +1,40 @@
+import { useTranslation } from 'react-i18next'
+
+import { useConnectionState } from '@/hooks/use-connection-state'
+import { isRemote } from '@/lib/transport'
+import { cn } from '@/lib/utils'
+
+/**
+ * Whether the machine answering this window is still there.
+ *
+ * Nothing at all while it is — a badge that says "connected" for hours is a
+ * badge nobody reads by the time it matters, and the states that need saying
+ * are the two that change what the app will let you do. Offline is drawn in
+ * `--danger` rather than `--warning` because it is not a degradation: the
+ * composer is disabled underneath it and no turn can be started.
+ *
+ * `role="status"` so the change is announced once, without moving focus.
+ */
+export function RemoteStatus() {
+  const { t } = useTranslation()
+  const state = useConnectionState()
+
+  if (!isRemote || state === 'connected') return null
+  const offline = state === 'offline'
+
+  return (
+    <span
+      data-slot="remote-status"
+      role="status"
+      className={cn(
+        'flex shrink-0 items-center gap-1.5 text-xs',
+        offline ? 'text-danger' : 'text-warning-soft-foreground',
+      )}
+    >
+      {/* The word beside it says the same thing, so announcing the dot too
+          would only say it twice. */}
+      <span aria-hidden className={cn('size-1.5 rounded-full', offline ? 'bg-danger' : 'bg-warning animate-pulse')} />
+      {t(`settings.client.state.${state}`)}
+    </span>
+  )
+}

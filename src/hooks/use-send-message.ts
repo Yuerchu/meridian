@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { api } from '@/api'
 import { useConversationStore } from '@/stores/conversation-store'
+import { uploadAttachment } from '@/lib/upload'
 import type { AttachedFile } from '@/components/chat/input-bar'
-import type { ChatMode, ThinkingLevel } from '@/types'
+import type { ChatMode, StickerContentPart, ThinkingLevel } from '@/types'
 
 /** The toolbar's answer to "how should this turn be sent", read at send time. */
 export interface SendOptions {
@@ -26,6 +27,7 @@ export interface SendMessage {
     files?: AttachedFile[],
     replaces?: string,
     voice?: boolean,
+    sticker?: StickerContentPart,
   ) => Promise<void>
   /** Says something to the run already going; false when nobody was reading. */
   steerMessage: (text: string) => Promise<boolean>
@@ -98,9 +100,16 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
   const { streaming, selectedAssistantId, selectedModelId, selectedProviderId, thinkingLevel, fastMode, mode } = opts
 
   const sendMessage = useCallback(
-    async (text: string | null, addUserBubble: boolean, files?: AttachedFile[], replaces?: string, voice?: boolean) => {
+    async (
+      text: string | null,
+      addUserBubble: boolean,
+      files?: AttachedFile[],
+      replaces?: string,
+      voice?: boolean,
+      sticker?: StickerContentPart,
+    ) => {
       // A null message means "regenerate", which needs no text of its own.
-      if ((text === null ? !replaces : !text) || streaming || submittingRef.current) return
+      if ((text === null ? !replaces : !text.trim() && !sticker) || streaming || submittingRef.current) return
       submittingRef.current = true
       // Minted here, not by the backend, and handed to it. The composer locks on
       // this line; the backend's first event is several awaits away. Anything
@@ -112,10 +121,15 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       const now = Date.now()
 
       let messageContent = text
-      if (text !== null && files && files.length > 0) {
+      if (text !== null && ((files && files.length > 0) || sticker)) {
         try {
-          const parts: unknown[] = [{ type: 'text', text }]
-          parts.push(...(await Promise.all(files.map((f) => api.uploadFile(conversationId, f.path)))))
+          const parts: unknown[] = []
+          if (text.trim()) parts.push({ type: 'text', text })
+          // Not `api.uploadFile` directly: an attachment picked on a device
+          // that is not the one holding the file has bytes rather than a path,
+          // and only `uploadAttachment` knows which of the two it is.
+          if (files) parts.push(...(await Promise.all(files.map((f) => uploadAttachment(conversationId, f)))))
+          if (sticker) parts.push(sticker)
           messageContent = JSON.stringify(parts)
         } catch (err) {
           storeAbortTurn(conversationId, turnId, String(err))

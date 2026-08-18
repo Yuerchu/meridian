@@ -40,6 +40,11 @@ describe('coerceThinkingLevel', () => {
     expect(coerceThinkingLevel('off', haiku)).toBe('off')
   })
 
+  it('coerces off to default when the model cannot disable thinking', () => {
+    const gemini = { ...caps(['low', 'medium', 'high']), supports_thinking_off: false }
+    expect(coerceThinkingLevel('off', gemini)).toBe('default')
+  })
+
   it('keeps a supported tier', () => {
     expect(coerceThinkingLevel('xhigh', caps(['low', 'medium', 'high', 'xhigh', 'max']))).toBe('xhigh')
   })

@@ -1,38 +1,26 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use tauri::{Emitter, Manager};
-
-use crate::agent::engine;
-use crate::agent::turn_record;
-use crate::agent::{
+use crate::ServicesExt;
+use meridian_core::agent::engine;
+use meridian_core::agent::turn_record;
+use meridian_core::agent::{
     CompactCircuitBreaker, TokenBudget, build_file_access, build_messages_with_senders, do_compact, file_access_prompt,
-    instruction_budget, load_project_instructions, microcompact, resolve_file_uris_in_messages, trailing_with_memory,
-    trim_to_context_limit,
+    instruction_budget, load_project_instructions, microcompact, resolve_file_uris_in_messages,
+    resolve_sticker_parts_in_messages, trailing_with_memory, trim_to_context_limit,
 };
-use crate::db;
-use crate::db::DbPool;
-use crate::db::models::assistant::Assistant;
-use crate::db::models::message::NewMessage;
-use crate::db::models::turn::{ERROR_LOOP_DETECTED, TurnPhase, TurnStatus};
-use crate::provider;
-use crate::provider::{ChatMessage, ChatParams};
-use crate::state::{AppDb, AppMcp, AppSecrets, AppTools, AppTurns, ApprovalWaiters, CompactBreakers};
-use crate::template;
-use crate::tools;
-use crate::turn::{TurnLease, TurnOrigin};
-use crate::util::{get_conn, now_ms, take_bytes_at_char_boundary};
-
-/// The desktop events are the answer. A window that missed one is showing a
-/// transcript that never catches up, so a send that fails ends the turn and the
-/// user is told -- see the Emit trait for the other runner opposite reading.
-struct WindowEmit(tauri::AppHandle);
-
-impl crate::agent::engine::Emit for WindowEmit {
-    fn emit(&self, channel: &str, payload: serde_json::Value) -> Result<(), String> {
-        self.0.emit(channel, payload).map_err(|e| e.to_string())
-    }
-}
+use meridian_core::db;
+use meridian_core::db::DbPool;
+use meridian_core::db::models::assistant::Assistant;
+use meridian_core::db::models::message::NewMessage;
+use meridian_core::db::models::turn::{ERROR_LOOP_DETECTED, TurnPhase, TurnStatus};
+use meridian_core::provider;
+use meridian_core::provider::{ChatMessage, ChatParams};
+use meridian_core::services::Services;
+use meridian_core::template;
+use meridian_core::tools;
+use meridian_core::turn::{TurnLease, TurnOrigin};
+use meridian_core::util::{get_conn, now_ms, take_bytes_at_char_boundary};
 
 /// Everything a mid-turn mode switch needs that the loop does not carry.
 ///
@@ -41,7 +29,7 @@ impl crate::agent::engine::Emit for WindowEmit {
 /// resolved persona are read before the first request, and threading four more
 /// values through the loop to reach one branch is what the port exists to avoid.
 struct PlanTransitions {
-    app: tauri::AppHandle,
+    services: Services,
     pool: DbPool,
     registry: Arc<tools::ToolRegistry>,
     assistant: Option<Assistant>,
@@ -56,27 +44,27 @@ struct PlanTransitions {
     /// Same reason again. Re-reading it here would let a mode switch hand out —
     /// or take away — the ability to delegate, and change which models it may
     /// reach, in the middle of a turn.
-    sub_agents: crate::agent::sub_agents::SubAgentCatalog,
+    sub_agents: meridian_core::agent::sub_agents::SubAgentCatalog,
 }
 
 #[async_trait::async_trait]
-impl crate::agent::engine::Transitions for PlanTransitions {
+impl meridian_core::agent::engine::Transitions for PlanTransitions {
     async fn rebuild(
         &self,
-        mode: &'static crate::agent::modes::ModeSpec,
-    ) -> Result<Result<crate::agent::turn_config::TurnConfig, String>, String> {
+        mode: &'static meridian_core::agent::modes::ModeSpec,
+    ) -> Result<Result<meridian_core::agent::turn_config::TurnConfig, String>, String> {
         // Read here rather than reused from the top of the turn: a server that
         // finished connecting since then belongs in the tool set the user just
         // agreed to.
-        let mcp_defs = self.app.state::<AppMcp>().0.tool_definitions().as_ref().clone();
+        let mcp_defs = self.services.mcp.tool_definitions().as_ref().clone();
         let pool = self.pool.clone();
         let registry = self.registry.clone();
-        let input = crate::agent::turn_config::TurnConfigInput {
+        let input = meridian_core::agent::turn_config::TurnConfigInput {
             assistant: self.assistant.clone(),
             conversation_id: self.conversation_id.clone(),
             project_id: self.project_id.clone(),
             // This type exists to answer the question, so the answer is yes.
-            mode: crate::agent::modes::Modes::Switchable(mode),
+            mode: meridian_core::agent::modes::Modes::Switchable(mode),
             // The turn's own, carried rather than resolved again.
             sub_agents: Some(self.sub_agents.clone()),
             mcp_defs,
@@ -86,7 +74,7 @@ impl crate::agent::engine::Transitions for PlanTransitions {
         };
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            Ok::<_, String>(crate::agent::turn_config::resolve(&mut conn, &registry, input))
+            Ok::<_, String>(meridian_core::agent::turn_config::resolve(&mut conn, &registry, input))
         })
         .await
         .map_err(|e| e.to_string())
@@ -106,7 +94,7 @@ impl crate::agent::engine::Transitions for PlanTransitions {
 /// to that order would send the stop event while the conversation still read as
 /// occupied — and the front end treats a stop as permission to send again.
 struct TurnGuard<'a> {
-    app: &'a tauri::AppHandle,
+    services: &'a Services,
     conversation_id: &'a str,
     turn_id: String,
     /// The row being written. Absent until the first iteration creates one —
@@ -156,15 +144,15 @@ impl Drop for TurnGuard<'_> {
         // Nobody is left to answer these. Left behind, they would show the user
         // a card whose buttons reach a receiver that has already gone, and the
         // registry would grow one entry per abandoned turn.
-        self.app
-            .state::<ApprovalWaiters>()
+        self.services
+            .approvals
             .lock()
             .retain(|_, pending| pending.turn_id != self.turn_id);
         // Before the event, not after: a user who sends again the instant the
         // stream ends must not be told the conversation is busy.
         self.lease.take();
         if self.armed {
-            let _ = self.app.emit(
+            let _ = self.services.events.emit(
                 "chat-stream",
                 serde_json::json!({
                     "type": "stop", "reason": "error", "done": true,
@@ -189,7 +177,8 @@ impl Drop for TurnGuard<'_> {
 /// failure the user needs to see; the front end clears its own state regardless.
 #[tauri::command]
 pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String, turn_id: Option<String>) -> Result<(), String> {
-    let cancelled = app.state::<AppTurns>().0.cancel(&conversation_id, turn_id.as_deref());
+    let services = app.services();
+    let cancelled = services.turns.cancel(&conversation_id, turn_id.as_deref());
     if !cancelled {
         tracing::debug!(
             conversation_id = %conversation_id,
@@ -206,7 +195,12 @@ pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String, turn_id: 
 // body must never reach the log.
 #[tracing::instrument(
     skip_all,
-    fields(conversation_id = %conversation_id, model = tracing::field::Empty)
+    fields(
+        conversation_id = %conversation_id,
+        model = tracing::field::Empty,
+        provider_type = tracing::field::Empty,
+        api_format = tracing::field::Empty
+    )
 )]
 /// Run a turn.
 ///
@@ -256,14 +250,14 @@ pub async fn chat(
             .to_string(),
         None => uuid::Uuid::new_v4().to_string(),
     };
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
 
     // Nothing is awaited between taking this and handing it to the guard that
     // gives it back, so there is no point at which the task can be dropped
     // holding it.
-    let lease = app
-        .state::<AppTurns>()
-        .0
+    let lease = services
+        .turns
         .clone()
         .try_acquire_turn_as(&conversation_id, TurnOrigin::Desktop, turn_id.clone())
         .map_err(|busy| busy.to_string())?;
@@ -280,7 +274,7 @@ pub async fn chat(
     // rather than at each `?` also keeps a single failure from being reported
     // twice.
     let result = chat_inner(
-        app,
+        services,
         conversation_id,
         message,
         lease,
@@ -311,7 +305,7 @@ pub async fn chat(
 
 #[allow(clippy::too_many_arguments)]
 async fn chat_inner(
-    app: tauri::AppHandle,
+    services: Services,
     conversation_id: String,
     message: Option<String>,
     // Already taken by the caller, but not yet recorded: the guard that gives
@@ -331,11 +325,11 @@ async fn chat_inner(
     mode: Option<String>,
     voice: Option<bool>,
 ) -> Result<(), String> {
-    let secrets = app.state::<AppSecrets>();
-    let pool = app.state::<AppDb>().0.clone();
-    // Every stream event this turn sends goes through here. The handle is an
-    // `Arc` inside, so the clone is a refcount bump.
-    let emitter = WindowEmit(app.clone());
+    let secrets = &services.secrets;
+    let pool = services.db.clone();
+    // Every stream event this turn sends goes through here. The bus is an `Arc`
+    // inside, so the clone is a refcount bump.
+    let emitter = meridian_core::events::BusEmit(services.events.clone());
 
     // Names this run of the turn, as opposed to the conversation it belongs to
     // or the assistant row it is currently writing (which changes every
@@ -345,7 +339,7 @@ async fn chat_inner(
     // From here on every exit goes through this: the lease, the approvals and
     // the terminal stop event are all released by its `Drop`.
     let mut stop_guard = TurnGuard {
-        app: &app,
+        services: &services,
         conversation_id: &conversation_id,
         turn_id: turn_id.clone(),
         message_id: None,
@@ -447,12 +441,12 @@ async fn chat_inner(
     // which can block for as long as the pool's acquire timeout.
     let resolved = {
         let pool2 = pool.clone();
-        let secrets2 = secrets.0.clone();
+        let secrets2 = secrets.clone();
         let assistant2 = assistant.clone();
         let model_override = model_override.clone();
         let provider_override = provider_override.clone();
         tokio::task::spawn_blocking(move || {
-            crate::agent::resolve_with_overrides(
+            meridian_core::agent::resolve_with_overrides(
                 &secrets2,
                 &pool2,
                 assistant2.as_ref(),
@@ -468,6 +462,8 @@ async fn chat_inner(
     // Filled in now rather than declared at entry: which model a turn actually
     // used is the first thing a provider error needs explaining.
     tracing::Span::current().record("model", model.as_str());
+    tracing::Span::current().record("provider_type", resolved.provider_type.as_str());
+    tracing::Span::current().record("api_format", resolved.api_format.as_str());
 
     let provider = provider::registry::create_provider(
         &resolved.provider_type,
@@ -529,8 +525,10 @@ async fn chat_inner(
     }
     let system_prompt_resolved = template::resolve(raw_prompt, &tmpl_ctx);
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
-    let memory_request =
-        crate::agent::MemoryRequest::desktop(project_id.clone(), crate::agent::memory_budget(context_limit));
+    let memory_request = meridian_core::agent::MemoryRequest::desktop(
+        project_id.clone(),
+        meridian_core::agent::memory_budget(context_limit),
+    );
     // How the previous turns stopped, for any that did not stop cleanly. Read
     // here rather than at the top because it is background about the
     // conversation, like the memory block, and travels the same way.
@@ -540,7 +538,7 @@ async fn chat_inner(
     // request, since this turn may die on the way out or be refused over SSE
     // by a provider that already answered 200.
     let interrupted =
-        crate::agent::interrupted::load_block(&pool, &app.state::<AppTurns>().0, &conversation_id, &turn_id).await;
+        meridian_core::agent::interrupted::load_block(&pool, &services.turns, &conversation_id, &turn_id).await;
     let instruction_block = {
         let budget = instruction_budget(context_limit);
         if budget > 0 {
@@ -554,12 +552,12 @@ async fn chat_inner(
     // drift apart again. The memory block is deliberately not part of it: that
     // one travels as a user-role message, because it is partly learned from
     // what other people said and the system prompt is for our own rules.
-    let tool_registry = app.state::<AppTools>();
+    let tool_registry = &services.tools;
     // Off the published snapshot. Reading it never waits on a server that is
     // mid-call — which is exactly what used to stop every other conversation
     // from starting a turn.
-    let mcp_defs = app.state::<AppMcp>().0.tool_definitions().as_ref().clone();
-    let mode = crate::agent::modes::resolve(mode.as_deref().or(conv_mode.as_deref()));
+    let mcp_defs = services.mcp.tool_definitions().as_ref().clone();
+    let mode = meridian_core::agent::modes::resolve(mode.as_deref().or(conv_mode.as_deref()));
     // Kept so the turn can be re-resolved in place if the user approves a plan
     // mid-flight; everything else the resolver needs is still in scope.
     let persona = system_prompt_resolved;
@@ -568,7 +566,7 @@ async fn chat_inner(
         file_access_prompt(&file_access),
         // Mirrored in conversation.rs's estimator via the same function; the
         // OR with this turn's flag only matters before the message lands.
-        crate::voice::prompt::voice_context_block(&ctx.path, voice == Some(true)).unwrap_or_default(),
+        meridian_core::voice::prompt::voice_context_block(&ctx.path, voice == Some(true)).unwrap_or_default(),
     ];
     // Taken from the resolution rather than recomputed from the override and the
     // assistant. Those two miss the third case: with neither set, the resolver
@@ -603,9 +601,9 @@ async fn chat_inner(
         let level = effective_level.map(|s| s.to_string());
         let fast = fast.unwrap_or(conv_fast_mode);
         tokio::task::spawn_blocking(move || {
-            crate::agent::resolve_turn_params(
+            meridian_core::agent::resolve_turn_params(
                 &pool2,
-                crate::agent::TurnParamsInput {
+                meridian_core::agent::TurnParamsInput {
                     assistant: assistant2.as_ref(),
                     provider_id: pid.as_deref(),
                     provider_type: &pt,
@@ -628,6 +626,7 @@ async fn chat_inner(
     // A capability copy rather than a borrow: `turn_params.params` is moved
     // later in the turn.
     let supports_tools = turn_params.caps.supports_tools;
+    let supports_images = turn_params.caps.supports_images;
     if !supports_tools {
         tracing::info!(model = %model, "the model cannot take tools; none are offered this turn");
     }
@@ -638,25 +637,28 @@ async fn chat_inner(
     // to — halfway through a turn, with nothing on screen to say so.
     let (turn, sub_agent_catalog) = {
         let pool2 = pool.clone();
-        let registry = tool_registry.0.clone();
+        let registry = tool_registry.clone();
         let assistant2 = assistant.clone();
         let (conv_id, pid) = (conversation_id.clone(), project_id.clone());
         let (persona2, blocks) = (persona.clone(), context_blocks.clone());
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool2)?;
-            let catalog = crate::agent::sub_agents::catalog(&mut conn);
-            let input = crate::agent::turn_config::TurnConfigInput {
+            let catalog = meridian_core::agent::sub_agents::catalog(&mut conn);
+            let input = meridian_core::agent::turn_config::TurnConfigInput {
                 assistant: assistant2,
                 conversation_id: conv_id,
                 project_id: pid,
-                mode: crate::agent::modes::Modes::Switchable(mode),
+                mode: meridian_core::agent::modes::Modes::Switchable(mode),
                 sub_agents: Some(catalog.clone()),
                 mcp_defs,
                 include_tools: supports_tools,
                 persona: persona2,
                 context_blocks: blocks,
             };
-            Ok::<_, String>((crate::agent::turn_config::resolve(&mut conn, &registry, input), catalog))
+            Ok::<_, String>((
+                meridian_core::agent::turn_config::resolve(&mut conn, &registry, input),
+                catalog,
+            ))
         })
         .await
         .map_err(|e| e.to_string())??
@@ -679,8 +681,7 @@ async fn chat_inner(
     );
 
     let circuit_breaker = {
-        let breakers = app.state::<CompactBreakers>();
-        let mut map = breakers.0.lock().await;
+        let mut map = services.compact_breakers.lock().await;
         map.entry(conversation_id.clone())
             .or_insert_with(|| Arc::new(CompactCircuitBreaker::new()))
             .clone()
@@ -699,7 +700,8 @@ async fn chat_inner(
         // Only to size the window. The real decision is taken after compaction,
         // against the path compaction leaves behind — see below.
         let probe =
-            crate::agent::plan_injection_async(&pool, memory_request.clone(), ctx.live().to_vec(), now_ms()).await;
+            meridian_core::agent::plan_injection_async(&pool, memory_request.clone(), ctx.live().to_vec(), now_ms())
+                .await;
         let pre_msgs = build_messages_with_senders(
             system_prompt.trim(),
             &ctx,
@@ -713,15 +715,17 @@ async fn chat_inner(
         );
         budget.update_estimate(&pre_msgs);
         if budget.needs_compact() && ctx.path.len() > keep_recent * 2 + 2 {
-            app.emit(
-                "compact-start",
-                serde_json::json!({
-                    "conversation_id": &conversation_id,
-                    "mid_turn": false,
-                    "trigger": "threshold",
-                }),
-            )
-            .ok();
+            services
+                .events
+                .emit(
+                    "compact-start",
+                    serde_json::json!({
+                        "conversation_id": &conversation_id,
+                        "mid_turn": false,
+                        "trigger": "threshold",
+                    }),
+                )
+                .ok();
             // Compaction deletes the old summary before writing the new one and
             // the two are not one transaction, so dying in here is its own kind
             // of half-finished. The bracket also restores `Streaming` however it
@@ -733,28 +737,23 @@ async fn chat_inner(
                 &turn_id,
                 TurnPhase::Compacting,
                 None,
-                do_compact(
-                    &pool,
-                    &secrets.0,
-                    &conversation_id,
-                    assistant.as_ref(),
-                    keep_recent,
-                    None,
-                ),
+                do_compact(&pool, secrets, &conversation_id, assistant.as_ref(), keep_recent, None),
             )
             .await;
             match compaction {
                 Ok(_anchor) => {
                     compacted = true;
                     circuit_breaker.record_success();
-                    app.emit(
-                        "compact-done",
-                        serde_json::json!({
-                            "conversation_id": &conversation_id,
-                            "mid_turn": false,
-                        }),
-                    )
-                    .ok();
+                    services
+                        .events
+                        .emit(
+                            "compact-done",
+                            serde_json::json!({
+                                "conversation_id": &conversation_id,
+                                "mid_turn": false,
+                            }),
+                        )
+                        .ok();
                 }
                 Err(e) => {
                     tracing::warn!("Auto-compact failed: {e}");
@@ -762,15 +761,17 @@ async fn chat_inner(
                     // Surfaced rather than swallowed: a silent failure looks
                     // exactly like compaction never having been attempted, while
                     // the context indicator sits pinned at its limit.
-                    app.emit(
-                        "compact-done",
-                        serde_json::json!({
-                            "conversation_id": &conversation_id,
-                            "mid_turn": false,
-                            "error": e,
-                        }),
-                    )
-                    .ok();
+                    services
+                        .events
+                        .emit(
+                            "compact-done",
+                            serde_json::json!({
+                                "conversation_id": &conversation_id,
+                                "mid_turn": false,
+                                "error": e,
+                            }),
+                        )
+                        .ok();
                 }
             }
         }
@@ -807,7 +808,7 @@ async fn chat_inner(
     // is exactly the signal that everything has to be re-sent, getting this
     // ordering wrong is silent rather than loud.
     let t0 = now_ms();
-    let injection = crate::agent::plan_injection_async(&pool, memory_request, ctx.live().to_vec(), t0).await;
+    let injection = meridian_core::agent::plan_injection_async(&pool, memory_request, ctx.live().to_vec(), t0).await;
     let injected = injection.as_ref().and_then(|i| i.text.clone());
 
     let mut chat_messages = build_messages_with_senders(
@@ -821,7 +822,13 @@ async fn chat_inner(
         ),
         &Default::default(),
     );
-    let files_root = app.path().app_data_dir().ok().map(|d| crate::files::files_dir(&d));
+    resolve_sticker_parts_in_messages(
+        &mut chat_messages,
+        &pool,
+        Some(services.paths.data_dir.as_path()),
+        supports_images,
+    );
+    let files_root = Some(meridian_core::files::files_dir(&services.paths.data_dir));
     resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref());
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
@@ -852,7 +859,8 @@ async fn chat_inner(
     // turn has to find it.
     if let Some(ref injection) = injection {
         parent_cursor =
-            crate::agent::persist_injection(&pool, injection, &conversation_id, &turn_id, parent_cursor, now).await;
+            meridian_core::agent::persist_injection(&pool, injection, &conversation_id, &turn_id, parent_cursor, now)
+                .await;
     }
 
     // Absent only when regenerating, which re-answers a question that is already
@@ -900,6 +908,7 @@ async fn chat_inner(
                 parent.as_deref(),
             )
             .map_err(|e| e.to_string())?;
+            db::ops::emoji::link_stickers_in_content(&mut conn, &msg_id, &msg).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         })
         .await
@@ -936,17 +945,16 @@ async fn chat_inner(
     // Missing preference means enabled: sandbox-by-default on Windows.
     let sandbox_enabled = sandbox_pref.as_deref() != Some("false");
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
-    let _sleep_guard = (sleep_pref.as_deref() != Some("false"))
-        .then(|| app.state::<crate::sleep_inhibitor::AppSleepInhibitor>().begin_turn());
+    let _sleep_guard = (sleep_pref.as_deref() != Some("false")).then(|| services.sleep.begin_turn());
     let tool_secrets = {
         let pool2 = pool.clone();
-        let secrets2 = secrets.0.clone();
-        tokio::task::spawn_blocking(move || crate::agent::build_tool_secrets(&secrets2, &pool2))
+        let secrets2 = secrets.clone();
+        tokio::task::spawn_blocking(move || meridian_core::agent::build_tool_secrets(&secrets2, &pool2))
             .await
             .map_err(|e| e.to_string())?
     };
     #[cfg(not(target_os = "android"))]
-    let sandbox_policy = crate::sandbox::default_policy_if_enabled(sandbox_enabled, project_path.as_deref());
+    let sandbox_policy = meridian_core::sandbox::default_policy_if_enabled(sandbox_enabled, project_path.as_deref());
     #[cfg(target_os = "android")]
     let _ = sandbox_enabled;
     let tool_context = tools::ToolContext {
@@ -959,6 +967,7 @@ async fn chat_inner(
         // turn config, which needs the project again.
         project_id: project_id.clone(),
         conversation_id: Some(conversation_id.clone()),
+        turn_id: Some(turn_id.clone()),
         assistant_id: assistant.as_ref().map(|a| a.id.clone()),
         db_pool: Some(pool.clone()),
         #[cfg(not(target_os = "android"))]
@@ -968,9 +977,9 @@ async fn chat_inner(
     };
 
     let transitions = PlanTransitions {
-        app: app.clone(),
+        services: services.clone(),
         pool: pool.clone(),
-        registry: tool_registry.0.clone(),
+        registry: tool_registry.clone(),
         assistant: assistant.clone(),
         conversation_id: conversation_id.clone(),
         project_id: project_id.clone(),
@@ -984,12 +993,12 @@ async fn chat_inner(
     // the assistant row, the project and the tool context are hundreds of lines
     // behind, and a delegated run needs all three.
     let sub_agents = super::sub_agent::DesktopSubAgents {
-        app: app.clone(),
+        services: services.clone(),
         pool: pool.clone(),
-        secrets: secrets.0.clone(),
-        registry: tool_registry.0.clone(),
-        coordinator: app.state::<AppTurns>().0.clone(),
-        mcp: app.state::<AppMcp>().0.clone(),
+        secrets: secrets.clone(),
+        registry: tool_registry.clone(),
+        coordinator: services.turns.clone(),
+        mcp: services.mcp.clone(),
         parent_conversation_id: conversation_id.clone(),
         parent_cancel: cancel.clone(),
         assistant,
@@ -1004,9 +1013,9 @@ async fn chat_inner(
     // everything the two do not agree on and everything that brackets a turn
     // rather than being part of one: the lease, the turn record, the terminal
     // event, and this conversation's own setup and epilogue.
-    let mcp = app.state::<AppMcp>().0.clone();
+    let mcp = services.mcp.clone();
     let approvals = super::approval_adapter::DesktopApprovals {
-        app: app.clone(),
+        services: services.clone(),
         cancel: cancel.clone(),
         turn_id: turn_id.clone(),
         conversation_id: conversation_id.clone(),
@@ -1016,7 +1025,7 @@ async fn chat_inner(
     let outcome = engine::run_turn(
         &engine::TurnServices {
             pool: &pool,
-            tools: &tool_registry.0,
+            tools: tool_registry,
             mcp: &mcp,
         },
         engine::TurnSetup {
@@ -1082,9 +1091,9 @@ async fn chat_inner(
 
     let cost_info = model_config
         .as_ref()
-        .filter(|mc| crate::agent::pricing::has_pricing(mc))
+        .filter(|mc| meridian_core::agent::pricing::has_pricing(mc))
         .map(|mc| {
-            let usage = crate::provider::TokenUsage {
+            let usage = meridian_core::provider::TokenUsage {
                 prompt_tokens: Some(total_input_tokens),
                 completion_tokens: Some(total_output_tokens),
                 total_tokens: Some(total_input_tokens + total_output_tokens),
@@ -1094,7 +1103,7 @@ async fn chat_inner(
                 cache_read_tokens: Some(total_cache_read),
                 cache_write_tokens: Some(total_cache_write),
             };
-            crate::agent::pricing::compute_cost(&usage, &crate::agent::pricing::Prices::of(mc))
+            meridian_core::agent::pricing::compute_cost(&usage, &meridian_core::agent::pricing::Prices::of(mc))
         });
 
     // This is the only place that knows how the loop was left, and the three
@@ -1130,7 +1139,7 @@ async fn chat_inner(
     }
     // Released ahead of the event it announces, not after it.
     stop_guard.release();
-    app.emit("chat-stream", stop_payload).map_err(|e| e.to_string())?;
+    services.events.emit("chat-stream", stop_payload)?;
     stop_guard.disarm();
 
     // Auto-generate title if first message
@@ -1168,13 +1177,15 @@ async fn chat_inner(
                     }
                 })
                 .await;
-                app.emit(
-                    "conversation-updated",
-                    serde_json::json!({
-                        "id": conversation_id,
-                    }),
-                )
-                .ok();
+                services
+                    .events
+                    .emit(
+                        "conversation-updated",
+                        serde_json::json!({
+                            "id": conversation_id,
+                        }),
+                    )
+                    .ok();
             }
         }
     }

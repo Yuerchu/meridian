@@ -1,7 +1,7 @@
 use tauri::Manager;
 
-use crate::hooks;
-use crate::state::{AppDb, AppMcp, AppSecrets, AppTools};
+use crate::ServicesExt;
+use meridian_core::hooks;
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
@@ -14,41 +14,41 @@ pub async fn get_hooks_status(app: tauri::AppHandle) -> Result<hooks::HookStatus
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn get_hooks_config(app: tauri::AppHandle) -> Result<hooks::HookConfig, String> {
-    let pool = app.state::<AppDb>().0.clone();
-    Ok(hooks::load_config(&pool))
+    let services = app.services();
+    Ok(hooks::load_config(&services.db))
 }
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn save_hooks_config(app: tauri::AppHandle, config: hooks::HookConfig) -> Result<hooks::HookConfig, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
     // Minted here rather than in the settings page: the page would have to send
     // it back on every save, and a token that travels twice is a token that can
     // be pasted into a screenshot twice.
     let config = hooks::HookConfig {
         token: match config.token.filter(|t| !t.is_empty()) {
             Some(existing) => Some(existing),
-            None => Some(hooks::generate_token()),
+            None => Some(meridian_core::listen_guard::generate_token()),
         },
         ..config
     };
-    hooks::save_config(&pool, &config)?;
+    hooks::save_config(&services.db, &config)?;
     apply_to_running(&app).await?;
     // Read back rather than echoing what came in: `save_config` clamps, so what
     // is stored is not always what was sent.
-    Ok(hooks::load_config(&pool))
+    Ok(hooks::load_config(&services.db))
 }
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn regenerate_hooks_token(app: tauri::AppHandle) -> Result<String, String> {
-    let pool = app.state::<AppDb>().0.clone();
-    let token = hooks::generate_token();
+    let services = app.services();
+    let token = meridian_core::listen_guard::generate_token();
     let config = hooks::HookConfig {
         token: Some(token.clone()),
-        ..hooks::load_config(&pool)
+        ..hooks::load_config(&services.db)
     };
-    hooks::save_config(&pool, &config)?;
+    hooks::save_config(&services.db, &config)?;
     // Otherwise the running server keeps checking the old token and the
     // handshake file keeps advertising it — the new one would be a value in the
     // database that nothing honours.
@@ -87,8 +87,8 @@ async fn apply_to_running(app: &tauri::AppHandle) -> Result<(), String> {
 /// safe across it because each generation only deletes the file it wrote.
 #[cfg(not(target_os = "android"))]
 async fn restart(app: &tauri::AppHandle) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
-    let config = hooks::load_config(&pool);
+    let services = app.services();
+    let config = hooks::load_config(&services.db);
 
     let state = app.state::<hooks::AppHooks>();
     let mut guard = state.0.lock().await;
@@ -96,17 +96,9 @@ async fn restart(app: &tauri::AppHandle) -> Result<(), String> {
     guard.stop();
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
-    let server = hooks::HookServer::new(
-        pool,
-        app.state::<AppSecrets>().0.clone(),
-        app.state::<AppTools>().0.clone(),
-        app.state::<AppMcp>().0.clone(),
-        // The one the desktop uses. A coordinator rebuilt here would forget
-        // which conversations desktop turns are currently holding.
-        app.state::<crate::state::AppTurns>().0.clone(),
-        config,
-        Some(app.clone()),
-    );
+    // The services are the desktop's own. A coordinator rebuilt here would
+    // forget which conversations desktop turns are currently holding.
+    let server = hooks::HookServer::new(services, config);
     server.start()?;
     *guard = server;
     Ok(())

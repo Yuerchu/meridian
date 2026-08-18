@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { FaceSmile, Magnifier } from '@gravity-ui/icons'
 import { Button, Input, Popover, Tooltip } from '@heroui/react'
@@ -15,13 +15,12 @@ export function EmojiPicker({
   onSelect,
 }: {
   assistantId: string | null
-  onSelect: (syntax: string) => void
+  onSelect: (sticker: { emoji: Emoji; url: string }) => void
 }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [packs, setPacks] = useState<PackWithEmojis[]>([])
   const [search, setSearch] = useState('')
-  const [searchResults, setSearchResults] = useState<Emoji[]>([])
   const [urls, setUrls] = useState<Record<string, string>>({})
 
   useEffect(() => {
@@ -34,11 +33,13 @@ export function EmojiPicker({
       const urlMap: Record<string, string> = {}
 
       for (const pack of assignedPacks) {
-        const emojis = await api.listEmojis(pack.id)
+        const emojis = (await api.listEmojis(pack.id)).filter(
+          (emoji) => emoji.semantic_status === 'confirmed' && emoji.file_format !== 'lottie',
+        )
         result.push({ pack, emojis })
         for (const e of emojis) {
-          const path = await api.getEmojiFileUrl(e.id)
-          urlMap[e.id] = path
+          const path = await api.getEmojiFileUrl(e.id).catch(() => null)
+          if (path) urlMap[e.id] = path
         }
       }
 
@@ -54,33 +55,22 @@ export function EmojiPicker({
     }
   }, [open, assistantId])
 
-  const handleSearch = useCallback(
-    async (q: string) => {
-      setSearch(q)
-      if (q.trim().length < 1) {
-        setSearchResults([])
-        return
-      }
-      const results = await api.searchEmojis(q.trim())
-      setSearchResults(results)
-      const urlMap = { ...urls }
-      for (const e of results) {
-        if (!urlMap[e.id]) {
-          const path = await api.getEmojiFileUrl(e.id)
-          urlMap[e.id] = path
-        }
-      }
-      setUrls(urlMap)
-    },
-    [urls],
-  )
+  const searchResults = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase()
+    if (!query) return []
+    return packs
+      .flatMap(({ emojis }) => emojis)
+      .filter((emoji) => `${emoji.name} ${emoji.tags ?? ''}`.toLocaleLowerCase().includes(query))
+  }, [packs, search])
 
   const handleSelect = useCallback(
     (emoji: Emoji) => {
-      onSelect(`[emoji:${emoji.name}]`)
+      const url = urls[emoji.id]
+      if (!url) return
+      onSelect({ emoji, url })
       setOpen(false)
     },
-    [onSelect],
+    [onSelect, urls],
   )
 
   if (!assistantId) return null
@@ -100,7 +90,7 @@ export function EmojiPicker({
             <Input
               fullWidth
               value={search}
-              onChange={(e) => handleSearch(e.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
               placeholder={t('chat.emojiSearch')}
               className="pl-7 text-xs"
             />
@@ -115,10 +105,15 @@ export function EmojiPicker({
                   <Button
                     key={e.id}
                     variant="ghost"
+                    isDisabled={!urls[e.id]}
                     className="h-auto p-1 rounded hover:bg-default/50 transition-colors"
                     onClick={() => handleSelect(e)}
                   >
-                    <img src={urls[e.id]} alt={e.name} className="w-7 h-7 object-contain" title={e.name} />
+                    {urls[e.id] ? (
+                      <img src={urls[e.id]} alt={e.name} className="w-7 h-7 object-contain" title={e.name} />
+                    ) : (
+                      <span className="size-7 text-xs leading-tight text-muted line-clamp-2">{e.name}</span>
+                    )}
                   </Button>
                 ))}
                 {searchResults.length === 0 && (
@@ -134,10 +129,15 @@ export function EmojiPicker({
                       <Button
                         key={e.id}
                         variant="ghost"
+                        isDisabled={!urls[e.id]}
                         className="h-auto rounded p-1 transition-colors hover:bg-default/50"
                         onClick={() => handleSelect(e)}
                       >
-                        <img src={urls[e.id]} alt={e.name} className="w-7 h-7 object-contain" title={e.name} />
+                        {urls[e.id] ? (
+                          <img src={urls[e.id]} alt={e.name} className="w-7 h-7 object-contain" title={e.name} />
+                        ) : (
+                          <span className="size-7 text-xs leading-tight text-muted line-clamp-2">{e.name}</span>
+                        )}
                       </Button>
                     ))}
                   </div>
