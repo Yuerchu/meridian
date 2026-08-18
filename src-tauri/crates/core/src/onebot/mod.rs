@@ -18,6 +18,7 @@ use tokio::sync::{Mutex, mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::db::DbPool;
+use crate::listen_guard::{constant_time_eq, validate_listen_config};
 use crate::services::Services;
 use crate::turn::{Busy, TurnCoordinator, TurnLease, TurnOrigin};
 use crate::util::{get_conn, now_ms};
@@ -902,7 +903,14 @@ impl OneBotServer {
         if self.is_running() {
             return Err("OneBot server is already running".into());
         }
-        validate_listen_config(&self.state.config.host, self.state.config.access_token.as_deref())?;
+        // Sharper here than for the other two listeners: anyone who can reach
+        // this socket can submit an event with an arbitrary `user_id`, i.e.
+        // impersonate an admin.
+        validate_listen_config(
+            &self.state.config.host,
+            self.state.config.access_token.as_deref(),
+            "the OneBot access token",
+        )?;
 
         let state = self.state.clone();
         let running = self.running.clone();
@@ -1003,29 +1011,6 @@ impl OneBotServer {
     }
 }
 
-/// Anyone who can reach the socket can submit events with an arbitrary
-/// `user_id`, i.e. impersonate an admin — so listening outside loopback
-/// without a real access token is refused outright.
-fn validate_listen_config(host: &str, access_token: Option<&str>) -> Result<(), String> {
-    let is_loopback = host.eq_ignore_ascii_case("localhost")
-        || host
-            .parse::<std::net::IpAddr>()
-            .map(|ip| ip.is_loopback())
-            .unwrap_or(false);
-    if is_loopback {
-        return Ok(());
-    }
-    match access_token {
-        Some(t) if t.len() >= 16 => Ok(()),
-        Some(_) => Err(
-            "OneBot access token is too short for a non-loopback address (need at least 16 characters); use a longer token or bind to 127.0.0.1".into(),
-        ),
-        None => Err(
-            "OneBot refuses to listen on a non-loopback address without an access token; set a token or bind to 127.0.0.1".into(),
-        ),
-    }
-}
-
 /// Check an access token against the Authorization header (`Bearer <t>`,
 /// `Token <t>`, or bare) or the `access_token` query parameter.
 fn token_matches(expected: &str, auth_header: Option<&str>, query: Option<&str>) -> bool {
@@ -1035,7 +1020,7 @@ fn token_matches(expected: &str, auth_header: Option<&str>, query: Option<&str>)
             .or_else(|| auth.strip_prefix("Token "))
             .unwrap_or(auth)
             .trim();
-        if token == expected {
+        if constant_time_eq(token.as_bytes(), expected.as_bytes()) {
             return true;
         }
     }
@@ -1043,7 +1028,7 @@ fn token_matches(expected: &str, auth_header: Option<&str>, query: Option<&str>)
         for kv in q.split('&') {
             if let Some(v) = kv.strip_prefix("access_token=") {
                 let decoded = percent_encoding::percent_decode_str(v).decode_utf8_lossy();
-                if decoded == expected {
+                if constant_time_eq(decoded.as_bytes(), expected.as_bytes()) {
                     return true;
                 }
             }
@@ -1847,21 +1832,6 @@ mod tests {
         assert_eq!(s.seen_message_ids.len(), SEEN_IDS_CAP);
         assert!(!s.seen_message_ids.contains(&5), "oldest ids evicted");
         assert!(s.seen_message_ids.contains(&(SEEN_IDS_CAP as i64 + 9)));
-    }
-
-    #[test]
-    fn test_validate_listen_loopback_needs_no_token() {
-        assert!(validate_listen_config("127.0.0.1", None).is_ok());
-        assert!(validate_listen_config("::1", None).is_ok());
-        assert!(validate_listen_config("localhost", None).is_ok());
-    }
-
-    #[test]
-    fn test_validate_listen_non_loopback_requires_long_token() {
-        assert!(validate_listen_config("0.0.0.0", None).is_err());
-        assert!(validate_listen_config("0.0.0.0", Some("short")).is_err());
-        assert!(validate_listen_config("192.168.1.10", None).is_err());
-        assert!(validate_listen_config("0.0.0.0", Some("0123456789abcdef")).is_ok());
     }
 
     #[test]

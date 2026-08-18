@@ -28,7 +28,7 @@ pub async fn save_hooks_config(app: tauri::AppHandle, config: hooks::HookConfig)
     let config = hooks::HookConfig {
         token: match config.token.filter(|t| !t.is_empty()) {
             Some(existing) => Some(existing),
-            None => Some(hooks::generate_token()),
+            None => Some(meridian_core::listen_guard::generate_token()),
         },
         ..config
     };
@@ -43,7 +43,7 @@ pub async fn save_hooks_config(app: tauri::AppHandle, config: hooks::HookConfig)
 #[tauri::command]
 pub async fn regenerate_hooks_token(app: tauri::AppHandle) -> Result<String, String> {
     let services = app.services();
-    let token = hooks::generate_token();
+    let token = meridian_core::listen_guard::generate_token();
     let config = hooks::HookConfig {
         token: Some(token.clone()),
         ..hooks::load_config(&services.db)

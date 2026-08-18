@@ -15,6 +15,7 @@ pub mod files;
 #[cfg(not(target_os = "android"))]
 pub mod hooks;
 pub mod keyring;
+pub mod listen_guard;
 pub mod logging;
 pub mod mcp;
 #[cfg(not(target_os = "android"))]

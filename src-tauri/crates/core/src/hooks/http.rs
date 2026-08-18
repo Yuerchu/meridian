@@ -20,6 +20,7 @@ use hyper::{Method, Request, Response, StatusCode};
 
 use super::protocol::{ErrorBody, Kind, ReviewRequest, StopReviewRequest};
 use super::{SharedState, review};
+use crate::listen_guard::constant_time_eq;
 
 /// A plan is markdown a model wrote; a couple of megabytes is already far past
 /// anything a reviewer could usefully read.
@@ -225,18 +226,6 @@ fn who_and_where(session_id: &str, cwd: &str) -> Result<(), (StatusCode, String)
     Ok(())
 }
 
-/// Comparison that does not return early on the first differing byte.
-///
-/// The token travels over loopback so this is not guarding much, but the
-/// alternative is a naked `==` on a secret, which is the kind of thing that
-/// stops being local the day someone binds to `0.0.0.0`.
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    if a.len() != b.len() {
-        return false;
-    }
-    a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
-}
-
 #[cfg(test)]
 mod tests {
     use super::super::protocol::ReviewResponse;
@@ -396,13 +385,6 @@ mod tests {
 
         assert!(response.starts_with("HTTP/1.1 200 OK"), "{response}");
         assert!(response.contains(r#""ok":true"#), "{response}");
-    }
-
-    #[test]
-    fn constant_time_eq_still_compares() {
-        assert!(constant_time_eq(b"abc", b"abc"));
-        assert!(!constant_time_eq(b"abc", b"abd"));
-        assert!(!constant_time_eq(b"abc", b"ab"));
     }
 
     /// The plugin distinguishes the three responses by shape alone, so the

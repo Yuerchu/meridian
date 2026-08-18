@@ -29,6 +29,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{Mutex, watch};
 
 use crate::db::DbPool;
+use crate::listen_guard::validate_listen_config;
 use crate::services::Services;
 use crate::util::{get_conn, now_ms};
 
@@ -202,11 +203,6 @@ pub fn save_config(pool: &DbPool, config: &HookConfig) -> Result<(), String> {
     Ok(())
 }
 
-/// A 32-character hex token. Not a secret anyone types, so length beats shape.
-pub fn generate_token() -> String {
-    uuid::Uuid::new_v4().simple().to_string()
-}
-
 pub(crate) struct SharedState {
     pub config: HookConfig,
     /// Also how a review announces that its conversation exists or has moved on.
@@ -256,7 +252,11 @@ impl HookServer {
         if self.is_running() {
             return Err("hook server is already running".into());
         }
-        validate_listen_config(&self.state.config.host, self.state.config.token.as_deref())?;
+        validate_listen_config(
+            &self.state.config.host,
+            self.state.config.token.as_deref(),
+            "the hook token",
+        )?;
 
         let state = self.state.clone();
         let running = self.running.clone();
@@ -382,31 +382,6 @@ fn remove_handshake_if_ours(path: &std::path::Path, generation: u64) {
     }
 }
 
-/// Off loopback, anyone who can reach the socket can put text in front of a
-/// model that reads this machine's files and can spend money doing it. A token
-/// is the minimum, and a short one is not a token.
-fn validate_listen_config(host: &str, token: Option<&str>) -> Result<(), String> {
-    let is_loopback = host.eq_ignore_ascii_case("localhost")
-        || host
-            .parse::<std::net::IpAddr>()
-            .map(|ip| ip.is_loopback())
-            .unwrap_or(false);
-    if is_loopback {
-        return Ok(());
-    }
-    match token {
-        Some(t) if t.len() >= 16 => Ok(()),
-        Some(_) => Err(
-            "the hook token is too short for a non-loopback address (need at least 16 characters); use a longer token or bind to 127.0.0.1"
-                .into(),
-        ),
-        None => Err(
-            "the hook server refuses to listen on a non-loopback address without a token; set one or bind to 127.0.0.1"
-                .into(),
-        ),
-    }
-}
-
 /// Start the server if the user has it enabled, and hand it back either way.
 ///
 /// Returned rather than registered here: the caller is the shell, and where the
@@ -434,20 +409,6 @@ pub struct AppHooks(pub Arc<Mutex<HookServer>>);
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn loopback_needs_no_token() {
-        assert!(validate_listen_config("127.0.0.1", None).is_ok());
-        assert!(validate_listen_config("localhost", None).is_ok());
-        assert!(validate_listen_config("::1", None).is_ok());
-    }
-
-    #[test]
-    fn off_loopback_needs_a_long_token() {
-        assert!(validate_listen_config("0.0.0.0", None).is_err());
-        assert!(validate_listen_config("0.0.0.0", Some("123456789012345")).is_err());
-        assert!(validate_listen_config("0.0.0.0", Some("1234567890123456")).is_ok());
-    }
 
     fn handshake_with(dir: &std::path::Path, generation: u64) -> std::path::PathBuf {
         let path = dir.join(HANDSHAKE);
@@ -500,12 +461,5 @@ mod tests {
         assert_eq!(clamp_timeout(1200), 1200);
         assert_eq!(clamp_timeout(300), 300);
         assert_eq!(clamp_timeout(0), 10);
-    }
-
-    #[test]
-    fn generated_tokens_are_long_enough_to_bind_off_loopback() {
-        let token = generate_token();
-        assert_eq!(token.len(), 32);
-        assert!(validate_listen_config("0.0.0.0", Some(&token)).is_ok());
     }
 }
