@@ -291,6 +291,13 @@ mod tests {
         actual.sort_unstable();
 
         let mut expected = vec![
+            // The keychain. Every provider's API key is in there under a name
+            // derived from an id a remote caller can list, so a generic read
+            // hands over credentials; `get_provider_key_exists` answers the
+            // question a client actually has and stays reachable.
+            "set_secret",
+            "get_secret",
+            "delete_secret",
             // Paths on the machine the *user* is sitting at, which is not this
             // one when the request came over a socket.
             "upload_file",

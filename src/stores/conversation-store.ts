@@ -601,6 +601,7 @@ export interface ConversationStore {
   setActiveProjectId: (id: string | null) => void
   refreshConversations: () => Promise<Conversation[]>
   refreshProjects: () => Promise<void>
+  resyncAfterReconnect: () => Promise<void>
 
   ensureSession: (convId: string) => void
   loadMessages: (convId: string) => Promise<void>
@@ -713,6 +714,37 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
 
   setActiveProjectId: (id) => {
     set({ activeProjectId: id, activeId: null, navigationStack: [] })
+  },
+
+  /**
+   * Rebuild from the server after a connection came back.
+   *
+   * Events are not replayed, so anything that happened while the socket was
+   * down is simply gone — and the one that matters is `stop`. Missing it leaves
+   * a session marked `streaming` for ever: the composer stays locked and the
+   * transcript keeps waiting for an answer that arrived while nobody was
+   * listening.
+   *
+   * Clearing the flag first is what makes the reload able to fix it.
+   * `adoptLiveTurn` returns early when a session already claims to be
+   * streaming — correct when a live stream is feeding it, wrong here, where
+   * that claim is exactly the thing that cannot be trusted. Cleared, the
+   * snapshot's turn records decide instead: still `running` and it comes back,
+   * finished and it does not.
+   */
+  resyncAfterReconnect: async () => {
+    const { activeId } = get()
+    set(
+      produce((state: ConversationStore) => {
+        for (const session of Object.values(state.sessions)) {
+          session.streaming = false
+          session.activeTurnId = null
+          session.candidateTurnId = null
+        }
+      }),
+    )
+    await get().refreshConversations()
+    if (activeId) await get().loadMessages(activeId)
   },
 
   refreshConversations: async () => {

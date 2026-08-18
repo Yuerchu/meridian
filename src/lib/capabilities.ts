@@ -32,6 +32,17 @@ export const can = {
   browseForDirectory: !isRemote,
   /** Record and transcribe. */
   voiceInput: !isRemote,
+  /**
+   * Drop a file onto the composer.
+   *
+   * Not a policy so much as a limit of the mechanism: Tauri's drag-and-drop is
+   * native and hands over *paths*, never a `File`. A path names something on the
+   * device the user is at, which in remote mode is not the machine that would
+   * have to read it. The picker gets around this with a real `<input
+   * type="file">`; there is no equivalent for the native drop, so it is simply
+   * not offered, and the picker beside it still is.
+   */
+  dropFiles: !isRemote,
   /** Reconfigure the servers this app runs, including the one answering. */
   manageServers: !isRemote,
 } as const

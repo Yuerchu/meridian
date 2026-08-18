@@ -179,6 +179,14 @@ export function useGlobalEventListener() {
       useConversationStore.getState().refreshConversations()
     })
 
+    // Synthesised by the transport when a dropped connection comes back. Not a
+    // backend event: nothing was replayed, which is the whole reason this
+    // exists. Whatever happened while the socket was down has to be read off
+    // the server rather than waited for.
+    const resyncUnlisten = listen('remote-resync', () => {
+      useConversationStore.getState().resyncAfterReconnect()
+    })
+
     const compactStartUnlisten = listen<{ conversation_id: string }>('compact-start', (event) => {
       useConversationStore.getState().handleCompactStart(event.payload.conversation_id)
     })
@@ -197,6 +205,7 @@ export function useGlobalEventListener() {
     return () => {
       chatStreamUnlisten.then((fn) => fn())
       convUpdatedUnlisten.then((fn) => fn())
+      resyncUnlisten.then((fn) => fn())
       compactStartUnlisten.then((fn) => fn())
       compactDoneUnlisten.then((fn) => fn())
     }

@@ -217,6 +217,12 @@ impl RemoteServer {
                 }
                 Err(e) => {
                     tracing::error!(error = %e, "failed to bind remote access to {addr}");
+                    // The registration happened before the bind, so this exit
+                    // owes it back. Left behind, the fan-out keeps being handed
+                    // every event in the app for the rest of the process's life
+                    // — and a retry would overwrite the stored id, making the
+                    // first one unreachable.
+                    state.services.events.unregister(id);
                     running.store(false, Ordering::Relaxed);
                     return;
                 }
@@ -237,6 +243,13 @@ impl RemoteServer {
                     }
                 }
                 tracing::info!("remote access shutting down");
+            };
+
+            // Whatever ends the server, the registration goes back: a graceful
+            // shutdown reaches `stop`, but an error return does not.
+            let _guard = SinkGuard {
+                events: state.services.events.clone(),
+                id,
             };
 
             if let Err(e) = axum::serve(listener, http::router(state.clone()))
@@ -279,3 +292,20 @@ pub(crate) async fn maybe_start(services: Services, app: tauri::AppHandle) -> Ap
 }
 
 pub struct AppRemote(pub Arc<Mutex<RemoteServer>>);
+
+/// Hands a bus registration back however the serving task ends.
+///
+/// `stop` unregisters on the path where somebody asked it to stop. This covers
+/// the ones nobody asked for: the server returning an error, or the task being
+/// dropped. A sink left registered is not idle — it is handed every event in
+/// the app, forever, queueing for connections that are gone.
+struct SinkGuard {
+    events: meridian_core::events::EventBus,
+    id: SinkId,
+}
+
+impl Drop for SinkGuard {
+    fn drop(&mut self) {
+        self.events.unregister(self.id);
+    }
+}

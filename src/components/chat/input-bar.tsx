@@ -427,7 +427,7 @@ export function InputBar({
                   : t('chat.placeholder')
             }
             onFieldReady={handleFieldReady}
-            onDropFiles={onAttachFiles ? handleDropFiles : undefined}
+            onDropFiles={onAttachFiles && can.dropFiles ? handleDropFiles : undefined}
             // Offline takes the line over: a disabled field with nothing to
             // say about why reads as the app having broken.
             notice={

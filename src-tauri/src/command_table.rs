@@ -49,9 +49,18 @@ macro_rules! with_all_commands {
             ),
             async commands::chat => stop_chat(conversation_id: String, turn_id: Option<String>),
 
-            async commands::secret => set_secret(key: String, value: String),
-            async commands::secret => get_secret(key: String),
-            async commands::secret => delete_secret(key: String),
+            // The generic key-value door onto the keychain, and so onto every
+            // provider's API key: they are stored under a derived name
+            // (`PROVIDER_<ID>_KEY`), and a remote caller can list the providers
+            // to learn the ids. `get_provider_key_exists` answers the question
+            // a client actually has -- is one set -- without handing over the
+            // value, and stays reachable; this does not.
+            //
+            // A remote client has no use for them anyway: its own copies are
+            // answered locally, because the remote token itself lives here.
+            local commands::secret => set_secret(key: String, value: String),
+            local commands::secret => get_secret(key: String),
+            local commands::secret => delete_secret(key: String),
 
             async commands::conversation => list_conversations(archived: bool),
             async commands::conversation => create_conversation(

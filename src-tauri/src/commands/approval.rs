@@ -1,7 +1,6 @@
-use tauri::Manager;
+use crate::ServicesExt;
 
 use meridian_core::agent::engine::ApprovalDecision;
-use meridian_core::state::ApprovalWaiters;
 
 /// Hand a decision to the turn waiting on it.
 ///
@@ -13,7 +12,8 @@ use meridian_core::state::ApprovalWaiters;
 /// made a dead approval card look like a live one, so the front end could keep
 /// clicking a button that would never do anything.
 fn decide(app: &tauri::AppHandle, approval_id: &str, decision: ApprovalDecision) -> Result<(), String> {
-    let waiters = app.state::<ApprovalWaiters>();
+    let services = app.services();
+    let waiters = &services.approvals;
     let entry = waiters.lock().remove(approval_id);
     match entry {
         Some(pending) => {
@@ -99,7 +99,8 @@ pub struct PendingApprovalInfo {
 /// `approval_id`, so there is exactly one place it can be answered from and no
 /// race between two cards.
 pub(crate) fn pending_for(app: &tauri::AppHandle, conversation_id: &str) -> Vec<PendingApprovalInfo> {
-    let waiters = app.state::<ApprovalWaiters>();
+    let services = app.services();
+    let waiters = &services.approvals;
     let map = waiters.lock();
     views_for(&map, conversation_id)
 }
