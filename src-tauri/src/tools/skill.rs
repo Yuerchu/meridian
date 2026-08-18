@@ -184,6 +184,7 @@ mod tests {
             file_access: FileAccess::Unrestricted,
             project_id: None,
             conversation_id: None,
+            turn_id: None,
             assistant_id: None,
             db_pool: Some(pool),
             #[cfg(not(target_os = "android"))]

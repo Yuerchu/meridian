@@ -13,17 +13,15 @@
 //! | write | database says no | the worker never came back |
 //! |---|---|---|
 //! | the assistant placeholder | the turn ends | the turn ends |
-//! | filling that row in | swallowed | the turn ends |
+//! | filling that row in | the turn ends | the turn ends |
 //! | the tool result row | logged, turn continues | logged, turn continues |
 //!
 //! The two columns are not the same failure. A refused write is the database
 //! having an opinion; a `spawn_blocking` join error means the worker panicked or
 //! the runtime is going down, and carrying on from that is not a considered
-//! trade — it is not knowing what happened. So only the middle row differs
-//! between them, and it differs because that is what it has always done.
-//!
-//! That swallow is inherited rather than argued for, and it is on the drift
-//! list. The third row is deliberate and load-bearing in both columns: by the
+//! trade — it is not knowing what happened. Filling the assistant row is also
+//! the checkpoint before tools may touch the world. The third row is deliberate
+//! and load-bearing in both columns: by the
 //! time it runs the tool has already touched the world, so refusing to carry on
 //! would cost more than the row does.
 
@@ -114,20 +112,15 @@ pub(crate) async fn begin_assistant(
 
 /// Fill in the row once the model has finished with it.
 ///
-/// Swallows a refused write, which is inherited rather than argued for — see
-/// the module note. The consolation is that the turn record makes it
-/// diagnosable now: a turn that reached `done` above an assistant row with no
-/// content is a write that went missing, and nothing else produces that shape.
-///
-/// Does *not* swallow a join error. That is the worker having panicked or the
-/// runtime shutting down, which says nothing about whether the row was written
-/// and is not something to carry on from.
+/// This is the durable boundary before any tool side effect. Both database and
+/// worker failures are returned to the turn.
 pub(crate) async fn complete_assistant(
     pool: &DbPool,
     message_id: &str,
     content: &str,
     reasoning: Option<&str>,
     tool_calls_json: Option<&str>,
+    provider_state: Option<&str>,
     usage: MessageUsage,
 ) -> Result<(), String> {
     let pool = pool.clone();
@@ -135,47 +128,46 @@ pub(crate) async fn complete_assistant(
     let content = content.to_string();
     let reasoning = reasoning.map(str::to_string);
     let tool_calls_json = tool_calls_json.map(str::to_string);
+    let provider_state = provider_state.map(str::to_string);
     tokio::task::spawn_blocking(move || {
-        if let Ok(mut conn) = pool.get() {
-            let written = crate::db::ops::message::update_assistant_message(
-                &mut conn,
-                &msg_id,
-                &content,
-                reasoning.as_deref(),
-                tool_calls_json.as_deref(),
-                &usage,
-            );
-            // Recorded here rather than when the row was opened: this is the
-            // first moment it has content and token counts, and an audit copy of
-            // an empty placeholder would answer nothing. A turn that dies before
-            // reaching this point leaves no record of its reply — the reply does
-            // not exist either, and what it cost is still on the `messages` row
-            // until that conversation is deleted.
-            //
-            // Skipped when the write was refused, so the log cannot end up
-            // holding a reply the transcript never got.
-            if written.is_ok() {
-                match crate::db::ops::message::get_message(&mut conn, &msg_id) {
-                    Ok(row) => {
-                        if let Err(e) = crate::db::ops::audit::record(&mut conn, &row) {
-                            tracing::error!(
-                                error = %e,
-                                message_id = %msg_id,
-                                "the audit copy of a reply could not be written",
-                            );
-                        }
-                    }
-                    Err(e) => tracing::error!(
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        crate::db::ops::message::update_assistant_message(
+            &mut conn,
+            &msg_id,
+            &content,
+            reasoning.as_deref(),
+            tool_calls_json.as_deref(),
+            provider_state.as_deref(),
+            &usage,
+        )
+        .map_err(|e| e.to_string())?;
+        // Recorded here rather than when the row was opened: this is the
+        // first moment it has content and token counts, and an audit copy of
+        // an empty placeholder would answer nothing. A turn that dies before
+        // reaching this point leaves no record of its reply — the reply does
+        // not exist either, and what it cost is still on the `messages` row
+        // until that conversation is deleted.
+        //
+        match crate::db::ops::message::get_message(&mut conn, &msg_id) {
+            Ok(row) => {
+                if let Err(e) = crate::db::ops::audit::record(&mut conn, &row) {
+                    tracing::error!(
                         error = %e,
                         message_id = %msg_id,
-                        "a completed reply could not be read back for the audit log",
-                    ),
+                        "the audit copy of a reply could not be written",
+                    );
                 }
             }
+            Err(e) => tracing::error!(
+                error = %e,
+                message_id = %msg_id,
+                "a completed reply could not be read back for the audit log",
+            ),
         }
+        Ok::<_, String>(())
     })
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())??;
     Ok(())
 }
 
@@ -428,6 +420,7 @@ mod tests {
             "the answer",
             Some("thinking"),
             None,
+            Some(r#"{"version":1,"producer":{"vendor":"anthropic","protocol":"messages","model":"m"},"kind":"anthropic_thinking_signature","payload":{"signature":"sig"}}"#),
             MessageUsage {
                 input_tokens: Some(7),
                 output_tokens: Some(11),
@@ -441,6 +434,7 @@ mod tests {
         let row = &rows(&pool)[0];
         assert_eq!(row.content, "the answer");
         assert_eq!(row.reasoning_content.as_deref(), Some("thinking"));
+        assert!(row.provider_state.as_deref().is_some_and(|s| s.contains("sig")));
         assert_eq!(row.input_tokens, Some(7));
         assert_eq!(row.output_tokens, Some(11));
         // Distinct values, so a transposed pair cannot pass.
@@ -475,6 +469,7 @@ mod tests {
             &pool,
             &id,
             "the answer",
+            None,
             None,
             None,
             MessageUsage {
@@ -516,24 +511,23 @@ mod tests {
         );
     }
 
-    /// Filling the row in is the one write that swallows a refused write.
+    /// Filling the row is the checkpoint before tools may run, so a refused
+    /// write must stop the turn.
     ///
-    /// A refusal has to be real to prove anything: an update against an id that
-    /// does not exist matches nothing and returns `Ok(0)`, which is not an
-    /// error and would have this test passing on a version that propagated
-    /// them. So the database is put into `query_only` and asked to write.
+    /// A refusal has to be real to prove anything, so the database is put into
+    /// `query_only` and asked to write an existing row.
     ///
     /// The pool hands out one connection (`max_size(1)`) and the customizer's
     /// `on_acquire` runs once when it is established, so the pragma survives
     /// being handed back and picked up again inside `complete_assistant`.
     ///
-    /// The other half of this function's contract — that a `spawn_blocking`
-    /// join error is *not* swallowed — has no test. Inducing one means
+    /// The other half of this function's contract — a `spawn_blocking` join
+    /// error — has no test. Inducing one means
     /// panicking a worker, and the only way to reach that from here would be a
     /// hook in production code. It is held by the return type and by the `?` at
     /// both call sites.
     #[tokio::test]
-    async fn filling_a_row_in_swallows_a_database_write_error() {
+    async fn filling_a_row_in_propagates_a_database_write_error() {
         let pool = test_db();
         conversation(&pool);
         let id = begin_assistant(&pool, "c1", "t1", (None, None), "m", None)
@@ -552,6 +546,7 @@ mod tests {
                     "the answer",
                     None,
                     None,
+                    None,
                     &MessageUsage::default(),
                 )
                 .is_err(),
@@ -560,10 +555,9 @@ mod tests {
         }
 
         assert!(
-            complete_assistant(&pool, &id, "the answer", None, None, MessageUsage::default())
+            complete_assistant(&pool, &id, "the answer", None, None, None, MessageUsage::default())
                 .await
-                .is_ok(),
-            "a refused write does not take the turn down with it",
+                .is_err()
         );
 
         {
@@ -571,7 +565,7 @@ mod tests {
             let mut conn = pool.get().unwrap();
             conn.batch_execute("PRAGMA query_only=OFF").unwrap();
         }
-        // And it really did not land — the swallow is a swallow, not a retry.
+        // And it really did not land.
         assert_eq!(rows(&pool)[0].content, "");
     }
 

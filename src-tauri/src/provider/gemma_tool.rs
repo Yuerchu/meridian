@@ -116,7 +116,7 @@ fn inject_tool_prompt(messages: &[ChatMessage], tool_prompt: &str) -> Vec<ChatMe
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
-            signature: None,
+            provider_state: None,
             origin: super::MessageOrigin::Assistant,
         },
     );
@@ -614,6 +614,7 @@ impl ChatProvider for GemmaToolProvider {
             reasoning_content: None,
             tool_calls,
             usage,
+            provider_state: None,
         })
     }
 }

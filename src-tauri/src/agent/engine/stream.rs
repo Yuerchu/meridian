@@ -45,7 +45,7 @@ pub(crate) async fn consume_stream(
 
     let mut text = String::new();
     let mut reasoning = String::new();
-    let mut signature = String::new();
+    let mut provider_state = provider::state::ProviderStateAccumulator::default();
     let mut tool_acc: Vec<(String, String, String)> = Vec::new();
     let mut usage = None;
     let mut finish_reason = None;
@@ -84,8 +84,8 @@ pub(crate) async fn consume_stream(
                         reasoning.push_str(s);
                         send("reasoning", s)?;
                     }
-                    Ok(Some(Ok(provider::StreamEvent::ReasoningSignature { signature: ref s }))) => {
-                        signature.push_str(s);
+                    Ok(Some(Ok(provider::StreamEvent::ProviderStateUpdate { update }))) => {
+                        provider_state.apply(update)?;
                     }
                     Ok(Some(Ok(provider::StreamEvent::ToolCallStart { index, ref id, ref name }))) => {
                         // Guard against a malformed/hostile endpoint sending a huge
@@ -167,7 +167,7 @@ pub(crate) async fn consume_stream(
     Ok(StreamResult {
         text,
         reasoning,
-        signature,
+        provider_state: ran_to_completion.then(|| provider_state.finish()).flatten(),
         tool_calls,
         usage,
         finish_reason,

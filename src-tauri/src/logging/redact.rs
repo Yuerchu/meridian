@@ -24,6 +24,8 @@ const SENSITIVE_FIELDS: &[&str] = &[
     "token",
     "credential",
     "signature",
+    "provider_state",
+    "encrypted_content",
     "sign",
     "secret",
     "password",
@@ -86,6 +88,8 @@ mod tests {
             "db_password",
             "refresh_token",
             "session_id",
+            "provider_state",
+            "encrypted_content",
         ] {
             let out = scrub(name, json!("hunter2hunter2hunter2"));
             assert!(out.contains("REDACTED"), "{name} was not redacted: {out}");

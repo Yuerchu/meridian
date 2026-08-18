@@ -8,6 +8,7 @@ mod notice;
 mod protocol;
 mod qq_tools;
 mod session;
+mod stickers;
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;

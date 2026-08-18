@@ -42,8 +42,12 @@ pub async fn handle_message(event: &OneBotEvent, state: &Arc<SharedState>, conn_
     let is_group = event.message_type.as_deref() == Some("group");
 
     let reply_message_id = format::extract_reply_message_id(message);
+    let mut parsed = format::parse_segments(message, Some(self_id));
 
     if is_group && !format::is_at_bot(message, self_id) {
+        if user_id != self_id && !parsed.stickers.is_empty() {
+            super::stickers::capture_in_background(state.clone(), self_id, parsed.stickers.clone());
+        }
         let session_key = SessionKey::group(event.group_id.unwrap_or(0));
         // Only the user who triggered a pending approval may answer it without
         // @mentioning the bot; everyone else's un-addressed messages are ignored.
@@ -53,14 +57,13 @@ pub async fn handle_message(event: &OneBotEvent, state: &Arc<SharedState>, conn_
             .get(&session_key.to_string())
             .is_some_and(|p| p.initiator == user_id);
         if is_initiator {
-            let segments = format::parse_segments(message, Some(self_id));
             let text = format::segments_to_text(message, Some(self_id));
             if !text.is_empty() {
                 // Readable text, as before, but carrying what was typed rather
                 // than losing it: this is the path an answer normally arrives
                 // by, and the media placeholders in `text` are ours.
                 let parsed = format::ParsedMessage {
-                    typed: segments.typed,
+                    typed: parsed.typed,
                     ..format::ParsedMessage::from_text(&text)
                 };
                 // What it quoted travels with it too, for the same reason.
@@ -70,7 +73,9 @@ pub async fn handle_message(event: &OneBotEvent, state: &Arc<SharedState>, conn_
         return vec![];
     }
 
-    let parsed = format::parse_segments(message, Some(self_id));
+    if user_id != self_id && !parsed.stickers.is_empty() {
+        parsed.sticker_ids = super::stickers::capture_stickers(state, self_id, &parsed.stickers).await;
+    }
     if parsed.text.is_empty() && !parsed.has_media() {
         return vec![];
     }
@@ -259,10 +264,27 @@ async fn handle_text_message(
 
     // With images the content becomes OpenAI-style parts JSON; the existing
     // resolve_file_uris_in_messages pipeline converts file:/// URIs to base64.
-    let user_content = if media.image_uris.is_empty() {
+    let user_content = if media.image_uris.is_empty() && parsed.stickers.is_empty() {
         enriched_text
     } else {
-        let mut parts = vec![serde_json::json!({ "type": "text", "text": enriched_text })];
+        let mut parts = Vec::new();
+        let pieces: Vec<_> = enriched_text.split(format::STICKER_SENTINEL).collect();
+        let mut sticker_index = 0usize;
+        for (index, piece) in pieces.iter().enumerate() {
+            if !piece.is_empty() {
+                parts.push(serde_json::json!({ "type": "text", "text": piece }));
+            }
+            if index + 1 < pieces.len() {
+                match parsed.sticker_ids.get(sticker_index).and_then(|id| id.as_deref()) {
+                    Some(sticker_id) => parts.push(serde_json::json!({
+                        "type": "sticker",
+                        "sticker_id": sticker_id,
+                    })),
+                    None => parts.push(serde_json::json!({ "type": "text", "text": "[动画表情]" })),
+                }
+                sticker_index += 1;
+            }
+        }
         parts.extend(
             media
                 .image_uris
@@ -559,7 +581,13 @@ pub(super) async fn run_agent_turn(
         // arrives *during* a round is the steering port's business instead —
         // see `InboxSteering`.
         let round_is_admin = round_authority(is_admin, &incoming);
-        let qq_tools = super::qq_tools::QqToolExecutor::new(state.clone(), session_key.clone(), round_is_admin);
+        let qq_tools = super::qq_tools::QqToolExecutor::new(
+            state.clone(),
+            session_key.clone(),
+            round_is_admin,
+            self_id,
+            turn_id.clone(),
+        );
 
         let outcome = agent::headless_chat(
             &state.pool,

@@ -625,6 +625,7 @@ async fn run_turn(
         file_access: FileAccess::Unrestricted,
         project_id: None,
         conversation_id: Some(conversation_id.to_string()),
+        turn_id: Some(turn_id.to_string()),
         assistant_id: Some(assistant.id.clone()),
         db_pool: Some(state.pool.clone()),
         #[cfg(not(target_os = "android"))]

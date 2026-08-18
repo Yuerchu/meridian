@@ -1,11 +1,14 @@
 pub mod anthropic;
 pub mod capabilities;
 pub mod deepseek;
+mod dto;
 pub mod gemma_tool;
+pub mod google_generate_content;
 pub mod models;
 pub mod openai_compat;
 pub mod openai_responses;
 pub mod registry;
+pub mod state;
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -82,9 +85,9 @@ pub struct ChatMessage {
     pub reasoning_content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
     pub tool_call_id: Option<String>,
-    /// Anthropic extended-thinking signature for the reasoning block. Kept only
-    /// in-memory for the current turn's tool loop; never persisted to the DB.
-    pub signature: Option<String>,
+    /// Opaque provider continuation state for this assistant message. It is
+    /// reconstructed from the database and only a matching adapter may read it.
+    pub provider_state: Option<state::ProviderState>,
     /// Rendered by each adapter according to what its wire format supports, so
     /// identity never has to be smuggled through the message body.
     pub origin: MessageOrigin,
@@ -98,7 +101,7 @@ impl ChatMessage {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
-            signature: None,
+            provider_state: None,
             origin: MessageOrigin::LegacyUser,
         }
     }
@@ -110,7 +113,7 @@ impl ChatMessage {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
-            signature: None,
+            provider_state: None,
             origin: MessageOrigin::User(sender),
         }
     }
@@ -122,7 +125,7 @@ impl ChatMessage {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
-            signature: None,
+            provider_state: None,
             origin: MessageOrigin::SystemContext,
         }
     }
@@ -133,7 +136,7 @@ impl ChatMessage {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
-            signature: None,
+            provider_state: None,
             origin: MessageOrigin::Assistant,
         }
     }
@@ -144,7 +147,7 @@ impl ChatMessage {
             reasoning_content,
             tool_calls: Some(tool_calls),
             tool_call_id: None,
-            signature: None,
+            provider_state: None,
             origin: MessageOrigin::Assistant,
         }
     }
@@ -155,7 +158,7 @@ impl ChatMessage {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: Some(tool_call_id.into()),
-            signature: None,
+            provider_state: None,
             origin: MessageOrigin::Tool,
         }
     }
@@ -343,13 +346,12 @@ pub struct ChatParams {
     pub thinking_style: ThinkingStyle,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
+#[derive(Debug, Clone)]
 pub enum StreamEvent {
     MessageStart { message_id: String },
     Text { content: String },
     Reasoning { content: String },
-    ReasoningSignature { signature: String },
+    ProviderStateUpdate { update: state::ProviderStateUpdate },
     ToolCallStart { index: usize, id: String, name: String },
     ToolCallDelta { index: usize, arguments: String },
     ToolCallDone { index: usize, arguments: String },
@@ -457,6 +459,8 @@ pub struct ProviderCapabilities {
     pub supports_tools: bool,
     pub supports_streaming_tools: bool,
     pub supports_thinking: bool,
+    /// Whether the thinking control may explicitly be set to off.
+    pub supports_thinking_off: bool,
     pub supports_images: bool,
     pub max_context_tokens: Option<u32>,
     pub max_output_tokens: Option<u32>,
@@ -485,6 +489,7 @@ pub struct AgentResponse {
     pub reasoning_content: Option<String>,
     pub tool_calls: Vec<ToolCall>,
     pub usage: Option<TokenUsage>,
+    pub provider_state: Option<state::ProviderState>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -495,6 +500,8 @@ pub enum ProviderError {
     Api { status: u16, body: String },
     #[error("parse: {0}")]
     Parse(String),
+    #[error("upstream API error: {0}")]
+    Upstream(String),
     /// For providers that decline a capability; none do yet.
     #[allow(dead_code)]
     #[error("not implemented: {0}")]

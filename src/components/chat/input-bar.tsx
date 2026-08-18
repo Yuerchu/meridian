@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToSquare, Copy, Scissors, SquareDashedText } from '@gravity-ui/icons'
+import { ArrowDownToSquare, Copy, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button, Popover, ProgressCircle, Tooltip } from '@heroui/react'
@@ -25,7 +25,7 @@ import { VoiceOverlay } from './voice-overlay'
 import { MobileOptionsMenu } from './toolbar'
 import { ComposerMenu } from './composer-menu'
 import { EmojiPicker } from './emoji-picker'
-import type { Assistant, ChatMode, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
+import type { Assistant, ChatMode, Emoji, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
 interface ContextInfo {
   messageCount: number
@@ -49,6 +49,11 @@ export interface AttachedFile {
   name: string
 }
 
+export interface PendingSticker {
+  emoji: Emoji
+  url: string
+}
+
 interface InputBarProps {
   value: string
   onChange: (value: string) => void
@@ -70,6 +75,9 @@ interface InputBarProps {
   attachedFiles?: AttachedFile[]
   onAttachFiles?: (files: AttachedFile[]) => void
   onRemoveFile?: (index: number) => void
+  pendingSticker?: PendingSticker | null
+  onSelectSticker?: (sticker: PendingSticker) => void
+  onRemoveSticker?: () => void
   assistants: Assistant[]
   providers: Provider[]
   currentAssistantId: string | null
@@ -153,6 +161,9 @@ export function InputBar({
   attachedFiles = [],
   onAttachFiles,
   onRemoveFile,
+  pendingSticker,
+  onSelectSticker,
+  onRemoveSticker,
 }: InputBarProps) {
   const { t } = useTranslation()
   const platform = usePlatform()
@@ -214,9 +225,9 @@ export function InputBar({
   // Composer holds Enter back mid-composition and disables Send on an empty
   // field; what stays here is the caller's own precondition.
   const handleSubmit = useCallback(() => {
-    if (disabled || !value.trim()) return
+    if (disabled || (!value.trim() && !pendingSticker)) return
     onSubmit()
-  }, [disabled, value, onSubmit])
+  }, [disabled, value, pendingSticker, onSubmit])
 
   const handleFieldReady = useCallback(
     (el: HTMLTextAreaElement | null) => {
@@ -386,27 +397,53 @@ export function InputBar({
             onDropFiles={onAttachFiles ? handleDropFiles : undefined}
             notice={voiceNotice && <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>}
             attachments={
-              attachedFiles.length > 0 && (
-                <ChatAttachmentGroup>
-                  {attachedFiles.map((f, i) => (
-                    // An image gets a thumbnail rather than the paperclip everything
-                    // used to get: the path is already on disk, so this costs one
-                    // asset-protocol URL. Anything else falls back to the icon the
-                    // extension implies.
-                    <ChatAttachment key={i} name={f.name} src={localPreviewSrc(f.path, f.name)}>
-                      <ChatAttachment.Preview />
-                      <ChatAttachment.Info />
-                      {onRemoveFile && (
-                        <ChatAttachment.Remove
-                          aria-label={t('chat.removeAttachment', { name: f.name })}
-                          onPress={() => onRemoveFile(i)}
-                        />
+              (attachedFiles.length > 0 || pendingSticker) && (
+                <div className="flex items-end gap-2 px-1 pb-1">
+                  {attachedFiles.length > 0 && (
+                    <ChatAttachmentGroup>
+                      {attachedFiles.map((f, i) => (
+                        // An image gets a thumbnail rather than the paperclip everything
+                        // used to get: the path is already on disk, so this costs one
+                        // asset-protocol URL. Anything else falls back to the icon the
+                        // extension implies.
+                        <ChatAttachment key={i} name={f.name} src={localPreviewSrc(f.path, f.name)}>
+                          <ChatAttachment.Preview />
+                          <ChatAttachment.Info />
+                          {onRemoveFile && (
+                            <ChatAttachment.Remove
+                              aria-label={t('chat.removeAttachment', { name: f.name })}
+                              onPress={() => onRemoveFile(i)}
+                            />
+                          )}
+                        </ChatAttachment>
+                      ))}
+                    </ChatAttachmentGroup>
+                  )}
+                  {pendingSticker && (
+                    <div className="relative shrink-0 rounded-xl bg-default/40 p-2" data-slot="pending-sticker">
+                      <img
+                        src={pendingSticker.url}
+                        alt={pendingSticker.emoji.name}
+                        className="size-20 object-contain"
+                      />
+                      {onRemoveSticker && (
+                        <Button
+                          isIconOnly
+                          size="sm"
+                          variant="primary"
+                          aria-label={t('chat.removeSticker')}
+                          className="absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-sm"
+                          onClick={onRemoveSticker}
+                        >
+                          <Xmark className="size-3.5" />
+                        </Button>
                       )}
-                    </ChatAttachment>
-                  ))}
-                </ChatAttachmentGroup>
+                    </div>
+                  )}
+                </div>
               )
             }
+            hasPayload={!!pendingSticker}
             toolbarStart={
               steerable && streaming ? null : isAndroid ? (
                 <MobileOptionsMenu
@@ -455,7 +492,7 @@ export function InputBar({
             }
             toolbarEnd={
               <>
-                <EmojiPicker assistantId={currentAssistantId} onSelect={(syntax) => onChange(value + syntax)} />
+                <EmojiPicker assistantId={currentAssistantId} onSelect={(sticker) => onSelectSticker?.(sticker)} />
                 {!isAndroid && onVoiceSend && (
                   <Tooltip delay={0}>
                     {/* The button inside picks the tooltip's trigger props up from

@@ -14,6 +14,15 @@ pub struct Emoji {
     pub file_format: String,
     pub sort_order: i32,
     pub created_at: i64,
+    pub source: String,
+    pub source_key: Option<String>,
+    pub native_payload: Option<String>,
+    pub semantic_status: String,
+    pub suggested_name: Option<String>,
+    pub suggested_tags: Option<String>,
+    pub file_size: i64,
+    pub seen_count: i32,
+    pub last_seen_at: Option<i64>,
 }
 
 #[derive(Debug, Insertable)]
@@ -27,4 +36,13 @@ pub struct NewEmoji<'a> {
     pub file_format: &'a str,
     pub sort_order: i32,
     pub created_at: i64,
+    pub source: &'a str,
+    pub source_key: Option<&'a str>,
+    pub native_payload: Option<&'a str>,
+    pub semantic_status: &'a str,
+    pub suggested_name: Option<&'a str>,
+    pub suggested_tags: Option<&'a str>,
+    pub file_size: i64,
+    pub seen_count: i32,
+    pub last_seen_at: Option<i64>,
 }

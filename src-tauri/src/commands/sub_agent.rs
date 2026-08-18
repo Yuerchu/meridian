@@ -504,6 +504,7 @@ impl DesktopSubAgents {
         let emitter = SubAgentEmit(self.app.clone());
         let tool_context = tools::ToolContext {
             conversation_id: Some(sub_conversation_id.to_string()),
+            turn_id: Some(turn_id.to_string()),
             cancel: cancel.clone(),
             ..self.tool_context.clone()
         };

@@ -599,6 +599,8 @@ pub fn run() {
             commands::emoji::import_emojis,
             commands::emoji::delete_emoji,
             commands::emoji::rename_emoji,
+            commands::emoji::suggest_sticker_semantics,
+            commands::emoji::confirm_sticker_semantics,
             commands::emoji::search_emojis,
             commands::emoji::assign_emoji_pack,
             commands::emoji::unassign_emoji_pack,

@@ -212,7 +212,7 @@ fn http_client() -> Result<&'static reqwest::Client, String> {
     }
 }
 
-async fn download_image(url: &str) -> Result<(Vec<u8>, String), String> {
+pub(crate) async fn download_image(url: &str) -> Result<(Vec<u8>, String), String> {
     let resp = http_client()?
         .get(url)
         .timeout(DOWNLOAD_TIMEOUT)

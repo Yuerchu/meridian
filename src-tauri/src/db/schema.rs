@@ -112,6 +112,8 @@ diesel::table! {
         sort_order -> Integer,
         created_at -> BigInt,
         updated_at -> BigInt,
+        kind -> Text,
+        source_account_id -> Nullable<Text>,
     }
 }
 
@@ -125,6 +127,23 @@ diesel::table! {
         file_format -> Text,
         sort_order -> Integer,
         created_at -> BigInt,
+        source -> Text,
+        source_key -> Nullable<Text>,
+        native_payload -> Nullable<Text>,
+        semantic_status -> Text,
+        suggested_name -> Nullable<Text>,
+        suggested_tags -> Nullable<Text>,
+        file_size -> BigInt,
+        seen_count -> Integer,
+        last_seen_at -> Nullable<BigInt>,
+    }
+}
+
+diesel::table! {
+    message_stickers (message_id, position) {
+        message_id -> Text,
+        sticker_id -> Text,
+        position -> Integer,
     }
 }
 
@@ -249,6 +268,7 @@ diesel::table! {
         cache_read_tokens -> Nullable<Integer>,
         cache_write_tokens -> Nullable<Integer>,
         provider_name -> Nullable<Text>,
+        provider_state -> Nullable<Text>,
     }
 }
 
@@ -446,6 +466,8 @@ diesel::joinable!(custom_tools -> tool_categories (category_id));
 diesel::joinable!(emojis -> emoji_packs (pack_id));
 diesel::joinable!(messages -> conversations (conversation_id));
 diesel::joinable!(messages -> providers (provider_id));
+diesel::joinable!(message_stickers -> emojis (sticker_id));
+diesel::joinable!(message_stickers -> messages (message_id));
 diesel::joinable!(projects -> assistants (assistant_id));
 diesel::joinable!(tool_permissions -> mcp_servers (mcp_server_id));
 diesel::joinable!(skill_bindings_global -> skills (dir_name));
@@ -471,6 +493,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     memory_proposals,
     memory_subjects,
     messages,
+    message_stickers,
     mode_artifacts,
     model_configs,
     preferences,

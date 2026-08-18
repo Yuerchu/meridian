@@ -22,7 +22,7 @@ impl AnthropicProvider {
         }
     }
 
-    fn serialize_messages(messages: &[ChatMessage]) -> Vec<serde_json::Value> {
+    fn serialize_messages(messages: &[ChatMessage], model: &str) -> Vec<serde_json::Value> {
         let mut out: Vec<serde_json::Value> = Vec::new();
         let mut pending_tool_results: Vec<serde_json::Value> = Vec::new();
 
@@ -55,8 +55,10 @@ impl AnthropicProvider {
                 let mut content: Vec<serde_json::Value> = Vec::new();
                 // With extended thinking on, the assistant turn carrying a
                 // tool_use must begin with its signed thinking block.
-                if let (Some(reasoning), Some(sig)) = (m.reasoning_content.as_ref(), m.signature.as_ref())
-                    && !reasoning.is_empty()
+                if let (Some(reasoning), Some(sig)) = (
+                    m.reasoning_content.as_ref(),
+                    m.provider_state.as_ref().and_then(|s| s.anthropic_signature_for(model)),
+                ) && !reasoning.is_empty()
                     && !sig.is_empty()
                 {
                     content.push(serde_json::json!({
@@ -145,7 +147,7 @@ impl AnthropicProvider {
 
         let mut body = serde_json::json!({
             "model": params.model,
-            "messages": Self::serialize_messages(messages),
+            "messages": Self::serialize_messages(messages, &params.model),
             "stream": stream,
         });
 
@@ -361,6 +363,7 @@ impl ChatProvider for AnthropicProvider {
         let transport = ReqwestTransport::shared();
         let req = self.build_request(&messages, tools_opt, &params, true);
         let resp = transport.stream(req).await?;
+        let model = params.model.clone();
 
         // Held across events because one usage record arrives in two halves. The
         // prompt-side counts — and with them both cache figures — come once on
@@ -415,8 +418,12 @@ impl ChatProvider for AnthropicProvider {
                                             if let Some(ref sig) = delta.signature
                                                 && !sig.is_empty()
                                             {
-                                                out.push(Ok(StreamEvent::ReasoningSignature {
-                                                    signature: sig.clone(),
+                                                out.push(Ok(StreamEvent::ProviderStateUpdate {
+                                                    update:
+                                                        super::state::ProviderStateUpdate::AnthropicSignatureDelta {
+                                                            model: model.clone(),
+                                                            delta: sig.clone(),
+                                                        },
                                                 }));
                                             }
                                         }
@@ -513,6 +520,7 @@ impl ChatProvider for AnthropicProvider {
 
         let mut text = String::new();
         let mut reasoning_content = String::new();
+        let mut thinking_signature = None;
         let mut tool_calls = Vec::new();
 
         if let Some(content) = parsed["content"].as_array() {
@@ -522,6 +530,7 @@ impl ChatProvider for AnthropicProvider {
                         if let Some(t) = block["thinking"].as_str() {
                             reasoning_content.push_str(t);
                         }
+                        thinking_signature = block["signature"].as_str().map(str::to_string);
                     }
                     Some("text") => {
                         if let Some(t) = block["text"].as_str() {
@@ -559,6 +568,15 @@ impl ChatProvider for AnthropicProvider {
             reasoning_content: reasoning,
             tool_calls,
             usage,
+            provider_state: thinking_signature.map(|signature| super::state::ProviderState {
+                version: 1,
+                producer: super::state::ProviderStateProducer {
+                    vendor: "anthropic".into(),
+                    protocol: "messages".into(),
+                    model: params.model,
+                },
+                payload: super::state::ProviderStatePayload::AnthropicThinkingSignature { signature },
+            }),
         })
     }
 }
@@ -673,8 +691,18 @@ mod tests {
                 arguments: "{}".into(),
             }],
         );
-        assistant.signature = Some("sig-abc".into());
-        let out = AnthropicProvider::serialize_messages(&[assistant]);
+        assistant.provider_state = Some(crate::provider::state::ProviderState {
+            version: 1,
+            producer: crate::provider::state::ProviderStateProducer {
+                vendor: "anthropic".into(),
+                protocol: "messages".into(),
+                model: "claude-test".into(),
+            },
+            payload: crate::provider::state::ProviderStatePayload::AnthropicThinkingSignature {
+                signature: "sig-abc".into(),
+            },
+        });
+        let out = AnthropicProvider::serialize_messages(&[assistant], "claude-test");
         assert_eq!(out.len(), 1);
         let content = out[0]["content"].as_array().unwrap();
         assert_eq!(content[0]["type"], "thinking");
@@ -685,7 +713,7 @@ mod tests {
     #[test]
     fn test_serialize_file_becomes_document() {
         let content = r#"[{"type":"file","file":{"url":"data:application/pdf;base64,QUJD"}}]"#;
-        let out = AnthropicProvider::serialize_messages(&[ChatMessage::user(content)]);
+        let out = AnthropicProvider::serialize_messages(&[ChatMessage::user(content)], "claude-test");
         let parts = out[0]["content"].as_array().unwrap();
         assert_eq!(parts[0]["type"], "document");
         assert_eq!(parts[0]["source"]["media_type"], "application/pdf");
@@ -698,7 +726,7 @@ mod tests {
             ChatMessage::tool_result("call_1", "result one"),
             ChatMessage::tool_result("call_2", "result two"),
         ];
-        let out = AnthropicProvider::serialize_messages(&msgs);
+        let out = AnthropicProvider::serialize_messages(&msgs, "claude-test");
         assert_eq!(out.len(), 1, "consecutive tool results must share one user message");
         assert_eq!(out[0]["role"], "user");
         let blocks = out[0]["content"].as_array().unwrap();
@@ -836,7 +864,7 @@ mod multimodal_sender_tests {
             },
         );
 
-        let out = AnthropicProvider::serialize_messages(&[msg]);
+        let out = AnthropicProvider::serialize_messages(&[msg], "claude-test");
         let content = out[0]["content"].as_array().unwrap();
 
         // Exactly one real marker, and it names the actual sender.

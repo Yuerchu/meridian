@@ -221,6 +221,7 @@ impl ChatProvider for DeepSeekProvider {
             reasoning_content,
             tool_calls,
             usage,
+            provider_state: None,
         })
     }
 }

@@ -43,7 +43,7 @@ import { isCoarsePointer, isSubmitKey } from '@/hooks/use-coarse-pointer'
 import { SelectTextModal } from './select-text-modal'
 import { markQueued } from '@/lib/turns'
 import { ToolCallBlock } from './tool-call-block'
-import { renderEmojisInText } from './emoji-renderer'
+import { renderEmojisInText, StickerImage } from './emoji-renderer'
 import type { ContentBlock, Message as MessageData } from '@/types'
 import type { SenderNames } from '@/hooks/use-sender-names'
 import type { EmojiMap } from './emoji-renderer'
@@ -243,6 +243,13 @@ function AssistantBlock({
   if (block.type === 'tool_call') {
     return <MemoToolCallBlock data={block.data} queued={queued} />
   }
+  if (block.type === 'sticker') {
+    return (
+      <div className="my-1 flex justify-start" data-slot="assistant-sticker">
+        <StickerImage stickerId={block.sticker_id} name={block.name} />
+      </div>
+    )
+  }
   return null
 }
 
@@ -352,6 +359,8 @@ interface UserContentPart {
   text?: string
   image_url?: { url: string }
   file?: { url: string; name: string; mime_type: string }
+  sticker_id?: string
+  name?: string
 }
 
 interface MessageItemProps {
@@ -499,6 +508,7 @@ export const MessageItem = React.memo(function MessageItem({
 
   if (isUser) {
     const { contentParts, textContent } = parsedUser
+    const canEdit = !!onEdit && !contentParts
     const { senderPrefix, quotedMessage, body } = isOneBot
       ? parseOneBotContent(textContent)
       : { senderPrefix: null, quotedMessage: null, body: textContent }
@@ -564,24 +574,33 @@ export const MessageItem = React.memo(function MessageItem({
               </Bubble>
             ) : (
               <>
-                <Bubble align="end" variant="default">
-                  <BubbleContent>
-                    {quotedMessage && (
-                      <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
-                    )}
-                    <div className="whitespace-pre-wrap">
-                      {message.source === 'voice' && (
-                        <Microphone
-                          className="inline-block size-3.5 mr-1 -mt-0.5 opacity-60"
-                          aria-label={t('chat.voice.badge')}
-                        />
+                {(body || quotedMessage || message.source === 'voice') && (
+                  <Bubble align="end" variant="default">
+                    <BubbleContent>
+                      {quotedMessage && (
+                        <QuotedMessageBlock sender={quotedMessage.sender} content={quotedMessage.content} />
                       )}
-                      {emojiMap && Object.keys(emojiMap).length > 0 ? renderEmojisInText(body, emojiMap) : body}
+                      <div className="whitespace-pre-wrap">
+                        {message.source === 'voice' && (
+                          <Microphone
+                            className="inline-block size-3.5 mr-1 -mt-0.5 opacity-60"
+                            aria-label={t('chat.voice.badge')}
+                          />
+                        )}
+                        {emojiMap && Object.keys(emojiMap).length > 0 ? renderEmojisInText(body, emojiMap) : body}
+                      </div>
+                    </BubbleContent>
+                  </Bubble>
+                )}
+                {contentParts
+                  ?.filter((part) => part.type === 'sticker' && part.sticker_id)
+                  .map((part, index) => (
+                    <div key={`sticker-${index}`} className="flex justify-end py-1" data-slot="user-sticker">
+                      <StickerImage stickerId={part.sticker_id!} name={part.name} />
                     </div>
-                  </BubbleContent>
-                </Bubble>
+                  ))}
                 <MessageFooter className="gap-1 opacity-0 group-hover/message:opacity-100 pointer-coarse:opacity-100 transition-opacity">
-                  {onEdit && (
+                  {canEdit && (
                     <ActionButton
                       label={t('chat.edit')}
                       onClick={handleStartEdit}
@@ -615,7 +634,7 @@ export const MessageItem = React.memo(function MessageItem({
               <ContextMenuSeparator />
             </>
           )}
-          {onEdit && (
+          {canEdit && (
             <ContextMenuItem onClick={handleStartEdit}>
               <Pencil />
               {t('chat.edit')}

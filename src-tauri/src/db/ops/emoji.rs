@@ -2,7 +2,8 @@ use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
 use crate::db::models::emoji::{Emoji, NewEmoji};
-use crate::db::schema::emojis;
+use crate::db::models::message_sticker::NewMessageSticker;
+use crate::db::schema::{emojis, message_stickers};
 
 pub fn list_by_pack(conn: &mut SqliteConnection, pack_id: &str) -> QueryResult<Vec<Emoji>> {
     emojis::table
@@ -41,19 +42,132 @@ pub fn search_emojis(conn: &mut SqliteConnection, query: &str) -> QueryResult<Ve
         .load::<Emoji>(conn)
 }
 
-pub fn list_emojis_for_packs(conn: &mut SqliteConnection, pack_ids: &[String]) -> QueryResult<Vec<Emoji>> {
+pub fn list_confirmed_for_packs(conn: &mut SqliteConnection, pack_ids: &[String]) -> QueryResult<Vec<Emoji>> {
     emojis::table
         .filter(emojis::pack_id.eq_any(pack_ids))
+        .filter(emojis::semantic_status.eq("confirmed"))
+        .filter(emojis::file_format.ne("lottie"))
         .order((emojis::pack_id.asc(), emojis::sort_order.asc()))
         .load::<Emoji>(conn)
 }
 
-/// Upper bound on how many stickers get described to the model; a large pack
-/// would otherwise crowd out the rest of the system prompt.
-const MAX_PROMPT_EMOJIS: usize = 100;
+pub fn list_candidates(conn: &mut SqliteConnection, pack_id: &str) -> QueryResult<Vec<Emoji>> {
+    emojis::table
+        .filter(emojis::pack_id.eq(pack_id))
+        .filter(emojis::semantic_status.ne("confirmed"))
+        .order((emojis::last_seen_at.desc(), emojis::seen_count.desc()))
+        .load(conn)
+}
 
-/// Value of the `{{emoji_list}}` template variable for an assistant: the
-/// stickers it may use, in the exact syntax the inline-tag parser expects.
+pub fn update_suggestion(conn: &mut SqliteConnection, id: &str, name: &str, tags: Option<&str>) -> QueryResult<Emoji> {
+    diesel::update(emojis::table.find(id))
+        .set((
+            emojis::suggested_name.eq(Some(name)),
+            emojis::suggested_tags.eq(tags),
+            emojis::semantic_status.eq("suggested"),
+        ))
+        .execute(conn)?;
+    get_emoji(conn, id)
+}
+
+pub fn confirm_semantics(conn: &mut SqliteConnection, id: &str, name: &str, tags: Option<&str>) -> QueryResult<Emoji> {
+    diesel::update(emojis::table.find(id))
+        .set((
+            emojis::name.eq(name),
+            emojis::tags.eq(tags),
+            emojis::suggested_name.eq::<Option<&str>>(None),
+            emojis::suggested_tags.eq::<Option<&str>>(None),
+            emojis::semantic_status.eq("confirmed"),
+        ))
+        .execute(conn)?;
+    get_emoji(conn, id)
+}
+
+pub fn find_by_source_key(
+    conn: &mut SqliteConnection,
+    pack_id: &str,
+    source: &str,
+    source_key: &str,
+) -> QueryResult<Option<Emoji>> {
+    emojis::table
+        .filter(emojis::pack_id.eq(pack_id))
+        .filter(emojis::source.eq(source))
+        .filter(emojis::source_key.eq(source_key))
+        .first(conn)
+        .optional()
+}
+
+pub fn mark_seen(conn: &mut SqliteConnection, id: &str, now: i64) -> QueryResult<Emoji> {
+    diesel::update(emojis::table.find(id))
+        .set((
+            emojis::seen_count.eq(emojis::seen_count + 1),
+            emojis::last_seen_at.eq(Some(now)),
+        ))
+        .execute(conn)?;
+    get_emoji(conn, id)
+}
+
+pub fn attach_captured_media(
+    conn: &mut SqliteConnection,
+    id: &str,
+    file_name: &str,
+    file_format: &str,
+    file_size: i64,
+    native_payload: &str,
+) -> QueryResult<Emoji> {
+    diesel::update(emojis::table.find(id))
+        .set((
+            emojis::file_name.eq(file_name),
+            emojis::file_format.eq(file_format),
+            emojis::file_size.eq(file_size),
+            emojis::native_payload.eq(Some(native_payload)),
+        ))
+        .execute(conn)?;
+    get_emoji(conn, id)
+}
+
+pub fn link_message_sticker(
+    conn: &mut SqliteConnection,
+    message_id: &str,
+    sticker_id: &str,
+    position: i32,
+) -> QueryResult<()> {
+    diesel::insert_or_ignore_into(message_stickers::table)
+        .values(&NewMessageSticker {
+            message_id,
+            sticker_id,
+            position,
+        })
+        .execute(conn)?;
+    Ok(())
+}
+
+pub fn link_stickers_in_content(conn: &mut SqliteConnection, message_id: &str, content: &str) -> QueryResult<()> {
+    let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(content) else {
+        return Ok(());
+    };
+    for (position, sticker_id) in parts
+        .iter()
+        .filter(|part| part.get("type").and_then(|v| v.as_str()) == Some("sticker"))
+        .filter_map(|part| part.get("sticker_id").and_then(|v| v.as_str()))
+        .enumerate()
+    {
+        link_message_sticker(conn, message_id, sticker_id, position as i32)?;
+    }
+    Ok(())
+}
+
+pub fn is_referenced(conn: &mut SqliteConnection, sticker_id: &str) -> QueryResult<bool> {
+    use diesel::dsl::{exists, select};
+    select(exists(
+        message_stickers::table.filter(message_stickers::sticker_id.eq(sticker_id)),
+    ))
+    .get_result(conn)
+}
+
+/// Value of the `{{emoji_list}}` template variable for an assistant. The actual
+/// roster is exposed lazily through `list_stickers`, keeping large packs out of
+/// the system prompt.
 /// `None` when nothing is assigned, so the variable is left unresolved rather
 /// than expanded into an instruction pointing at an empty set.
 pub fn format_emoji_list_block(conn: &mut SqliteConnection, assistant_id: &str) -> Option<String> {
@@ -61,19 +175,13 @@ pub fn format_emoji_list_block(conn: &mut SqliteConnection, assistant_id: &str) 
     if pack_ids.is_empty() {
         return None;
     }
-    let emojis = list_emojis_for_packs(conn, &pack_ids).ok()?;
+    let emojis = list_confirmed_for_packs(conn, &pack_ids).ok()?;
     if emojis.is_empty() {
         return None;
     }
-    let list: Vec<String> = emojis
-        .iter()
-        .take(MAX_PROMPT_EMOJIS)
-        .map(|e| format!("[emoji:{}]", e.name))
-        .collect();
-    Some(format!(
-        "You can use stickers in your responses. Copy the EXACT syntax below (do NOT rename or translate):\n{}",
-        list.join("\n")
-    ))
+    Some(
+        "You can send a sticker as a separate message part. Use list_stickers to inspect the current roster, then send_sticker with its id. Do not write [emoji:...] tags.".into(),
+    )
 }
 
 pub fn count_by_pack(conn: &mut SqliteConnection, pack_id: &str) -> QueryResult<i64> {

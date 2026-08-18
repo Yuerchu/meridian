@@ -24,6 +24,7 @@ struct CatalogEntry {
     supports_tools: Option<bool>,
     supports_streaming_tools: Option<bool>,
     supports_thinking: Option<bool>,
+    supports_thinking_off: Option<bool>,
     supports_images: Option<bool>,
     supports_pdf: Option<bool>,
     supports_temperature: Option<bool>,
@@ -54,6 +55,9 @@ fn apply(base: &mut ProviderCapabilities, entry: &CatalogEntry) {
     }
     if let Some(v) = entry.supports_thinking {
         base.supports_thinking = v;
+    }
+    if let Some(v) = entry.supports_thinking_off {
+        base.supports_thinking_off = v;
     }
     if let Some(v) = entry.supports_images {
         base.supports_images = v;
@@ -98,6 +102,7 @@ fn apply(base: &mut ProviderCapabilities, entry: &CatalogEntry) {
 
 fn find_longest_prefix_match<'a>(provider: &str, model: &str) -> Option<&'a CatalogEntry> {
     let lower = model.to_ascii_lowercase();
+    let lower = lower.strip_prefix("models/").unwrap_or(&lower);
     CATALOG
         .models
         .iter()
@@ -114,6 +119,7 @@ fn anthropic_default() -> ProviderCapabilities {
         supports_tools: true,
         supports_streaming_tools: true,
         supports_thinking: true,
+        supports_thinking_off: true,
         supports_images: true,
         supports_pdf: true,
         supports_temperature: true,
@@ -131,6 +137,7 @@ fn openai_responses_default() -> ProviderCapabilities {
         supports_tools: true,
         supports_streaming_tools: true,
         supports_thinking: true,
+        supports_thinking_off: true,
         supports_images: true,
         supports_temperature: true,
         supports_top_p: true,
@@ -148,6 +155,7 @@ fn deepseek_default() -> ProviderCapabilities {
         supports_tools: true,
         supports_streaming_tools: true,
         supports_thinking: true,
+        supports_thinking_off: true,
         max_context_tokens: Some(128_000),
         max_output_tokens: Some(16_000),
         max_temperature: Some(2.0),
@@ -161,6 +169,7 @@ fn generic_default() -> ProviderCapabilities {
     ProviderCapabilities {
         supports_tools: true,
         supports_streaming_tools: true,
+        supports_thinking_off: true,
         supports_temperature: true,
         supports_top_p: true,
         max_temperature: Some(2.0),
@@ -176,9 +185,28 @@ fn gemma_default() -> ProviderCapabilities {
     ProviderCapabilities {
         supports_tools: true,
         supports_streaming_tools: true,
+        supports_thinking_off: true,
         supports_temperature: true,
         supports_top_p: true,
         max_temperature: Some(2.0),
+        ..Default::default()
+    }
+}
+
+fn google_default() -> ProviderCapabilities {
+    ProviderCapabilities {
+        supports_tools: true,
+        supports_streaming_tools: true,
+        supports_thinking: true,
+        supports_thinking_off: false,
+        supports_images: true,
+        supports_pdf: false,
+        supports_temperature: false,
+        supports_top_p: false,
+        max_context_tokens: Some(1_048_576),
+        max_output_tokens: Some(65_536),
+        thinking_style: ThinkingStyle::EffortOnly,
+        supported_efforts: vec!["low".into(), "medium".into(), "high".into()],
         ..Default::default()
     }
 }
@@ -193,6 +221,7 @@ pub fn resolve(provider_type: &str, api_format: Option<&str>, model: &str) -> Pr
     let (mut caps, catalog_provider) = match provider_type {
         "anthropic" => (anthropic_default(), "anthropic"),
         "deepseek" => (deepseek_default(), "deepseek"),
+        "google" => (google_default(), "google"),
         _ => match api_format {
             Some("responses") => (openai_responses_default(), "openai"),
             Some("gemma_tool") => (gemma_default(), "gemma"),
@@ -237,6 +266,11 @@ pub fn apply_overrides(caps: &mut ProviderCapabilities, overrides: Option<&str>)
             "supports_thinking" => {
                 if let Some(v) = as_bool(value) {
                     caps.supports_thinking = v
+                }
+            }
+            "supports_thinking_off" => {
+                if let Some(v) = as_bool(value) {
+                    caps.supports_thinking_off = v
                 }
             }
             "supports_images" => {
@@ -349,6 +383,12 @@ pub fn filter_params(params: &mut ChatParams, caps: &ProviderCapabilities) {
         params.thinking_enabled = false;
         params.thinking_budget = None;
         params.thinking_effort = None;
+    } else if !caps.supports_thinking_off && !params.thinking_enabled {
+        // Gemini 3.x and similar always-thinking models interpret omission as
+        // the model default; there is no wire value that disables reasoning.
+        params.thinking_enabled = true;
+        params.thinking_budget = None;
+        params.thinking_effort = None;
     }
     let requested_effort = params.thinking_effort.clone();
     params.thinking_effort = params
@@ -431,6 +471,48 @@ mod tests {
         assert!(caps.supports_reasoning_effort);
         assert!(!caps.supports_temperature);
         assert!(!caps.supports_top_p);
+    }
+
+    #[test]
+    fn gemini_effort_matrix_and_always_on_thinking() {
+        let flash_37 = resolve("google", Some("chat_completions"), "gemini-3.7-flash");
+        assert_eq!(flash_37.supported_efforts, vec!["low", "medium", "high"]);
+        assert_eq!(flash_37.default_effort.as_deref(), Some("medium"));
+        assert!(!flash_37.supports_thinking_off);
+        assert!(!flash_37.supports_temperature);
+        assert!(!flash_37.supports_top_p);
+        assert_eq!(flash_37.max_context_tokens, Some(1_048_576));
+        assert_eq!(flash_37.max_output_tokens, Some(65_536));
+
+        let lite = resolve("google", None, "gemini-3.5-flash-lite-preview");
+        assert_eq!(lite.supported_efforts, vec!["minimal", "low", "medium", "high"]);
+        assert_eq!(lite.default_effort.as_deref(), Some("minimal"));
+
+        let pro = resolve("google", None, "gemini-3.1-pro-preview-customtools");
+        assert_eq!(pro.supported_efforts, vec!["low", "medium", "high"]);
+        assert_eq!(pro.default_effort.as_deref(), Some("high"));
+
+        let original_pro = resolve("google", None, "gemini-3-pro-preview");
+        assert_eq!(original_pro.supported_efforts, vec!["low", "high"]);
+        assert_eq!(original_pro.default_effort.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn gemini_off_becomes_provider_default_and_sampling_is_removed() {
+        let caps = resolve("google", None, "gemini-3.7-flash");
+        let mut params = ChatParams {
+            model: "gemini-3.7-flash".into(),
+            thinking_enabled: false,
+            thinking_effort: None,
+            temperature: Some(0.7),
+            top_p: Some(0.9),
+            ..Default::default()
+        };
+        filter_params(&mut params, &caps);
+        assert!(params.thinking_enabled);
+        assert_eq!(params.thinking_effort, None);
+        assert_eq!(params.temperature, None);
+        assert_eq!(params.top_p, None);
     }
 
     #[test]

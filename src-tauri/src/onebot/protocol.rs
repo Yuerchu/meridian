@@ -348,6 +348,13 @@ impl OneBotAction {
 }
 
 impl MessageSegment {
+    pub fn raw(seg_type: &str, data: serde_json::Value) -> Self {
+        Self {
+            seg_type: seg_type.into(),
+            data,
+        }
+    }
+
     pub fn text(text: &str) -> Self {
         Self {
             seg_type: "text".into(),
@@ -367,6 +374,10 @@ impl MessageSegment {
             seg_type: "reply".into(),
             data: serde_json::json!({ "id": message_id.to_string() }),
         }
+    }
+
+    pub fn image(file: &str) -> Self {
+        Self::raw("image", serde_json::json!({ "file": file }))
     }
 }
 

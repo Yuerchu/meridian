@@ -26,10 +26,12 @@ export function allowedEfforts(caps: ProviderCapabilities | null): readonly Thin
  * whitelist rather than dropping to the default. Used when switching models so
  * a request degrades instead of silently losing its reasoning setting.
  *
- * `default` and `off` are model-independent and always pass through.
+ * `default` always passes through. `off` degrades to `default` for models whose
+ * protocol has no off switch.
  */
 export function coerceThinkingLevel(current: ThinkingLevel, caps: ProviderCapabilities | null): ThinkingLevel {
-  if (current === 'default' || current === 'off') return current
+  if (current === 'default') return current
+  if (current === 'off') return caps?.supports_thinking_off === false ? 'default' : current
   const allowed = allowedEfforts(caps)
   if (allowed.length === 0) return 'default'
   if (allowed.includes(current)) return current

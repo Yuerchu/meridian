@@ -326,7 +326,7 @@ pub(super) async fn oneshot_completion(
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
-            signature: None,
+            provider_state: None,
             origin: provider::MessageOrigin::Assistant,
         },
         // The transcript is data being analysed, not an instruction being
@@ -569,6 +569,7 @@ async fn headless_chat_inner(
     // per-model capability the user wrote was ignored here while every other
     // parameter of the same request honoured it.
     let supports_tools = turn_params.caps.supports_tools;
+    let supports_images = turn_params.caps.supports_images;
     if !supports_tools {
         tracing::info!(model = %effective_model, "the model cannot take tools; none are offered this turn");
     }
@@ -702,6 +703,11 @@ async fn headless_chat_inner(
     }
 
     let mut chat_messages = build_messages_with_senders(&system_prompt, &ctx, trailing, &sender_names);
+    let data_dir = app.and_then(|a| {
+        use tauri::Manager;
+        a.path().app_data_dir().ok()
+    });
+    crate::agent::resolve_sticker_parts_in_messages(&mut chat_messages, pool, data_dir.as_deref(), supports_images);
     let files_root = app
         .and_then(|a| {
             use tauri::Manager;
@@ -719,6 +725,10 @@ async fn headless_chat_inner(
     // all. This used to be covered by the clear() that followed; with the check
     // moved into the resolver, these are the one set it does not reach.
     if let Some(qq) = qq_tools.filter(|_| supports_tools) {
+        // The desktop registry also owns the two generic sticker tools. On QQ
+        // the session-scoped implementation must replace them: duplicate tool
+        // names are rejected by providers, and only this one actually sends.
+        tool_defs.retain(|definition| !qq.owns(&definition.name));
         tool_defs.extend(qq.definitions());
     }
     // What may actually execute, which is where this turn's speaker is
@@ -814,6 +824,7 @@ async fn headless_chat_inner(
                     parent.as_deref(),
                 )
                 .map_err(|e| e.to_string())?;
+                crate::db::ops::emoji::link_stickers_in_content(&mut conn, msg_id, msg).map_err(|e| e.to_string())?;
                 // Queued messages chain to each other, not all to the same parent.
                 parent = Some(msg_id.clone());
             }
@@ -857,6 +868,7 @@ async fn headless_chat_inner(
         file_access: tools::FileAccess::Roots(vec![]),
         project_id: project_id.map(|s| s.to_string()),
         conversation_id: Some(conversation_id.to_string()),
+        turn_id: Some(turn_id.to_string()),
         assistant_id: assistant_id.map(|s| s.to_string()),
         db_pool: Some(pool.clone()),
         #[cfg(not(target_os = "android"))]

@@ -256,19 +256,24 @@ pub fn update_assistant_message(
     content: &str,
     reasoning_content: Option<&str>,
     tool_calls: Option<&str>,
+    provider_state: Option<&str>,
     usage: &MessageUsage,
 ) -> QueryResult<()> {
-    diesel::update(messages::table.find(id))
+    let affected = diesel::update(messages::table.find(id))
         .set((
             messages::content.eq(content),
             messages::reasoning_content.eq(reasoning_content),
             messages::tool_calls.eq(tool_calls),
+            messages::provider_state.eq(provider_state),
             messages::input_tokens.eq(usage.input_tokens),
             messages::output_tokens.eq(usage.output_tokens),
             messages::cache_read_tokens.eq(usage.cache_read_tokens),
             messages::cache_write_tokens.eq(usage.cache_write_tokens),
         ))
         .execute(conn)?;
+    if affected != 1 {
+        return Err(diesel::result::Error::NotFound);
+    }
     Ok(())
 }
 
@@ -688,6 +693,7 @@ mod tests {
             cache_read_tokens,
             cache_write_tokens,
             provider_name,
+            provider_state,
         } = stored;
 
         assert_eq!(id, "m1");
@@ -696,6 +702,7 @@ mod tests {
         assert_eq!(content, "the answer");
         assert_eq!(provider_id, None);
         assert_eq!(provider_name.as_deref(), Some("DeepSeek"));
+        assert_eq!(provider_state, None);
         assert_eq!(model_id.as_deref(), Some("deepseek-chat"));
         assert_eq!(input_tokens, Some(7));
         assert_eq!(output_tokens, Some(11));

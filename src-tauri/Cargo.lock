@@ -2983,6 +2983,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "ignore",
+ "image",
  "jni",
  "keyring",
  "libc",

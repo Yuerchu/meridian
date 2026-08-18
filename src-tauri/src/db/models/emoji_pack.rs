@@ -14,6 +14,8 @@ pub struct EmojiPack {
     pub sort_order: i32,
     pub created_at: i64,
     pub updated_at: i64,
+    pub kind: String,
+    pub source_account_id: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
@@ -27,4 +29,6 @@ pub struct NewEmojiPack<'a> {
     pub sort_order: i32,
     pub created_at: i64,
     pub updated_at: i64,
+    pub kind: &'a str,
+    pub source_account_id: Option<&'a str>,
 }

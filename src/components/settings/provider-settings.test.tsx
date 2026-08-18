@@ -97,6 +97,22 @@ describe('ProviderSettings mobile list/detail navigation', () => {
     expect(await screen.findByText(i18n.t('settings.provider.deleteProvider'))).toBeInTheDocument()
   })
 
+  it('shows the native GenerateContent protocol for Google connections', async () => {
+    mockViewport(false)
+    mockApi.listProviders.mockResolvedValue([
+      {
+        ...makeProvider('google-1', 'Gemini Relay'),
+        provider_type: 'google',
+        base_url: 'https://relay.example',
+        api_format: 'gemini_generate_content',
+      },
+    ])
+    render(<ProviderSettings />)
+    expect(await screen.findAllByText(i18n.t('settings.provider.apiFormatGeminiGenerateContent'))).not.toHaveLength(0)
+    expect(screen.getByText(i18n.t('settings.provider.apiFormatGeminiGenerateContentHint'))).toBeInTheDocument()
+    expect(screen.getByPlaceholderText('https://api.example.com')).toBeInTheDocument()
+  })
+
   it('desktop shrunk to mobile: back still returns to the list', async () => {
     const viewport = mockViewport(false)
     const user = userEvent.setup()

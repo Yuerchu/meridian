@@ -74,13 +74,18 @@ const THINKING_LEVELS: Array<{ id: ThinkingLevel; labelKey: string; descKey: str
 ]
 
 /**
- * The tiers to offer for a model: always `default`/`off`, plus whatever effort
- * tiers the model advertises. Unknown capabilities fall back to the full ladder
+ * The tiers to offer for a model: always `default`, `off` when supported, plus
+ * whatever effort tiers the model advertises. Unknown capabilities fall back to the full ladder
  * (see `allowedEfforts`).
  */
 function levelsFor(capabilities: ProviderCapabilities | null | undefined) {
   const allowed = allowedEfforts(capabilities ?? null)
-  return THINKING_LEVELS.filter((l) => l.id === 'default' || l.id === 'off' || allowed.includes(l.id as ThinkingEffort))
+  return THINKING_LEVELS.filter(
+    (l) =>
+      l.id === 'default' ||
+      (l.id === 'off' && capabilities?.supports_thinking_off !== false) ||
+      allowed.includes(l.id as ThinkingEffort),
+  )
 }
 
 // ---- Mobile bottom-sheet options menu ----

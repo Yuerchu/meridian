@@ -93,6 +93,14 @@ impl TokenCounter {
         if let Some(ref _id) = msg.tool_call_id {
             tokens += 2;
         }
+        if let Some(ref state) = msg.provider_state
+            && let Ok(wire_state) = state.to_storage_json()
+        {
+            // Opaque continuation state is replayed and billed like every other
+            // byte in the prompt. The storage DTO is a close conservative proxy
+            // for its provider-specific wire framing.
+            tokens += self.count(&wire_state);
+        }
         tokens
     }
 

@@ -37,7 +37,8 @@ pub(crate) use compact::{CompactCircuitBreaker, do_compact, mid_turn_compact};
 #[cfg(test)]
 pub(crate) use context::build_messages;
 pub(crate) use context::{
-    SenderNames, build_messages_with_senders, microcompact, resolve_file_uris_in_messages, trim_to_context_limit,
+    SenderNames, build_messages_with_senders, microcompact, resolve_file_uris_in_messages,
+    resolve_sticker_parts_in_messages, trim_to_context_limit,
 };
 pub(crate) use file_access::{build_file_access, file_access_prompt};
 pub(crate) use inline_tag::{InlineHiddenTagParser, InlineTagSpec};

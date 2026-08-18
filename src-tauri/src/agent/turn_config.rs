@@ -70,6 +70,28 @@ pub(crate) fn resolve(conn: &mut SqliteConnection, registry: &ToolRegistry, inpu
     let tool_defs = if include_tools {
         let enabled = enabled_tools(conn, assistant.as_ref());
         let mut defs = super::tool_defs::collect(registry, mcp_defs, enabled.as_deref());
+        // Sticker availability is data, not an assistant preset. Keep the two
+        // fixed-schema tools present whenever this assistant has a confirmed
+        // roster, even if an older preset predates the feature.
+        if let Some(assistant_id) = assistant.as_ref().map(|value| value.id.as_str()) {
+            let has_stickers = crate::db::ops::emoji_pack::list_assigned_pack_ids(conn, assistant_id)
+                .and_then(|packs| crate::db::ops::emoji::list_confirmed_for_packs(conn, &packs))
+                .is_ok_and(|stickers| !stickers.is_empty());
+            if has_stickers {
+                for name in ["list_stickers", "send_sticker"] {
+                    if defs.iter().any(|definition| definition.name == name) {
+                        continue;
+                    }
+                    if let Some(tool) = registry.get(name) {
+                        defs.push(crate::provider::ToolDefinition {
+                            name: tool.name().to_string(),
+                            description: tool.description().to_string(),
+                            parameters: tool.parameters_schema(),
+                        });
+                    }
+                }
+            }
+        }
         super::tool_defs::apply_mode(&mut defs, mode, registry);
         let available = crate::db::ops::skill_binding::resolve_available(
             conn,

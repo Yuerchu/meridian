@@ -7,7 +7,7 @@ use crate::provider;
 pub(crate) struct StreamResult {
     pub(crate) text: String,
     pub(crate) reasoning: String,
-    pub(crate) signature: String,
+    pub(crate) provider_state: Option<provider::state::ProviderState>,
     pub(crate) tool_calls: Vec<provider::ToolCall>,
     pub(crate) usage: Option<provider::TokenUsage>,
     pub(crate) finish_reason: Option<String>,

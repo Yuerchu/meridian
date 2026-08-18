@@ -718,7 +718,7 @@ mod tests {
     }
 
     #[test]
-    fn persona_expands_the_assigned_sticker_list() {
+    fn persona_expands_sticker_tool_guidance() {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
         let assistant = make_assistant(&mut conn, "a1", "Nova", "{{emoji_list}}");
@@ -739,6 +739,8 @@ mod tests {
                 sort_order: 0,
                 created_at: 1000,
                 updated_at: 1000,
+                kind: "manual",
+                source_account_id: None,
             },
         )
         .unwrap();
@@ -753,13 +755,23 @@ mod tests {
                 file_format: "png",
                 sort_order: 0,
                 created_at: 1000,
+                source: "local",
+                source_key: None,
+                native_payload: None,
+                semantic_status: "confirmed",
+                suggested_name: None,
+                suggested_tags: None,
+                file_size: 0,
+                seen_count: 1,
+                last_seen_at: Some(1000),
             },
         )
         .unwrap();
         db::ops::emoji_pack::assign_pack(&mut conn, "a1", "pack1", 1000).unwrap();
 
         let (persona, _) = load_persona_and_memory(&mut conn, Some(&assistant), None, &[]);
-        assert!(persona.contains("[emoji:shocked]"), "got: {persona}");
+        assert!(persona.contains("list_stickers"), "got: {persona}");
+        assert!(!persona.contains("[emoji:shocked]"), "got: {persona}");
     }
 
     #[test]
