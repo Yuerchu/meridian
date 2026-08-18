@@ -35,7 +35,6 @@ use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
 use services::Services;
-use state::APP_HANDLE;
 #[cfg(desktop)]
 use tauri::image::Image;
 #[cfg(desktop)]
@@ -43,6 +42,15 @@ use tauri::menu::{MenuBuilder, MenuItem};
 #[cfg(desktop)]
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
+
+/// The handle, for the one caller that cannot be given anything else.
+///
+/// `android_bridge` is called from Java, on a thread the app did not start and
+/// with no state of its own to carry, so it has nowhere else to reach the app
+/// from. Everything else takes `Services`. This is deliberately the only global,
+/// and it lives in the shell because a handle is the one thing the core must
+/// never know about.
+pub(crate) static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 
 /// Reaching the services from a handle.
 ///
@@ -102,19 +110,23 @@ pub fn run() {
                 std::thread::spawn(|| android_bridge::clean_camera_cache());
             }
 
+            // Registered even when the user has the server switched off, so the
+            // IPC commands always have something to talk to.
             #[cfg(not(target_os = "android"))]
             {
                 let services = services.clone();
+                let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    onebot::maybe_start(services).await;
+                    handle.manage(onebot::maybe_start(services).await);
                 });
             }
 
             #[cfg(not(target_os = "android"))]
             {
                 let services = services.clone();
+                let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    hooks::maybe_start(services).await;
+                    handle.manage(hooks::maybe_start(services).await);
                 });
             }
 

@@ -28,7 +28,7 @@ use crate::services::{Paths, Services, ServicesInner};
 use crate::sleep_inhibitor::AppSleepInhibitor;
 use crate::state::{AppSubAgentInboxes, ApprovalWaiters, VoiceState};
 use crate::util::now_ms;
-use crate::{agent, commands, db, mcp, tools, turn};
+use crate::{agent, db, mcp, tools, turn};
 
 /// Open everything the app runs on, in the order it has to happen.
 pub(crate) fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
@@ -309,11 +309,11 @@ pub(crate) fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
             tracing::error!(error = %e, "failed to write the diagnostics skill");
         }
         let mut conn = pool.get().expect("db connection");
-        if let Err(e) = commands::skill::sync_index(&mut conn, &skills_root) {
+        if let Err(e) = agent::skills::sync_index(&mut conn, &skills_root) {
             tracing::error!(error = %e, "failed to index skills");
         }
         // After the index, which creates the rows the bindings point at.
-        commands::skill::seed_builtin_bindings(&mut conn);
+        agent::skills::seed_builtin_bindings(&mut conn);
     }
 
     Services::new(ServicesInner {

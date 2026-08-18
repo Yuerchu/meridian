@@ -407,11 +407,12 @@ fn validate_listen_config(host: &str, token: Option<&str>) -> Result<(), String>
     }
 }
 
-/// Called from Tauri setup. Manages the state even when disabled, so the IPC
-/// commands always have something to talk to.
-pub(crate) async fn maybe_start(services: Services) {
-    use tauri::Manager;
-
+/// Start the server if the user has it enabled, and hand it back either way.
+///
+/// Returned rather than registered here: the caller is the shell, and where the
+/// IPC commands look this up is its business. Nothing inside `HookServer` knows
+/// a window exists, and this is the last place that could have.
+pub(crate) async fn maybe_start(services: Services) -> AppHooks {
     let config = load_config(&services.db);
     let enabled = config.enabled;
 
@@ -425,12 +426,7 @@ pub(crate) async fn maybe_start(services: Services) {
         tracing::info!("hook server disabled, skipping auto-start");
     }
 
-    // The only thing on this path that still needs the handle, and it is about
-    // registration rather than about the server: nothing inside `HookServer`
-    // knows a window exists.
-    if let Some(handle) = crate::state::APP_HANDLE.get() {
-        handle.manage(AppHooks(Arc::new(Mutex::new(server))));
-    }
+    AppHooks(Arc::new(Mutex::new(server)))
 }
 
 pub struct AppHooks(pub Arc<Mutex<HookServer>>);

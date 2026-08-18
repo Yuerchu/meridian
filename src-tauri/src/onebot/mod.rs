@@ -1161,35 +1161,25 @@ async fn handle_connection(
     write_handle.abort();
 }
 
-/// Called from Tauri setup to auto-start if enabled.
-pub(crate) async fn maybe_start(services: Services) {
+/// Start the server if the user has it enabled, and hand it back either way.
+///
+/// Returned rather than registered here: the caller is the shell, and where the
+/// IPC commands look this up is its business. Nothing inside `OneBotServer`
+/// knows a window exists, and this is the last place that could have.
+pub(crate) async fn maybe_start(services: Services) -> AppOneBot {
     let config = load_config(&services.db);
 
     if !config.enabled {
         tracing::info!("OneBot server disabled, skipping auto-start");
         let server = OneBotServer::new(services, config);
-        manage(server);
-        return;
+        return AppOneBot(Arc::new(Mutex::new(server)));
     }
 
     let server = OneBotServer::new(services, config);
     if let Err(e) = server.start() {
         tracing::error!("Failed to auto-start OneBot server: {e}");
     }
-    manage(server);
-}
-
-/// Hand the server to Tauri, which is where the IPC commands look for it.
-///
-/// The only thing on this path that still needs the handle, and it is about
-/// registration rather than about the server: nothing inside `OneBotServer`
-/// knows a window exists.
-fn manage(server: OneBotServer) {
-    use tauri::Manager;
-
-    if let Some(handle) = crate::state::APP_HANDLE.get() {
-        handle.manage(AppOneBot(Arc::new(Mutex::new(server))));
-    }
+    AppOneBot(Arc::new(Mutex::new(server)))
 }
 
 pub struct AppOneBot(pub Arc<Mutex<OneBotServer>>);

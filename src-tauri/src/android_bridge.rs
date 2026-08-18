@@ -161,7 +161,7 @@ pub extern "system" fn Java_cn_yuxiaoqiu_meridian_MainActivity_nativeOnInsetsCha
         ime_bottom,
     };
     *CURRENT_INSETS.lock().unwrap() = insets;
-    if let Some(app) = crate::state::APP_HANDLE.get() {
+    if let Some(app) = crate::APP_HANDLE.get() {
         use tauri::Emitter;
         let _ = app.emit("insets-changed", insets);
     }

@@ -6,8 +6,6 @@ use tokio_util::sync::CancellationToken;
 
 use crate::agent::engine::ApprovalDecision;
 
-pub(crate) static APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
-
 /// A tool call sitting in front of the user, waiting to be allowed or refused.
 ///
 /// Identified by an `approval_id` we mint, not by the provider's tool call id.
