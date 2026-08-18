@@ -11,14 +11,69 @@ const MAX_MSG_LEN: usize = 4000;
 /// colliding with a literal "[图片]"/"[语音]" the user actually wrote.
 pub const IMAGE_SENTINEL: char = '\u{E000}';
 pub const RECORD_SENTINEL: char = '\u{E001}';
+pub const STICKER_SENTINEL: char = '\u{E002}';
 
 static AT_MENTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[@[^(\]]*\((\d+)\)\]").unwrap());
+static CQ_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[CQ:([A-Za-z0-9_-]+)((?:,[^\]]*)?)\]").unwrap());
+
+fn decode_cq(value: &str) -> String {
+    value
+        .replace("&#91;", "[")
+        .replace("&#93;", "]")
+        .replace("&#44;", ",")
+        .replace("&amp;", "&")
+}
+
+fn cq_to_segments(message: &str) -> Vec<serde_json::Value> {
+    let mut segments = Vec::new();
+    let mut cursor = 0;
+    for found in CQ_RE.captures_iter(message) {
+        let whole = found.get(0).unwrap();
+        if whole.start() > cursor {
+            segments.push(serde_json::json!({
+                "type": "text",
+                "data": { "text": decode_cq(&message[cursor..whole.start()]) }
+            }));
+        }
+        let mut data = serde_json::Map::new();
+        for pair in found
+            .get(2)
+            .map(|value| value.as_str())
+            .unwrap_or("")
+            .trim_start_matches(',')
+            .split(',')
+        {
+            if let Some((key, value)) = pair.split_once('=') {
+                data.insert(key.to_string(), serde_json::Value::String(decode_cq(value)));
+            }
+        }
+        segments.push(serde_json::json!({ "type": &found[1], "data": data }));
+        cursor = whole.end();
+    }
+    if cursor < message.len() {
+        segments.push(serde_json::json!({
+            "type": "text",
+            "data": { "text": decode_cq(&message[cursor..]) }
+        }));
+    }
+    segments
+}
 
 /// A media reference extracted from an image segment.
 #[derive(Debug, Clone, Default)]
 pub struct MediaRef {
     pub url: Option<String>,
     pub file: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct StickerRef {
+    pub source: &'static str,
+    pub source_key: Option<String>,
+    pub native_payload: serde_json::Value,
+    pub url: Option<String>,
+    pub file: Option<String>,
+    pub summary: Option<String>,
 }
 
 /// Parsed OneBot message: plain text (with placeholders) plus media references.
@@ -37,6 +92,9 @@ pub struct ParsedMessage {
     /// reply to a question.
     pub typed: String,
     pub images: Vec<MediaRef>,
+    pub stickers: Vec<StickerRef>,
+    /// Filled by the capture layer in the same order as `stickers`.
+    pub sticker_ids: Vec<Option<String>>,
     pub has_record: bool,
 }
 
@@ -51,7 +109,7 @@ impl ParsedMessage {
     }
 
     pub fn has_media(&self) -> bool {
-        !self.images.is_empty() || self.has_record
+        !self.images.is_empty() || !self.stickers.is_empty() || self.has_record
     }
 }
 
@@ -63,20 +121,26 @@ pub fn segments_to_text(message: &serde_json::Value, self_id: Option<i64>) -> St
         .text
         .replace(IMAGE_SENTINEL, "[图片]")
         .replace(RECORD_SENTINEL, "[语音]")
+        .replace(STICKER_SENTINEL, "[动画表情]")
 }
 
 /// Parse OneBot message segments into text + media references.
-/// Image/voice segments become private-use sentinels (`IMAGE_SENTINEL` /
-/// `RECORD_SENTINEL`) so downstream media merging can align by position; use
-/// `segments_to_text` when a human-readable string is needed instead.
-/// Note: when llbot is configured with message_format=string (CQ codes), media
-/// references are not extracted and the raw string is returned as text.
+/// Image, voice, and sticker segments become private-use sentinels so downstream
+/// media merging can align them by position; use `segments_to_text` when a
+/// human-readable string is needed instead. Array and CQ-string messages share
+/// the same extraction path.
 pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> ParsedMessage {
     let segments = match message.as_array() {
         Some(arr) => arr,
         None => {
-            // Might be a raw CQ-code string; fall back to raw_message
-            return ParsedMessage::from_text(message.as_str().unwrap_or(""));
+            let Some(raw) = message.as_str() else {
+                return ParsedMessage::default();
+            };
+            let cq = cq_to_segments(raw);
+            if cq.is_empty() {
+                return ParsedMessage::from_text(raw);
+            }
+            return parse_segments(&serde_json::Value::Array(cq), self_id);
         }
     };
 
@@ -114,20 +178,88 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
                 }
             }
             "image" => {
-                text.push(IMAGE_SENTINEL);
                 let get_str = |key: &str| -> Option<String> {
-                    data.and_then(|d| d.get(key))
-                        .and_then(|v| v.as_str())
-                        .filter(|s| !s.is_empty())
-                        .map(String::from)
+                    data.and_then(|d| d.get(key)).and_then(|v| {
+                        v.as_str()
+                            .filter(|s| !s.is_empty())
+                            .map(String::from)
+                            .or_else(|| v.as_i64().map(|number| number.to_string()))
+                    })
                 };
-                parsed.images.push(MediaRef {
-                    url: get_str("url"),
-                    file: get_str("file"),
-                });
+                let summary = get_str("summary");
+                let emoji_id = get_str("emoji_id");
+                let package_id = get_str("emoji_package_id");
+                let is_sticker =
+                    emoji_id.is_some() || matches!(summary.as_deref(), Some("[动画表情]") | Some("[商城表情]"));
+                if is_sticker {
+                    text.push(STICKER_SENTINEL);
+                    let source_key = match (package_id.as_deref(), emoji_id.as_deref()) {
+                        (Some(package), Some(id)) => Some(format!("{package}:{id}")),
+                        (_, Some(id)) => Some(id.to_string()),
+                        _ => get_str("key"),
+                    };
+                    parsed.stickers.push(StickerRef {
+                        source: if emoji_id.is_some() {
+                            "onebot_mface"
+                        } else {
+                            "onebot_image"
+                        },
+                        source_key,
+                        native_payload: data.cloned().unwrap_or_else(|| serde_json::json!({})),
+                        url: get_str("url"),
+                        file: get_str("file"),
+                        summary,
+                    });
+                } else {
+                    text.push(IMAGE_SENTINEL);
+                    parsed.images.push(MediaRef {
+                        url: get_str("url"),
+                        file: get_str("file"),
+                    });
+                }
             }
             "face" => {
-                text.push_str("[表情]");
+                text.push(STICKER_SENTINEL);
+                let id = data.and_then(|value| value.get("id")).and_then(|value| {
+                    value
+                        .as_str()
+                        .map(str::to_string)
+                        .or_else(|| value.as_i64().map(|v| v.to_string()))
+                });
+                parsed.stickers.push(StickerRef {
+                    source: "onebot_face",
+                    source_key: id.clone(),
+                    native_payload: data.cloned().unwrap_or_else(|| serde_json::json!({})),
+                    url: id.map(|id| format!("https://qzonestyle.gtimg.cn/qzone/em/e{id}.gif")),
+                    file: None,
+                    summary: None,
+                });
+            }
+            "mface" => {
+                let get_str = |key: &str| -> Option<String> {
+                    data.and_then(|d| d.get(key)).and_then(|v| {
+                        v.as_str()
+                            .filter(|s| !s.is_empty())
+                            .map(String::from)
+                            .or_else(|| v.as_i64().map(|number| number.to_string()))
+                    })
+                };
+                text.push(STICKER_SENTINEL);
+                let emoji_id = get_str("emoji_id").or_else(|| get_str("id"));
+                let package_id = get_str("emoji_package_id").or_else(|| get_str("package_id"));
+                let source_key = match (package_id.as_deref(), emoji_id.as_deref()) {
+                    (Some(package), Some(id)) => Some(format!("{package}:{id}")),
+                    (_, Some(id)) => Some(id.to_string()),
+                    _ => get_str("key"),
+                };
+                parsed.stickers.push(StickerRef {
+                    source: "onebot_mface",
+                    source_key,
+                    native_payload: data.cloned().unwrap_or_else(|| serde_json::json!({})),
+                    url: get_str("url"),
+                    file: get_str("file"),
+                    summary: get_str("summary"),
+                });
             }
             "record" => {
                 text.push(RECORD_SENTINEL);
@@ -154,9 +286,14 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
 
 /// Check if the bot is @mentioned in a group message.
 pub fn is_at_bot(message: &serde_json::Value, self_id: i64) -> bool {
+    let cq;
     let segments = match message.as_array() {
         Some(arr) => arr,
-        None => return false,
+        None => {
+            let Some(raw) = message.as_str() else { return false };
+            cq = cq_to_segments(raw);
+            &cq
+        }
     };
     segments.iter().any(|seg| {
         seg.get("type").and_then(|v| v.as_str()) == Some("at")
@@ -373,6 +510,67 @@ mod tests {
         assert_eq!(parsed.images.len(), 1);
         assert_eq!(parsed.images[0].url.as_deref(), Some("https://example.com/a.jpg"));
         assert!(parsed.has_media());
+    }
+
+    #[test]
+    fn test_parse_mface_upreported_as_image() {
+        let msg = serde_json::json!([{
+            "type": "image",
+            "data": {
+                "summary": "[动画表情]",
+                "emoji_id": 99,
+                "emoji_package_id": "42",
+                "key": "native-key",
+                "url": "https://example.com/sticker.gif"
+            }
+        }]);
+        let parsed = parse_segments(&msg, None);
+        assert!(parsed.images.is_empty());
+        assert_eq!(parsed.stickers.len(), 1);
+        assert_eq!(parsed.stickers[0].source, "onebot_mface");
+        assert_eq!(parsed.stickers[0].source_key.as_deref(), Some("42:99"));
+        assert_eq!(parsed.text, STICKER_SENTINEL.to_string());
+    }
+
+    #[test]
+    fn test_parse_direct_mface_and_face() {
+        let msg = serde_json::json!([
+            {"type": "mface", "data": {"emoji_id": "e1", "emoji_package_id": "p1", "summary": "捂脸"}},
+            {"type": "face", "data": {"id": 14}}
+        ]);
+        let parsed = parse_segments(&msg, None);
+        assert_eq!(parsed.stickers.len(), 2);
+        assert_eq!(parsed.stickers[0].source_key.as_deref(), Some("p1:e1"));
+        assert_eq!(parsed.stickers[1].source_key.as_deref(), Some("14"));
+        assert_eq!(
+            parsed.stickers[1].url.as_deref(),
+            Some("https://qzonestyle.gtimg.cn/qzone/em/e14.gif")
+        );
+        assert_eq!(segments_to_text(&msg, None), "[动画表情][动画表情]");
+    }
+
+    #[test]
+    fn ordinary_image_summary_is_not_a_sticker() {
+        let msg = serde_json::json!([{
+            "type": "image",
+            "data": {"summary": "[图片]", "url": "https://example.com/photo.jpg"}
+        }]);
+        let parsed = parse_segments(&msg, None);
+        assert_eq!(parsed.images.len(), 1);
+        assert!(parsed.stickers.is_empty());
+    }
+
+    #[test]
+    fn cq_string_fallback_detects_addressed_stickers() {
+        let raw = serde_json::Value::String(
+            "[CQ:at,qq=12345] [CQ:image,summary=&#91;动画表情&#93;,emoji_id=9,emoji_package_id=2,url=https://example.com/a.gif]"
+                .into(),
+        );
+        assert!(is_at_bot(&raw, 12345));
+        let parsed = parse_segments(&raw, Some(12345));
+        assert_eq!(parsed.stickers.len(), 1);
+        assert_eq!(parsed.stickers[0].source_key.as_deref(), Some("2:9"));
+        assert_eq!(parsed.typed, "");
     }
 
     #[test]

@@ -22,11 +22,16 @@ export function useEmojiMap(assistantId: string | null) {
         if (cancelled) return
         const emojiGroups = await Promise.all(packs.map((pack) => api.listEmojis(pack.id)))
         if (cancelled) return
-        const allEmojis = emojiGroups.flat()
+        const allEmojis = emojiGroups
+          .flat()
+          .filter((emoji) => emoji.semantic_status === 'confirmed' && emoji.file_format !== 'lottie')
         const entries = await Promise.all(
-          allEmojis.map(async (emoji) => [emoji.name, { emoji, url: await api.getEmojiFileUrl(emoji.id) }] as const),
+          allEmojis.map(async (emoji) => {
+            const url = await api.getEmojiFileUrl(emoji.id).catch(() => null)
+            return url ? ([emoji.name, { emoji, url }] as const) : null
+          }),
         )
-        if (!cancelled) setMap(Object.fromEntries(entries))
+        if (!cancelled) setMap(Object.fromEntries(entries.filter((entry) => entry !== null)))
       } catch {
         if (!cancelled) setMap({})
       }
@@ -39,6 +44,38 @@ export function useEmojiMap(assistantId: string | null) {
   }, [assistantId])
 
   return map
+}
+
+export function StickerImage({
+  stickerId,
+  name,
+  className = 'size-32',
+}: {
+  stickerId: string
+  name?: string
+  className?: string
+}) {
+  const [url, setUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void api
+      .getEmojiFileUrl(stickerId)
+      .then((next) => {
+        if (!cancelled) setUrl(next)
+      })
+      .catch(() => {
+        if (!cancelled) setUrl(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [stickerId])
+
+  if (!url) {
+    return <div className={`${className} rounded-xl bg-default/40 animate-pulse`} aria-label={name} />
+  }
+  return <img src={url} alt={name ?? 'sticker'} title={name} className={`${className} object-contain`} />
 }
 
 const EMOJI_REGEX = /\[emoji:([^\]]+)\]/g

@@ -518,6 +518,7 @@ impl ChatProvider for OpenAIResponsesProvider {
             reasoning_content,
             tool_calls,
             usage,
+            provider_state: None,
         })
     }
 }

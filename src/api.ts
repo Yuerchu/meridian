@@ -582,6 +582,11 @@ export const api = {
 
   renameEmoji: (id: string, newName: string) => invoke<Emoji>('rename_emoji', { id, newName }),
 
+  suggestStickerSemantics: (id: string) => invoke<Emoji>('suggest_sticker_semantics', { id }),
+
+  confirmStickerSemantics: (id: string, name: string, tags?: string) =>
+    invoke<Emoji>('confirm_sticker_semantics', { id, name, tags: tags ?? null }),
+
   searchEmojis: (query: string) => invoke<Emoji[]>('search_emojis', { query }),
 
   assignEmojiPack: (assistantId: string, packId: string) => invoke<void>('assign_emoji_pack', { assistantId, packId }),

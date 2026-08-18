@@ -16,6 +16,7 @@ pub mod read_file;
 pub mod run_command;
 pub mod search_files;
 pub mod skill;
+pub mod sticker;
 pub mod sub_agent;
 pub mod todo;
 pub mod verified;
@@ -45,6 +46,9 @@ pub struct ToolContext {
     /// The turn's conversation. Anchors state that belongs to this thread of
     /// work rather than to the project, such as the todo checklist.
     pub conversation_id: Option<String>,
+    /// Current agent-loop turn. Stateful tools use this to enforce per-turn
+    /// limits without conflating two simultaneous turns in one conversation.
+    pub turn_id: Option<String>,
     /// Needed to resolve which skills are bound for this turn; skill bindings
     /// are anchored on the assistant as well as the project.
     pub assistant_id: Option<String>,
@@ -441,6 +445,8 @@ impl ToolRegistry {
             Arc::new(memory::ListMemoriesTool),
             Arc::new(memory::DeleteMemoryTool),
             Arc::new(todo::UpdateTodosTool),
+            Arc::new(sticker::ListStickersTool),
+            Arc::new(sticker::SendStickerTool::new()),
             Arc::new(plan::EnterPlanTool),
             Arc::new(plan::ExitPlanTool),
             // In the registry like anything else, but only ever offered to a
@@ -497,6 +503,7 @@ mod tests {
             file_access: FileAccess::Roots(roots),
             project_id: None,
             conversation_id: None,
+            turn_id: None,
             assistant_id: None,
             db_pool: None,
             #[cfg(not(target_os = "android"))]
@@ -531,6 +538,7 @@ mod tests {
             file_access: FileAccess::Unrestricted,
             project_id: None,
             conversation_id: None,
+            turn_id: None,
             assistant_id: None,
             db_pool: None,
             #[cfg(not(target_os = "android"))]

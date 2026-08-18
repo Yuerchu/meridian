@@ -38,7 +38,10 @@ pub use compact::{CompactCircuitBreaker, do_compact};
 pub(crate) use context::SenderNames;
 #[cfg(any(test, feature = "test-support"))]
 pub use context::build_messages;
-pub use context::{build_messages_with_senders, microcompact, resolve_file_uris_in_messages, trim_to_context_limit};
+pub use context::{
+    build_messages_with_senders, microcompact, resolve_file_uris_in_messages, resolve_sticker_parts_in_messages,
+    trim_to_context_limit,
+};
 pub use file_access::{build_file_access, file_access_prompt};
 pub(crate) use inline_tag::{InlineHiddenTagParser, InlineTagSpec};
 pub(crate) use loop_guard::{LoopVerdict, ToolLoopGuard, loop_abort_message, loop_warning_message};

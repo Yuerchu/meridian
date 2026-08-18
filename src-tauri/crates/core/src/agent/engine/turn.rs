@@ -626,12 +626,18 @@ async fn run(
             && !matches!(result.finish_reason.as_deref(), Some("length") | Some("max_tokens"));
 
         let tool_calls_json = has_tool_calls.then(|| serialize_tool_calls_openai(&result.tool_calls));
+        let provider_state_json = result
+            .provider_state
+            .as_ref()
+            .map(|state| state.to_storage_json())
+            .transpose()?;
         complete_assistant(
             pool,
             &assistant_msg_id,
             &result.text,
             (!result.reasoning.is_empty()).then_some(result.reasoning.as_str()),
             tool_calls_json.as_deref(),
+            provider_state_json.as_deref(),
             row_usage(result.usage.as_ref()),
         )
         .await?;
@@ -661,7 +667,9 @@ async fn run(
             // cannot just reuse the code below: the push that puts a reply in
             // front of the next request lives in the tool branch. Skipping it
             // would have the model answer as though it had said nothing.
-            chat_messages.push(ChatMessage::assistant(&result.text));
+            let mut assistant = ChatMessage::assistant(&result.text);
+            assistant.provider_state = result.provider_state.clone();
+            chat_messages.push(assistant);
             inject_steering(
                 pool,
                 &conversation_id,
@@ -691,9 +699,7 @@ async fn run(
             (!result.reasoning.is_empty()).then(|| result.reasoning.clone()),
             result.tool_calls.clone(),
         );
-        if !result.signature.is_empty() {
-            assistant_msg.signature = Some(result.signature.clone());
-        }
+        assistant_msg.provider_state = result.provider_state.clone();
         chat_messages.push(assistant_msg);
 
         for tc in &result.tool_calls {
@@ -1415,6 +1421,7 @@ mod tests {
             file_access: tools::FileAccess::default(),
             project_id: None,
             conversation_id: Some("c1".into()),
+            turn_id: Some("t1".into()),
             assistant_id: None,
             db_pool: Some(pool.clone()),
             #[cfg(not(target_os = "android"))]

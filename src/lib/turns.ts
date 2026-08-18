@@ -42,6 +42,7 @@ export type TurnStep =
   | { kind: 'thinking'; messageId: string; blockIndex: number; text: string }
   | { kind: 'text'; messageId: string; blockIndex: number; text: string }
   | { kind: 'tool'; messageId: string; blockIndex: number; data: ToolCallDisplay }
+  | { kind: 'sticker'; messageId: string; blockIndex: number; stickerId: string; name?: string }
 
 export interface TurnResult {
   /** The assistant row carrying the conclusion — rating and regeneration act on it. */
@@ -174,6 +175,9 @@ function toStep(block: ContentBlock, messageId: string, blockIndex: number): Tur
   if (block.type === 'thinking') return { kind: 'thinking', messageId, blockIndex, text: block.text }
   if (block.type === 'text') return { kind: 'text', messageId, blockIndex, text: block.text }
   if (block.type === 'tool_call') return { kind: 'tool', messageId, blockIndex, data: block.data }
+  if (block.type === 'sticker') {
+    return { kind: 'sticker', messageId, blockIndex, stickerId: block.sticker_id, name: block.name }
+  }
   return null
 }
 
@@ -193,7 +197,7 @@ function splitAtConclusion(steps: TurnStep[]): { process: TurnStep[]; conclusion
     }
   }
   const tail = steps.slice(lastToolIndex + 1)
-  const conclusion = tail.filter((s) => s.kind === 'text' && s.text.trim())
+  const conclusion = tail.filter((s) => (s.kind === 'text' && s.text.trim()) || s.kind === 'sticker')
   if (conclusion.length === 0) return { process: steps, conclusion: [] }
   // Thinking that trails the last tool call belongs to the process, not the answer.
   const process = steps.slice(0, lastToolIndex + 1).concat(tail.filter((s) => !conclusion.includes(s)))
@@ -211,7 +215,7 @@ function summarize(steps: TurnStep[]): TurnSummary {
       lastToolName = s.data.tool_name
     } else if (s.kind === 'thinking') {
       thinkingCount += 1
-    } else {
+    } else if (s.kind === 'text') {
       textCount += 1
     }
   }
@@ -302,7 +306,13 @@ function finalize(group: OpenTurn, isStreaming: boolean, didCrash: boolean): Tur
           .map((s) => (s.kind === 'text' ? s.text : ''))
           .join('\n\n')
           .trim(),
-        blocks: conclusion.flatMap((s) => (s.kind === 'text' ? [{ type: 'text' as const, text: s.text }] : [])),
+        blocks: conclusion.flatMap<ContentBlock>((s) =>
+          s.kind === 'text'
+            ? [{ type: 'text' as const, text: s.text }]
+            : s.kind === 'sticker'
+              ? [{ type: 'sticker' as const, sticker_id: s.stickerId, name: s.name }]
+              : [],
+        ),
         modelId: resultOwner.model_id,
         inputTokens: resultOwner.input_tokens,
         outputTokens: resultOwner.output_tokens,

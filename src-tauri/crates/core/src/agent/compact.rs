@@ -323,7 +323,7 @@ async fn compact_with_retry(
                 reasoning_content: None,
                 tool_calls: None,
                 tool_call_id: None,
-                signature: None,
+                provider_state: None,
                 origin: crate::provider::MessageOrigin::Assistant,
             },
             ChatMessage::user(&trimmed),
@@ -935,6 +935,7 @@ mod tests {
             cache_read_tokens: None,
             cache_write_tokens: None,
             provider_name: None,
+            provider_state: None,
         };
         let result = prepare_compact_input(&[&msg]);
         assert!(result.contains("truncated"));
@@ -977,6 +978,7 @@ mod tests {
             cache_read_tokens: None,
             cache_write_tokens: None,
             provider_name: None,
+            provider_state: None,
         };
         assert_eq!(prepare_compact_input(&[&row]), "");
 

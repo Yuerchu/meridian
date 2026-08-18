@@ -6,8 +6,10 @@
 //! through the Y/N chat approval flow — the approver is the message sender,
 //! so handing them to non-admins would let users approve themselves.
 
-use std::sync::Arc;
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex, OnceLock};
 
+use super::protocol::MessageSegment;
 use super::protocol::OneBotAction;
 use super::session::{SessionKey, SessionKind};
 use super::{SharedState, call_api};
@@ -32,6 +34,18 @@ struct ToolSpec {
 }
 
 const SPECS: &[ToolSpec] = &[
+    ToolSpec {
+        name: "list_stickers",
+        admin_only: false,
+        needs_approval: false,
+        scope: Scope::Any,
+    },
+    ToolSpec {
+        name: "send_sticker",
+        admin_only: false,
+        needs_approval: false,
+        scope: Scope::Any,
+    },
     ToolSpec {
         name: QQ_HISTORY_TOOL,
         admin_only: false,
@@ -134,14 +148,24 @@ pub struct QqToolExecutor {
     state: Arc<SharedState>,
     session: SessionKey,
     is_admin: bool,
+    self_id: Option<i64>,
+    turn_id: String,
 }
 
 impl QqToolExecutor {
-    pub fn new(state: Arc<SharedState>, session: SessionKey, is_admin: bool) -> Self {
+    pub fn new(
+        state: Arc<SharedState>,
+        session: SessionKey,
+        is_admin: bool,
+        self_id: Option<i64>,
+        turn_id: String,
+    ) -> Self {
         Self {
             state,
             session,
             is_admin,
+            self_id,
+            turn_id,
         }
     }
 
@@ -212,6 +236,25 @@ impl QqToolExecutor {
         };
         let no_params = serde_json::json!({ "type": "object", "properties": {} });
         let (description, parameters) = match name {
+            "list_stickers" => (
+                "列出当前 QQ 机器人账号已确认语义、可发送的表情。返回的 sticker_id 只用于 send_sticker。".to_string(),
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string", "description": "可选的名称或标签筛选" }
+                    }
+                }),
+            ),
+            "send_sticker" => (
+                "把一个已确认表情作为独立消息发到当前 QQ 会话。每个助手回合最多成功一次，可同时回复文字。".to_string(),
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "sticker_id": { "type": "string", "description": "list_stickers 返回的精确 id" }
+                    },
+                    "required": ["sticker_id"]
+                }),
+            ),
             QQ_HISTORY_TOOL => (
                 format!(
                     "获取当前 QQ 会话({scope})的历史消息记录。用于了解最近的聊天上下文,\
@@ -369,6 +412,8 @@ impl QqToolExecutor {
         let args: serde_json::Value = serde_json::from_str(arguments).unwrap_or_else(|_| serde_json::json!({}));
 
         match name {
+            "list_stickers" => self.list_stickers(&args).await,
+            "send_sticker" => self.send_sticker(&args).await,
             QQ_HISTORY_TOOL => self.get_chat_history(&args).await,
             "qq_get_group_info" => self.get_group_info().await,
             "qq_get_group_member_list" => self.get_group_member_list().await,
@@ -468,6 +513,130 @@ impl QqToolExecutor {
             }
             _ => Err(format!("Unknown QQ tool: {name}")),
         }
+    }
+
+    async fn list_stickers(&self, args: &serde_json::Value) -> Result<String, String> {
+        let self_id = self.self_id.ok_or("OneBot event did not include self_id")?.to_string();
+        let query = args
+            .get("query")
+            .and_then(|value| value.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_lowercase();
+        let pool = self.state.services.db.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| e.to_string())?;
+            let Some(pack) =
+                crate::db::ops::emoji_pack::get_by_source_account(&mut conn, &self_id).map_err(|e| e.to_string())?
+            else {
+                return Ok("[]".to_string());
+            };
+            let stickers =
+                crate::db::ops::emoji::list_confirmed_for_packs(&mut conn, &[pack.id]).map_err(|e| e.to_string())?;
+            let values: Vec<_> = stickers
+                .into_iter()
+                .filter(|sticker| {
+                    query.is_empty()
+                        || format!("{} {}", sticker.name, sticker.tags.as_deref().unwrap_or(""))
+                            .to_lowercase()
+                            .contains(&query)
+                })
+                .take(100)
+                .map(|sticker| {
+                    serde_json::json!({
+                        "sticker_id": sticker.id,
+                        "name": sticker.name,
+                        "tags": sticker.tags,
+                    })
+                })
+                .collect();
+            serde_json::to_string(&values).map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    }
+
+    async fn send_sticker(&self, args: &serde_json::Value) -> Result<String, String> {
+        static SENT_TURNS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+        let sticker_id = args
+            .get("sticker_id")
+            .and_then(|value| value.as_str())
+            .filter(|value| !value.is_empty())
+            .ok_or("missing required parameter: sticker_id")?
+            .to_string();
+        {
+            let sent = SENT_TURNS
+                .get_or_init(Default::default)
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if sent.contains(&self.turn_id) {
+                return Err("A sticker has already been sent in this turn".into());
+            }
+        }
+        let self_id = self.self_id.ok_or("OneBot event did not include self_id")?.to_string();
+        let pool = self.state.services.db.clone();
+        let data_dir = self.state.services.paths.data_dir.clone();
+        let sticker = tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| e.to_string())?;
+            let pack = crate::db::ops::emoji_pack::get_by_source_account(&mut conn, &self_id)
+                .map_err(|e| e.to_string())?
+                .ok_or("No sticker pool exists for this bot account")?;
+            let sticker = crate::db::ops::emoji::get_emoji(&mut conn, &sticker_id)
+                .map_err(|_| "Unknown sticker id".to_string())?;
+            if sticker.pack_id != pack.id || sticker.semantic_status != "confirmed" {
+                return Err("That sticker is not in this bot account's confirmed roster".into());
+            }
+            Ok::<_, String>(sticker)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+
+        let payload = sticker
+            .native_payload
+            .as_deref()
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        let cached_image = || -> Result<MessageSegment, String> {
+            use base64::Engine;
+            if sticker.file_name.is_empty() {
+                return Err("Sticker has no cached image fallback".into());
+            }
+            let path = crate::emoji::emoji_path(&data_dir, &sticker.pack_id, &sticker.file_name);
+            let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+            let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+            Ok(MessageSegment::image(&format!("base64://{encoded}")))
+        };
+        let send = |segment: MessageSegment, echo: String| match self.session.kind {
+            SessionKind::Group => OneBotAction::send_group_msg(self.session.id, vec![segment]).with_echo(echo),
+            SessionKind::Private => OneBotAction::send_private_msg(self.session.id, vec![segment]).with_echo(echo),
+        };
+
+        let first = match sticker.source.as_str() {
+            "onebot_face" => MessageSegment::raw("face", payload),
+            "onebot_mface" => MessageSegment::raw("mface", payload),
+            _ => cached_image()?,
+        };
+        let direct = call_api(&self.state, send(first, echo())).await;
+        if let Err(error) = direct {
+            if sticker.source != "onebot_mface" {
+                return Err(error);
+            }
+            call_api(&self.state, send(cached_image()?, echo())).await?;
+        }
+
+        let mut sent = SENT_TURNS
+            .get_or_init(Default::default)
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        if sent.len() >= 4096 {
+            sent.clear();
+        }
+        sent.insert(self.turn_id.clone());
+        serde_json::to_string(&serde_json::json!({
+            "sticker_id": sticker.id,
+            "name": sticker.name,
+        }))
+        .map_err(|e| e.to_string())
     }
 
     async fn get_chat_history(&self, args: &serde_json::Value) -> Result<String, String> {
@@ -803,6 +972,8 @@ mod tests {
     #[test]
     fn test_non_admin_group_gets_query_tools_only() {
         let n = names(SessionKind::Group, false);
+        assert!(n.contains(&"list_stickers"));
+        assert!(n.contains(&"send_sticker"));
         assert!(n.contains(&QQ_HISTORY_TOOL));
         assert!(n.contains(&"qq_get_group_member_list"));
         assert!(!n.contains(&"qq_get_user_info"), "private-only tool absent in groups");
@@ -842,6 +1013,7 @@ mod tests {
         assert!(approval_needed.contains(&"qq_set_group_ban"));
         assert!(approval_needed.contains(&"qq_delete_msg"));
         assert!(!approval_needed.contains(&QQ_HISTORY_TOOL));
+        assert!(!approval_needed.contains(&"send_sticker"));
         assert!(!approval_needed.contains(&"qq_get_group_member_list"));
         // Every approval-gated tool is also admin-only.
         assert!(SPECS.iter().filter(|s| s.needs_approval).all(|s| s.admin_only));

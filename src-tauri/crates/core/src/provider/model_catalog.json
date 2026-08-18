@@ -10,6 +10,55 @@
   ],
   "models": [
     {
+      "provider": "google",
+      "prefix": "gemini-3.7-flash",
+      "supported_efforts": ["low", "medium", "high"],
+      "default_effort": "medium"
+    },
+    {
+      "provider": "google",
+      "prefix": "gemini-3.6-flash",
+      "supported_efforts": ["minimal", "low", "medium", "high"],
+      "default_effort": "medium"
+    },
+    {
+      "provider": "google",
+      "prefix": "gemini-3.5-flash-lite",
+      "supported_efforts": ["minimal", "low", "medium", "high"],
+      "default_effort": "minimal"
+    },
+    {
+      "provider": "google",
+      "prefix": "gemini-3.5-flash",
+      "supported_efforts": ["minimal", "low", "medium", "high"],
+      "default_effort": "medium"
+    },
+    {
+      "provider": "google",
+      "prefix": "gemini-3.1-flash-lite",
+      "supported_efforts": ["minimal", "low", "medium", "high"],
+      "default_effort": "minimal"
+    },
+    {
+      "provider": "google",
+      "prefix": "gemini-3.1-pro",
+      "supported_efforts": ["low", "medium", "high"],
+      "default_effort": "high"
+    },
+    {
+      "provider": "google",
+      "prefix": "gemini-3-pro-preview",
+      "supported_efforts": ["low", "high"],
+      "default_effort": "high"
+    },
+    {
+      "provider": "google",
+      "prefix": "gemini-3-flash-preview",
+      "supported_efforts": ["minimal", "low", "medium", "high"],
+      "default_effort": "high"
+    },
+
+    {
       "provider": "anthropic",
       "prefix": "claude-fable-5",
       "supports_thinking": true,

@@ -47,7 +47,7 @@ pub fn build_messages_with_senders(
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
-            signature: None,
+            provider_state: None,
             origin: provider::MessageOrigin::Assistant,
         });
     }
@@ -96,7 +96,7 @@ fn attach_sender_note(msgs: &mut Vec<ChatMessage>) {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
-            signature: None,
+            provider_state: None,
             origin: provider::MessageOrigin::Assistant,
         },
     );
@@ -126,6 +126,15 @@ fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message, names: &Sender
             }
         }
         "assistant" => {
+            let provider_state = m.provider_state.as_deref().and_then(|raw| {
+                match provider::state::ProviderState::from_storage_json(raw) {
+                    Ok(state) => Some(state),
+                    Err(e) => {
+                        tracing::warn!(message_id = %m.id, error = %e, "ignoring invalid provider state");
+                        None
+                    }
+                }
+            });
             let tool_calls = if m.schema_version >= 2 {
                 parse_openai_tool_calls(m.tool_calls.as_deref())
             } else {
@@ -136,7 +145,9 @@ fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message, names: &Sender
             };
             let reasoning = m.reasoning_content.clone();
             if !tool_calls.is_empty() {
-                msgs.push(ChatMessage::assistant_with_tools(&m.content, reasoning, tool_calls));
+                let mut message = ChatMessage::assistant_with_tools(&m.content, reasoning, tool_calls);
+                message.provider_state = provider_state;
+                msgs.push(message);
             } else {
                 msgs.push(ChatMessage {
                     role: "assistant".into(),
@@ -144,7 +155,7 @@ fn push_history_message(msgs: &mut Vec<ChatMessage>, m: &Message, names: &Sender
                     reasoning_content: reasoning,
                     tool_calls: None,
                     tool_call_id: None,
-                    signature: None,
+                    provider_state,
                     origin: provider::MessageOrigin::Assistant,
                 });
             }
@@ -208,6 +219,80 @@ pub fn resolve_file_uris_in_messages(messages: &mut [ChatMessage], files_root: O
         }
         if changed && let Ok(json) = serde_json::to_string(&parts) {
             msg.content = json;
+        }
+    }
+}
+
+/// Converts Meridian's transcript-only sticker part into provider-supported
+/// text/image parts. Confirmed stickers are semantic text. An unlabelled sticker
+/// is shown only on the current turn; old unknown stickers stay a placeholder so
+/// history does not repeatedly pay for the same pixels.
+pub fn resolve_sticker_parts_in_messages(
+    messages: &mut [ChatMessage],
+    pool: &crate::db::DbPool,
+    data_dir: Option<&std::path::Path>,
+    include_current_visual: bool,
+) {
+    let current_user = messages.iter().rposition(|message| {
+        message.role == "user" && !message.origin.is_system_context() && message.content.starts_with('[')
+    });
+    let Ok(mut conn) = pool.get() else { return };
+
+    for (message_index, message) in messages.iter_mut().enumerate() {
+        if message.role != "user" || !message.content.starts_with('[') {
+            continue;
+        }
+        let Ok(parts) = serde_json::from_str::<Vec<serde_json::Value>>(&message.content) else {
+            continue;
+        };
+        let mut changed = false;
+        let mut provider_parts = Vec::with_capacity(parts.len() + 1);
+        for part in parts {
+            if part.get("type").and_then(|value| value.as_str()) != Some("sticker") {
+                provider_parts.push(part);
+                continue;
+            }
+            changed = true;
+            let Some(sticker_id) = part.get("sticker_id").and_then(|value| value.as_str()) else {
+                provider_parts.push(serde_json::json!({ "type": "text", "text": "[unlabelled sticker]" }));
+                continue;
+            };
+            let Ok(sticker) = crate::db::ops::emoji::get_emoji(&mut conn, sticker_id) else {
+                provider_parts.push(serde_json::json!({ "type": "text", "text": "[unavailable sticker]" }));
+                continue;
+            };
+            if sticker.semantic_status == "confirmed" {
+                let tags = sticker.tags.as_deref().filter(|tags| !tags.trim().is_empty());
+                let description = match tags {
+                    Some(tags) => format!("[sticker: {}; tags: {}]", sticker.name, tags),
+                    None => format!("[sticker: {}]", sticker.name),
+                };
+                provider_parts.push(serde_json::json!({ "type": "text", "text": description }));
+                continue;
+            }
+
+            provider_parts.push(serde_json::json!({
+                "type": "text",
+                "text": if include_current_visual && current_user == Some(message_index) && !sticker.file_name.is_empty() {
+                    "[unlabelled sticker attached; infer its visible reaction cautiously]"
+                } else {
+                    "[unlabelled sticker]"
+                }
+            }));
+            if !include_current_visual || current_user != Some(message_index) || sticker.file_name.is_empty() {
+                continue;
+            }
+            let Some(data_dir) = data_dir else { continue };
+            let path = crate::emoji::emoji_path(data_dir, &sticker.pack_id, &sticker.file_name);
+            if let Ok(data_uri) = crate::emoji::vision_preview_data_uri(&path) {
+                provider_parts.push(serde_json::json!({
+                    "type": "image_url",
+                    "image_url": { "url": data_uri }
+                }));
+            }
+        }
+        if changed && let Ok(json) = serde_json::to_string(&provider_parts) {
+            message.content = json;
         }
     }
 }
@@ -408,6 +493,7 @@ mod tests {
             cache_read_tokens: None,
             cache_write_tokens: None,
             provider_name: None,
+            provider_state: None,
         }
     }
 
@@ -418,7 +504,7 @@ mod tests {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
-            signature: None,
+            provider_state: None,
             origin: provider::MessageOrigin::LegacyUser,
         }
     }
@@ -450,6 +536,32 @@ mod tests {
         let msgs = build_messages("", &ctx(&[]), "hello");
         assert_eq!(msgs.len(), 1);
         assert_eq!(msgs[0].role, "user");
+    }
+
+    #[test]
+    fn provider_state_survives_database_context_rebuild() {
+        use provider::state::{
+            GoogleSignatureLocation, GoogleThoughtSignature, ProviderState, ProviderStatePayload, ProviderStateProducer,
+        };
+
+        let state = ProviderState {
+            version: 1,
+            producer: ProviderStateProducer {
+                vendor: "google".into(),
+                protocol: "openai_chat_completions".into(),
+                model: "gemini-3.7-flash".into(),
+            },
+            payload: ProviderStatePayload::GoogleThoughtSignatures {
+                signatures: vec![GoogleThoughtSignature {
+                    location: GoogleSignatureLocation::Message,
+                    signature: "durable-signature".into(),
+                }],
+            },
+        };
+        let mut row = msg("1", "assistant", "answer");
+        row.provider_state = Some(state.to_storage_json().unwrap());
+        let messages = build_messages("", &ctx(&[row]), "continue");
+        assert_eq!(messages[0].provider_state.as_ref(), Some(&state));
     }
 
     #[test]
@@ -533,6 +645,62 @@ mod tests {
         let mut msgs3 = vec![chat_msg("user", &content)];
         resolve_file_uris_in_messages(&mut msgs3, None);
         assert!(msgs3[0].content.contains("file:///"));
+    }
+
+    #[test]
+    fn sticker_parts_become_semantics_and_old_unknowns_do_not_resend_pixels() {
+        let pool = crate::db::test_db();
+        let mut conn = pool.get().unwrap();
+        crate::db::ops::emoji_pack::create_pack(
+            &mut conn,
+            &crate::db::models::emoji_pack::NewEmojiPack {
+                id: "p1",
+                name: "pack",
+                description: None,
+                cover_image: None,
+                is_builtin: 0,
+                sort_order: 0,
+                created_at: 1,
+                updated_at: 1,
+                kind: "manual",
+                source_account_id: None,
+            },
+        )
+        .unwrap();
+        let make = |id, name, status| crate::db::models::emoji::NewEmoji {
+            id,
+            pack_id: "p1",
+            name,
+            tags: Some("reaction"),
+            file_name: "",
+            file_format: "",
+            sort_order: 0,
+            created_at: 1,
+            source: "local",
+            source_key: None,
+            native_payload: None,
+            semantic_status: status,
+            suggested_name: None,
+            suggested_tags: None,
+            file_size: 0,
+            seen_count: 1,
+            last_seen_at: Some(1),
+        };
+        crate::db::ops::emoji::create_emoji(&mut conn, &make("known", "wave", "confirmed")).unwrap();
+        crate::db::ops::emoji::create_emoji(&mut conn, &make("unknown", "pending-x", "pending")).unwrap();
+        drop(conn);
+
+        let mut messages = vec![
+            ChatMessage::user(r#"[{"type":"sticker","sticker_id":"unknown"}]"#),
+            ChatMessage::assistant("ok"),
+            ChatMessage::user(r#"[{"type":"sticker","sticker_id":"known"},{"type":"sticker","sticker_id":"unknown"}]"#),
+        ];
+        resolve_sticker_parts_in_messages(&mut messages, &pool, None, true);
+        assert!(messages[0].content.contains("[unlabelled sticker]"));
+        assert!(!messages[0].content.contains("image_url"));
+        assert!(messages[2].content.contains("[sticker: wave; tags: reaction]"));
+        assert!(messages[2].content.contains("[unlabelled sticker]"));
+        assert!(!messages[2].content.contains("\"type\":\"sticker\""));
     }
 
     #[test]
@@ -662,6 +830,7 @@ mod injected_context_tests {
             cache_read_tokens: None,
             cache_write_tokens: None,
             provider_name: None,
+            provider_state: None,
         }
     }
 
@@ -676,7 +845,7 @@ mod injected_context_tests {
             reasoning_content: None,
             tool_calls: None,
             tool_call_id: None,
-            signature: None,
+            provider_state: None,
             origin: MessageOrigin::Assistant,
         }];
         msgs.push(ChatMessage::system_context("<bot_memories>\n- x\n</bot_memories>"));
@@ -814,6 +983,7 @@ mod injected_context_tests {
             cache_read_tokens: None,
             cache_write_tokens: None,
             provider_name: None,
+            provider_state: None,
         }];
         let context = crate::db::ops::message::ActiveContext {
             path: Vec::new(),

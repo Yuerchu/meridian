@@ -5,7 +5,7 @@ import { MarkdownContent } from './markdown-content'
 import { ToolCallBlock } from './tool-call-block'
 import { ChainOfThought, ChainOfThoughtContent, ChainOfThoughtTrigger } from '@heroui-pro/react/chain-of-thought'
 import { markQueued, type TurnStep } from '@/lib/turns'
-import type { EmojiMap } from './emoji-renderer'
+import { StickerImage, type EmojiMap } from './emoji-renderer'
 
 const MemoToolCallBlock = React.memo(ToolCallBlock)
 
@@ -54,6 +54,9 @@ export function TurnSteps({ steps, isOneBot, emojiMap, className }: TurnStepsPro
               <MarkdownContent content={step.text} oneBot={isOneBot} emojiMap={emojiMap} />
             </div>
           )
+        }
+        if (step.kind === 'sticker') {
+          return <StickerImage key={key} stickerId={step.stickerId} name={step.name} />
         }
         return <MemoToolCallBlock key={key} data={step.data} queued={queued[i]} className="my-0" />
       })}

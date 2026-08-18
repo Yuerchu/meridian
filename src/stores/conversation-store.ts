@@ -265,6 +265,10 @@ export function hydrateBlocks(
                   : undefined,
               },
             })
+            if (toolMsg && outcomeOf(toolMsg) === 'completed' && tc.function.name === 'send_sticker') {
+              const sticker = stickerBlockFrom(tc.function.arguments, toolMsg.content)
+              if (sticker) blocks.push(sticker)
+            }
           }
         } catch {
           /* ignore */
@@ -283,6 +287,28 @@ export function hydrateBlocks(
     }
     return m
   })
+}
+
+function stickerBlockFrom(
+  argumentsJson: string,
+  resultJson?: string,
+): Extract<ContentBlock, { type: 'sticker' }> | null {
+  for (const raw of [resultJson, argumentsJson]) {
+    if (!raw) continue
+    try {
+      const value = JSON.parse(raw) as { sticker_id?: unknown; name?: unknown }
+      if (typeof value.sticker_id === 'string' && value.sticker_id) {
+        return {
+          type: 'sticker',
+          sticker_id: value.sticker_id,
+          name: typeof value.name === 'string' ? value.name : undefined,
+        }
+      }
+    } catch {
+      /* tool output may be plain text */
+    }
+  }
+  return null
 }
 
 /**
@@ -1212,6 +1238,15 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           // a rejected one left the stored list untouched.
           if (card.data.tool_name === 'update_todos' && status === 'completed') {
             session.activeTodos = readTodoArgs(card.data.arguments)
+          }
+          if (card.data.tool_name === 'send_sticker' && status === 'completed') {
+            const sticker = stickerBlockFrom(card.data.arguments, result)
+            if (
+              sticker &&
+              !target?._blocks?.some((block) => block.type === 'sticker' && block.sticker_id === sticker.sticker_id)
+            ) {
+              target?._blocks?.push(sticker)
+            }
           }
         } else {
           // No card left to update — the transcript was rebuilt without one.

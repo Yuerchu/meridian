@@ -61,3 +61,11 @@ pub fn list_assigned_pack_ids(conn: &mut SqliteConnection, assistant_id: &str) -
         .select(assistant_emoji_packs::pack_id)
         .load::<String>(conn)
 }
+
+pub fn get_by_source_account(conn: &mut SqliteConnection, account_id: &str) -> QueryResult<Option<EmojiPack>> {
+    emoji_packs::table
+        .filter(emoji_packs::kind.eq("onebot"))
+        .filter(emoji_packs::source_account_id.eq(account_id))
+        .first::<EmojiPack>(conn)
+        .optional()
+}

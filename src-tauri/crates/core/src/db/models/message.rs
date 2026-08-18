@@ -1,9 +1,7 @@
-use diesel::prelude::*;
-use serde::Serialize;
-
 use crate::db::schema::messages;
+use diesel::prelude::*;
 
-#[derive(Debug, Clone, Queryable, Selectable, Serialize)]
+#[derive(Debug, Clone, Queryable, Selectable)]
 #[diesel(table_name = messages)]
 pub struct Message {
     pub id: String,
@@ -68,6 +66,9 @@ pub struct Message {
     /// rewrites the attribution of every reply it ever produced. `model_id` has
     /// always been a keyless snapshot for the same reason.
     pub provider_name: Option<String>,
+    /// Versioned provider-owned continuation state. This is a persistence
+    /// concern, not part of the transcript DTO exposed through Tauri.
+    pub provider_state: Option<String>,
 }
 
 /// The four token counts one message row records.

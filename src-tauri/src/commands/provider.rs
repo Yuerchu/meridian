@@ -65,7 +65,7 @@ pub async fn update_provider(
 ) -> Result<Provider, String> {
     let services = app.services();
     let pool = services.db.clone();
-    let should_clear_cache = base_url.is_some() || provider_type.is_some();
+    let should_clear_cache = base_url.is_some() || provider_type.is_some() || api_format.is_some();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         if should_clear_cache {
@@ -176,13 +176,13 @@ pub async fn fetch_provider_models(
         }
     }
 
-    let (provider_type, base_url) = {
+    let (provider_type, base_url, api_format) = {
         let pool2 = pool.clone();
         let pid = provider_id.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = pool2.get().map_err(|e| e.to_string())?;
             let p = db::ops::provider::get_provider(&mut conn, &pid).map_err(|e| e.to_string())?;
-            Ok::<_, String>((p.provider_type, p.base_url))
+            Ok::<_, String>((p.provider_type, p.base_url, p.api_format))
         })
         .await
         .map_err(|e| e.to_string())??
@@ -190,7 +190,7 @@ pub async fn fetch_provider_models(
 
     let api_key = get_provider_api_key(&secrets, &provider_id).ok_or("API Key not set for this provider")?;
 
-    let models = meridian_core::provider::models::fetch_models(&provider_type, &base_url, &api_key)
+    let models = meridian_core::provider::models::fetch_models(&provider_type, Some(&api_format), &base_url, &api_key)
         .await
         .map_err(|e| e.to_string())?;
 

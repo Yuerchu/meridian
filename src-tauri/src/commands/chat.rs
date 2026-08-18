@@ -6,8 +6,8 @@ use meridian_core::agent::engine;
 use meridian_core::agent::turn_record;
 use meridian_core::agent::{
     CompactCircuitBreaker, TokenBudget, build_file_access, build_messages_with_senders, do_compact, file_access_prompt,
-    instruction_budget, load_project_instructions, microcompact, resolve_file_uris_in_messages, trailing_with_memory,
-    trim_to_context_limit,
+    instruction_budget, load_project_instructions, microcompact, resolve_file_uris_in_messages,
+    resolve_sticker_parts_in_messages, trailing_with_memory, trim_to_context_limit,
 };
 use meridian_core::db;
 use meridian_core::db::DbPool;
@@ -195,7 +195,12 @@ pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String, turn_id: 
 // body must never reach the log.
 #[tracing::instrument(
     skip_all,
-    fields(conversation_id = %conversation_id, model = tracing::field::Empty)
+    fields(
+        conversation_id = %conversation_id,
+        model = tracing::field::Empty,
+        provider_type = tracing::field::Empty,
+        api_format = tracing::field::Empty
+    )
 )]
 /// Run a turn.
 ///
@@ -457,6 +462,8 @@ async fn chat_inner(
     // Filled in now rather than declared at entry: which model a turn actually
     // used is the first thing a provider error needs explaining.
     tracing::Span::current().record("model", model.as_str());
+    tracing::Span::current().record("provider_type", resolved.provider_type.as_str());
+    tracing::Span::current().record("api_format", resolved.api_format.as_str());
 
     let provider = provider::registry::create_provider(
         &resolved.provider_type,
@@ -619,6 +626,7 @@ async fn chat_inner(
     // A capability copy rather than a borrow: `turn_params.params` is moved
     // later in the turn.
     let supports_tools = turn_params.caps.supports_tools;
+    let supports_images = turn_params.caps.supports_images;
     if !supports_tools {
         tracing::info!(model = %model, "the model cannot take tools; none are offered this turn");
     }
@@ -814,6 +822,12 @@ async fn chat_inner(
         ),
         &Default::default(),
     );
+    resolve_sticker_parts_in_messages(
+        &mut chat_messages,
+        &pool,
+        Some(services.paths.data_dir.as_path()),
+        supports_images,
+    );
     let files_root = Some(meridian_core::files::files_dir(&services.paths.data_dir));
     resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref());
     microcompact(&mut chat_messages, &budget, keep_recent);
@@ -894,6 +908,7 @@ async fn chat_inner(
                 parent.as_deref(),
             )
             .map_err(|e| e.to_string())?;
+            db::ops::emoji::link_stickers_in_content(&mut conn, &msg_id, &msg).map_err(|e| e.to_string())?;
             Ok::<_, String>(())
         })
         .await
@@ -952,6 +967,7 @@ async fn chat_inner(
         // turn config, which needs the project again.
         project_id: project_id.clone(),
         conversation_id: Some(conversation_id.clone()),
+        turn_id: Some(turn_id.clone()),
         assistant_id: assistant.as_ref().map(|a| a.id.clone()),
         db_pool: Some(pool.clone()),
         #[cfg(not(target_os = "android"))]

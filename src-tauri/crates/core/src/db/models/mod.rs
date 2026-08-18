@@ -9,6 +9,7 @@ pub mod emoji_pack;
 pub mod mcp_server;
 pub mod memory;
 pub mod message;
+pub mod message_sticker;
 pub mod model_config;
 pub mod plan;
 pub mod preference;

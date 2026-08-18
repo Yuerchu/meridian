@@ -231,6 +231,7 @@ mod tests {
             file_access: FileAccess::Unrestricted,
             project_id: None,
             conversation_id: Some(conversation_id.to_string()),
+            turn_id: Some("t1".into()),
             assistant_id: None,
             db_pool: Some(pool),
             #[cfg(not(target_os = "android"))]

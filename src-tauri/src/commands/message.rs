@@ -5,6 +5,70 @@ use meridian_core::agent::extract_tool_calls_from_blocks;
 use meridian_core::db;
 use meridian_core::db::models::message::Message;
 
+/// The public transcript shape. Database rows are not serializable: adding an
+/// internal column must require an explicit decision here before it can cross
+/// the Tauri boundary.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct MessageDto {
+    pub id: String,
+    pub conversation_id: String,
+    pub role: String,
+    pub content: String,
+    pub provider_id: Option<String>,
+    pub model_id: Option<String>,
+    pub input_tokens: Option<i32>,
+    pub output_tokens: Option<i32>,
+    pub tool_calls: Option<String>,
+    pub tool_call_id: Option<String>,
+    pub sort_order: i32,
+    pub created_at: i64,
+    pub reasoning_content: Option<String>,
+    pub rating: Option<i32>,
+    pub schema_version: i32,
+    pub is_compact_summary: i32,
+    pub sender_id: Option<i64>,
+    pub parent_id: Option<String>,
+    pub compact_anchor_id: Option<String>,
+    pub source: Option<String>,
+    pub turn_id: Option<String>,
+    pub tool_outcome: Option<String>,
+    pub cache_read_tokens: Option<i32>,
+    pub cache_write_tokens: Option<i32>,
+    pub provider_name: Option<String>,
+}
+
+impl From<Message> for MessageDto {
+    fn from(row: Message) -> Self {
+        Self {
+            id: row.id,
+            conversation_id: row.conversation_id,
+            role: row.role,
+            content: row.content,
+            provider_id: row.provider_id,
+            model_id: row.model_id,
+            input_tokens: row.input_tokens,
+            output_tokens: row.output_tokens,
+            tool_calls: row.tool_calls,
+            tool_call_id: row.tool_call_id,
+            sort_order: row.sort_order,
+            created_at: row.created_at,
+            reasoning_content: row.reasoning_content,
+            rating: row.rating,
+            schema_version: row.schema_version,
+            is_compact_summary: row.is_compact_summary,
+            sender_id: row.sender_id,
+            parent_id: row.parent_id,
+            compact_anchor_id: row.compact_anchor_id,
+            source: row.source,
+            turn_id: row.turn_id,
+            tool_outcome: row.tool_outcome,
+            cache_read_tokens: row.cache_read_tokens,
+            cache_write_tokens: row.cache_write_tokens,
+            provider_name: row.provider_name,
+        }
+    }
+}
+
 /// The active path, the summary that applies to it, and where it can be paged.
 ///
 /// Returned as one snapshot so the caller never renders a half-applied state:
@@ -15,7 +79,7 @@ pub struct MessageTree {
     /// The summary, when one applies, is appended rather than placed in order —
     /// the front end picks it out by `is_compact_summary` and draws it as a
     /// boundary marker, not as part of the transcript.
-    pub messages: Vec<Message>,
+    pub messages: Vec<MessageDto>,
     pub head_message_id: Option<String>,
     pub branches: Vec<db::ops::message::BranchPoint>,
 }
@@ -29,8 +93,8 @@ fn read_tree_with_conversation(
     let ctx = db::ops::message::active_context(&history, conv.head_message_id.as_deref());
     let branches = db::ops::message::branch_points(&history, &ctx.path);
     let head_message_id = ctx.head_id.clone();
-    let mut messages = ctx.path;
-    messages.extend(ctx.summary);
+    let mut messages = ctx.path.into_iter().map(MessageDto::from).collect::<Vec<_>>();
+    messages.extend(ctx.summary.map(MessageDto::from));
     Ok((
         conv,
         MessageTree {
@@ -671,6 +735,7 @@ mod tests {
             cache_read_tokens: None,
             cache_write_tokens: None,
             provider_name: None,
+            provider_state: None,
         }
     }
 
@@ -689,6 +754,16 @@ mod tests {
         assert_eq!(kept.len(), 2);
         assert!(kept.iter().all(|m| !m.content.contains("找工作")));
         assert!(kept.iter().all(|m| m.role != "context"));
+    }
+
+    #[test]
+    fn message_dto_is_an_explicit_public_projection() {
+        let mut row = exported_row("assistant", "answer");
+        row.provider_state = Some("opaque-provider-state".into());
+        let json = serde_json::to_value(MessageDto::from(row)).unwrap();
+        assert_eq!(json["content"], "answer");
+        assert!(json.get("provider_state").is_none());
+        assert!(!json.to_string().contains("opaque-provider-state"));
     }
 
     /// One conversation's reading, in the shape the snapshot carries several of.

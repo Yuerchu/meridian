@@ -38,14 +38,14 @@ function LogRowImpl({ entry }: { entry: LogEntry }) {
 
   // Span fields first: they say which conversation or request this belongs to,
   // which is what a reader is usually scanning for.
-  const fields = [...Object.entries(entry.span_fields ?? {}), ...Object.entries(entry.fields ?? {})]
+  const fields = [...Object.entries(entry.spanFields ?? {}), ...Object.entries(entry.fields ?? {})]
 
   const isError = entry.level === 'ERROR'
   // Rendered in local time. The record stores UTC so the file sorts lexically,
   // but showing that verbatim puts an event the user caused at 00:44 under a
   // timestamp of 16:01, which makes the log look like it belongs to someone
   // else's session.
-  const time = formatLocalTime(entry.ts_ms)
+  const time = formatLocalTime(entry.tsMs)
 
   return (
     <div

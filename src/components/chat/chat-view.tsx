@@ -5,7 +5,7 @@ import { ChatTranscript } from './chat-transcript'
 import { CompactedRegion } from './compacted-region'
 import { TranscriptStatus } from './transcript-status'
 import { useTurns } from '@/hooks/use-turns'
-import { InputBar, type AttachedFile } from './input-bar'
+import { InputBar, type AttachedFile, type PendingSticker } from './input-bar'
 import { TodoBar } from './todo-bar'
 import { useEmojiMap } from './emoji-renderer'
 import { useSenderNames } from '@/hooks/use-sender-names'
@@ -47,6 +47,7 @@ function ChatViewInner({
 
   const [input, setInput] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
+  const [pendingSticker, setPendingSticker] = useState<PendingSticker | null>(null)
   const settings = useTurnSettings(conversationId)
   const emojiMap = useEmojiMap(settings.selectedAssistantId)
   // Only a OneBot conversation has more than one speaker; a desktop row has no
@@ -166,20 +167,21 @@ function ChatViewInner({
 
   const handleSubmit = useCallback(() => {
     const text = input.trim()
-    if (!text) return
+    if (!text && !pendingSticker) return
 
     // Before the slash commands, which all ask for a turn to be started or
     // reshaped and so have nowhere to land mid-run. The field is cleared only
     // once the run has taken the text: a refusal means it was written down
     // nowhere, and retyping it would be the user paying for that.
     if (steering) {
+      if (!text) return
       void steerMessage(text).then((sent) => {
         if (sent) setInput('')
       })
       return
     }
 
-    if (text.startsWith('/compact')) {
+    if (!pendingSticker && attachedFiles.length === 0 && text.startsWith('/compact')) {
       const instructions = text.slice('/compact'.length).trim() || undefined
       setInput('')
       handleCompact(instructions)
@@ -189,8 +191,12 @@ function ChatViewInner({
     const files = [...attachedFiles]
     setInput('')
     setAttachedFiles([])
-    sendMessage(text, true, files.length > 0 ? files : undefined)
-  }, [input, sendMessage, attachedFiles, handleCompact, steering, steerMessage])
+    const sticker = pendingSticker
+      ? { type: 'sticker' as const, sticker_id: pendingSticker.emoji.id, name: pendingSticker.emoji.name }
+      : undefined
+    setPendingSticker(null)
+    sendMessage(text, true, files.length > 0 ? files : undefined, undefined, undefined, sticker)
+  }, [input, sendMessage, attachedFiles, pendingSticker, handleCompact, steering, steerMessage])
 
   return (
     <div className="flex flex-col h-full">
@@ -261,6 +267,9 @@ function ChatViewInner({
         attachedFiles={attachedFiles}
         onAttachFiles={(files) => setAttachedFiles((prev) => [...prev, ...files])}
         onRemoveFile={(idx) => setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))}
+        pendingSticker={pendingSticker}
+        onSelectSticker={setPendingSticker}
+        onRemoveSticker={() => setPendingSticker(null)}
       />
     </div>
   )

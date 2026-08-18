@@ -85,6 +85,20 @@ describe('hydrateBlocks', () => {
     expect(callBlocks(out, 'a')[0]).toMatchObject({ status: 'completed', result: 'the result' })
   })
 
+  it('projects a successful send_sticker result as an independent sticker block', () => {
+    const assistant = msg('a', {
+      tool_calls: JSON.stringify([
+        {
+          id: 'c1',
+          type: 'function',
+          function: { name: 'send_sticker', arguments: JSON.stringify({ sticker_id: 's1' }) },
+        },
+      ]),
+    })
+    const out = hydrateBlocks([assistant, answer('t', 'c1', JSON.stringify({ sticker_id: 's1', name: 'wave' }))])
+    expect(out[0]._blocks).toContainEqual({ type: 'sticker', sticker_id: 's1', name: 'wave' })
+  })
+
   it('reads an unanswered call the backend is still holding as pending', () => {
     const out = hydrateBlocks(
       [caller('a', 'c1')],

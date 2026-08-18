@@ -372,6 +372,8 @@ macro_rules! with_all_commands {
             local commands::emoji => import_emojis(pack_id: String, file_paths: Vec<String>),
             sync commands::emoji => delete_emoji(id: String),
             sync commands::emoji => rename_emoji(id: String, new_name: String),
+            async commands::emoji => suggest_sticker_semantics(id: String),
+            sync commands::emoji => confirm_sticker_semantics(id: String, name: String, tags: Option<String>),
             sync commands::emoji => search_emojis(query: String),
             sync commands::emoji => assign_emoji_pack(assistant_id: String, pack_id: String),
             sync commands::emoji => unassign_emoji_pack(assistant_id: String, pack_id: String),

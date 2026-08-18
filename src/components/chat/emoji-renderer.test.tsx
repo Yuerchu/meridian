@@ -19,8 +19,8 @@ describe('useEmojiMap', () => {
   it('loads packs and file URLs in parallel while preserving emoji names', async () => {
     mockApi.listAssistantEmojiPacks.mockResolvedValue([{ id: 'p1' }, { id: 'p2' }] as never)
     mockApi.listEmojis
-      .mockResolvedValueOnce([{ id: 'e1', name: 'one' }] as never)
-      .mockResolvedValueOnce([{ id: 'e2', name: 'two' }] as never)
+      .mockResolvedValueOnce([{ id: 'e1', name: 'one', semantic_status: 'confirmed', file_format: 'png' }] as never)
+      .mockResolvedValueOnce([{ id: 'e2', name: 'two', semantic_status: 'confirmed', file_format: 'png' }] as never)
     mockApi.getEmojiFileUrl.mockImplementation(async (id) => `asset://${id}`)
 
     const { result } = renderHook(() => useEmojiMap('assistant-1'))

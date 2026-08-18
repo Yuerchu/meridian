@@ -34,6 +34,7 @@ function tool(name: string, status: ToolCallDisplay['status'] = 'completed'): Co
 
 const text = (t: string): ContentBlock => ({ type: 'text', text: t })
 const thinking = (t: string): ContentBlock => ({ type: 'thinking', text: t })
+const sticker = (id: string): ContentBlock => ({ type: 'sticker', sticker_id: id, name: 'wave' })
 
 describe('markQueued', () => {
   /// The whole reason it exists. All of a reply's calls are written into the
@@ -127,6 +128,16 @@ describe('buildTurns — grouping', () => {
 })
 
 describe('buildTurns — result', () => {
+  it('treats a successful sticker after its tool call as a complete sticker-only result', () => {
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', { _blocks: [tool('send_sticker'), sticker('s1')] })
+    const turn = buildTurns([u, a])[0]
+    expect(turn.status).toBe('complete')
+    expect(turn.result?.text).toBe('')
+    expect(turn.result?.blocks).toEqual([{ type: 'sticker', sticker_id: 's1', name: 'wave' }])
+    expect(turn.summary.toolCount).toBe(1)
+  })
+
   it('takes the text after the last tool call as the conclusion', () => {
     const u = msg('user', { content: 'q' })
     const a = msg('assistant', {
