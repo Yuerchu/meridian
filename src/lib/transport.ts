@@ -94,6 +94,66 @@ export function writeRemoteConfig(config: RemoteConfig | null): void {
   else localStorage.removeItem(CONFIG_KEY)
 }
 
+/**
+ * The wire revision this build speaks.
+ *
+ * Mirrors `API_REV` in `src-tauri/src/remote/http.rs` and is bumped for the
+ * same reason: a change one side would misread, never an addition the other can
+ * ignore. Kept here rather than in the settings panel because it is a fact
+ * about this file's protocol.
+ */
+export const CLIENT_API_REV = 1
+
+/**
+ * What `/healthz` said, reduced to the decision the user is waiting on.
+ *
+ * A version mismatch is called out as one. Left as a bare failure it reads as
+ * a wrong address or a firewall, and the user retypes an address that was
+ * always right — the two remedies (upgrade one side) have nothing in common
+ * with each other.
+ */
+export type ProbeResult =
+  | { ok: true; version: string; apiRev: number }
+  /** Nothing answered, or what answered was not this app. */
+  | { ok: false; reason: 'unreachable' | 'malformed' }
+  | { ok: false; reason: 'client-too-old' | 'server-too-old'; apiRev: number; minClientRev: number }
+
+/**
+ * Ask an address whether it is a Meridian this device can talk to.
+ *
+ * Unauthenticated, because the route is: a client that cannot tell "nothing is
+ * there" from "the token is wrong" cannot help the user with either. So this
+ * answers the first question only, and a bad token surfaces later as a refusal
+ * with a message of its own.
+ */
+export async function probeRemote(host: string, port: number, signal?: AbortSignal): Promise<ProbeResult> {
+  let body: unknown
+  try {
+    const response = await fetch(`http://${host}:${port}/healthz`, { signal })
+    body = await response.json()
+  } catch {
+    return { ok: false, reason: 'unreachable' }
+  }
+
+  const health = body as { app?: unknown; version?: unknown; apiRev?: unknown; minClientRev?: unknown } | null
+  if (
+    !health ||
+    health.app !== 'meridian' ||
+    typeof health.apiRev !== 'number' ||
+    typeof health.minClientRev !== 'number'
+  ) {
+    return { ok: false, reason: 'malformed' }
+  }
+
+  const { apiRev, minClientRev } = health
+  // The band the two ends agree on. Below it this build predates something the
+  // desktop now requires; above it the desktop predates something this build
+  // assumes is there.
+  if (CLIENT_API_REV < minClientRev) return { ok: false, reason: 'client-too-old', apiRev, minClientRev }
+  if (apiRev < CLIENT_API_REV) return { ok: false, reason: 'server-too-old', apiRev, minClientRev }
+  return { ok: true, version: typeof health.version === 'string' ? health.version : '', apiRev }
+}
+
 /** What the connection is doing, for the one indicator that shows it. */
 export type ConnectionState = 'connecting' | 'connected' | 'offline'
 

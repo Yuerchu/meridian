@@ -4,6 +4,7 @@ import { save } from '@tauri-apps/plugin-dialog'
 import { ChevronLeft, ArrowDownToLine, ArrowsRotateRight, Magnifier } from '@gravity-ui/icons'
 import { useTemporaryFlag } from '@/hooks/use-temporary-flag'
 import { api } from '@/api'
+import { can } from '@/lib/capabilities'
 import { Button, InputGroup, Skeleton, Spinner } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { LogRow } from './log-row'
@@ -56,14 +57,19 @@ export function LogViewer({ onBack }: { onBack: () => void }) {
             <ArrowsRotateRight className="size-4" />
             {t('settings.about.logs.refresh')}
           </Button>
-          <Button variant="secondary" size="sm" onClick={onExport}>
+          {/* The picker names a path on this device and the file is written by
+              whichever machine the logs belong to. Reading them here still
+              works — that is what the rows below are. */}
+          <Button variant="secondary" size="sm" onClick={onExport} isDisabled={!can.exportToDisk}>
             <ArrowDownToLine className="size-4" />
             {exported ? t('settings.about.logs.exported') : t('settings.about.logs.export')}
           </Button>
         </div>
       </div>
 
-      <p className="text-xs text-muted">{t('settings.about.logs.exportHint')}</p>
+      <p className="text-xs text-muted">
+        {can.exportToDisk ? t('settings.about.logs.exportHint') : t('capability.exportToDisk')}
+      </p>
 
       <div data-slot="log-toolbar" className="flex flex-wrap items-center gap-2">
         <SettingsSelect

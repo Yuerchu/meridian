@@ -5,6 +5,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { TrashBin } from '@gravity-ui/icons'
 import { Button, Card, Description, Input, Label, ProgressCircle, TextField } from '@heroui/react'
 import { api } from '@/api'
+import { can } from '@/lib/capabilities'
 import { usePlatform } from '@/hooks/use-platform'
 import type { VoiceModelStatus } from '@/types'
 import { SettingsHeader, SettingsPane, SettingsSelect } from './primitives'
@@ -171,13 +172,24 @@ export function VoiceSettings() {
                 <Card.Title>{t('settings.voice.modelMissing')}</Card.Title>
                 <Card.Description>{t('settings.voice.modelHint')}</Card.Description>
               </Card.Header>
-              <Card.Footer className="gap-2">
-                <Button size="sm" onClick={handleDownload}>
-                  {t('settings.voice.download')}
-                </Button>
-                <Button variant="outline" size="sm" onClick={handleImport} isDisabled={importing}>
-                  {importing ? t('settings.voice.importing') : t('settings.voice.import')}
-                </Button>
+              <Card.Footer className="flex-col items-start gap-2">
+                <div className="flex gap-2">
+                  <Button size="sm" onClick={handleDownload}>
+                    {t('settings.voice.download')}
+                  </Button>
+                  {/* Downloading still works remotely — the host fetches it to
+                      its own disk, which is where it has to be. Importing does
+                      not: the archive is on the device the picker runs on. */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleImport}
+                    isDisabled={importing || !can.importFromDisk}
+                  >
+                    {importing ? t('settings.voice.importing') : t('settings.voice.import')}
+                  </Button>
+                </div>
+                {!can.importFromDisk && <p className="text-xs text-muted">{t('capability.importFromDisk')}</p>}
               </Card.Footer>
             </>
           )}

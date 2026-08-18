@@ -15,10 +15,15 @@ import {
 import { ChatAttachment, ChatAttachmentGroup } from '@heroui-pro/react/chat-attachment'
 
 import { localPreviewSrc } from '@/lib/asset-src'
+import { can } from '@/lib/capabilities'
+import { isRemote } from '@/lib/transport'
+import type { Attachment } from '@/lib/upload'
 import { isCoarsePointer } from '@/hooks/use-coarse-pointer'
+import { useIsOffline } from '@/hooks/use-connection-state'
 import { useVoiceRecorder, type VoiceNotice } from '@/hooks/use-voice-recorder'
 import { useAndroidVoiceRecorder } from '@/hooks/use-android-voice-recorder'
 import { useHistoryLevel } from '@/hooks/use-history-level'
+import { FileInput, type FileInputHandle } from '@/components/ui/file-input'
 import { VoiceButton } from '@/components/ui/voice-button'
 import { Composer } from './composer'
 import { VoiceOverlay } from './voice-overlay'
@@ -44,10 +49,12 @@ interface ContextInfo {
   agentKind?: string
 }
 
-export interface AttachedFile {
-  path: string
-  name: string
-}
+/**
+ * One file the composer is holding, named either by a path on the machine that
+ * will read it or by the bytes themselves. See `lib/upload.ts` for which is
+ * which and why.
+ */
+export type AttachedFile = Attachment
 
 interface InputBarProps {
   value: string
@@ -126,7 +133,7 @@ export function InputBar({
   value,
   onChange,
   onSubmit,
-  onVoiceSend,
+  onVoiceSend: onVoiceSendProp,
   onStop,
   disabled,
   streaming,
@@ -157,6 +164,22 @@ export function InputBar({
   const { t } = useTranslation()
   const platform = usePlatform()
   const isAndroid = platform === 'android'
+  // A message sent to a machine that is not answering fails, and a field that
+  // looks live while that is true is a lie the user only finds out about after
+  // typing. This is the one connection state the composer has to care about.
+  const offline = useIsOffline()
+  const fileInputRef = useRef<FileInputHandle>(null)
+  /**
+   * Voice is not offered at all when it cannot work, rather than offered and
+   * refused.
+   *
+   * `voice_start_recording` runs wherever the backend is, so connected to
+   * another machine the button would open *that* machine's microphone and
+   * transcribe the room it is sitting in. There is no version of that worth
+   * drawing disabled with an explanation: a microphone is hardware, and a
+   * device that does not have one does not show a button for it.
+   */
+  const onVoiceSend = can.voiceInput ? onVoiceSendProp : undefined
   // Filled by Composer once the field exists: Pro spreads incoming props after
   // its own ref, so one passed down would displace theirs.
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
@@ -276,7 +299,23 @@ export function InputBar({
     el.select()
   }, [])
 
+  /**
+   * The bytes chosen through the browser's own picker.
+   *
+   * Only reachable in remote mode, and the only route available there: the
+   * Tauri dialog, the camera and the gallery all answer with a path or a
+   * `content://` URI naming a file on *this* device, which the machine that
+   * would have to read it cannot open. See `lib/upload.ts`.
+   */
+  const handleBrowserFiles = useCallback(
+    (files: File[]) => {
+      onAttachFiles?.(files.map((file) => ({ name: file.name, file })))
+    },
+    [onAttachFiles],
+  )
+
   const handleTakePhoto = useCallback(async () => {
+    if (isRemote) return fileInputRef.current?.open({ accept: 'image/*', capture: true })
     const uri = await api.takePhoto()
     if (uri && onAttachFiles) {
       const name = await api.resolveFileName(uri).catch(() => 'photo.jpg')
@@ -285,6 +324,7 @@ export function InputBar({
   }, [onAttachFiles])
 
   const handlePickGallery = useCallback(async () => {
+    if (isRemote) return fileInputRef.current?.open({ accept: 'image/*' })
     const uri = await api.pickGalleryImage()
     if (uri && onAttachFiles) {
       const name = await api.resolveFileName(uri).catch(() => 'image.jpg')
@@ -310,6 +350,7 @@ export function InputBar({
   )
 
   const handlePickFile = useCallback(async () => {
+    if (isRemote) return fileInputRef.current?.open()
     // Cancelling rejects on Android rather than resolving to null, so a tap on
     // Back out of the picker would otherwise surface as an unhandled rejection.
     // Every caller here already treats null as "nothing chosen".
@@ -362,14 +403,17 @@ export function InputBar({
         {isAndroid && (
           <VoiceOverlay state={androidVoice.state} elapsed={androidVoice.elapsed} peak={androidVoice.peak} />
         )}
+        {isRemote && onAttachFiles && <FileInput ref={fileInputRef} multiple onFiles={handleBrowserFiles} />}
         <ComposerContextMenu enabled={!isCoarsePointer()} onOpenChange={handleContextMenuOpen} items={menuItems}>
           <Composer
             value={value}
             onChange={onChange}
             onSubmit={handleSubmit}
             // Not simply `disabled`: while a reply streams the field stays live,
-            // and only Send turns into Stop.
-            disabled={disabled && !streaming}
+            // and only Send turns into Stop. Offline is the exception to the
+            // exception — steering a run on a machine that is not answering
+            // fails exactly as starting one does.
+            disabled={offline || (disabled && !streaming)}
             streaming={streaming}
             onStop={onStop}
             steerable={steerable}
@@ -384,7 +428,15 @@ export function InputBar({
             }
             onFieldReady={handleFieldReady}
             onDropFiles={onAttachFiles ? handleDropFiles : undefined}
-            notice={voiceNotice && <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>}
+            // Offline takes the line over: a disabled field with nothing to
+            // say about why reads as the app having broken.
+            notice={
+              offline ? (
+                <p className="px-2 pb-1.5 text-xs text-danger">{t('settings.client.composerOffline')}</p>
+              ) : (
+                voiceNotice && <p className="px-2 pb-1.5 text-xs text-muted">{voiceNotice}</p>
+              )
+            }
             attachments={
               attachedFiles.length > 0 && (
                 <ChatAttachmentGroup>
@@ -393,7 +445,10 @@ export function InputBar({
                     // used to get: the path is already on disk, so this costs one
                     // asset-protocol URL. Anything else falls back to the icon the
                     // extension implies.
-                    <ChatAttachment key={i} name={f.name} src={localPreviewSrc(f.path, f.name)}>
+                    // No path means the bytes are being carried instead, and
+                    // there is nothing addressable to point an `<img>` at —
+                    // the icon the extension implies is the honest answer.
+                    <ChatAttachment key={i} name={f.name} src={f.path ? localPreviewSrc(f.path, f.name) : undefined}>
                       <ChatAttachment.Preview />
                       <ChatAttachment.Info />
                       {onRemoveFile && (

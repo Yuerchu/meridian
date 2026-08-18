@@ -4,6 +4,7 @@ import { Plus, TrashBin, ArrowUpFromLine, Sticker } from '@gravity-ui/icons'
 import { Button, Chip, Disclosure, Input } from '@heroui/react'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
+import { can } from '@/lib/capabilities'
 import { useConfirm } from '@/hooks/use-confirm'
 import { SettingsHeader, SettingsPane, SettingsSkeleton } from './primitives'
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog'
@@ -125,7 +126,9 @@ function PackCard({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" onClick={onImport}>
+                    {/* The picker returns paths on this device and the import
+                        is read by whichever machine the backend is on. */}
+                    <Button variant="outline" onClick={onImport} isDisabled={!can.importFromDisk}>
                       <ArrowUpFromLine className="w-3.5 h-3.5" />
                       {t('settings.emoji.import')}
                     </Button>
@@ -136,6 +139,7 @@ function PackCard({
                       </Button>
                     )}
                   </div>
+                  {!can.importFromDisk && <p className="text-xs text-muted">{t('capability.importFromDisk')}</p>}
                 </>
               )}
             </Disclosure.Body>

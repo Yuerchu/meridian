@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { useIsOffline } from '@/hooks/use-connection-state'
 import { Composer } from './composer'
 
 interface EmptyStateProps {
@@ -11,12 +12,16 @@ interface EmptyStateProps {
 export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
   const { t } = useTranslation()
   const [value, setValue] = useState('')
+  // The same rule as the composer in a conversation: creating one on a machine
+  // that is not answering fails, so the field does not pretend otherwise.
+  const offline = useIsOffline()
+  const locked = disabled || offline
 
   const handleSubmit = useCallback(() => {
     const text = value.trim()
-    if (!text || disabled) return
+    if (!text || locked) return
     onSubmit(text)
-  }, [value, disabled, onSubmit])
+  }, [value, locked, onSubmit])
 
   return (
     <div className="flex flex-col items-center justify-center h-full px-4">
@@ -31,9 +36,12 @@ export function EmptyState({ onSubmit, disabled }: EmptyStateProps) {
           value={value}
           onChange={setValue}
           onSubmit={handleSubmit}
-          disabled={disabled}
+          disabled={locked}
           ariaLabel={t('chat.placeholder')}
           placeholder={t('chat.placeholder')}
+          notice={
+            offline ? <p className="px-2 pb-1.5 text-xs text-danger">{t('settings.client.composerOffline')}</p> : null
+          }
         />
       </div>
     </div>

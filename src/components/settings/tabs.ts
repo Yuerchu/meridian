@@ -16,6 +16,8 @@ import {
   Wrench,
 } from '@gravity-ui/icons'
 
+import { can } from '@/lib/capabilities'
+
 /**
  * The settings sections, and which of them a given platform can reach.
  *
@@ -84,12 +86,20 @@ const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks', 'remote']
  * not in the same position: recording happens in the WebView, and the model has
  * to be downloaded from this screen before anything can be transcribed.
  *
+ * `can.manageServers` removes the same three, and it is the same three by
+ * construction — it is exactly "the servers this app runs, including the one
+ * answering". These are hidden rather than disabled because there is nothing
+ * partial to show: every control on all three panels would be inert, and the
+ * one a remote client would actually reach for is the address it is already
+ * connected to, which it can read in General.
+ *
  * `platform` is null for the first frame — `usePlatform` resolves over IPC — and
  * that frame shows the full list. Filtering on an unknown platform would hide a
  * row and then pop it back in, which reads worse than one frame of a list
- * nobody has looked at yet.
+ * nobody has looked at yet. `can` carries no such delay: it is decided at
+ * startup, so it filters from the first frame.
  */
 export function visibleSettingsTabs(platform: string | null): SettingsTabDef[] {
-  if (platform !== 'android') return settingsTabs
+  if (platform !== 'android' && can.manageServers) return settingsTabs
   return settingsTabs.filter((tab) => !DESKTOP_ONLY.includes(tab.id))
 }

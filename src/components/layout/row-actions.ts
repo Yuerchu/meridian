@@ -4,6 +4,7 @@ import { save } from '@tauri-apps/plugin-dialog'
 import { ArrowDownToLine, Pencil, Pin, PinSlash, TrashBin } from '@gravity-ui/icons'
 
 import { api } from '@/api'
+import { can } from '@/lib/capabilities'
 import type { Conversation, Project } from '@/types'
 
 /**
@@ -23,6 +24,15 @@ export interface RowAction {
   icon: React.ComponentType<{ className?: string }>
   label: string
   variant?: 'default' | 'destructive'
+  /**
+   * Set makes the item unusable, and says why in the item itself.
+   *
+   * Both menus render this beside the label rather than as a tooltip: a
+   * disabled item takes neither focus nor pointer events, so a tooltip on one
+   * is text nobody can reach. Short on purpose — it sits at the end of a menu
+   * row, and the long form belongs on the settings page that caused it.
+   */
+  disabledReason?: string
   run: () => void | Promise<void>
 }
 
@@ -56,6 +66,11 @@ export function useConversationActions(args: {
   const { t } = useTranslation()
   const { onTogglePin, onRequestRename, onRequestDelete } = args
 
+  // The picker returns a path on the machine the *user* is at, and the export
+  // is written by the machine the app is on. Connected to another one those are
+  // different disks, and the file would land where nobody goes looking.
+  const exportBlocked = can.exportToDisk ? undefined : t('capability.localOnly')
+
   return useCallback(
     (conversation: Conversation) => [
       {
@@ -74,12 +89,14 @@ export function useConversationActions(args: {
         key: 'export-sft',
         icon: ArrowDownToLine,
         label: t('sidebar.exportSft'),
+        disabledReason: exportBlocked,
         run: () => exportConversation(conversation, 'sft'),
       },
       {
         key: 'export-dpo',
         icon: ArrowDownToLine,
         label: t('sidebar.exportDpo'),
+        disabledReason: exportBlocked,
         run: () => exportConversation(conversation, 'dpo'),
       },
       {
@@ -90,7 +107,7 @@ export function useConversationActions(args: {
         run: () => onRequestDelete(conversation.id),
       },
     ],
-    [t, onTogglePin, onRequestRename, onRequestDelete],
+    [t, exportBlocked, onTogglePin, onRequestRename, onRequestDelete],
   )
 }
 

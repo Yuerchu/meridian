@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { api } from '@/api'
 import { useConversationStore } from '@/stores/conversation-store'
+import { uploadAttachment } from '@/lib/upload'
 import type { AttachedFile } from '@/components/chat/input-bar'
 import type { ChatMode, ThinkingLevel } from '@/types'
 
@@ -115,7 +116,10 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       if (text !== null && files && files.length > 0) {
         try {
           const parts: unknown[] = [{ type: 'text', text }]
-          parts.push(...(await Promise.all(files.map((f) => api.uploadFile(conversationId, f.path)))))
+          // Not `api.uploadFile` directly: an attachment picked on a device
+          // that is not the one holding the file has bytes rather than a path,
+          // and only `uploadAttachment` knows which of the two it is.
+          parts.push(...(await Promise.all(files.map((f) => uploadAttachment(conversationId, f)))))
           messageContent = JSON.stringify(parts)
         } catch (err) {
           storeAbortTurn(conversationId, turnId, String(err))

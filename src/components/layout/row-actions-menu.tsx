@@ -45,10 +45,17 @@ export function RowActionsMenu({
                 id={action.key}
                 textValue={action.label}
                 variant={action.variant === 'destructive' ? 'danger' : undefined}
+                isDisabled={Boolean(action.disabledReason)}
                 onAction={() => void action.run()}
               >
                 <action.icon className="size-4" />
                 <Label>{action.label}</Label>
+                {/* Part of the item's own text, not a tooltip: a disabled item
+                    takes no pointer events, so a tooltip on one is unreachable
+                    by mouse and by screen reader alike. */}
+                {action.disabledReason && (
+                  <span className="ml-auto shrink-0 text-xs text-muted">{action.disabledReason}</span>
+                )}
               </Dropdown.Item>
             ))}
           </Dropdown.Menu>
