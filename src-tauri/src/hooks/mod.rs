@@ -29,10 +29,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{Mutex, watch};
 
 use crate::db::DbPool;
-use crate::mcp::McpRegistry;
-use crate::secrets::SecretsManager;
-use crate::tools::ToolRegistry;
-use crate::turn::TurnCoordinator;
+use crate::services::Services;
 use crate::util::{get_conn, now_ms};
 
 /// Which incarnation of the server wrote the handshake file.
@@ -212,19 +209,14 @@ pub fn generate_token() -> String {
 
 pub(crate) struct SharedState {
     pub config: HookConfig,
-    pub pool: DbPool,
-    pub secrets: Arc<SecretsManager>,
-    pub tools: Arc<ToolRegistry>,
-    pub mcp: Arc<McpRegistry>,
-    pub coordinator: Arc<TurnCoordinator>,
-    /// Only to announce that a review conversation exists or has moved on.
+    /// Also how a review announces that its conversation exists or has moved on.
     ///
     /// The review loop deliberately streams to nobody — there is no window
     /// waiting on it. But the conversation it writes shows up in the sidebar,
-    /// and the sidebar only refetches when something says so. Without this the
+    /// and the sidebar only refetches when something says so. Without that the
     /// review is invisible for the several minutes it runs, which is the same
     /// as the gate not being installed.
-    pub app_handle: Option<tauri::AppHandle>,
+    pub services: Services,
 }
 
 pub struct HookServer {
@@ -235,27 +227,11 @@ pub struct HookServer {
 }
 
 impl HookServer {
-    pub fn new(
-        pool: DbPool,
-        secrets: Arc<SecretsManager>,
-        tools: Arc<ToolRegistry>,
-        mcp: Arc<McpRegistry>,
-        coordinator: Arc<TurnCoordinator>,
-        config: HookConfig,
-        app_handle: Option<tauri::AppHandle>,
-    ) -> Self {
-        let handshake = app_handle.as_ref().and_then(handshake_path);
+    pub fn new(services: Services, config: HookConfig) -> Self {
+        let handshake = Some(services.paths.data_dir.join(HANDSHAKE));
         let (shutdown_tx, _) = watch::channel(false);
         Self {
-            state: Arc::new(SharedState {
-                config,
-                pool,
-                secrets,
-                tools,
-                mcp,
-                coordinator,
-                app_handle,
-            }),
+            state: Arc::new(SharedState { config, services }),
             shutdown_tx,
             running: Arc::new(AtomicBool::new(false)),
             handshake,
@@ -346,11 +322,6 @@ impl HookServer {
     }
 }
 
-fn handshake_path(handle: &tauri::AppHandle) -> Option<std::path::PathBuf> {
-    use tauri::Manager;
-    handle.path().app_data_dir().ok().map(|d| d.join(HANDSHAKE))
-}
-
 fn write_handshake(path: &std::path::Path, config: &HookConfig, generation: u64) {
     let body = serde_json::json!({
         "version": 1,
@@ -438,22 +409,13 @@ fn validate_listen_config(host: &str, token: Option<&str>) -> Result<(), String>
 
 /// Called from Tauri setup. Manages the state even when disabled, so the IPC
 /// commands always have something to talk to.
-pub async fn maybe_start(handle: tauri::AppHandle) {
+pub(crate) async fn maybe_start(services: Services) {
     use tauri::Manager;
 
-    let pool = handle.state::<crate::state::AppDb>().0.clone();
-    let config = load_config(&pool);
+    let config = load_config(&services.db);
     let enabled = config.enabled;
 
-    let server = HookServer::new(
-        pool,
-        handle.state::<crate::state::AppSecrets>().0.clone(),
-        handle.state::<crate::state::AppTools>().0.clone(),
-        handle.state::<crate::state::AppMcp>().0.clone(),
-        handle.state::<crate::state::AppTurns>().0.clone(),
-        config,
-        Some(handle.clone()),
-    );
+    let server = HookServer::new(services, config);
 
     if enabled {
         if let Err(e) = server.start() {
@@ -463,7 +425,12 @@ pub async fn maybe_start(handle: tauri::AppHandle) {
         tracing::info!("hook server disabled, skipping auto-start");
     }
 
-    handle.manage(AppHooks(Arc::new(Mutex::new(server))));
+    // The only thing on this path that still needs the handle, and it is about
+    // registration rather than about the server: nothing inside `HookServer`
+    // knows a window exists.
+    if let Some(handle) = crate::state::APP_HANDLE.get() {
+        handle.manage(AppHooks(Arc::new(Mutex::new(server))));
+    }
 }
 
 pub struct AppHooks(pub Arc<Mutex<HookServer>>);

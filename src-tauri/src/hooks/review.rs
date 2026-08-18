@@ -45,11 +45,10 @@ use super::verdict::{self, Outcome, REVIEW_TOOLS};
 /// answer itself, so a failed send is not the turn failing. Not shared with it
 /// because `engine` is deliberately free of Tauri — this is the layer that is
 /// allowed to know about windows.
-struct BestEffortEmit(tauri::AppHandle);
+struct BestEffortEmit(crate::events::EventBus);
 
 impl engine::Emit for BestEffortEmit {
     fn emit(&self, channel: &str, payload: serde_json::Value) -> Result<(), String> {
-        use tauri::Emitter;
         let _ = self.0.emit(channel, payload);
         Ok(())
     }
@@ -67,9 +66,7 @@ impl engine::Emit for BestEffortEmit {
 /// Goes out even when there is no `message_id` — a turn that died before
 /// writing an assistant row still has to clear that flag.
 fn stopped(state: &SharedState, conversation_id: &str, turn_id: &str, outcome: &engine::TurnOutcome) {
-    use tauri::Emitter;
-    let Some(handle) = &state.app_handle else { return };
-    let _ = handle.emit(
+    let _ = state.services.events.emit(
         "chat-stream",
         serde_json::json!({
             "type": "stop",
@@ -92,10 +89,10 @@ fn stopped(state: &SharedState, conversation_id: &str, turn_id: &str, outcome: &
 /// the several minutes it runs, which reads exactly like the gate not being
 /// installed.
 fn announce(state: &SharedState, conversation_id: &str) {
-    use tauri::Emitter;
-    if let Some(handle) = &state.app_handle {
-        let _ = handle.emit("conversation-updated", serde_json::json!({ "id": conversation_id }));
-    }
+    let _ = state
+        .services
+        .events
+        .emit("conversation-updated", serde_json::json!({ "id": conversation_id }));
 }
 
 /// Why no review happened. Every one of these is a non-200, and every non-200
@@ -164,7 +161,7 @@ pub(crate) async fn run(state: Arc<SharedState>, job: ReviewJob) -> Result<Revie
     let assistant = effective_assistant(state, &model, &cwd, &job).await?;
     let params = resolve_params(state, &assistant).await?;
 
-    let (conversation_id, is_new) = open_or_reuse(&state.pool, &job).await;
+    let (conversation_id, is_new) = open_or_reuse(&state.services.db, &job).await;
     let turn_id = uuid::Uuid::new_v4().to_string();
     let cancel = CancellationToken::new();
 
@@ -172,7 +169,7 @@ pub(crate) async fn run(state: Arc<SharedState>, job: ReviewJob) -> Result<Revie
         Kind::Plan => TurnOrigin::PlanReview,
         Kind::Implementation => TurnOrigin::ImplReview,
     };
-    let _lease = Arc::clone(&state.coordinator)
+    let _lease = Arc::clone(&state.services.turns)
         .try_acquire_turn_with(&conversation_id, origin, turn_id.clone(), cancel.clone())
         .map_err(|busy| refuse(StatusCode::CONFLICT, busy.to_string()))?;
 
@@ -206,7 +203,7 @@ pub(crate) async fn run(state: Arc<SharedState>, job: ReviewJob) -> Result<Revie
         (Ok(_), true) => (TurnStatus::Cancelled, None),
         (Ok(_), false) => (TurnStatus::Done, None),
     };
-    turn_record::finish(&state.pool, &turn_id, status, error.as_deref()).await;
+    turn_record::finish(&state.services.db, &turn_id, status, error.as_deref()).await;
     stopped(state, &conversation_id, &turn_id, &outcome);
     announce(state, &conversation_id);
 
@@ -267,7 +264,7 @@ async fn effective_assistant(
         )
     })?;
 
-    let pool = state.pool.clone();
+    let pool = state.services.db.clone();
     let wanted = state.config.assistant_id.clone();
     let base = tokio::task::spawn_blocking(move || -> Result<Assistant, String> {
         let mut conn = get_conn(&pool)?;
@@ -304,8 +301,8 @@ async fn effective_assistant(
 }
 
 async fn resolve_params(state: &SharedState, assistant: &Assistant) -> Result<crate::agent::TurnParams, Refused> {
-    let pool = state.pool.clone();
-    let secrets = state.secrets.clone();
+    let pool = state.services.db.clone();
+    let secrets = state.services.secrets.clone();
     let a = assistant.clone();
     let resolved = {
         let pool = pool.clone();
@@ -413,7 +410,7 @@ async fn write_round(
     assistant: &Assistant,
     is_new: bool,
 ) -> Result<String, String> {
-    let pool = state.pool.clone();
+    let pool = state.services.db.clone();
     let conversation_id = conversation_id.to_string();
     let turn_id = turn_id.to_string();
     let message_id = uuid::Uuid::new_v4().to_string();
@@ -611,8 +608,8 @@ async fn run_turn(
     budget.update_estimate(&chat_messages);
 
     let tool_secrets = {
-        let pool = state.pool.clone();
-        let secrets = state.secrets.clone();
+        let pool = state.services.db.clone();
+        let secrets = state.services.secrets.clone();
         tokio::task::spawn_blocking(move || crate::agent::build_tool_secrets(&secrets, &pool))
             .await
             .unwrap_or_default()
@@ -626,7 +623,7 @@ async fn run_turn(
         project_id: None,
         conversation_id: Some(conversation_id.to_string()),
         assistant_id: Some(assistant.id.clone()),
-        db_pool: Some(state.pool.clone()),
+        db_pool: Some(state.services.db.clone()),
         #[cfg(not(target_os = "android"))]
         sandbox_policy: None,
         tool_secrets,
@@ -663,9 +660,9 @@ async fn run_turn(
     // Streams into the conversation view exactly like a desktop turn, so the
     // review can be watched while `ExitPlanMode` blocks on it. Nobody is
     // required to be watching — see `BestEffortEmit`.
-    let emitter = state.app_handle.clone().map(BestEffortEmit);
+    let emitter = BestEffortEmit(state.services.events.clone());
     let ports = engine::TurnPorts {
-        emit: emitter.as_ref().map(|e| e as &dyn engine::Emit),
+        emit: Some(&emitter as &dyn engine::Emit),
         approvals: &approvals,
         interim: None,
         surface_tools: None,
@@ -675,9 +672,9 @@ async fn run_turn(
     };
 
     let services = engine::TurnServices {
-        pool: &state.pool,
-        tools: &state.tools,
-        mcp: &state.mcp,
+        pool: &state.services.db,
+        tools: &state.services.tools,
+        mcp: &state.services.mcp,
     };
     let deadline = std::time::Duration::from_secs(state.config.timeout_secs.max(1) as u64);
 
@@ -695,7 +692,7 @@ async fn run_turn(
 }
 
 async fn load_history(state: &SharedState, conversation_id: &str) -> db::ops::message::ActiveContext {
-    let pool = state.pool.clone();
+    let pool = state.services.db.clone();
     let id = conversation_id.to_string();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool).ok()?;
@@ -736,8 +733,8 @@ async fn build_config(
         persona: assistant.system_prompt.clone(),
         context_blocks: Vec::new(),
     };
-    let pool = state.pool.clone();
-    let tools = state.tools.clone();
+    let pool = state.services.db.clone();
+    let tools = state.services.tools.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = get_conn(&pool)?;
         Ok::<_, String>(crate::agent::turn_config::resolve(&mut conn, &tools, input))
@@ -750,8 +747,8 @@ async fn build_provider(
     state: &SharedState,
     assistant: &Assistant,
 ) -> Result<(Box<dyn crate::provider::ChatProvider>, crate::agent::ResolvedProvider), String> {
-    let pool = state.pool.clone();
-    let secrets = state.secrets.clone();
+    let pool = state.services.db.clone();
+    let secrets = state.services.secrets.clone();
     let a = assistant.clone();
     let resolved = tokio::task::spawn_blocking(move || {
         crate::agent::resolve_with_overrides(&secrets, &pool, Some(&a), None, None)

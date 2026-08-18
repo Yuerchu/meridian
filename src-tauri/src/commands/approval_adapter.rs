@@ -7,14 +7,14 @@
 //! codebase has, and the half that drifted here would decide whether a command
 //! runs.
 
-use tauri::{Emitter, Manager};
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::engine::{self, ApprovalDecision};
 use crate::db::models::turn::TurnPhase;
 use crate::provider;
-use crate::state::{AppDb, ApprovalWaiters, Bubble};
+use crate::services::Services;
+use crate::state::Bubble;
 
 /// The desktop's way of asking: a card in the window, and a wait that ends when
 /// the user answers or the turn is cancelled.
@@ -25,7 +25,7 @@ use crate::state::{AppDb, ApprovalWaiters, Bubble};
 /// so a send that fails means the user is looking at a question that will never
 /// appear.
 pub(crate) struct DesktopApprovals {
-    pub app: tauri::AppHandle,
+    pub services: Services,
     pub cancel: CancellationToken,
     pub turn_id: String,
     /// Where the call happens. Still the sub-agent's own conversation for a
@@ -65,7 +65,7 @@ impl DesktopApprovals {
         message_id: &str,
         retry_reason: Option<&str>,
     ) -> Result<Option<ApprovalDecision>, String> {
-        let app = &self.app;
+        let services = &self.services;
         // Ours, not the provider's. See `PendingApproval` for what reusing the
         // tool call id used to cost.
         let approval_id = uuid::Uuid::new_v4().to_string();
@@ -73,8 +73,7 @@ impl DesktopApprovals {
         // Registered before the event goes out, so a decision can never arrive
         // before there is somewhere to put it.
         {
-            let waiters = app.state::<ApprovalWaiters>();
-            waiters.lock().insert(
+            services.approvals.lock().insert(
                 approval_id.clone(),
                 crate::state::PendingApproval {
                     conversation_id: self.conversation_id.clone(),
@@ -117,15 +116,15 @@ impl DesktopApprovals {
             payload["retry_reason"] = serde_json::json!(reason);
             payload["origin_call_id"] = serde_json::json!(tc.id);
         }
-        if let Err(e) = app.emit("chat-stream", payload) {
+        if let Err(e) = services.events.emit("chat-stream", payload) {
             // Nobody will ever answer a card that was never drawn; don't leave
             // the entry behind for the turn guard to find.
-            app.state::<ApprovalWaiters>().lock().remove(&approval_id);
-            return Err(e.to_string());
+            services.approvals.lock().remove(&approval_id);
+            return Err(e);
         }
         // After the card is on screen, so the recorded phase is never ahead of
         // what the user can actually see.
-        let pool = app.state::<AppDb>().0.clone();
+        let pool = services.db.clone();
         // The bracket restores `Streaming` however the wait ends — leaving the
         // phase behind would have a crash a minute later report a card that is
         // no longer on screen.
@@ -143,7 +142,7 @@ impl DesktopApprovals {
                     // Cancelled, or the sender was dropped. Take the entry out
                     // so a late answer cannot land on a turn that has already
                     // moved on.
-                    app.state::<ApprovalWaiters>().lock().remove(&approval_id);
+                    services.approvals.lock().remove(&approval_id);
                 }
                 decision
             },

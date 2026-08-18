@@ -154,8 +154,8 @@ async fn resolve_supports_images(
     conversation_id: &str,
     model_override: Option<&str>,
 ) -> bool {
-    let pool = state.pool.clone();
-    let secrets = state.secrets.clone();
+    let pool = state.services.db.clone();
+    let secrets = state.services.secrets.clone();
     let conv_id = conversation_id.to_string();
     let config_aid = state.config.assistant_id.clone();
     let override_model = model_override.map(String::from);
@@ -192,9 +192,8 @@ async fn resolve_supports_images(
 }
 
 async fn fetch_and_store_image(state: &Arc<SharedState>, conversation_id: &str, url: &str) -> Result<String, String> {
-    let app = state.app_handle.as_ref().ok_or("no app handle")?;
     let (bytes, ext) = download_image(url).await?;
-    store_image_bytes(app, conversation_id, bytes, &ext).await
+    store_image_bytes(&state.services, conversation_id, bytes, &ext).await
 }
 
 static HTTP: OnceLock<reqwest::Client> = OnceLock::new();
@@ -259,13 +258,12 @@ async fn download_image(url: &str) -> Result<(Vec<u8>, String), String> {
 }
 
 async fn store_image_bytes(
-    app: &tauri::AppHandle,
+    services: &crate::services::Services,
     conversation_id: &str,
     bytes: Vec<u8>,
     ext: &str,
 ) -> Result<String, String> {
-    use tauri::Manager;
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let app_data_dir = services.paths.data_dir.clone();
     let conv_id = conversation_id.to_string();
     let ext = ext.to_string();
     tokio::task::spawn_blocking(move || {

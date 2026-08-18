@@ -2,7 +2,6 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
-use tauri::{Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::engine::{self};
@@ -120,7 +119,7 @@ pub fn turn_stop_payload(
 /// courtesy to a desktop window that may not even be open. So a send that
 /// fails is not the turn failing -- see the Emit trait for the desktop
 /// opposite reading.
-struct BestEffortEmit(tauri::AppHandle);
+struct BestEffortEmit(crate::events::EventBus);
 
 impl crate::agent::engine::Emit for BestEffortEmit {
     fn emit(&self, channel: &str, payload: serde_json::Value) -> Result<(), String> {
@@ -265,7 +264,7 @@ pub(super) async fn oneshot_completion(
     user_prompt: &str,
 ) -> Result<String, String> {
     let assistant = {
-        let pool = state.pool.clone();
+        let pool = state.services.db.clone();
         let conv_id = conversation_id.to_string();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
@@ -287,8 +286,8 @@ pub(super) async fn oneshot_completion(
     // request that invents its own temperature is rejected by models the chat
     // path already talks to.
     let (provider_type, base_url, api_key, api_format, turn) = {
-        let pool2 = state.pool.clone();
-        let secrets2 = state.secrets.clone();
+        let pool2 = state.services.db.clone();
+        let secrets2 = state.services.secrets.clone();
         let assistant2 = assistant.clone();
         tokio::task::spawn_blocking(move || {
             let crate::agent::ResolvedProvider {
@@ -344,7 +343,7 @@ pub(super) async fn oneshot_completion(
 ///
 /// - `is_admin`: controls whether tools are available at all
 /// - `approval_fn`: called for Ask-permission tools (admin only); returns true to approve
-/// - `app`: when `Some`, emits `chat-stream` events for real-time UI updates
+/// - `services`: when `Some`, emits `chat-stream` events for real-time UI updates
 ///
 /// Every event except the terminal `stop` goes out from in here. That one is
 /// handed back in `TurnProgress` instead — see it for why.
@@ -364,7 +363,7 @@ pub async fn headless_chat(
     approval_fn: &ApprovalFn,
     interim_text_fn: Option<&TextNotifyFn>,
     cancel: &CancellationToken,
-    app: Option<&tauri::AppHandle>,
+    services: Option<&crate::services::Services>,
     qq_tools: Option<&super::qq_tools::QqToolExecutor>,
     session_inbox: Option<&super::InboxHandle>,
     // Needed to tell a turn that really is running from one whose row still
@@ -389,7 +388,7 @@ pub async fn headless_chat(
         approval_fn,
         interim_text_fn,
         cancel,
-        app,
+        services,
         qq_tools,
         session_inbox,
         coordinator,
@@ -424,7 +423,7 @@ async fn headless_chat_inner(
     approval_fn: &ApprovalFn,
     interim_text_fn: Option<&TextNotifyFn>,
     cancel: &CancellationToken,
-    app: Option<&tauri::AppHandle>,
+    services: Option<&crate::services::Services>,
     qq_tools: Option<&super::qq_tools::QqToolExecutor>,
     session_inbox: Option<&super::InboxHandle>,
     coordinator: Option<&Arc<crate::turn::TurnCoordinator>>,
@@ -432,7 +431,7 @@ async fn headless_chat_inner(
 ) -> Result<String, String> {
     // Every stream event this round sends goes through here. `None` when no
     // window is attached, which for a QQ turn is the ordinary case.
-    let emitter = app.map(|a| BestEffortEmit(a.clone()));
+    let emitter = services.map(|s| BestEffortEmit(s.events.clone()));
     let emit = emitter.as_ref().map(|e| e as &dyn crate::agent::engine::Emit);
 
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
@@ -449,8 +448,9 @@ async fn headless_chat_inner(
             .ok()
             .flatten()
         };
-        app.filter(|_| sleep_pref.as_deref() != Some("false"))
-            .map(|a| a.state::<crate::sleep_inhibitor::AppSleepInhibitor>().begin_turn())
+        services
+            .filter(|_| sleep_pref.as_deref() != Some("false"))
+            .map(|s| s.sleep.begin_turn())
     };
 
     // Load assistant + the conversation's active path
@@ -702,12 +702,7 @@ async fn headless_chat_inner(
     }
 
     let mut chat_messages = build_messages_with_senders(&system_prompt, &ctx, trailing, &sender_names);
-    let files_root = app
-        .and_then(|a| {
-            use tauri::Manager;
-            a.path().app_data_dir().ok()
-        })
-        .map(|d| crate::files::files_dir(&d));
+    let files_root = services.map(|s| crate::files::files_dir(&s.paths.data_dir));
     crate::agent::resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref());
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);

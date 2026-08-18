@@ -1,13 +1,12 @@
-use tauri::Manager;
-
+use crate::ServicesExt;
 use crate::db;
 use crate::db::models::assistant::{Assistant, AssistantUpdate, NewAssistant};
-use crate::state::AppDb;
 use crate::util::{double_option, now_ms};
 
 #[tauri::command]
 pub async fn list_assistants(app: tauri::AppHandle) -> Result<Vec<Assistant>, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::assistant::list_assistants(&mut conn).map_err(|e| e.to_string())
@@ -26,7 +25,8 @@ pub async fn create_assistant(
     top_p: Option<f32>,
     max_tokens: Option<i32>,
 ) -> Result<Assistant, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
@@ -84,7 +84,8 @@ pub struct AssistantPatch {
 
 #[tauri::command]
 pub async fn update_assistant(app: tauri::AppHandle, id: String, updates: AssistantPatch) -> Result<Assistant, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let changeset = AssistantUpdate {
@@ -110,7 +111,8 @@ pub async fn update_assistant(app: tauri::AppHandle, id: String, updates: Assist
 
 #[tauri::command]
 pub async fn delete_assistant(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::assistant::delete_assistant(&mut conn, &id).map_err(|e| e.to_string())

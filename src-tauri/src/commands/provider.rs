@@ -1,16 +1,15 @@
-use tauri::Manager;
-
+use crate::ServicesExt;
 use crate::agent::{get_provider_api_key, provider_secret_name};
 use crate::db;
 use crate::db::models::provider::{NewProvider, Provider, ProviderUpdate};
 use crate::provider::models::ModelInfo;
 use crate::secrets::{SecretName, SecretScope};
-use crate::state::{AppDb, AppSecrets};
 use crate::util::now_ms;
 
 #[tauri::command]
 pub async fn list_providers(app: tauri::AppHandle) -> Result<Vec<Provider>, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::provider::list_providers(&mut conn).map_err(|e| e.to_string())
@@ -27,7 +26,8 @@ pub async fn create_provider(
     base_url: String,
     api_format: Option<String>,
 ) -> Result<Provider, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
@@ -63,7 +63,8 @@ pub async fn update_provider(
     is_enabled: Option<i32>,
     api_format: Option<String>,
 ) -> Result<Provider, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     let should_clear_cache = base_url.is_some() || provider_type.is_some();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
@@ -87,8 +88,9 @@ pub async fn update_provider(
 
 #[tauri::command]
 pub async fn delete_provider(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
-    let secrets = app.state::<AppSecrets>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
+    let secrets = services.secrets.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::provider::delete_provider(&mut conn, &id).map_err(|e| e.to_string())?;
@@ -102,13 +104,13 @@ pub async fn delete_provider(app: tauri::AppHandle, id: String) -> Result<(), St
 
 #[tauri::command]
 pub async fn set_provider_key(app: tauri::AppHandle, provider_id: String, api_key: String) -> Result<(), String> {
-    let secrets = app.state::<AppSecrets>();
+    let services = app.services();
     let key_name = provider_secret_name(&provider_id);
-    secrets
-        .0
+    services
+        .secrets
         .set(&SecretScope::Global, &SecretName::new(&key_name).unwrap(), &api_key)
         .map_err(|e| e.to_string())?;
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = services.db.clone();
     let pid = provider_id.clone();
     let _ = tokio::task::spawn_blocking(move || {
         if let Ok(mut conn) = pool.get() {
@@ -121,13 +123,13 @@ pub async fn set_provider_key(app: tauri::AppHandle, provider_id: String, api_ke
 
 #[tauri::command]
 pub async fn get_provider_key_exists(app: tauri::AppHandle, provider_id: String) -> Result<bool, String> {
-    let secrets = app.state::<AppSecrets>();
+    let services = app.services();
     let key_name = provider_secret_name(&provider_id);
     // A read failure is not the same as "no key". Reporting it as absent sends
     // the user to enter a key they already have, and re-entering rewrites the
     // store under a fresh passphrase — taking the other providers' keys with it.
-    match secrets
-        .0
+    match services
+        .secrets
         .get(&SecretScope::Global, &SecretName::new(&key_name).unwrap())
     {
         Ok(value) => Ok(value.is_some()),
@@ -148,8 +150,9 @@ pub async fn fetch_provider_models(
     provider_id: String,
     force_refresh: Option<bool>,
 ) -> Result<Vec<ModelInfo>, String> {
-    let pool = app.state::<AppDb>().0.clone();
-    let secrets = app.state::<AppSecrets>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
+    let secrets = services.secrets.clone();
     let force = force_refresh.unwrap_or(false);
 
     if !force {
@@ -221,7 +224,8 @@ pub async fn get_provider_capabilities(
     provider_id: String,
     model_id: String,
 ) -> Result<crate::provider::ProviderCapabilities, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     let (provider_type, api_format, overrides) = {
         let pid = provider_id.clone();
         let mid = model_id.clone();

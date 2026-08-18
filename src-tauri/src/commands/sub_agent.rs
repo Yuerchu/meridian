@@ -11,9 +11,9 @@
 use std::sync::Arc;
 
 use diesel::Connection;
-use tauri::{Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
+use crate::ServicesExt;
 use crate::agent::engine::{self, Stranded, SubAgentReport, SubAgentSpec, SubAgentStatus};
 use crate::agent::sub_agents::SubAgentKind;
 use crate::agent::turn_record;
@@ -24,7 +24,8 @@ use crate::db::models::conversation::NewConversation;
 use crate::db::models::message::NewMessage;
 use crate::db::models::turn::{ERROR_LOOP_DETECTED, TurnStatus};
 use crate::secrets::SecretsManager;
-use crate::state::{AppSubAgentInboxes, ApprovalWaiters, SubAgentInbox};
+use crate::services::Services;
+use crate::state::SubAgentInbox;
 use crate::tools::{self, ToolRegistry};
 use crate::turn::{TurnLease, TurnOrigin};
 use crate::util::{get_conn, now_ms};
@@ -68,7 +69,7 @@ pub async fn steer_conversation(app: tauri::AppHandle, conversation_id: String, 
     if text.trim().is_empty() {
         return Err("There is nothing to send.".to_string());
     }
-    match app.state::<AppSubAgentInboxes>().append(&conversation_id, text) {
+    match app.services().sub_agent_inboxes.append(&conversation_id, text) {
         crate::state::Accept::Queued => Ok(()),
         crate::state::Accept::Closed(_) => Err("This run has already finished, so it did not see that.".to_string()),
     }
@@ -80,7 +81,7 @@ pub async fn steer_conversation(app: tauri::AppHandle, conversation_id: String, 
 /// `PlanTransitions` is: by the time a `run_agent` call arrives, the assistant
 /// row, the project and the tool context are hundreds of lines behind.
 pub(crate) struct DesktopSubAgents {
-    pub app: tauri::AppHandle,
+    pub services: Services,
     pub pool: DbPool,
     pub secrets: Arc<SecretsManager>,
     pub registry: Arc<ToolRegistry>,
@@ -141,9 +142,9 @@ impl DesktopSubAgents {
             .open_conversation(&sub_conversation_id, &turn_id, &spec, &assistant)
             .await?;
 
-        let inbox_handle = self.app.state::<AppSubAgentInboxes>().open(&sub_conversation_id);
+        let inbox_handle = self.services.sub_agent_inboxes.open(&sub_conversation_id);
         let mut guard = ChildTurnGuard {
-            app: self.app.clone(),
+            services: self.services.clone(),
             conversation_id: sub_conversation_id.clone(),
             turn_id: turn_id.clone(),
             message_id: None,
@@ -156,7 +157,7 @@ impl DesktopSubAgents {
         // conversation to link to and no turn to count steps against for however
         // long the sub-agent takes, which is the whole time the user is looking
         // at it.
-        let _ = self.app.emit(
+        let _ = self.services.events.emit(
             "chat-stream",
             serde_json::json!({
                 "type": "sub_agent_started",
@@ -207,7 +208,7 @@ impl DesktopSubAgents {
         // Sent even when no assistant row was ever written. Anyone with the
         // child's conversation open is sitting on the streaming flag the
         // snapshot's `adoptLiveTurn` set for them, and with no stop it stays set.
-        let _ = self.app.emit(
+        let _ = self.services.events.emit(
             "chat-stream",
             serde_json::json!({
                 "type": "stop", "reason": outcome.stop_reason(), "done": true,
@@ -241,7 +242,7 @@ impl DesktopSubAgents {
     /// attaching here to the assistant row above it would open a branch that
     /// pushes the result off the active path.
     async fn persist_stranded(&self, sub_conversation_id: &str, turn_id: &str, final_cursor: Option<&str>) -> Stranded {
-        let leftover = self.app.state::<AppSubAgentInboxes>().close(sub_conversation_id);
+        let leftover = self.services.sub_agent_inboxes.close(sub_conversation_id);
         let mut stranded = Stranded {
             accepted: leftover.len(),
             unrecorded: 0,
@@ -490,7 +491,7 @@ impl DesktopSubAgents {
         // conversation — it does not even appear in the sidebar — so a question
         // left here would stall the run until someone cancelled it.
         let approvals = super::approval_adapter::DesktopApprovals {
-            app: self.app.clone(),
+            services: self.services.clone(),
             cancel: cancel.clone(),
             turn_id: turn_id.to_string(),
             conversation_id: sub_conversation_id.to_string(),
@@ -501,7 +502,7 @@ impl DesktopSubAgents {
                 sub_conversation_id: sub_conversation_id.to_string(),
             }),
         };
-        let emitter = SubAgentEmit(self.app.clone());
+        let emitter = SubAgentEmit(self.services.events.clone());
         let tool_context = tools::ToolContext {
             conversation_id: Some(sub_conversation_id.to_string()),
             cancel: cancel.clone(),
@@ -702,8 +703,10 @@ fn classify(outcome: &engine::TurnOutcome, cancel: &CancellationToken) -> SubAge
 ///
 /// Nobody has to have the child's conversation open — usually nobody does — so a
 /// send that fails is not the run failing. The parent's card is fed by the
-/// snapshot and by the tool result, neither of which is an event.
-struct SubAgentEmit(tauri::AppHandle);
+/// snapshot and by the tool result, neither of which is an event. That is why
+/// this swallows what `BusEmit` would report: the bus speaks for the window,
+/// which is critical for a turn the user is watching and irrelevant to this one.
+struct SubAgentEmit(crate::events::EventBus);
 
 impl engine::Emit for SubAgentEmit {
     fn emit(&self, channel: &str, payload: serde_json::Value) -> Result<(), String> {
@@ -723,7 +726,7 @@ impl engine::Emit for SubAgentEmit {
 /// kill, so leaving the row at `running` *is* the record; the epilogue writes
 /// the ending for every path that has one.
 struct ChildTurnGuard {
-    app: tauri::AppHandle,
+    services: Services,
     conversation_id: String,
     turn_id: String,
     message_id: Option<String>,
@@ -747,12 +750,12 @@ impl Drop for ChildTurnGuard {
         // The parent's guard sweeps by the parent's turn id and so cannot see
         // these. Left behind, they are cards whose buttons reach a receiver that
         // has gone.
-        self.app
-            .state::<ApprovalWaiters>()
+        self.services
+            .approvals
             .lock()
             .retain(|_, pending| pending.turn_id != self.turn_id);
         if self.inbox.take().is_some() {
-            let stranded = self.app.state::<AppSubAgentInboxes>().close(&self.conversation_id);
+            let stranded = self.services.sub_agent_inboxes.close(&self.conversation_id);
             if !stranded.is_empty() {
                 // Nothing can be written from here — a destructor may run while
                 // the runtime is going down. The count is the diagnosis; the
@@ -769,7 +772,7 @@ impl Drop for ChildTurnGuard {
         // occupied.
         self.lease.take();
         if self.armed {
-            let _ = self.app.emit(
+            let _ = self.services.events.emit(
                 "chat-stream",
                 serde_json::json!({
                     "type": "stop", "reason": "error", "done": true,

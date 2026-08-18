@@ -18,9 +18,7 @@ use tokio::sync::{Mutex, mpsc, oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::db::DbPool;
-use crate::mcp::McpRegistry;
-use crate::secrets::SecretsManager;
-use crate::tools::ToolRegistry;
+use crate::services::Services;
 use crate::turn::{Busy, TurnCoordinator, TurnLease, TurnOrigin};
 use crate::util::{get_conn, now_ms};
 
@@ -29,10 +27,7 @@ pub use qq_tools::catalog as qq_tool_catalog;
 use session::{SessionKey, SessionManager};
 
 pub struct SharedState {
-    pub pool: DbPool,
-    pub secrets: Arc<SecretsManager>,
-    pub tools: Arc<ToolRegistry>,
-    pub mcp: Arc<McpRegistry>,
+    pub services: Services,
     pub sessions: Mutex<SessionManager>,
     /// Tool calls waiting on a QQ reply. Behind its own `Arc` for the same
     /// reason as `session_states`: a turn that dies has to be able to retire
@@ -49,16 +44,7 @@ pub struct SharedState {
     /// be exercised — or tested — without a websocket server and a provider
     /// standing behind it.
     pub session_states: Arc<SessionStates>,
-    /// Shared with the desktop, not owned here. A QQ session's conversation is
-    /// an ordinary conversation row that the desktop can open and write to, so
-    /// "is anyone answering this" has to be one question with one answer.
-    ///
-    /// Passed in rather than read off `app_handle`, which is optional and — more
-    /// to the point — `start_onebot` rebuilds this whole struct, so anything
-    /// stored here resets when QQ restarts.
-    pub coordinator: Arc<TurnCoordinator>,
     pub config: OneBotConfig,
-    pub app_handle: Option<tauri::AppHandle>,
     /// (session, user) → the memory ids their last listing showed, in the order
     /// it showed them. Numbers only mean something against the listing they came
     /// from; see `MemoryListing`.
@@ -875,20 +861,11 @@ pub struct OneBotServer {
 }
 
 impl OneBotServer {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        pool: DbPool,
-        secrets: Arc<SecretsManager>,
-        tools: Arc<ToolRegistry>,
-        mcp: Arc<McpRegistry>,
-        coordinator: Arc<TurnCoordinator>,
-        config: OneBotConfig,
-        app_handle: Option<tauri::AppHandle>,
-    ) -> Self {
+    pub fn new(services: Services, config: OneBotConfig) -> Self {
         let (shutdown_tx, _) = watch::channel(false);
         Self {
             state: Arc::new(SharedState {
-                sessions: Mutex::new(SessionManager::new(pool.clone())),
+                sessions: Mutex::new(SessionManager::new(services.db.clone())),
                 pending_approvals: Arc::new(PendingApprovals::default()),
                 pending_api_responses: Mutex::new(HashMap::new()),
                 pending_requests: Mutex::new(HashMap::new()),
@@ -900,12 +877,7 @@ impl OneBotServer {
                 session_states: Arc::new(SessionStates::default()),
                 memory_listings: Mutex::new(HashMap::new()),
                 config,
-                pool,
-                secrets,
-                tools,
-                mcp,
-                coordinator,
-                app_handle,
+                services,
             }),
             shutdown_tx,
             running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -1190,37 +1162,34 @@ async fn handle_connection(
 }
 
 /// Called from Tauri setup to auto-start if enabled.
-pub async fn maybe_start(handle: tauri::AppHandle) {
-    use tauri::Manager;
-
-    let pool = handle.state::<crate::state::AppDb>().0.clone();
-    let config = load_config(&pool);
+pub(crate) async fn maybe_start(services: Services) {
+    let config = load_config(&services.db);
 
     if !config.enabled {
         tracing::info!("OneBot server disabled, skipping auto-start");
-        let server = OneBotServer::new(
-            pool,
-            handle.state::<crate::state::AppSecrets>().0.clone(),
-            handle.state::<crate::state::AppTools>().0.clone(),
-            handle.state::<crate::state::AppMcp>().0.clone(),
-            handle.state::<crate::state::AppTurns>().0.clone(),
-            config,
-            Some(handle.clone()),
-        );
-        handle.manage(AppOneBot(Arc::new(Mutex::new(server))));
+        let server = OneBotServer::new(services, config);
+        manage(server);
         return;
     }
 
-    let secrets = handle.state::<crate::state::AppSecrets>().0.clone();
-    let tools = handle.state::<crate::state::AppTools>().0.clone();
-    let mcp = handle.state::<crate::state::AppMcp>().0.clone();
-    let coordinator = handle.state::<crate::state::AppTurns>().0.clone();
-
-    let server = OneBotServer::new(pool, secrets, tools, mcp, coordinator, config, Some(handle.clone()));
+    let server = OneBotServer::new(services, config);
     if let Err(e) = server.start() {
         tracing::error!("Failed to auto-start OneBot server: {e}");
     }
-    handle.manage(AppOneBot(Arc::new(Mutex::new(server))));
+    manage(server);
+}
+
+/// Hand the server to Tauri, which is where the IPC commands look for it.
+///
+/// The only thing on this path that still needs the handle, and it is about
+/// registration rather than about the server: nothing inside `OneBotServer`
+/// knows a window exists.
+fn manage(server: OneBotServer) {
+    use tauri::Manager;
+
+    if let Some(handle) = crate::state::APP_HANDLE.get() {
+        handle.manage(AppOneBot(Arc::new(Mutex::new(server))));
+    }
 }
 
 pub struct AppOneBot(pub Arc<Mutex<OneBotServer>>);

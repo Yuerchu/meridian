@@ -1,18 +1,18 @@
 use std::path::PathBuf;
 
 use diesel::sqlite::SqliteConnection;
-use tauri::Manager;
 
+use crate::ServicesExt;
 use crate::agent::skills;
 use crate::db;
 use crate::db::models::skill::{NewSkill, Skill, SkillUpdate};
 use crate::db::models::skill_binding::SkillLayer;
 use crate::db::ops::skill_binding::MAX_BINDINGS_PER_ANCHOR;
-use crate::state::AppDb;
 use crate::util::{get_conn, now_ms};
 
 pub fn skills_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_data_dir().map_err(|e| e.to_string())?.join("skills");
+    let services = app.services();
+    let dir = services.paths.skills_root.clone();
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     Ok(dir)
 }
@@ -84,16 +84,16 @@ pub fn sync_index(conn: &mut SqliteConnection, root: &std::path::Path) -> Result
 
 #[tauri::command]
 pub fn list_skills(app: tauri::AppHandle) -> Result<Vec<Skill>, String> {
-    let pool = app.state::<AppDb>();
-    let mut conn = get_conn(&pool.0)?;
+    let services = app.services();
+    let mut conn = get_conn(&services.db)?;
     db::ops::skill::list_skills(&mut conn).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn rescan_skills(app: tauri::AppHandle) -> Result<Vec<Skill>, String> {
     let root = skills_root(&app)?;
-    let pool = app.state::<AppDb>();
-    let mut conn = get_conn(&pool.0)?;
+    let services = app.services();
+    let mut conn = get_conn(&services.db)?;
     sync_index(&mut conn, &root)
 }
 
@@ -119,8 +119,8 @@ pub fn create_skill(
     // can never drift apart.
     skills::write_skill_file(&root, &dir_name, &dir_name, &llm_description, &body)?;
 
-    let pool = app.state::<AppDb>();
-    let mut conn = get_conn(&pool.0)?;
+    let services = app.services();
+    let mut conn = get_conn(&services.db)?;
     sync_index(&mut conn, &root)?;
 
     if let Some(name) = display_name.filter(|n| !n.trim().is_empty()) {
@@ -150,8 +150,8 @@ pub struct SkillPatch {
 #[tauri::command]
 pub fn update_skill(app: tauri::AppHandle, dir_name: String, updates: SkillPatch) -> Result<Skill, String> {
     let root = skills_root(&app)?;
-    let pool = app.state::<AppDb>();
-    let mut conn = get_conn(&pool.0)?;
+    let services = app.services();
+    let mut conn = get_conn(&services.db)?;
     let current = db::ops::skill::get_skill(&mut conn, &dir_name).map_err(|e| e.to_string())?;
 
     if updates.llm_description.is_some() || updates.body.is_some() {
@@ -188,8 +188,8 @@ pub fn update_skill(app: tauri::AppHandle, dir_name: String, updates: SkillPatch
 #[tauri::command]
 pub fn delete_skill(app: tauri::AppHandle, dir_name: String) -> Result<(), String> {
     let root = skills_root(&app)?;
-    let pool = app.state::<AppDb>();
-    let mut conn = get_conn(&pool.0)?;
+    let services = app.services();
+    let mut conn = get_conn(&services.db)?;
 
     // Enforced here and not only in the UI: the frontend hiding a button is not
     // a guarantee, and a regenerated skill would reappear anyway.
@@ -218,8 +218,8 @@ pub fn list_skill_bindings(
     anchor_id: Option<String>,
 ) -> Result<Vec<String>, String> {
     let layer = parse_layer(&layer)?;
-    let pool = app.state::<AppDb>();
-    let mut conn = get_conn(&pool.0)?;
+    let services = app.services();
+    let mut conn = get_conn(&services.db)?;
     db::ops::skill_binding::list_layer(&mut conn, layer, anchor_id.as_deref()).map_err(|e| e.to_string())
 }
 
@@ -235,8 +235,8 @@ pub fn set_skill_binding(
     if layer != SkillLayer::Global && anchor_id.is_none() {
         return Err(format!("binding at the {} layer needs an anchor id", layer.as_str()));
     }
-    let pool = app.state::<AppDb>();
-    let mut conn = get_conn(&pool.0)?;
+    let services = app.services();
+    let mut conn = get_conn(&services.db)?;
 
     if bound {
         // Each binding costs context on every request, so the cap is per anchor

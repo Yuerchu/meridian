@@ -7,8 +7,9 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
-use tauri::Emitter;
 use tokio_util::sync::CancellationToken;
+
+use crate::events::EventBus;
 
 use super::{DEFAULT_MODEL_URL, models_dir};
 
@@ -41,12 +42,12 @@ fn part_path(app_data_dir: &Path) -> PathBuf {
 
 /// Download and install the model. Emits `voice-model-download` progress and a
 /// final `voice-model-download-done`; the caller only spawns and forgets.
-pub async fn run(app: tauri::AppHandle, app_data_dir: PathBuf, url: Option<String>, cancel: CancellationToken) {
+pub async fn run(events: EventBus, app_data_dir: PathBuf, url: Option<String>, cancel: CancellationToken) {
     let url = url
         .filter(|u| !u.trim().is_empty())
         .unwrap_or_else(|| DEFAULT_MODEL_URL.to_string());
     let result = tokio::select! {
-        r = fetch_and_install(&app, &app_data_dir, &url) => r,
+        r = fetch_and_install(&events, &app_data_dir, &url) => r,
         _ = cancel.cancelled() => Err("cancelled".to_string()),
     };
 
@@ -55,10 +56,10 @@ pub async fn run(app: tauri::AppHandle, app_data_dir: PathBuf, url: Option<Strin
         Ok(()) => serde_json::json!({ "ok": true }),
         Err(e) => serde_json::json!({ "ok": false, "error": e }),
     };
-    let _ = app.emit("voice-model-download-done", payload);
+    let _ = events.emit("voice-model-download-done", payload);
 }
 
-async fn fetch_and_install(app: &tauri::AppHandle, app_data_dir: &Path, url: &str) -> Result<(), String> {
+async fn fetch_and_install(events: &EventBus, app_data_dir: &Path, url: &str) -> Result<(), String> {
     let resp = http_client()?
         .get(url)
         .send()
@@ -86,7 +87,7 @@ async fn fetch_and_install(app: &tauri::AppHandle, app_data_dir: &Path, url: &st
         file.write_all(&chunk).map_err(|e| format!("Cannot write file: {e}"))?;
         if last_emit.elapsed() >= PROGRESS_INTERVAL {
             last_emit = Instant::now();
-            let _ = app.emit(
+            let _ = events.emit(
                 "voice-model-download",
                 serde_json::json!({ "downloaded": downloaded, "total": total }),
             );
@@ -96,7 +97,7 @@ async fn fetch_and_install(app: &tauri::AppHandle, app_data_dir: &Path, url: &st
     drop(file);
 
     // Final progress tick so the bar lands on 100% before the unpack pause.
-    let _ = app.emit(
+    let _ = events.emit(
         "voice-model-download",
         serde_json::json!({ "downloaded": downloaded, "total": total }),
     );

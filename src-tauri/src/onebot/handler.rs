@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use tauri::Emitter;
 use tokio::sync::oneshot;
 
 use super::agent::{self, ApprovalFn, TextNotifyFn};
@@ -457,7 +456,7 @@ pub(super) async fn run_agent_turn(
 
     let turn = match super::try_begin_turn(
         &state.session_states,
-        &state.coordinator,
+        &state.services.turns,
         session_key,
         &conversation_id,
         super::InboxItem {
@@ -488,7 +487,7 @@ pub(super) async fn run_agent_turn(
     // extraction pass that may write memories about them happens later, well
     // after this one has to be durable.
     {
-        let pool = state.pool.clone();
+        let pool = state.services.db.clone();
         let scope_id = sender.scope_id();
         let display = sender.nickname.clone();
         let protected = sender.is_admin;
@@ -521,10 +520,11 @@ pub(super) async fn run_agent_turn(
         session_key.clone(),
         turn,
         conversation_id.clone(),
-        state.app_handle.clone().map(|app| -> super::StopSink {
+        Some({
+            let events = state.services.events.clone();
             Box::new(move |payload| {
-                let _ = app.emit("chat-stream", payload);
-            })
+                let _ = events.emit("chat-stream", payload);
+            }) as super::StopSink
         }),
     );
     // The coordinator's, not one of our own: this is what a desktop Stop on a
@@ -541,7 +541,7 @@ pub(super) async fn run_agent_turn(
     // outside, so the duplicate case is unreachable here — but it is worth
     // hearing about if it ever stops being. Returning drops `running`, which
     // announces the end and hands both claims back.
-    if let Err(e) = running.open_record(&state.pool, self_id).await {
+    if let Err(e) = running.open_record(&state.services.db, self_id).await {
         tracing::error!(turn_id = %turn_id, error = %e, "OneBot turn id collided");
         return build_session_reply(session_key, "内部错误,请重试。", reply_to);
     }
@@ -562,10 +562,10 @@ pub(super) async fn run_agent_turn(
         let qq_tools = super::qq_tools::QqToolExecutor::new(state.clone(), session_key.clone(), round_is_admin);
 
         let outcome = agent::headless_chat(
-            &state.pool,
-            &state.secrets,
-            &state.tools,
-            &state.mcp,
+            &state.services.db,
+            &state.services.secrets,
+            &state.services.tools,
+            &state.services.mcp,
             &conversation_id,
             &turn_id,
             Some(project_id.as_str()),
@@ -576,16 +576,17 @@ pub(super) async fn run_agent_turn(
             &approval_fn,
             Some(&interim_text_fn),
             &cancel,
-            state.app_handle.as_ref(),
+            Some(&state.services),
             Some(&qq_tools),
             Some(&inbox),
-            Some(&state.coordinator),
+            Some(&state.services.turns),
         )
         .await;
 
-        if let Some(ref app) = state.app_handle {
-            let _ = app.emit("conversation-updated", serde_json::json!({"id": conversation_id}));
-        }
+        let _ = state
+            .services
+            .events
+            .emit("conversation-updated", serde_json::json!({"id": conversation_id}));
 
         let stop_reason = outcome.stop_reason();
         // Kept before the reply is consumed into a chat message: the turn's
@@ -643,7 +644,7 @@ pub(super) async fn run_agent_turn(
                     _ if cancel.is_cancelled() => (TurnStatus::Cancelled, None),
                     _ => (TurnStatus::Done, None),
                 };
-                crate::agent::turn_record::finish(&state.pool, &turn_id, status, error).await;
+                crate::agent::turn_record::finish(&state.services.db, &turn_id, status, error).await;
                 return actions;
             }
             Some(items) => {
@@ -854,7 +855,7 @@ async fn run_extraction_pass(
         .join("\n");
 
     let existing = {
-        let pool = state.pool.clone();
+        let pool = state.services.db.clone();
         let facts_ref = extract::TurnFacts {
             messages: messages.clone(),
             is_group,
@@ -891,7 +892,7 @@ async fn run_extraction_pass(
         }
     };
 
-    let proposals = match extract::run_extraction(&state.pool, &raw, facts).await {
+    let proposals = match extract::run_extraction(&state.services.db, &raw, facts).await {
         Ok(p) => p,
         Err(e) => {
             tracing::debug!("memory extraction produced nothing usable: {e}");
@@ -905,7 +906,7 @@ async fn run_extraction_pass(
 
     // Bot-wide memory changes how the bot behaves everywhere, so it waits for a
     // person. The notice goes to the operator privately, wherever it came from.
-    let pool = state.pool.clone();
+    let pool = state.services.db.clone();
     let ids = proposals.clone();
     let summaries = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().ok()?;
@@ -972,7 +973,7 @@ async fn dispatch_decision(
         command::DecisionTarget::MemoryProposal(id) => id,
     };
 
-    let pool = state.pool.clone();
+    let pool = state.services.db.clone();
     let approve = decision.approve;
     let outcome = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().ok()?;
@@ -1176,7 +1177,7 @@ async fn dispatch_memory(
         }
     }
 
-    let pool = state.pool.clone();
+    let pool = state.services.db.clone();
     let now = crate::util::now_ms();
 
     match sub {
@@ -1682,7 +1683,7 @@ async fn dispatch_new(
         }
     };
 
-    let _lease = match state.coordinator.try_acquire_mutation(&conversation_id, "a reset") {
+    let _lease = match state.services.turns.try_acquire_mutation(&conversation_id, "a reset") {
         Ok(lease) => lease,
         Err(busy) => {
             tracing::info!(
@@ -1727,7 +1728,11 @@ async fn dispatch_compact(
 
     // The check above only knows about this session's own turns. The desktop
     // can have the same conversation open and be compacting or answering in it.
-    let _lease = match state.coordinator.try_acquire_mutation(&conversation_id, "compaction") {
+    let _lease = match state
+        .services
+        .turns
+        .try_acquire_mutation(&conversation_id, "compaction")
+    {
         Ok(lease) => lease,
         Err(busy) => {
             tracing::info!(
@@ -1739,8 +1744,8 @@ async fn dispatch_compact(
         }
     };
 
-    let pool = &state.pool;
-    let secrets = &state.secrets;
+    let pool = &state.services.db;
+    let secrets = &state.services.secrets;
     let (assistant, keep_recent) = {
         let pool = pool.clone();
         let conv_id = conversation_id.clone();
@@ -1813,7 +1818,7 @@ async fn dispatch_model(
     };
 
     // Show current model info
-    let pool = pool_clone(&state.pool);
+    let pool = pool_clone(&state.services.db);
     let assistant_id = state.config.assistant_id.clone();
     let conv_id = conversation_id;
     let info = tokio::task::spawn_blocking(move || {
@@ -1868,7 +1873,7 @@ async fn dispatch_status(
         (cid, ovr)
     };
 
-    let pool = pool_clone(&state.pool);
+    let pool = pool_clone(&state.services.db);
     let assistant_id = state.config.assistant_id.clone();
     let conv_id = conversation_id;
     let info = tokio::task::spawn_blocking(move || {

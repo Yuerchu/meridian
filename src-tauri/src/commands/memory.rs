@@ -1,8 +1,6 @@
-use tauri::Manager;
-
+use crate::ServicesExt;
 use crate::db;
 use crate::db::models::memory::{DeletedBy, GLOBAL_SCOPE_ID, MemoryScope, Origin, Visibility};
-use crate::state::AppDb;
 use crate::util::now_ms;
 
 /// Resolve the (scope, scope_id) pair the desktop UI is addressing. The UI names
@@ -31,7 +29,8 @@ pub async fn list_memories(
     app: tauri::AppHandle,
     project_id: String,
 ) -> Result<Vec<db::models::memory::Memory>, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::memory::list_by_scope(&mut conn, MemoryScope::Project, &project_id).map_err(|e| e.to_string())
@@ -75,7 +74,8 @@ pub async fn save_memory_scoped(
     memory_type: Option<String>,
     owner_only: Option<bool>,
 ) -> Result<db::models::memory::Memory, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let (scope, scope_id) = resolve_scope(&scope, project_id.as_deref(), subject_scope_id.as_deref())?;
         let mut conn = pool.get().map_err(|e| e.to_string())?;
@@ -135,7 +135,8 @@ pub async fn update_memory(
     memory_type: Option<String>,
     owner_only: Option<bool>,
 ) -> Result<db::models::memory::Memory, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         if let Some(ref c) = content {
@@ -172,7 +173,8 @@ pub async fn delete_memory(app: tauri::AppHandle, id: String) -> Result<(), Stri
 /// same rows regardless of who removed them.
 #[tauri::command]
 pub async fn delete_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<usize, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::memory::soft_delete_memories(&mut conn, &ids, DeletedBy::Admin, now_ms()).map_err(|e| e.to_string())
@@ -186,7 +188,8 @@ pub async fn delete_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<
 /// return the bot-wide or per-person layers at all.
 #[tauri::command]
 pub async fn list_all_memories(app: tauri::AppHandle) -> Result<Vec<db::models::memory::Memory>, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::memory::list_all(&mut conn).map_err(|e| e.to_string())
@@ -197,7 +200,8 @@ pub async fn list_all_memories(app: tauri::AppHandle) -> Result<Vec<db::models::
 
 #[tauri::command]
 pub async fn list_memory_subjects(app: tauri::AppHandle) -> Result<Vec<db::models::memory::MemorySubject>, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::memory::list_subjects(&mut conn).map_err(|e| e.to_string())
@@ -208,7 +212,8 @@ pub async fn list_memory_subjects(app: tauri::AppHandle) -> Result<Vec<db::model
 
 #[tauri::command]
 pub async fn forget_memory_subject(app: tauri::AppHandle, subject_scope_id: String) -> Result<usize, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         // The operator can clear their own notes too; a person doing this to
@@ -227,7 +232,8 @@ pub async fn set_memory_subject_flags(
     is_pinned: Option<bool>,
     opted_out: Option<bool>,
 ) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::memory::set_subject_flags(&mut conn, &subject_scope_id, is_pinned, opted_out).map_err(|_| {
@@ -246,7 +252,8 @@ pub async fn list_memory_trash(
     app: tauri::AppHandle,
     limit: Option<i64>,
 ) -> Result<Vec<db::models::memory::Memory>, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::memory::list_trash(&mut conn, limit.unwrap_or(200)).map_err(|e| e.to_string())
@@ -257,7 +264,8 @@ pub async fn list_memory_trash(
 
 #[tauri::command]
 pub async fn restore_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<usize, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::memory::restore_memories(&mut conn, &ids, crate::util::now_ms()).map_err(|e| e.to_string())
@@ -268,7 +276,8 @@ pub async fn restore_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result
 
 #[tauri::command]
 pub async fn purge_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result<usize, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::memory::purge_memories(&mut conn, &ids).map_err(|e| e.to_string())

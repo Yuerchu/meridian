@@ -1,10 +1,9 @@
 use diesel::Connection;
-use tauri::Manager;
 
+use crate::ServicesExt;
 use crate::agent::extract_tool_calls_from_blocks;
 use crate::db;
 use crate::db::models::message::Message;
-use crate::state::{AppDb, AppTurns};
 
 /// The active path, the summary that applies to it, and where it can be paged.
 ///
@@ -131,8 +130,9 @@ pub async fn conversation_snapshot(
     app: tauri::AppHandle,
     conversation_id: String,
 ) -> Result<ConversationSnapshot, String> {
-    let coordinator = app.state::<AppTurns>().0.clone();
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let coordinator = services.turns.clone();
+    let pool = services.db.clone();
 
     let mut settled = None;
     for attempt in 0..SNAPSHOT_ATTEMPTS {
@@ -353,13 +353,13 @@ fn effective_status(turn: &db::models::turn::Turn, live: &OwnedLive) -> String {
 /// half-answer that command exists to replace.
 #[tauri::command]
 pub async fn switch_branch(app: tauri::AppHandle, conversation_id: String, message_id: String) -> Result<(), String> {
-    let _lease = app
-        .state::<AppTurns>()
-        .0
+    let services = app.services();
+    let _lease = services
+        .turns
         .clone()
         .try_acquire_mutation(&conversation_id, "a branch switch")
         .map_err(|busy| busy.to_string())?;
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::message::switch_branch(&mut conn, &conversation_id, &message_id)
@@ -395,13 +395,13 @@ pub async fn switch_branch(app: tauri::AppHandle, conversation_id: String, messa
 /// is not a state anything can be drawn from.
 #[tauri::command]
 pub async fn delete_message(app: tauri::AppHandle, conversation_id: String, id: String) -> Result<(), String> {
-    let _lease = app
-        .state::<AppTurns>()
-        .0
+    let services = app.services();
+    let _lease = services
+        .turns
         .clone()
         .try_acquire_mutation(&conversation_id, "a delete")
         .map_err(|busy| busy.to_string())?;
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::message::delete_subtree(&mut conn, &conversation_id, &id)
@@ -414,7 +414,8 @@ pub async fn delete_message(app: tauri::AppHandle, conversation_id: String, id: 
 
 #[tauri::command]
 pub async fn rate_message(app: tauri::AppHandle, id: String, rating: Option<i32>) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::message::update_rating(&mut conn, &id, rating).map_err(|e| e.to_string())
@@ -442,7 +443,8 @@ pub async fn export_conversation(
     format: String,
     output_path: Option<String>,
 ) -> Result<String, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     let result: String = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let conv = db::ops::conversation::get_conversation(&mut conn, &conversation_id).map_err(|e| e.to_string())?;
@@ -574,7 +576,8 @@ pub async fn upload_file(
     conversation_id: String,
     file_path: String,
 ) -> Result<serde_json::Value, String> {
-    let app_data_dir = app.path().app_data_dir().map_err(|e| e.to_string())?;
+    let services = app.services();
+    let app_data_dir = services.paths.data_dir.clone();
 
     // Android: handle content:// URIs from SAF file picker
     #[cfg(target_os = "android")]

@@ -1,5 +1,5 @@
+use crate::ServicesExt;
 use diesel::sqlite::SqliteConnection;
-use tauri::{Emitter, Manager};
 
 use crate::agent::{
     TokenBudget, TurnParamsInput, build_file_access, do_compact, file_access_prompt, instruction_budget,
@@ -9,7 +9,6 @@ use crate::db;
 use crate::db::DbPool;
 use crate::db::models::assistant::Assistant;
 use crate::db::models::conversation::Conversation;
-use crate::state::{AppDb, AppMcp, AppSecrets, AppTools, AppTurns, CompactBreakers};
 use crate::template;
 use crate::util::now_ms;
 
@@ -25,14 +24,14 @@ pub async fn compact(
     conversation_id: String,
     custom_instructions: Option<String>,
 ) -> Result<(), String> {
-    let _lease = app
-        .state::<AppTurns>()
-        .0
+    let services = app.services();
+    let _lease = services
+        .turns
         .clone()
         .try_acquire_mutation(&conversation_id, "compaction")
         .map_err(|busy| busy.to_string())?;
-    let pool = app.state::<AppDb>().0.clone();
-    let secrets = app.state::<AppSecrets>();
+    let pool = services.db.clone();
+    let secrets = services.secrets.clone();
 
     let (assistant, keep_recent) = {
         let pool = pool.clone();
@@ -53,17 +52,16 @@ pub async fn compact(
         .map_err(|e| e.to_string())??
     };
 
-    app.emit(
+    services.events.emit(
         "compact-start",
         serde_json::json!({
             "conversation_id": &conversation_id,
         }),
-    )
-    .map_err(|e| e.to_string())?;
+    )?;
 
     let result = do_compact(
         &pool,
-        &secrets.0,
+        &secrets,
         &conversation_id,
         assistant.as_ref(),
         keep_recent,
@@ -82,13 +80,12 @@ pub async fn compact(
         );
     }
 
-    app.emit(
+    services.events.emit(
         "compact-done",
         serde_json::json!({
             "conversation_id": &conversation_id,
         }),
-    )
-    .map_err(|e| e.to_string())?;
+    )?;
 
     result?;
     Ok(())
@@ -101,7 +98,7 @@ pub async fn compact(
 
 #[tauri::command]
 pub async fn list_conversations(app: tauri::AppHandle, archived: bool) -> Result<Vec<Conversation>, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::list_conversations(&mut conn, archived).map_err(|e| e.to_string())
@@ -116,7 +113,7 @@ pub async fn create_conversation(
     title: Option<String>,
     project_id: Option<String>,
 ) -> Result<Conversation, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
@@ -142,7 +139,7 @@ pub async fn set_conversation_assistant(
     id: String,
     assistant_id: Option<String>,
 ) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::update_assistant(&mut conn, &id, assistant_id.as_deref(), now_ms())
@@ -159,7 +156,7 @@ pub async fn set_conversation_reasoning_prefs(
     thinking_level: Option<String>,
     fast_mode: bool,
 ) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::update_reasoning_prefs(&mut conn, &id, thinking_level.as_deref(), fast_mode, now_ms())
@@ -174,7 +171,7 @@ pub async fn set_conversation_reasoning_prefs(
 /// a mode removed in a later build cannot strand a conversation.
 #[tauri::command]
 pub async fn set_conversation_mode(app: tauri::AppHandle, id: String, mode: Option<String>) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::update_mode(&mut conn, &id, mode.as_deref(), now_ms()).map_err(|e| e.to_string())
@@ -196,7 +193,7 @@ pub async fn set_conversation_accept_edits(
     id: String,
     accept_edits: bool,
 ) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::update_accept_edits(&mut conn, &id, accept_edits, now_ms()).map_err(|e| e.to_string())
@@ -207,7 +204,7 @@ pub async fn set_conversation_accept_edits(
 
 #[tauri::command]
 pub async fn update_conversation_title(app: tauri::AppHandle, id: String, title: String) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::update_title(&mut conn, &id, &title, now_ms()).map_err(|e| e.to_string())
@@ -218,7 +215,7 @@ pub async fn update_conversation_title(app: tauri::AppHandle, id: String, title:
 
 #[tauri::command]
 pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Result<Conversation, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::toggle_pin(&mut conn, &id, now_ms()).map_err(|e| e.to_string())
@@ -237,8 +234,8 @@ pub async fn toggle_pin_conversation(app: tauri::AppHandle, id: String) -> Resul
 /// until then this refuses rather than races.
 #[tauri::command]
 pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let coordinator = app.state::<AppTurns>().0.clone();
-    let pool = app.state::<AppDb>().0.clone();
+    let coordinator = app.services().turns.clone();
+    let pool = app.services().db.clone();
 
     // This one first, and on its own. A delegated run is started from inside a
     // turn on this conversation, and a turn cannot exist while a mutation holds
@@ -264,17 +261,11 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
         .try_acquire_mutations(&doomed, "a delete")
         .map_err(|busy| busy.to_string())?;
 
-    let attachment_dirs: Vec<std::path::PathBuf> = app
-        .path()
-        .app_data_dir()
-        .ok()
-        .map(|d| {
-            std::iter::once(&id)
-                .chain(doomed.iter())
-                .map(|c| crate::files::conversation_files_dir(&d, c))
-                .collect()
-        })
-        .unwrap_or_default();
+    let services = app.services();
+    let attachment_dirs: Vec<std::path::PathBuf> = std::iter::once(&id)
+        .chain(doomed.iter())
+        .map(|c| crate::files::conversation_files_dir(&services.paths.data_dir, c))
+        .collect();
 
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
@@ -384,8 +375,8 @@ async fn assemble_system_prompt(
 ) -> (String, String) {
     // Off the published snapshot, so the context estimator cannot be blocked by
     // a server that is busy answering something else.
-    let mcp_defs = app.state::<AppMcp>().0.tool_definitions().as_ref().clone();
-    let registry = app.state::<AppTools>().0.clone();
+    let mcp_defs = app.services().mcp.tool_definitions().as_ref().clone();
+    let registry = app.services().tools.clone();
     let instruction_block = {
         let budget = instruction_budget(context_limit);
         if budget > 0 {
@@ -446,8 +437,9 @@ async fn assemble_system_prompt(
 
 #[tauri::command]
 pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) -> Result<ContextInfo, String> {
-    let pool = app.state::<AppDb>().0.clone();
-    let secrets = app.state::<AppSecrets>();
+    let services = app.services();
+    let pool = services.db.clone();
+    let secrets = services.secrets.clone();
 
     let (assistant, ctx, project_path, project_id, conv_mode, agent_kind) = {
         let pool = pool.clone();
@@ -494,7 +486,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
     // the one the compaction check actually compares against.
     let (provider_type, model, turn) = {
         let pool2 = pool.clone();
-        let secrets2 = secrets.0.clone();
+        let secrets2 = secrets.clone();
         let assistant2 = assistant.clone();
         tokio::task::spawn_blocking(move || {
             let crate::agent::ResolvedProvider {
@@ -546,9 +538,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
     // nothing is excluded, and an interrupted turn before this one would be
     // reported to it. Reading costs nothing — only a request that reaches a
     // provider marks anything as told, and an estimate sends none.
-    let interrupted_block =
-        crate::agent::interrupted::load_block(&pool, &app.state::<crate::state::AppTurns>().0, &conversation_id, "")
-            .await;
+    let interrupted_block = crate::agent::interrupted::load_block(&pool, &services.turns, &conversation_id, "").await;
 
     // Mirrors the chat path exactly, background blocks included, so the figure
     // the UI shows covers what a turn actually sends.
@@ -573,8 +563,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
     let estimated_tokens = budget.counter.count_messages(&msgs);
 
     let cb_state = {
-        let breakers = app.state::<CompactBreakers>();
-        let map = breakers.0.lock().await;
+        let map = services.compact_breakers.lock().await;
         map.get(&conversation_id)
             .map(|cb| cb.state_label().to_string())
             .unwrap_or_else(|| "closed".to_string())
@@ -598,7 +587,7 @@ pub async fn list_conversations_by_project(
     project_id: String,
     archived: bool,
 ) -> Result<Vec<Conversation>, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let pool = app.services().db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::list_conversations_by_project(&mut conn, &project_id, archived)

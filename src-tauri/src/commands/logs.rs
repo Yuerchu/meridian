@@ -4,11 +4,9 @@
 //! `read_app_logs` tool so the panel and the assistant never disagree about what
 //! the log says.
 
-use tauri::Manager;
-
+use crate::ServicesExt;
 use crate::db;
 use crate::logging::{self, reader};
-use crate::state::AppDb;
 use crate::util::now_ms;
 
 /// Arguments from the panel. Every field is optional so the frontend can send
@@ -90,7 +88,8 @@ pub struct LogSettings {
 
 #[tauri::command]
 pub async fn get_log_settings(app: tauri::AppHandle) -> Result<LogSettings, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     let level = tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().ok()?;
         db::ops::preference::get_preference(&mut conn, logging::LEVEL_PREFERENCE_KEY)
@@ -117,7 +116,8 @@ pub async fn get_log_settings(app: tauri::AppHandle) -> Result<LogSettings, Stri
 pub async fn set_log_level(app: tauri::AppHandle, level: String) -> Result<(), String> {
     logging::set_level(&level)?;
 
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::preference::set_preference(&mut conn, logging::LEVEL_PREFERENCE_KEY, &level, now_ms())

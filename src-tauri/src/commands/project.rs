@@ -1,12 +1,11 @@
-use tauri::Manager;
-
+use crate::ServicesExt;
 use crate::db;
-use crate::state::AppDb;
 use crate::util::now_ms;
 
 #[tauri::command]
 pub async fn list_projects(app: tauri::AppHandle) -> Result<Vec<db::models::project::Project>, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::project::list_projects(&mut conn).map_err(|e| e.to_string())
@@ -25,7 +24,8 @@ pub async fn create_project(
     assistant_id: Option<String>,
     description: Option<String>,
 ) -> Result<db::models::project::Project, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         let id = uuid::Uuid::new_v4().to_string();
@@ -60,7 +60,8 @@ pub async fn update_project(
     assistant_id: Option<String>,
     description: Option<String>,
 ) -> Result<db::models::project::Project, String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::project::update_project(
@@ -82,7 +83,8 @@ pub async fn update_project(
 
 #[tauri::command]
 pub async fn delete_project(app: tauri::AppHandle, id: String) -> Result<(), String> {
-    let pool = app.state::<AppDb>().0.clone();
+    let services = app.services();
+    let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::project::delete_project(&mut conn, &id).map_err(|e| e.to_string())
