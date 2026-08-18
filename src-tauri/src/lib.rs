@@ -2,6 +2,10 @@
 mod android_bridge;
 mod commands;
 mod platform;
+/// Serving another device. Desktop only: Android is the client here, never the
+/// host.
+#[cfg(not(target_os = "android"))]
+mod remote;
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -100,6 +104,15 @@ pub fn run() {
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
                     handle.manage(meridian_core::hooks::maybe_start(services).await);
+                });
+            }
+
+            #[cfg(not(target_os = "android"))]
+            {
+                let services = services.clone();
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    handle.manage(remote::maybe_start(services).await);
                 });
             }
 
@@ -271,6 +284,20 @@ pub fn run() {
             commands::hooks::start_hooks,
             #[cfg(not(target_os = "android"))]
             commands::hooks::stop_hooks,
+            #[cfg(not(target_os = "android"))]
+            commands::remote::get_listen_status,
+            #[cfg(not(target_os = "android"))]
+            commands::remote::get_listen_config,
+            #[cfg(not(target_os = "android"))]
+            commands::remote::save_listen_config,
+            #[cfg(not(target_os = "android"))]
+            commands::remote::start_listen,
+            #[cfg(not(target_os = "android"))]
+            commands::remote::stop_listen,
+            #[cfg(not(target_os = "android"))]
+            commands::remote::regenerate_listen_token,
+            #[cfg(not(target_os = "android"))]
+            commands::remote::get_listen_addresses,
             commands::dev::voice_probe_echo,
             // Model management and prewarming are the same on both platforms.
             commands::voice::voice_prewarm,

@@ -18,6 +18,8 @@ pub mod preference;
 pub mod project;
 pub mod prompt_template;
 pub mod provider;
+#[cfg(not(target_os = "android"))]
+pub mod remote;
 pub mod secret;
 pub mod skill;
 pub mod sub_agent;

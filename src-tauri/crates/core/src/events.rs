@@ -36,8 +36,6 @@ pub trait EventSink: Send + Sync {
 pub struct SinkId(u64);
 
 struct SinkEntry {
-    /// Read only by `unregister`, which nothing calls yet — see there.
-    #[allow(dead_code)]
     id: SinkId,
     sink: Arc<dyn EventSink>,
     /// Whether this sink failing is the emitting turn's problem. True for the
@@ -70,13 +68,11 @@ impl EventBus {
         id
     }
 
-    /// Kept though nothing calls it yet. Every sink registered today lives as
-    /// long as the process, so the asymmetry is invisible — but a registry that
-    /// only grows is a leak waiting for the first sink that ends early, which is
-    /// the socket server: it stops when the user turns listening off, and a
-    /// fan-out left behind would queue for connections that are gone.
-    #[allow(dead_code)]
-    pub(crate) fn unregister(&self, id: SinkId) {
+    /// Stop delivering to a sink that has outlived its purpose. Remote access
+    /// is the caller: it stops when the user turns listening off, and a fan-out
+    /// left registered would be handed every event in the app for the rest of
+    /// the process's life, queueing for connections that are gone.
+    pub fn unregister(&self, id: SinkId) {
         self.lock().retain(|entry| entry.id != id);
     }
 

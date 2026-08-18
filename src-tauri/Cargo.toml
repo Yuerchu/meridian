@@ -50,6 +50,21 @@ android-keyring = { version = "0.2", features = ["ndk-context"] }
 jni = "0.21"
 ndk-context = "0.1"
 
+# Remote access: the desktop is the server and a phone is the client, so this
+# whole surface is absent on Android.
+#
+# axum rather than the bare hyper the hook endpoint uses. That choice was argued
+# in this file on the grounds that two routes did not justify pulling in a
+# router; this is six routes, a websocket upgrade, multipart, streamed files and
+# a CORS preflight, and writing those by hand costs more than the dependency.
+# The hook endpoint stays on hyper: migrating it buys nothing and would put a
+# working gate in the blast radius.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+axum = { version = "0.8", features = ["ws", "multipart"] }
+tower-http = { version = "0.6", features = ["cors"] }
+# For `WebSocket::split`: reading and writing one socket concurrently.
+futures = { version = "0.3", default-features = false, features = ["std"] }
+
 [dev-dependencies]
 # `test_db` is behind a feature rather than `cfg(test)`: the shell's tests are a
 # different crate, so the core's own test configuration is invisible to them.
