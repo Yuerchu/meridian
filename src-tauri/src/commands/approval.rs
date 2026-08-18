@@ -1,7 +1,7 @@
 use tauri::Manager;
 
-use crate::agent::engine::ApprovalDecision;
-use crate::state::ApprovalWaiters;
+use meridian_core::agent::engine::ApprovalDecision;
+use meridian_core::state::ApprovalWaiters;
 
 /// Hand a decision to the turn waiting on it.
 ///
@@ -110,7 +110,7 @@ pub(crate) fn pending_for(app: &tauri::AppHandle, conversation_id: &str) -> Vec<
 /// different in each — is worth pinning down without a running application
 /// around it.
 fn views_for(
-    map: &std::collections::HashMap<String, crate::state::PendingApproval>,
+    map: &std::collections::HashMap<String, meridian_core::state::PendingApproval>,
     conversation_id: &str,
 ) -> Vec<PendingApprovalInfo> {
     let mut out = Vec::new();
@@ -156,7 +156,7 @@ fn views_for(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{Bubble, PendingApproval};
+    use meridian_core::state::{Bubble, PendingApproval};
     use std::collections::HashMap;
 
     /// One approval in the register, as a delegated run would leave it.

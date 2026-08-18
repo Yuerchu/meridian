@@ -1,7 +1,7 @@
 use tauri::Manager;
 
 use crate::ServicesExt;
-use crate::hooks;
+use meridian_core::hooks;
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]

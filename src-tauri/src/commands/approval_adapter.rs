@@ -10,11 +10,11 @@
 use tokio::sync::oneshot;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::engine::{self, ApprovalDecision};
-use crate::db::models::turn::TurnPhase;
-use crate::provider;
-use crate::services::Services;
-use crate::state::Bubble;
+use meridian_core::agent::engine::{self, ApprovalDecision};
+use meridian_core::db::models::turn::TurnPhase;
+use meridian_core::provider;
+use meridian_core::services::Services;
+use meridian_core::state::Bubble;
 
 /// The desktop's way of asking: a card in the window, and a wait that ends when
 /// the user answers or the turn is cancelled.
@@ -75,7 +75,7 @@ impl DesktopApprovals {
         {
             services.approvals.lock().insert(
                 approval_id.clone(),
-                crate::state::PendingApproval {
+                meridian_core::state::PendingApproval {
                     conversation_id: self.conversation_id.clone(),
                     turn_id: self.turn_id.clone(),
                     assistant_message_id: message_id.to_string(),

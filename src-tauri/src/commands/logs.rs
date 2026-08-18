@@ -5,9 +5,9 @@
 //! the log says.
 
 use crate::ServicesExt;
-use crate::db;
-use crate::logging::{self, reader};
-use crate::util::now_ms;
+use meridian_core::db;
+use meridian_core::logging::{self, reader};
+use meridian_core::util::now_ms;
 
 /// Arguments from the panel. Every field is optional so the frontend can send
 /// only what the user actually chose.

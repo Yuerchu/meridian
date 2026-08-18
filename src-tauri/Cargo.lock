@@ -2962,8 +2962,32 @@ dependencies = [
 name = "meridian"
 version = "0.2.0"
 dependencies = [
- "age",
  "android-keyring",
+ "async-trait",
+ "base64 0.22.1",
+ "diesel",
+ "jni",
+ "meridian-core",
+ "mime_guess",
+ "ndk-context",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-notification",
+ "tauri-plugin-shell",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "meridian-core"
+version = "0.2.0"
+dependencies = [
+ "age",
  "anyhow",
  "async-trait",
  "base64 0.22.1",
@@ -3001,11 +3025,6 @@ dependencies = [
  "sherpa-onnx",
  "strum",
  "tar",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-notification",
- "tauri-plugin-shell",
  "tempfile",
  "thiserror 2.0.19",
  "tiktoken",

@@ -1,9 +1,9 @@
 use diesel::Connection;
 
 use crate::ServicesExt;
-use crate::agent::extract_tool_calls_from_blocks;
-use crate::db;
-use crate::db::models::message::Message;
+use meridian_core::agent::extract_tool_calls_from_blocks;
+use meridian_core::db;
+use meridian_core::db::models::message::Message;
 
 /// The active path, the summary that applies to it, and where it can be paged.
 ///
@@ -238,7 +238,7 @@ async fn read_off_thread(pool: &db::DbPool, conversation_id: &str, live: Live<'_
 /// own conversation.
 #[derive(Clone)]
 enum Live<'a> {
-    Holding(&'a [crate::turn::Observed]),
+    Holding(&'a [meridian_core::turn::Observed]),
     /// It kept moving. No row is called interrupted on this pass.
     Unsettled,
 }
@@ -272,7 +272,7 @@ impl OwnedLive {
     fn cut_off(&self, turn: &db::models::turn::Turn) -> bool {
         match self {
             OwnedLive::Holding(held) => match held.get(&turn.conversation_id) {
-                Some(h) => crate::agent::interrupted::was_cut_off(turn, h.as_deref()),
+                Some(h) => meridian_core::agent::interrupted::was_cut_off(turn, h.as_deref()),
                 None => false,
             },
             OwnedLive::Unsettled => false,
@@ -582,15 +582,15 @@ pub async fn upload_file(
     // Android: handle content:// URIs from SAF file picker
     #[cfg(target_os = "android")]
     if file_path.starts_with("content://") {
-        let stat = crate::android_bridge::content_stat(&file_path).await?;
+        let stat = meridian_core::android_bridge::content_stat(&file_path).await?;
         let original_name = stat.name.unwrap_or_else(|| "file".to_string());
         let ext = original_name
             .rsplit('.')
             .next()
             .filter(|e| e.len() <= 10 && !e.contains('/'))
             .unwrap_or("bin");
-        let (dest_path, uri) = crate::files::alloc_dest(&app_data_dir, &conversation_id, ext)?;
-        crate::android_bridge::content_copy(&file_path, dest_path.to_str().ok_or("invalid path")?).await?;
+        let (dest_path, uri) = meridian_core::files::alloc_dest(&app_data_dir, &conversation_id, ext)?;
+        meridian_core::android_bridge::content_copy(&file_path, dest_path.to_str().ok_or("invalid path")?).await?;
         let mime = stat.mime.unwrap_or_else(|| {
             mime_guess::from_path(&original_name)
                 .first_or_octet_stream()
@@ -611,7 +611,7 @@ pub async fn upload_file(
     }
 
     let src = std::path::Path::new(&file_path);
-    let uri = crate::files::store_file(&app_data_dir, &conversation_id, src)?;
+    let uri = meridian_core::files::store_file(&app_data_dir, &conversation_id, src)?;
 
     let mime = mime_guess::from_path(src).first_or_octet_stream().to_string();
     let name = src.file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
@@ -634,14 +634,14 @@ pub async fn upload_file(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::db::models::turn::{TurnPhase, TurnStatus};
-    use crate::db::ops::turn;
-    use crate::db::test_db;
-    use crate::turn::TurnOrigin;
+    use meridian_core::db::models::turn::{TurnPhase, TurnStatus};
+    use meridian_core::db::ops::turn;
+    use meridian_core::db::test_db;
+    use meridian_core::turn::TurnOrigin;
 
-    fn seed(pool: &crate::db::DbPool) {
+    fn seed(pool: &meridian_core::db::DbPool) {
         let mut conn = pool.get().unwrap();
-        crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1).unwrap();
+        meridian_core::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 1).unwrap();
     }
 
     fn exported_row(role: &str, content: &str) -> Message {
@@ -700,7 +700,7 @@ mod tests {
         )
     }
 
-    fn snapshot(pool: &crate::db::DbPool, held: Option<&str>) -> Vec<TurnView> {
+    fn snapshot(pool: &meridian_core::db::DbPool, held: Option<&str>) -> Vec<TurnView> {
         let mut conn = pool.get().unwrap();
         read_snapshot(&mut conn, "c1", &holding("c1", held)).unwrap().2
     }
@@ -708,7 +708,7 @@ mod tests {
     /// When the coordinator will not hold still, nothing is called interrupted.
     /// A crash that really happened is still on record at the next open; a live
     /// turn labelled as crashed is a lie the user reads now.
-    fn unsettled(pool: &crate::db::DbPool) -> Vec<TurnView> {
+    fn unsettled(pool: &meridian_core::db::DbPool) -> Vec<TurnView> {
         let mut conn = pool.get().unwrap();
         read_snapshot(&mut conn, "c1", &OwnedLive::Unsettled).unwrap().2
     }
@@ -795,8 +795,8 @@ mod tests {
         {
             let mut conn = pool.get().unwrap();
             turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-            diesel::update(crate::db::schema::turns::table.find("t1"))
-                .set(crate::db::schema::turns::status.eq("from_the_future"))
+            diesel::update(meridian_core::db::schema::turns::table.find("t1"))
+                .set(meridian_core::db::schema::turns::status.eq("from_the_future"))
                 .execute(&mut conn)
                 .unwrap();
         }
@@ -841,9 +841,9 @@ mod tests {
         {
             let mut conn = pool.get().unwrap();
             turn::begin(&mut conn, "t1", "c1", TurnOrigin::Desktop, None, 1000).unwrap();
-            crate::db::ops::message::append_message(
+            meridian_core::db::ops::message::append_message(
                 &mut conn,
-                &crate::db::models::message::NewMessage {
+                &meridian_core::db::models::message::NewMessage {
                     id: "m1",
                     conversation_id: "c1",
                     role: "user",
@@ -893,13 +893,13 @@ mod tests {
     /// spinning on the card for ever.
     #[test]
     fn a_child_that_stopped_without_saying_so_is_judged_against_its_own_conversation() {
-        let pool = crate::db::test_db();
+        let pool = meridian_core::db::test_db();
         seed(&pool);
         let mut conn = pool.get().unwrap();
 
-        crate::db::ops::conversation::insert(
+        meridian_core::db::ops::conversation::insert(
             &mut conn,
-            crate::db::models::conversation::NewConversation {
+            meridian_core::db::models::conversation::NewConversation {
                 id: "child",
                 title: Some("look it up"),
                 created_at: 10,
@@ -913,7 +913,7 @@ mod tests {
             },
         )
         .unwrap();
-        crate::db::ops::turn::begin(&mut conn, "t-child", "child", TurnOrigin::SubAgent, None, 10).unwrap();
+        meridian_core::db::ops::turn::begin(&mut conn, "t-child", "child", TurnOrigin::SubAgent, None, 10).unwrap();
 
         // The parent is being read while it holds its own turn. Nobody holds the
         // child's, so the child's `running` row is a run that stopped.

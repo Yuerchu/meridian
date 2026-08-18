@@ -1,5 +1,5 @@
 use crate::ServicesExt;
-use crate::db;
+use meridian_core::db;
 
 /// The checklist the model is currently working through, if any. The chat view
 /// rebuilds its status bar from this after a reload or a conversation switch,

@@ -1,10 +1,10 @@
 use crate::ServicesExt;
-use crate::db;
-use crate::db::models::custom_tool::{CustomTool, CustomToolUpdate, NewCustomTool};
-use crate::db::models::tool_category::ToolCategory;
-use crate::db::models::tool_preset::{NewToolPreset, ToolPreset, ToolPresetUpdate};
-use crate::secrets::{SecretName, SecretScope};
-use crate::util::{double_option, get_conn, now_ms};
+use meridian_core::db;
+use meridian_core::db::models::custom_tool::{CustomTool, CustomToolUpdate, NewCustomTool};
+use meridian_core::db::models::tool_category::ToolCategory;
+use meridian_core::db::models::tool_preset::{NewToolPreset, ToolPreset, ToolPresetUpdate};
+use meridian_core::secrets::{SecretName, SecretScope};
+use meridian_core::util::{double_option, get_conn, now_ms};
 
 /// Rebuild the runtime registry's custom tool set from the DB so permission
 /// changes, disables and deletions apply immediately, not on next restart.
@@ -25,8 +25,8 @@ fn reload_custom_tools(app: &tauri::AppHandle) {
             services.tools.set_custom_tools(
                 list.iter()
                     .map(|ct| {
-                        std::sync::Arc::new(crate::tools::custom::CustomToolExecutor::from_db(ct))
-                            as std::sync::Arc<dyn crate::tools::Tool>
+                        std::sync::Arc::new(meridian_core::tools::custom::CustomToolExecutor::from_db(ct))
+                            as std::sync::Arc<dyn meridian_core::tools::Tool>
                     })
                     .collect(),
             );

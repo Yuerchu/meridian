@@ -1,7 +1,7 @@
 use crate::ServicesExt;
-use crate::db;
-use crate::db::models::model_config::{ModelConfig, ModelConfigInput, NewModelConfig};
-use crate::util::{get_conn, now_ms};
+use meridian_core::db;
+use meridian_core::db::models::model_config::{ModelConfig, ModelConfigInput, NewModelConfig};
+use meridian_core::util::{get_conn, now_ms};
 
 #[tauri::command]
 pub async fn list_model_configs(app: tauri::AppHandle, provider_id: String) -> Result<Vec<ModelConfig>, String> {

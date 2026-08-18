@@ -2,25 +2,25 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::ServicesExt;
-use crate::agent::engine;
-use crate::agent::turn_record;
-use crate::agent::{
+use meridian_core::agent::engine;
+use meridian_core::agent::turn_record;
+use meridian_core::agent::{
     CompactCircuitBreaker, TokenBudget, build_file_access, build_messages_with_senders, do_compact, file_access_prompt,
     instruction_budget, load_project_instructions, microcompact, resolve_file_uris_in_messages, trailing_with_memory,
     trim_to_context_limit,
 };
-use crate::db;
-use crate::db::DbPool;
-use crate::db::models::assistant::Assistant;
-use crate::db::models::message::NewMessage;
-use crate::db::models::turn::{ERROR_LOOP_DETECTED, TurnPhase, TurnStatus};
-use crate::provider;
-use crate::provider::{ChatMessage, ChatParams};
-use crate::services::Services;
-use crate::template;
-use crate::tools;
-use crate::turn::{TurnLease, TurnOrigin};
-use crate::util::{get_conn, now_ms, take_bytes_at_char_boundary};
+use meridian_core::db;
+use meridian_core::db::DbPool;
+use meridian_core::db::models::assistant::Assistant;
+use meridian_core::db::models::message::NewMessage;
+use meridian_core::db::models::turn::{ERROR_LOOP_DETECTED, TurnPhase, TurnStatus};
+use meridian_core::provider;
+use meridian_core::provider::{ChatMessage, ChatParams};
+use meridian_core::services::Services;
+use meridian_core::template;
+use meridian_core::tools;
+use meridian_core::turn::{TurnLease, TurnOrigin};
+use meridian_core::util::{get_conn, now_ms, take_bytes_at_char_boundary};
 
 /// Everything a mid-turn mode switch needs that the loop does not carry.
 ///
@@ -44,27 +44,27 @@ struct PlanTransitions {
     /// Same reason again. Re-reading it here would let a mode switch hand out —
     /// or take away — the ability to delegate, and change which models it may
     /// reach, in the middle of a turn.
-    sub_agents: crate::agent::sub_agents::SubAgentCatalog,
+    sub_agents: meridian_core::agent::sub_agents::SubAgentCatalog,
 }
 
 #[async_trait::async_trait]
-impl crate::agent::engine::Transitions for PlanTransitions {
+impl meridian_core::agent::engine::Transitions for PlanTransitions {
     async fn rebuild(
         &self,
-        mode: &'static crate::agent::modes::ModeSpec,
-    ) -> Result<Result<crate::agent::turn_config::TurnConfig, String>, String> {
+        mode: &'static meridian_core::agent::modes::ModeSpec,
+    ) -> Result<Result<meridian_core::agent::turn_config::TurnConfig, String>, String> {
         // Read here rather than reused from the top of the turn: a server that
         // finished connecting since then belongs in the tool set the user just
         // agreed to.
         let mcp_defs = self.services.mcp.tool_definitions().as_ref().clone();
         let pool = self.pool.clone();
         let registry = self.registry.clone();
-        let input = crate::agent::turn_config::TurnConfigInput {
+        let input = meridian_core::agent::turn_config::TurnConfigInput {
             assistant: self.assistant.clone(),
             conversation_id: self.conversation_id.clone(),
             project_id: self.project_id.clone(),
             // This type exists to answer the question, so the answer is yes.
-            mode: crate::agent::modes::Modes::Switchable(mode),
+            mode: meridian_core::agent::modes::Modes::Switchable(mode),
             // The turn's own, carried rather than resolved again.
             sub_agents: Some(self.sub_agents.clone()),
             mcp_defs,
@@ -74,7 +74,7 @@ impl crate::agent::engine::Transitions for PlanTransitions {
         };
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            Ok::<_, String>(crate::agent::turn_config::resolve(&mut conn, &registry, input))
+            Ok::<_, String>(meridian_core::agent::turn_config::resolve(&mut conn, &registry, input))
         })
         .await
         .map_err(|e| e.to_string())
@@ -324,7 +324,7 @@ async fn chat_inner(
     let pool = services.db.clone();
     // Every stream event this turn sends goes through here. The bus is an `Arc`
     // inside, so the clone is a refcount bump.
-    let emitter = crate::events::BusEmit(services.events.clone());
+    let emitter = meridian_core::events::BusEmit(services.events.clone());
 
     // Names this run of the turn, as opposed to the conversation it belongs to
     // or the assistant row it is currently writing (which changes every
@@ -441,7 +441,7 @@ async fn chat_inner(
         let model_override = model_override.clone();
         let provider_override = provider_override.clone();
         tokio::task::spawn_blocking(move || {
-            crate::agent::resolve_with_overrides(
+            meridian_core::agent::resolve_with_overrides(
                 &secrets2,
                 &pool2,
                 assistant2.as_ref(),
@@ -518,8 +518,10 @@ async fn chat_inner(
     }
     let system_prompt_resolved = template::resolve(raw_prompt, &tmpl_ctx);
     let context_limit = assistant.as_ref().map(|a| a.context_limit as usize).unwrap_or(128000);
-    let memory_request =
-        crate::agent::MemoryRequest::desktop(project_id.clone(), crate::agent::memory_budget(context_limit));
+    let memory_request = meridian_core::agent::MemoryRequest::desktop(
+        project_id.clone(),
+        meridian_core::agent::memory_budget(context_limit),
+    );
     // How the previous turns stopped, for any that did not stop cleanly. Read
     // here rather than at the top because it is background about the
     // conversation, like the memory block, and travels the same way.
@@ -528,7 +530,8 @@ async fn chat_inner(
     // the end: reading the record settles nothing, and neither does sending a
     // request, since this turn may die on the way out or be refused over SSE
     // by a provider that already answered 200.
-    let interrupted = crate::agent::interrupted::load_block(&pool, &services.turns, &conversation_id, &turn_id).await;
+    let interrupted =
+        meridian_core::agent::interrupted::load_block(&pool, &services.turns, &conversation_id, &turn_id).await;
     let instruction_block = {
         let budget = instruction_budget(context_limit);
         if budget > 0 {
@@ -547,7 +550,7 @@ async fn chat_inner(
     // mid-call — which is exactly what used to stop every other conversation
     // from starting a turn.
     let mcp_defs = services.mcp.tool_definitions().as_ref().clone();
-    let mode = crate::agent::modes::resolve(mode.as_deref().or(conv_mode.as_deref()));
+    let mode = meridian_core::agent::modes::resolve(mode.as_deref().or(conv_mode.as_deref()));
     // Kept so the turn can be re-resolved in place if the user approves a plan
     // mid-flight; everything else the resolver needs is still in scope.
     let persona = system_prompt_resolved;
@@ -556,7 +559,7 @@ async fn chat_inner(
         file_access_prompt(&file_access),
         // Mirrored in conversation.rs's estimator via the same function; the
         // OR with this turn's flag only matters before the message lands.
-        crate::voice::prompt::voice_context_block(&ctx.path, voice == Some(true)).unwrap_or_default(),
+        meridian_core::voice::prompt::voice_context_block(&ctx.path, voice == Some(true)).unwrap_or_default(),
     ];
     // Taken from the resolution rather than recomputed from the override and the
     // assistant. Those two miss the third case: with neither set, the resolver
@@ -591,9 +594,9 @@ async fn chat_inner(
         let level = effective_level.map(|s| s.to_string());
         let fast = fast.unwrap_or(conv_fast_mode);
         tokio::task::spawn_blocking(move || {
-            crate::agent::resolve_turn_params(
+            meridian_core::agent::resolve_turn_params(
                 &pool2,
-                crate::agent::TurnParamsInput {
+                meridian_core::agent::TurnParamsInput {
                     assistant: assistant2.as_ref(),
                     provider_id: pid.as_deref(),
                     provider_type: &pt,
@@ -632,19 +635,22 @@ async fn chat_inner(
         let (persona2, blocks) = (persona.clone(), context_blocks.clone());
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool2)?;
-            let catalog = crate::agent::sub_agents::catalog(&mut conn);
-            let input = crate::agent::turn_config::TurnConfigInput {
+            let catalog = meridian_core::agent::sub_agents::catalog(&mut conn);
+            let input = meridian_core::agent::turn_config::TurnConfigInput {
                 assistant: assistant2,
                 conversation_id: conv_id,
                 project_id: pid,
-                mode: crate::agent::modes::Modes::Switchable(mode),
+                mode: meridian_core::agent::modes::Modes::Switchable(mode),
                 sub_agents: Some(catalog.clone()),
                 mcp_defs,
                 include_tools: supports_tools,
                 persona: persona2,
                 context_blocks: blocks,
             };
-            Ok::<_, String>((crate::agent::turn_config::resolve(&mut conn, &registry, input), catalog))
+            Ok::<_, String>((
+                meridian_core::agent::turn_config::resolve(&mut conn, &registry, input),
+                catalog,
+            ))
         })
         .await
         .map_err(|e| e.to_string())??
@@ -686,7 +692,8 @@ async fn chat_inner(
         // Only to size the window. The real decision is taken after compaction,
         // against the path compaction leaves behind — see below.
         let probe =
-            crate::agent::plan_injection_async(&pool, memory_request.clone(), ctx.live().to_vec(), now_ms()).await;
+            meridian_core::agent::plan_injection_async(&pool, memory_request.clone(), ctx.live().to_vec(), now_ms())
+                .await;
         let pre_msgs = build_messages_with_senders(
             system_prompt.trim(),
             &ctx,
@@ -793,7 +800,7 @@ async fn chat_inner(
     // is exactly the signal that everything has to be re-sent, getting this
     // ordering wrong is silent rather than loud.
     let t0 = now_ms();
-    let injection = crate::agent::plan_injection_async(&pool, memory_request, ctx.live().to_vec(), t0).await;
+    let injection = meridian_core::agent::plan_injection_async(&pool, memory_request, ctx.live().to_vec(), t0).await;
     let injected = injection.as_ref().and_then(|i| i.text.clone());
 
     let mut chat_messages = build_messages_with_senders(
@@ -807,7 +814,7 @@ async fn chat_inner(
         ),
         &Default::default(),
     );
-    let files_root = Some(crate::files::files_dir(&services.paths.data_dir));
+    let files_root = Some(meridian_core::files::files_dir(&services.paths.data_dir));
     resolve_file_uris_in_messages(&mut chat_messages, files_root.as_deref());
     microcompact(&mut chat_messages, &budget, keep_recent);
     trim_to_context_limit(&mut chat_messages, context_limit, keep_recent);
@@ -838,7 +845,8 @@ async fn chat_inner(
     // turn has to find it.
     if let Some(ref injection) = injection {
         parent_cursor =
-            crate::agent::persist_injection(&pool, injection, &conversation_id, &turn_id, parent_cursor, now).await;
+            meridian_core::agent::persist_injection(&pool, injection, &conversation_id, &turn_id, parent_cursor, now)
+                .await;
     }
 
     // Absent only when regenerating, which re-answers a question that is already
@@ -926,12 +934,12 @@ async fn chat_inner(
     let tool_secrets = {
         let pool2 = pool.clone();
         let secrets2 = secrets.clone();
-        tokio::task::spawn_blocking(move || crate::agent::build_tool_secrets(&secrets2, &pool2))
+        tokio::task::spawn_blocking(move || meridian_core::agent::build_tool_secrets(&secrets2, &pool2))
             .await
             .map_err(|e| e.to_string())?
     };
     #[cfg(not(target_os = "android"))]
-    let sandbox_policy = crate::sandbox::default_policy_if_enabled(sandbox_enabled, project_path.as_deref());
+    let sandbox_policy = meridian_core::sandbox::default_policy_if_enabled(sandbox_enabled, project_path.as_deref());
     #[cfg(target_os = "android")]
     let _ = sandbox_enabled;
     let tool_context = tools::ToolContext {
@@ -1067,9 +1075,9 @@ async fn chat_inner(
 
     let cost_info = model_config
         .as_ref()
-        .filter(|mc| crate::agent::pricing::has_pricing(mc))
+        .filter(|mc| meridian_core::agent::pricing::has_pricing(mc))
         .map(|mc| {
-            let usage = crate::provider::TokenUsage {
+            let usage = meridian_core::provider::TokenUsage {
                 prompt_tokens: Some(total_input_tokens),
                 completion_tokens: Some(total_output_tokens),
                 total_tokens: Some(total_input_tokens + total_output_tokens),
@@ -1079,7 +1087,7 @@ async fn chat_inner(
                 cache_read_tokens: Some(total_cache_read),
                 cache_write_tokens: Some(total_cache_write),
             };
-            crate::agent::pricing::compute_cost(&usage, &crate::agent::pricing::Prices::of(mc))
+            meridian_core::agent::pricing::compute_cost(&usage, &meridian_core::agent::pricing::Prices::of(mc))
         });
 
     // This is the only place that knows how the loop was left, and the three

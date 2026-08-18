@@ -14,9 +14,9 @@ use std::sync::Arc;
 use tokio_util::sync::CancellationToken;
 
 use crate::ServicesExt;
-use crate::db;
-use crate::state::VoiceState;
-use crate::voice;
+use meridian_core::db;
+use meridian_core::state::VoiceState;
+use meridian_core::voice;
 
 /// Recordings shorter than this are almost certainly accidental taps.
 const MIN_DURATION_MS: u64 = 1000;

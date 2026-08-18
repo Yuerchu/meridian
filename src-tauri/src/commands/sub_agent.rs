@@ -14,21 +14,21 @@ use diesel::Connection;
 use tokio_util::sync::CancellationToken;
 
 use crate::ServicesExt;
-use crate::agent::engine::{self, Stranded, SubAgentReport, SubAgentSpec, SubAgentStatus};
-use crate::agent::sub_agents::SubAgentKind;
-use crate::agent::turn_record;
-use crate::db;
-use crate::db::DbPool;
-use crate::db::models::assistant::Assistant;
-use crate::db::models::conversation::NewConversation;
-use crate::db::models::message::NewMessage;
-use crate::db::models::turn::{ERROR_LOOP_DETECTED, TurnStatus};
-use crate::secrets::SecretsManager;
-use crate::services::Services;
-use crate::state::SubAgentInbox;
-use crate::tools::{self, ToolRegistry};
-use crate::turn::{TurnLease, TurnOrigin};
-use crate::util::{get_conn, now_ms};
+use meridian_core::agent::engine::{self, Stranded, SubAgentReport, SubAgentSpec, SubAgentStatus};
+use meridian_core::agent::sub_agents::SubAgentKind;
+use meridian_core::agent::turn_record;
+use meridian_core::db;
+use meridian_core::db::DbPool;
+use meridian_core::db::models::assistant::Assistant;
+use meridian_core::db::models::conversation::NewConversation;
+use meridian_core::db::models::message::NewMessage;
+use meridian_core::db::models::turn::{ERROR_LOOP_DETECTED, TurnStatus};
+use meridian_core::secrets::SecretsManager;
+use meridian_core::services::Services;
+use meridian_core::state::SubAgentInbox;
+use meridian_core::tools::{self, ToolRegistry};
+use meridian_core::turn::{TurnLease, TurnOrigin};
+use meridian_core::util::{get_conn, now_ms};
 
 /// What an `Explore` agent may do.
 ///
@@ -70,8 +70,10 @@ pub async fn steer_conversation(app: tauri::AppHandle, conversation_id: String, 
         return Err("There is nothing to send.".to_string());
     }
     match app.services().sub_agent_inboxes.append(&conversation_id, text) {
-        crate::state::Accept::Queued => Ok(()),
-        crate::state::Accept::Closed(_) => Err("This run has already finished, so it did not see that.".to_string()),
+        meridian_core::state::Accept::Queued => Ok(()),
+        meridian_core::state::Accept::Closed(_) => {
+            Err("This run has already finished, so it did not see that.".to_string())
+        }
     }
 }
 
@@ -85,8 +87,8 @@ pub(crate) struct DesktopSubAgents {
     pub pool: DbPool,
     pub secrets: Arc<SecretsManager>,
     pub registry: Arc<ToolRegistry>,
-    pub coordinator: Arc<crate::turn::TurnCoordinator>,
-    pub mcp: Arc<crate::mcp::McpRegistry>,
+    pub coordinator: Arc<meridian_core::turn::TurnCoordinator>,
+    pub mcp: Arc<meridian_core::mcp::McpRegistry>,
     /// Where the card lives.
     pub parent_conversation_id: String,
     /// The turn that delegated. Its cancellation has to reach the child, so the
@@ -277,7 +279,10 @@ impl DesktopSubAgents {
     ///
     /// Three answers in order: what the caller named, what the user configured
     /// for this kind, and failing both, whatever the parent is using.
-    async fn resolve_model(&self, spec: &SubAgentSpec) -> Result<(Assistant, crate::agent::TurnParams), String> {
+    async fn resolve_model(
+        &self,
+        spec: &SubAgentSpec,
+    ) -> Result<(Assistant, meridian_core::agent::TurnParams), String> {
         let base = self
             .assistant
             .clone()
@@ -308,7 +313,7 @@ impl DesktopSubAgents {
         Ok((assistant, params))
     }
 
-    async fn resolve_params(&self, assistant: &Assistant) -> Result<crate::agent::TurnParams, String> {
+    async fn resolve_params(&self, assistant: &Assistant) -> Result<meridian_core::agent::TurnParams, String> {
         let pool = self.pool.clone();
         let secrets = self.secrets.clone();
         let configured_max = self.assistant.as_ref().and_then(|a| a.max_tokens);
@@ -317,16 +322,16 @@ impl DesktopSubAgents {
             let a = assistant.clone();
             let pool2 = pool.clone();
             tokio::task::spawn_blocking(move || {
-                crate::agent::resolve_with_overrides(&secrets, &pool2, Some(&a), None, None)
+                meridian_core::agent::resolve_with_overrides(&secrets, &pool2, Some(&a), None, None)
             })
             .await
             .map_err(|e| e.to_string())??
         };
         let provider_id = assistant.provider_id.clone();
         let mut params = tokio::task::spawn_blocking(move || {
-            crate::agent::resolve_turn_params(
+            meridian_core::agent::resolve_turn_params(
                 &pool,
-                crate::agent::TurnParamsInput {
+                meridian_core::agent::TurnParamsInput {
                     assistant: Some(&assistant),
                     provider_id: provider_id.as_deref(),
                     provider_type: &resolved.provider_type,
@@ -449,7 +454,7 @@ impl DesktopSubAgents {
         &self,
         spec: &SubAgentSpec,
         assistant: &Assistant,
-        turn_params: &crate::agent::TurnParams,
+        turn_params: &meridian_core::agent::TurnParams,
         sub_conversation_id: &str,
         turn_id: &str,
         user_message_id: &str,
@@ -466,7 +471,7 @@ impl DesktopSubAgents {
             Err(e) => return engine::TurnOutcome::failed(e),
         };
 
-        let chat_messages = crate::agent::build_messages_with_senders(
+        let chat_messages = meridian_core::agent::build_messages_with_senders(
             config.system_prompt.trim(),
             &db::ops::message::ActiveContext {
                 path: Vec::new(),
@@ -474,11 +479,11 @@ impl DesktopSubAgents {
                 anchor_index: None,
                 head_id: None,
             },
-            crate::agent::trailing_with_memory(None, None, &spec.prompt, None),
+            meridian_core::agent::trailing_with_memory(None, None, &spec.prompt, None),
             &Default::default(),
         );
 
-        let mut budget = crate::agent::TokenBudget::new(
+        let mut budget = meridian_core::agent::TokenBudget::new(
             &provider.1.provider_type,
             &turn_params.params.model,
             turn_params.context_limit,
@@ -495,7 +500,7 @@ impl DesktopSubAgents {
             cancel: cancel.clone(),
             turn_id: turn_id.to_string(),
             conversation_id: sub_conversation_id.to_string(),
-            bubble: Some(crate::state::Bubble {
+            bubble: Some(meridian_core::state::Bubble {
                 conversation_id: self.parent_conversation_id.clone(),
                 assistant_message_id: spec.parent_message_id.clone(),
                 parent_call_id: spec.parent_call_id.clone(),
@@ -521,7 +526,7 @@ impl DesktopSubAgents {
                 chat_messages,
                 tool_defs: config.tool_defs,
                 offered: config.offered,
-                mode: crate::agent::modes::Modes::Fixed.spec(),
+                mode: meridian_core::agent::modes::Modes::Fixed.spec(),
                 tool_context,
                 budget,
                 turn_id: turn_id.to_string(),
@@ -550,7 +555,7 @@ impl DesktopSubAgents {
                 interrupted: None,
                 compaction: engine::CompactionPolicy::Desktop {
                     enabled: true,
-                    breaker: Arc::new(crate::agent::CompactCircuitBreaker::new()),
+                    breaker: Arc::new(meridian_core::agent::CompactCircuitBreaker::new()),
                 },
             },
             engine::TurnPorts {
@@ -576,8 +581,8 @@ impl DesktopSubAgents {
         &self,
         assistant: &Assistant,
         sub_conversation_id: &str,
-        turn_params: &crate::agent::TurnParams,
-    ) -> Result<crate::agent::turn_config::TurnConfig, String> {
+        turn_params: &meridian_core::agent::TurnParams,
+    ) -> Result<meridian_core::agent::turn_config::TurnConfig, String> {
         let mcp_defs = if assistant.tool_preset_id.is_none() && assistant.enabled_tools.is_some() {
             // `Explore` — an explicit whitelist and nothing outside it. MCP
             // tools ask unconditionally, and an errand nobody is watching has
@@ -586,11 +591,11 @@ impl DesktopSubAgents {
         } else {
             self.mcp.tool_definitions().as_ref().clone()
         };
-        let input = crate::agent::turn_config::TurnConfigInput {
+        let input = meridian_core::agent::turn_config::TurnConfigInput {
             assistant: Some(assistant.clone()),
             conversation_id: sub_conversation_id.to_string(),
             project_id: self.project_id.clone(),
-            mode: crate::agent::modes::Modes::Fixed,
+            mode: meridian_core::agent::modes::Modes::Fixed,
             // No port, so no `run_agent`. This is the nesting guard again, on
             // the other side: the tool is not offered, so the name is not even
             // recognised.
@@ -606,7 +611,7 @@ impl DesktopSubAgents {
         let registry = self.registry.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
-            Ok::<_, String>(crate::agent::turn_config::resolve(&mut conn, &registry, input))
+            Ok::<_, String>(meridian_core::agent::turn_config::resolve(&mut conn, &registry, input))
         })
         .await
         .map_err(|e| e.to_string())?
@@ -616,16 +621,22 @@ impl DesktopSubAgents {
     async fn build_provider(
         &self,
         assistant: &Assistant,
-    ) -> Result<(Box<dyn crate::provider::ChatProvider>, crate::agent::ResolvedProvider), String> {
+    ) -> Result<
+        (
+            Box<dyn meridian_core::provider::ChatProvider>,
+            meridian_core::agent::ResolvedProvider,
+        ),
+        String,
+    > {
         let pool = self.pool.clone();
         let secrets = self.secrets.clone();
         let a = assistant.clone();
         let resolved = tokio::task::spawn_blocking(move || {
-            crate::agent::resolve_with_overrides(&secrets, &pool, Some(&a), None, None)
+            meridian_core::agent::resolve_with_overrides(&secrets, &pool, Some(&a), None, None)
         })
         .await
         .map_err(|e| e.to_string())??;
-        let provider = crate::provider::registry::create_provider(
+        let provider = meridian_core::provider::registry::create_provider(
             &resolved.provider_type,
             &resolved.base_url,
             &resolved.api_key,
@@ -706,7 +717,7 @@ fn classify(outcome: &engine::TurnOutcome, cancel: &CancellationToken) -> SubAge
 /// snapshot and by the tool result, neither of which is an event. That is why
 /// this swallows what `BusEmit` would report: the bus speaks for the window,
 /// which is critical for a turn the user is watching and irrelevant to this one.
-struct SubAgentEmit(crate::events::EventBus);
+struct SubAgentEmit(meridian_core::events::EventBus);
 
 impl engine::Emit for SubAgentEmit {
     fn emit(&self, channel: &str, payload: serde_json::Value) -> Result<(), String> {
@@ -788,9 +799,9 @@ impl Drop for ChildTurnGuard {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent::modes::Modes;
-    use crate::agent::turn_config::{TurnConfigInput, resolve};
-    use crate::db::test_db;
+    use meridian_core::agent::modes::Modes;
+    use meridian_core::agent::turn_config::{TurnConfigInput, resolve};
+    use meridian_core::db::test_db;
 
     fn parent(preset: Option<&str>, enabled: Option<&str>) -> Assistant {
         Assistant {
@@ -825,10 +836,10 @@ mod tests {
         )
     }
 
-    fn config_for(child: Assistant) -> crate::agent::turn_config::TurnConfig {
+    fn config_for(child: Assistant) -> meridian_core::agent::turn_config::TurnConfig {
         let pool = test_db();
         let mut conn = pool.get().unwrap();
-        crate::db::ops::conversation::create_conversation(&mut conn, "sub-1", None, None, None, 1).unwrap();
+        meridian_core::db::ops::conversation::create_conversation(&mut conn, "sub-1", None, None, None, 1).unwrap();
         resolve(
             &mut conn,
             &registry(),
@@ -894,7 +905,7 @@ mod tests {
             assert!(!offered.contains(writer), "{writer} reached a read-only agent");
         }
         // The nesting guard, from the other side: not offered, so not recognised.
-        assert!(!offered.contains(crate::agent::sub_agents::RUN_AGENT_TOOL));
+        assert!(!offered.contains(meridian_core::agent::sub_agents::RUN_AGENT_TOOL));
         assert!(!offered.contains("enter_plan"), "a fixed mode has nowhere to go");
     }
 
@@ -910,7 +921,7 @@ mod tests {
 
         let offered = config_for(child).offered;
         assert!(offered.contains("write_file"), "it is the one that may change things");
-        assert!(!offered.contains(crate::agent::sub_agents::RUN_AGENT_TOOL));
+        assert!(!offered.contains(meridian_core::agent::sub_agents::RUN_AGENT_TOOL));
         assert!(!offered.contains("enter_plan"));
     }
 

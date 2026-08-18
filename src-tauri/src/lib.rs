@@ -1,40 +1,13 @@
-mod agent;
 #[cfg(target_os = "android")]
 mod android_bridge;
-mod bootstrap;
-mod client;
 mod commands;
-mod db;
-mod emoji;
-mod events;
-mod files;
-/// The endpoint another coding agent's hooks call into. Desktop only: it is a
-/// listening socket, and Android has nothing to point at it.
-#[cfg(not(target_os = "android"))]
-mod hooks;
-mod keyring;
-mod logging;
-mod mcp;
-#[cfg(not(target_os = "android"))]
-mod onebot;
 mod platform;
-mod provider;
-#[cfg(not(target_os = "android"))]
-mod sandbox;
-mod secrets;
-mod services;
-mod sleep_inhibitor;
-mod state;
-mod template;
-mod tools;
-mod turn;
-mod util;
-mod voice;
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use services::Services;
+use meridian_core::services::Services;
+use meridian_core::{bootstrap, events, logging};
 #[cfg(desktop)]
 use tauri::image::Image;
 #[cfg(desktop)]
@@ -107,7 +80,7 @@ pub fn run() {
 
             #[cfg(target_os = "android")]
             {
-                std::thread::spawn(|| android_bridge::clean_camera_cache());
+                std::thread::spawn(|| meridian_core::android_bridge::clean_camera_cache());
             }
 
             // Registered even when the user has the server switched off, so the
@@ -117,7 +90,7 @@ pub fn run() {
                 let services = services.clone();
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    handle.manage(onebot::maybe_start(services).await);
+                    handle.manage(meridian_core::onebot::maybe_start(services).await);
                 });
             }
 
@@ -126,7 +99,7 @@ pub fn run() {
                 let services = services.clone();
                 let handle = app.handle().clone();
                 tauri::async_runtime::spawn(async move {
-                    handle.manage(hooks::maybe_start(services).await);
+                    handle.manage(meridian_core::hooks::maybe_start(services).await);
                 });
             }
 

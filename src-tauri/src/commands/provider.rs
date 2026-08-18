@@ -1,10 +1,10 @@
 use crate::ServicesExt;
-use crate::agent::{get_provider_api_key, provider_secret_name};
-use crate::db;
-use crate::db::models::provider::{NewProvider, Provider, ProviderUpdate};
-use crate::provider::models::ModelInfo;
-use crate::secrets::{SecretName, SecretScope};
-use crate::util::now_ms;
+use meridian_core::agent::{get_provider_api_key, provider_secret_name};
+use meridian_core::db;
+use meridian_core::db::models::provider::{NewProvider, Provider, ProviderUpdate};
+use meridian_core::provider::models::ModelInfo;
+use meridian_core::secrets::{SecretName, SecretScope};
+use meridian_core::util::now_ms;
 
 #[tauri::command]
 pub async fn list_providers(app: tauri::AppHandle) -> Result<Vec<Provider>, String> {
@@ -190,7 +190,7 @@ pub async fn fetch_provider_models(
 
     let api_key = get_provider_api_key(&secrets, &provider_id).ok_or("API Key not set for this provider")?;
 
-    let models = crate::provider::models::fetch_models(&provider_type, &base_url, &api_key)
+    let models = meridian_core::provider::models::fetch_models(&provider_type, &base_url, &api_key)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -223,7 +223,7 @@ pub async fn get_provider_capabilities(
     app: tauri::AppHandle,
     provider_id: String,
     model_id: String,
-) -> Result<crate::provider::ProviderCapabilities, String> {
+) -> Result<meridian_core::provider::ProviderCapabilities, String> {
     let services = app.services();
     let pool = services.db.clone();
     let (provider_type, api_format, overrides) = {
@@ -241,7 +241,7 @@ pub async fn get_provider_capabilities(
         .await
         .map_err(|e| e.to_string())??
     };
-    let mut caps = crate::provider::registry::get_capabilities(&provider_type, Some(&api_format), &model_id);
-    crate::provider::capabilities::apply_overrides(&mut caps, overrides.as_deref());
+    let mut caps = meridian_core::provider::registry::get_capabilities(&provider_type, Some(&api_format), &model_id);
+    meridian_core::provider::capabilities::apply_overrides(&mut caps, overrides.as_deref());
     Ok(caps)
 }

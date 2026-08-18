@@ -1,7 +1,7 @@
 use crate::ServicesExt;
-use crate::db;
-use crate::db::models::assistant::{Assistant, AssistantUpdate, NewAssistant};
-use crate::util::{double_option, now_ms};
+use meridian_core::db;
+use meridian_core::db::models::assistant::{Assistant, AssistantUpdate, NewAssistant};
+use meridian_core::util::{double_option, now_ms};
 
 #[tauri::command]
 pub async fn list_assistants(app: tauri::AppHandle) -> Result<Vec<Assistant>, String> {

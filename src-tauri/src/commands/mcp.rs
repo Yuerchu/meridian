@@ -1,8 +1,8 @@
 use crate::ServicesExt;
-use crate::db;
-use crate::db::models::mcp_server::{McpServer, McpServerUpdate, NewMcpServer};
-use crate::mcp;
-use crate::util::{double_option, now_ms};
+use meridian_core::db;
+use meridian_core::db::models::mcp_server::{McpServer, McpServerUpdate, NewMcpServer};
+use meridian_core::mcp;
+use meridian_core::util::{double_option, now_ms};
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -178,7 +178,7 @@ pub async fn list_all_tool_names(app: tauri::AppHandle) -> Result<Vec<serde_json
     let mut result: Vec<serde_json::Value> = tool_registry
         .definitions()
         .iter()
-        .filter(|t| !crate::agent::modes::transition_tools().any(|n| n == t.name))
+        .filter(|t| !meridian_core::agent::modes::transition_tools().any(|n| n == t.name))
         .map(|t| serde_json::json!({"name": t.name, "description": t.description, "source": "builtin"}))
         .collect();
 
@@ -192,7 +192,7 @@ pub async fn list_all_tool_names(app: tauri::AppHandle) -> Result<Vec<serde_json
     // Session-scoped QQ tools (OneBot is desktop-only); listed for visibility,
     // they are offered to the model only inside OneBot sessions.
     #[cfg(not(target_os = "android"))]
-    result.extend(crate::onebot::qq_tool_catalog());
+    result.extend(meridian_core::onebot::qq_tool_catalog());
 
     Ok(result)
 }

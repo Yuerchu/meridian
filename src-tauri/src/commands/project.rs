@@ -1,6 +1,6 @@
 use crate::ServicesExt;
-use crate::db;
-use crate::util::now_ms;
+use meridian_core::db;
+use meridian_core::util::now_ms;
 
 #[tauri::command]
 pub async fn list_projects(app: tauri::AppHandle) -> Result<Vec<db::models::project::Project>, String> {

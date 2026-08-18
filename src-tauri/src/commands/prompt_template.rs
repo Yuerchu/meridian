@@ -1,8 +1,8 @@
 use crate::ServicesExt;
-use crate::db;
-use crate::db::models::prompt_template::{NewPromptTemplate, PromptTemplate, PromptTemplateUpdate};
-use crate::template;
-use crate::util::{double_option, get_conn, now_ms};
+use meridian_core::db;
+use meridian_core::db::models::prompt_template::{NewPromptTemplate, PromptTemplate, PromptTemplateUpdate};
+use meridian_core::template;
+use meridian_core::util::{double_option, get_conn, now_ms};
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]

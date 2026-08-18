@@ -1,7 +1,7 @@
 use tauri::Manager;
 
 use crate::ServicesExt;
-use crate::onebot;
+use meridian_core::onebot;
 
 #[cfg(not(target_os = "android"))]
 #[tauri::command]

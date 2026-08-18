@@ -1,6 +1,6 @@
 use crate::ServicesExt;
-use crate::db;
-use crate::util::now_ms;
+use meridian_core::db;
+use meridian_core::util::now_ms;
 
 #[tauri::command]
 pub async fn get_preference(app: tauri::AppHandle, key: String) -> Result<Option<String>, String> {

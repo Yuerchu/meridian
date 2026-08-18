@@ -1,7 +1,7 @@
 use crate::ServicesExt;
-use crate::db;
-use crate::db::models::memory::{DeletedBy, GLOBAL_SCOPE_ID, MemoryScope, Origin, Visibility};
-use crate::util::now_ms;
+use meridian_core::db;
+use meridian_core::db::models::memory::{DeletedBy, GLOBAL_SCOPE_ID, MemoryScope, Origin, Visibility};
+use meridian_core::util::now_ms;
 
 /// Resolve the (scope, scope_id) pair the desktop UI is addressing. The UI names
 /// a layer plus an optional anchor; everything else is derived here so the
@@ -268,7 +268,7 @@ pub async fn restore_memories(app: tauri::AppHandle, ids: Vec<String>) -> Result
     let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
-        db::ops::memory::restore_memories(&mut conn, &ids, crate::util::now_ms()).map_err(|e| e.to_string())
+        db::ops::memory::restore_memories(&mut conn, &ids, meridian_core::util::now_ms()).map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?

@@ -1,5 +1,5 @@
 use crate::ServicesExt;
-use crate::secrets::{SecretName, SecretScope};
+use meridian_core::secrets::{SecretName, SecretScope};
 
 #[tauri::command]
 pub async fn set_secret(app: tauri::AppHandle, key: String, value: String) -> Result<(), String> {

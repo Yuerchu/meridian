@@ -1,9 +1,9 @@
 use crate::ServicesExt;
-use crate::db;
-use crate::db::models::emoji::{Emoji, NewEmoji};
-use crate::db::models::emoji_pack::{EmojiPack, NewEmojiPack};
-use crate::emoji;
-use crate::util::{get_conn, now_ms};
+use meridian_core::db;
+use meridian_core::db::models::emoji::{Emoji, NewEmoji};
+use meridian_core::db::models::emoji_pack::{EmojiPack, NewEmojiPack};
+use meridian_core::emoji;
+use meridian_core::util::{get_conn, now_ms};
 
 #[tauri::command]
 pub fn list_emoji_packs(app: tauri::AppHandle) -> Result<Vec<EmojiPack>, String> {

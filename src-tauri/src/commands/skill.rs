@@ -1,12 +1,12 @@
 use std::path::PathBuf;
 
 use crate::ServicesExt;
-use crate::agent::skills;
-use crate::db;
-use crate::db::models::skill::{Skill, SkillUpdate};
-use crate::db::models::skill_binding::SkillLayer;
-use crate::db::ops::skill_binding::MAX_BINDINGS_PER_ANCHOR;
-use crate::util::{get_conn, now_ms};
+use meridian_core::agent::skills;
+use meridian_core::db;
+use meridian_core::db::models::skill::{Skill, SkillUpdate};
+use meridian_core::db::models::skill_binding::SkillLayer;
+use meridian_core::db::ops::skill_binding::MAX_BINDINGS_PER_ANCHOR;
+use meridian_core::util::{get_conn, now_ms};
 
 pub fn skills_root(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let services = app.services();
