@@ -40,6 +40,8 @@ pub(crate) fn router(state: Arc<SharedState>) -> Router {
         .route("/healthz", get(healthz))
         .route("/events", get(super::ws::handler))
         .route("/rpc/invoke", post(invoke))
+        .route("/upload", post(upload))
+        .route("/assets", get(assets))
         .layer(
             // No credentials: the token travels in a header the client sets by
             // hand, never in a cookie, so there is nothing for a browser to
@@ -96,6 +98,129 @@ async fn invoke(State(state): State<Arc<SharedState>>, headers: axum::http::Head
     match super::dispatch::dispatch(&state.app, &call.cmd, &call.args).await {
         Ok(value) => axum::Json(serde_json::json!({ "ok": value })).into_response(),
         Err(message) => axum::Json(serde_json::json!({ "err": message })).into_response(),
+    }
+}
+
+/// Take a file the user picked on *their* device and store it here.
+///
+/// `upload_file` is marked `local` because its argument is a path, and a path
+/// means nothing when the person is somewhere else. This is the same operation
+/// with the bytes carried instead, and it answers with the identical JSON so
+/// the composer cannot tell which one ran.
+async fn upload(
+    State(state): State<Arc<SharedState>>,
+    headers: axum::http::HeaderMap,
+    mut form: axum::extract::Multipart,
+) -> Response {
+    if let Some(refusal) = authorize(&state.config, &headers) {
+        return refusal;
+    }
+
+    let mut conversation_id = String::new();
+    let mut file_name = String::new();
+    let mut bytes: Option<axum::body::Bytes> = None;
+
+    loop {
+        match form.next_field().await {
+            Ok(Some(field)) => match field.name().unwrap_or_default() {
+                "conversationId" | "conversation_id" => {
+                    conversation_id = field.text().await.unwrap_or_default();
+                }
+                "file" => {
+                    file_name = field.file_name().unwrap_or("file").to_string();
+                    match field.bytes().await {
+                        Ok(b) => bytes = Some(b),
+                        Err(e) => return refuse(StatusCode::PAYLOAD_TOO_LARGE, &e.to_string()),
+                    }
+                }
+                _ => {}
+            },
+            Ok(None) => break,
+            Err(e) => return refuse(StatusCode::BAD_REQUEST, &e.to_string()),
+        }
+    }
+
+    let Some(bytes) = bytes else {
+        return refuse(StatusCode::BAD_REQUEST, "no file in the upload");
+    };
+    if conversation_id.is_empty() {
+        return refuse(StatusCode::BAD_REQUEST, "no conversationId in the upload");
+    }
+
+    let ext = file_name
+        .rsplit('.')
+        .next()
+        .filter(|e| e.len() <= 10 && !e.contains('/') && e.len() < file_name.len())
+        .unwrap_or("bin")
+        .to_string();
+
+    let data_dir = state.services.paths.data_dir.clone();
+    let stored = tokio::task::spawn_blocking(move || {
+        let (dest, uri) = meridian_core::files::alloc_dest(&data_dir, &conversation_id, &ext)?;
+        std::fs::write(&dest, &bytes).map_err(|e| e.to_string())?;
+        Ok::<_, String>(uri)
+    })
+    .await;
+
+    let uri = match stored {
+        Ok(Ok(uri)) => uri,
+        Ok(Err(e)) => return refuse(StatusCode::INTERNAL_SERVER_ERROR, &e),
+        Err(e) => return refuse(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
+    };
+
+    // The same two shapes `upload_file` produces, chosen the same way.
+    let mime = mime_guess::from_path(&file_name).first_or_octet_stream().to_string();
+    let part = if mime.starts_with("image/") {
+        serde_json::json!({ "type": "image_url", "image_url": { "url": uri } })
+    } else {
+        serde_json::json!({ "type": "file", "file": { "url": uri, "mime_type": mime, "name": file_name } })
+    };
+    axum::Json(serde_json::json!({ "ok": part })).into_response()
+}
+
+/// What an `<img src>` on another device points at.
+#[derive(serde::Deserialize)]
+struct AssetQuery {
+    uri: String,
+    ticket: String,
+}
+
+/// Serve one stored attachment.
+///
+/// Two things guard it. The ticket, because an image URL cannot carry a header
+/// and the bearer token must not be spent in a query string. And
+/// `resolve_attachment_uri`, which canonicalises the path and refuses anything
+/// outside the attachment root — the same function that stops a model-authored
+/// `file://` from being inlined into a provider request, used here against a
+/// client-authored one.
+async fn assets(State(state): State<Arc<SharedState>>, query: axum::extract::Query<AssetQuery>) -> Response {
+    let known = state
+        .tickets
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .contains(&query.ticket);
+    if !known {
+        return refuse(StatusCode::UNAUTHORIZED, "unknown or expired ticket");
+    }
+
+    let root = meridian_core::files::files_dir(&state.services.paths.data_dir);
+    let Some(path) = meridian_core::files::resolve_attachment_uri(&query.uri, &root) else {
+        return refuse(StatusCode::NOT_FOUND, "no such attachment");
+    };
+
+    let mime = mime_guess::from_path(&path).first_or_octet_stream().to_string();
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => (
+            [
+                (header::CONTENT_TYPE, mime),
+                // Attachment bytes never change under their uuid, and a phone
+                // re-rendering a transcript should not re-fetch every image.
+                (header::CACHE_CONTROL, "private, max-age=31536000, immutable".into()),
+            ],
+            bytes,
+        )
+            .into_response(),
+        Err(e) => refuse(StatusCode::NOT_FOUND, &e.to_string()),
     }
 }
 

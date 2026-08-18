@@ -122,6 +122,17 @@ pub(crate) struct SharedState {
     pub app: tauri::AppHandle,
     /// Where events go once this server is listening.
     pub fanout: Arc<ws::WsFanout>,
+    /// Read tickets, one per live websocket.
+    ///
+    /// Attachments are loaded by putting a URL in an `<img src>`, which cannot
+    /// carry an `Authorization` header — so the credential has to be in the URL,
+    /// and the bearer token must not be: it is the key to everything else and
+    /// URLs end up in logs, in history, in a screenshot of the devtools.
+    ///
+    /// A ticket is minted when a device authenticates its websocket and dropped
+    /// when that socket closes, so it is worth nothing to anyone who finds it
+    /// later, and it opens only the attachment directory.
+    pub tickets: std::sync::Mutex<std::collections::HashSet<String>>,
     /// Mirrors `fanout.len()` so `status` can be answered without taking that
     /// lock from a command thread.
     pub connections: AtomicUsize,
@@ -146,6 +157,7 @@ impl RemoteServer {
                 services,
                 app,
                 fanout: Arc::new(ws::WsFanout::default()),
+                tickets: std::sync::Mutex::new(std::collections::HashSet::new()),
                 connections: AtomicUsize::new(0),
             }),
             shutdown_tx,

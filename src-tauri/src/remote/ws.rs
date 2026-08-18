@@ -141,16 +141,24 @@ async fn run(mut socket: WebSocket, state: Arc<SharedState>) {
     state.connections.store(state.fanout.len(), Ordering::Relaxed);
     tracing::info!(conn = id, "a device attached");
 
+    // Lives exactly as long as this socket. See `SharedState::tickets` for why
+    // attachments cannot use the bearer token.
+    let ticket = meridian_core::listen_guard::generate_token();
+    state
+        .tickets
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(ticket.clone());
+
     // Sent before anything else so the client knows the socket is live and what
     // it is talking to, without having to wait for the first event.
     let hello = serde_json::json!({
         "channel": "remote-ready",
-        "payload": { "apiRev": super::http::API_REV },
+        "payload": { "apiRev": super::http::API_REV, "assetTicket": ticket },
     })
     .to_string();
     if socket.send(Message::Text(hello.into())).await.is_err() {
-        state.fanout.remove(id);
-        state.connections.store(state.fanout.len(), Ordering::Relaxed);
+        release(&state, id, &ticket);
         return;
     }
 
@@ -185,9 +193,16 @@ async fn run(mut socket: WebSocket, state: Arc<SharedState>) {
         _ = reader => {}
     }
 
-    state.fanout.remove(id);
-    state.connections.store(state.fanout.len(), Ordering::Relaxed);
+    release(&state, id, &ticket);
     tracing::info!(conn = id, "a device detached");
+}
+
+/// Give back everything this connection held. Both exits go through it, so a
+/// ticket cannot outlive the socket that was issued it.
+fn release(state: &SharedState, id: u64, ticket: &str) {
+    state.fanout.remove(id);
+    state.tickets.lock().unwrap_or_else(|e| e.into_inner()).remove(ticket);
+    state.connections.store(state.fanout.len(), Ordering::Relaxed);
 }
 
 #[cfg(test)]
