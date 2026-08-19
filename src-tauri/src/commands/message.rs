@@ -35,6 +35,11 @@ pub struct MessageDto {
     pub cache_read_tokens: Option<i32>,
     pub cache_write_tokens: Option<i32>,
     pub provider_name: Option<String>,
+    /// Automatic-review verdicts for this row's tool calls, keyed by call id.
+    /// Crosses the boundary because the card that shows a denied call has to be
+    /// able to say who denied it and why — a reload that lost the reason would
+    /// leave the model's refusal looking like its own choice.
+    pub auto_review: Option<String>,
 }
 
 impl From<Message> for MessageDto {
@@ -65,6 +70,7 @@ impl From<Message> for MessageDto {
             cache_read_tokens: row.cache_read_tokens,
             cache_write_tokens: row.cache_write_tokens,
             provider_name: row.provider_name,
+            auto_review: row.auto_review,
         }
     }
 }
@@ -736,6 +742,7 @@ mod tests {
             cache_write_tokens: None,
             provider_name: None,
             provider_state: None,
+            auto_review: None,
         }
     }
 

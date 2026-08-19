@@ -42,8 +42,15 @@ struct Prices {
     cache_write: Option<f64>,
 }
 
-fn prices_for(conn: &mut SqliteConnection, msg: &Message) -> Prices {
-    let (Some(provider), Some(model)) = (msg.provider_id.as_ref(), msg.model_id.as_ref()) else {
+/// The role an automatic-review request is filed under.
+///
+/// Its own value rather than `assistant`, because a review is spend the user
+/// did not ask for directly and a total that cannot separate the two is a
+/// total nobody can act on. `db::ops::usage` counts both.
+pub const AUTO_REVIEW_ROLE: &str = "auto_review";
+
+fn prices_for(conn: &mut SqliteConnection, provider_id: Option<&str>, model_id: Option<&str>) -> Prices {
+    let (Some(provider), Some(model)) = (provider_id, model_id) else {
         return Prices::default();
     };
     model_configs::table
@@ -68,12 +75,38 @@ fn prices_for(conn: &mut SqliteConnection, msg: &Message) -> Prices {
         .unwrap_or_default()
 }
 
+/// The four lookups, from the identifiers rather than from a row.
+///
+/// Takes the pieces rather than a `Message` because the review rows have no
+/// `messages` row of their own — they describe spend against a message that
+/// somebody else wrote.
+struct Subject<'a> {
+    conversation_id: &'a str,
+    turn_id: Option<&'a str>,
+    sender_id: Option<i64>,
+    provider_id: Option<&'a str>,
+    model_id: Option<&'a str>,
+}
+
 fn snapshot(conn: &mut SqliteConnection, msg: &Message) -> Snapshot {
+    snapshot_of(
+        conn,
+        Subject {
+            conversation_id: &msg.conversation_id,
+            turn_id: msg.turn_id.as_deref(),
+            sender_id: msg.sender_id,
+            provider_id: msg.provider_id.as_deref(),
+            model_id: msg.model_id.as_deref(),
+        },
+    )
+}
+
+fn snapshot_of(conn: &mut SqliteConnection, subject: Subject<'_>) -> Snapshot {
     // Every one of these is best-effort. A missing project or a turn row that has
     // not been written yet is a gap in the record, not a reason to refuse to keep
     // the record at all.
     let project: Option<(String, Option<String>)> = conversations::table
-        .find(&msg.conversation_id)
+        .find(subject.conversation_id)
         .select(conversations::project_id)
         .first::<Option<String>>(conn)
         .ok()
@@ -89,9 +122,8 @@ fn snapshot(conn: &mut SqliteConnection, msg: &Message) -> Snapshot {
     // Both halves of "where did this come from" in one lookup, because they are
     // written together and reading one without the other is what leaves a bot
     // account unattributable.
-    let (turn_origin, self_id) = msg
+    let (turn_origin, self_id) = subject
         .turn_id
-        .as_ref()
         .and_then(|tid| {
             turns::table
                 .find(tid)
@@ -101,7 +133,7 @@ fn snapshot(conn: &mut SqliteConnection, msg: &Message) -> Snapshot {
         })
         .map_or((None, None), |(origin, self_id)| (Some(origin), self_id));
 
-    let sender_name = msg.sender_id.and_then(|uid| {
+    let sender_name = subject.sender_id.and_then(|uid| {
         let scope = crate::db::models::memory::onebot_user_scope_id(uid);
         memory_subjects::table
             .find(scope)
@@ -117,7 +149,7 @@ fn snapshot(conn: &mut SqliteConnection, msg: &Message) -> Snapshot {
         turn_origin,
         self_id,
         sender_name,
-        prices: prices_for(conn, msg),
+        prices: prices_for(conn, subject.provider_id, subject.model_id),
     }
 }
 
@@ -158,6 +190,78 @@ pub fn record(conn: &mut SqliteConnection, msg: &Message) -> QueryResult<()> {
             cache_read_tokens: msg.cache_read_tokens,
             cache_write_tokens: msg.cache_write_tokens,
             created_at: msg.created_at,
+            input_price: snap.prices.input,
+            output_price: snap.prices.output,
+            cache_read_price: snap.prices.cache_read,
+            cache_write_price: snap.prices.cache_write,
+            self_id: snap.self_id,
+        })
+        .execute(conn)?;
+    Ok(())
+}
+
+/// What one automatic review cost, and against which message.
+#[derive(Debug, Clone)]
+pub struct ReviewCost<'a> {
+    /// The assistant message whose tool call was judged. There is no `messages`
+    /// row for the review itself — the verdict lives in that row's
+    /// `auto_review` column, and this table records only what it cost.
+    pub message_id: &'a str,
+    pub conversation_id: &'a str,
+    pub turn_id: Option<&'a str>,
+    pub provider_id: Option<&'a str>,
+    pub provider_name: Option<&'a str>,
+    pub model_id: Option<&'a str>,
+    pub usage: crate::db::models::message::MessageUsage,
+    /// One line, for reading the log back. Never the transcript that was sent:
+    /// this table is exportable and the projection carries the user's own
+    /// messages.
+    pub summary: &'a str,
+}
+
+/// Record what a review spent.
+///
+/// Separate from `record` because a review has no message row to copy — but it
+/// takes the same snapshot, prices at the same moment against the same table,
+/// and lands in the same place. Two ledgers would disagree the first time
+/// somebody changed a rate.
+pub fn record_review(conn: &mut SqliteConnection, cost: ReviewCost<'_>) -> QueryResult<()> {
+    let snap = snapshot_of(
+        conn,
+        Subject {
+            conversation_id: cost.conversation_id,
+            turn_id: cost.turn_id,
+            // A review is something the app did, never something a person in a
+            // chat said, so it is attributed to nobody.
+            sender_id: None,
+            provider_id: cost.provider_id,
+            model_id: cost.model_id,
+        },
+    );
+    let id = uuid::Uuid::new_v4().to_string();
+    let now = now_ms();
+    diesel::insert_into(audit_messages::table)
+        .values(&NewAuditMessage {
+            id: &id,
+            recorded_at: now,
+            message_id: cost.message_id,
+            conversation_id: cost.conversation_id,
+            turn_id: cost.turn_id,
+            source_type: snap.source_type.as_deref(),
+            source_id: snap.source_id.as_deref(),
+            turn_origin: snap.turn_origin.as_deref(),
+            role: AUTO_REVIEW_ROLE,
+            content: cost.summary,
+            sender_id: None,
+            sender_name: None,
+            provider_id: cost.provider_id,
+            provider_name: cost.provider_name,
+            model_id: cost.model_id,
+            input_tokens: cost.usage.input_tokens,
+            output_tokens: cost.usage.output_tokens,
+            cache_read_tokens: cost.usage.cache_read_tokens,
+            cache_write_tokens: cost.usage.cache_write_tokens,
+            created_at: now,
             input_price: snap.prices.input,
             output_price: snap.prices.output,
             cache_read_price: snap.prices.cache_read,
@@ -343,6 +447,90 @@ mod tests {
         let logged = &list_recent(&mut conn, 10).unwrap()[0];
         assert_eq!(logged.input_price, None);
         assert_eq!(logged.output_price, None);
+    }
+
+    /// A review is spend against a message somebody else wrote, and it has to
+    /// be priced the same way that message was — same table, same moment, same
+    /// snapshot. Two ledgers would disagree the first time a rate changed.
+    #[test]
+    fn a_review_is_priced_like_everything_else() {
+        use crate::db::models::message::MessageUsage;
+        use crate::db::models::model_config::NewModelConfig;
+        use crate::db::models::provider::NewProvider;
+
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        diesel::insert_into(crate::db::schema::providers::table)
+            .values(&NewProvider {
+                id: "p1",
+                name: "Acme",
+                provider_type: "openai",
+                base_url: "https://example.invalid",
+                is_enabled: 1,
+                sort_order: 0,
+                created_at: 0,
+                updated_at: 0,
+                api_format: "chat",
+            })
+            .execute(&mut conn)
+            .unwrap();
+        crate::db::ops::model_config::upsert(
+            &mut conn,
+            &NewModelConfig {
+                id: "mc1",
+                provider_id: "p1",
+                model_id: "cheap",
+                display_name: None,
+                context_window: 128_000,
+                compact_threshold: 100_000,
+                max_output_tokens: None,
+                input_price: 1.0,
+                output_price: 2.0,
+                cache_price: None,
+                cache_write_price: None,
+                created_at: 0,
+                updated_at: 0,
+                capability_overrides: None,
+            },
+        )
+        .unwrap();
+        let judged = append_message(&mut conn, &user_row("m1", "c1"), None).unwrap();
+
+        record_review(
+            &mut conn,
+            ReviewCost {
+                message_id: &judged.id,
+                conversation_id: "c1",
+                turn_id: None,
+                provider_id: Some("p1"),
+                provider_name: Some("Acme"),
+                model_id: Some("cheap"),
+                usage: MessageUsage {
+                    input_tokens: Some(900),
+                    output_tokens: Some(20),
+                    ..Default::default()
+                },
+                summary: "Deny/High: 目标不在授权范围内",
+            },
+        )
+        .unwrap();
+
+        let logged = list_recent(&mut conn, 10).unwrap();
+        let review = logged
+            .iter()
+            .find(|r| r.role == AUTO_REVIEW_ROLE)
+            .expect("the review should be in the log");
+        assert_eq!(review.message_id, "m1", "it names the message it judged");
+        assert_eq!(review.input_tokens, Some(900));
+        assert_eq!(
+            review.input_price,
+            Some(1.0),
+            "priced at write time like everything else"
+        );
+        assert_eq!(review.output_price, Some(2.0));
+        // A review is something the app did, never something a person said.
+        assert_eq!(review.sender_id, None);
     }
 
     /// An edit writes a second record rather than rewriting the first: the

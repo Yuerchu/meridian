@@ -282,6 +282,43 @@ pub fn update_assistant_message(
 // to "how does a row get its token counts" that could drift from the first. The
 // cache columns would have doubled that surface for nothing.
 
+/// File one automatic-review verdict against the call it judged.
+///
+/// Merged into whatever is already there rather than overwriting it: one
+/// assistant message can carry several tool calls, each reviewed separately and
+/// at a different moment, and the last one to finish must not erase the rest.
+///
+/// A row that has gone (the conversation was deleted while the reviewer ran) is
+/// not an error. The verdict was about a message nobody can open any more, and
+/// failing here would take down a turn over bookkeeping.
+pub fn record_auto_review(
+    conn: &mut SqliteConnection,
+    message_id: &str,
+    call_id: &str,
+    verdict: &serde_json::Value,
+) -> QueryResult<()> {
+    let existing: Option<String> = messages::table
+        .find(message_id)
+        .select(messages::auto_review)
+        .first::<Option<String>>(conn)
+        .optional()?
+        .flatten();
+
+    let mut all = existing
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(raw).ok())
+        .unwrap_or_default();
+    all.insert(call_id.to_string(), verdict.clone());
+
+    let Ok(encoded) = serde_json::to_string(&all) else {
+        return Ok(());
+    };
+    diesel::update(messages::table.find(message_id))
+        .set(messages::auto_review.eq(Some(encoded)))
+        .execute(conn)?;
+    Ok(())
+}
+
 pub fn update_rating(conn: &mut SqliteConnection, id: &str, rating: Option<i32>) -> QueryResult<()> {
     diesel::update(messages::table.find(id))
         .set(messages::rating.eq(rating))
@@ -694,6 +731,7 @@ mod tests {
             cache_write_tokens,
             provider_name,
             provider_state,
+            auto_review,
         } = stored;
 
         assert_eq!(id, "m1");
@@ -703,6 +741,9 @@ mod tests {
         assert_eq!(provider_id, None);
         assert_eq!(provider_name.as_deref(), Some("DeepSeek"));
         assert_eq!(provider_state, None);
+        // Written by the reviewer afterwards, never by the write that creates
+        // the row — see `record_auto_review`.
+        assert_eq!(auto_review, None);
         assert_eq!(model_id.as_deref(), Some("deepseek-chat"));
         assert_eq!(input_tokens, Some(7));
         assert_eq!(output_tokens, Some(11));

@@ -880,10 +880,42 @@ async fn headless_chat_inner(
     // the lease, the turn record and the terminal event all belong to the
     // caller, because `TurnEnd::Continue` makes a round and a turn two different
     // things and only the caller knows which one is ending.
-    let approvals = ChatApprovals {
+    let asker = ChatApprovals {
         approval_fn,
         pool: pool.clone(),
         turn_id: turn_id.to_string(),
+    };
+    // `unattended`: a QQ approval is a message in a chat that nobody may be
+    // reading, which is why most of them end in a timeout today. So a review
+    // that cannot reach a verdict refuses rather than falling back to asking —
+    // there is nobody to ask. Needs `services`, which the tests do not build;
+    // without it the asker is left exactly as it was.
+    let approvals = match services {
+        Some(services) => crate::agent::auto_review::AutoReviewed::wrap(
+            &asker,
+            crate::agent::auto_review::Context {
+                services: services.clone(),
+                conversation_id: conversation_id.to_string(),
+                turn_id: turn_id.to_string(),
+                // A QQ session's file access is an empty root set, so there is
+                // no project for a path to be inside of. Saying so is what
+                // stops the reviewer reading "outside the project" as the
+                // finding it would be on the desktop.
+                working_directory: None,
+                // The same empty root set the turn itself runs under. The
+                // escalating pass gets no more of the disk than the turn had,
+                // which here is none of it.
+                file_access: tools::FileAccess::Roots(vec![]),
+                // Only a group is. A private chat has one counterpart and they
+                // are why the turn is running — treating them as a bystander
+                // because they are not an admin would have the reviewer see a
+                // task nobody asked for and refuse everything.
+                multi_party: qq_tools
+                    .is_some_and(|q| matches!(q.session_kind(), crate::onebot::session::SessionKind::Group)),
+                unattended: true,
+            },
+        ),
+        None => crate::agent::auto_review::AutoReviewed::inert(&asker),
     };
     let commentary = interim_text_fn.map(ChatCommentary);
     let surface = qq_tools.map(QqSurface);

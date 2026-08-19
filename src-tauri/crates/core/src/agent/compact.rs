@@ -936,6 +936,7 @@ mod tests {
             cache_write_tokens: None,
             provider_name: None,
             provider_state: None,
+            auto_review: None,
         };
         let result = prepare_compact_input(&[&msg]);
         assert!(result.contains("truncated"));
@@ -979,6 +980,7 @@ mod tests {
             cache_write_tokens: None,
             provider_name: None,
             provider_state: None,
+            auto_review: None,
         };
         assert_eq!(prepare_compact_input(&[&row]), "");
 

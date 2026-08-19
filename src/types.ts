@@ -161,6 +161,10 @@ export interface ToolCallDisplay {
    *  this card — this card's own status stays `running`, because `run_agent`
    *  really is still going. */
   nested_approval?: NestedApproval
+  /** Set when this call was decided by the automatic reviewer rather than by a
+   *  person. Shown beside the status so a denial does not read as the model
+   *  giving up on its own. */
+  auto_review?: AutoReviewVerdict
 }
 
 /** The delegated run a `run_agent` call started. */
@@ -347,7 +351,31 @@ export interface Message {
   /** Only on `role: 'tool'` rows: `success` | `denied` | `error`. Null reads as
    *  success — rows written before the column existed all claimed as much. */
   tool_outcome?: string | null
+  /** JSON: automatic-review verdicts for this row's tool calls, keyed by call
+   *  id. Arrives as a string because that is how the column stores it; parsed
+   *  where the cards are built. Null on every call nothing reviewed, which is
+   *  most of them. */
+  auto_review?: string | null
   _blocks?: ContentBlock[]
+}
+
+/** What an automatic reviewer decided about one tool call.
+ *
+ *  `outcome: 'unreadable'` is neither an approval nor a refusal: the review ran
+ *  and produced nothing usable, so the decision fell back to whoever was
+ *  watching. It is recorded because a review that cost money and answered
+ *  nothing is worth being able to see. */
+export interface AutoReviewVerdict {
+  outcome: 'allow' | 'deny' | 'unreadable'
+  risk?: 'low' | 'medium' | 'high' | 'critical'
+  authorization?: 'unknown' | 'low' | 'medium' | 'high'
+  rationale?: string
+  /** `quick` for the single-request pass, `investigate` when it went and read
+   *  the repository before deciding. */
+  stage?: 'quick' | 'investigate'
+  model?: string
+  /** What the escalating pass looked at, in the order it looked. */
+  evidence?: { tool: string; arguments: string }[]
 }
 
 export interface Assistant {
@@ -677,7 +705,19 @@ export interface ModelConfigInput {
  * a row here can name something that no longer exists, and that is the point
  * rather than a bug. See `src-tauri/src/db/ops/usage.rs`.
  */
-export type UsageDimension = 'total' | 'provider' | 'model' | 'bot' | 'source' | 'conversation' | 'day' | 'hour'
+export type UsageDimension =
+  | 'total'
+  | 'provider'
+  | 'model'
+  | 'bot'
+  | 'source'
+  | 'conversation'
+  | 'day'
+  | 'hour'
+  /** Answering the user, versus reviewing whether a tool call was allowed to
+   *  happen. Its keys are roles rather than ids, so they have no `label` from
+   *  the backend — the caller names them. */
+  | 'kind'
 
 export interface UsageFilter {
   since_ms?: number | null
@@ -837,4 +877,8 @@ export interface StreamChunk {
    *  `sub_agent_started`. */
   kind?: string
   description?: string
+  /** Only on `auto_review`: what the reviewer decided about `call_id`. The call
+   *  itself was never drawn as pending — nobody was asked — so this is the
+   *  first and only event about that decision. */
+  verdict?: AutoReviewVerdict
 }

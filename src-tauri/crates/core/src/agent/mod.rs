@@ -1,3 +1,4 @@
+pub mod auto_review;
 mod base_prompt;
 mod compact;
 mod context;

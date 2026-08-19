@@ -10,6 +10,7 @@ import {
   Flask,
   Link,
   Microphone,
+  ShieldCheck,
   Sliders,
   Smartphone,
   Sparkles,
@@ -33,6 +34,7 @@ export type SettingsTab =
   | 'assistants'
   | 'emoji'
   | 'tools'
+  | 'autoreview'
   | 'skills'
   | 'mcp'
   | 'memories'
@@ -58,6 +60,11 @@ const settingsTabs: SettingsTabDef[] = [
   { id: 'assistants', labelKey: 'settings.assistants', icon: FaceRobot },
   { id: 'emoji', labelKey: 'settings.emoji', icon: FaceSmile },
   { id: 'tools', labelKey: 'settings.toolsTab', icon: Wrench },
+  // Beside the tools rather than beside the servers: what it configures is who
+  // answers a tool's approval, and the row above is where the user just decided
+  // which tools exist. Not desktop-only — a phone runs the same turn loop and
+  // gets the same interruptions.
+  { id: 'autoreview', labelKey: 'settings.autoReview', icon: ShieldCheck },
   { id: 'skills', labelKey: 'settings.skillsTab', icon: Sparkles },
   { id: 'mcp', labelKey: 'settings.mcp', icon: LogoMcp },
   { id: 'memories', labelKey: 'settings.memories', icon: Bulb },

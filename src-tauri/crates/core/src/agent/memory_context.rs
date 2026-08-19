@@ -1270,6 +1270,7 @@ mod tests {
             cache_write_tokens: None,
             provider_name: None,
             provider_state: None,
+            auto_review: None,
         }
     }
 
