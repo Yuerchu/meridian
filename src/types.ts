@@ -253,6 +253,10 @@ export interface SubAgentRunView {
  *  since the streamed event that first announced it is gone by then. */
 export interface PendingApprovalInfo {
   approval_id: string
+  /** Which conversation this view belongs to. Redundant inside a snapshot,
+   *  which was asked for one; the whole point in `allPendingApprovals`, where a
+   *  question has no transcript around it to say where it came from. */
+  conversation_id: string
   /** The row the card hangs off *in this conversation*. For a delegated run the
    *  parent names its own `run_agent` row and the sub-agent names the row the
    *  call is on. */

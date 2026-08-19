@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import type { TFunction } from 'i18next'
 import { diffLines } from 'diff'
 import { parsePatchText, splitDiffText, type DiffLine, type DiffLineKind, type FileDiff } from '@/lib/patch-parse'
 import { useShikiLanguage } from '@/hooks/use-shiki-language'
@@ -198,6 +199,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   const [skippedSet, setSkippedSet] = useState<Set<string>>(new Set())
   const [sending, setSending] = useState(false)
   const markOrphaned = useConversationStore((s) => s.markApprovalOrphaned)
+  const retireAnswered = useConversationStore((s) => s.retireAnsweredApproval)
 
   const questions = useMemo<AskQuestion[]>(() => {
     try {
@@ -233,19 +235,27 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   }, [])
 
   const handleSubmit = useCallback(() => {
-    if (!data.approval_id) return
+    const approvalId = data.approval_id
+    if (!approvalId) return
     const result: Record<string, string> = {}
     for (const q of questions) {
       result[q.id] = formatAnswer(answers[q.id], skippedSet.has(q.id))
     }
     setSending(true)
-    // Nobody is listening any more: say so instead of leaving a form that
-    // silently discards what the user typed.
-    api.respondToAsk(data.approval_id, JSON.stringify(result)).catch(() => {
-      setSending(false)
-      markOrphaned(data.approval_id!)
-    })
-  }, [answers, skippedSet, questions, data.approval_id, markOrphaned])
+    api.respondToAsk(approvalId, JSON.stringify(result)).then(
+      // Same reason as `PendingApproval`: the queue is a separate ledger and
+      // learns nothing from an answer given here. A question answered on this
+      // form and left in it is offered again as a toast — "go and answer this"
+      // for something already answered — the moment the reader moves on.
+      () => retireAnswered(approvalId),
+      // Nobody is listening any more: say so instead of leaving a form that
+      // silently discards what the user typed.
+      () => {
+        setSending(false)
+        markOrphaned(approvalId)
+      },
+    )
+  }, [answers, skippedSet, questions, data.approval_id, markOrphaned, retireAnswered])
 
   const canSubmit = questions.some((q) => skippedSet.has(q.id) || hasContent(answers[q.id]))
 
@@ -637,6 +647,7 @@ function PendingApproval({
   const [ui, setUi] = useState<'idle' | 'feedback' | 'sent'>('idle')
   const [feedback, setFeedback] = useState('')
   const markOrphaned = useConversationStore((s) => s.markApprovalOrphaned)
+  const retireAnswered = useConversationStore((s) => s.retireAnsweredApproval)
   const isEscalation = retryReason !== undefined
 
   // Optimistic, with a way back. The backend rejects when it is no longer
@@ -645,7 +656,14 @@ function PendingApproval({
     const previous = ui
     setUi('sent')
     send().then(
-      () => onAnswered?.(),
+      () => {
+        // The queue is a separate ledger from this card, and it does not learn
+        // anything from an answer given here. Left in it, this question is
+        // offered again as a toast the moment the reader moves to another
+        // conversation — buttons for a decision that has already been made.
+        retireAnswered(approvalId)
+        onAnswered?.()
+      },
       () => {
         setUi(previous)
         markOrphaned(approvalId)
@@ -1086,7 +1104,28 @@ function TodoListBlock({ data, title, todos }: { data: ToolCallDisplay; title: s
   )
 }
 
-function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
+/**
+ * What to call a tool in front of a person.
+ *
+ * `t()` hands back the key it was given when nothing is written for it, which is
+ * how a tool with no translation — anything from MCP or the custom registry — is
+ * told apart and shown under its bare id.
+ */
+export function toolLabel(t: TFunction, toolName: string): string {
+  const key = `chat.tool.name.${toolName}`
+  const name = t(key)
+  return name === key ? toolName : name
+}
+
+/**
+ * The one line that says which call this is: a path, a command, a pattern.
+ *
+ * Exported because the approval queue draws the same question outside the
+ * transcript, and two answers to "what is this call" would disagree in exactly
+ * the place it matters — an `apply_patch` whose file the card names and the
+ * queue does not is a decision made on less than the card offered.
+ */
+export function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
   switch (toolName) {
     case 'read_file':
     case 'list_directory':
@@ -1481,9 +1520,7 @@ export function ToolCallBlock({
     }
   }
 
-  const toolNameKey = `chat.tool.name.${data.tool_name}`
-  const displayName = t(toolNameKey)
-  const toolLabel = displayName !== toolNameKey ? displayName : data.tool_name
+  const label = toolLabel(t, data.tool_name)
 
   const trimmedArgs = data.arguments.trim()
   const showArgs = trimmedArgs !== '' && trimmedArgs !== '{}'
@@ -1492,7 +1529,7 @@ export function ToolCallBlock({
     <ChatTool state={mapChatToolState(data.status)} defaultExpanded={!isCompleted} className={cn('my-3', className)}>
       <ChatToolTrigger>
         <ChatToolStatusIcon />
-        <span className="font-medium text-foreground shrink-0">{toolLabel}</span>
+        <span className="font-medium text-foreground shrink-0">{label}</span>
         <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} />
         {/* In the trigger, not the body: a queued card is collapsed, and a
             standing clock beside a spinning one is too fine a distinction to

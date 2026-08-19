@@ -415,6 +415,38 @@ function sameStoredFields(a: Message, b: Message): boolean {
 
 /** Where a waiting card lives and what it is asking about. Everything needed to
  *  redraw it, keyed elsewhere by the `approval_id` that answers it. */
+/**
+ * One question waiting on a person, held where a conversation's session cannot
+ * hide it.
+ *
+ * `pendingApprovals` on a session answers "which id is this card waiting for",
+ * and is only ever written for a conversation somebody has opened —
+ * `ensureSession` runs when `ChatView` mounts, and `handleToolApproval` returns
+ * early without one. That is the right shape for a card and the wrong shape for
+ * a queue: the whole reason a queue exists is the conversations nobody is
+ * looking at, and those are exactly the ones with no session.
+ *
+ * So this is the answer to "what is waiting on you", indexed by `approval_id`
+ * and carrying enough to draw the question outside any transcript. It is
+ * populated for every conversation, open or not.
+ */
+export interface AttentionItem {
+  conversationId: string
+  approvalId: string
+  providerCallId: string
+  messageId: string
+  toolName: string
+  /** What the call was made with, as JSON. Kept here rather than read off the
+   *  transcript for the same reason the backend sends it: the row may be in a
+   *  conversation this client has never loaded. */
+  arguments: string
+  retryReason?: string
+  /** `ask` is a question with a form behind it, which no queue row can answer —
+   *  it offers a way in instead. Split here rather than by comparing the tool
+   *  name at each call site. */
+  kind: 'approval' | 'ask'
+}
+
 export interface PendingApprovalEntry {
   providerCallId: string
   /** The assistant row the card sits under. Needed because a provider call id
@@ -509,6 +541,21 @@ function defaultSession(): ConversationSession {
     switchingBranch: false,
     turns: [],
   }
+}
+
+/**
+ * Take a question out of the queue, wherever it was answered.
+ *
+ * Called from every path that retires an approval, including the ones that run
+ * for a conversation with no session — those are the paths that used to leave
+ * nothing behind, because the only record was on the session. A no-op for an id
+ * that was never queued, which is the common case: the queue skips the
+ * conversation the reader is already looking at.
+ */
+function retireAttention(state: ConversationStore, approvalId: string) {
+  if (!state.attention[approvalId]) return
+  delete state.attention[approvalId]
+  state.attentionOrder = state.attentionOrder.filter((id) => id !== approvalId)
 }
 
 function indexBranches(points: BranchPoint[]): Record<string, BranchPoint> {
@@ -615,6 +662,14 @@ export interface ConversationStore {
    *  cannot fill up with every turn in the app. */
   subAgentSteps: Record<string, number>
 
+  /** Every question waiting on a person, keyed by `approval_id`. See
+   *  `AttentionItem` for why this is not on the session. */
+  attention: Record<string, AttentionItem>
+  /** The order they are offered in. Separate from `attention` because the queue
+   *  can be reordered without anything about the questions changing: deferring
+   *  one moves it to the end and nothing else. */
+  attentionOrder: string[]
+
   /** Where the reader came from, innermost last. Empty whenever they are
    *  looking at something they picked from the sidebar.
    *
@@ -673,12 +728,16 @@ export interface ConversationStore {
     approvalId: string,
     callId: string,
     toolName: string,
+    /** What the call was made with. Recorded even for a conversation with no
+     *  session, which is why it is not optional: the queue draws from it, and a
+     *  row that can only say "run_command" is a yes/no about nothing. */
+    args: string,
     retryReason?: string,
     originCallId?: string,
     /** Set when a delegated run is asking. The card is the `run_agent` block
      *  named by this, and the question goes inside it — `callId` names a tool
      *  in the sub-agent's conversation, which this row never called. */
-    bubble?: { parentCallId: string; arguments: string; subConversationId?: string },
+    bubble?: { parentCallId: string; subConversationId?: string },
   ) => void
   /** A delegated run now exists. Arrives as soon as its conversation is
    *  written, not when it finishes, because the card has to be able to link to
@@ -703,6 +762,37 @@ export interface ConversationStore {
    *  conversation id: the approval id is a UUID, and a tool card does not know
    *  which conversation it is being rendered in. */
   markApprovalOrphaned: (approvalId: string) => void
+  /** An answer has been sent. Takes the question out of the queue and off
+   *  whichever card was offering it, without touching the call's status — the
+   *  tool is about to run, and its result is what says how it went.
+   *
+   *  Called rather than waited for, because for a delegated run no event will
+   *  ever arrive to do it. The question is filed under the conversation it was
+   *  *asked* in (the parent's, see `approval_adapter.rs`) while its result and
+   *  its stop are emitted on the sub-agent's own conversation, and both
+   *  `handleToolResult` and `handleStop` retire by conversation. Left to them,
+   *  a delegated approval answered anywhere would sit in the queue for the rest
+   *  of the session with the sidebar insisting its parent needs attention.
+   *
+   *  Also right for an ordinary approval, where the result *will* arrive: it
+   *  can be minutes away — `run_command` — and none of that time is time
+   *  anybody is being asked for anything. */
+  retireAnsweredApproval: (approvalId: string) => void
+  /** Not now — move it to the end of the queue and offer the next one.
+   *
+   *  Deliberately not a dismissal. The question is still outstanding and the
+   *  sidebar still says so; going round the queue brings it back. A queue whose
+   *  only way past an item is answering it stops being usable at three items,
+   *  and one where "later" meant "gone" would make a mis-click cost a turn. */
+  deferAttention: (approvalId: string) => void
+  /** Rebuild the queue from the backend's live register.
+   *
+   *  Every entry in it was announced by an event that is not replayed, so a
+   *  window that reloaded or a client that has just connected has no other way
+   *  to learn about a conversation that is holding a turn open. Reconciles both
+   *  ways, but only against what was queued when the request went out — events
+   *  landing while it is in flight are newer than the answer. */
+  loadAllPending: () => Promise<void>
   /** The request failed and is going again. Arrives before the backoff, so what
    *  it describes is the wait as well as the attempt. */
   handleRetry: (convId: string, attempt: number, max: number, delayMs: number) => void
@@ -732,6 +822,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   activeId: null,
   projects: [],
   subAgentSteps: {},
+  attention: {},
+  attentionOrder: [],
   navigationStack: [],
   activeProjectId: null,
   sessions: {},
@@ -1119,9 +1211,27 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
-  handleToolApproval: (convId, messageId, approvalId, callId, toolName, retryReason, originCallId, bubble) => {
+  handleToolApproval: (convId, messageId, approvalId, callId, toolName, args, retryReason, originCallId, bubble) => {
     set(
       produce((state: ConversationStore) => {
+        // Before the session check below, and that ordering is the point: a
+        // conversation nobody has opened has no session, and it is precisely
+        // those conversations the queue exists for. Everything after this line
+        // is about a card that may not exist.
+        if (!state.attention[approvalId]) {
+          state.attention[approvalId] = {
+            conversationId: convId,
+            approvalId,
+            providerCallId: callId,
+            messageId,
+            toolName,
+            arguments: args,
+            retryReason,
+            kind: toolName === 'ask_user' ? 'ask' : 'approval',
+          }
+          state.attentionOrder.push(approvalId)
+        }
+
         const session = state.sessions[convId]
         if (!session) return
         const entry: PendingApprovalEntry = {
@@ -1149,7 +1259,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
               approval_id: approvalId,
               call_id: callId,
               tool_name: toolName,
-              arguments: bubble.arguments,
+              arguments: args,
               retry_reason: retryReason,
               sub_conversation_id: bubble.subConversationId,
             }
@@ -1220,6 +1330,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   resolveNestedApproval: (convId, approvalId) => {
     set(
       produce((state: ConversationStore) => {
+        retireAttention(state, approvalId)
         const session = state.sessions[convId]
         if (!session) return
         delete session.pendingApprovals[approvalId]
@@ -1238,6 +1349,15 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   handleToolResult: (convId, messageId, callId, result, outcome) => {
     set(
       produce((state: ConversationStore) => {
+        // Ahead of the session check, like the queueing in `handleToolApproval`
+        // and for the same reason: a conversation nobody opened queued its
+        // question here, and a result is the only thing that will ever retire
+        // it. Matched on the pair, not the call id — provider call ids repeat.
+        for (const [id, item] of Object.entries(state.attention)) {
+          if (item.conversationId === convId && item.messageId === messageId && item.providerCallId === callId) {
+            retireAttention(state, id)
+          }
+        }
         const session = state.sessions[convId]
         if (!session) return
         const status: ToolCallDisplay['status'] =
@@ -1311,6 +1431,9 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   markApprovalOrphaned: (approvalId) => {
     set(
       produce((state: ConversationStore) => {
+        // Unconditional, and before the loop: the loop can only reach sessions,
+        // and the queue holds questions from conversations that have none.
+        retireAttention(state, approvalId)
         for (const session of Object.values(state.sessions)) {
           const entry = session.pendingApprovals[approvalId] ?? session.pendingAsks[approvalId]
           if (!entry) continue
@@ -1334,6 +1457,86 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             }
           }
           return
+        }
+      }),
+    )
+  },
+
+  retireAnsweredApproval: (approvalId) => {
+    set(
+      produce((state: ConversationStore) => {
+        retireAttention(state, approvalId)
+        // The nested question's buttons, which is all `resolveNestedApproval`
+        // does when the answer came from the card. Every session rather than
+        // one: a delegated question is drawn on the parent's `run_agent` card
+        // while the call it names lives in the sub-agent's conversation, and
+        // both may be open.
+        for (const session of Object.values(state.sessions)) {
+          for (const m of session.messages) {
+            for (const b of m._blocks ?? []) {
+              if (b.type === 'tool_call' && b.data.nested_approval?.approval_id === approvalId) {
+                b.data.nested_approval = undefined
+              }
+            }
+          }
+        }
+        // An ordinary card is deliberately untouched. Clearing its
+        // `approval_id` would leave it at `status: 'pending'`, which
+        // `mapChatToolState` draws as `requires-action` — a card demanding an
+        // answer with no way to give one. And `session.pendingApprovals` is
+        // what `handleStop` reads to write off a call whose turn died before
+        // its result arrived, so emptying it early loses that. The card's own
+        // ledger is retired by the result, which for an ordinary call always
+        // comes; the queue's is retired here, because for a delegated one it
+        // never does.
+      }),
+    )
+  },
+
+  deferAttention: (approvalId) => {
+    set(
+      produce((state: ConversationStore) => {
+        if (!state.attention[approvalId]) return
+        state.attentionOrder = [...state.attentionOrder.filter((id) => id !== approvalId), approvalId]
+      }),
+    )
+  },
+
+  loadAllPending: async () => {
+    // What the answer is allowed to have an opinion about. Anything queued after
+    // this line is newer than the register that is about to be read, and being
+    // absent from it says nothing.
+    const asked = new Set(get().attentionOrder)
+    const rows = await api.allPendingApprovals().catch(() => null)
+    // A queue that cannot be fetched is left as it is. Emptying it here would
+    // turn one failed call into a set of questions nobody is told about, and the
+    // events that filled it were right when they arrived.
+    if (!rows) return
+    set(
+      produce((state: ConversationStore) => {
+        for (const row of rows) {
+          if (state.attention[row.approval_id]) continue
+          state.attention[row.approval_id] = {
+            conversationId: row.conversation_id,
+            approvalId: row.approval_id,
+            providerCallId: row.provider_call_id,
+            messageId: row.assistant_message_id,
+            toolName: row.tool_name,
+            arguments: row.arguments,
+            retryReason: row.retry_reason,
+            kind: row.tool_name === 'ask_user' ? 'ask' : 'approval',
+          }
+          state.attentionOrder.push(row.approval_id)
+        }
+        // The answer *is* the register, so anything it does not mention has no
+        // turn waiting on it — its turn ended while nothing was listening, which
+        // is the state this call exists to reconcile. Restricted to what was
+        // already queued when the request went out: an approval that arrived
+        // while it was in flight is younger than the answer, and deleting it
+        // here would drop a live question every time a reconnect raced an event.
+        const live = new Set(rows.map((r) => r.approval_id))
+        for (const id of Object.keys(state.attention)) {
+          if (asked.has(id) && !live.has(id)) retireAttention(state, id)
         }
       }),
     )
@@ -1400,6 +1603,16 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     const mine = !turnId || !session0?.activeTurnId || session0.activeTurnId === turnId
     set(
       produce((state: ConversationStore) => {
+        // The turn is over, so nothing is listening for this conversation's
+        // questions any more — including the ones queued for a conversation
+        // with no session, which the block below cannot reach. `mine` is always
+        // true without a session: there is no turn on screen for the stop to
+        // belong to somebody else than.
+        if (mine) {
+          for (const [id, item] of Object.entries(state.attention)) {
+            if (item.conversationId === convId) retireAttention(state, id)
+          }
+        }
         const session = state.sessions[convId]
         if (!session) return
         if (!mine) {

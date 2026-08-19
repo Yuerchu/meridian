@@ -29,6 +29,7 @@ import type {
   ModelConfig,
   ModelConfigInput,
   ModelInfo,
+  PendingApprovalInfo,
   Project,
   PromptTemplate,
   Provider,
@@ -263,6 +264,13 @@ export const api = {
     invoke<void>('deny_tool_call', { approvalId, reason: reason ?? null }),
 
   respondToAsk: (approvalId: string, response: string) => invoke<void>('respond_to_ask', { approvalId, response }),
+
+  /** Everything waiting on the user, in every conversation — including ones this
+   *  client has never opened. The stream announced each of these once and
+   *  replays nothing, so this is the only way back for a window that reloaded or
+   *  a phone that has just connected. One row per approval, already reduced to
+   *  the view that can answer it. */
+  allPendingApprovals: () => invoke<PendingApprovalInfo[]>('all_pending_approvals'),
 
   // Projects
   listProjects: () => invoke<Project[]>('list_projects'),

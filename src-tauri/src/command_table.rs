@@ -246,6 +246,9 @@ macro_rules! with_all_commands {
             async commands::mcp => list_mcp_connection_statuses(),
             async commands::mcp => list_all_tool_names(),
 
+            // Not `local`: a phone that has just connected is exactly the client
+            // that needs to know what the desktop was already holding.
+            sync commands::approval => all_pending_approvals(),
             async commands::approval => approve_tool_call(approval_id: String),
             async commands::approval => deny_tool_call(approval_id: String, reason: Option<String>),
             async commands::approval => respond_to_ask(approval_id: String, response: String),

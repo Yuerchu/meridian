@@ -139,17 +139,17 @@ export function useGlobalEventListener() {
           p.approval_id,
           p.call_id,
           p.tool_name!,
+          // Sent with every approval, not just a delegated one. It used to be
+          // read only out of the `parent_call_id` branch, which was enough while
+          // the only reader was a card sitting on a row it could not reach — the
+          // queue needs it for all of them, and for the same reason: it draws
+          // outside any transcript.
+          p.arguments ?? '{}',
           p.retry_reason,
           p.origin_call_id,
           // Routed here rather than to the sub-agent's own conversation, which
           // is where the call is: nobody is necessarily looking at that one.
-          p.parent_call_id
-            ? {
-                parentCallId: p.parent_call_id,
-                arguments: p.arguments ?? '{}',
-                subConversationId: p.sub_conversation_id,
-              }
-            : undefined,
+          p.parent_call_id ? { parentCallId: p.parent_call_id, subConversationId: p.sub_conversation_id } : undefined,
         )
         if (shouldNotify(convId)) {
           const toolName = p.tool_name === 'ask_user' ? 'Question' : p.tool_name!
@@ -193,7 +193,16 @@ export function useGlobalEventListener() {
     // the server rather than waited for.
     const resyncUnlisten = listen('remote-resync', () => {
       useConversationStore.getState().resyncAfterReconnect()
+      // Approvals are not in the transcript the resync above re-reads, and the
+      // events that announced them went out while the socket was down.
+      useConversationStore.getState().loadAllPending()
     })
+
+    // What was already waiting before this client existed. A window that
+    // reloaded and a phone that has just connected are the same case: the turn
+    // is still open in the backend and its question was announced once, to
+    // nobody.
+    useConversationStore.getState().loadAllPending()
 
     const compactStartUnlisten = listen<{ conversation_id: string }>('compact-start', (event) => {
       useConversationStore.getState().handleCompactStart(event.payload.conversation_id)

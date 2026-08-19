@@ -11,6 +11,7 @@ import { EmptyState } from '@/components/chat/empty-state'
 import { useBackGesture, useHistoryLevel } from '@/hooks/use-history-level'
 import { useHotkey } from '@/hooks/use-hotkey'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { ApprovalToastRegion } from './approval-toasts'
 import { AppSidebar } from './app-sidebar'
 import { CommandPalette } from './command-palette'
 import { RemoteStatus } from './remote-status'
@@ -253,6 +254,12 @@ export function AppShell(props: ShellProps) {
           )}
         </main>
       </Sidebar.Main>
+
+      {/* Outside `Sidebar.Main`, beside the palette: its region is `fixed`, and
+          what it draws is about no particular pane. It sits above the settings
+          layer by z-index, which is right — a conversation stopping on a
+          permission prompt is not something being in settings should hide. */}
+      <ApprovalToastRegion onSelect={onSelect} />
 
       <CommandPalette
         isOpen={paletteOpen}
