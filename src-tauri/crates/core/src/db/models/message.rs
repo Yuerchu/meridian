@@ -69,6 +69,11 @@ pub struct Message {
     /// Versioned provider-owned continuation state. This is a persistence
     /// concern, not part of the transcript DTO exposed through Tauri.
     pub provider_state: Option<String>,
+    /// What an automatic reviewer decided about this row's tool calls, keyed by
+    /// call id. `None` on every row nothing reviewed, which is most of them —
+    /// the fast paths in `tools::reach` never reach a reviewer at all. See
+    /// migration 33.
+    pub auto_review: Option<String>,
 }
 
 /// The four token counts one message row records.

@@ -14,11 +14,11 @@ use crate::util::extract_last_json_object;
 
 /// The four tools the reviewer gets.
 ///
-/// `EXPLORE_TOOLS` minus `web_search` and the memory/log readers. A reviewer
-/// that consults memories is reading opinions formed in other conversations
-/// about other work, and `read_app_logs` reads this app's own log rather than
-/// anything about the repository under review.
-pub(crate) const REVIEW_TOOLS: &[&str] = &["read_file", "search_files", "glob", "list_directory"];
+/// Shared with the approval reviewer (`agent::auto_review::investigate`), which
+/// needs exactly the same thing for the same reason. One list rather than two:
+/// a tool added to a copy of this would give one reviewer a capability the
+/// other was deliberately denied, and nothing would notice.
+pub(crate) use crate::tools::READ_ONLY_TOOLS as REVIEW_TOOLS;
 
 /// Built per request because the round number and the repository path belong in
 /// it: a reviewer that does not know it is on its third look keeps finding new

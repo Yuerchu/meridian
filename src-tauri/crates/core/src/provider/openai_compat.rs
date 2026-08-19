@@ -827,17 +827,17 @@ fn google_state_from_message(
     use super::state::{GoogleSignatureLocation, ProviderStateAccumulator, ProviderStateUpdate};
 
     let mut state = ProviderStateAccumulator::default();
-    if let Some(extra) = &message.extra_content {
-        if let Some(signature) = extra.thought_signature() {
-            state
-                .apply(ProviderStateUpdate::GoogleThoughtSignatureDelta {
-                    protocol: GOOGLE_OPENAI_CHAT_PROTOCOL.into(),
-                    model: model.to_string(),
-                    location: GoogleSignatureLocation::Message,
-                    delta: signature.to_string(),
-                })
-                .map_err(ProviderError::Parse)?;
-        }
+    if let Some(extra) = &message.extra_content
+        && let Some(signature) = extra.thought_signature()
+    {
+        state
+            .apply(ProviderStateUpdate::GoogleThoughtSignatureDelta {
+                protocol: GOOGLE_OPENAI_CHAT_PROTOCOL.into(),
+                model: model.to_string(),
+                location: GoogleSignatureLocation::Message,
+                delta: signature.to_string(),
+            })
+            .map_err(ProviderError::Parse)?;
     }
     if let Some(tool_calls) = &message.tool_calls {
         for (index, call) in tool_calls.iter().enumerate() {

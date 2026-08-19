@@ -1014,7 +1014,7 @@ async fn chat_inner(
     // rather than being part of one: the lease, the turn record, the terminal
     // event, and this conversation's own setup and epilogue.
     let mcp = services.mcp.clone();
-    let approvals = super::approval_adapter::DesktopApprovals {
+    let asker = super::approval_adapter::DesktopApprovals {
         services: services.clone(),
         cancel: cancel.clone(),
         turn_id: turn_id.clone(),
@@ -1022,6 +1022,25 @@ async fn chat_inner(
         // The user started this turn themselves; its cards belong here.
         bubble: None,
     };
+    // Inert unless the user turned automatic review on and named a model.
+    // `unattended` is false: there is a window, so a review that cannot answer
+    // falls back to drawing the card rather than refusing.
+    let approvals = meridian_core::agent::auto_review::AutoReviewed::wrap(
+        &asker,
+        meridian_core::agent::auto_review::Context {
+            services: services.clone(),
+            conversation_id: conversation_id.clone(),
+            turn_id: turn_id.clone(),
+            working_directory: tool_context.working_directory.clone(),
+            // The turn's own boundary, so the escalating pass can read exactly
+            // what the turn could and nothing more. On Android that is the SAF
+            // whitelist rather than the whole disk.
+            file_access: tool_context.file_access.clone(),
+            // One person, and they own the machine.
+            multi_party: false,
+            unattended: false,
+        },
+    );
     let outcome = engine::run_turn(
         &engine::TurnServices {
             pool: &pool,

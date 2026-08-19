@@ -71,7 +71,14 @@ fn to_camel_case(snake: &str) -> String {
 /// `onebot.admin_users` decides who counts as an admin in QQ — writing it is
 /// privilege escalation against a *third party*, not a setting the owner is
 /// entitled to change about their own session.
-const SERVER_OWNED_PREFIXES: &[&str] = &["remote.", "hooks.", "onebot."];
+///
+/// `autoreview.` is here for the escalation reason rather than the self-lockout
+/// one. Those keys decide which model answers approvals and what it is told;
+/// pointing `autoreview.model` at something that waves everything through, or
+/// appending one line to `autoreview.allow_rules`, converts write access to a
+/// settings key into permission to run anything on the host. It is the only
+/// prefix whose *values* grant capability rather than configure a listener.
+const SERVER_OWNED_PREFIXES: &[&str] = &["remote.", "hooks.", "onebot.", "autoreview."];
 
 /// Refuse the generic key-value commands when the key is a server's own.
 ///
@@ -237,6 +244,11 @@ mod tests {
             "hooks.enabled",
             "onebot.access_token",
             "onebot.admin_users",
+            // Not self-lockout: whoever writes these picks the model that
+            // answers approvals, and what it is told to allow.
+            "autoreview.model",
+            "autoreview.allow_rules",
+            "autoreview.enabled",
         ] {
             let args = serde_json::json!({ "key": key });
             assert!(

@@ -37,6 +37,19 @@ pub enum Permission {
     Never,
 }
 
+/// What an agent that must not change anything is allowed to call.
+///
+/// Both reviewers use it — the one looking at a plan or a diff (`hooks`) and
+/// the one deciding an approval (`agent::auto_review`) — and neither may hold
+/// anything else. `EXPLORE_TOOLS` minus `web_search` and the memory and log
+/// readers: consulting memories means reading opinions formed in other
+/// conversations about other work, and `read_app_logs` reads this app's own log
+/// rather than anything about the repository in front of it.
+///
+/// A whitelist rather than a filter over `Permission::Always`, so a tool added
+/// to the registry tomorrow is not handed to a reviewer by default.
+pub const READ_ONLY_TOOLS: &[&str] = &["read_file", "search_files", "glob", "list_directory"];
+
 #[derive(Clone)]
 pub struct ToolContext {
     pub working_directory: Option<String>,

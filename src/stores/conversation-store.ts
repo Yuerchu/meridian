@@ -3,6 +3,7 @@ import { produce } from 'immer'
 import { api } from '@/api'
 import { parseTodoArgs, toDrafts, type TodoArgs } from '@/components/chat/todo-list'
 import type {
+  AutoReviewVerdict,
   BranchPoint,
   Conversation,
   Message,
@@ -186,6 +187,18 @@ function unansweredStatus(turnId: string | null | undefined, turns: Map<string, 
  * nothing can close the window on the other side, where the approval is already
  * gone and the tool row has not landed yet.
  */
+/** The `auto_review` column, keyed by call id. Unreadable JSON means no
+ *  verdicts rather than no transcript — a card without its reason is still a
+ *  card, and throwing here would take the whole conversation with it. */
+function parseAutoReview(raw: string | null | undefined): Record<string, AutoReviewVerdict> {
+  if (!raw) return {}
+  try {
+    return JSON.parse(raw) as Record<string, AutoReviewVerdict>
+  } catch {
+    return {}
+  }
+}
+
 export function hydrateBlocks(
   msgs: Message[],
   pending: PendingApprovalInfo[] = [],
@@ -216,6 +229,10 @@ export function hydrateBlocks(
           const tcs = JSON.parse(m.tool_calls) as OpenAIToolCall[]
           // Consumed as they match, for the same reason as the approvals.
           const owned = [...(answers.get(m.id) ?? [])]
+          // One object for the whole row, keyed by call id: several calls on
+          // one reply are reviewed separately. Unparseable means no verdicts
+          // rather than no transcript.
+          const reviewed = parseAutoReview(m.auto_review)
           for (const tc of tcs) {
             const answered = owned.findIndex((tm) => tm.tool_call_id === tc.id)
             const toolMsg = answered >= 0 ? owned.splice(answered, 1)[0] : undefined
@@ -263,6 +280,7 @@ export function hydrateBlocks(
                       sub_conversation_id: nested.sub_conversation_id,
                     }
                   : undefined,
+                auto_review: reviewed[tc.id],
               },
             })
             if (toolMsg && outcomeOf(toolMsg) === 'completed' && tc.function.name === 'send_sticker') {
@@ -676,6 +694,10 @@ export interface ConversationStore {
    *  on its own conversation, which the parent's session never sees. */
   resolveNestedApproval: (convId: string, approvalId: string) => void
   handleToolResult: (convId: string, messageId: string, callId: string, result: string, outcome?: string) => void
+  /** A tool call the automatic reviewer decided instead of the user. Arrives
+   *  for calls that were never drawn as pending — nobody was asked — so it is
+   *  the only event that will ever say why one of them was refused. */
+  handleAutoReview: (convId: string, messageId: string, callId: string, verdict: AutoReviewVerdict) => void
   /** The answer never landed — the backend has forgotten this request. Drops
    *  the buttons rather than leaving one that cannot work. Takes no
    *  conversation id: the approval id is a UUID, and a tool card does not know
@@ -1263,6 +1285,22 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             }
           }
         }
+      }),
+    )
+  },
+
+  handleAutoReview: (convId, messageId, callId, verdict) => {
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        // No `ANSWERED` filter here, unlike the approval and result handlers:
+        // this card was never pending. Nobody was asked, so it went straight
+        // from `running` to whatever the verdict made of it, and the verdict
+        // arrives before the result that will settle its status.
+        const target = session.messages.find((m) => m.id === messageId)
+        const card = (target?._blocks ?? []).find((b) => b.type === 'tool_call' && b.data.call_id === callId)
+        if (card?.type === 'tool_call') card.data.auto_review = verdict
       }),
     )
   },

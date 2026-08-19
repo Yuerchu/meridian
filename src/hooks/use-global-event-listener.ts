@@ -167,6 +167,14 @@ export function useGlobalEventListener() {
         return
       }
 
+      // A call the reviewer decided instead of the user. No notification: the
+      // point of the feature is not interrupting anybody, and the verdict is
+      // on the card either way.
+      if (p.type === 'auto_review' && p.call_id && p.message_id && p.verdict) {
+        store.handleAutoReview(convId, p.message_id, p.call_id, p.verdict)
+        return
+      }
+
       // message_id as well as call_id: provider call ids repeat, so the pair is
       // what identifies a card.
       if (p.type === 'tool_result' && p.call_id) {

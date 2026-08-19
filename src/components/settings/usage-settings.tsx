@@ -34,7 +34,12 @@ type Range = (typeof RANGES)[number]
 const ORIGINS = [null, 'desktop', 'onebot'] as const
 type Origin = (typeof ORIGINS)[number]
 
-const BREAKDOWNS = ['conversation', 'source', 'bot'] as const
+// `kind` splits answering the user from reviewing whether a tool call was
+// allowed to happen. It sits with the others rather than in a panel of its own
+// because it is the same question — where did the money go — and because the
+// total above already includes both: without a way to decompose it, a user who
+// turns the reviewer on has no way to find out what it costs them.
+const BREAKDOWNS = ['conversation', 'source', 'bot', 'kind'] as const
 type Breakdown = (typeof BREAKDOWNS)[number]
 
 const DAY_MS = 86_400_000
@@ -280,7 +285,10 @@ export function UsageSettings() {
               </Tabs.ListContainer>
               {BREAKDOWNS.map((value) => (
                 <Tabs.Panel key={value} id={value} className="p-0">
-                  <BucketTable buckets={report?.rows ?? []} />
+                  <BucketTable
+                    buckets={report?.rows ?? []}
+                    labelFor={value === 'kind' ? (key) => t(`settings.usage.kind.${key}`) : undefined}
+                  />
                 </Tabs.Panel>
               ))}
             </Tabs>
@@ -516,7 +524,7 @@ function Legend({ bands }: { bands: readonly (typeof SERIES)[number][] }) {
  * markup, and the same shape is already used for the log viewer. `tabular-nums`
  * on every figure, so the columns line up down the page.
  */
-function BucketTable({ buckets }: { buckets: UsageBucket[] }) {
+function BucketTable({ buckets, labelFor }: { buckets: UsageBucket[]; labelFor?: (key: string) => string }) {
   const { t } = useTranslation()
   if (buckets.length === 0) return null
   return (
@@ -529,8 +537,13 @@ function BucketTable({ buckets }: { buckets: UsageBucket[] }) {
             i > 0 && 'border-t border-border',
           )}
         >
-          <span className={cn('truncate text-sm', !bucket.label && 'text-muted italic')}>
-            {bucket.label ?? t('settings.usage.deleted')}
+          {/* `labelFor` is for dimensions whose keys are not ids and so carry
+              no backend label — `kind`, whose keys are roles. Without it a row
+              with no label reads as "deleted", which is right for a
+              conversation that is gone and nonsense for a role that is not a
+              thing that can be deleted. */}
+          <span className={cn('truncate text-sm', !bucket.label && !labelFor && 'text-muted italic')}>
+            {bucket.label ?? labelFor?.(bucket.key) ?? t('settings.usage.deleted')}
           </span>
           <span className="text-xs text-muted tabular-nums">
             {t('settings.usage.tokens', {

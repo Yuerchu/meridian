@@ -58,6 +58,10 @@ pub enum UsageDimension {
     Conversation,
     Day,
     Hour,
+    /// Answering the user, versus reviewing whether a tool call was allowed to
+    /// happen. The second is spend nobody asked for directly, and a total that
+    /// cannot separate the two is one nobody can act on.
+    Kind,
 }
 
 impl UsageDimension {
@@ -83,6 +87,7 @@ impl UsageDimension {
             // and reads as the numbers being wrong rather than the grouping.
             UsageDimension::Day => "strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime')",
             UsageDimension::Hour => "strftime('%Y-%m-%dT%H', created_at / 1000, 'unixepoch', 'localtime')",
+            UsageDimension::Kind => "role",
         }
     }
 
@@ -269,9 +274,14 @@ fn current_prices(conn: &mut SqliteConnection) -> QueryResult<HashMap<(String, S
 }
 
 fn grouped(conn: &mut SqliteConnection, dimension: UsageDimension, filter: &UsageFilter) -> QueryResult<Vec<GroupRow>> {
-    // Assistant rows only. A question carries no tokens and no model, so every
-    // one of them would land in a single group keyed on nothing and inflate the
-    // reply count the other figures are read against.
+    // The two roles that carry tokens. A question carries none and has no
+    // model, so every user row would land in a single group keyed on nothing
+    // and inflate the reply count the other figures are read against.
+    //
+    // `auto_review` rows are traffic the user never asked for directly, and
+    // leaving them out would report a smaller number than was actually spent —
+    // the same failure as counting unpriced messages as free. They are told
+    // apart by `UsageDimension::Kind`.
     //
     // Each filter is bound twice against the same `?`-pair rather than being
     // appended conditionally: one statement, one shape, and no arm of a builder
@@ -286,7 +296,7 @@ fn grouped(conn: &mut SqliteConnection, dimension: UsageDimension, filter: &Usag
                 COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
                 COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens
            FROM audit_messages
-          WHERE role = 'assistant'
+          WHERE role IN ('assistant', 'auto_review')
             AND (? IS NULL OR created_at >= ?)
             AND (? IS NULL OR created_at < ?)
             AND (? IS NULL OR turn_origin = ?)
@@ -395,6 +405,40 @@ mod tests {
             .unwrap();
     }
 
+    /// The same, filed as an automatic review rather than as an answer.
+    fn review(conn: &mut SqliteConnection, id: &str, created_at: i64, input: i32, price: f64) {
+        diesel::insert_into(audit_messages::table)
+            .values(&NewAuditMessage {
+                id,
+                recorded_at: created_at,
+                message_id: id,
+                conversation_id: "c1",
+                turn_id: None,
+                source_type: None,
+                source_id: None,
+                turn_origin: Some("desktop"),
+                role: crate::db::ops::audit::AUTO_REVIEW_ROLE,
+                content: "",
+                sender_id: None,
+                sender_name: None,
+                provider_id: Some("p1"),
+                provider_name: Some("Acme"),
+                model_id: Some("cheap"),
+                input_tokens: Some(input),
+                output_tokens: Some(0),
+                cache_read_tokens: Some(0),
+                cache_write_tokens: Some(0),
+                created_at,
+                input_price: Some(price),
+                output_price: Some(0.0),
+                cache_read_price: None,
+                cache_write_price: None,
+                self_id: None,
+            })
+            .execute(conn)
+            .unwrap();
+    }
+
     fn total(conn: &mut SqliteConnection, filter: &UsageFilter) -> UsageBucket {
         report(conn, UsageDimension::Total, filter)
             .unwrap()
@@ -432,6 +476,53 @@ mod tests {
         assert_eq!(all.messages, 2);
         assert!((all.cost - 30.0).abs() < 0.001, "10 + 20, not 2 x either");
         assert_eq!(all.unpriced_messages, 0);
+    }
+
+    /// Reviews are spend the user did not ask for directly, so a total that
+    /// leaves them out is smaller than the truth — the same failure as
+    /// reporting unpriced traffic as free.
+    #[test]
+    fn a_review_counts_towards_the_total() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        reply(
+            &mut conn,
+            "a",
+            "m",
+            1_000,
+            (1_000_000, 0, 0, 0),
+            Some((10.0, 0.0)),
+            "desktop",
+        );
+        review(&mut conn, "r", 1_100, 1_000_000, 2.0);
+
+        let all = total(&mut conn, &UsageFilter::default());
+        assert_eq!(all.messages, 2);
+        assert!((all.cost - 12.0).abs() < 0.001, "the review is part of what was spent");
+    }
+
+    /// And they have to be separable, or the total is a number nobody can act
+    /// on: turning the reviewer off is only a decision you can make if you can
+    /// see what it costs.
+    #[test]
+    fn the_two_kinds_of_spend_can_be_told_apart() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        reply(
+            &mut conn,
+            "a",
+            "m",
+            1_000,
+            (1_000_000, 0, 0, 0),
+            Some((10.0, 0.0)),
+            "desktop",
+        );
+        review(&mut conn, "r", 1_100, 1_000_000, 2.0);
+
+        let by_kind = report(&mut conn, UsageDimension::Kind, &UsageFilter::default()).unwrap();
+        let of = |key: &str| by_kind.iter().find(|b| b.key == key).map(|b| b.cost).unwrap_or(0.0);
+        assert!((of("assistant") - 10.0).abs() < 0.001);
+        assert!((of("auto_review") - 2.0).abs() < 0.001);
     }
 
     /// A cached token is billed once. The same rule `compute_cost` is tested for

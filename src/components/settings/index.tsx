@@ -8,6 +8,7 @@ import { HooksSettings } from './hooks-settings'
 import { RemoteAccessSettings } from './remote-access-settings'
 import { EmojiSettings } from './emoji-settings'
 import { ToolMarketplace } from './tool-marketplace'
+import { AutoReviewSettings } from './auto-review-settings'
 import { SkillSettings } from './skill-settings'
 import { MemorySettings } from './memory-settings'
 import { VoiceSettings } from './voice-settings'
@@ -37,6 +38,7 @@ export default function SettingsPage({ activeTab }: { activeTab: SettingsTab }) 
         {activeTab === 'assistants' && <AssistantSettings />}
         {activeTab === 'emoji' && <EmojiSettings />}
         {activeTab === 'tools' && <ToolMarketplace />}
+        {activeTab === 'autoreview' && <AutoReviewSettings />}
         {activeTab === 'skills' && <SkillSettings />}
         {activeTab === 'mcp' && <McpSettings />}
         {activeTab === 'memories' && <MemorySettings />}

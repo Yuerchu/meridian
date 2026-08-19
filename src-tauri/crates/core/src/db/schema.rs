@@ -269,6 +269,7 @@ diesel::table! {
         cache_write_tokens -> Nullable<Integer>,
         provider_name -> Nullable<Text>,
         provider_state -> Nullable<Text>,
+        auto_review -> Nullable<Text>,
     }
 }
 

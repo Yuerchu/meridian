@@ -494,6 +494,7 @@ mod tests {
             cache_write_tokens: None,
             provider_name: None,
             provider_state: None,
+            auto_review: None,
         }
     }
 
@@ -831,6 +832,7 @@ mod injected_context_tests {
             cache_write_tokens: None,
             provider_name: None,
             provider_state: None,
+            auto_review: None,
         }
     }
 
@@ -984,6 +986,7 @@ mod injected_context_tests {
             cache_write_tokens: None,
             provider_name: None,
             provider_state: None,
+            auto_review: None,
         }];
         let context = crate::db::ops::message::ActiveContext {
             path: Vec::new(),

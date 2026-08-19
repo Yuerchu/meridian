@@ -47,7 +47,7 @@ import { ChatSource, ChatSources } from '@heroui-pro/react/chat-source'
 import { openExternally } from '@/lib/external-link'
 import { MarkdownContent } from './markdown-content'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { ToolCallDisplay } from '@/types'
+import type { AutoReviewVerdict, ToolCallDisplay } from '@/types'
 
 interface AskOption {
   label: string
@@ -1263,6 +1263,64 @@ function OrphanedNotice() {
 }
 
 /**
+ * Who decided this call, when it was not the person reading the transcript.
+ *
+ * Drawn for every automatic verdict rather than only for refusals. A denial has
+ * to be attributable — without this the model's "Tool call denied" reads as it
+ * changing its mind, which is the one reading that leads nowhere — but an
+ * approval matters too: it is the only place the user can see what is being
+ * waved through on their behalf, and the only way they can tell the mode is
+ * working before it refuses something.
+ *
+ * `unreadable` is neither. The review ran, cost money and answered nothing, and
+ * the decision fell back to the card below this one. Saying so is what keeps a
+ * misconfigured reviewer from looking like no reviewer at all.
+ */
+function AutoReviewNotice({ verdict }: { verdict: AutoReviewVerdict }) {
+  const { t } = useTranslation()
+  const denied = verdict.outcome === 'deny'
+  const unreadable = verdict.outcome === 'unreadable'
+  const label = denied
+    ? t('chat.tool.autoReview.denied')
+    : unreadable
+      ? t('chat.tool.autoReview.unreadable')
+      : t('chat.tool.autoReview.allowed')
+
+  return (
+    <div
+      data-slot="auto-review"
+      className={cn(
+        'space-y-1 rounded-lg px-2 py-1.5 text-xs',
+        denied ? 'bg-danger-soft text-danger-soft-foreground' : 'bg-default text-muted',
+      )}
+    >
+      <div className="flex items-center gap-1.5">
+        {denied ? (
+          <Ban className="w-3.5 h-3.5 shrink-0" />
+        ) : unreadable ? (
+          <TriangleExclamation className="w-3.5 h-3.5 shrink-0 text-warning-soft-foreground" />
+        ) : (
+          <CircleCheck className="w-3.5 h-3.5 shrink-0" />
+        )}
+        <span className="font-medium">{label}</span>
+        {verdict.risk && <span className="shrink-0">{t(`chat.tool.autoReview.risk.${verdict.risk}`)}</span>}
+        {verdict.authorization && (
+          <span className="shrink-0">{t(`chat.tool.autoReview.auth.${verdict.authorization}`)}</span>
+        )}
+        {/* Only worth saying when it went and looked: the cheap pass is the
+            default and naming it on every card would be noise. */}
+        {verdict.stage === 'investigate' && (
+          <span className="ml-auto shrink-0">{t('chat.tool.autoReview.investigated')}</span>
+        )}
+      </div>
+      {verdict.rationale?.trim() && (
+        <p className={cn('whitespace-pre-wrap', denied ? undefined : 'text-muted')}>{verdict.rationale}</p>
+      )}
+    </div>
+  )
+}
+
+/**
  * How an interactive card ended, whenever that was not "the user answered".
  *
  * The three cards that draw their own body — the question, and the two plan
@@ -1448,6 +1506,11 @@ export function ToolCallBlock({
         {fileDiffs
           ? fileDiffs.map((d, i) => <FileDiffCard key={i} diff={d} />)
           : showArgs && <ChatToolArgs text={data.arguments} />}
+
+        {/* Above the buttons rather than below: when a review came back
+            unreadable there *are* buttons under this, and what it says is why
+            the user is being asked at all. */}
+        {data.auto_review && <AutoReviewNotice verdict={data.auto_review} />}
 
         {data.status === 'pending' && data.approval_id && (
           <PendingApproval key={data.approval_id} approvalId={data.approval_id} retryReason={data.retry_reason} />
