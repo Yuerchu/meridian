@@ -1,7 +1,9 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Plus, TrashBin, ArrowUpFromLine, Sticker } from '@gravity-ui/icons'
+import { ArrowUpFromLine, Check, Plus, Sparkles, Sticker, TrashBin, Xmark } from '@gravity-ui/icons'
 import { Button, Chip, Disclosure, Input } from '@heroui/react'
+import { ActionBar } from '@heroui-pro/react/action-bar'
+import { DataGrid, type DataGridColumn, type DataGridSelection } from '@heroui-pro/react/data-grid'
 import { EmptyState } from '@heroui-pro/react/empty-state'
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
@@ -16,28 +18,364 @@ interface PackDetail {
   urls: Record<string, string>
 }
 
+/** Stable identity, so a grid whose pack holds no selection never re-renders for it. */
+const NO_SELECTION: DataGridSelection = new Set<string>()
+
+/**
+ * Unconfirmed first, and within that in the order the pack already carries.
+ *
+ * A OneBot pack collects on its own and grows without anyone asking, so the
+ * rows that need a person are the ones that must not be scrolled to. This is
+ * the initial order only: clicking a column header hands sorting to the grid.
+ */
+const REVIEW_ORDER: Record<Emoji['semantic_status'], number> = { pending: 0, suggested: 1, confirmed: 2 }
+
+function orderForReview(emojis: Emoji[]): Emoji[] {
+  return [...emojis].sort(
+    (a, b) => REVIEW_ORDER[a.semantic_status] - REVIEW_ORDER[b.semantic_status] || a.sort_order - b.sort_order,
+  )
+}
+
+/**
+ * What a sticker is called and tagged, before anyone has confirmed it.
+ *
+ * A pending sticker's `name` is whatever the file was called and its `tags` are
+ * empty; the model's guess lands in the `suggested_*` pair and is what should
+ * be shown, so accepting it is one click rather than retyping it. Confirmation
+ * moves the guess into the real columns and clears the pair, so past that point
+ * the two agree.
+ */
+function shownName(emoji: Emoji): string {
+  return emoji.semantic_status === 'confirmed' ? emoji.name : (emoji.suggested_name ?? emoji.name)
+}
+
+function shownTags(emoji: Emoji): string {
+  return (emoji.semantic_status === 'confirmed' ? emoji.tags : (emoji.suggested_tags ?? emoji.tags)) ?? ''
+}
+
+/**
+ * One field of one row, edited in place.
+ *
+ * Deliberately its own component holding its own draft: the cell renderers live
+ * in a `columns` array, and a draft kept in the grid would rebuild that array —
+ * and with it the whole RAC collection — on every keystroke. Here a keystroke
+ * touches one cell.
+ *
+ * Escape restores by unmounting the input, which is also why it needs no guard
+ * against the blur handler: React fires no blur for an element it removes.
+ */
+function EditableCell({
+  value,
+  placeholder,
+  ariaLabel,
+  onSave,
+}: {
+  value: string
+  placeholder: string
+  ariaLabel: string
+  onSave: (next: string) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+
+  if (editing) {
+    return (
+      <Input
+        fullWidth
+        autoFocus
+        aria-label={ariaLabel}
+        value={draft}
+        placeholder={placeholder}
+        className="h-8 text-sm"
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => {
+          setEditing(false)
+          const next = draft.trim()
+          if (next !== value.trim()) onSave(next)
+        }}
+        // The grid is a React Aria table and reads keys off the row: Space
+        // toggles its selection, Enter actions it, the arrows walk between
+        // cells. Inside a text field all four are text, so none of them may
+        // reach the row — a name with a space in it came out without one, and
+        // selected the row on the way.
+        onKeyUp={(event) => event.stopPropagation()}
+        onKeyDown={(event) => {
+          event.stopPropagation()
+          if (event.nativeEvent.isComposing) return
+          if (event.key === 'Enter') (event.target as HTMLInputElement).blur()
+          if (event.key === 'Escape') setEditing(false)
+        }}
+      />
+    )
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      className="h-8 w-full min-w-0 justify-start rounded-md px-1.5 text-sm font-normal"
+      aria-label={`${ariaLabel}: ${value || placeholder}`}
+      onClick={() => {
+        setDraft(value)
+        setEditing(true)
+      }}
+    >
+      <span className={value ? 'truncate' : 'truncate text-muted'}>{value || placeholder}</span>
+    </Button>
+  )
+}
+
+/**
+ * Per row, so the two long-running actions can say they are running without the
+ * grid holding a map of row ids to booleans.
+ */
+function RowActions({
+  emoji,
+  canDelete,
+  onSuggest,
+  onConfirm,
+  onDelete,
+}: {
+  emoji: Emoji
+  canDelete: boolean
+  onSuggest: (id: string) => Promise<void>
+  onConfirm: (emoji: Emoji) => Promise<void>
+  onDelete: (id: string) => void
+}) {
+  const { t } = useTranslation()
+  const [busy, setBusy] = useState<'suggest' | 'confirm' | null>(null)
+  const unconfirmed = emoji.semantic_status !== 'confirmed'
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      {unconfirmed && (
+        <>
+          <Button
+            size="sm"
+            variant="ghost"
+            isDisabled={busy !== null || !emoji.file_name}
+            onClick={() => {
+              setBusy('suggest')
+              void onSuggest(emoji.id).finally(() => setBusy(null))
+            }}
+          >
+            <Sparkles className="size-3.5" />
+            {busy === 'suggest' ? t('settings.emoji.suggesting') : t('settings.emoji.suggest')}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            isDisabled={busy !== null || !shownName(emoji).trim()}
+            onClick={() => {
+              setBusy('confirm')
+              void onConfirm(emoji).finally(() => setBusy(null))
+            }}
+          >
+            <Check className="size-3.5" />
+            {t('settings.emoji.confirmSemantic')}
+          </Button>
+        </>
+      )}
+      {canDelete && (
+        <Button
+          isIconOnly
+          size="sm"
+          variant="ghost"
+          aria-label={t('settings.emoji.deleteEmoji')}
+          className="text-danger hover:text-danger"
+          onClick={() => onDelete(emoji.id)}
+        >
+          <TrashBin className="size-3.5" />
+        </Button>
+      )}
+    </div>
+  )
+}
+
+/**
+ * The stickers of one pack, as rows.
+ *
+ * This used to be two views of the same table — a thumbnail grid for confirmed
+ * stickers and a stack of cards for the ones awaiting a meaning — which hid
+ * everything the pack actually knows: tags were invisible once confirmed, and
+ * how often a sticker had been seen was shown only while it was still pending.
+ * Both are columns now, and there is one row per sticker whatever its state.
+ */
+function StickerGrid({
+  detail,
+  selectedKeys,
+  onSelectionChange,
+  onSaveSemantics,
+  onSuggest,
+  onDeleteEmoji,
+}: {
+  detail: PackDetail
+  selectedKeys: DataGridSelection
+  onSelectionChange: (keys: DataGridSelection) => void
+  onSaveSemantics: (emoji: Emoji, patch: { name?: string; tags?: string }) => Promise<void>
+  onSuggest: (id: string) => Promise<Emoji>
+  onDeleteEmoji: (id: string) => void
+}) {
+  const { t } = useTranslation()
+  const [error, setError] = useState<string | null>(null)
+  const canDelete = detail.pack.is_builtin === 0
+  const { urls } = detail
+
+  // A cell has nowhere to put a failure, so both writes report here instead.
+  const save = useCallback(
+    (emoji: Emoji, patch: { name?: string; tags?: string }) => {
+      setError(null)
+      return onSaveSemantics(emoji, patch).catch((reason: unknown) => setError(String(reason)))
+    },
+    [onSaveSemantics],
+  )
+
+  const suggest = useCallback(
+    (id: string) => {
+      setError(null)
+      return onSuggest(id).then(
+        () => undefined,
+        (reason: unknown) => setError(String(reason)),
+      )
+    },
+    [onSuggest],
+  )
+
+  const columns = useMemo<DataGridColumn<Emoji>[]>(
+    () => [
+      {
+        id: 'sticker',
+        header: t('settings.emoji.stickerColumn'),
+        isRowHeader: true,
+        allowsSorting: true,
+        minWidth: 240,
+        sortFn: (a, b) => shownName(a).localeCompare(shownName(b)),
+        cell: (emoji) => (
+          <div className="flex min-w-0 items-center gap-2">
+            {urls[emoji.id] ? (
+              // Lazy because a pack is unbounded and every frame of every GIF
+              // is decoded the moment its element exists.
+              <img src={urls[emoji.id]} alt="" loading="lazy" className="size-9 shrink-0 rounded object-contain" />
+            ) : (
+              <div className="size-9 shrink-0 rounded bg-default/40" />
+            )}
+            <EditableCell
+              value={shownName(emoji)}
+              placeholder={t('settings.emoji.semanticName')}
+              ariaLabel={t('settings.emoji.editName')}
+              onSave={(name) => void save(emoji, { name })}
+            />
+            {emoji.semantic_status !== 'confirmed' && (
+              <Chip color="warning" className="shrink-0">
+                {t('settings.emoji.pending')}
+              </Chip>
+            )}
+          </div>
+        ),
+      },
+      {
+        id: 'tags',
+        header: t('settings.emoji.tagsColumn'),
+        minWidth: 180,
+        cell: (emoji) => (
+          <EditableCell
+            value={shownTags(emoji)}
+            placeholder={t('settings.emoji.noTags')}
+            ariaLabel={t('settings.emoji.editTags')}
+            onSave={(tags) => void save(emoji, { tags })}
+          />
+        ),
+      },
+      {
+        id: 'seen',
+        header: t('settings.emoji.seenColumn'),
+        accessorKey: 'seen_count',
+        align: 'end',
+        allowsSorting: true,
+        // Wide enough for the header plus its sort caret: a narrower column
+        // wraps the label one character per line and drags the whole header
+        // row down with it.
+        width: 104,
+        headerClassName: 'whitespace-nowrap',
+        // Without this the column sorts as text, and 9 comes after 10.
+        sortFn: (a, b) => a.seen_count - b.seen_count,
+      },
+      {
+        id: 'actions',
+        header: t('settings.emoji.actionsColumn'),
+        align: 'end',
+        minWidth: 172,
+        cell: (emoji) => (
+          <RowActions
+            emoji={emoji}
+            canDelete={canDelete}
+            onSuggest={suggest}
+            onConfirm={(target) => save(target, {})}
+            onDelete={onDeleteEmoji}
+          />
+        ),
+      },
+    ],
+    [t, urls, canDelete, save, suggest, onDeleteEmoji],
+  )
+
+  const rows = useMemo(() => orderForReview(detail.emojis), [detail.emojis])
+
+  return (
+    <div className="space-y-2">
+      <DataGrid<Emoji>
+        aria-label={t('settings.emoji.gridLabel', { pack: detail.pack.name })}
+        variant="secondary"
+        columns={columns}
+        data={rows}
+        getRowId={(emoji) => emoji.id}
+        // A builtin pack's stickers cannot be deleted, and deletion is the only
+        // thing a selection is for here.
+        selectionMode={canDelete ? 'multiple' : 'none'}
+        showSelectionCheckboxes={canDelete}
+        selectedKeys={selectedKeys}
+        onSelectionChange={onSelectionChange}
+        // The columns' own minimums add up to this; stating it keeps the table
+        // from being squeezed below them, and below this width the grid scrolls
+        // sideways inside its own container rather than crushing the
+        // thumbnails or pushing the page out.
+        contentClassName="min-w-[46rem]"
+        // A collected pack has no ceiling, so the grid keeps its own scroller
+        // instead of making the settings page arbitrarily long.
+        scrollContainerClassName="max-h-96 overflow-y-auto overscroll-contain"
+        renderEmptyState={() => (
+          <EmptyState size="sm">
+            <EmptyState.Header>
+              <EmptyState.Title>{t('settings.emoji.noStickers')}</EmptyState.Title>
+            </EmptyState.Header>
+          </EmptyState>
+        )}
+      />
+      {error && <p className="text-xs text-danger">{error}</p>}
+    </div>
+  )
+}
+
 function PackCard({
   detail,
+  selectedKeys,
+  onSelectionChange,
   onDelete,
   onImport,
   onDeleteEmoji,
-  onRenameEmoji,
+  onSaveSemantics,
   onSuggest,
-  onConfirm,
 }: {
   detail: PackDetail
+  selectedKeys: DataGridSelection
+  onSelectionChange: (keys: DataGridSelection) => void
   onDelete?: () => void
   onImport?: () => void
   onDeleteEmoji: (id: string) => void
-  onRenameEmoji: (id: string, newName: string) => void
-  onSuggest: (id: string) => Promise<void>
-  onConfirm: (id: string, name: string, tags?: string) => Promise<void>
+  onSaveSemantics: (emoji: Emoji, patch: { name?: string; tags?: string }) => Promise<void>
+  onSuggest: (id: string) => Promise<Emoji>
 }) {
   const { t } = useTranslation()
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [editName, setEditName] = useState('')
-  const candidates = detail.emojis.filter((emoji) => emoji.semantic_status !== 'confirmed')
-  const confirmed = detail.emojis.filter((emoji) => emoji.semantic_status === 'confirmed')
+  const pending = detail.emojis.filter((emoji) => emoji.semantic_status !== 'confirmed').length
 
   return (
     // Render prop rather than a controlled `isExpanded`: the open state is only
@@ -54,9 +392,7 @@ function PackCard({
               <Sticker className="w-3.5 h-3.5 shrink-0 text-muted" />
               <span className="flex-1 truncate">{detail.pack.name}</span>
               <span className="text-xs text-muted">{detail.emojis.length}</span>
-              {candidates.length > 0 && (
-                <Chip color="warning">{t('settings.emoji.pendingCount', { count: candidates.length })}</Chip>
-              )}
+              {pending > 0 && <Chip color="warning">{t('settings.emoji.pendingCount', { count: pending })}</Chip>}
               {detail.pack.is_builtin === 1 && (
                 <Chip className="shrink-0 text-muted">{t('settings.template.builtin')}</Chip>
               )}
@@ -79,75 +415,14 @@ function PackCard({
                 <>
                   {detail.pack.description && <p className="text-xs text-muted">{detail.pack.description}</p>}
 
-                  {candidates.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs font-medium">{t('settings.emoji.reviewTitle')}</p>
-                      {candidates.map((emoji) => (
-                        <CandidateSticker
-                          key={emoji.id}
-                          emoji={emoji}
-                          url={detail.urls[emoji.id]}
-                          onSuggest={onSuggest}
-                          onConfirm={onConfirm}
-                        />
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Six across needs 280px of grid before gaps; a 360px phone
-                      does not have it once the card's own padding is taken. */}
-                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
-                    {confirmed.map((e) => (
-                      <div key={e.id} className="group relative">
-                        <img src={detail.urls[e.id]} alt={e.name} className="w-10 h-10 object-contain rounded" />
-                        {editingId === e.id ? (
-                          <Input
-                            fullWidth
-                            autoFocus
-                            value={editName}
-                            onChange={(ev) => setEditName(ev.target.value)}
-                            onBlur={() => {
-                              if (editName.trim() && editName.trim() !== e.name) onRenameEmoji(e.id, editName.trim())
-                              setEditingId(null)
-                            }}
-                            onKeyDown={(ev) => {
-                              if (ev.nativeEvent.isComposing) return
-                              if (ev.key === 'Enter') (ev.target as HTMLInputElement).blur()
-                              if (ev.key === 'Escape') setEditingId(null)
-                            }}
-                            className="w-full h-auto text-xs text-center bg-transparent border-0 border-b border-default rounded-none px-0 py-0 mt-0.5 focus-visible:ring-0"
-                          />
-                        ) : (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="w-full h-auto min-w-0 rounded-lg px-0 py-0 mt-0.5 text-xs font-normal text-muted hover:text-foreground"
-                            onClick={() => {
-                              setEditingId(e.id)
-                              setEditName(e.name)
-                            }}
-                            aria-label={`${t('settings.emoji.clickToRename')}: ${e.name}`}
-                          >
-                            <span className="truncate">{e.name}</span>
-                          </Button>
-                        )}
-                        {detail.pack.is_builtin === 0 && (
-                          <Button
-                            variant="ghost"
-                            isIconOnly
-                            aria-label={t('settings.emoji.deleteEmoji')}
-                            // Always visible where there is no hover to reveal
-                            // it — this is the only way to delete an emoji, and
-                            // a touch screen never reaches `group-hover`.
-                            className="absolute -top-1.5 -right-1.5 !size-6 rounded-full bg-danger text-danger-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 touch-hitbox"
-                            onClick={() => onDeleteEmoji(e.id)}
-                          >
-                            <TrashBin className="!size-3" />
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <StickerGrid
+                    detail={detail}
+                    selectedKeys={selectedKeys}
+                    onSelectionChange={onSelectionChange}
+                    onSaveSemantics={onSaveSemantics}
+                    onSuggest={onSuggest}
+                    onDeleteEmoji={onDeleteEmoji}
+                  />
 
                   <div className="flex items-center gap-2">
                     {onImport && (
@@ -178,113 +453,47 @@ function PackCard({
   )
 }
 
-function CandidateSticker({
-  emoji,
-  url,
-  onSuggest,
-  onConfirm,
-}: {
-  emoji: Emoji
-  url?: string
-  onSuggest: (id: string) => Promise<void>
-  onConfirm: (id: string, name: string, tags?: string) => Promise<void>
-}) {
-  const { t } = useTranslation()
-  const [name, setName] = useState(emoji.suggested_name ?? '')
-  const [tags, setTags] = useState(emoji.suggested_tags ?? '')
-  const [busy, setBusy] = useState<'suggest' | 'confirm' | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    setName(emoji.suggested_name ?? '')
-    setTags(emoji.suggested_tags ?? '')
-  }, [emoji.suggested_name, emoji.suggested_tags])
-
-  return (
-    <div className="grid grid-cols-[4rem_1fr] gap-3 rounded-xl border border-border p-3">
-      {url ? (
-        <img src={url} alt="" className="size-16 object-contain" />
-      ) : (
-        <div className="size-16 rounded-lg bg-default/40" />
-      )}
-      <div className="min-w-0 space-y-2">
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Input
-            fullWidth
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder={t('settings.emoji.semanticName')}
-          />
-          <Input
-            fullWidth
-            value={tags}
-            onChange={(event) => setTags(event.target.value)}
-            placeholder={t('settings.emoji.semanticTags')}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="mr-auto text-xs text-muted">
-            {t('settings.emoji.seenCount', { count: emoji.seen_count })}
-          </span>
-          <Button
-            size="sm"
-            variant="outline"
-            isDisabled={busy !== null || !url || !emoji.file_name}
-            onClick={() => {
-              setError(null)
-              setBusy('suggest')
-              void onSuggest(emoji.id)
-                .catch((reason) => setError(String(reason)))
-                .finally(() => setBusy(null))
-            }}
-          >
-            {busy === 'suggest' ? t('settings.emoji.suggesting') : t('settings.emoji.suggest')}
-          </Button>
-          <Button
-            size="sm"
-            isDisabled={busy !== null || !name.trim()}
-            onClick={() => {
-              setError(null)
-              setBusy('confirm')
-              void onConfirm(emoji.id, name.trim(), tags.trim() || undefined)
-                .catch((reason) => setError(String(reason)))
-                .finally(() => setBusy(null))
-            }}
-          >
-            {t('settings.emoji.confirmSemantic')}
-          </Button>
-        </div>
-        {error && <p className="text-xs text-danger">{error}</p>}
-      </div>
-    </div>
-  )
-}
-
 export function EmojiSettings() {
   const { t } = useTranslation()
   const [details, setDetails] = useState<PackDetail[]>([])
   const [loading, setLoading] = useState(true)
   const [newPackName, setNewPackName] = useState('')
+  // One selection for the page, not one per pack: the bulk bar is fixed to the
+  // viewport, and two packs holding selections would stack two of them there.
+  const [selection, setSelection] = useState<{ packId: string; keys: DataGridSelection } | null>(null)
   const { confirm, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
     const packs = await api.listEmojiPacks()
-    const result: PackDetail[] = []
-    for (const pack of packs) {
-      const emojis = await api.listEmojis(pack.id)
-      const urls: Record<string, string> = {}
-      for (const e of emojis) {
-        const path = await api.getEmojiFileUrl(e.id).catch(() => null)
-        if (path) urls[e.id] = path
-      }
-      result.push({ pack, emojis, urls })
-    }
+    const result = await Promise.all(
+      packs.map(async (pack) => {
+        const emojis = await api.listEmojis(pack.id)
+        // One round trip per sticker, so they go together: awaited in sequence
+        // a collected pack of a few hundred spent whole seconds here.
+        const resolved = await Promise.all(
+          emojis.map(async (emoji) => [emoji.id, await api.getEmojiFileUrl(emoji.id).catch(() => null)] as const),
+        )
+        const urls: Record<string, string> = {}
+        for (const [id, url] of resolved) if (url) urls[id] = url
+        return { pack, emojis, urls }
+      }),
+    )
     setDetails(result)
   }, [])
 
   useEffect(() => {
     refresh().then(() => setLoading(false))
   }, [refresh])
+
+  const selectedIds = useMemo(() => {
+    if (!selection) return []
+    const detail = details.find((d) => d.pack.id === selection.packId)
+    if (!detail) return []
+    // The select-all checkbox yields the string `"all"` rather than a set, and
+    // it means every row of the array this grid was given.
+    if (selection.keys === 'all') return detail.emojis.map((emoji) => emoji.id)
+    return [...selection.keys].map(String)
+  }, [selection, details])
 
   const handleCreate = useCallback(async () => {
     if (!newPackName.trim()) return
@@ -297,6 +506,7 @@ export function EmojiSettings() {
     async (id: string) => {
       if (!(await confirm({ body: t('settings.confirmDelete.emojiPack') }))) return
       await api.deleteEmojiPack(id)
+      setSelection(null)
       await refresh()
     },
     [confirm, t, refresh],
@@ -327,9 +537,31 @@ export function EmojiSettings() {
     [confirm, t, refresh],
   )
 
-  const handleRenameEmoji = useCallback(
-    async (id: string, newName: string) => {
-      await api.renameEmoji(id, newName)
+  const handleDeleteSelected = useCallback(async () => {
+    if (selectedIds.length === 0) return
+    if (!(await confirm({ body: t('settings.confirmDelete.emojis', { count: selectedIds.length }) }))) return
+    // One at a time: each delete unlinks a file as well as a row, and the
+    // backend takes a pooled connection per call.
+    for (const id of selectedIds) await api.deleteEmoji(id)
+    setSelection(null)
+    await refresh()
+  }, [selectedIds, confirm, t, refresh])
+
+  /**
+   * The one write path for what a sticker means.
+   *
+   * `confirm_sticker_semantics` sets name and tags together and is idempotent,
+   * so it serves an edit to a confirmed sticker as well as the first
+   * confirmation of a pending one — which is what makes "type a name and press
+   * Enter" the same act as accepting the model's guess. `rename_emoji` would
+   * only move half of it and leave the row unconfirmed.
+   */
+  const handleSaveSemantics = useCallback(
+    async (emoji: Emoji, patch: { name?: string; tags?: string }) => {
+      const name = (patch.name ?? shownName(emoji)).trim()
+      if (!name) return
+      const tags = (patch.tags ?? shownTags(emoji)).trim()
+      await api.confirmStickerSemantics(emoji.id, name, tags || undefined)
       await refresh()
     },
     [refresh],
@@ -337,16 +569,9 @@ export function EmojiSettings() {
 
   const handleSuggest = useCallback(
     async (id: string) => {
-      await api.suggestStickerSemantics(id)
+      const updated = await api.suggestStickerSemantics(id)
       await refresh()
-    },
-    [refresh],
-  )
-
-  const handleConfirm = useCallback(
-    async (id: string, name: string, tags?: string) => {
-      await api.confirmStickerSemantics(id, name, tags)
-      await refresh()
+      return updated
     },
     [refresh],
   )
@@ -356,7 +581,11 @@ export function EmojiSettings() {
   }
 
   return (
-    <SettingsPane>
+    // Wider than the settings default, and wider than `MasterDetail` too: the
+    // panel stopped being a column of fields the moment the stickers became a
+    // table, and at `max-w-3xl` that table met its own minimum width and drew a
+    // horizontal scrollbar on a desktop with room to spare.
+    <SettingsPane className="max-w-4xl">
       <SettingsHeader title={t('settings.emoji.title')} subtitle={t('settings.emoji.subtitle')} />
 
       <div className="flex gap-2">
@@ -382,12 +611,15 @@ export function EmojiSettings() {
           <PackCard
             key={d.pack.id}
             detail={d}
+            selectedKeys={selection?.packId === d.pack.id ? selection.keys : NO_SELECTION}
+            onSelectionChange={(keys) =>
+              setSelection(keys === 'all' || keys.size > 0 ? { packId: d.pack.id, keys } : null)
+            }
             onDelete={() => handleDelete(d.pack.id)}
             onImport={d.pack.kind === 'manual' ? () => handleImport(d.pack.id) : undefined}
             onDeleteEmoji={handleDeleteEmoji}
-            onRenameEmoji={handleRenameEmoji}
+            onSaveSemantics={handleSaveSemantics}
             onSuggest={handleSuggest}
-            onConfirm={handleConfirm}
           />
         ))}
         {details.length === 0 && (
@@ -398,6 +630,32 @@ export function EmojiSettings() {
           </EmptyState>
         )}
       </div>
+
+      <ActionBar data-slot="emoji-bulk-bar" isOpen={selectedIds.length > 0}>
+        <ActionBar.Prefix>
+          {/* The count is the only thing that says a selection exists, so it
+              announces itself rather than only appearing. */}
+          <span aria-live="polite" className="text-sm text-muted">
+            {t('settings.emoji.selectedCount', { count: selectedIds.length })}
+          </span>
+        </ActionBar.Prefix>
+        <ActionBar.Content>
+          <Button variant="ghost" onClick={handleDeleteSelected}>
+            <TrashBin className="text-danger" />
+            {t('settings.emoji.deleteSelected')}
+          </Button>
+        </ActionBar.Content>
+        <ActionBar.Suffix>
+          <Button
+            isIconOnly
+            variant="ghost"
+            aria-label={t('settings.emoji.clearSelection')}
+            onClick={() => setSelection(null)}
+          >
+            <Xmark />
+          </Button>
+        </ActionBar.Suffix>
+      </ActionBar>
       {confirmDialog}
     </SettingsPane>
   )
