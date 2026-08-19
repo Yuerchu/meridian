@@ -346,6 +346,18 @@ img.emoji-sticker {
   --safe-right: var(--native-inset-right, env(safe-area-inset-right, 0px));
 }
 
+/* HeroUI places the top toast region at a flat `top: 1rem`, which on a phone is
+   behind the status bar and, on one with a cutout, behind the cutout. Nothing
+   else in the app has this problem: every other frame element is inside the
+   shell, which pads itself. The region is `fixed` and therefore is not. */
+@layer components {
+  .toast-region--top,
+  .toast-region--top-start,
+  .toast-region--top-end {
+    top: max(1rem, var(--safe-top));
+  }
+}
+
 /* HeroUI ships `scrollbar`, `scrollbar-thin`, `scrollbar-default` and
    `scrollbar-none`; these three are the ones it has no equivalent for. */
 @utility scrollbar-gutter-stable {

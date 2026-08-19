@@ -11,6 +11,7 @@ vi.mock('@/api', () => ({
     // row is waiting, running, or abandoned, and the row alone says none of it.
     conversationSnapshot: vi.fn(),
     switchBranch: vi.fn(),
+    allPendingApprovals: vi.fn(),
   },
 }))
 
@@ -361,11 +362,11 @@ describe('live approval events', () => {
     store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
     store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
 
-    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'read_file')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'read_file', '{}')
     expect(cards().map((c) => c.status)).toEqual(['pending', 'running'])
     expect(cards().map((c) => c.approval_id)).toEqual(['appr-1', undefined])
 
-    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'read_file')
+    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'read_file', '{}')
     expect(cards().map((c) => c.approval_id)).toEqual(['appr-1', 'appr-2'])
   })
 
@@ -384,8 +385,8 @@ describe('live approval events', () => {
   it('retires only the approval the answered card was holding', () => {
     store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
     store().handleToolCall(CONV, 'a1', '0', 'read_file', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'read_file')
-    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'read_file')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'read_file', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'read_file', '{}')
 
     store().handleToolResult(CONV, 'a1', '0', 'done')
 
@@ -394,7 +395,7 @@ describe('live approval events', () => {
 
   it('carries the escalation details onto the card', () => {
     store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', 'sandbox denied', 'c1')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}', 'sandbox denied', 'c1')
 
     expect(cards()[0]).toMatchObject({ status: 'pending', retry_reason: 'sandbox denied' })
     expect(store().sessions[CONV]!.pendingApprovals['appr-1']).toMatchObject({
@@ -412,11 +413,11 @@ describe('live approval events', () => {
   /// hydration matches on the call id and does not care who claimed it.
   it('offers the retry on a card that was already approved once', () => {
     store().handleToolCall(CONV, 'a1', 'c1', 'run_command', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
     expect(cards()[0]).toMatchObject({ status: 'pending', approval_id: 'appr-1' })
 
     // The user says yes, the command runs, the sandbox blocks it.
-    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c1', 'run_command', 'sandbox denied', 'c1')
+    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c1', 'run_command', '{}', 'sandbox denied', 'c1')
 
     expect(cards()[0]).toMatchObject({
       status: 'pending',
@@ -434,7 +435,7 @@ describe('live approval events', () => {
     store().handleToolCall(CONV, 'a1', '0', 'run_command', '{}')
     store().handleToolResult(CONV, 'a1', '0', 'the first one is done')
 
-    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'run_command', 'sandbox denied', '0')
+    store().handleToolApproval(CONV, 'a1', 'appr-2', '0', 'run_command', '{}', 'sandbox denied', '0')
 
     expect(cards().map((c) => c.status)).toEqual(['completed', 'pending'])
     expect(cards()[0].result).toBe('the first one is done')
@@ -932,7 +933,7 @@ describe('stops are scoped to a turn', () => {
   it("leaves another run's approvals alone", () => {
     store().handleMessageStart(CONV, 'a1', 'turn-2')
     store().handleToolCall(CONV, 'a1', 'c1', 'read_file', '{}')
-    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'read_file')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'read_file', '{}')
 
     store().handleStop(CONV, 'turn-1')
     expect(Object.keys(session().pendingApprovals)).toEqual(['appr-1'])
@@ -1260,11 +1261,20 @@ describe('delegated runs', () => {
     })
 
     it('nests a delegated question instead of inventing a card for it', () => {
-      store().handleToolApproval(CONV, 'a1', 'appr-1', 'child-call', 'run_command', undefined, undefined, {
-        parentCallId: '0',
-        arguments: '{"command":"ls"}',
-        subConversationId: 'sub-1',
-      })
+      store().handleToolApproval(
+        CONV,
+        'a1',
+        'appr-1',
+        'child-call',
+        'run_command',
+        '{"command":"ls"}',
+        undefined,
+        undefined,
+        {
+          parentCallId: '0',
+          subConversationId: 'sub-1',
+        },
+      )
 
       const row = store().sessions[CONV]!.messages.find((m) => m.id === 'a1')!
       const calls = (row._blocks ?? []).filter((b) => b.type === 'tool_call')
@@ -1281,9 +1291,8 @@ describe('delegated runs', () => {
 
     // The run is not what failed — only its question was lost.
     it('drops a lost question without writing off the run', () => {
-      store().handleToolApproval(CONV, 'a1', 'appr-1', 'child-call', 'run_command', undefined, undefined, {
+      store().handleToolApproval(CONV, 'a1', 'appr-1', 'child-call', 'run_command', '{}', undefined, undefined, {
         parentCallId: '0',
-        arguments: '{}',
       })
       store().markApprovalOrphaned('appr-1')
 
@@ -1311,6 +1320,287 @@ describe('delegated runs', () => {
       store().openConversation('sub-1')
       store().setActiveId('elsewhere')
       expect(store().navigationStack).toEqual([])
+    })
+  })
+})
+
+/**
+ * The queue of questions waiting on a person.
+ *
+ * Every test here uses a conversation with no session, because that is the case
+ * the queue exists for and the case that used to be silently dropped: with
+ * several conversations working at once, the ones that stop for permission are
+ * mostly ones nobody has opened, and `ensureSession` only runs when `ChatView`
+ * mounts. Each of these paths returns early without a session.
+ */
+describe('the waiting-on-you queue', () => {
+  const CONV = 'conv-never-opened'
+  const store = () => useConversationStore.getState()
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf({ messages: [], head_message_id: null, branches: [] }),
+    )
+    useConversationStore.setState({ sessions: {}, attention: {}, attentionOrder: [], activeId: null })
+  })
+
+  it('records a question from a conversation that was never opened', () => {
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{"command":"ls"}')
+
+    expect(store().sessions[CONV]).toBeUndefined()
+    expect(store().attention['appr-1']).toMatchObject({
+      conversationId: CONV,
+      messageId: 'a1',
+      providerCallId: 'c1',
+      toolName: 'run_command',
+      // Carried rather than read off the transcript: there is no transcript.
+      arguments: '{"command":"ls"}',
+      kind: 'approval',
+    })
+    expect(store().attentionOrder).toEqual(['appr-1'])
+  })
+
+  /** A question with a form behind it. It cannot be answered from a queue row,
+   *  but it stops a turn exactly as an approval does, so it is queued and
+   *  marked rather than dropped. */
+  it('tells a question apart from a permission', () => {
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'ask_user', '{}')
+    expect(store().attention['appr-1']!.kind).toBe('ask')
+  })
+
+  it('does not queue the same approval twice', () => {
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    expect(store().attentionOrder).toEqual(['appr-1'])
+  })
+
+  it('retires a question when its result arrives', () => {
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().handleToolResult(CONV, 'a1', 'c1', 'ok')
+
+    expect(store().attention).toEqual({})
+    expect(store().attentionOrder).toEqual([])
+  })
+
+  /** Results are matched on the row *and* the call, because provider call ids
+   *  repeat across the rows of one conversation. */
+  it('leaves a sibling call alone when one of them finishes', () => {
+    store().handleToolApproval(CONV, 'a1', 'appr-1', '0', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a2', 'appr-2', '0', 'run_command', '{}')
+    store().handleToolResult(CONV, 'a1', '0', 'ok')
+
+    expect(store().attentionOrder).toEqual(['appr-2'])
+  })
+
+  /** Nothing is listening for an answer once the turn is over, and no result
+   *  will arrive to say so. Without this the queue keeps offering buttons that
+   *  the backend has already stopped waiting on. */
+  it('retires everything a stopped turn was holding', () => {
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c2', 'read_file', '{}')
+    store().handleToolApproval('other-conv', 'b1', 'appr-3', 'c3', 'read_file', '{}')
+
+    store().handleStop(CONV)
+
+    expect(store().attentionOrder).toEqual(['appr-3'])
+  })
+
+  it('retires a question the backend has forgotten', () => {
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().markApprovalOrphaned('appr-1')
+    expect(store().attentionOrder).toEqual([])
+  })
+
+  it('retires a question the moment an answer is sent', () => {
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+    store().retireAnsweredApproval('appr-1')
+    expect(store().attentionOrder).toEqual([])
+  })
+
+  /**
+   * Answering takes the question out of the queue and leaves the card holding
+   * it exactly as it was.
+   *
+   * Both halves matter. Clearing the card's `approval_id` would leave it at
+   * `status: 'pending'`, which `mapChatToolState` draws as `requires-action` —
+   * a card demanding an answer with no way to give one — and `handleStop` reads
+   * `pendingApprovals` to write off a call whose turn died before its result
+   * arrived. The card's ledger is retired by the result; only the queue's needs
+   * help.
+   */
+  it('leaves the card that is showing the question alone', () => {
+    const OPEN = 'conv-open'
+    store().ensureSession(OPEN)
+    store().handleMessageStart(OPEN, 'a1')
+    store().handleToolCall(OPEN, 'a1', 'c1', 'run_command', '{}')
+    store().handleToolApproval(OPEN, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+
+    store().retireAnsweredApproval('appr-1')
+
+    expect(store().attentionOrder).toEqual([])
+    expect(store().sessions[OPEN]!.pendingApprovals['appr-1']).toBeDefined()
+    const row = store().sessions[OPEN]!.messages.find((m) => m.id === 'a1')!
+    const card = (row._blocks ?? []).find((b) => b.type === 'tool_call')
+    expect(card?.type === 'tool_call' && card.data.approval_id).toBe('appr-1')
+  })
+
+  /**
+   * The same hole on the question path.
+   *
+   * `AskUserBlock.handleSubmit` posts the form and nothing else finds out. An
+   * ordinary question would be re-offered as "go and answer this" for a form
+   * already submitted; a delegated one is filed under the parent it was asked
+   * in, so no result or stop can ever name it. Both are retired by id, and the
+   * kind does not enter into it.
+   */
+  it('retires an answered question, delegated or not', () => {
+    store().handleToolApproval(CONV, 'a1', 'ask-1', 'c1', 'ask_user', '{"questions":[]}')
+    store().handleToolApproval(
+      'parent-conv',
+      'parent-row',
+      'ask-2',
+      'child-call',
+      'ask_user',
+      '{}',
+      undefined,
+      undefined,
+      {
+        parentCallId: 'run-agent-call',
+        subConversationId: 'sub-conv',
+      },
+    )
+    expect(store().attention['ask-1']!.kind).toBe('ask')
+    expect(store().attention['ask-2']!.kind).toBe('ask')
+
+    store().retireAnsweredApproval('ask-1')
+    store().retireAnsweredApproval('ask-2')
+
+    expect(store().attentionOrder).toEqual([])
+  })
+
+  /**
+   * The case no event can close.
+   *
+   * A delegated run's question is *asked* on the parent — `approval_adapter.rs`
+   * routes the event there, because nobody is necessarily watching the
+   * sub-agent — while the call itself, its result and its stop all belong to the
+   * sub-agent's own conversation. Both retiring paths compare conversation ids,
+   * so neither can ever match, and the entry would outlive the turn: a
+   * permanent dot on the parent and a dead row at the back of the queue.
+   */
+  it('retires a delegated question that no result will ever name', () => {
+    const PARENT = 'parent-conv'
+    const SUB = 'sub-conv'
+    // Filed under the parent, which is where it was asked and can be answered.
+    store().handleToolApproval(
+      PARENT,
+      'parent-row',
+      'appr-1',
+      'child-call',
+      'run_command',
+      '{}',
+      undefined,
+      undefined,
+      {
+        parentCallId: 'run-agent-call',
+        subConversationId: SUB,
+      },
+    )
+    expect(store().attentionOrder).toEqual(['appr-1'])
+
+    // What the sub-agent's turn actually emits. Neither of these mentions the
+    // parent, so neither retires anything.
+    store().handleToolResult(SUB, 'child-row', 'child-call', 'ok')
+    store().handleStop(SUB)
+    expect(store().attentionOrder).toEqual(['appr-1'])
+
+    // Which is why answering has to say so itself.
+    store().retireAnsweredApproval('appr-1')
+    expect(store().attentionOrder).toEqual([])
+  })
+
+  /** Deferring is a reordering and nothing else: the question is still owed,
+   *  and going round the queue brings it back. */
+  it('moves a deferred question to the end without dropping it', () => {
+    for (const id of ['appr-1', 'appr-2', 'appr-3']) {
+      store().handleToolApproval(CONV, 'a1', id, `c-${id}`, 'read_file', '{}')
+    }
+
+    store().deferAttention('appr-1')
+
+    expect(store().attentionOrder).toEqual(['appr-2', 'appr-3', 'appr-1'])
+    expect(store().attention['appr-1']).toBeDefined()
+  })
+
+  it('ignores a defer for something that is no longer queued', () => {
+    store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'read_file', '{}')
+    store().deferAttention('gone')
+    expect(store().attentionOrder).toEqual(['appr-1'])
+  })
+
+  describe('rebuilding from the backend', () => {
+    /** A window that reloaded, or a phone that has just connected: the events
+     *  that announced these went out to nobody and are never replayed. */
+    it('adopts questions it never saw announced', async () => {
+      vi.mocked(api.allPendingApprovals).mockResolvedValue([
+        {
+          approval_id: 'appr-1',
+          conversation_id: CONV,
+          assistant_message_id: 'a1',
+          provider_call_id: 'c1',
+          tool_name: 'run_command',
+          arguments: '{"command":"ls"}',
+          bubbled: false,
+        },
+      ])
+
+      await store().loadAllPending()
+
+      expect(store().attention['appr-1']).toMatchObject({ conversationId: CONV, toolName: 'run_command' })
+      expect(store().attentionOrder).toEqual(['appr-1'])
+    })
+
+    /** The answer is the register itself, so an entry it does not mention has
+     *  no turn behind it — its turn ended while nothing was listening. */
+    it('drops what the register no longer holds', async () => {
+      store().handleToolApproval(CONV, 'a1', 'appr-dead', 'c1', 'run_command', '{}')
+      vi.mocked(api.allPendingApprovals).mockResolvedValue([])
+
+      await store().loadAllPending()
+
+      expect(store().attentionOrder).toEqual([])
+    })
+
+    /** An approval that arrives while the request is in flight is younger than
+     *  the answer. Judging it by that answer would drop a live question every
+     *  time a reconnect raced an event. */
+    it('does not drop a question that arrived while it was asking', async () => {
+      let release: (rows: never[]) => void = () => {}
+      vi.mocked(api.allPendingApprovals).mockReturnValue(
+        new Promise((resolve) => {
+          release = resolve
+        }),
+      )
+
+      const inFlight = store().loadAllPending()
+      store().handleToolApproval(CONV, 'a1', 'appr-new', 'c1', 'run_command', '{}')
+      release([])
+      await inFlight
+
+      expect(store().attentionOrder).toEqual(['appr-new'])
+    })
+
+    /** A failed call is not evidence about anything. Emptying the queue here
+     *  would turn one dropped request into a set of questions nobody is told
+     *  about. */
+    it('leaves the queue alone when the call fails', async () => {
+      store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'run_command', '{}')
+      vi.mocked(api.allPendingApprovals).mockRejectedValue(new Error('no'))
+
+      await store().loadAllPending()
+
+      expect(store().attentionOrder).toEqual(['appr-1'])
     })
   })
 })

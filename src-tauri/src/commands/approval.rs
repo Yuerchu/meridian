@@ -52,6 +52,11 @@ pub async fn respond_to_ask(app: tauri::AppHandle, approval_id: String, response
 #[derive(serde::Serialize)]
 pub struct PendingApprovalInfo {
     pub approval_id: String,
+    /// Which conversation this view belongs to. Redundant when the caller asked
+    /// for one conversation by name, and the whole point when it asked for all
+    /// of them: a queue drawn outside any transcript has nothing else to say
+    /// where a question came from.
+    pub conversation_id: String,
     /// The row the card hangs off *in the conversation that asked for this
     /// list*. For a delegated run the parent sees its own `run_agent` row and
     /// the sub-agent sees the row the call is actually on.
@@ -120,6 +125,7 @@ fn views_for(
         if p.conversation_id == conversation_id {
             out.push(PendingApprovalInfo {
                 approval_id: id.clone(),
+                conversation_id: p.conversation_id.clone(),
                 assistant_message_id: p.assistant_message_id.clone(),
                 provider_call_id: p.provider_call_id.clone(),
                 origin_call_id: p.origin_call_id.clone(),
@@ -137,21 +143,64 @@ fn views_for(
         if let Some(b) = &p.bubble
             && b.conversation_id == conversation_id
         {
-            out.push(PendingApprovalInfo {
-                approval_id: id.clone(),
-                assistant_message_id: b.assistant_message_id.clone(),
-                provider_call_id: p.provider_call_id.clone(),
-                origin_call_id: p.origin_call_id.clone(),
-                tool_name: p.tool_name.clone(),
-                arguments: p.arguments.clone(),
-                retry_reason: p.retry_reason.clone(),
-                bubbled: false,
-                parent_call_id: Some(b.parent_call_id.clone()),
-                sub_conversation_id: Some(b.sub_conversation_id.clone()),
-            });
+            out.push(answerable_view(id, p));
         }
     }
     out
+}
+
+/// The one view of an approval that can be answered.
+///
+/// A delegated run's question is answered on the parent's `run_agent` card, not
+/// in the sub-agent's own transcript, so the answerable view is the bubble's
+/// wherever there is one. `views_for` produces both views because a transcript
+/// showing the sub-agent should still say what it is waiting for; a queue must
+/// not, since listing both would put one question in front of the user twice
+/// and the copy without buttons is the one that would look broken.
+fn answerable_view(id: &str, p: &meridian_core::state::PendingApproval) -> PendingApprovalInfo {
+    let (conversation_id, assistant_message_id, parent_call_id, sub_conversation_id) = match &p.bubble {
+        Some(b) => (
+            b.conversation_id.clone(),
+            b.assistant_message_id.clone(),
+            Some(b.parent_call_id.clone()),
+            Some(b.sub_conversation_id.clone()),
+        ),
+        None => (p.conversation_id.clone(), p.assistant_message_id.clone(), None, None),
+    };
+    PendingApprovalInfo {
+        approval_id: id.to_string(),
+        conversation_id,
+        assistant_message_id,
+        provider_call_id: p.provider_call_id.clone(),
+        origin_call_id: p.origin_call_id.clone(),
+        tool_name: p.tool_name.clone(),
+        arguments: p.arguments.clone(),
+        retry_reason: p.retry_reason.clone(),
+        // Answerable is exactly what `bubbled` denies, so this view never is.
+        bubbled: false,
+        parent_call_id,
+        sub_conversation_id,
+    }
+}
+
+/// Every question waiting on the user, across all conversations.
+///
+/// The stream cannot answer this. Each of these announced itself once, before
+/// the window reloaded or the phone connected, and nothing replays it — so a
+/// client that was not listening at that moment has no other way to learn that
+/// a conversation it has never opened is holding a turn open.
+///
+/// One row per approval rather than per view: this is a work queue, and
+/// `answerable_view` says which of a delegated run's two views belongs in one.
+///
+/// Synchronous for the same reason as `pending_for`. Infallible, but `Result`
+/// anyway: that is the shape both `generate_handler!` and `remote::dispatch`
+/// expect of a row in the command table.
+#[tauri::command]
+pub fn all_pending_approvals(app: tauri::AppHandle) -> Result<Vec<PendingApprovalInfo>, String> {
+    let services = app.services();
+    let map = services.approvals.lock();
+    Ok(map.iter().map(|(id, p)| answerable_view(id, p)).collect())
 }
 
 #[cfg(test)]
@@ -257,6 +306,39 @@ mod tests {
                 ("appr-2".to_string(), "call-b".to_string()),
             ]
         );
+    }
+
+    /// What the cross-conversation queue is built from. Two approvals, one of
+    /// them delegated, produce two rows and not three — the sub-agent's
+    /// read-only view is the one left out, because a queue offering a question
+    /// that cannot be answered from there is worse than not offering it.
+    #[test]
+    fn the_queue_lists_each_approval_once_where_it_can_be_answered() {
+        let mut map = HashMap::new();
+        registered(&mut map, "appr-1", "0", Some(bubble("call-run-agent")));
+        registered(&mut map, "appr-2", "c1", None);
+
+        let mut rows: Vec<(String, String)> = map
+            .iter()
+            .map(|(id, p)| {
+                let v = answerable_view(id, p);
+                (v.approval_id, v.conversation_id)
+            })
+            .collect();
+        rows.sort();
+        assert_eq!(
+            rows,
+            vec![
+                // Answered on the parent, which is also where the card is.
+                ("appr-1".to_string(), "parent-1".to_string()),
+                ("appr-2".to_string(), "sub-1".to_string()),
+            ]
+        );
+        // And the row for the delegated one names the parent's own row, so the
+        // queue can send the reader somewhere the card actually exists.
+        let delegated = answerable_view("appr-1", &map["appr-1"]);
+        assert_eq!(delegated.assistant_message_id, "parent-row");
+        assert!(!delegated.bubbled);
     }
 
     /// The ordinary case is untouched: one view, in its own conversation, with
