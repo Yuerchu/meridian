@@ -462,11 +462,10 @@ fn parse_chunk_with_state(chunk: &GenerateContentChunk, model: &str, state: &mut
                         index: tool_index,
                         arguments,
                     });
-                    let location = GoogleSignatureLocation::ToolCall {
+                    GoogleSignatureLocation::ToolCall {
                         index: tool_index,
                         call_id: Some(id),
-                    };
-                    location
+                    }
                 } else {
                     if let Some(text) = part.text.as_ref().filter(|text| !text.is_empty()) {
                         if part.thought.unwrap_or(false) {

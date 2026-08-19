@@ -89,7 +89,7 @@ pub async fn capture_stickers(state: &Arc<SharedState>, self_id: i64, stickers: 
         }
     };
     let data_dir = &state.services.paths.data_dir;
-    if let Err(error) = crate::emoji::ensure_pack_dir(&data_dir, &pack_id) {
+    if let Err(error) = crate::emoji::ensure_pack_dir(data_dir, &pack_id) {
         tracing::warn!(%error, "could not create OneBot sticker directory");
         return vec![None; stickers.len()];
     }
@@ -112,7 +112,7 @@ pub async fn capture_stickers(state: &Arc<SharedState>, self_id: i64, stickers: 
                 && let Ok((bytes, extension)) = super::media::download_image(url).await
             {
                 let file_name = format!("{}.{}", known.id, extension);
-                let path = crate::emoji::emoji_path(&data_dir, &pack_id, &file_name);
+                let path = crate::emoji::emoji_path(data_dir, &pack_id, &file_name);
                 if std::fs::write(path, &bytes).is_ok() {
                     let payload = serde_json::to_string(&sticker.native_payload).unwrap_or_else(|_| "{}".into());
                     if let Ok(mut conn) = state.services.db.get()
@@ -164,7 +164,7 @@ pub async fn capture_stickers(state: &Arc<SharedState>, self_id: i64, stickers: 
         let (file_name, file_format, file_size) = match downloaded {
             Some((bytes, extension)) => {
                 let file_name = format!("{id}.{extension}");
-                let path = crate::emoji::emoji_path(&data_dir, &pack_id, &file_name);
+                let path = crate::emoji::emoji_path(data_dir, &pack_id, &file_name);
                 if let Err(error) = std::fs::write(&path, &bytes) {
                     tracing::warn!(%error, "could not store captured sticker");
                     (String::new(), extension, 0)
@@ -223,7 +223,7 @@ pub async fn capture_stickers(state: &Arc<SharedState>, self_id: i64, stickers: 
         captured.push(inserted.map(|sticker| sticker.id));
     }
 
-    evict_candidates(state, &pack_id, &data_dir);
+    evict_candidates(state, &pack_id, data_dir);
     captured
 }
 
