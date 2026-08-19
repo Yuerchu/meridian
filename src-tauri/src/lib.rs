@@ -9,6 +9,8 @@ mod platform;
 /// host.
 #[cfg(not(target_os = "android"))]
 mod remote;
+/// When the launch screen goes away, and why it always does.
+mod splash;
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -130,6 +132,10 @@ pub fn run() {
                 let services = services.clone();
                 tauri::async_runtime::spawn(bootstrap::reconnect_mcp(services));
             }
+
+            // Last thing in setup, so the deadline starts counting from the
+            // moment the app could conceivably be shown.
+            splash::arm(app.handle());
 
             #[cfg(desktop)]
             {

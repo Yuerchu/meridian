@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { invoke } from '@tauri-apps/api/core'
 import { MotionConfig } from 'motion/react'
 import App from './App'
 import { ErrorBoundary } from './components/error-boundary'
@@ -8,6 +9,22 @@ import './i18n'
 import './index.css'
 
 const root = createRoot(document.getElementById('root')!)
+
+/**
+ * Tell the shell the window is worth showing.
+ *
+ * Not `@/lib/transport`: this is about *this* machine's windows, and a remote
+ * session has its own launch to worry about — the command is marked `local` and
+ * would be refused anyway. It throws outside Tauri, which is the browser dev
+ * server, and there is no splash there to close.
+ *
+ * Two frames deep because `render` returns before React has committed anything:
+ * signalling from inside it would hand over to a window that is still blank.
+ * The shell's deadline covers this call never arriving at all.
+ */
+function announceReady() {
+  requestAnimationFrame(() => requestAnimationFrame(() => void invoke('splash_app_ready').catch(() => {})))
+}
 
 const isDev = import.meta.env.DEV
 const isBrowserDev = isDev && !('__TAURI_INTERNALS__' in window)
@@ -48,6 +65,7 @@ if (isDev && window.location.hash.startsWith('#playground')) {
         </ThemeProvider>
       </StrictMode>,
     )
+    announceReady()
   })
 } else {
   root.render(
@@ -68,4 +86,5 @@ if (isDev && window.location.hash.startsWith('#playground')) {
       </ThemeProvider>
     </StrictMode>,
   )
+  announceReady()
 }

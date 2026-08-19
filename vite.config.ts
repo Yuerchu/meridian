@@ -73,6 +73,17 @@ export default defineConfig({
     // touches a handful. As files they are fetched on demand, and off the local
     // disk that costs nothing. Everything else keeps the default threshold.
     assetsInlineLimit: (filePath) => (filePath.includes('material-icon-theme') ? false : undefined),
+    rollupOptions: {
+      // The splash window is a second page, not a route: it has to paint while
+      // the app's own bundle is still being parsed, so it must not be in that
+      // bundle. Declaring it here is also what lets it `import` from `src/` —
+      // dropping the file in `public/` would have shipped it unprocessed and
+      // forced the ring geometry to be written out a second time.
+      input: {
+        main: path.resolve(rootDir, 'index.html'),
+        splash: path.resolve(rootDir, 'splash.html'),
+      },
+    },
   },
   server: {
     host: host || '127.0.0.1',

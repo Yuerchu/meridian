@@ -46,6 +46,11 @@
 @import '@heroui-pro/react/css/components/bar-chart.css' layer(components);
 @import '@heroui-pro/react/css/components/area-chart.css' layer(components);
 @import '@heroui-pro/react/css/components/chart-tooltip.css' layer(components);
+/* Settings → About groups its rows with these two. `item-card-group.css` is
+   what turns a column of cards into one surface with dividers; without it the
+   rows keep their own background and shadow and read as five separate cards. */
+@import '@heroui-pro/react/css/components/item-card.css' layer(components);
+@import '@heroui-pro/react/css/components/item-card-group.css' layer(components);
 @import '@fontsource-variable/geist';
 
 /* TextShimmer paints its text with a moving gradient and sets

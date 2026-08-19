@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "label": "main",
         "title": "Meridian",
         "width": 960,
         "height": 680,
@@ -19,7 +20,20 @@
         "minHeight": 480,
         "decorations": true,
         "center": true,
-        "backgroundColor": "#0a0a0a"
+        "backgroundColor": "#0a0a0a",
+        "visible": false
+      },
+      {
+        "label": "splashscreen",
+        "url": "splash.html",
+        "width": 320,
+        "height": 320,
+        "decorations": false,
+        "resizable": false,
+        "center": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "backgroundColor": "#1c2230"
       }
     ],
     "security": {
