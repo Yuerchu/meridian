@@ -359,6 +359,17 @@ macro_rules! with_all_commands {
                 bound: bool,
             ),
 
+            // Reachable from a phone on purpose: it describes the host, and a
+            // remote session asking "what am I actually connected to" is the
+            // question About answers.
+            sync commands::app_info => get_app_info(),
+
+            // `local` because they move this machine's windows. A remote client
+            // has its own launch to worry about and no business closing a
+            // splash it cannot see.
+            local splash => splash_animation_done(),
+            local splash => splash_app_ready(),
+
             async commands::logs => read_logs(query: $crate::commands::logs::LogQueryInput),
             async commands::logs => list_log_files(),
             async commands::logs => get_log_settings(),

@@ -347,6 +347,11 @@ mod tests {
             "take_photo",
             "pick_gallery_image",
             "resolve_file_name",
+            // This machine's windows. A remote client has its own launch to
+            // worry about, and the splash it would be dismissing is one it
+            // cannot see.
+            "splash_animation_done",
+            "splash_app_ready",
         ];
         expected.sort_unstable();
         expected.retain(|name| COMMAND_NAMES.contains(name));

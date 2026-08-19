@@ -59,9 +59,11 @@ function App() {
     refreshProjects()
   }, [refreshProjects])
 
+  // Once, not once per project: the list is every conversation now, and the
+  // sidebar groups them itself.
   useEffect(() => {
     refreshConversations()
-  }, [refreshConversations, activeProjectId])
+  }, [refreshConversations])
 
   const handleCreate = useCallback(async () => {
     const conv = await api.createConversation(undefined, activeProjectId ?? undefined)

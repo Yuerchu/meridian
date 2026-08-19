@@ -796,19 +796,22 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
   },
 
   refreshConversations: async () => {
-    const { activeProjectId } = get()
-    // One query either way. Concatenating a second, archived result used to
-    // leave two separately-sorted runs in one list — invisible while a row
-    // showed nothing but its title, and plainly wrong now that each carries a
-    // timestamp and a pin marker. The other branch never included archived
-    // conversations to begin with, so this also settles which of the two was
-    // right.
+    // Every conversation, never a project's slice of them. The sidebar nests
+    // them under their project rather than filtering to one, so a slice would
+    // draw a tree with most of its branches missing.
+    //
+    // It also closes half of a hole several readers had: `use-turn-settings`,
+    // the header title and the notification title all look the active
+    // conversation up in this array, so opening one from outside the selected
+    // project — the command palette reaches any of them — used to find nothing
+    // and fall back to defaults. The other half, sub-agent conversations, is
+    // filtered out in SQL and still missing; see the TODO in
+    // `use-turn-settings.ts`.
+    //
     // TODO: archived conversations are currently unreachable in the UI. There
     // is no archive/unarchive command either — `is_archived` is only ever read
     // while rendering. Both belong in one change.
-    const conversations: Conversation[] = activeProjectId
-      ? await api.listConversationsByProject(activeProjectId, false)
-      : await api.listConversations()
+    const conversations: Conversation[] = await api.listConversations()
     set({ conversations })
     return conversations
   },

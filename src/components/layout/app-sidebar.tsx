@@ -15,7 +15,7 @@
  * closed by hand — see `dismissing` — and every row that navigates has to go
  * through it or the sheet stays open over the page it just opened.
  */
-import { Fragment, useCallback, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Button, Input } from '@heroui/react'
@@ -161,6 +161,28 @@ interface MenuHit {
   id: string
 }
 
+/**
+ * The conversations of each project, and the ones belonging to none.
+ *
+ * Grouping happens here rather than in SQL because the order inside each group
+ * has to be the order the list arrived in — pinned first, then by recency — and
+ * a second query per project would sort each one independently of the whole.
+ */
+function groupByProject(conversations: Conversation[]) {
+  const filed = new Map<string, Conversation[]>()
+  const loose: Conversation[] = []
+  for (const conversation of conversations) {
+    if (!conversation.project_id) {
+      loose.push(conversation)
+      continue
+    }
+    const existing = filed.get(conversation.project_id)
+    if (existing) existing.push(conversation)
+    else filed.set(conversation.project_id, [conversation])
+  }
+  return { filed, loose }
+}
+
 function RowActionItems({ actions }: { actions: RowAction[] }) {
   return (
     <>
@@ -258,6 +280,23 @@ export function AppSidebar({
   const hitRef = useRef<MenuHit | null>(null)
   const [menu, setMenu] = useState<MenuHit | null>(null)
 
+  const { filed, loose } = useMemo(() => groupByProject(conversations), [conversations])
+
+  // Which projects are open, as bare project ids. The tree below is rendered
+  // twice — once for the panel, once for the mobile sheet — under different key
+  // prefixes, so what RAC hands back has to be translated on the way in and out
+  // rather than stored as it comes.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set<string>())
+
+  // Whatever is on screen has its project opened for it. A conversation reached
+  // from anywhere but this list — the command palette, a notification — would
+  // otherwise be current inside a branch nobody can see.
+  const activeConversationProject = conversations.find((c) => c.id === activeId)?.project_id ?? null
+  useEffect(() => {
+    if (!activeConversationProject) return
+    setExpanded((prev) => (prev.has(activeConversationProject) ? prev : new Set(prev).add(activeConversationProject)))
+  }, [activeConversationProject])
+
   const conversationActions = useConversationActions({
     onTogglePin,
     onRequestRename: (id) => setRenameTarget({ type: 'conversation', id }),
@@ -273,24 +312,30 @@ export function AppSidebar({
   })
 
   // Only the right-click menu needs to know which row was hit; the button on a
-  // row already knows.
+  // row already knows. Which *kind* of row it was is read off the DOM too:
+  // projects and their conversations share one tree now, so the list a click
+  // landed in no longer says what was clicked.
   const hitConversation = menu?.kind === 'conversation' ? conversations.find((c) => c.id === menu.id) : undefined
   const hitProject = menu?.kind === 'project' ? projects.find((p) => p.id === menu.id) : undefined
+  const hitActions = hitConversation
+    ? conversationActions(hitConversation)
+    : hitProject
+      ? projectActions(hitProject)
+      : []
 
   // base-ui reads the cursor position off the Root, so the Root has to enclose
   // its own Trigger — a Root parked next to the dialogs at the bottom of this
   // component throws `ContextMenuRootContext is missing` at render, which
   // neither the type checker nor the build notices.
   const rowMenu = useCallback(
-    (scope: string, kind: MenuHit['kind'], actions: RowAction[], children: React.ReactNode) => (
-      <ContextMenu
-        open={menu?.scope === scope && menu.kind === kind}
-        onOpenChange={(open) => setMenu(open ? hitRef.current : null)}
-      >
+    (scope: string, actions: RowAction[], children: React.ReactNode) => (
+      <ContextMenu open={menu?.scope === scope} onOpenChange={(open) => setMenu(open ? hitRef.current : null)}>
         <ContextMenuTrigger
           onContextMenu={(e: React.MouseEvent) => {
-            const id = (e.target as HTMLElement).closest('[data-row-id]')?.getAttribute('data-row-id')
-            hitRef.current = id ? { scope, kind, id } : null
+            const row = (e.target as HTMLElement).closest('[data-row-id]')
+            const id = row?.getAttribute('data-row-id')
+            const kind = row?.getAttribute('data-row-kind') as MenuHit['kind'] | null | undefined
+            hitRef.current = id && kind ? { scope, kind, id } : null
           }}
         >
           {children}
@@ -345,6 +390,38 @@ export function AppSidebar({
     </>
   )
 
+  /**
+   * One conversation, wherever it sits — nested under its project or loose in
+   * the group below. The same row either way: its depth is the collection's
+   * business, and Pro indents it off `aria-level` rather than off anything
+   * written here.
+   */
+  const conversationItem = (prefix: string, conv: Conversation) => {
+    const title = conv.title ?? t('sidebar.newChat')
+    return (
+      <Sidebar.MenuItem
+        key={conv.id}
+        id={`${prefix}conv-${conv.id}`}
+        data-row-id={conv.id}
+        data-row-kind="conversation"
+        textValue={title}
+        isCurrent={conv.id === activeId}
+        onAction={() => selectConversation(conv.id)}
+        className={conv.is_archived ? 'opacity-50' : undefined}
+      >
+        <Sidebar.MenuIcon>{conv.is_archived ? <Archive /> : <Comment />}</Sidebar.MenuIcon>
+        <Sidebar.MenuLabel>{title}</Sidebar.MenuLabel>
+        <Sidebar.MenuChip>
+          {/* Pinned rows were sorted to the top and said nothing about why they
+              were there. */}
+          {conv.is_pinned === 1 && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-muted" />}
+          <ConversationIndicator conversationId={conv.id} activeId={activeId} />
+        </Sidebar.MenuChip>
+        <RowActionsMenu label={title} actions={conversationActions(conv)} />
+      </Sidebar.MenuItem>
+    )
+  }
+
   const chatSide = (prefix: string) => (
     <>
       <Sidebar.Header>
@@ -376,10 +453,18 @@ export function AppSidebar({
             </span>
           </Sidebar.GroupLabel>
           {rowMenu(
-            prefix,
-            'project',
-            hitProject ? projectActions(hitProject) : [],
-            <Sidebar.Menu aria-label={t('sidebar.projects')}>
+            `${prefix}tree`,
+            hitActions,
+            <Sidebar.Menu
+              // `project-tree` is ours, and only for the spacer rule in
+              // `index.css` — see the note there.
+              className="project-tree"
+              aria-label={t('sidebar.projects')}
+              expandedKeys={[...expanded].map((id) => `${prefix}project-${id}`)}
+              onExpandedChange={(keys) =>
+                setExpanded(new Set([...keys].map((key) => String(key).slice(`${prefix}project-`.length))))
+              }
+            >
               <Sidebar.MenuItem
                 id={`${prefix}all-projects`}
                 textValue={t('sidebar.allProjects')}
@@ -396,15 +481,32 @@ export function AppSidebar({
                   key={project.id}
                   id={`${prefix}project-${project.id}`}
                   data-row-id={project.id}
+                  data-row-kind="project"
                   textValue={project.name}
                   isCurrent={project.id === activeProjectId}
                   onAction={() => selectProject(project.id)}
                 >
+                  {/* Before the icon, so the tree has one straight edge to read
+                      down. It has to be a direct child of the item: Pro turns it
+                      into the row's `slot="chevron"` button only here, and put
+                      inside `MenuLabel` — as the docs' own first example does —
+                      it renders as a bare, unclickable svg. */}
+                  <Sidebar.MenuTrigger>
+                    <Sidebar.MenuIndicator />
+                  </Sidebar.MenuTrigger>
                   <Sidebar.MenuIcon>
                     <ProjectIcon sourceType={project.source_type} />
                   </Sidebar.MenuIcon>
                   <Sidebar.MenuLabel>{project.name}</Sidebar.MenuLabel>
                   <RowActionsMenu label={project.name} actions={projectActions(project)} />
+                  {/* A marker, not an element: Pro lifts these out and renders
+                      them as sibling rows one level deeper. So a conversation
+                      row is never a DOM descendant of its project, which is what
+                      keeps the `closest('[data-row-id]')` read above landing on
+                      the row that was actually clicked. */}
+                  <Sidebar.Submenu>
+                    {(filed.get(project.id) ?? []).map((conv) => conversationItem(prefix, conv))}
+                  </Sidebar.Submenu>
                 </Sidebar.MenuItem>
               ))}
             </Sidebar.Menu>,
@@ -420,37 +522,22 @@ export function AppSidebar({
           )}
         </Sidebar.Group>
 
-        <Sidebar.Group>
-          <Sidebar.GroupLabel>{t('sidebar.conversations')}</Sidebar.GroupLabel>
-          {rowMenu(
-            prefix,
-            'conversation',
-            hitConversation ? conversationActions(hitConversation) : [],
-            <Sidebar.Menu aria-label={t('sidebar.conversations')}>
-              {conversations.map((conv) => (
-                <Sidebar.MenuItem
-                  key={conv.id}
-                  id={`${prefix}conv-${conv.id}`}
-                  data-row-id={conv.id}
-                  textValue={conv.title ?? t('sidebar.newChat')}
-                  isCurrent={conv.id === activeId}
-                  onAction={() => selectConversation(conv.id)}
-                  className={conv.is_archived ? 'opacity-50' : undefined}
-                >
-                  <Sidebar.MenuIcon>{conv.is_archived ? <Archive /> : <Comment />}</Sidebar.MenuIcon>
-                  <Sidebar.MenuLabel>{conv.title ?? t('sidebar.newChat')}</Sidebar.MenuLabel>
-                  <Sidebar.MenuChip>
-                    {/* Pinned rows were sorted to the top and said nothing about
-                        why they were there. */}
-                    {conv.is_pinned === 1 && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-muted" />}
-                    <ConversationIndicator conversationId={conv.id} activeId={activeId} />
-                  </Sidebar.MenuChip>
-                  <RowActionsMenu label={conv.title ?? t('sidebar.newChat')} actions={conversationActions(conv)} />
-                </Sidebar.MenuItem>
-              ))}
-            </Sidebar.Menu>,
-          )}
-        </Sidebar.Group>
+        {/* What is left after the tree: the conversations that belong to no
+            project. They keep a group of their own rather than a node of their
+            own, because someone who has never made a project should not be
+            asked to open one to reach their chats. */}
+        {loose.length > 0 && (
+          <Sidebar.Group>
+            <Sidebar.GroupLabel>{t('sidebar.conversations')}</Sidebar.GroupLabel>
+            {rowMenu(
+              `${prefix}loose`,
+              hitActions,
+              <Sidebar.Menu aria-label={t('sidebar.conversations')}>
+                {loose.map((conv) => conversationItem(prefix, conv))}
+              </Sidebar.Menu>,
+            )}
+          </Sidebar.Group>
+        )}
       </Sidebar.Content>
 
       <Sidebar.Footer>

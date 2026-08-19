@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Meridian</title>
+    <!-- No theme script and no stylesheet. This window is one shape on one
+         colour, it is on screen for under two seconds, and every import is
+         time the user spends looking at nothing. The colour is the app icon's
+         background, so the splash reads as the icon growing into a window. -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #1c2230;
+      }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        /* Undecorated windows are square; the radius is drawn, and matches the
+           app icon's 22%. */
+        border-radius: 22%;
+      }
+      svg {
+        width: 46%;
+        height: 46%;
+        color: #8fb4ff;
+      }
+    </style>
+  </head>
+  <body>
+    <svg id="mark" viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="6.5" stroke-linecap="butt">
+      <circle id="star" cx="50" cy="50" r="0" opacity="0"></circle>
+      <path id="seg0" d=""></path>
+      <path id="seg1" d=""></path>
+    </svg>
+    <script type="module" src="/src/splash.ts"></script>
+  </body>
+</html>

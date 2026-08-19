@@ -1,3 +1,4 @@
+pub mod app_info;
 pub mod approval;
 pub mod approval_adapter;
 pub mod assistant;

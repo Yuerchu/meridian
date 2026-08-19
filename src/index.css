@@ -46,6 +46,18 @@
 @import '@heroui-pro/react/css/components/bar-chart.css' layer(components);
 @import '@heroui-pro/react/css/components/area-chart.css' layer(components);
 @import '@heroui-pro/react/css/components/chart-tooltip.css' layer(components);
+/* The sticker table. `data-grid.css` only adds what the grid puts on top of a
+   table — the selection column, the sort caret, pinning — and reads
+   `.table__*`, which comes from `@heroui/styles` above; Pro's own `table.css`
+   is one rule, dropping the border under the last row, and without it the
+   grid's scroll container ends on a line that belongs to no row. */
+/* Settings → About groups its rows with these two. `item-card-group.css` is
+   what turns a column of cards into one surface with dividers; without it the
+   rows keep their own background and shadow and read as five separate cards. */
+@import '@heroui-pro/react/css/components/item-card.css' layer(components);
+@import '@heroui-pro/react/css/components/item-card-group.css' layer(components);
+@import '@heroui-pro/react/css/components/data-grid.css' layer(components);
+@import '@heroui-pro/react/css/components/table.css' layer(components);
 @import '@fontsource-variable/geist';
 
 /* TextShimmer paints its text with a moving gradient and sets
@@ -92,6 +104,23 @@
     border-width: 0;
     border-radius: 0;
   }
+}
+
+/* The project tree keeps one straight edge to read down.
+
+   Pro hides the expand button on a row that has no children
+   (`.sidebar__menu-item:not([data-has-child-items]) .sidebar__menu-trigger
+   { display: none }`), which is right for a flat menu and wrong for a tree: an
+   empty project's icon would slide 20px left, under its siblings' chevrons, and
+   a nested conversation's would not line up with anything. Hidden rather than
+   absent, so the column stays.
+
+   Scoped to the one menu that is a tree. Applied to `.sidebar__menu-item` at
+   large it would punch a 20px hole into the settings list, every row of which
+   is childless. */
+.project-tree .sidebar__menu-item:not([data-has-child-items]) .sidebar__menu-trigger {
+  display: flex;
+  visibility: hidden;
 }
 
 /* HeroUI ships a `dark` variant that also falls back to `prefers-color-scheme`.

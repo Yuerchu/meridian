@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- The same value the foreground PNGs are painted on.
+
+       An adaptive icon's mask is the device's choice — circle, squircle,
+       teardrop — and whatever it cuts away exposes this layer, so the two
+       have to match or the edge shows a seam. `tauri icon` writes #fff here
+       and paints the whole rounded-rectangle icon into the foreground, which
+       reads as a white ring under any mask that is not exactly that shape.
+
+       Re-running `tauri icon` overwrites this and the five
+       `ic_launcher_foreground.png`, which were redrawn by hand at 50% of the
+       canvas — Android only guarantees the middle 61% survives the mask, and
+       the desktop icon's 59% would be cropped. -->
+  <color name="ic_launcher_background">#1c2230</color>
+</resources>

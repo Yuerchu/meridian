@@ -3,6 +3,7 @@
 // pointed at another machine. See `lib/transport.ts`.
 import { invoke } from '@/lib/transport'
 import type {
+  AppInfo,
   Assistant,
   ChatMode,
   ContextInfo,
@@ -696,6 +697,10 @@ export const api = {
 
   setSkillBinding: (layer: SkillLayer, anchorId: string | null, dirName: string, bound: boolean) =>
     invoke<string[]>('set_skill_binding', { layer, anchorId: anchorId ?? null, dirName, bound }),
+
+  // Settings → About. Not `getVersion()` from `@tauri-apps/api/app`: that one
+  // is answered by the shell this page may not be running in.
+  getAppInfo: () => invoke<AppInfo>('get_app_info'),
 
   // Application logs
   readLogs: (query: LogQuery = {}) =>

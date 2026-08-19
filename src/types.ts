@@ -811,6 +811,21 @@ export interface LogQuery {
   cursor?: LogCursor | null
 }
 
+/**
+ * The host's own description of itself, for Settings → About.
+ *
+ * "Host" is load-bearing in remote mode: the turns run there, so these are the
+ * numbers worth quoting in a bug report — not the phone's.
+ */
+export interface AppInfo {
+  version: string
+  tauriVersion: string
+  /** `windows` / `macos` / `linux` / `android`. */
+  os: string
+  arch: string
+  dataDir: string
+}
+
 export interface LogFileInfo {
   name: string
   size: number

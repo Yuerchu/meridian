@@ -189,14 +189,26 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
                 let summary = get_str("summary");
                 let emoji_id = get_str("emoji_id");
                 let package_id = get_str("emoji_package_id");
-                let is_sticker =
-                    emoji_id.is_some() || matches!(summary.as_deref(), Some("[动画表情]") | Some("[商城表情]"));
+                // LLOneBot OB11 reports user-uploaded/favourite stickers as an
+                // ordinary image segment with camelCase `subType: 1`. OB12 and
+                // some other adapters expose the same fact as
+                // `sub_type: "sticker"`. Market packs carry emoji_id instead.
+                let sticker_subtype = ["subType", "sub_type"].iter().any(|key| {
+                    data.and_then(|value| value.get(*key)).is_some_and(|value| {
+                        value.as_i64() == Some(1) || matches!(value.as_str(), Some("1") | Some("sticker"))
+                    })
+                });
+                let is_sticker = emoji_id.is_some()
+                    || sticker_subtype
+                    || matches!(summary.as_deref(), Some("[动画表情]") | Some("[商城表情]"));
                 if is_sticker {
                     text.push(STICKER_SENTINEL);
                     let source_key = match (package_id.as_deref(), emoji_id.as_deref()) {
                         (Some(package), Some(id)) => Some(format!("{package}:{id}")),
                         (_, Some(id)) => Some(id.to_string()),
-                        _ => get_str("key"),
+                        _ => get_str("key")
+                            .or_else(|| get_str("resource_id"))
+                            .or_else(|| sticker_subtype.then(|| get_str("file")).flatten()),
                     };
                     parsed.stickers.push(StickerRef {
                         source: if emoji_id.is_some() {
@@ -206,7 +218,7 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
                         },
                         source_key,
                         native_payload: data.cloned().unwrap_or_else(|| serde_json::json!({})),
-                        url: get_str("url"),
+                        url: get_str("url").or_else(|| get_str("temp_url")),
                         file: get_str("file"),
                         summary,
                     });
@@ -235,7 +247,7 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
                     summary: None,
                 });
             }
-            "mface" => {
+            "mface" | "market_face" => {
                 let get_str = |key: &str| -> Option<String> {
                     data.and_then(|d| d.get(key)).and_then(|v| {
                         v.as_str()
@@ -256,7 +268,7 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
                     source: "onebot_mface",
                     source_key,
                     native_payload: data.cloned().unwrap_or_else(|| serde_json::json!({})),
-                    url: get_str("url"),
+                    url: get_str("url").or_else(|| get_str("temp_url")),
                     file: get_str("file"),
                     summary: get_str("summary"),
                 });
@@ -533,6 +545,46 @@ mod tests {
     }
 
     #[test]
+    fn llonebot_ob11_custom_sticker_uses_numeric_camel_case_subtype() {
+        let msg = serde_json::json!([{
+            "type": "image",
+            "data": {
+                "file": "custom-sticker.gif",
+                "subType": 1,
+                "url": "https://example.com/custom-sticker.gif",
+                "file_size": "1234"
+            }
+        }]);
+        let parsed = parse_segments(&msg, None);
+        assert!(parsed.images.is_empty());
+        assert_eq!(parsed.stickers.len(), 1);
+        assert_eq!(parsed.stickers[0].source, "onebot_image");
+        assert_eq!(parsed.stickers[0].source_key.as_deref(), Some("custom-sticker.gif"));
+        assert_eq!(parsed.stickers[0].summary, None);
+        assert_eq!(parsed.text, STICKER_SENTINEL.to_string());
+    }
+
+    #[test]
+    fn onebot12_custom_sticker_uses_named_snake_case_subtype() {
+        let msg = serde_json::json!([{
+            "type": "image",
+            "data": {
+                "resource_id": "resource-1",
+                "sub_type": "sticker",
+                "temp_url": "https://example.com/custom.webp"
+            }
+        }]);
+        let parsed = parse_segments(&msg, None);
+        assert!(parsed.images.is_empty());
+        assert_eq!(parsed.stickers.len(), 1);
+        assert_eq!(parsed.stickers[0].source_key.as_deref(), Some("resource-1"));
+        assert_eq!(
+            parsed.stickers[0].url.as_deref(),
+            Some("https://example.com/custom.webp")
+        );
+    }
+
+    #[test]
     fn test_parse_direct_mface_and_face() {
         let msg = serde_json::json!([
             {"type": "mface", "data": {"emoji_id": "e1", "emoji_package_id": "p1", "summary": "捂脸"}},
@@ -553,7 +605,7 @@ mod tests {
     fn ordinary_image_summary_is_not_a_sticker() {
         let msg = serde_json::json!([{
             "type": "image",
-            "data": {"summary": "[图片]", "url": "https://example.com/photo.jpg"}
+            "data": {"summary": "[图片]", "subType": 0, "url": "https://example.com/photo.jpg"}
         }]);
         let parsed = parse_segments(&msg, None);
         assert_eq!(parsed.images.len(), 1);
@@ -571,6 +623,16 @@ mod tests {
         assert_eq!(parsed.stickers.len(), 1);
         assert_eq!(parsed.stickers[0].source_key.as_deref(), Some("2:9"));
         assert_eq!(parsed.typed, "");
+    }
+
+    #[test]
+    fn cq_string_custom_sticker_uses_string_subtype() {
+        let raw =
+            serde_json::Value::String("[CQ:image,file=custom.gif,subType=1,url=https://example.com/custom.gif]".into());
+        let parsed = parse_segments(&raw, None);
+        assert!(parsed.images.is_empty());
+        assert_eq!(parsed.stickers.len(), 1);
+        assert_eq!(parsed.stickers[0].source_key.as_deref(), Some("custom.gif"));
     }
 
     #[test]
