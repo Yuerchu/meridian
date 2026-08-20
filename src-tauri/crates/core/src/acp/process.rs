@@ -26,6 +26,74 @@ use tokio::process::{Child, ChildStdin, ChildStdout};
 const STDERR_TAIL_LINES: usize = 8;
 const STDERR_LINE_CHARS: usize = 400;
 
+/// What `command` actually names on this system, when the OS will not work it
+/// out for itself.
+///
+/// `CreateProcessW` tries the literal name and the name plus `.exe`, and stops
+/// — it never consults `PATHEXT`. Every node tool ships as a `.cmd` shim, so
+/// `npx` on disk is `npx.cmd`, and the default configuration fails with
+/// "program not found" while the identical command works in any shell.
+/// Measured on a machine with node installed: `npx` fails to spawn, `npx.cmd`
+/// starts, `node` starts because it happens to be a real `.exe`.
+///
+/// Returns `None` when there is nothing to correct, and the caller spawns what
+/// it was handed. An extension already present is left alone rather than
+/// second-guessed: it is either right or it is the user telling us something we
+/// should not override.
+#[cfg(target_os = "windows")]
+fn resolve_on_path(command: &str) -> Option<std::path::PathBuf> {
+    use std::path::{Path, PathBuf};
+
+    let given = Path::new(command);
+    if given.extension().is_some() {
+        return None;
+    }
+    let stem = given.file_name()?.to_str()?.to_string();
+
+    let from_env: Vec<String> = std::env::var("PATHEXT")
+        .map(|raw| {
+            raw.split(';')
+                .map(str::trim)
+                .filter(|e| !e.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
+        .unwrap_or_default();
+    let extensions = if from_env.is_empty() {
+        [".COM", ".EXE", ".BAT", ".CMD"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect()
+    } else {
+        from_env
+    };
+
+    let first_hit = |dir: &Path| -> Option<PathBuf> {
+        extensions.iter().find_map(|ext| {
+            let candidate = dir.join(format!("{stem}{ext}"));
+            candidate.is_file().then_some(candidate)
+        })
+    };
+
+    // Anything carrying a separator is a location, not a name to look up.
+    match given.parent() {
+        Some(dir) if !dir.as_os_str().is_empty() => first_hit(dir),
+        _ => std::env::split_paths(&std::env::var_os("PATH")?).find_map(|dir| first_hit(&dir)),
+    }
+}
+
+/// The program to hand `Command`, once the platform's own resolution has been
+/// helped along.
+fn program_for(command: &str) -> std::ffi::OsString {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(found) = resolve_on_path(command) {
+            return found.into_os_string();
+        }
+    }
+    std::ffi::OsString::from(command)
+}
+
 /// A running adapter, taken apart into the pieces the peer needs.
 pub struct AdapterProcess {
     pub child: Child,
@@ -42,7 +110,7 @@ impl AdapterProcess {
     /// carry several sessions in different repositories. Launching it inside one
     /// of them would make the first session's directory silently special.
     pub async fn spawn(command: &str, args: &[String]) -> Result<Self, String> {
-        let mut cmd = tokio::process::Command::new(command);
+        let mut cmd = tokio::process::Command::new(program_for(command));
         cmd.args(args)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -62,10 +130,13 @@ impl AdapterProcess {
                 error = %e,
                 "failed to spawn the ACP adapter"
             );
-            // Named explicitly: the usual cause is the command not being on
-            // PATH, and an error that does not say what it tried to run sends
-            // the user looking in the wrong place.
-            format!("could not start `{command}`: {e}")
+            // Named explicitly, and with where to look: the usual cause is the
+            // command not being on PATH, and an error that does not say what it
+            // tried to run sends the user looking in the wrong place. Worth
+            // spelling out for an installed build in particular, which inherits
+            // the PATH the session was logged in with — so a node installed
+            // after that is invisible until the next sign-in.
+            format!("could not start `{command}`: {e}. Check it is installed and on PATH.")
         })?;
 
         let stdin = child.stdin.take().ok_or("the adapter has no stdin")?;
@@ -148,6 +219,49 @@ mod tests {
         assert!(
             err.contains("meridian-no-such-adapter-binary"),
             "the error must name what it tried to run, got: {err}"
+        );
+    }
+
+    /// The default configuration has to work on the platform most people will
+    /// run it on.
+    ///
+    /// `npx` is the shipped default and on Windows it exists only as `npx.cmd`
+    /// — plus an extensionless shell script that `CreateProcessW` cannot
+    /// execute. Without resolution the first thing a user sees is "program not
+    /// found" for a command that runs fine if they paste it into a terminal.
+    #[cfg(target_os = "windows")]
+    #[tokio::test]
+    async fn the_default_command_starts_on_windows() {
+        if resolve_on_path("node").is_none() {
+            eprintln!("skipping: node is not installed");
+            return;
+        }
+
+        let found = resolve_on_path("npx").expect("npx ships with node");
+        assert_eq!(
+            found.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase),
+            Some("cmd".to_string()),
+            "npx resolves to its shim, not to the extensionless shell script: {found:?}"
+        );
+
+        // And it is the whole point that this now starts.
+        assert!(
+            AdapterProcess::spawn("npx", &["--version".into()]).await.is_ok(),
+            "the shipped default must be spawnable"
+        );
+    }
+
+    /// A name the caller spelled out is not second-guessed, and neither is a
+    /// path — the search is only ever for an extension the platform would have
+    /// found for itself anywhere else.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn an_explicit_extension_is_left_alone() {
+        assert!(resolve_on_path("npx.cmd").is_none());
+        assert!(resolve_on_path(r"C:\tools\adapter.exe").is_none());
+        assert!(
+            resolve_on_path("meridian-no-such-command-anywhere").is_none(),
+            "nothing to find means nothing to correct"
         );
     }
 

@@ -766,7 +766,16 @@ mod tests {
                 .join("../../../scripts/dev/fake-acp-adapter.mjs")
                 .canonicalize()
                 .ok()?;
-            Some(vec![script.to_string_lossy().into_owned()])
+            let script = script.to_string_lossy().into_owned();
+            // `canonicalize` hands back the verbatim `\\?\C:\…` form on Windows,
+            // and some node builds read that as a UNC share — server `?`, share
+            // `C:` — then fail to stat it. Whether it works is a property of the
+            // machine rather than of this tree: these tests passed on one
+            // Windows box and failed on the next with nothing changed but the
+            // node on it. The prefix is only ever a spelling of the same path,
+            // so dropping it costs nothing and removes the variable.
+            let script = script.strip_prefix(r"\\?\").unwrap_or(&script).to_string();
+            Some(vec![script])
         }
 
         /// Records what arrived, and answers the permission question.
