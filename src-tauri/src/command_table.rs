@@ -293,6 +293,26 @@ macro_rules! with_all_commands {
             local commands::hooks => stop_hooks(),
 
             #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_open_session(cwd: String),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_send(conversation_id: String, message: String, turn_id: Option<String>),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_cancel(conversation_id: String),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_close(conversation_id: String),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_live_sessions(),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_get_config(),
+            // `local`: `acp.command` names a binary this app executes, so a
+            // remote writer of it has arbitrary code execution here. Not the
+            // self-lockout the other `local` rows are about.
+            #[cfg(not(target_os = "android"))]
+            local commands::acp => acp_save_config(config: meridian_core::acp::AcpConfig),
+            #[cfg(not(target_os = "android"))]
+            local commands::acp => acp_check_adapter(),
+
+            #[cfg(not(target_os = "android"))]
             async commands::remote => get_listen_status(),
             #[cfg(not(target_os = "android"))]
             async commands::remote => get_listen_config(),

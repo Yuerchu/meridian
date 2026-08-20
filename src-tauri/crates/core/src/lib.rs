@@ -1,3 +1,7 @@
+/// Hosting another coding agent over ACP. Desktop only: every session is a
+/// child process.
+#[cfg(not(target_os = "android"))]
+pub mod acp;
 pub mod agent;
 /// The JNI calls the core makes into the Android side. The `Java_*` entry
 /// points Android calls back into stay in the shell, beside the activity that

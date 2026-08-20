@@ -267,6 +267,18 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
         .map(|c| meridian_core::files::conversation_files_dir(&services.paths.data_dir, c))
         .collect();
 
+    // Before the rows go, and after the leases above make the set final. A
+    // hosted session is a child process keyed by conversation id: delete the
+    // conversation without this and the adapter keeps running, serving a
+    // transcript that no longer exists, unreachable because the id nobody can
+    // look up any more is the only handle on it.
+    #[cfg(not(target_os = "android"))]
+    {
+        let mut all = doomed.clone();
+        all.push(id.clone());
+        services.acp.close_each(&all).await;
+    }
+
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::delete_conversation(&mut conn, &id).map_err(|e| e.to_string())?;

@@ -61,6 +61,10 @@ pub struct ServicesInner {
     pub sleep: AppSleepInhibitor,
     pub events: EventBus,
     pub paths: Paths,
+    /// Hosted coding-agent sessions. Absent on Android, where a session — a
+    /// child process — cannot exist.
+    #[cfg(not(target_os = "android"))]
+    pub acp: Arc<crate::acp::AcpRegistry>,
 }
 
 impl Services {

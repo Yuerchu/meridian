@@ -1,0 +1,414 @@
+//! Hosting another coding agent, over the Agent Client Protocol.
+//!
+//! Meridian is the ACP *client*: it starts `claude-code-acp` as a child process
+//! and speaks JSON-RPC to it over stdio. The turn runs in the adapter; what this
+//! app owns is the transcript, the approval cards and the window.
+//!
+//! This is not the shape the roadmap's "correct a common wrong turn" paragraph
+//! rejected. That one is `~/.claude/ide/*.lock`, where the *editor* is the
+//! server and Claude Code connects to it for selections and diffs — which
+//! indeed carries no session lifecycle. ACP is the other way round, and the
+//! lifecycle is the protocol.
+//!
+//! Desktop only. Every session is a child process, which Android does not have.
+
+pub mod approvals;
+pub mod mapping;
+pub mod peer;
+pub mod process;
+pub mod protocol;
+pub mod session;
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
+use crate::db::DbPool;
+
+pub use session::AcpSession;
+
+/// The sessions running right now.
+///
+/// In memory, and deliberately not persisted. A session is a child process: when
+/// this app exits, the adapter goes with it, and the `sessionId` it handed out
+/// means nothing to the next one. Reopening a conversation after a restart would
+/// need `session/load` — which the adapter does support — and that is the step
+/// that earns a table to keep the id in. Until then the honest model is that a
+/// hosted session lasts as long as the app does, while its transcript is an
+/// ordinary conversation that outlives it.
+#[derive(Default)]
+pub struct AcpRegistry {
+    /// Keyed by conversation, which is what every caller has: the id in the
+    /// sidebar, in the approval card, in the IPC command.
+    sessions: Mutex<HashMap<String, Arc<AcpSession>>>,
+}
+
+impl AcpRegistry {
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    pub fn get(&self, conversation_id: &str) -> Option<Arc<AcpSession>> {
+        self.lock().get(conversation_id).cloned()
+    }
+
+    /// Register a freshly opened session, replacing any dead one left under the
+    /// same conversation.
+    pub fn insert(&self, session: Arc<AcpSession>) {
+        self.lock().insert(session.conversation_id.clone(), session);
+    }
+
+    pub fn conversations(&self) -> Vec<String> {
+        self.lock().keys().cloned().collect()
+    }
+
+    /// Take a session out and shut it down. Absent is success: closing twice is
+    /// what a window and an app exit racing looks like.
+    pub async fn close(&self, conversation_id: &str) {
+        let session = self.lock().remove(conversation_id);
+        if let Some(session) = session {
+            session.close().await;
+        }
+    }
+
+    /// Close whichever of these conversations has a session, for a caller
+    /// holding a whole subtree.
+    ///
+    /// Deleting a conversation is the case: the rows go, and without this the
+    /// adapter that was serving them keeps running with nothing left to serve
+    /// and no way for anyone to reach it again.
+    pub async fn close_each(&self, conversation_ids: &[String]) {
+        for id in conversation_ids {
+            self.close(id).await;
+        }
+    }
+
+    /// Shut everything down, for app exit.
+    ///
+    /// Worth calling even though every child is `kill_on_drop`: that only fires
+    /// if the value is actually dropped, and a process leaving through
+    /// `std::process::exit` runs no destructors. Without this a few node
+    /// processes outlive the app that started them.
+    pub async fn close_all(&self) {
+        let sessions: Vec<_> = self.lock().drain().map(|(_, s)| s).collect();
+        for session in sessions {
+            session.close().await;
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Arc<AcpSession>>> {
+        self.sessions.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+/// How to start the adapter.
+///
+/// Not bundled. `claude-code-acp` is a node package and the machines that want
+/// this feature already have node and `claude` on them; shipping a copy would
+/// mean shipping a second Claude Code that ages separately from the one the
+/// user actually logs into.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct AcpConfig {
+    pub command: String,
+    pub args: Vec<String>,
+}
+
+impl Default for AcpConfig {
+    fn default() -> Self {
+        Self {
+            // `-y` because the first launch on a machine would otherwise stop
+            // on npx's install prompt, on a stdin that is a JSON-RPC pipe with
+            // nobody to type into it.
+            command: "npx".into(),
+            args: vec!["-y".into(), "@zed-industries/claude-code-acp".into()],
+        }
+    }
+}
+
+impl AcpConfig {
+    pub fn load(pool: &DbPool) -> Self {
+        let Ok(mut conn) = pool.get() else {
+            return Self::default();
+        };
+        let mut get = |key: &str| -> Option<String> {
+            crate::db::ops::preference::get_preference(&mut conn, key)
+                .ok()
+                .flatten()
+                .filter(|s| !s.trim().is_empty())
+        };
+
+        let default = Self::default();
+        Self {
+            command: get("acp.command").unwrap_or(default.command),
+            // Stored as JSON rather than a space-separated string: an argument
+            // containing a space is ordinary on Windows, and splitting one back
+            // apart would break a path under `Program Files`.
+            args: get("acp.args")
+                .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
+                .unwrap_or(default.args),
+        }
+    }
+
+    pub fn save(&self, pool: &DbPool) -> Result<(), String> {
+        let mut conn = crate::util::get_conn(pool)?;
+        let now = crate::util::now_ms();
+        let mut set = |key: &str, value: &str| -> Result<(), String> {
+            crate::db::ops::preference::set_preference(&mut conn, key, value, now).map_err(|e| e.to_string())
+        };
+        set("acp.command", &self.command)?;
+        let args = serde_json::to_string(&self.args).map_err(|e| e.to_string())?;
+        set("acp.args", &args)?;
+        Ok(())
+    }
+}
+
+/// Where a hosted conversation's working directory is kept.
+///
+/// A preference keyed by conversation, which is frank about being a stopgap. It
+/// belongs in a table beside the `sessionId`, and that table is what
+/// `session/load` will need — so it is being written once, when there is a
+/// second thing to put in it. Meanwhile this is what lets a conversation
+/// reopened after a restart start a new adapter in the directory it was about,
+/// instead of becoming unusable.
+fn cwd_key(conversation_id: &str) -> String {
+    format!("acp.cwd.{conversation_id}")
+}
+
+/// Open a new hosted session, and give it a conversation.
+///
+/// The adapter starts *first*. A conversation whose adapter never came up is a
+/// row in the sidebar that can never be opened, and the usual reason for
+/// failure — the command is not installed — is one every attempt would repeat.
+pub async fn open_session(services: &crate::services::Services, cwd: &str) -> Result<String, String> {
+    let config = AcpConfig::load(&services.db);
+    let conversation_id = uuid::Uuid::new_v4().to_string();
+
+    let session = AcpSession::open(services.clone(), &config, conversation_id.clone(), cwd.to_string()).await?;
+
+    // The session is running but not yet in the registry, so a `?` here would
+    // strand it: nothing holds a handle, nothing can close it, and the adapter
+    // outlives the app's interest in it. Close it by hand — this is the one
+    // window where the registry cannot do it for us.
+    if let Err(e) = write_conversation_row(services, &conversation_id, cwd).await {
+        session.close().await;
+        return Err(e);
+    }
+    services.acp.insert(session);
+
+    let _ = services.events.emit(
+        "conversation-updated",
+        serde_json::json!({ "conversation_id": conversation_id }),
+    );
+    Ok(conversation_id)
+}
+
+/// Bring a conversation from an earlier run back to life.
+///
+/// A *new* adapter session in the same directory, not the old one resumed: the
+/// transcript below it is this app's and survives, but the agent has no memory
+/// of it. Saying so is the caller's job — this returns quietly.
+pub async fn reopen_session(
+    services: &crate::services::Services,
+    conversation_id: &str,
+) -> Result<std::sync::Arc<AcpSession>, String> {
+    if let Some(existing) = services.acp.get(conversation_id)
+        && existing.is_alive()
+    {
+        return Ok(existing);
+    }
+
+    let pool = services.db.clone();
+    let key = cwd_key(conversation_id);
+    let cwd = tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().map_err(|e| e.to_string())?;
+        crate::db::ops::preference::get_preference(&mut conn, &key).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())??
+    .filter(|s| !s.trim().is_empty())
+    .ok_or("this conversation has no recorded working directory; start a new session")?;
+
+    let config = AcpConfig::load(&services.db);
+    let session = AcpSession::open(services.clone(), &config, conversation_id.to_string(), cwd).await?;
+    services.acp.insert(session.clone());
+    Ok(session)
+}
+
+/// The sidebar row for a hosted session.
+async fn write_conversation_row(
+    services: &crate::services::Services,
+    conversation_id: &str,
+    cwd: &str,
+) -> Result<(), String> {
+    use crate::db::models::conversation::NewConversation;
+    use diesel::Connection;
+
+    let pool = services.db.clone();
+    let conversation_id = conversation_id.to_string();
+    let cwd = cwd.to_string();
+    let title = title_for(&cwd);
+    let key = cwd_key(&conversation_id);
+
+    tokio::task::spawn_blocking(move || {
+        let mut conn = crate::util::get_conn(&pool)?;
+        let now = crate::util::now_ms();
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+            // Same reasoning as a review conversation: file it under the project
+            // that owns this directory when there is one, and leave it ungrouped
+            // rather than inventing a project the user did not ask for.
+            let project_id = crate::db::ops::project::find_project_by_path(conn, &cwd)?.map(|p| p.id);
+            let assistant_id = crate::db::ops::assistant::get_default_assistant(conn)
+                .ok()
+                .flatten()
+                .map(|a| a.id);
+
+            crate::db::ops::conversation::insert(
+                conn,
+                NewConversation {
+                    id: &conversation_id,
+                    title: Some(&title),
+                    assistant_id: assistant_id.as_deref(),
+                    is_pinned: 0,
+                    is_archived: 0,
+                    created_at: now,
+                    updated_at: now,
+                    project_id: project_id.as_deref(),
+                    parent_conversation_id: None,
+                    spawned_by_message_id: None,
+                    spawned_by_call_id: None,
+                    spawned_turn_id: None,
+                    agent_kind: Some(AGENT_KIND),
+                    agent_provider_id: None,
+                    agent_model_id: None,
+                },
+            )?;
+            crate::db::ops::preference::set_preference(conn, &key, &cwd, now)?;
+            Ok(())
+        })
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+/// What `conversations.agent_kind` says for a hosted session. The sidebar reads
+/// it to mark the row, and it is what tells a reopened conversation apart from
+/// an ordinary one.
+pub const AGENT_KIND: &str = "claude_code";
+
+/// How long a configuration check may take before it is called a failure.
+///
+/// Generous, because the default command is `npx -y`, and the very first run on
+/// a machine downloads the package before the adapter says anything at all.
+/// Bounded, because the failure this catches is a command that starts and then
+/// waits for something — a login prompt on a pipe with nobody at the other end —
+/// which without a deadline would hang the settings page rather than answer it.
+const CHECK_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// What a working adapter said about itself.
+pub struct AdapterReport {
+    pub agent: Option<String>,
+    pub protocol_version: u32,
+    pub load_session: bool,
+}
+
+/// Start an adapter, greet it, shut it down, and report what it said.
+///
+/// No session is opened: `initialize` is the whole handshake and the part that
+/// fails when the command is wrong. Opening one would also need a directory,
+/// which is not something a settings page should have to invent.
+pub async fn check_adapter(config: &AcpConfig) -> Result<AdapterReport, String> {
+    /// A session that never happens has no updates to handle and no questions
+    /// to answer.
+    struct Deaf;
+
+    #[async_trait::async_trait]
+    impl peer::Handler for Deaf {
+        async fn notification(&self, _method: String, _params: serde_json::Value) {}
+
+        async fn request(&self, method: String, _params: serde_json::Value) -> Result<serde_json::Value, String> {
+            Err(format!("`{method}` arrived during a configuration check"))
+        }
+    }
+
+    let process = process::AdapterProcess::spawn(&config.command, &config.args).await?;
+    let peer = peer::Peer::start(process, Arc::new(Deaf) as Arc<dyn peer::Handler>);
+
+    let greeting = tokio::time::timeout(
+        CHECK_TIMEOUT,
+        peer.request(
+            "initialize",
+            serde_json::to_value(protocol::InitializeParams {
+                protocol_version: protocol::PROTOCOL_VERSION,
+                client_capabilities: protocol::ClientCapabilities::default(),
+                client_info: protocol::Implementation {
+                    name: "meridian".into(),
+                    title: Some("Meridian".into()),
+                    version: env!("CARGO_PKG_VERSION").into(),
+                },
+            })
+            .map_err(|e| e.to_string())?,
+        ),
+    )
+    .await;
+
+    // Shut down on every path, including the timeout: the point of a check is
+    // that it leaves nothing behind.
+    let outcome = match greeting {
+        Ok(Ok(value)) => serde_json::from_value::<protocol::InitializeResult>(value)
+            .map_err(|e| format!("the adapter's greeting could not be read: {e}"))
+            .map(|init| AdapterReport {
+                agent: init.agent_info.map(|a| format!("{} {}", a.name, a.version)),
+                protocol_version: init.protocol_version,
+                load_session: init.agent_capabilities.load_session,
+            }),
+        Ok(Err(e)) => Err(e.to_string()),
+        Err(_) => Err(format!(
+            "`{}` did not answer within {}s",
+            config.command,
+            CHECK_TIMEOUT.as_secs()
+        )),
+    };
+    peer.stop().await;
+    outcome
+}
+
+fn title_for(cwd: &str) -> String {
+    let leaf = cwd.rsplit(['/', '\\']).find(|s| !s.is_empty()).unwrap_or("(unknown)");
+    format!("Claude Code · {leaf}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The directory a session is about is the useful half of its name, and it
+    /// has to survive both separators — a Windows path reaches this with
+    /// backslashes and a trailing one is ordinary.
+    #[test]
+    fn a_title_names_the_directory() {
+        assert_eq!(title_for(r"C:\Users\me\Code\meridian"), "Claude Code · meridian");
+        assert_eq!(title_for("/home/me/code/meridian/"), "Claude Code · meridian");
+        assert_eq!(title_for(""), "Claude Code · (unknown)");
+    }
+
+    /// An argument with a space in it has to survive a round trip. Stored
+    /// space-separated it would not, and the first Windows user with the
+    /// adapter under `Program Files` would find out.
+    #[test]
+    fn arguments_survive_a_space() {
+        let config = AcpConfig {
+            command: "node".into(),
+            args: vec![r"C:\Program Files\acp\index.js".into(), "--verbose".into()],
+        };
+        let encoded = serde_json::to_string(&config.args).unwrap();
+        let decoded: Vec<String> = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(decoded, config.args);
+    }
+
+    #[test]
+    fn the_default_does_not_stop_on_an_install_prompt() {
+        let default = AcpConfig::default();
+        assert_eq!(default.command, "npx");
+        assert!(default.args.contains(&"-y".to_string()));
+    }
+}

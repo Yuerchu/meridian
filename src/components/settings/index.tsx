@@ -5,6 +5,7 @@ import { GeneralSettings } from './general-settings'
 import { McpSettings } from './mcp-settings'
 import { OneBotSettings } from './onebot-settings'
 import { HooksSettings } from './hooks-settings'
+import { AcpSettings } from './acp-settings'
 import { RemoteAccessSettings } from './remote-access-settings'
 import { EmojiSettings } from './emoji-settings'
 import { ToolMarketplace } from './tool-marketplace'
@@ -45,6 +46,7 @@ export default function SettingsPage({ activeTab }: { activeTab: SettingsTab }) 
         {activeTab === 'voice' && <VoiceSettings />}
         {activeTab === 'onebot' && <OneBotSettings />}
         {activeTab === 'hooks' && <HooksSettings />}
+        {activeTab === 'acp' && <AcpSettings />}
         {activeTab === 'remote' && <RemoteAccessSettings />}
         {activeTab === 'general' && <GeneralSettings />}
         {activeTab === 'developer' && <DeveloperSettings />}

@@ -97,6 +97,27 @@ export interface Conversation {
    * irreversible, never a path that makes code run later.
    */
   accept_edits: number
+  /**
+   * `claude_code` for a hosted ACP session, `plan_review` / `impl_review` for a
+   * gate's transcript, absent for an ordinary conversation. What the composer
+   * reads to decide which backend command a message goes to.
+   */
+  agent_kind?: string | null
+}
+
+/** How to start the ACP adapter. `command` names a binary this app executes. */
+export interface AcpConfig {
+  command: string
+  args: string[]
+}
+
+/** What the settings page learned by starting the adapter and greeting it. */
+export interface AcpCheck {
+  ok: boolean
+  agent: string | null
+  protocol_version: number | null
+  load_session: boolean
+  error: string | null
 }
 
 /** A step on the active path that was answered more than once. */

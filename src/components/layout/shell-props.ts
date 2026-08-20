@@ -36,6 +36,8 @@ export interface ShellProps {
   onTogglePin: (id: string) => void
   onSelectProject: (id: string | null) => void
   onCreateProject: (name: string, path: string) => void
+  /** Start a hosted Claude Code session. Resolves to why it failed, or `null`. */
+  onCreateHostedSession: (cwd: string) => Promise<string | null>
   onDeleteProject: (id: string) => void
   onRenameProject: (id: string, newName: string) => void
   onOpenSettings: () => void

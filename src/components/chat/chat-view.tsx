@@ -39,6 +39,9 @@ function ChatViewInner({
     const project = conv?.project_id ? s.projects.find((p) => p.id === conv.project_id) : undefined
     return project?.source_type.startsWith('onebot') ?? false
   })
+  const isHostedAgent = useConversationStore(
+    (s) => s.conversations.find((c) => c.id === conversationId)?.agent_kind === 'claude_code',
+  )
 
   const messages = session?.messages ?? NO_MESSAGES
   const streaming = session?.streaming ?? false
@@ -83,10 +86,19 @@ function ChatViewInner({
   // Read at click time rather than closed over, so the button always aims at
   // whatever is running now. Null falls back to "stop this conversation's
   // current turn", which is all a reloaded window knows.
+  //
+  // A hosted session stops through its own command: `stop_chat` cancels a turn
+  // in this app's engine, and a Claude Code turn is not one — stopping it means
+  // a `session/cancel` down the pipe, after which the adapter still ends the
+  // turn the ordinary way.
   const handleStop = useCallback(() => {
+    if (isHostedAgent) {
+      api.acpCancel(conversationId)
+      return
+    }
     const turnId = useConversationStore.getState().sessions[conversationId]?.activeTurnId
     api.stopChat(conversationId, turnId)
-  }, [conversationId])
+  }, [conversationId, isHostedAgent])
 
   const handleDelete = useCallback(
     (id: string) => {

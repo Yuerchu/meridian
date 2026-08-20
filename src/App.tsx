@@ -130,6 +130,30 @@ function App() {
     [refreshProjects],
   )
 
+  /**
+   * Start a hosted session, and hand back what went wrong if it did.
+   *
+   * The adapter starts *before* the conversation exists, so this takes a few
+   * seconds and can fail outright — `npx` not installed, the folder gone, the
+   * agent not signed in. There is no conversation to hang that error on yet,
+   * which is why it goes back to the form that asked rather than to a
+   * transcript. `null` means it worked.
+   */
+  const handleCreateHostedSession = useCallback(
+    async (cwd: string): Promise<string | null> => {
+      try {
+        const conversationId = await api.acpOpenSession(cwd)
+        await refreshConversations()
+        storeSetActiveId(conversationId)
+        setPage('chat')
+        return null
+      } catch (err) {
+        return String(err)
+      }
+    },
+    [refreshConversations, storeSetActiveId],
+  )
+
   const handleRename = useCallback(
     async (id: string, newTitle: string) => {
       await api.updateConversationTitle(id, newTitle)
@@ -186,6 +210,7 @@ function App() {
     onTogglePin: handleTogglePin,
     onSelectProject: handleSelectProject,
     onCreateProject: handleCreateProject,
+    onCreateHostedSession: handleCreateHostedSession,
     onDeleteProject: handleDeleteProject,
     onRenameProject: handleRenameProject,
     onOpenSettings: () => setPage('settings'),

@@ -20,7 +20,7 @@ import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Button, Input } from '@heroui/react'
 import { Sidebar, useSidebar } from '@heroui-pro/react/sidebar'
-import { Archive, ArrowLeft, Comment, FolderOpen, FolderPlus, Gear, Pin, Plus } from '@gravity-ui/icons'
+import { Archive, ArrowLeft, Comment, FolderOpen, FolderPlus, Gear, Pin, Plus, Terminal } from '@gravity-ui/icons'
 
 import { can } from '@/lib/capabilities'
 import type { Conversation, Project } from '@/types'
@@ -63,6 +63,9 @@ interface AppSidebarProps {
   onCreateProject: (name: string, path: string) => void
   onDeleteProject: (id: string) => void
   onRenameProject: (id: string, newName: string) => void
+  /** Start a hosted Claude Code session in `cwd`. Resolves to the reason it
+   *  failed, or `null`. Desktop only. */
+  onCreateHostedSession: (cwd: string) => Promise<string | null>
 }
 
 function NewProjectForm({
@@ -140,6 +143,97 @@ function NewProjectForm({
           {t('common.save')}
         </Button>
         <Button variant="ghost" onClick={onCancel}>
+          ✕
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Choosing the directory a hosted session will work in.
+ *
+ * A folder and nothing else: the session names itself after the folder, and the
+ * agent inside it has no configuration here to set — which model it uses and
+ * what it is allowed to do are its own business, decided by whatever `claude` is
+ * logged in as.
+ */
+function NewHostedSessionForm({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (cwd: string) => Promise<string | null>
+  onCancel: () => void
+}) {
+  const { t } = useTranslation()
+  const [path, setPath] = useState('')
+  const [starting, setStarting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleBrowse = useCallback(async () => {
+    // Cancelling the picker rejects on Android instead of resolving to null.
+    const selected = await open({ directory: true, multiple: false }).catch(() => null)
+    if (selected) setPath(selected)
+  }, [])
+
+  // Starting an adapter takes seconds — on a machine that has never run it, long
+  // enough to download the package first. The form stays up and says so, because
+  // closing it on submit would leave that whole wait with nothing on screen and
+  // a failure with nowhere to land.
+  const submit = async () => {
+    const cwd = path.trim()
+    if (!cwd || starting) return
+    setStarting(true)
+    setError(null)
+    const failure = await onSubmit(cwd)
+    setStarting(false)
+    if (failure) setError(failure)
+  }
+
+  return (
+    <div className="px-2 py-1.5 space-y-1.5">
+      {/* Same split as a project's path, for the same reason: the adapter runs
+          on the machine the backend is on, so a picker showing this device's
+          folders would be pointing at the wrong filesystem. */}
+      {can.browseForDirectory ? (
+        <Button type="button" variant="outline" onClick={handleBrowse} className="w-full justify-start text-xs">
+          <FolderOpen className="text-muted" />
+          <span className={path ? 'text-foreground truncate' : 'text-muted'}>
+            {path || t('sidebar.hostedSessionFolder')}
+          </span>
+        </Button>
+      ) : (
+        <Input
+          fullWidth
+          type="text"
+          aria-label={t('sidebar.hostPath')}
+          value={path}
+          onChange={(e) => setPath(e.target.value)}
+          placeholder={t('sidebar.hostPathPlaceholder')}
+          className="text-xs"
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.nativeEvent.isComposing) return
+            if (e.key === 'Enter') void submit()
+            else if (e.key === 'Escape') onCancel()
+          }}
+        />
+      )}
+      {error && (
+        <p role="alert" className="text-xs text-danger">
+          {error}
+        </p>
+      )}
+      <div className="flex gap-1">
+        <Button
+          variant="secondary"
+          onClick={() => void submit()}
+          isDisabled={!path.trim() || starting}
+          className="flex-1"
+        >
+          {starting ? t('sidebar.startingHostedSession') : t('sidebar.startHostedSession')}
+        </Button>
+        <Button variant="ghost" onClick={onCancel} isDisabled={starting}>
           ✕
         </Button>
       </div>
@@ -226,11 +320,13 @@ export function AppSidebar({
   onCreateProject,
   onDeleteProject,
   onRenameProject,
+  onCreateHostedSession,
 }: AppSidebarProps) {
   const { t } = useTranslation()
   const platform = usePlatform()
   const { isMobileOpen, setMobileOpen } = useSidebar()
   const [showNewProject, setShowNewProject] = useState(false)
+  const [showNewHosted, setShowNewHosted] = useState(false)
   const [renameTarget, setRenameTarget] = useState<{ type: 'conversation' | 'project'; id: string } | null>(null)
   const { confirm, confirmDialog } = useConfirm()
 
@@ -432,7 +528,36 @@ export function AppSidebar({
             </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('sidebar.newChat')}</Sidebar.MenuLabel>
           </Sidebar.MenuItem>
+          {/* A session is a child process, which Android does not have — the
+              command is compiled out there, so offering it would be a row that
+              can only fail. Read off the platform rather than `can`, which is
+              about *remote* sessions: a phone driving a desktop cannot host one
+              either, because the phone is where this check runs, and that is
+              the conservative answer to a question the client cannot ask. */}
+          {platform !== 'android' && (
+            <Sidebar.MenuItem
+              id={`${prefix}new-hosted`}
+              textValue={t('sidebar.newHostedSession')}
+              onAction={() => setShowNewHosted((open) => !open)}
+            >
+              <Sidebar.MenuIcon>
+                <Terminal />
+              </Sidebar.MenuIcon>
+              <Sidebar.MenuLabel>{t('sidebar.newHostedSession')}</Sidebar.MenuLabel>
+            </Sidebar.MenuItem>
+          )}
         </Sidebar.Menu>
+        {showNewHosted && (
+          <NewHostedSessionForm
+            onSubmit={async (cwd) => {
+              const failure = await onCreateHostedSession(cwd)
+              // Left open on failure so the reason has somewhere to be read.
+              if (!failure) setShowNewHosted(false)
+              return failure
+            }}
+            onCancel={() => setShowNewHosted(false)}
+          />
+        )}
       </Sidebar.Header>
 
       <Sidebar.Content>

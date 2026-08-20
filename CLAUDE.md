@@ -30,6 +30,7 @@ src-tauri/
       agent/engine/         # the turn loop, and the ports the runners plug into
       db/ provider/ tools/ mcp/ secrets/ …
       onebot/ hooks/        # the two non-desktop runners
+      acp/                  # hosting another coding agent, as its client
       services.rs           # every long-lived thing, in one value
       events.rs             # EventBus: where an event goes once it has happened
       bootstrap.rs          # bootstrap(data_dir, events) -> Services
@@ -219,6 +220,63 @@ that from answering the user, because a total nobody can decompose is one nobody
   three. Those are self-lockout and other servers' credentials; this one grants capability
   by its *value* — pointing `autoreview.model` at something permissive, or appending a line
   to `autoreview.allow_rules`, turns a settings write into permission to run anything.
+
+## Hosting Claude Code (ACP)
+
+`src-tauri/crates/core/src/acp/` runs another coding agent *inside* Meridian. This app is
+the ACP **client**; `claude-code-acp` is a child process it speaks JSON-RPC to over stdio.
+The turn runs in the adapter, the transcript and the approval cards are ours. Desktop only
+— every session is a child process. The adapter is not bundled: it is a node package, and
+the machines that want this already have node and a signed-in `claude`.
+
+- **It is a peer, not a caller, and that is why none of `mcp/` is reused.** `mcp/stdio.rs`
+  pairs one request with one reply and discards everything in between; ACP holds a
+  `session/prompt` open for the length of a turn while narrating it in notifications and
+  stopping mid-way to ask the user something. What *is* copied from `mcp/` is what it
+  learned the hard way: `read_line` is not cancel-safe so one task owns the stream end to
+  end, stderr is drained continuously or the child blocks, `kill_on_drop`, and
+  `CREATE_NO_WINDOW`.
+- **The reader must never await the handler.** An inbound `session/request_permission` is
+  answered by a person, minutes later. Handled inline it would stall the same pipe carrying
+  that turn's own output, and the session would look frozen for exactly as long as the card
+  was on screen — so requests are spawned and only the reply goes back through the writer.
+  Notifications are the opposite: queued and handled one at a time, because they are text
+  chunks and spawning loses their order.
+- **Stopping does not abandon the request.** `session/cancel` is a notification, and the
+  agent still answers the prompt it interrupts with `stopReason: cancelled`. Waiting for
+  that reply is what lets a stopped turn end down the ordinary path with whatever text had
+  already arrived; dropping the future instead leaves the adapter mid-turn with nobody
+  reading, and the next prompt collides with it.
+- **Approvals go through `services.approvals`, unchanged.** Same register, same
+  `tool_approval_req` event, so the attention queue, the toast stack,
+  `all_pending_approvals` after a reload and the turn guard all work here without knowing
+  ACP exists. The cost: ACP offers four options and `ApprovalDecision` has two, so only the
+  `_once` pair is offered — a card with two buttons must not produce a lasting decision the
+  user was never shown.
+- **`usage_update` is reported, never priced.** Those tokens are billed to whatever
+  `claude` is signed in as, and this app has no rate for them. Running them through
+  `agent::pricing` would produce an authoritative-looking number that is wrong; see the
+  bill-priced-once rule above for why there is exactly one place a cost may come from.
+- **`acp.` is in `SERVER_OWNED_PREFIXES`, and for a worse reason than the other four.**
+  `acp.command` names a binary this app executes. A remote caller who can write it has
+  arbitrary code execution on the host — not the self-lockout the rest of that list guards.
+  `acp_save_config` and `acp_check_adapter` are `local` for the same reason.
+- **A hosted conversation is an ordinary row set.** `agent_kind = 'claude_code'`, written
+  with the same `begin_assistant` / `complete_assistant` / `append_tool_result` a native
+  turn uses, so search, branching and the transcript view need no special case. One
+  difference worth knowing: the turn is *flattened* — the adapter may go round the model
+  several times inside one `session/prompt`, and all of it lands on one assistant row with
+  every call attached, rather than the row-per-round a native turn writes.
+- **No session table yet.** The registry is in memory and the working directory is a
+  preference (`acp.cwd.<conversation_id>`), which is frank about being a stopgap. A session
+  is a child process: when the app exits the adapter goes with it and its `sessionId` means
+  nothing to the next one. Reopening writes a *new* adapter session in the same directory —
+  the transcript survives, the agent's memory of it does not. `session/load` is what earns
+  a real table, and that is the same step that would give it a second column.
+- **`fs` and `terminal` capabilities are declared unsupported.** The agent does its own IO
+  and we only hear about it in `tool_call` notifications. Turning `fs` on means answering
+  `fs/read_text_file` and `fs/write_text_file`, after which every file it touches goes
+  through this app — which is what a changes panel and a `FileAccess` policy would need.
 
 ## Remote access
 
@@ -419,23 +477,36 @@ and, in `onebot`, a `PendingApprovals` that parks a request until an answer arri
 Everything in `hooks/` lets the action through when it is unsure, because the cost of a
 missed review is one missed review. A permission prompt is the opposite: one that
 proceeds on timeout is not a permission prompt at all, and what it guards is
-`run_command` and writes. On that path, "nobody answered" must mean **deny**. Claude
-Code's own default for a timed-out hook is to proceed — verify how that interacts before
-building anything on it, and do not ship if it cannot be made to fail closed.
+`run_command` and writes. On that path, "nobody answered" must mean **deny**.
+
+This paragraph used to end by warning that Claude Code proceeds on a timed-out hook and
+that the feature should not ship if it could not be made to fail closed. That is the rule
+for most events and not for this one: `PermissionRequest` has error handling of its own,
+and a hook that times out, crashes or prints something unparseable falls back to **`ask`**
+— the ordinary prompt in the terminal. Exit code 2 is ignored there; denying is done
+through the `decision` field. So the failure mode is "the user is asked normally", which
+is the safe one, and the blocker this named does not exist. (Not that it now matters for
+hosting, which went the ACP route — but it still decides how a `PermissionRequest` gate
+would behave for sessions started outside Meridian.)
 
 **Design the queue around "a pending request from some agent", not around Claude Code's
 payload.** Codex, OpenCode and the rest each need an adapter; the queue, the cards and
 the status derivation should be shared. Shaping the queue to one vendor's hook format
 means rewriting it for the second.
 
-**Order of work**, cheapest and most useful first:
+**Order of work.** This was written cheapest-first and step 3 was done first anyway,
+because ACP turned out to cost far less than the paragraph above assumed — the protocol
+carries the lifecycle, so there was nothing to reverse-engineer. What is left:
 
-1. Read-only session panel — tail the transcripts, list live sessions. No protocol, no
-   risk, and it solves half the thirty-windows problem on its own.
-2. Approval queue — forward `PermissionRequest` to Meridian, card beside the thread.
-   Settle the timeout semantics first.
-3. Hosting a session in-process — last, because it is the only step that asks the user to
-   move their daily coding into Meridian.
+1. Read-only session panel — tail `~/.claude/projects/<project>/<session-id>.jsonl`, list
+   sessions started in a terminal. Still the answer for sessions Meridian did not start,
+   and still needs no protocol: `cwd`, `gitBranch`, `ai-title` and `last-prompt` are all
+   in the transcript already.
+2. Approval queue for those sessions — forward `PermissionRequest` to Meridian, card
+   beside the thread. The timeout semantics are settled (see the correction above: it
+   falls back to `ask`), and the queue itself already exists — `attention` /
+   `attentionOrder`, which the ACP path reuses unchanged.
+3. ~~Hosting a session in-process~~ — done, see the ACP section.
 
 **Deferred from remote access**, roughly in order of how much they are missed:
 
@@ -457,13 +528,13 @@ means rewriting it for the second.
 - **A headless `meridian-server`.** `bootstrap` is already framework-free; what it needs is
   `commands/` moved into core, which is the one thing PR1 found it did not have to do.
 
-**On hosting, correct a common wrong turn.** VS Code and Zed do not GUI-ify the CLI. The
-*editor* drops a lockfile in `~/.claude/ide/` and acts as the server; Claude Code runs as
-its own process and connects to it for editor context and diff views. Copying that shape
-gives Meridian no session-lifecycle events. Hosting means driving `claude` headlessly
-(`--print --output-format=stream-json`) and owning the event stream — a documented
-interface, unlike the IDE socket. Meridian's tool surface already mirrors Claude Code's
-(plan mode, todos, sub-agents, patches), so the cost is an adapter rather than a second
-frontend. Two things to verify before committing: whether permission requests surface in
-a form an external UI can answer, and whether driving the CLI from another app fits the
-subscription's terms.
+**Hosting is built — see `src-tauri/crates/core/src/acp/`.** This paragraph used to say
+the shape to copy was `~/.claude/ide/`, where the *editor* drops a lockfile and acts as
+the server, and that copying it would give Meridian no session-lifecycle events. That is
+true of that mechanism and it is not what Zed uses: Claude Code is reached over **ACP**
+(the Agent Client Protocol), where the editor is the *client* and the agent —
+`@zed-industries/claude-code-acp`, a wrapper over the Claude Agent SDK — is a child
+process it speaks JSON-RPC to over stdio. The lifecycle is the protocol, so the objection
+does not apply. Driving `claude --print --output-format=stream-json` directly was the
+other candidate and lost on portability: ACP is one vendor-neutral shape, and the second
+agent to be hosted costs an adapter rather than a rewrite.

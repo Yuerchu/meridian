@@ -3,6 +3,8 @@
 // pointed at another machine. See `lib/transport.ts`.
 import { invoke } from '@/lib/transport'
 import type {
+  AcpCheck,
+  AcpConfig,
   AppInfo,
   Assistant,
   ChatMode,
@@ -180,6 +182,27 @@ export const api = {
       mode: opts.mode ?? null,
       voice: opts.voice ?? null,
     }),
+
+  // A hosted Claude Code session, over ACP. `acpSend` is the `chat` of these
+  // conversations: it takes the same caller-minted `turnId`, for the same
+  // reason — the composer locks on it before the backend has been reached, and
+  // the stop event it waits for has to carry it back.
+  acpOpenSession: (cwd: string) => invoke<string>('acp_open_session', { cwd }),
+
+  acpSend: (conversationId: string, message: string, turnId?: string) =>
+    invoke<void>('acp_send', { conversationId, message, turnId: turnId ?? null }),
+
+  acpCancel: (conversationId: string) => invoke<void>('acp_cancel', { conversationId }),
+
+  acpClose: (conversationId: string) => invoke<void>('acp_close', { conversationId }),
+
+  acpLiveSessions: () => invoke<string[]>('acp_live_sessions'),
+
+  acpGetConfig: () => invoke<AcpConfig>('acp_get_config'),
+
+  acpSaveConfig: (config: AcpConfig) => invoke<AcpConfig>('acp_save_config', { config }),
+
+  acpCheckAdapter: () => invoke<AcpCheck>('acp_check_adapter'),
 
   setSecret: (key: string, value: string) => invoke<void>('set_secret', { key, value }),
 

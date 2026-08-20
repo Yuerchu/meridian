@@ -78,7 +78,7 @@ fn to_camel_case(snake: &str) -> String {
 /// appending one line to `autoreview.allow_rules`, converts write access to a
 /// settings key into permission to run anything on the host. It is the only
 /// prefix whose *values* grant capability rather than configure a listener.
-const SERVER_OWNED_PREFIXES: &[&str] = &["remote.", "hooks.", "onebot.", "autoreview."];
+const SERVER_OWNED_PREFIXES: &[&str] = &["remote.", "hooks.", "onebot.", "autoreview.", "acp."];
 
 /// Refuse the generic key-value commands when the key is a server's own.
 ///
@@ -330,6 +330,12 @@ mod tests {
             "save_onebot_config",
             "start_onebot",
             "stop_onebot",
+            // A step beyond the rest of this group. `acp.command` names a
+            // binary this app will execute, so writing it from a socket is
+            // arbitrary code execution here — not the self-lockout the others
+            // guard against. The check runs that same binary.
+            "acp_save_config",
+            "acp_check_adapter",
             // Hardware attached to this machine.
             "voice_start_recording",
             "voice_stop_and_transcribe",
