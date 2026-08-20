@@ -175,6 +175,14 @@ export function useGlobalEventListener() {
         return
       }
 
+      // A call that was drawn before it knew its own arguments. Only a hosted
+      // ACP session sends this: its call ids are unique within a session, which
+      // is what makes "the same card again" a safe thing to say.
+      if (p.type === 'tool_call_revised' && p.call_id) {
+        store.reviseToolCall(convId, p.message_id!, p.call_id, p.tool_name!, p.arguments ?? '{}')
+        return
+      }
+
       // message_id as well as call_id: provider call ids repeat, so the pair is
       // what identifies a card.
       if (p.type === 'tool_result' && p.call_id) {

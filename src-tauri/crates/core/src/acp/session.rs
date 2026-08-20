@@ -122,6 +122,27 @@ impl Shared {
                 tool_name,
                 arguments,
             } => {
+                // A `toolCallId` is unique within an ACP session, so the same id
+                // twice is one call being announced twice — which the adapter
+                // does, from two sources that can arrive in either order, and
+                // older ones did without deduplicating at all.
+                //
+                // The front end deliberately does *not* dedupe by call id
+                // (`handleToolCall` pushes regardless: OpenAI-compatible
+                // gateways reuse "0" within a turn and two cards there are two
+                // calls). That makes this the only place that can tell the
+                // difference, and getting it wrong drew every shell command
+                // twice — once as the placeholder, once as itself.
+                let known = self.with_turn(|t| t.tool_calls.iter().any(|c| c.id == call_id));
+                match known {
+                    Some(true) => {
+                        self.revise(&call_id, &tool_name, &arguments);
+                        return;
+                    }
+                    Some(false) => {}
+                    None => return,
+                }
+
                 let Some(message_id) = self.with_turn(|t| {
                     t.tool_calls.push(provider::ToolCall {
                         id: call_id.clone(),
@@ -141,6 +162,11 @@ impl Shared {
                     "conversation_id": self.conversation_id,
                 }));
             }
+            Effect::ToolCallRevised {
+                call_id,
+                tool_name,
+                arguments,
+            } => self.revise(&call_id, &tool_name, &arguments),
             Effect::ToolResult {
                 call_id,
                 result,
@@ -171,6 +197,46 @@ impl Shared {
             }
             Effect::Ignored => {}
         }
+    }
+
+    /// Fill in a call that was announced before it knew what it was.
+    ///
+    /// Both the stored row and the card on screen: the row because that is what
+    /// a reload rebuilds from, the card because otherwise it keeps saying
+    /// "Terminal" with no arguments for the life of the conversation.
+    ///
+    /// Only ever *adds* information. A revision that arrived without arguments
+    /// would otherwise blank the ones already shown — the adapter sends plain
+    /// progress beats on the same shape.
+    fn revise(&self, call_id: &str, tool_name: &str, arguments: &str) {
+        let empty_args = arguments.trim().is_empty() || arguments == "{}";
+
+        let updated = self.with_turn(|t| {
+            let call = t.tool_calls.iter_mut().find(|c| c.id == call_id)?;
+            if !tool_name.is_empty() {
+                call.name = tool_name.to_string();
+            }
+            if !empty_args {
+                call.arguments = arguments.to_string();
+            }
+            Some((
+                call.name.clone(),
+                call.arguments.clone(),
+                t.assistant_message_id.clone(),
+            ))
+        });
+
+        let Some(Some((tool_name, arguments, message_id))) = updated else {
+            return;
+        };
+        self.emit(serde_json::json!({
+            "type": "tool_call_revised",
+            "call_id": call_id,
+            "tool_name": tool_name,
+            "arguments": arguments,
+            "message_id": message_id,
+            "conversation_id": self.conversation_id,
+        }));
     }
 
     /// Mirror the agent's plan into the todo list.

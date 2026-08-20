@@ -30,6 +30,17 @@ pub enum Effect {
         tool_name: String,
         arguments: String,
     },
+    /// A call already announced has better information about itself.
+    ///
+    /// The adapter emits a call as soon as it knows one is coming, which can be
+    /// before the arguments have finished streaming — a `Bash` call arrives
+    /// titled "Terminal" with `rawInput: {}` and is filled in a moment later.
+    /// Without this the card keeps the placeholder for ever.
+    ToolCallRevised {
+        call_id: String,
+        tool_name: String,
+        arguments: String,
+    },
     /// A call has finished, one way or the other.
     ToolResult {
         call_id: String,
@@ -81,8 +92,15 @@ pub fn effect_of(update: SessionUpdate) -> Effect {
                 result: output_of(&call),
                 outcome: "error",
             },
-            // `pending` and `in_progress` say a call is still running, which the
-            // card already shows from having been announced.
+            // Still running. Usually there is nothing to say — but this is also
+            // how a call announced before its arguments were known gets them,
+            // and how the adapter's second source revises one it did not emit.
+            // An update carrying neither is the ordinary "still going" beat.
+            _ if call.raw_input.is_some() || call.meta.is_some() || call.title.is_some() => Effect::ToolCallRevised {
+                call_id: call.tool_call_id.clone(),
+                tool_name: tool_name_of(&call),
+                arguments: arguments_of(&call),
+            },
             _ => Effect::Ignored,
         },
         SessionUpdate::Plan { entries } => Effect::Plan(entries.iter().map(plan_item).collect()),
@@ -93,17 +111,29 @@ pub fn effect_of(update: SessionUpdate) -> Effect {
 
 /// What to label the tool card with.
 ///
-/// ACP has no field for "the tool's name": `title` is prose written for a
-/// person ("Run npm test") and `kind` is one of a handful of categories. The
-/// title is the better label of the two and the only one that distinguishes two
-/// calls of the same tool, so it wins where it exists.
+/// ACP's own fields cannot answer this: `title` is prose written for a person
+/// and `kind` is one of five categories. The adapter puts the real name in
+/// `_meta.claudeCode.toolName`, so that wins.
+///
+/// Reading `title` instead — which this did — produced "Terminal" on every
+/// shell command, because that is the adapter's placeholder for a `Bash` call
+/// whose input has not finished streaming (`tools.ts`: `input?.command ?
+/// input.command : "Terminal"`). Once the input lands the title becomes the
+/// command itself, which is not a tool name either: it belongs in the
+/// arguments, and the card already renders those.
 ///
 /// Public because an approval card labels the same call, and the two must not
 /// disagree — a question naming the tool differently from the block it belongs
 /// to reads as being about something else.
 pub fn tool_name_of(call: &ToolCall) -> String {
-    call.title
-        .as_deref()
+    let from_meta = call
+        .meta
+        .as_ref()
+        .and_then(|m| m.claude_code.as_ref())
+        .and_then(|c| c.tool_name.as_deref());
+
+    from_meta
+        .or(call.title.as_deref())
         .map(str::trim)
         .filter(|t| !t.is_empty())
         .or(call.kind.as_deref())
@@ -197,6 +227,56 @@ mod tests {
         assert_eq!(
             effect_of(update(
                 r#"{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":""}}"#
+            )),
+            Effect::Ignored
+        );
+    }
+
+    /// The real frames, as `@zed-industries/claude-code-acp` 0.16.2 sent them
+    /// for one `Bash` call. Two `tool_call`s under one id, the first a
+    /// placeholder — which is what drew every shell command twice, once as
+    /// "Terminal" and once as itself.
+    #[test]
+    fn the_adapters_own_frames_name_the_tool_not_the_placeholder() {
+        let announced = update(
+            r#"{"_meta":{"claudeCode":{"toolName":"Bash"}},"toolCallId":"toolu_01Vq",
+                "sessionUpdate":"tool_call","rawInput":{},"status":"pending",
+                "title":"Terminal","kind":"execute","content":[]}"#,
+        );
+        assert_eq!(
+            effect_of(announced),
+            Effect::ToolCall {
+                call_id: "toolu_01Vq".into(),
+                // Not "Terminal": that is the adapter's stand-in for a command
+                // it has not been told yet.
+                tool_name: "Bash".into(),
+                arguments: "{}".into(),
+            }
+        );
+
+        // The same id again, now filled in. Must revise rather than announce.
+        let filled = update(
+            r#"{"_meta":{"claudeCode":{"toolName":"Bash"}},"toolCallId":"toolu_01Vq",
+                "sessionUpdate":"tool_call_update","rawInput":{"command":"git status"},
+                "status":"pending","title":"`git status`","kind":"execute"}"#,
+        );
+        assert_eq!(
+            effect_of(filled),
+            Effect::ToolCallRevised {
+                call_id: "toolu_01Vq".into(),
+                tool_name: "Bash".into(),
+                arguments: r#"{"command":"git status"}"#.into(),
+            }
+        );
+    }
+
+    /// A beat that carries nothing new is still just a beat. Treated as a
+    /// revision it would blank the arguments already on the card.
+    #[test]
+    fn a_bare_progress_update_revises_nothing() {
+        assert_eq!(
+            effect_of(update(
+                r#"{"sessionUpdate":"tool_call_update","toolCallId":"t1","status":"in_progress"}"#
             )),
             Effect::Ignored
         );

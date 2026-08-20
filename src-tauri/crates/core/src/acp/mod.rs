@@ -142,6 +142,20 @@ pub struct AcpConfig {
     pub args: Vec<String>,
 }
 
+/// The adapter package.
+///
+/// Renamed from `@zed-industries/claude-code-acp`, which is deprecated on npm
+/// and stopped at 0.16.2 — a version that announces a tool call twice from its
+/// two sources instead of revising the first. The successor deduplicates
+/// (`emittedToolCalls`), and is where updates now go.
+const ADAPTER_PACKAGE: &str = "@agentclientprotocol/claude-agent-acp";
+
+/// What we used to ship. A stored config equal to this is not a choice the user
+/// made — it is the default they never changed — so it is read as unset rather
+/// than honoured into a deprecated package. Anything else they typed is theirs
+/// and is left alone.
+const RETIRED_ADAPTER_PACKAGE: &str = "@zed-industries/claude-code-acp";
+
 impl Default for AcpConfig {
     fn default() -> Self {
         Self {
@@ -149,7 +163,7 @@ impl Default for AcpConfig {
             // on npx's install prompt, on a stdin that is a JSON-RPC pipe with
             // nobody to type into it.
             command: "npx".into(),
-            args: vec!["-y".into(), "@zed-industries/claude-code-acp".into()],
+            args: vec!["-y".into(), ADAPTER_PACKAGE.into()],
         }
     }
 }
@@ -174,8 +188,28 @@ impl AcpConfig {
             // apart would break a path under `Program Files`.
             args: get("acp.args")
                 .and_then(|raw| serde_json::from_str::<Vec<String>>(&raw).ok())
+                .map(Self::retire_old_package)
                 .unwrap_or(default.args),
         }
+    }
+
+    /// Swap the package we used to ship for the one that replaced it.
+    ///
+    /// Only that exact argument, and only in place: someone who pinned a
+    /// version, vendored a checkout, or points at anything else has made a
+    /// decision, and this must not overwrite it. Applied on read rather than
+    /// written back, so nothing is silently rewritten under the user — what
+    /// they see in the settings page is what they saved until they save again.
+    fn retire_old_package(args: Vec<String>) -> Vec<String> {
+        args.into_iter()
+            .map(|arg| {
+                if arg == RETIRED_ADAPTER_PACKAGE {
+                    ADAPTER_PACKAGE.to_string()
+                } else {
+                    arg
+                }
+            })
+            .collect()
     }
 
     pub fn save(&self, pool: &DbPool) -> Result<(), String> {

@@ -722,6 +722,12 @@ export interface ConversationStore {
   handleText: (convId: string, messageId: string, content: string) => void
   handleReasoning: (convId: string, messageId: string, content: string) => void
   handleToolCall: (convId: string, messageId: string, callId: string, toolName: string, args: string) => void
+  /** A card already drawn now knows what it is. Hosted ACP sessions announce a
+   *  call as soon as one is coming, which can be before its arguments have
+   *  finished streaming — so the first draw can say "Terminal" with nothing in
+   *  it. Safe to match by id there, and only there: an ACP `toolCallId` is
+   *  unique within its session, while a provider call id is not. */
+  reviseToolCall: (convId: string, messageId: string, callId: string, toolName: string, args: string) => void
   handleToolApproval: (
     convId: string,
     messageId: string,
@@ -1207,6 +1213,27 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             status: 'running',
           },
         })
+      }),
+    )
+  },
+
+  reviseToolCall: (convId, messageId, callId, toolName, args) => {
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        const idx = findAssistantMsg(session.messages, messageId)
+        if (idx < 0) return
+        const target = session.messages[idx]
+        // The first card with this id that has not been answered. Unanswered
+        // matters: a revision arriving late must not reopen a call that has
+        // already produced its result.
+        const card = (target._blocks ?? []).find(
+          (b) => b.type === 'tool_call' && b.data.call_id === callId && !ANSWERED.has(b.data.status),
+        )
+        if (card?.type !== 'tool_call') return
+        card.data.tool_name = toolName
+        card.data.arguments = args
       }),
     )
   },

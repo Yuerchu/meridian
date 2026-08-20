@@ -336,6 +336,24 @@ pub struct ToolCall {
     pub content: Vec<ToolCallContent>,
     #[serde(default)]
     pub locations: Vec<ToolCallLocation>,
+    /// Vendor extensions. `claude-code-acp` puts the *real* tool name here —
+    /// `title` is display prose and `kind` is one of five categories, so this is
+    /// the only field that says "Bash".
+    #[serde(default, rename = "_meta")]
+    pub meta: Option<ToolCallMeta>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ToolCallMeta {
+    #[serde(default, rename = "claudeCode")]
+    pub claude_code: Option<ClaudeCodeMeta>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaudeCodeMeta {
+    #[serde(default)]
+    pub tool_name: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
