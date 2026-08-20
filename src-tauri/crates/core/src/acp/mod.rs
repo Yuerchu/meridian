@@ -51,10 +51,40 @@ impl AcpRegistry {
         self.lock().get(conversation_id).cloned()
     }
 
-    /// Register a freshly opened session, replacing any dead one left under the
-    /// same conversation.
-    pub fn insert(&self, session: Arc<AcpSession>) {
-        self.lock().insert(session.conversation_id.clone(), session);
+    /// Register a freshly opened session, and say which one won.
+    ///
+    /// Two callers can reach [`reopen_session`] for the same dormant
+    /// conversation at once — two clients, or a window and a phone — and both
+    /// will pass the "is there a live one?" check before either has registered
+    /// anything. A plain insert lets the second overwrite the first, and the
+    /// displaced session is then a running adapter that nothing holds a handle
+    /// to: `close` cannot find it, `close_all` cannot find it, and it outlives
+    /// the app.
+    ///
+    /// So the decision is made here, under the lock, and the loser is handed
+    /// back to be closed rather than dropped. `Arc` going out of scope is not
+    /// enough — the child belongs to a spawned task, which keeps running.
+    ///
+    /// Returns `(the registered session, the one to close)`.
+    #[must_use = "the losing session owns a live adapter and has to be closed"]
+    pub fn adopt(&self, session: Arc<AcpSession>) -> (Arc<AcpSession>, Option<Arc<AcpSession>>) {
+        let mut map = self.lock();
+        match map.get(&session.conversation_id) {
+            // Somebody got there first and theirs still works. Keep it, so that
+            // every later `cancel` and `close` names the process that is
+            // actually serving this conversation.
+            Some(live) if live.is_alive() => {
+                let winner = live.clone();
+                (winner, Some(session))
+            }
+            _ => {
+                let displaced = map.insert(session.conversation_id.clone(), session.clone());
+                // A dead one, if there was anything. Still worth closing: dead
+                // to us means the pipe ended, which does not by itself mean the
+                // process has been reaped.
+                (session, displaced)
+            }
+        }
     }
 
     pub fn conversations(&self) -> Vec<String> {
@@ -192,7 +222,13 @@ pub async fn open_session(services: &crate::services::Services, cwd: &str) -> Re
         session.close().await;
         return Err(e);
     }
-    services.acp.insert(session);
+    // The id was minted a few lines up and belongs to nobody else, so there is
+    // no contest here — but going through the same door as `reopen_session`
+    // keeps `insert`-that-silently-overwrites from existing at all.
+    let (_, loser) = services.acp.adopt(session);
+    if let Some(loser) = loser {
+        loser.close().await;
+    }
 
     let _ = services.events.emit(
         "conversation-updated",
@@ -229,7 +265,17 @@ pub async fn reopen_session(
 
     let config = AcpConfig::load(&services.db);
     let session = AcpSession::open(services.clone(), &config, conversation_id.to_string(), cwd).await?;
-    services.acp.insert(session.clone());
+
+    // The check at the top of this function is not a claim on the conversation,
+    // and starting an adapter takes seconds — long enough for a second caller
+    // to have passed the same check and be doing the same thing. Whoever
+    // reaches the registry first wins; the other closes what it started and
+    // uses the winner, so exactly one adapter is left running and it is the one
+    // the registry names.
+    let (session, loser) = services.acp.adopt(session);
+    if let Some(loser) = loser {
+        loser.close().await;
+    }
     Ok(session)
 }
 

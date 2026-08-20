@@ -315,9 +315,33 @@ impl Peer {
                             // Spawned, never awaited here: this is how a
                             // permission question waits for a person without
                             // stopping the notifications behind it.
+                            //
+                            // But it must not overtake the notifications that
+                            // came *before* it, and being spawned is exactly
+                            // how it would. `session/request_permission`
+                            // follows the `tool_call` announcing the same call,
+                            // and the card the question attaches to is created
+                            // by that notification — so a question that arrives
+                            // first finds no card, attaches to nothing, and is
+                            // silently unanswerable in the one conversation the
+                            // toast queue deliberately does not cover: the open
+                            // one. The turn then waits for an answer the user
+                            // is never offered.
+                            //
+                            // A barrier queued here and awaited in the task
+                            // orders it behind everything already queued,
+                            // without holding up anything queued after it.
+                            let (ordered, in_order) = oneshot::channel();
+                            // A full queue means updates are already being
+                            // dropped; ordering is not the problem then, so
+                            // proceed rather than hang the agent.
+                            let queued = notify_tx.try_send(Inbound::Barrier(ordered)).is_ok();
                             let handler = handler.clone();
                             let writes = writes.clone();
                             tokio::spawn(async move {
+                                if queued {
+                                    let _ = in_order.await;
+                                }
                                 let outcome = handler.request(method.clone(), params).await;
                                 let reply = match outcome {
                                     Ok(result) => serde_json::json!({
@@ -776,6 +800,9 @@ mod tests {
 
             async fn request(&self, method: String, params: serde_json::Value) -> Result<serde_json::Value, String> {
                 assert_eq!(method, "session/request_permission");
+                // Recorded in the same list as the updates, so the test can see
+                // where the question fell among them.
+                self.updates.lock().unwrap().push("ASKED".to_string());
                 let params: protocol::RequestPermissionParams =
                     serde_json::from_value(params).map_err(|e| e.to_string())?;
                 // The one this app would draw: allow, just this once.
@@ -982,6 +1009,75 @@ mod tests {
                 probe.updates.lock().unwrap().len() > at_reply,
                 "the barrier is what waited for them; without it the turn would have ended \
                  at {at_reply} updates and the rest would have been dropped"
+            );
+
+            peer.stop().await;
+        }
+
+        /// A question never overtakes the update that gives it something to
+        /// attach to.
+        ///
+        /// `session/request_permission` follows the `tool_call` announcing the
+        /// same call, and the card it attaches to is created by that
+        /// notification. Spawned without ordering, the question wins whenever
+        /// the notifier is even slightly behind — and the front end has no
+        /// second chance at it: `handleToolApproval` looks for the card, finds
+        /// none, and attaches the `approval_id` to nothing, while
+        /// `handleToolCall` arriving later does not go looking for an approval
+        /// to reconcile. In the conversation being read, which the toast queue
+        /// deliberately skips, that is a card stuck on "running" and a turn
+        /// waiting on an answer nobody can give.
+        ///
+        /// The handler is slowed so the notifier is certainly behind.
+        #[tokio::test]
+        async fn a_permission_request_never_arrives_before_the_call_it_is_about() {
+            let Some(args) = adapter() else {
+                eprintln!("skipping: node is not available");
+                return;
+            };
+
+            let process = AdapterProcess::spawn("node", &args).await.expect("spawn");
+            let probe = Arc::new(Probe {
+                per_update: std::time::Duration::from_millis(20),
+                ..Default::default()
+            });
+            let (asked_tx, _asked_rx) = oneshot::channel();
+            *probe.asked.lock().unwrap() = Some(asked_tx);
+            let peer = Peer::start(process, probe.clone() as Arc<dyn Handler>);
+
+            peer.request(
+                "initialize",
+                serde_json::json!({ "protocolVersion": 1, "clientCapabilities": {}, "clientInfo": {} }),
+            )
+            .await
+            .expect("initialize");
+            let session: protocol::NewSessionResult = serde_json::from_value(
+                peer.request("session/new", serde_json::json!({ "cwd": ".", "mcpServers": [] }))
+                    .await
+                    .expect("session/new"),
+            )
+            .unwrap();
+
+            peer.request(
+                "session/prompt",
+                serde_json::json!({
+                    "sessionId": session.session_id,
+                    "prompt": [{ "type": "text", "text": "go" }],
+                }),
+            )
+            .await
+            .expect("session/prompt");
+            peer.drain_notifications().await;
+
+            let seen = probe.updates.lock().unwrap().clone();
+            let asked = seen.iter().position(|s| s == "ASKED").expect("the adapter asked");
+            let announced = seen
+                .iter()
+                .position(|s| s.starts_with("ToolCall"))
+                .expect("the call was announced");
+            assert!(
+                announced < asked,
+                "the question must come after the call it is about; got {seen:#?}"
             );
 
             peer.stop().await;

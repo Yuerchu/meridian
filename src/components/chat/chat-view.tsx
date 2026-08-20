@@ -174,7 +174,15 @@ function ChatViewInner({
   // main conversation is unchanged: nothing can be submitted until the answer
   // is finished, because there is nowhere for it to go. Below `contextInfo`,
   // which is where the answer comes from.
-  const steerable = !!contextInfo.agentKind
+  //
+  // Named kinds rather than "has one at all". `steer_conversation` appends to
+  // `sub_agent_inboxes`, which only a delegated run drains, while `agent_kind`
+  // marks every conversation this app did not start on its own behalf — the
+  // hook gates' reviews and now hosted Claude Code sessions. Read as a boolean
+  // it lets the composer stay live during those and submit into an inbox that
+  // does not exist, which comes back as "this run has already finished" on a
+  // run that plainly has not.
+  const steerable = contextInfo.agentKind === 'agent' || contextInfo.agentKind === 'explore'
   const steering = steerable && streaming
 
   const handleSubmit = useCallback(() => {

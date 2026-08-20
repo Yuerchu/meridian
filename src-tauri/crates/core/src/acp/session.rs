@@ -561,8 +561,23 @@ impl AcpSession {
         let state = self.shared.turn.lock().ok().and_then(|mut slot| slot.take());
         let Some(state) = state else {
             drop(lease);
+            self.retire_approvals(services, turn_id);
             return Err("the ACP turn lost its state".into());
         };
+
+        // Before anything else, and on every path out of a turn. A question can
+        // still be on screen when the turn ends — the adapter died with one
+        // outstanding, or the reply came back an error — and nothing else will
+        // ever answer it: the task waiting on it is parked, the entry stays in
+        // the register, `all_pending_approvals` keeps handing it out, and a
+        // reload draws a card for a turn that stopped minutes ago.
+        //
+        // Cancelling first is what releases that task, which then removes its
+        // own entry; the sweep below is for whatever it did not reach. The
+        // desktop does the same two things in `TurnGuard::drop`, for the same
+        // reason, and this path had neither.
+        state.cancel.cancel();
+        self.retire_approvals(services, turn_id);
 
         let tool_calls_json = (!state.tool_calls.is_empty()).then(|| serialize_tool_calls_openai(&state.tool_calls));
         complete_assistant(
@@ -672,6 +687,26 @@ impl AcpSession {
                 None => Ok(()),
             },
             Err(e) => Err(e.to_string()),
+        }
+    }
+
+    /// Drop every question this turn left unanswered.
+    ///
+    /// Keyed by turn rather than by conversation: a later turn in the same
+    /// conversation may already have questions of its own outstanding, and
+    /// clearing those would strand *it* instead.
+    fn retire_approvals(&self, services: &Services, turn_id: &str) {
+        let mut register = services.approvals.lock();
+        let before = register.len();
+        register.retain(|_, pending| pending.turn_id != turn_id);
+        let retired = before - register.len();
+        if retired > 0 {
+            tracing::debug!(
+                retired,
+                turn_id,
+                conversation_id = %self.conversation_id,
+                "dropped approvals nobody was left to answer"
+            );
         }
     }
 
