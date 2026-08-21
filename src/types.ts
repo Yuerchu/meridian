@@ -138,6 +138,42 @@ export interface AcpConfigOptionValue {
   description?: string
 }
 
+/**
+ * When a queued message is handed to the agent.
+ *
+ * Not urgency levels — two different points in the run. `follow_up` waits for
+ * the turn to reach an ending and then starts a new one; `interject` goes in at
+ * the next point the agent accepts input, between rounds of the turn already
+ * going. Claude Code offers only the second, which makes every thought you
+ * queue while something long runs an interruption.
+ */
+export type QueueDelivery = 'follow_up' | 'interject'
+
+/**
+ * Where a queued message has got to. Derived on the backend from which
+ * timestamps are set, never stored — see the migration.
+ *
+ * `in_doubt` is the one worth drawing differently: it was handed over and what
+ * became of it is not known. It is never sent again, and it stops everything
+ * behind it until the agent has been told about it.
+ */
+export type QueueState = 'queued' | 'in_doubt' | 'settled' | 'held'
+
+export interface QueuedPrompt {
+  id: string
+  conversation_id: string
+  content: string
+  delivery: string
+  position: number
+  created_at: number
+  dispatched_at: number | null
+  dispatched_turn_id: string | null
+  settled_at: number | null
+  settled_message_id: string | null
+  held_at: number | null
+  reported_at: number | null
+}
+
 /** What the settings page learned by starting the adapter and greeting it. */
 export interface AcpCheck {
   ok: boolean

@@ -41,6 +41,14 @@ interface ComposerProps {
   toolbarEnd?: ReactNode
   /** One line above the shell. Not `PromptInput.Footer`, which is below it. */
   notice?: ReactNode
+  /**
+   * Queued messages, in their own card above the shell.
+   *
+   * A sibling of `PromptInput.Shell` rather than a slot inside it, which is
+   * where Pro puts it and where it belongs: the rows are about messages that
+   * have already been written, not about the one being typed.
+   */
+  queue?: ReactNode
   /** Absolute paths of files dropped on the window. Desktop only. */
   onDropFiles?: (paths: string[]) => void
   /**
@@ -80,6 +88,7 @@ export function Composer({
   toolbarStart,
   toolbarEnd,
   notice,
+  queue,
   onDropFiles,
   onFieldReady,
 }: ComposerProps) {
@@ -136,6 +145,7 @@ export function Composer({
         allowSubmitWhileRunning={steerable}
         maxHeight={200}
       >
+        {queue}
         {/* Pro styles this state — dotted accent border and a soft fill — but
             sets it for nobody; it is left for whoever owns the drag. */}
         <PromptInput.Shell data-dragging={dropping ? 'true' : undefined}>

@@ -32,7 +32,7 @@ import { ComposerMenu } from './composer-menu'
 import { EmojiPicker } from './emoji-picker'
 import { ToolbarSelect } from './toolbar-select'
 import { isSelect, useAcpConfig } from '@/hooks/use-acp-config'
-import type { Assistant, ChatMode, Emoji, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
+import type { Assistant, ChatMode, Emoji, Provider, ProviderCapabilities, QueueDelivery, ThinkingLevel } from '@/types'
 
 interface ContextInfo {
   messageCount: number
@@ -87,6 +87,21 @@ interface InputBarProps {
    * to start, and steering starts none.
    */
   steerable?: boolean
+  /**
+   * Enter stacks the message up instead of sending it.
+   *
+   * A hosted session with a turn running. Like `steerable` in that the field
+   * stays live and a Stop of its own appears, and unlike it in what happens
+   * next: steering goes straight into the run, while this is written down and
+   * delivered when the queue says so. The toolbar stays, because which of the
+   * two modes the next message goes in is a decision made *here*.
+   */
+  queueing?: boolean
+  /** What the next queued message will be. */
+  queueDelivery?: QueueDelivery
+  onSelectQueueDelivery?: (delivery: QueueDelivery) => void
+  /** The rows themselves, above the shell. */
+  queue?: React.ReactNode
   attachedFiles?: AttachedFile[]
   onAttachFiles?: (files: AttachedFile[]) => void
   onRemoveFile?: (index: number) => void
@@ -199,6 +214,10 @@ export function InputBar({
   disabled,
   streaming,
   steerable,
+  queueing,
+  queueDelivery = 'follow_up',
+  onSelectQueueDelivery,
+  queue,
   assistants,
   providers,
   currentAssistantId,
@@ -300,10 +319,16 @@ export function InputBar({
   // what gets pressed, and it sits next to the candidate bar.
   // Composer holds Enter back mid-composition and disables Send on an empty
   // field; what stays here is the caller's own precondition.
+  // `disabled` is `streaming` at the call site, and the same two words mean two
+  // different things: the field is live while a reply comes in, and only Send
+  // turns into Stop. So this has to make the same exception `Composer` makes for
+  // its own `isDisabled` a few lines down — read literally it refuses every
+  // submit made during a run, which is precisely when a steer or a queued
+  // message is submitted.
   const handleSubmit = useCallback(() => {
-    if (disabled || (!value.trim() && !pendingSticker)) return
+    if ((disabled && !streaming) || (!value.trim() && !pendingSticker)) return
     onSubmit()
-  }, [disabled, value, pendingSticker, onSubmit])
+  }, [disabled, streaming, value, pendingSticker, onSubmit])
 
   const handleFieldReady = useCallback(
     (el: HTMLTextAreaElement | null) => {
@@ -480,15 +505,21 @@ export function InputBar({
             disabled={offline || (disabled && !streaming)}
             streaming={streaming}
             onStop={onStop}
-            steerable={steerable}
+            // Both mean "Enter works while a reply is coming, and Stop moves
+            // aside". What they do with the text is what differs, and that is
+            // the caller's business rather than the composer's.
+            steerable={steerable || queueing}
+            queue={queue}
             ariaLabel={t('chat.placeholder')}
             placeholder={
-              steerable && streaming
-                ? t('chat.placeholderSteer')
-                : // Only promises the hold while the hold is bound.
-                  voicePress
-                  ? t('chat.placeholderVoice')
-                  : t('chat.placeholder')
+              queueing
+                ? t('chat.placeholderQueue')
+                : steerable && streaming
+                  ? t('chat.placeholderSteer')
+                  : // Only promises the hold while the hold is bound.
+                    voicePress
+                    ? t('chat.placeholderVoice')
+                    : t('chat.placeholder')
             }
             onFieldReady={handleFieldReady}
             onDropFiles={onAttachFiles && can.dropFiles ? handleDropFiles : undefined}
@@ -610,6 +641,23 @@ export function InputBar({
                       anything. A hosted session's knobs are the agent's and
                       arrive over ACP; everything else stays in the menu. */}
                   <HostedSessionKnobs conversationId={conversationId} isHosted={!!isHosted} />
+                  {/* Only while the next Enter would queue. The two are not
+                      urgency levels, so the control names what will happen
+                      rather than how urgent it is — and it is here rather than
+                      on the row because it is a decision about the message
+                      being typed, made before it exists. */}
+                  {queueing && onSelectQueueDelivery && (
+                    <ToolbarSelect
+                      aria-label={t('chat.queue.mode')}
+                      placeholder={t('chat.queue.followUp')}
+                      value={queueDelivery}
+                      choices={[
+                        { value: 'follow_up', label: t('chat.queue.followUp'), hint: t('chat.queue.followUpHint') },
+                        { value: 'interject', label: t('chat.queue.interject'), hint: t('chat.queue.interjectHint') },
+                      ]}
+                      onSelect={(value) => onSelectQueueDelivery(value as QueueDelivery)}
+                    />
+                  )}
                 </>
               )
             }

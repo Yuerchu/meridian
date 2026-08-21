@@ -6,14 +6,16 @@ import { CompactedRegion } from './compacted-region'
 import { TranscriptStatus } from './transcript-status'
 import { useTurns } from '@/hooks/use-turns'
 import { InputBar, type AttachedFile, type PendingSticker } from './input-bar'
+import { PromptQueue } from './prompt-queue'
 import { TodoBar } from './todo-bar'
+import { usePromptQueue } from '@/hooks/use-prompt-queue'
 import { useEmojiMap } from './emoji-renderer'
 import { useSenderNames } from '@/hooks/use-sender-names'
 import { useTurnSettings } from '@/hooks/use-turn-settings'
 import { useSendMessage } from '@/hooks/use-send-message'
 import { useContextInfo } from '@/hooks/use-context-info'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { Message } from '@/types'
+import type { Message, QueueDelivery } from '@/types'
 
 // Stable identity for the empty case: `?? []` would hand useTurns a new array on
 // every render of a conversation whose session has not been created yet.
@@ -51,6 +53,10 @@ function ChatViewInner({
   const [input, setInput] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [pendingSticker, setPendingSticker] = useState<PendingSticker | null>(null)
+  // What the *next* queued message will be, not a property of any row. Defaults
+  // to the mode that waits: an interjection cuts into work that is already
+  // going, which is not a thing to do by accident.
+  const [queueDelivery, setQueueDelivery] = useState<QueueDelivery>('follow_up')
   const settings = useTurnSettings(conversationId)
   const emojiMap = useEmojiMap(settings.selectedAssistantId)
   // Only a OneBot conversation has more than one speaker; a desktop row has no
@@ -185,9 +191,26 @@ function ChatViewInner({
   const steerable = contextInfo.agentKind === 'agent' || contextInfo.agentKind === 'explore'
   const steering = steerable && streaming
 
+  // Only a hosted session, because only a hosted session has a runner that
+  // delivers. The table is there for every conversation and a native turn
+  // still passes `steering: None`, so offering the queue anywhere else would
+  // stack messages up that nothing would ever send.
+  const queue = usePromptQueue(conversationId, !!isHostedAgent)
+  const queueing = !!isHostedAgent && streaming
+
   const handleSubmit = useCallback(() => {
     const text = input.trim()
     if (!text && !pendingSticker) return
+
+    // Ahead of everything else, including the slash commands: while the agent
+    // is working there is no turn for any of them to reshape. The field is
+    // cleared only once the row exists, so a refusal is not the user paying
+    // for it by retyping.
+    if (queueing) {
+      if (!text) return
+      void queue.enqueue(text, queueDelivery).then(() => setInput(''))
+      return
+    }
 
     // Before the slash commands, which all ask for a turn to be started or
     // reshaped and so have nowhere to land mid-run. The field is cleared only
@@ -216,7 +239,18 @@ function ChatViewInner({
       : undefined
     setPendingSticker(null)
     sendMessage(text, true, files.length > 0 ? files : undefined, undefined, undefined, sticker)
-  }, [input, sendMessage, attachedFiles, pendingSticker, handleCompact, steering, steerMessage])
+  }, [
+    input,
+    sendMessage,
+    attachedFiles,
+    pendingSticker,
+    handleCompact,
+    steering,
+    steerMessage,
+    queueing,
+    queue,
+    queueDelivery,
+  ])
 
   return (
     <div className="flex flex-col h-full">
@@ -267,6 +301,19 @@ function ChatViewInner({
         disabled={streaming}
         streaming={streaming}
         steerable={steerable}
+        queueing={queueing}
+        queueDelivery={queueDelivery}
+        onSelectQueueDelivery={setQueueDelivery}
+        queue={
+          <PromptQueue
+            items={queue.items}
+            held={queue.held}
+            onRemove={(id) => void queue.remove(id).catch((e) => storeSetError(conversationId, String(e)))}
+            onReorder={(next) => void queue.reorder(next)}
+            onSetDelivery={(id, delivery) => void queue.setDelivery(id, delivery)}
+            onRelease={() => void queue.release()}
+          />
+        }
         assistants={settings.assistants}
         providers={settings.providers}
         currentAssistantId={settings.selectedAssistantId}

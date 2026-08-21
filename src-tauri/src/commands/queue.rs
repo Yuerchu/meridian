@@ -98,6 +98,12 @@ pub async fn queue_reorder(app: tauri::AppHandle, conversation_id: String, ids: 
 }
 
 /// Change one item's mode while it is still waiting.
+///
+/// Pumps afterwards, and that is not incidental: switching a row to `interject`
+/// *means* "go now", and without it nothing would happen until the running turn
+/// ended — at which point the row would go as an ordinary turn and the change
+/// would have made no difference at all. Same rule as everywhere else in this
+/// file: the queue moves because somebody is here.
 #[tauri::command]
 pub async fn queue_set_delivery(
     app: tauri::AppHandle,
@@ -118,6 +124,7 @@ pub async fn queue_set_delivery(
         return Err("this message has already been sent".into());
     }
     runner::announce(&services, &conversation_id);
+    runner::pump_later(&services, &conversation_id);
     Ok(())
 }
 

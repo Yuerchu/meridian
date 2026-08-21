@@ -37,6 +37,8 @@ import type {
   PromptTemplate,
   Provider,
   ProviderCapabilities,
+  QueueDelivery,
+  QueuedPrompt,
   SafRootEntry,
   Skill,
   SkillLayer,
@@ -215,6 +217,26 @@ export const api = {
   acpSaveConfig: (config: AcpConfig) => invoke<AcpConfig>('acp_save_config', { config }),
 
   acpCheckAdapter: () => invoke<AcpCheck>('acp_check_adapter'),
+
+  // The prompt queue. Adding one is also what may deliver it: an item queued
+  // while a turn runs is a steer, and one queued with nothing running is a turn.
+  // Nothing else moves the queue except a turn ending — see `agent::queue`.
+  queueList: (conversationId: string) => invoke<QueuedPrompt[]>('queue_list', { conversationId }),
+
+  queueEnqueue: (conversationId: string, content: string, delivery: QueueDelivery) =>
+    invoke<QueuedPrompt>('queue_enqueue', { conversationId, content, delivery }),
+
+  /** Refuses an item that has already been sent, and says so. */
+  queueRemove: (conversationId: string, id: string) => invoke<void>('queue_remove', { conversationId, id }),
+
+  queueReorder: (conversationId: string, ids: string[]) => invoke<void>('queue_reorder', { conversationId, ids }),
+
+  queueSetDelivery: (conversationId: string, id: string, delivery: QueueDelivery) =>
+    invoke<void>('queue_set_delivery', { conversationId, id, delivery }),
+
+  /** Let a queue held by a failed turn go again. Pumps, because a person just
+   *  said to. */
+  queueRelease: (conversationId: string) => invoke<void>('queue_release', { conversationId }),
 
   setSecret: (key: string, value: string) => invoke<void>('set_secret', { key, value }),
 
