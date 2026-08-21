@@ -100,6 +100,14 @@ export function useGlobalEventListener() {
         return
       }
 
+      // Somebody's queued interjection reaching the agent mid-turn. Written by
+      // the runner rather than the composer, so this window may never have seen
+      // it before — it can have been typed on the phone.
+      if (p.type === 'user_message' && p.message_id) {
+        store.handleUserMessage(convId, p.message_id, p.content ?? '')
+        return
+      }
+
       // Ahead of the backoff it describes, so the turn header can say what it is
       // waiting for rather than looking hung for the length of the wait. The
       // `reset` that follows marks the end of that wait and drops the partial

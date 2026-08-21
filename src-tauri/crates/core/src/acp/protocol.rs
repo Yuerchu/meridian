@@ -198,6 +198,37 @@ pub struct InitializeResult {
     pub auth_methods: Vec<AuthMethod>,
     #[serde(default)]
     pub agent_info: Option<Implementation>,
+    /// Extensions, which is where steering is advertised — at the *top level*,
+    /// a sibling of `agentCapabilities` rather than a member of it.
+    #[serde(default, rename = "_meta")]
+    pub meta: Option<InitializeMeta>,
+}
+
+impl InitializeResult {
+    /// Whether this agent takes `_session/steering`.
+    ///
+    /// Must be asked before the method is used. Steering is an extension, not
+    /// part of the protocol, and an adapter that has never heard of it answers
+    /// a request with `-32601` — which reaches the user as an RPC error in the
+    /// middle of a turn that was working fine.
+    pub fn steering_supported(&self) -> bool {
+        self.meta
+            .as_ref()
+            .and_then(|m| m.steering.as_ref())
+            .is_some_and(|s| s.supported)
+    }
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct InitializeMeta {
+    #[serde(default)]
+    pub steering: Option<SteeringCapability>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+pub struct SteeringCapability {
+    #[serde(default)]
+    pub supported: bool,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -362,6 +393,108 @@ pub struct PromptResult {
     /// to tell `cancelled` apart.
     #[serde(default)]
     pub stop_reason: String,
+}
+
+// ------------------------------------------------------------------ steering
+
+/// Put a message into the turn that is *already running*, instead of waiting
+/// for it to end and sending a fresh `session/prompt`.
+///
+/// An extension rather than protocol, which is why the name is underscored and
+/// why [`InitializeResult::steering_supported`] has to be asked first. The
+/// adapter hands it to the SDK at its `now` priority, so it lands at the next
+/// point the model accepts input — between two tool calls of a multi-step turn,
+/// which is the case worth having.
+pub const STEER_METHOD: &str = "_session/steering";
+
+/// The same shape as the part of a prompt that carries the message, plus the
+/// one decision this client makes about what happens when there is no turn to
+/// steer.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteerParams {
+    pub session_id: String,
+    pub prompt: Vec<ContentBlock>,
+    #[serde(rename = "_meta")]
+    pub meta: SteerMeta,
+}
+
+impl SteerParams {
+    pub fn text(session_id: impl Into<String>, text: &str) -> Self {
+        Self {
+            session_id: session_id.into(),
+            prompt: vec![ContentBlock::text(text)],
+            meta: SteerMeta::default(),
+        }
+    }
+}
+
+/// **`promptRequired` is opt-in and this client opts in.**
+///
+/// Left out, the adapter keeps its older behaviour for a steer that finds no
+/// turn running: it starts one *detached* — `this.prompt(…).catch(…)`, not
+/// awaited — and answers `startedNewTurn`. That turn would then narrate itself
+/// into this session with no `session/prompt` reply for anyone to wait on, no
+/// turn lease, no assistant row to write into and no stop button that reaches
+/// it. Asking for `promptRequired` hands the message back unconsumed instead,
+/// and this app delivers it down the path it owns.
+#[derive(Debug, Serialize)]
+pub struct SteerMeta {
+    pub steering: SteerBehaviour,
+}
+
+impl Default for SteerMeta {
+    fn default() -> Self {
+        Self {
+            steering: SteerBehaviour {
+                idle_behavior: "promptRequired",
+            },
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SteerBehaviour {
+    pub idle_behavior: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SteerResult {
+    #[serde(default)]
+    pub outcome: String,
+}
+
+impl SteerResult {
+    pub fn outcome(&self) -> SteerOutcome {
+        match self.outcome.as_str() {
+            "injected" => SteerOutcome::Injected,
+            "promptRequired" => SteerOutcome::PromptRequired,
+            "startedNewTurn" => SteerOutcome::StartedNewTurn,
+            other => SteerOutcome::Unknown(other.to_string()),
+        }
+    }
+}
+
+/// What the agent did with a steer, and the three answers are three different
+/// things — none of them a failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SteerOutcome {
+    /// It joined the running turn. The message is delivered and the agent may
+    /// already be acting on it.
+    Injected,
+    /// There was no turn to join, and because this client asked for it the
+    /// message was **not** consumed. It still has to be delivered, as an
+    /// ordinary prompt.
+    PromptRequired,
+    /// There was no turn to join and the agent started a detached one anyway —
+    /// which only happens if it ignored the `_meta` above. Delivered, but by a
+    /// turn this app cannot see or stop.
+    StartedNewTurn,
+    /// An outcome added after this build. Delivered as far as anyone can tell,
+    /// so treated as such: the alternative is re-sending something the agent
+    /// has already read.
+    Unknown(String),
 }
 
 /// One piece of a message.
@@ -685,6 +818,55 @@ mod tests {
         let reject_once = p.options.iter().find(|o| o.is_reject() && o.is_once()).unwrap();
         assert_eq!(reject_once.option_id, "c");
         assert!(p.options.iter().any(|o| o.is_allow() && !o.is_once()));
+    }
+
+    /// Steering is advertised at the top level of the greeting, beside
+    /// `agentCapabilities` rather than inside it. Looking in the wrong place
+    /// reads as "not supported" on every adapter that does support it, which
+    /// degrades silently — every interjection would become a follow-up and
+    /// nobody would know why.
+    #[test]
+    fn steering_is_advertised_beside_the_capabilities_not_inside_them() {
+        let raw = r#"{"protocolVersion":1,"agentCapabilities":{"loadSession":true},
+            "_meta":{"steering":{"supported":true},"goal":{"version":1}}}"#;
+        let init: InitializeResult = serde_json::from_str(raw).unwrap();
+        assert!(init.steering_supported());
+
+        // An adapter that has never heard of the extension.
+        let plain = r#"{"protocolVersion":1,"agentCapabilities":{"loadSession":true}}"#;
+        let init: InitializeResult = serde_json::from_str(plain).unwrap();
+        assert!(!init.steering_supported());
+
+        // And one that mentions it to say no.
+        let refused = r#"{"protocolVersion":1,"_meta":{"steering":{"supported":false}}}"#;
+        let init: InitializeResult = serde_json::from_str(refused).unwrap();
+        assert!(!init.steering_supported());
+    }
+
+    /// The `_meta` on the way out is not decoration: without it the agent
+    /// starts a *detached* turn when there is nothing to steer, and this app
+    /// ends up with a turn it did not open, cannot stop and has no row for.
+    #[test]
+    fn a_steer_asks_for_the_message_back_rather_than_a_detached_turn() {
+        let params = SteerParams::text("s1", "actually, stop");
+        let encoded = serde_json::to_value(&params).unwrap();
+        assert_eq!(encoded["sessionId"], "s1");
+        assert_eq!(encoded["prompt"][0]["text"], "actually, stop");
+        assert_eq!(encoded["_meta"]["steering"]["idleBehavior"], "promptRequired");
+    }
+
+    /// Every outcome is a success, and they mean three different things. Only
+    /// `promptRequired` says the message was not taken.
+    #[test]
+    fn the_three_steer_outcomes_are_told_apart() {
+        let read = |raw: &str| serde_json::from_str::<SteerResult>(raw).unwrap().outcome();
+        assert_eq!(read(r#"{"outcome":"injected"}"#), SteerOutcome::Injected);
+        assert_eq!(
+            read(r#"{"outcome":"promptRequired","reason":"noRunningTurn"}"#),
+            SteerOutcome::PromptRequired
+        );
+        assert_eq!(read(r#"{"outcome":"startedNewTurn"}"#), SteerOutcome::StartedNewTurn);
+        assert!(matches!(read(r#"{"outcome":"teleported"}"#), SteerOutcome::Unknown(_)));
     }
 
     /// The wire shape of an answer is nested — `outcome.outcome` — and getting

@@ -1,0 +1,151 @@
+//! The prompt queue, from the window.
+//!
+//! Thin, like `acp.rs` next door: the rules live in `meridian_core` because a
+//! queue has to be drivable by something without a window before it is one
+//! frontend's feature. What is here is the shape of each call and the one
+//! decision the shell owns — which of them may move the queue along.
+
+use crate::ServicesExt;
+use meridian_core::agent::queue as runner;
+use meridian_core::db::models::queue::{Delivery, QueuedPrompt};
+use meridian_core::db::ops::queue as ops;
+use meridian_core::util::{get_conn, now_ms};
+
+/// Everything queued for a conversation, in the order it will be delivered.
+///
+/// Settled rows included: the front end draws one leaving, and dropping it here
+/// would make an item vanish a beat before the message it became appears.
+#[tauri::command]
+pub async fn queue_list(app: tauri::AppHandle, conversation_id: String) -> Result<Vec<QueuedPrompt>, String> {
+    let pool = app.services().db.clone();
+    blocking(move || {
+        let mut conn = get_conn(&pool)?;
+        ops::list(&mut conn, &conversation_id).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// Add one to the back, and see whether it can go straight away.
+///
+/// The pump is the point: an item added while a turn runs is a steer, and one
+/// added with nothing running is a turn. Both are somebody typing, which is the
+/// only circumstance in which this queue is allowed to move — see the header of
+/// `agent::queue`.
+#[tauri::command]
+pub async fn queue_enqueue(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    content: String,
+    delivery: String,
+) -> Result<QueuedPrompt, String> {
+    let content = content.trim().to_string();
+    if content.is_empty() {
+        return Err("a queued message needs something in it".into());
+    }
+    let services = app.services();
+    let pool = services.db.clone();
+    let id = uuid::Uuid::new_v4().to_string();
+    let conversation = conversation_id.clone();
+    let delivery = Delivery::parse_or_wait(&delivery);
+
+    let item = blocking(move || {
+        let mut conn = get_conn(&pool)?;
+        ops::enqueue(&mut conn, &id, &conversation, &content, delivery, now_ms()).map_err(|e| e.to_string())
+    })
+    .await?;
+
+    runner::announce(&services, &conversation_id);
+    runner::pump_later(&services, &conversation_id);
+    Ok(item)
+}
+
+/// Drop one that has not gone anywhere.
+///
+/// A settled or in-doubt row refuses, and says so rather than reporting a
+/// success that did nothing: the second is the record that the agent may be
+/// acting on it, and it is the only reason anyone would ever find out.
+#[tauri::command]
+pub async fn queue_remove(app: tauri::AppHandle, conversation_id: String, id: String) -> Result<(), String> {
+    let services = app.services();
+    let pool = services.db.clone();
+    let removed = blocking(move || {
+        let mut conn = get_conn(&pool)?;
+        ops::remove(&mut conn, &id).map_err(|e| e.to_string())
+    })
+    .await?;
+
+    if removed == 0 {
+        return Err("this message has already been sent".into());
+    }
+    runner::announce(&services, &conversation_id);
+    Ok(())
+}
+
+/// Rewrite the order, wholesale. The list is what the user dragged into place.
+#[tauri::command]
+pub async fn queue_reorder(app: tauri::AppHandle, conversation_id: String, ids: Vec<String>) -> Result<(), String> {
+    let services = app.services();
+    let pool = services.db.clone();
+    let conversation = conversation_id.clone();
+    blocking(move || {
+        let mut conn = get_conn(&pool)?;
+        ops::reorder(&mut conn, &conversation, &ids).map_err(|e| e.to_string())
+    })
+    .await?;
+
+    runner::announce(&services, &conversation_id);
+    Ok(())
+}
+
+/// Change one item's mode while it is still waiting.
+#[tauri::command]
+pub async fn queue_set_delivery(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    id: String,
+    delivery: String,
+) -> Result<(), String> {
+    let services = app.services();
+    let pool = services.db.clone();
+    let delivery = Delivery::parse_or_wait(&delivery);
+    let changed = blocking(move || {
+        let mut conn = get_conn(&pool)?;
+        ops::set_delivery(&mut conn, &id, delivery).map_err(|e| e.to_string())
+    })
+    .await?;
+
+    if changed == 0 {
+        return Err("this message has already been sent".into());
+    }
+    runner::announce(&services, &conversation_id);
+    Ok(())
+}
+
+/// Let a held queue go again.
+///
+/// The queue stops itself whenever a turn fails or is stopped, because what
+/// comes after a failed step usually assumed it worked. Starting again is a
+/// person's decision, and this is them making it — so it pumps.
+#[tauri::command]
+pub async fn queue_release(app: tauri::AppHandle, conversation_id: String) -> Result<(), String> {
+    let services = app.services();
+    let pool = services.db.clone();
+    let conversation = conversation_id.clone();
+    blocking(move || {
+        let mut conn = get_conn(&pool)?;
+        ops::release_all(&mut conn, &conversation).map_err(|e| e.to_string())
+    })
+    .await?;
+
+    runner::announce(&services, &conversation_id);
+    runner::pump_later(&services, &conversation_id);
+    Ok(())
+}
+
+async fn blocking<T, F>(f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(f).await.map_err(|e| e.to_string())?
+}

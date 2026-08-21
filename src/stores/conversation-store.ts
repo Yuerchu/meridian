@@ -719,6 +719,7 @@ export interface ConversationStore {
    *  `setError` the caller makes first. */
   abortTurn: (convId: string, turnId: string, error?: string) => void
   handleMessageStart: (convId: string, messageId: string, turnId?: string) => void
+  handleUserMessage: (convId: string, messageId: string, content: string) => void
   handleText: (convId: string, messageId: string, content: string) => void
   handleReasoning: (convId: string, messageId: string, content: string) => void
   handleToolCall: (convId: string, messageId: string, callId: string, toolName: string, args: string) => void
@@ -1113,6 +1114,47 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           conversation_id: convId,
           role: 'assistant',
           content: '',
+          provider_id: null,
+          model_id: null,
+          input_tokens: null,
+          output_tokens: null,
+          cache_read_tokens: null,
+          cache_write_tokens: null,
+          provider_name: null,
+          tool_calls: null,
+          tool_call_id: null,
+          sort_order: session.messages.length,
+          created_at: Date.now(),
+          reasoning_content: null,
+          rating: null,
+          schema_version: 2,
+          is_compact_summary: 0,
+        })
+      }),
+    )
+  },
+
+  // A message from the *user* that this window did not send: a queued
+  // interjection, delivered into a turn that was already running.
+  //
+  // The composer appends what it sends itself, so nothing else needs this — but
+  // an interjection is sent by the runner, minutes after it was typed and
+  // possibly from another device. Without it the agent visibly changes course
+  // with nothing on screen to say why, until the conversation is reloaded.
+  handleUserMessage: (convId, messageId, content) => {
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        // The backend writes the row once and may announce it more than once —
+        // a resync after a reconnect replays nothing, but `queue-updated` and
+        // this can both land for the same delivery.
+        if (session.messages.some((m) => m.id === messageId)) return
+        session.messages.push({
+          id: messageId,
+          conversation_id: convId,
+          role: 'user',
+          content,
           provider_id: null,
           model_id: null,
           input_tokens: null,

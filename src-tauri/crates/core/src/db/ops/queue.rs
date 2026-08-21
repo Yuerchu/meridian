@@ -104,30 +104,43 @@ pub fn set_delivery(conn: &mut SqliteConnection, id: &str, delivery: Delivery) -
     .execute(conn)
 }
 
-/// The next item a runner may deliver, if there is one.
+/// The front of the queue, whatever mode it is in.
 ///
-/// Skips held rows without skipping past them: a held queue is stopped, not
-/// filtered, so the first held row hides everything behind it. Delivering
-/// number three because number two is held would run the user's instructions
-/// out of order, which is worse than delivering nothing.
-pub fn next_deliverable(
-    conn: &mut SqliteConnection,
-    conversation_id: &str,
-    delivery: Delivery,
-) -> QueryResult<Option<QueuedPrompt>> {
-    let queued = list(conn, conversation_id)?;
-    for item in queued {
+/// Skips settled rows without skipping *past* a stopped one: a held or
+/// in-doubt row hides everything behind it, because the instructions were
+/// written as a sequence and delivering number three while number two is
+/// unresolved runs them out of order.
+///
+/// This is what an idle runner asks for. Which mode an item carries only means
+/// something while a turn is running — `interject` is "do not wait for the turn
+/// to finish", and with no turn there is nothing to wait for. Asking for one
+/// mode here instead would leave an `interject` queued after its turn had
+/// already ended blocking the queue for ever, waiting to interrupt something
+/// that will never run.
+pub fn next_pending(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Option<QueuedPrompt>> {
+    for item in list(conn, conversation_id)? {
         match item.state() {
             // Already gone by, in one way or another.
             QueueState::Settled => continue,
             // The queue is stopped here and everything after it waits.
             QueueState::Held | QueueState::InDoubt => return Ok(None),
-            QueueState::Queued => {
-                return Ok((item.delivery() == delivery).then_some(item));
-            }
+            QueueState::Queued => return Ok(Some(item)),
         }
     }
     Ok(None)
+}
+
+/// The next item a runner may deliver *in a particular mode*, if there is one.
+///
+/// What a runner with a turn in flight asks: it can only take an `interject`,
+/// and a `follow_up` at the front is not skipped — it is still the next thing
+/// the user meant to happen.
+pub fn next_deliverable(
+    conn: &mut SqliteConnection,
+    conversation_id: &str,
+    delivery: Delivery,
+) -> QueryResult<Option<QueuedPrompt>> {
+    Ok(next_pending(conn, conversation_id)?.filter(|item| item.delivery() == delivery))
 }
 
 /// Take an item off the queue *and* write the message it becomes, atomically.
@@ -214,6 +227,41 @@ pub fn mark_settled(conn: &mut SqliteConnection, id: &str, message_id: Option<&s
             queued_prompts::settled_message_id.eq(message_id),
         ))
         .execute(conn)
+}
+
+/// Name the transcript row a settled item became, once it has one.
+///
+/// Split from [`mark_settled`] because for a steered message the two facts
+/// arrive apart. The agent's `injected` is what resolves the doubt and it comes
+/// back in milliseconds; the row is written at the next round boundary, which
+/// is however long the tool call in flight takes. Waiting for the row to settle
+/// the item would leave the queue stopped behind it for that whole time, on a
+/// message that has demonstrably arrived.
+pub fn attach_message(conn: &mut SqliteConnection, id: &str, message_id: &str) -> QueryResult<usize> {
+    diesel::update(queued_prompts::table.find(id))
+        .set(queued_prompts::settled_message_id.eq(Some(message_id)))
+        .execute(conn)
+}
+
+/// Undo a dispatch the agent has told us it did not take.
+///
+/// The one case where clearing `dispatched_at` is safe, and it is safe for a
+/// reason that does not generalise: `promptRequired` is the agent saying *it
+/// did not consume the message* — evidence about the delivery itself, not the
+/// absence of evidence that in-doubt exists for. Anything else (a timeout, a
+/// dead pipe, an unreadable reply) says nothing about whether the agent acted,
+/// and must stay in doubt.
+pub fn undispatch(conn: &mut SqliteConnection, id: &str) -> QueryResult<usize> {
+    diesel::update(
+        queued_prompts::table
+            .find(id)
+            .filter(queued_prompts::settled_at.is_null()),
+    )
+    .set((
+        queued_prompts::dispatched_at.eq(None::<i64>),
+        queued_prompts::dispatched_turn_id.eq(None::<String>),
+    ))
+    .execute(conn)
 }
 
 /// Stop the queue, because the turn in front of it did not finish.
@@ -536,6 +584,77 @@ mod tests {
         let item = add(&mut conn, "c1", "two", Delivery::FollowUp);
         mark_dispatched(&mut conn, &item.id, "t1", 1).unwrap();
         assert_eq!(remove(&mut conn, &item.id).unwrap(), 0, "a doubtful one stays");
+    }
+
+    /// While a turn runs the modes are asked for separately; with nothing
+    /// running the distinction has no referent, and an `interject` left over
+    /// from a turn that has already ended is delivered rather than left to
+    /// block the queue waiting to interrupt something that will never happen.
+    #[test]
+    fn an_idle_runner_takes_the_front_of_the_queue_whatever_mode_it_is() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conversation(&mut conn, "c1");
+        add(&mut conn, "c1", "actually, stop", Delivery::Interject);
+        add(&mut conn, "c1", "and then this", Delivery::FollowUp);
+
+        assert!(
+            next_deliverable(&mut conn, "c1", Delivery::FollowUp).unwrap().is_none(),
+            "a running turn cannot take it"
+        );
+        assert_eq!(
+            next_pending(&mut conn, "c1").unwrap().map(|i| i.content),
+            Some("actually, stop".to_string()),
+            "an idle one can"
+        );
+    }
+
+    /// `promptRequired` is the agent saying it did not take the message. That
+    /// is evidence about the delivery, so the item goes back to deliverable —
+    /// unlike every other way a send can end badly, which is an *absence* of
+    /// evidence and stays in doubt for ever.
+    #[test]
+    fn a_refused_delivery_is_returned_to_the_queue() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conversation(&mut conn, "c1");
+        let item = add(&mut conn, "c1", "one", Delivery::Interject);
+
+        mark_dispatched(&mut conn, &item.id, "t1", 1).unwrap();
+        undispatch(&mut conn, &item.id).unwrap();
+
+        let item = list(&mut conn, "c1").unwrap().remove(0);
+        assert_eq!(item.state(), QueueState::Queued);
+        assert!(
+            item.dispatched_turn_id.is_none(),
+            "and the turn it was aimed at goes too"
+        );
+        assert!(unreported_in_doubt(&mut conn, "c1").unwrap().is_empty());
+    }
+
+    /// A settled item that has no row yet gets one later, and settling first is
+    /// the point: the queue must not stay stopped behind a message the agent
+    /// has demonstrably read while a tool call finishes.
+    #[test]
+    fn a_row_can_be_attached_after_the_doubt_is_already_resolved() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conversation(&mut conn, "c1");
+        let first = add(&mut conn, "c1", "one", Delivery::Interject);
+        add(&mut conn, "c1", "two", Delivery::Interject);
+
+        mark_dispatched(&mut conn, &first.id, "t1", 1).unwrap();
+        mark_settled(&mut conn, &first.id, None, 2).unwrap();
+        assert_eq!(
+            next_pending(&mut conn, "c1").unwrap().map(|i| i.content),
+            Some("two".to_string()),
+            "the queue moves on without waiting for the row"
+        );
+
+        attach_message(&mut conn, &first.id, "m1").unwrap();
+        let first = list(&mut conn, "c1").unwrap().remove(0);
+        assert_eq!(first.settled_message_id.as_deref(), Some("m1"));
+        assert_eq!(first.state(), QueueState::Settled);
     }
 
     /// A mode this build does not know reads as the one that waits. A row

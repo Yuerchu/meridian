@@ -1261,5 +1261,114 @@ mod tests {
 
             peer.stop().await;
         }
+
+        /// Steering, both ways round, against a pipe.
+        ///
+        /// Two things are being checked and neither can be checked without one.
+        /// The first is that the capability is read from the top level of the
+        /// greeting: get that wrong and every adapter reads as not supporting
+        /// steering, which degrades silently — interjections quietly become
+        /// follow-ups and nobody finds out.
+        ///
+        /// The second is the `_meta` this client sends. Without it, an agent
+        /// with no turn to steer starts a *detached* one and answers
+        /// `startedNewTurn`; that turn would narrate itself into the session
+        /// with no reply for anyone to await, no lease and no stop button. The
+        /// second half of this test is a steer made with nothing running, and
+        /// what it asserts is that the message came *back*.
+        #[tokio::test]
+        async fn a_steer_joins_the_running_turn_and_is_handed_back_when_there_is_none() {
+            let Some(args) = adapter() else {
+                eprintln!("skipping: node is not available");
+                return;
+            };
+
+            let process = AdapterProcess::spawn("node", &args).await.expect("spawn");
+            let probe = Arc::new(Probe::default());
+            let peer = Peer::start(process, probe.clone() as Arc<dyn Handler>);
+
+            let init = peer
+                .request(
+                    "initialize",
+                    serde_json::json!({ "protocolVersion": 1, "clientCapabilities": {}, "clientInfo": {} }),
+                )
+                .await
+                .expect("initialize");
+            let init: protocol::InitializeResult = serde_json::from_value(init).unwrap();
+            assert!(init.steering_supported(), "the fake adapter advertises steering");
+
+            let session = peer
+                .request("session/new", serde_json::json!({ "cwd": ".", "mcpServers": [] }))
+                .await
+                .expect("session/new");
+            let session: protocol::NewSessionResult = serde_json::from_value(session).unwrap();
+
+            // A turn that will not end until it is steered, so the delivery is
+            // unambiguously mid-turn rather than a race that usually wins.
+            let running = peer.clone();
+            let session_id = session.session_id.clone();
+            let turn = tokio::spawn(async move {
+                running
+                    .request(
+                        "session/prompt",
+                        serde_json::json!({
+                            "sessionId": session_id,
+                            "prompt": [{ "type": "text", "text": "hold" }],
+                        }),
+                    )
+                    .await
+            });
+
+            let steer = |text: &str| {
+                serde_json::to_value(protocol::SteerParams::text(session.session_id.clone(), text)).unwrap()
+            };
+            // Retried rather than slept on: the turn has to have reached the
+            // adapter, and how long that takes is a property of the machine.
+            let mut answered = None;
+            for _ in 0..100 {
+                let reply = peer
+                    .request(protocol::STEER_METHOD, steer("stop and say STEERED"))
+                    .await
+                    .expect("the adapter answers a steer");
+                let outcome = serde_json::from_value::<protocol::SteerResult>(reply)
+                    .unwrap()
+                    .outcome();
+                if outcome == protocol::SteerOutcome::Injected {
+                    answered = Some(outcome);
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            assert_eq!(
+                answered,
+                Some(protocol::SteerOutcome::Injected),
+                "a steer sent while a turn is running joins it"
+            );
+
+            let stopped = turn.await.unwrap().expect("the steered turn ends normally");
+            let stopped: protocol::PromptResult = serde_json::from_value(stopped).unwrap();
+            assert_eq!(stopped.stop_reason, "end_turn");
+            peer.drain_notifications().await;
+            let heard = probe.updates.lock().unwrap().join(" ");
+            assert!(heard.contains("STEERED"), "the steered text reached the turn: {heard}");
+
+            // And now with nothing running. `promptRequired` is the message
+            // coming back unconsumed; `startedNewTurn` would mean the `_meta`
+            // above had been dropped and a turn had been started behind us.
+            let reply = peer
+                .request(protocol::STEER_METHOD, steer("too late"))
+                .await
+                .expect("the adapter answers");
+            let outcome = serde_json::from_value::<protocol::SteerResult>(reply)
+                .unwrap()
+                .outcome();
+            assert_eq!(
+                outcome,
+                protocol::SteerOutcome::PromptRequired,
+                "with no turn to steer the message must be handed back, not detached into one"
+            );
+
+            peer.stop().await;
+        }
     }
 }

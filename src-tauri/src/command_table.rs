@@ -320,6 +320,24 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             local commands::acp => acp_check_adapter(),
 
+            // Not `local`. The queue is a list of messages for a conversation
+            // the caller can already read and write; the phone stacking work up
+            // for the desktop to get through is the case this was built for.
+            async commands::queue => queue_list(conversation_id: String),
+            async commands::queue => queue_enqueue(
+                conversation_id: String,
+                content: String,
+                delivery: String,
+            ),
+            async commands::queue => queue_remove(conversation_id: String, id: String),
+            async commands::queue => queue_reorder(conversation_id: String, ids: Vec<String>),
+            async commands::queue => queue_set_delivery(
+                conversation_id: String,
+                id: String,
+                delivery: String,
+            ),
+            async commands::queue => queue_release(conversation_id: String),
+
             #[cfg(not(target_os = "android"))]
             async commands::remote => get_listen_status(),
             #[cfg(not(target_os = "android"))]

@@ -23,9 +23,10 @@ use std::sync::{Arc, Mutex};
 
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::engine::transcript::{append_tool_result, begin_assistant, complete_assistant};
+use crate::agent::engine::transcript::{append_tool_result, begin_assistant, complete_assistant, write_steering};
 use crate::agent::tool_calls::serialize_tool_calls_openai;
 use crate::db::models::message::MessageUsage;
+use crate::db::models::queue::QueuedPrompt;
 use crate::db::models::turn::TurnStatus;
 use crate::provider;
 use crate::services::Services;
@@ -96,6 +97,14 @@ impl OpenRow {
     }
 }
 
+/// A message the user put into a turn that was already running, which the
+/// agent has taken and the transcript still owes a row.
+struct Interjection {
+    /// The queue item it came from, so the row can be named on it once written.
+    queue_id: String,
+    text: String,
+}
+
 /// The turn in flight, if there is one.
 struct TurnState {
     turn_id: String,
@@ -104,6 +113,15 @@ struct TurnState {
     row: OpenRow,
     /// The last row landed in the database, which the next one hangs off.
     parent: String,
+    /// Steered messages waiting for a round boundary to be written at.
+    ///
+    /// Not written when they are sent, which is the tempting thing to do and
+    /// forks the transcript: the open row's children are its own tool results,
+    /// and a user row landing beside them makes two branches out of one round.
+    /// Written at the boundary instead, they sit exactly where they belong —
+    /// after the round that was running when they were sent, before the round
+    /// that answers them.
+    interjected: Vec<Interjection>,
 }
 
 /// The half of a session the protocol handler needs.
@@ -367,6 +385,58 @@ impl Shared {
         last
     }
 
+    /// Write the rows owed to messages steered into this turn, and say what the
+    /// next round hangs off.
+    ///
+    /// Called immediately after a round is written out, which is the only place
+    /// in a turn where the chain has exactly one loose end. Each row also names
+    /// itself on the queue item it came from — the item was settled when the
+    /// agent said `injected`, minutes of tool call ago, and this is the second
+    /// half of that record rather than the thing that settles it.
+    async fn write_interjections(&self, turn_id: &str, parent: &str, interjected: &[Interjection]) -> String {
+        let mut last = parent.to_string();
+        for item in interjected {
+            // The same write a native turn's steering uses, and for the same
+            // reason: a user row, filed under the turn it was said *to* rather
+            // than the one it causes, because that is where the agent read it.
+            match write_steering(
+                &self.services.db,
+                &self.conversation_id,
+                turn_id,
+                &item.text,
+                None,
+                Some(&last),
+            )
+            .await
+            {
+                Ok(id) => {
+                    let pool = self.services.db.clone();
+                    let queue_id = item.queue_id.clone();
+                    let message_id = id.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        let mut conn = get_conn(&pool)?;
+                        crate::db::ops::queue::attach_message(&mut conn, &queue_id, &message_id)
+                            .map_err(|e| e.to_string())
+                    })
+                    .await;
+                    self.emit(serde_json::json!({
+                        "type": "user_message",
+                        "message_id": id,
+                        "content": item.text,
+                        "conversation_id": self.conversation_id,
+                    }));
+                    last = id;
+                }
+                // The agent has it either way — this is the transcript's copy.
+                // Losing it leaves an answer that changes direction for no
+                // visible reason, which is worth a loud log and not worth
+                // ending a turn over.
+                Err(e) => tracing::error!(error = %e, "an interjection reached the agent but not the transcript"),
+            }
+        }
+        last
+    }
+
     /// Close the current round and open the next one, if the current one is
     /// finished.
     ///
@@ -386,14 +456,18 @@ impl Shared {
                     t.turn_id.clone(),
                     t.parent.clone(),
                     std::mem::replace(&mut t.row, carried),
+                    std::mem::take(&mut t.interjected),
                 ))
             })
             .flatten();
-        let Some((turn_id, parent, finished)) = taken else {
+        let Some((turn_id, parent, finished, interjected)) = taken else {
             return;
         };
 
         let last = self.write_row(&turn_id, &parent, &finished).await;
+        // A round boundary is the one place in a turn where the chain has a
+        // single loose end, which is what a steered message needs to hang off.
+        let last = self.write_interjections(&turn_id, &last, &interjected).await;
 
         match begin_assistant(
             &self.services.db,
@@ -560,6 +634,13 @@ pub struct AcpSession {
     pub conversation_id: String,
     pub acp_session_id: String,
     pub cwd: String,
+    /// Whether this adapter advertised `_session/steering`.
+    ///
+    /// Read once, at the handshake, because that is the only time it is said.
+    /// An adapter without it cannot be steered at all — an interjection has to
+    /// wait for the turn to end and go as an ordinary prompt, which is what
+    /// Claude Code did before the extension existed.
+    steering: bool,
 }
 
 impl AcpSession {
@@ -592,10 +673,11 @@ impl AcpSession {
         // per failed attempt, and the usual reason to fail (not signed in) is
         // one the user retries.
         match Self::handshake(&peer, &shared, &cwd).await {
-            Ok(acp_session_id) => {
+            Ok((acp_session_id, steering)) => {
                 tracing::info!(
                     conversation_id = %conversation_id,
                     acp_session_id = %acp_session_id,
+                    steering,
                     "ACP session opened"
                 );
                 Ok(Arc::new(Self {
@@ -604,6 +686,7 @@ impl AcpSession {
                     conversation_id,
                     acp_session_id,
                     cwd,
+                    steering,
                 }))
             }
             Err(e) => {
@@ -617,7 +700,7 @@ impl AcpSession {
     ///
     /// Split out so [`open`](Self::open) has exactly one failure path to clean
     /// up after, rather than four `?`s that each need remembering.
-    async fn handshake(peer: &Arc<Peer>, shared: &Shared, cwd: &str) -> Result<String, String> {
+    async fn handshake(peer: &Arc<Peer>, shared: &Shared, cwd: &str) -> Result<(String, bool), String> {
         let init = peer
             .request(
                 "initialize",
@@ -640,10 +723,12 @@ impl AcpSession {
             .map_err(|e| describe(peer, e))?;
 
         let init: protocol::InitializeResult = serde_json::from_value(init).map_err(|e| e.to_string())?;
+        let steering = init.steering_supported();
         tracing::info!(
             protocol_version = init.protocol_version,
             load_session = init.agent_capabilities.load_session,
             auth_method_count = init.auth_methods.len(),
+            steering,
             "ACP adapter initialised"
         );
 
@@ -670,11 +755,103 @@ impl AcpSession {
         // the composer has something to offer before anyone has typed. Re-sent
         // on every change after this, as a `config_option_update`.
         shared.merge_config(session.config_options);
-        Ok(session.session_id)
+        Ok((session.session_id, steering))
     }
 
     pub fn is_alive(&self) -> bool {
         self.peer.is_alive()
+    }
+
+    /// Whether this adapter takes `_session/steering`, as it said at the
+    /// handshake. An interjection to a session that answers `false` has to wait
+    /// for the turn to end and go as an ordinary prompt.
+    pub fn supports_steering(&self) -> bool {
+        self.steering
+    }
+
+    /// The turn running right now, if there is one.
+    ///
+    /// What the queue runner asks to decide which of the two modes it may
+    /// deliver, and what it records a steer against. Racy by nature — the turn
+    /// can end in the gap — which is why nothing downstream trusts it: a steer
+    /// that arrives too late is answered `promptRequired` and comes back for
+    /// the other path.
+    pub fn current_turn_id(&self) -> Option<String> {
+        let guard = self.shared.turn.lock().ok()?;
+        guard.as_ref().map(|t| t.turn_id.clone())
+    }
+
+    /// Put a message into the turn that is already running.
+    ///
+    /// Returns what the agent did with it, and the caller has to look: only
+    /// [`SteerOutcome::PromptRequired`] means the message was not taken, and it
+    /// is the one answer that is safe to retry.
+    ///
+    /// The transcript row is *not* written here. It is owed to the turn's next
+    /// round boundary — see [`TurnState::interjected`] — because the chain has
+    /// two loose ends anywhere else and a row landing between them forks it.
+    pub async fn steer(&self, queue_id: &str, text: &str) -> Result<protocol::SteerOutcome, String> {
+        if !self.steering {
+            return Err("this adapter does not support steering".into());
+        }
+        let params = serde_json::to_value(protocol::SteerParams::text(self.acp_session_id.clone(), text))
+            .map_err(|e| e.to_string())?;
+
+        // **Before the send, and taken back after.** The other order loses the
+        // row outright in a window that is not hypothetical: the agent decides
+        // whether to inject the moment the request arrives, and the turn can
+        // reach its ending before the reply gets back here — at which point
+        // `finish` has taken the turn state and a message the agent has already
+        // absorbed has nowhere left to be written.
+        self.remember_interjection(queue_id, text);
+
+        let answered = match self.peer.request(protocol::STEER_METHOD, params).await {
+            Ok(value) => value,
+            // The agent refusing, or the pipe failing. Neither says the message
+            // landed, and the item stays in doubt — where the ledger, not the
+            // transcript, is what carries the text forward. A row here would
+            // contradict the very report that is about to be made about it.
+            Err(e) => {
+                self.forget_interjection(queue_id);
+                return Err(describe(&self.peer, e));
+            }
+        };
+
+        // An unreadable reply is not a failure to deliver: the agent answered,
+        // and every outcome it can name except one means the message landed.
+        // Reading it as an error would put the item in doubt over a field this
+        // build does not recognise.
+        let outcome = match serde_json::from_value::<protocol::SteerResult>(answered) {
+            Ok(result) => result.outcome(),
+            Err(e) => {
+                tracing::debug!(error = %e, "could not read the reply to a steer");
+                protocol::SteerOutcome::Unknown("unreadable".into())
+            }
+        };
+
+        if outcome == protocol::SteerOutcome::PromptRequired {
+            self.forget_interjection(queue_id);
+        }
+        Ok(outcome)
+    }
+
+    fn remember_interjection(&self, queue_id: &str, text: &str) {
+        if let Ok(mut slot) = self.shared.turn.lock()
+            && let Some(state) = slot.as_mut()
+        {
+            state.interjected.push(Interjection {
+                queue_id: queue_id.to_string(),
+                text: text.to_string(),
+            });
+        }
+    }
+
+    fn forget_interjection(&self, queue_id: &str) {
+        if let Ok(mut slot) = self.shared.turn.lock()
+            && let Some(state) = slot.as_mut()
+        {
+            state.interjected.retain(|i| i.queue_id != queue_id);
+        }
     }
 
     /// Every knob the agent exposes, as it last described them.
@@ -730,6 +907,28 @@ impl AcpSession {
     /// would not exist until the adapter had been reached, and everything
     /// arriving in the gap would be measured against nothing.
     pub async fn prompt(&self, services: &Services, text: &str, turn_id: Option<String>) -> Result<(), String> {
+        self.prompt_with(services, text, turn_id, None).await
+    }
+
+    /// Deliver a queued item as a turn of its own.
+    ///
+    /// The item is settled in the same transaction that writes its message row
+    /// and its turn row, and there is no in-doubt window here for the same
+    /// reason a native turn has none: what happens after that transaction is a
+    /// *recorded turn*, which either answers or is written down as having
+    /// failed. Marking it in doubt instead would warn the next agent about a
+    /// message sitting in plain sight a few rows above.
+    pub async fn deliver_queued(&self, services: &Services, item: &QueuedPrompt) -> Result<(), String> {
+        self.prompt_with(services, &item.content, None, Some(&item.id)).await
+    }
+
+    async fn prompt_with(
+        &self,
+        services: &Services,
+        text: &str,
+        turn_id: Option<String>,
+        queued: Option<&str>,
+    ) -> Result<(), String> {
         let turn_id = match turn_id {
             Some(raw) => uuid::Uuid::parse_str(&raw)
                 .map_err(|_| "turn id must be a uuid".to_string())?
@@ -749,7 +948,7 @@ impl AcpSession {
             )
             .map_err(|busy| busy.to_string())?;
 
-        let user_message_id = self.write_prompt_row(services, &turn_id, text).await?;
+        let user_message_id = self.write_prompt_row(services, &turn_id, text, queued).await?;
 
         let assistant_message_id = begin_assistant(
             &services.db,
@@ -768,6 +967,7 @@ impl AcpSession {
                 row: OpenRow::new(assistant_message_id.clone()),
                 // The question. Every row this turn writes chains from it.
                 parent: user_message_id.clone(),
+                interjected: Vec::new(),
             });
         }
 
@@ -822,12 +1022,20 @@ impl AcpSession {
         self.finish(services, &turn_id, outcome, lease, dropped_before).await
     }
 
-    /// Write the user's row and the turn record, in one transaction.
+    /// Write the user's row and the turn record — and, when this prompt came
+    /// off the queue, settle the item too — in one transaction.
     ///
-    /// Both or neither: a turn row without its message is a run that reports
-    /// progress on nothing, and a message without its turn row is invisible to
-    /// startup reconciliation.
-    async fn write_prompt_row(&self, services: &Services, turn_id: &str, text: &str) -> Result<String, String> {
+    /// All or none: a turn row without its message is a run that reports
+    /// progress on nothing, a message without its turn row is invisible to
+    /// startup reconciliation, and a queue item settled without either is one
+    /// that has been consumed and produced nothing.
+    async fn write_prompt_row(
+        &self,
+        services: &Services,
+        turn_id: &str,
+        text: &str,
+        queued: Option<&str>,
+    ) -> Result<String, String> {
         use crate::db::models::message::NewMessage;
         use diesel::Connection;
 
@@ -837,6 +1045,7 @@ impl AcpSession {
         let message_id = uuid::Uuid::new_v4().to_string();
         let returned = message_id.clone();
         let content = text.to_string();
+        let queued = queued.map(str::to_string);
 
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool)?;
@@ -879,6 +1088,18 @@ impl AcpSession {
                 )?;
 
                 crate::db::ops::turn::begin(conn, &turn_id, &conversation_id, TurnOrigin::ClaudeCode, None, now)?;
+                if let Some(queued) = &queued {
+                    // Refuses an item somebody has already taken, and rolls the
+                    // whole thing back rather than writing a second row for it.
+                    // The turn lease makes that all but impossible — two pumps
+                    // cannot both hold the conversation — and "all but" is the
+                    // wrong guarantee for a message that says "delete the old
+                    // migration".
+                    if crate::db::ops::queue::mark_dispatched(conn, queued, &turn_id, now)? == 0 {
+                        return Err(diesel::result::Error::RollbackTransaction);
+                    }
+                    crate::db::ops::queue::mark_settled(conn, queued, Some(&message_id), now)?;
+                }
                 Ok(())
             })
             .map_err(|e| e.to_string())
@@ -931,9 +1152,17 @@ impl AcpSession {
         // id that already holds the previous round's answer. Completing it again
         // would replace that answer with nothing.
         let last_row = state.row;
-        if !last_row.written {
-            self.shared.write_row(turn_id, &state.parent, &last_row).await;
-        }
+        let last = if last_row.written {
+            state.parent.clone()
+        } else {
+            self.shared.write_row(turn_id, &state.parent, &last_row).await
+        };
+        // Whatever was steered into the final round, which has no boundary of
+        // its own to land at. Owed even on a failed turn: the agent took the
+        // message, so the transcript has to show it was said.
+        self.shared
+            .write_interjections(turn_id, &last, &state.interjected)
+            .await;
 
         let (status, reason, error) = match &outcome {
             Ok(value) => {
@@ -997,6 +1226,18 @@ impl AcpSession {
         );
 
         drop(lease);
+
+        // Now, and not before: the queue's next item wants a turn of its own,
+        // and the lease it needs is the one that has just been dropped.
+        //
+        // A turn that did not reach an ending stops the queue instead. The
+        // instructions behind a failure rest on the step that failed — "now
+        // rename that function" means nothing if the function was never
+        // created — so what happens next is a person's decision, not ours.
+        match status {
+            TurnStatus::Done => crate::agent::queue::pump_later(services, &self.conversation_id),
+            _ => crate::agent::queue::hold(services, &self.conversation_id).await,
+        }
 
         match outcome {
             // The caller hears about lost updates too. `acp_send` is awaited by

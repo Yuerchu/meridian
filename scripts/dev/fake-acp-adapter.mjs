@@ -50,8 +50,31 @@ rl.on('line', async (line) => {
         agentCapabilities: { loadSession: true },
         authMethods: [{ id: 'claude', name: 'Claude subscription' }],
         agentInfo: { name: 'fake-acp', version: '0.0.1' },
+        // The steering extension is advertised here, at the top level, beside
+        // `agentCapabilities` rather than inside it. A client looking in the
+        // wrong place reads every adapter as not supporting it.
+        _meta: { steering: { supported: true } },
       },
     })
+    return
+  }
+
+  // Put a message into the turn that is already running. Answers the three
+  // outcomes the real adapter does, including the one that depends on what the
+  // client asked for: with no turn to join, `promptRequired` hands the message
+  // back only if the request opted into it, and otherwise the older behaviour
+  // detaches a turn of its own.
+  if (msg.method === '_session/steering') {
+    const text = msg.params?.prompt?.[0]?.text ?? ''
+    if (globalThis.__steer) {
+      note('steered into the running turn: ' + text)
+      globalThis.__steer(text)
+      send({ jsonrpc: '2.0', id: msg.id, result: { outcome: 'injected' } })
+    } else if (msg.params?._meta?.steering?.idleBehavior === 'promptRequired') {
+      send({ jsonrpc: '2.0', id: msg.id, result: { outcome: 'promptRequired', reason: 'noRunningTurn' } })
+    } else {
+      send({ jsonrpc: '2.0', id: msg.id, result: { outcome: 'startedNewTurn' } })
+    }
     return
   }
 
@@ -76,6 +99,21 @@ rl.on('line', async (line) => {
       for (let i = 0; i < 4000; i++) {
         upd({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: `chunk ${i} ` } })
       }
+      send({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } })
+      return
+    }
+
+    // A turn that runs until it is steered. The point of it is the window: a
+    // client can only test mid-turn delivery against a turn that is reliably
+    // still going when the steer arrives.
+    if (asked === 'hold') {
+      const steered = new Promise((resolve) => {
+        globalThis.__steer = resolve
+      })
+      upd({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'working...' } })
+      const injected = await steered
+      globalThis.__steer = undefined
+      upd({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: ` heard: ${injected}` } })
       send({ jsonrpc: '2.0', id: msg.id, result: { stopReason: 'end_turn' } })
       return
     }

@@ -22,6 +22,7 @@ pub mod preference;
 pub mod project;
 pub mod prompt_template;
 pub mod provider;
+pub mod queue;
 #[cfg(not(target_os = "android"))]
 pub mod remote;
 pub mod secret;
