@@ -191,12 +191,13 @@ function ChatViewInner({
   const steerable = contextInfo.agentKind === 'agent' || contextInfo.agentKind === 'explore'
   const steering = steerable && streaming
 
-  // Only a hosted session, because only a hosted session has a runner that
-  // delivers. The table is there for every conversation and a native turn
-  // still passes `steering: None`, so offering the queue anywhere else would
-  // stack messages up that nothing would ever send.
-  const queue = usePromptQueue(conversationId, !!isHostedAgent)
-  const queueing = !!isHostedAgent && streaming
+  // Everything with a runner behind it, which is a hosted session and an
+  // ordinary conversation — but not a delegated run, which has `steerable` and
+  // wants it: what is typed there goes straight into the run rather than being
+  // stacked up for after it.
+  const queueable = !steerable
+  const queue = usePromptQueue(conversationId, queueable)
+  const queueing = queueable && streaming
 
   const handleSubmit = useCallback(() => {
     const text = input.trim()

@@ -161,13 +161,13 @@ impl SubAgentInbox {
         let mut guard = self.queue.lock().unwrap_or_else(|e| e.into_inner());
         match guard.as_mut() {
             Some(queue) => {
-                queue.push(crate::agent::engine::Steered {
+                queue.push(crate::agent::engine::Steered::typed(
                     text,
                     // Typed into the window by the person watching. They have no
                     // chat identity, which is not the same as there being nobody
                     // — see `SteeredOrigin`.
-                    origin: crate::agent::engine::SteeredOrigin::User(None),
-                });
+                    crate::agent::engine::SteeredOrigin::User(None),
+                ));
                 Accept::Queued
             }
             None => Accept::Closed(text),
@@ -190,8 +190,9 @@ impl SubAgentInbox {
 
 /// The inbox *is* the port. A wrapper type would only exist to hold a reference
 /// to this one and forward a single method.
+#[async_trait::async_trait]
 impl crate::agent::engine::Steering for SubAgentInbox {
-    fn drain(&self) -> Vec<crate::agent::engine::Steered> {
+    async fn drain(&self) -> Vec<crate::agent::engine::Steered> {
         match self.queue.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
             Some(queue) => std::mem::take(queue),
             None => Vec::new(),
@@ -359,22 +360,22 @@ mod tests {
 
     /// Draining is what the loop does between rounds; closing is the end. A
     /// drained inbox still takes messages, a closed one never does again.
-    #[test]
-    fn draining_is_not_closing() {
+    #[tokio::test]
+    async fn draining_is_not_closing() {
         use crate::agent::engine::Steering;
         let inbox = SubAgentInbox {
             queue: std::sync::Mutex::new(Some(Vec::new())),
         };
         inbox.append("first".into());
 
-        assert_eq!(inbox.drain().len(), 1);
-        assert!(inbox.drain().is_empty());
+        assert_eq!(inbox.drain().await.len(), 1);
+        assert!(inbox.drain().await.is_empty());
         assert!(matches!(inbox.append("second".into()), Accept::Queued));
 
         assert_eq!(inbox.close().len(), 1);
         assert!(matches!(inbox.append("third".into()), Accept::Closed(_)));
         assert!(
-            inbox.drain().is_empty(),
+            inbox.drain().await.is_empty(),
             "a closed inbox has nothing left to give the loop"
         );
     }

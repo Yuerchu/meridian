@@ -92,6 +92,13 @@ pub fn run() {
             events.register(Arc::new(WindowSink(app.handle().clone())), true);
 
             let services = bootstrap::bootstrap(data_dir, events);
+            // The one thing core needs from up here: how to run a turn. The
+            // prompt queue lives below the line and has to be able to start
+            // one, and `commands::chat` is a Tauri command. Set before anything
+            // can pump, which is anything a person does.
+            let _ = services
+                .turn_starter
+                .set(Arc::new(commands::chat::DesktopTurns(services.clone())));
             app.manage(services.clone());
 
             #[cfg(target_os = "android")]

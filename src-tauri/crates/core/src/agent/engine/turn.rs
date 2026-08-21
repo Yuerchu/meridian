@@ -656,7 +656,7 @@ async fn run(
             // what happened to them. Draining and then stopping would make them
             // vanish.
             let steered = match ports.steering {
-                Some(s) if continuations < MAX_TAIL_CONTINUATIONS => s.drain(),
+                Some(s) if continuations < MAX_TAIL_CONTINUATIONS => s.drain().await,
                 _ => Vec::new(),
             };
             if steered.is_empty() {
@@ -983,7 +983,7 @@ async fn run(
         // a history something else is appending to. Injecting only appends, so
         // the prompt prefix the cache is keyed on stays exactly where it was.
         if let Some(steering) = ports.steering {
-            let items = steering.drain();
+            let items = steering.drain().await;
             if !items.is_empty() {
                 inject_steering(
                     pool,
@@ -1058,16 +1058,24 @@ async fn inject_steering(
             SteeredOrigin::User(Some(s)) => Some(s.user_id),
             _ => None,
         };
-        if let Some(id) = append_steering(
-            pool,
-            conversation_id,
-            turn_id,
-            &item.text,
-            sender,
-            parent_cursor.as_deref(),
-        )
-        .await
-        {
+        // A message that already has a row is not written a second time. Its id
+        // still advances the cursor, because it is on the path either way and
+        // the next row has to hang off it — see [`Steered::row`].
+        let written = match &item.row {
+            Some(id) => Some(id.clone()),
+            None => {
+                append_steering(
+                    pool,
+                    conversation_id,
+                    turn_id,
+                    &item.text,
+                    sender,
+                    parent_cursor.as_deref(),
+                )
+                .await
+            }
+        };
+        if let Some(id) = written {
             *parent_cursor = Some(id);
         }
         // The turn's first resolve pass ran before this existed, so any image
@@ -1361,8 +1369,9 @@ mod tests {
     /// behaves across rounds.
     struct Inbox(Mutex<Vec<Steered>>);
 
+    #[async_trait::async_trait]
     impl Steering for Inbox {
-        fn drain(&self) -> Vec<Steered> {
+        async fn drain(&self) -> Vec<Steered> {
             std::mem::take(&mut *self.0.lock().unwrap())
         }
     }
@@ -2030,10 +2039,12 @@ mod tests {
                     user_id: 7,
                     nickname: None,
                 })),
+                row: None,
             },
             Steered {
                 text: "they left the group".into(),
                 origin: SteeredOrigin::System,
+                row: None,
             },
         ]));
 
@@ -2073,8 +2084,9 @@ mod tests {
     #[tokio::test]
     async fn someone_with_less_authority_joining_takes_the_tools_with_them() {
         struct Joins(Mutex<Vec<Steered>>);
+        #[async_trait::async_trait]
         impl Steering for Joins {
-            fn drain(&self) -> Vec<Steered> {
+            async fn drain(&self) -> Vec<Steered> {
                 std::mem::take(&mut *self.0.lock().unwrap())
             }
             /// Nothing is left once they have spoken.
@@ -2099,6 +2111,7 @@ mod tests {
                 user_id: 9,
                 nickname: None,
             })),
+            row: None,
         }]));
 
         run_turn(
@@ -2136,6 +2149,7 @@ mod tests {
         let inbox = Inbox(Mutex::new(vec![Steered {
             text: "wait, use the other approach".into(),
             origin: SteeredOrigin::User(None),
+            row: None,
         }]));
 
         let outcome = run_turn(
@@ -2172,6 +2186,63 @@ mod tests {
         );
     }
 
+    /// A message that arrives already written does not get a second row.
+    ///
+    /// The durable queue takes the item and writes the row in one transaction,
+    /// because a kill in between must leave one of two states and not a third.
+    /// That only works if the loop believes it: writing its own row here would
+    /// put the same sentence in the transcript twice, and hang the rest of the
+    /// turn off a row the queue has never heard of.
+    #[tokio::test]
+    async fn a_steered_message_that_already_has_a_row_is_not_written_again() {
+        let pool = test_db();
+        conversation(&pool);
+        let (tools, mcp, cancel) = (registry(), McpRegistry::new(), CancellationToken::new());
+        let provider = Scripted::of(vec![says("here is the answer"), says("and about that")]);
+        let approvals = Answers::nobody();
+
+        // What the queue would have written, in its own transaction.
+        let existing =
+            crate::agent::engine::transcript::write_steering(&pool, "c1", "t1", "already on the record", None, None)
+                .await
+                .expect("the queue wrote it");
+
+        let before = rows(&pool).len();
+        let inbox = Inbox(Mutex::new(vec![Steered {
+            text: "already on the record".into(),
+            origin: SteeredOrigin::User(None),
+            row: Some(existing.clone()),
+        }]));
+
+        let outcome = run_turn(
+            &services(&pool, &tools, &mcp),
+            setup(&provider, &pool, &cancel, &[]),
+            TurnPorts {
+                steering: Some(&inbox),
+                ..ports(&approvals, None)
+            },
+        )
+        .await;
+        assert_eq!(outcome.reply.as_deref(), Ok("and about that"));
+
+        let after = rows(&pool);
+        assert_eq!(
+            after.iter().filter(|r| r.content == "already on the record").count(),
+            1,
+            "one row for one message"
+        );
+        // And the turn carried on from it: the row written after the
+        // interjection hangs off it, so the transcript is one path.
+        assert!(
+            after.iter().any(|r| r.parent_id.as_deref() == Some(existing.as_str())),
+            "the turn continued from the row it was handed"
+        );
+        // The model still saw it, which is the other half of not writing it.
+        let second = &provider.requests()[1].0;
+        assert_eq!(second.last().unwrap().content, "already on the record");
+        assert!(after.len() > before);
+    }
+
     /// The cap is not a drain. Reaching it has to leave the messages where they
     /// are, so whoever closes the inbox can hand them back and say what happened
     /// to them — draining and then stopping would make them disappear.
@@ -2185,12 +2256,14 @@ mod tests {
         let approvals = Answers::nobody();
         // Never empties: something new is waiting every single time.
         struct Endless(Mutex<usize>);
+        #[async_trait::async_trait]
         impl Steering for Endless {
-            fn drain(&self) -> Vec<Steered> {
+            async fn drain(&self) -> Vec<Steered> {
                 *self.0.lock().unwrap() += 1;
                 vec![Steered {
                     text: "and another".into(),
                     origin: SteeredOrigin::User(None),
+                    row: None,
                 }]
             }
         }

@@ -221,6 +221,7 @@ struct InboxSteering<'a> {
     demoted: std::sync::atomic::AtomicBool,
 }
 
+#[async_trait::async_trait]
 impl crate::agent::engine::Steering for InboxSteering<'_> {
     fn narrowed(&self) -> Option<std::collections::HashSet<String>> {
         self.demoted
@@ -228,7 +229,7 @@ impl crate::agent::engine::Steering for InboxSteering<'_> {
             .then(|| self.ordinary.clone())
     }
 
-    fn drain(&self) -> Vec<crate::agent::engine::Steered> {
+    async fn drain(&self) -> Vec<crate::agent::engine::Steered> {
         let items = self.inbox.drain();
         // A notice carries no sender — nobody said it, so it cannot lower
         // anything. Only a person who is not an admin does.
@@ -237,15 +238,17 @@ impl crate::agent::engine::Steering for InboxSteering<'_> {
         }
         items
             .into_iter()
-            .map(|item| crate::agent::engine::Steered {
-                text: item.text,
-                // A notice is something the system generated rather than
-                // something a person said, and it travels as context instead of
-                // as a user message.
-                origin: match item.sender.as_ref() {
-                    Some(s) => crate::agent::engine::SteeredOrigin::User(Some(s.into())),
-                    None => crate::agent::engine::SteeredOrigin::System,
-                },
+            .map(|item| {
+                crate::agent::engine::Steered::typed(
+                    item.text,
+                    // A notice is something the system generated rather than
+                    // something a person said, and it travels as context instead
+                    // of as a user message.
+                    match item.sender.as_ref() {
+                        Some(s) => crate::agent::engine::SteeredOrigin::User(Some(s.into())),
+                        None => crate::agent::engine::SteeredOrigin::System,
+                    },
+                )
             })
             .collect()
     }

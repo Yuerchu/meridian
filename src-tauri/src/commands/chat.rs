@@ -189,6 +189,46 @@ pub async fn stop_chat(app: tauri::AppHandle, conversation_id: String, turn_id: 
     Ok(())
 }
 
+/// The queue's way into an ordinary turn.
+///
+/// Registered once at startup, because `meridian_core` cannot reach a Tauri
+/// command and this is the one thing it needs from up here. Holds `Services`
+/// rather than an `AppHandle`: the handle is only ever used as a locator for
+/// exactly this, and taking it would put the framework back below the line for
+/// no gain.
+pub struct DesktopTurns(pub Services);
+
+#[async_trait::async_trait]
+impl meridian_core::services::StartTurn for DesktopTurns {
+    async fn start(
+        &self,
+        conversation_id: &str,
+        queued: &meridian_core::db::models::queue::QueuedPrompt,
+    ) -> Result<(), String> {
+        run_turn(
+            self.0.clone(),
+            conversation_id.to_string(),
+            Some(queued.content.clone()),
+            uuid::Uuid::new_v4().to_string(),
+            None,
+            // Every override left to the conversation's own configuration. A
+            // queued message was typed without a model picker in front of it,
+            // so inventing answers here would run it under settings nobody
+            // chose — and the composer's are about the turn a person is
+            // starting now, which this is not.
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            Some(queued.id.clone()),
+        )
+        .await
+    }
+}
+
 #[tauri::command]
 // Everything this turn logs is tagged with the conversation, so "why did that
 // one fail" is a single query rather than a scan. skip_all because the message
@@ -250,7 +290,49 @@ pub async fn chat(
             .to_string(),
         None => uuid::Uuid::new_v4().to_string(),
     };
-    let services = app.services();
+    run_turn(
+        app.services(),
+        conversation_id,
+        message,
+        turn_id,
+        replaces,
+        model_override,
+        provider_override,
+        thinking_level,
+        assistant_id,
+        fast,
+        mode,
+        voice,
+        None,
+    )
+    .await
+}
+
+/// One desktop turn, from anything that has `Services`.
+///
+/// Split out of [`chat`] for the queue, which starts a turn without a window in
+/// front of it. Everything here was already framework-free; what it did not
+/// have was a name.
+///
+/// `queued` names the queue item this turn is delivering, and travels all the
+/// way down to the transaction that writes the user's row so the two are spent
+/// together. See `db::ops::queue::take_next` for why that has to be one write.
+#[allow(clippy::too_many_arguments)]
+pub async fn run_turn(
+    services: Services,
+    conversation_id: String,
+    message: Option<String>,
+    turn_id: String,
+    replaces: Option<String>,
+    model_override: Option<String>,
+    provider_override: Option<String>,
+    thinking_level: Option<String>,
+    assistant_id: Option<String>,
+    fast: Option<bool>,
+    mode: Option<String>,
+    voice: Option<bool>,
+    queued: Option<String>,
+) -> Result<(), String> {
     let pool = services.db.clone();
 
     // Nothing is awaited between taking this and handing it to the guard that
@@ -274,8 +356,8 @@ pub async fn chat(
     // rather than at each `?` also keeps a single failure from being reported
     // twice.
     let result = chat_inner(
-        services,
-        conversation_id,
+        services.clone(),
+        conversation_id.clone(),
         message,
         lease,
         Arc::clone(&recorded),
@@ -287,6 +369,7 @@ pub async fn chat(
         fast,
         mode,
         voice,
+        queued,
     )
     .await
     .inspect_err(|e| tracing::error!(error = %e, "turn failed"));
@@ -300,6 +383,11 @@ pub async fn chat(
     {
         turn_record::finish(&pool, &turn_id, TurnStatus::Failed, Some(e)).await;
     }
+
+    // After the record is closed, and reading it back rather than being told:
+    // this function has a dozen ways out and the queue's answer depends on
+    // which of them a turn took. The row is the one place that already knows.
+    meridian_core::agent::queue::after_recorded_turn(&services, &conversation_id, &turn_id).await;
     result
 }
 
@@ -324,6 +412,7 @@ async fn chat_inner(
     fast: Option<bool>,
     mode: Option<String>,
     voice: Option<bool>,
+    queued: Option<String>,
 ) -> Result<(), String> {
     let secrets = &services.secrets;
     let pool = services.db.clone();
@@ -591,7 +680,7 @@ async fn chat_inner(
     // the assistant's and it sizes the memory block and the project
     // instructions; this one is the model's and shadows it for the loop. Moving
     // the shadow up with the resolution would silently resize both.
-    let turn_params = {
+    let mut turn_params = {
         let pool2 = pool.clone();
         let assistant2 = assistant.clone();
         let pid = effective_provider_id.clone();
@@ -617,6 +706,11 @@ async fn chat_inner(
         .await
         .map_err(|e| e.to_string())??
     };
+    // What the provider caches is a prefix, and the conversation is what keeps
+    // one stable across turns. Set here rather than inside the resolver, which
+    // is also what the summariser and the token estimator go through: neither
+    // sends the transcript's prefix, so pinning them to it buys nothing.
+    turn_params.params.cache_key = Some(conversation_id.clone());
     // A model that cannot take tools is sent none at all — several providers
     // refuse any request carrying a tools field. Decided here rather than by
     // emptying the list afterwards, because `offered` is what authorises a call
@@ -872,44 +966,62 @@ async fn chat_inner(
         let msg_id = user_msg_id.clone();
         let parent = parent_cursor.clone();
         let turn = turn_id.clone();
-        tokio::task::spawn_blocking(move || {
+        let queued = queued.clone();
+        tokio::task::spawn_blocking(move || -> Result<(), String> {
+            use diesel::Connection;
             let mut conn = get_conn(&pool)?;
-            db::ops::message::append_message(
-                &mut conn,
-                &NewMessage {
-                    id: &msg_id,
-                    conversation_id: &conv_id,
-                    role: "user",
-                    content: &msg,
-                    provider_id: None,
-                    model_id: None,
-                    input_tokens: None,
-                    output_tokens: None,
-                    tool_calls: None,
-                    tool_call_id: None,
-                    sort_order: 0,
-                    created_at: now,
-                    reasoning_content: None,
-                    rating: None,
-                    schema_version: 2,
-                    is_compact_summary: 0,
-                    // Desktop chats have a single implicit speaker.
-                    sender_id: None,
-                    parent_id: None,
-                    compact_anchor_id: None,
-                    source: if voice == Some(true) { Some("voice") } else { None },
-                    turn_id: Some(&turn),
-                    tool_outcome: None,
-                    // What the user typed cost no tokens and came from no upstream.
-                    cache_read_tokens: None,
-                    cache_write_tokens: None,
-                    provider_name: None,
-                },
-                parent.as_deref(),
-            )
-            .map_err(|e| e.to_string())?;
-            db::ops::emoji::link_stickers_in_content(&mut conn, &msg_id, &msg).map_err(|e| e.to_string())?;
-            Ok::<_, String>(())
+            // One transaction, because a queued message and the row it becomes
+            // must not come apart: killed in between, either the item is still
+            // queued and no row exists — deliver it again, safely — or the row
+            // is in the transcript and the item is spent.
+            conn.transaction::<_, diesel::result::Error, _>(|conn| {
+                db::ops::message::append_message(
+                    conn,
+                    &NewMessage {
+                        id: &msg_id,
+                        conversation_id: &conv_id,
+                        role: "user",
+                        content: &msg,
+                        provider_id: None,
+                        model_id: None,
+                        input_tokens: None,
+                        output_tokens: None,
+                        tool_calls: None,
+                        tool_call_id: None,
+                        sort_order: 0,
+                        created_at: now,
+                        reasoning_content: None,
+                        rating: None,
+                        schema_version: 2,
+                        is_compact_summary: 0,
+                        // Desktop chats have a single implicit speaker.
+                        sender_id: None,
+                        parent_id: None,
+                        compact_anchor_id: None,
+                        source: if voice == Some(true) { Some("voice") } else { None },
+                        turn_id: Some(&turn),
+                        tool_outcome: None,
+                        // What the user typed cost no tokens and came from no upstream.
+                        cache_read_tokens: None,
+                        cache_write_tokens: None,
+                        provider_name: None,
+                    },
+                    parent.as_deref(),
+                )?;
+                db::ops::emoji::link_stickers_in_content(conn, &msg_id, &msg)?;
+                if let Some(queued) = &queued {
+                    // Refuses an item somebody else already took, and rolls the row
+                    // back with it. The turn lease makes that all but impossible;
+                    // "all but" is the wrong guarantee for a message that might say
+                    // "delete the old migration".
+                    if db::ops::queue::mark_dispatched(conn, queued, &turn, now)? == 0 {
+                        return Err(diesel::result::Error::RollbackTransaction);
+                    }
+                    db::ops::queue::mark_settled(conn, queued, Some(&msg_id), now)?;
+                }
+                Ok(())
+            })
+            .map_err(|e| e.to_string())
         })
         .await
         .map_err(|e| e.to_string())??;
@@ -1041,6 +1153,10 @@ async fn chat_inner(
             unattended: false,
         },
     );
+    // Per turn, because a row it writes belongs to the turn it interrupted —
+    // which is where the model reads it.
+    let interjections =
+        meridian_core::agent::queue::Interjections::new(pool.clone(), conversation_id.clone(), turn_id.clone());
     let outcome = engine::run_turn(
         &engine::TurnServices {
             pool: &pool,
@@ -1071,8 +1187,6 @@ async fn chat_inner(
             // declared permission alone -- see the drift list.
             approval_rule: engine::ApprovalRule::ByReach { accept_edits },
             withheld: engine::WithheldWording::Explained,
-            // This turn's, though nothing reads it without a steering port. Its
-            // absence is what makes it unread, not a missing value.
             files_root,
             interrupted,
             compaction: engine::CompactionPolicy::Desktop {
@@ -1083,12 +1197,15 @@ async fn chat_inner(
         engine::TurnPorts {
             emit: Some(&emitter),
             approvals: &approvals,
-            // The desktop streams every chunk to the window as it arrives, has
-            // no inbox, and runs no tools outside the registry and MCP. Each
-            // `None` is the absence of the thing, not a feature turned off.
+            // The desktop streams every chunk to the window as it arrives and
+            // runs no tools outside the registry and MCP. Each `None` is the
+            // absence of the thing, not a feature turned off.
             interim: None,
             surface_tools: None,
-            steering: None,
+            // Not an inbox: the desktop's is a table, so a message queued for
+            // this turn survives the app being killed and is still there when
+            // it comes back. Draining is what spends it.
+            steering: Some(&interjections),
             transitions: Some(&transitions),
             sub_agents: Some(&sub_agents),
         },

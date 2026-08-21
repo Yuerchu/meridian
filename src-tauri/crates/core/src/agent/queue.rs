@@ -12,13 +12,28 @@
 //! have. So there are exactly two things that make the queue move, and both are
 //! somebody being there: an item being added, and a turn reaching its ending.
 //!
-//! Only hosted sessions deliver so far. A native turn already has the port for
-//! it — `engine::ports::Steering`, drained between rounds — but the desktop
-//! passes `None` for it, and connecting that is its own step.
+//! **The two runners take the queue by opposite routes, and neither is an
+//! accident.** A hosted session is asked — `_session/steering` and
+//! `session/prompt` are requests, and what comes back is the only evidence
+//! there is. A native turn is *offered*: [`Interjections`] is the `Steering`
+//! port the loop drains between rounds, so the queue never pushes and never has
+//! to know where the turn has got to.
+//!
+//! That difference is the same one the ledger is built around. A native turn
+//! resends its whole history, so a row in the transcript is delivery — and
+//! [`db::ops::queue::take_next`](crate::db::ops::queue::take_next) makes the row
+//! and the item's removal one transaction, which leaves no in-doubt state to
+//! report. A hosted turn's history lives in the adapter, so a row here proves
+//! nothing and the doubt is real.
 
 use crate::db::models::queue::{Delivery, QueuedPrompt};
+use crate::db::models::turn::TurnStatus;
 use crate::services::Services;
 use crate::util::{get_conn, now_ms};
+
+mod native;
+
+pub use native::Interjections;
 
 /// Deliver whatever the queue owes this conversation, if anything can go now.
 ///
@@ -26,12 +41,14 @@ use crate::util::{get_conn, now_ms};
 /// which is the ordinary case: this runs after every turn of every hosted
 /// conversation, and most of them have an empty queue.
 pub async fn pump(services: &Services, conversation_id: &str) {
-    // A session is a child process, so Android has none and this is the whole
-    // of what a pump can do there until the native path is connected.
+    // A session is a child process, so Android has none — and a conversation
+    // with one is never also a native one, so this returning early is what
+    // sends the rest here.
     #[cfg(not(target_os = "android"))]
-    hosted::pump(services, conversation_id).await;
-    #[cfg(target_os = "android")]
-    let _ = (services, conversation_id);
+    if services.acp.get(conversation_id).is_some_and(|s| s.is_alive()) {
+        return hosted::pump(services, conversation_id).await;
+    }
+    native::pump(services, conversation_id).await;
 }
 
 /// The same, later and elsewhere.
@@ -43,6 +60,38 @@ pub fn pump_later(services: &Services, conversation_id: &str) {
     let services = services.clone();
     let conversation_id = conversation_id.to_string();
     tokio::spawn(async move { pump(&services, &conversation_id).await });
+}
+
+/// What the end of a turn does to the queue, for both runners.
+///
+/// A turn that reached an ending lets the next item go; anything else stops the
+/// whole queue. The instructions behind a failure rest on the same assumption
+/// the failed step broke — "now rename that function" means nothing if the
+/// function was never created — and a run the user stopped is them saying so
+/// out loud.
+pub async fn after_turn(services: &Services, conversation_id: &str, status: Option<TurnStatus>) {
+    match status {
+        Some(TurnStatus::Done) => pump_later(services, conversation_id),
+        _ => hold(services, conversation_id).await,
+    }
+}
+
+/// The same, for a caller that has a turn id rather than a verdict.
+///
+/// The record is the source of truth about how a turn ended, and reading it
+/// back is cheaper than threading the answer out through every early return of
+/// a function that has a dozen.
+pub async fn after_recorded_turn(services: &Services, conversation_id: &str, turn_id: &str) {
+    let pool = services.db.clone();
+    let id = turn_id.to_string();
+    let status = tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().ok()?;
+        crate::db::ops::turn::get(&mut conn, &id).ok().flatten()?.status()
+    })
+    .await
+    .ok()
+    .flatten();
+    after_turn(services, conversation_id, status).await;
 }
 
 /// Stop the queue, because the turn in front of it did not finish.
@@ -193,9 +242,6 @@ fn describe(items: &[QueuedPrompt]) -> String {
 /// `steerable` narrows to interjections; idle takes the front of the queue
 /// whatever mode it is in, because with no turn to interrupt the distinction
 /// has nothing to refer to.
-// Android has no runner to deliver to: a hosted session is a child process, and
-// the native path is not connected yet.
-#[cfg_attr(target_os = "android", allow(dead_code, reason = "nothing delivers there yet"))]
 async fn read(services: &Services, conversation_id: &str, steerable: bool) -> Option<QueuedPrompt> {
     let pool = services.db.clone();
     let id = conversation_id.to_string();

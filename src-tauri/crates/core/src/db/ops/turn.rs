@@ -267,6 +267,15 @@ pub fn list_for_conversation(conn: &mut SqliteConnection, conversation_id: &str)
         .load::<Turn>(conn)
 }
 
+/// One turn's record, for a caller that has the id and wants the verdict.
+///
+/// `None` for an id with no row, which is not an error: a turn can fail before
+/// it has written one, and the callers here treat "no record" and "did not
+/// reach an ending" the same way.
+pub fn get(conn: &mut SqliteConnection, turn_id: &str) -> QueryResult<Option<Turn>> {
+    turns::table.find(turn_id).first::<Turn>(conn).optional()
+}
+
 /// Mark every turn still recorded as running as interrupted, and report how
 /// many there were.
 ///
