@@ -10,7 +10,7 @@
 //! `text`, `tool_call`, `tool_result`; `stream.rs` emits `reasoning`). Inventing
 //! a parallel one for ACP would mean a second renderer.
 
-use super::protocol::{PlanEntry, SessionUpdate, ToolCall, Usage};
+use super::protocol::{PlanEntry, SessionConfigOption, SessionUpdate, ToolCall, Usage};
 
 /// What one `session/update` means here.
 ///
@@ -52,8 +52,14 @@ pub enum Effect {
     Plan(Vec<PlanItem>),
     /// Context usage. Reported, never priced — see [`Usage::cost`].
     Usage { used: u64, size: u64 },
-    /// Which model is answering, as the agent's own id for it.
-    ModelSelected(String),
+    /// The agent has described its configuration knobs.
+    ///
+    /// Carries the whole set rather than the model alone, because the composer
+    /// offers them: the values a `select` accepts are the agent's to decide and
+    /// change under us — picking a model re-derives which modes exist. The
+    /// model is read back out of this by the session, which is also what keeps
+    /// there from being two sources for it.
+    ConfigOptions(Vec<SessionConfigOption>),
     /// A call that has been announced but has not finished, and everything this
     /// step does not draw.
     Ignored,
@@ -107,11 +113,13 @@ pub fn effect_of(update: SessionUpdate) -> Effect {
         },
         SessionUpdate::Plan { entries } => Effect::Plan(entries.iter().map(plan_item).collect()),
         SessionUpdate::UsageUpdate(Usage { used, size, .. }) => Effect::Usage { used, size },
-        SessionUpdate::ConfigOptionUpdate { config_options } => config_options
-            .iter()
-            .find_map(|o| o.as_model())
-            .map(|m| Effect::ModelSelected(m.to_string()))
-            .unwrap_or(Effect::Ignored),
+        // Passed through whole, including an update that changes nothing this
+        // app reads: the set is merged rather than replaced, so an option
+        // carrying only a new `currentValue` still has to reach the merge.
+        SessionUpdate::ConfigOptionUpdate { config_options } if !config_options.is_empty() => {
+            Effect::ConfigOptions(config_options)
+        }
+        SessionUpdate::ConfigOptionUpdate { .. } => Effect::Ignored,
         SessionUpdate::Unhandled => Effect::Ignored,
     }
 }
@@ -425,17 +433,28 @@ mod tests {
     }
 
     /// ACP has no model field. It reports the model as one of the session's
-    /// configuration options, and this is the one thing read out of them.
+    /// configuration options — and the whole set travels, because the composer
+    /// offers the others.
     #[test]
-    fn the_model_is_read_off_the_config_options() {
+    fn the_whole_option_set_travels_and_the_model_is_read_out_of_it() {
         let effect = effect_of(update(
             r#"{"sessionUpdate":"config_option_update","configOptions":[
                 {"id":"mode","name":"Mode","category":"mode","type":"select",
-                 "currentValue":"code","options":[]},
+                 "currentValue":"code","options":[{"value":"code","name":"Code"},
+                                                  {"value":"plan","name":"Plan"}]},
                 {"id":"model","name":"Model","category":"model","type":"select",
                  "currentValue":"claude-sonnet-4-5","options":[]}]}"#,
         ));
-        assert_eq!(effect, Effect::ModelSelected("claude-sonnet-4-5".into()));
+        let Effect::ConfigOptions(options) = effect else {
+            panic!("expected the option set, got {effect:?}");
+        };
+        assert_eq!(options.len(), 2, "the mode knob travels too, not just the model");
+        assert_eq!(options.iter().find_map(|o| o.as_model()), Some("claude-sonnet-4-5"));
+        // And what a select may be set to, which is the half a picker needs.
+        let mode = options.iter().find(|o| o.names_a("mode")).expect("the mode option");
+        assert!(mode.is_select());
+        assert_eq!(mode.options.len(), 2);
+        assert_eq!(mode.current_str(), Some("code"));
     }
 
     /// `category` is documented as advisory and an agent may leave it out. The
@@ -446,14 +465,31 @@ mod tests {
             r#"{"sessionUpdate":"config_option_update","configOptions":[
                 {"id":"model","name":"Model","type":"select","currentValue":"opus-4"}]}"#,
         ));
-        assert_eq!(effect, Effect::ModelSelected("opus-4".into()));
+        let Effect::ConfigOptions(options) = effect else {
+            panic!("expected the option set, got {effect:?}");
+        };
+        assert_eq!(options.iter().find_map(|o| o.as_model()), Some("opus-4"));
 
-        // A toggle, whose `currentValue` is a boolean. Nothing to read.
+        // A toggle, whose `currentValue` is a boolean. Still passed through —
+        // the merge wants it — but it names no model and is not a picker.
         let effect = effect_of(update(
             r#"{"sessionUpdate":"config_option_update","configOptions":[
                 {"id":"thinking","name":"Thinking","type":"boolean","currentValue":true}]}"#,
         ));
-        assert_eq!(effect, Effect::Ignored);
+        let Effect::ConfigOptions(options) = effect else {
+            panic!("expected the option set, got {effect:?}");
+        };
+        assert_eq!(options.iter().find_map(|o| o.as_model()), None);
+        assert!(!options[0].is_select());
+    }
+
+    /// An update with nothing in it is not a change to merge.
+    #[test]
+    fn an_empty_option_set_is_ignored() {
+        assert_eq!(
+            effect_of(update(r#"{"sessionUpdate":"config_option_update","configOptions":[]}"#)),
+            Effect::Ignored
+        );
     }
 
     /// The reason the parse is lax, stated as behaviour: a variant this build

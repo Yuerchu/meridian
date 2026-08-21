@@ -250,21 +250,44 @@ pub struct NewSessionResult {
 /// Deliberately lax. The shape is a `oneOf` on `type` (`select` or `boolean`)
 /// and gains members; a strict parse would refuse the whole notification over a
 /// knob this app does not care about.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionConfigOption {
     pub id: String,
     #[serde(default)]
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// `model` / `mode` / `model_config` / `thought_level`, or something an
     /// agent made up. Optional in the schema and described there as UX-only, so
     /// it is a hint rather than a guarantee.
     #[serde(default)]
     pub category: Option<String>,
+    /// `select` or `boolean`. Only `select` is offered as a picker; a knob of
+    /// some other shape is carried through so the front end can say it exists
+    /// rather than pretend it does not.
+    #[serde(default, rename = "type")]
+    pub kind: Option<String>,
     /// A value id for a `select`, a boolean for a toggle. Untyped because this
     /// only ever reads the one case it understands.
     #[serde(default)]
     pub current_value: Option<serde_json::Value>,
+    /// What a `select` may be set to. Absent for a toggle, and absent on the
+    /// `config_option_update` notification for options that did not change —
+    /// which is why the session keeps the last full set rather than replacing
+    /// it wholesale.
+    #[serde(default)]
+    pub options: Vec<ConfigOptionValue>,
+}
+
+/// One choice on a `select` config option.
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct ConfigOptionValue {
+    pub value: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 impl SessionConfigOption {
@@ -274,13 +297,54 @@ impl SessionConfigOption {
     /// documented as advisory, and an agent that omits it still calls the knob
     /// `model`.
     pub fn as_model(&self) -> Option<&str> {
-        let names_a_model = self.category.as_deref() == Some("model")
-            || (self.category.is_none() && self.id.eq_ignore_ascii_case("model"));
-        if !names_a_model {
+        if !self.names_a("model") {
             return None;
         }
         self.current_value.as_ref()?.as_str().filter(|v| !v.is_empty())
     }
+
+    /// Whether this option is the one called `what`, by category or by id.
+    ///
+    /// `category` is documented as advisory, so an agent may omit it and still
+    /// call the knob `model`. Both are accepted; neither is required to be
+    /// present for the *other* to work.
+    pub fn names_a(&self, what: &str) -> bool {
+        match self.category.as_deref() {
+            Some(category) => category.eq_ignore_ascii_case(what),
+            None => self.id.eq_ignore_ascii_case(what),
+        }
+    }
+
+    /// A `select` is the only shape with something to pick from. Everything
+    /// else is carried but not offered.
+    pub fn is_select(&self) -> bool {
+        // Absent `type` with values listed is still a select: the field is
+        // optional in the schema and the values are the stronger evidence.
+        matches!(self.kind.as_deref(), Some("select")) || (self.kind.is_none() && !self.options.is_empty())
+    }
+
+    /// The current value as a string, for a `select`.
+    pub fn current_str(&self) -> Option<&str> {
+        self.current_value.as_ref()?.as_str().filter(|v| !v.is_empty())
+    }
+}
+
+/// Setting one of the knobs above. The reply carries the whole option set back,
+/// because changing one can reshape another — picking a model re-derives which
+/// modes are available.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetConfigOptionParams {
+    pub session_id: String,
+    pub config_id: String,
+    pub value: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SetConfigOptionResult {
+    #[serde(default)]
+    pub config_options: Vec<SessionConfigOption>,
 }
 
 #[derive(Debug, Serialize)]

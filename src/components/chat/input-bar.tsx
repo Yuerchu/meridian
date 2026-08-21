@@ -30,6 +30,8 @@ import { VoiceOverlay } from './voice-overlay'
 import { MobileOptionsMenu } from './toolbar'
 import { ComposerMenu } from './composer-menu'
 import { EmojiPicker } from './emoji-picker'
+import { ToolbarSelect } from './toolbar-select'
+import { isSelect, useAcpConfig } from '@/hooks/use-acp-config'
 import type { Assistant, ChatMode, Emoji, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
 
 interface ContextInfo {
@@ -62,6 +64,12 @@ export interface PendingSticker {
 }
 
 interface InputBarProps {
+  /** Which conversation this composer belongs to. Needed because a hosted
+   *  session's model and mode are the *agent's* to report, per session, rather
+   *  than this app's settings. */
+  conversationId: string
+  /** A hosted Claude Code session, whose knobs come over ACP. */
+  isHosted?: boolean
   value: string
   onChange: (value: string) => void
   onSubmit: () => void
@@ -117,6 +125,49 @@ interface InputBarProps {
  * platform's own long-press menu has none of those problems and custom ROMs
  * add clipboard history and translation to it, so let the WebView have it.
  */
+/**
+ * The knobs a hosted Claude Code session exposes, drawn beside the composer's
+ * menu rather than inside it.
+ *
+ * Renders nothing at all for an ordinary conversation, and nothing for a hosted
+ * one whose adapter is not running — there is no session to change anything on,
+ * and a picker that cannot pick is worse than no picker.
+ *
+ * Which knobs exist is the *agent's* answer, not ours. It reports the model,
+ * the permission mode and the reasoning effort as configuration options and
+ * re-derives their values as it goes, so this draws every `select` it is given
+ * instead of naming the three it expects. A toggle is skipped: it is carried
+ * through the protocol layer but has no place in a row of dropdowns, and
+ * pretending a boolean is a two-item picker reads as a bug.
+ */
+function HostedSessionKnobs({ conversationId, isHosted }: { conversationId: string; isHosted: boolean }) {
+  const { options, set, busy } = useAcpConfig(conversationId, isHosted)
+  const pickers = options.filter(isSelect)
+  if (pickers.length === 0) return null
+
+  return (
+    <>
+      {pickers.map((option) => (
+        <ToolbarSelect
+          key={option.id}
+          aria-label={option.name || option.id}
+          placeholder={option.name || option.id}
+          value={typeof option.currentValue === 'string' ? option.currentValue : null}
+          isDisabled={busy}
+          choices={option.options.map((v) => ({
+            value: v.value,
+            label: v.name || v.value,
+            hint: v.description,
+          }))}
+          // A refusal leaves the set as it was, which is already what is on
+          // screen — the agent did not change, so neither should the picker.
+          onSelect={(value) => void set(option.id, value).catch(() => {})}
+        />
+      ))}
+    </>
+  )
+}
+
 function ComposerContextMenu({
   enabled,
   onOpenChange,
@@ -138,6 +189,8 @@ function ComposerContextMenu({
 }
 
 export function InputBar({
+  conversationId,
+  isHosted,
   value,
   onChange,
   onSubmit,
@@ -505,6 +558,9 @@ export function InputBar({
             hasPayload={!!pendingSticker}
             toolbarStart={
               steerable && streaming ? null : isAndroid ? (
+                // The phone keeps everything in the one sheet: there is no room
+                // beside the field for a picker, and a truncated model name is
+                // worse than one tap.
                 <MobileOptionsMenu
                   assistants={assistants}
                   providers={providers}
@@ -528,25 +584,33 @@ export function InputBar({
                   supportsImages={capabilities?.supports_images !== false}
                 />
               ) : (
-                <ComposerMenu
-                  assistants={assistants}
-                  providers={providers}
-                  currentAssistantId={currentAssistantId}
-                  currentModelId={currentModelId}
-                  currentProviderId={currentProviderId}
-                  onSelectAssistant={onSelectAssistant}
-                  onSelectModel={onSelectModel}
-                  thinkingLevel={thinkingLevel}
-                  onSelectThinkingLevel={onSelectThinkingLevel}
-                  fastMode={fastMode}
-                  onToggleFast={onToggleFast}
-                  mode={mode}
-                  onSelectMode={onSelectMode}
-                  acceptEdits={acceptEdits}
-                  onToggleAcceptEdits={onToggleAcceptEdits}
-                  capabilities={capabilities}
-                  onPickFile={onAttachFiles && capabilities?.supports_images !== false ? handlePickFile : undefined}
-                />
+                <>
+                  <ComposerMenu
+                    assistants={assistants}
+                    providers={providers}
+                    currentAssistantId={currentAssistantId}
+                    currentModelId={currentModelId}
+                    currentProviderId={currentProviderId}
+                    onSelectAssistant={onSelectAssistant}
+                    onSelectModel={onSelectModel}
+                    thinkingLevel={thinkingLevel}
+                    onSelectThinkingLevel={onSelectThinkingLevel}
+                    fastMode={fastMode}
+                    onToggleFast={onToggleFast}
+                    mode={mode}
+                    onSelectMode={onSelectMode}
+                    acceptEdits={acceptEdits}
+                    onToggleAcceptEdits={onToggleAcceptEdits}
+                    capabilities={capabilities}
+                    onPickFile={onAttachFiles && capabilities?.supports_images !== false ? handlePickFile : undefined}
+                  />
+                  {/* Beside the menu rather than inside it. Which model is
+                      answering is the one setting a person changes while
+                      working, and it is worth seeing without opening
+                      anything. A hosted session's knobs are the agent's and
+                      arrive over ACP; everything else stays in the menu. */}
+                  <HostedSessionKnobs conversationId={conversationId} isHosted={!!isHosted} />
+                </>
               )
             }
             toolbarEnd={

@@ -257,6 +257,8 @@ function ChatViewInner({
       <TodoBar conversationId={conversationId} />
 
       <InputBar
+        conversationId={conversationId}
+        isHosted={isHostedAgent}
         value={input}
         onChange={setInput}
         onSubmit={handleSubmit}

@@ -303,6 +303,14 @@ macro_rules! with_all_commands {
             #[cfg(not(target_os = "android"))]
             async commands::acp => acp_live_sessions(),
             #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_session_config(conversation_id: String),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_set_session_config(
+                conversation_id: String,
+                config_id: String,
+                value: serde_json::Value,
+            ),
+            #[cfg(not(target_os = "android"))]
             async commands::acp => acp_get_config(),
             // `local`: `acp.command` names a binary this app executes, so a
             // remote writer of it has arbitrary code execution here. Not the

@@ -5,6 +5,7 @@ import { invoke } from '@/lib/transport'
 import type {
   AcpCheck,
   AcpConfig,
+  AcpConfigOption,
   AppInfo,
   Assistant,
   ChatMode,
@@ -197,6 +198,17 @@ export const api = {
   acpClose: (conversationId: string) => invoke<void>('acp_close', { conversationId }),
 
   acpLiveSessions: () => invoke<string[]>('acp_live_sessions'),
+
+  // The knobs the *agent* exposes for one session — model, mode, effort —
+  // as opposed to `acpGetConfig`, which is how this app launches the adapter.
+  // Empty when nothing is running there: the composer falls back to the model
+  // recorded on the transcript, because there is no session to change.
+  acpSessionConfig: (conversationId: string) => invoke<AcpConfigOption[]>('acp_session_config', { conversationId }),
+
+  // Hands back the whole set, not just the option that changed: picking a model
+  // re-derives which modes exist.
+  acpSetSessionConfig: (conversationId: string, configId: string, value: unknown) =>
+    invoke<AcpConfigOption[]>('acp_set_session_config', { conversationId, configId, value }),
 
   acpGetConfig: () => invoke<AcpConfig>('acp_get_config'),
 

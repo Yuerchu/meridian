@@ -71,6 +71,48 @@ pub async fn acp_live_sessions(app: tauri::AppHandle) -> Result<Vec<String>, Str
     Ok(app.services().acp.conversations())
 }
 
+/// The knobs the agent exposes for this session: model, mode, effort, and
+/// whatever else it invents.
+///
+/// Empty for a conversation with no live session — including one whose adapter
+/// died with the last run of the app. The composer reads that as "nothing to
+/// offer" and falls back to showing the model recorded on the transcript, which
+/// is the honest answer: there is no session to change anything on.
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn acp_session_config(
+    app: tauri::AppHandle,
+    conversation_id: String,
+) -> Result<Vec<meridian_core::acp::protocol::SessionConfigOption>, String> {
+    Ok(app
+        .services()
+        .acp
+        .get(&conversation_id)
+        .map(|session| session.config_options())
+        .unwrap_or_default())
+}
+
+/// Change one of them, and hand back the whole set as it now stands.
+///
+/// The whole set, because changing one reshapes others: picking a model
+/// re-derives which modes are available, and a caller that updated only the
+/// option it set would offer a mode that no longer exists.
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn acp_set_session_config(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    config_id: String,
+    value: serde_json::Value,
+) -> Result<Vec<meridian_core::acp::protocol::SessionConfigOption>, String> {
+    let session = app
+        .services()
+        .acp
+        .get(&conversation_id)
+        .ok_or("this conversation has no running Claude Code session")?;
+    session.set_config_option(&config_id, value).await
+}
+
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn acp_get_config(app: tauri::AppHandle) -> Result<AcpConfig, String> {

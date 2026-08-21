@@ -120,6 +120,14 @@ struct Shared {
     /// Kept on the session rather than the turn: it is a property of the
     /// session, arrives before the first turn, and can change under one.
     model: Mutex<Option<String>>,
+    /// Every knob the agent exposes, as it last described them.
+    ///
+    /// Held whole rather than as the one value this app reads, because the
+    /// composer offers them: what a `select` may be set to is the agent's to
+    /// decide and changes under us — picking a model re-derives which modes
+    /// exist. See [`Shared::merge_config`] for why this is merged rather than
+    /// replaced.
+    config: Mutex<Vec<protocol::SessionConfigOption>>,
 }
 
 impl Shared {
@@ -156,6 +164,28 @@ impl Shared {
         }
         tracing::info!(model = %model, conversation_id = %self.conversation_id, "ACP session model");
         *slot = Some(model);
+    }
+
+    /// Take in a set of options the agent just described.
+    ///
+    /// **Merged, never replaced.** A `config_option_update` is allowed to carry
+    /// only what changed, and an option in one is allowed to omit its `options`
+    /// list — it is reporting a new `currentValue`, not redefining the knob. A
+    /// wholesale replace would empty the picker the moment the user used it,
+    /// which is the one moment they are looking at it.
+    ///
+    /// Also keeps the model in step: it is one of these options, and reading it
+    /// from anywhere else would be a second source that could disagree.
+    fn merge_config(&self, incoming: Vec<protocol::SessionConfigOption>) {
+        if let Some(model) = incoming.iter().find_map(|o| o.as_model()) {
+            self.set_model(model.to_string());
+        }
+        let Ok(mut held) = self.config.lock() else { return };
+        merge_options(&mut held, incoming);
+    }
+
+    fn config_options(&self) -> Vec<protocol::SessionConfigOption> {
+        self.config.lock().map(|c| c.clone()).unwrap_or_default()
     }
 
     async fn absorb(&self, notification: SessionNotification) {
@@ -277,7 +307,15 @@ impl Shared {
             Effect::Usage { used, size } => {
                 tracing::debug!(used, size, conversation_id = %self.conversation_id, "acp context usage")
             }
-            Effect::ModelSelected(model) => self.set_model(model),
+            Effect::ConfigOptions(options) => {
+                self.merge_config(options);
+                // The composer is showing the old value until it hears.
+                self.emit(serde_json::json!({
+                    "type": "acp_config",
+                    "conversation_id": self.conversation_id,
+                    "config_options": self.config_options(),
+                }));
+            }
             Effect::Ignored => {}
         }
     }
@@ -544,6 +582,7 @@ impl AcpSession {
             conversation_id: conversation_id.clone(),
             turn: Mutex::new(None),
             model: Mutex::new(None),
+            config: Mutex::new(Vec::new()),
         });
         let peer = Peer::start(process, shared.clone() as Arc<dyn Handler>);
 
@@ -627,16 +666,56 @@ impl AcpSession {
             .map_err(|e| describe(peer, e))?;
         let session: protocol::NewSessionResult = serde_json::from_value(session).map_err(|e| e.to_string())?;
         // Known from the moment the session exists, so the first row of the
-        // first turn records the real model rather than the placeholder. It is
-        // re-sent on every change after this, as a `config_option_update`.
-        if let Some(model) = session.config_options.iter().find_map(|o| o.as_model()) {
-            shared.set_model(model.to_string());
-        }
+        // first turn records the real model rather than the placeholder, and
+        // the composer has something to offer before anyone has typed. Re-sent
+        // on every change after this, as a `config_option_update`.
+        shared.merge_config(session.config_options);
         Ok(session.session_id)
     }
 
     pub fn is_alive(&self) -> bool {
         self.peer.is_alive()
+    }
+
+    /// Every knob the agent exposes, as it last described them.
+    pub fn config_options(&self) -> Vec<protocol::SessionConfigOption> {
+        self.shared.config_options()
+    }
+
+    /// Set one of them.
+    ///
+    /// The reply carries the whole set back rather than the one option, because
+    /// changing one reshapes others — picking a model re-derives which modes
+    /// are available — so it is merged in exactly like a notification.
+    pub async fn set_config_option(
+        &self,
+        config_id: &str,
+        value: serde_json::Value,
+    ) -> Result<Vec<protocol::SessionConfigOption>, String> {
+        let params = serde_json::to_value(protocol::SetConfigOptionParams {
+            session_id: self.acp_session_id.clone(),
+            config_id: config_id.to_string(),
+            value,
+        })
+        .map_err(|e| e.to_string())?;
+
+        let answered = self
+            .peer
+            .request("session/set_config_option", params)
+            .await
+            .map_err(|e| describe(&self.peer, e))?;
+
+        // A reply this app cannot read is not a failure to set: the agent said
+        // yes. The notification that follows carries the same set, so the
+        // option list catches up either way.
+        match serde_json::from_value::<protocol::SetConfigOptionResult>(answered) {
+            Ok(result) if !result.config_options.is_empty() => {
+                self.shared.merge_config(result.config_options);
+            }
+            Ok(_) => {}
+            Err(e) => tracing::debug!(error = %e, "could not read the reply to session/set_config_option"),
+        }
+        Ok(self.shared.config_options())
     }
 
     /// Send one prompt and run it to completion.
@@ -984,5 +1063,108 @@ fn describe(peer: &Peer, error: PeerError) -> String {
         PeerError::Dead(m) => m,
         PeerError::Rpc(m) if peer.is_alive() => m,
         PeerError::Rpc(m) => format!("{m} (the adapter has since stopped)"),
+    }
+}
+
+/// Fold a freshly described set of config options into the one being held.
+///
+/// Free of the session so the rule can be stated on its own, because it is not
+/// the obvious one: an option in an update may carry only a new `currentValue`
+/// and omit the values it accepts. It is reporting a change, not redefining the
+/// knob. Replacing wholesale — or even replacing one option wholesale — empties
+/// the picker at the exact moment somebody is using it.
+fn merge_options(held: &mut Vec<protocol::SessionConfigOption>, incoming: Vec<protocol::SessionConfigOption>) {
+    for option in incoming {
+        match held.iter_mut().find(|o| o.id == option.id) {
+            Some(existing) => {
+                // Keep what the update did not restate.
+                let previous = std::mem::take(&mut existing.options);
+                let keep_previous = option.options.is_empty();
+                *existing = option;
+                if keep_previous {
+                    existing.options = previous;
+                }
+            }
+            // A knob that did not exist a moment ago. Agents add them when a
+            // model changes, so this is ordinary rather than exceptional.
+            None => held.push(option),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::acp::protocol::{ConfigOptionValue, SessionConfigOption};
+
+    fn select(id: &str, current: &str, values: &[&str]) -> SessionConfigOption {
+        SessionConfigOption {
+            id: id.into(),
+            name: id.into(),
+            description: None,
+            category: Some(id.into()),
+            kind: Some("select".into()),
+            current_value: Some(serde_json::Value::String(current.into())),
+            options: values
+                .iter()
+                .map(|v| ConfigOptionValue {
+                    value: (*v).into(),
+                    name: (*v).into(),
+                    description: None,
+                })
+                .collect(),
+        }
+    }
+
+    /// The whole reason this is a merge.
+    ///
+    /// An update that reports a new `currentValue` need not restate what the
+    /// knob accepts. Taking it at face value would leave the picker with one
+    /// entry and no way back — and it would happen on the very update that
+    /// follows the user changing the model.
+    #[test]
+    fn an_update_that_omits_its_values_keeps_the_ones_already_known() {
+        let mut held = vec![select("model", "sonnet", &["sonnet", "opus"])];
+
+        let mut narrowed = select("model", "opus", &[]);
+        narrowed.options.clear();
+        merge_options(&mut held, vec![narrowed]);
+
+        assert_eq!(held.len(), 1);
+        assert_eq!(held[0].current_str(), Some("opus"), "the change is taken");
+        assert_eq!(
+            held[0].options.len(),
+            2,
+            "and what it may be set to survives: {:?}",
+            held[0].options
+        );
+    }
+
+    /// When an update *does* restate them, it wins — an agent that re-derives
+    /// which modes exist for a newly chosen model is telling us the old list is
+    /// wrong, and keeping it would offer a mode that no longer applies.
+    #[test]
+    fn an_update_that_restates_its_values_replaces_them() {
+        let mut held = vec![select("mode", "code", &["code", "plan", "bypass"])];
+        merge_options(&mut held, vec![select("mode", "code", &["code"])]);
+
+        assert_eq!(held[0].options.len(), 1);
+        assert_eq!(held[0].options[0].value, "code");
+    }
+
+    /// Only what the update mentions is touched, and a knob it has never
+    /// mentioned before is added rather than ignored.
+    #[test]
+    fn options_the_update_does_not_mention_are_left_alone() {
+        let mut held = vec![
+            select("model", "sonnet", &["sonnet"]),
+            select("mode", "code", &["code"]),
+        ];
+        merge_options(&mut held, vec![select("effort", "high", &["low", "high"])]);
+
+        assert_eq!(held.len(), 3);
+        assert_eq!(held[0].current_str(), Some("sonnet"));
+        assert_eq!(held[1].current_str(), Some("code"));
+        assert_eq!(held[2].id, "effort");
     }
 }

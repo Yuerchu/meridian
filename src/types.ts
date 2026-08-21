@@ -111,6 +111,33 @@ export interface AcpConfig {
   args: string[]
 }
 
+/**
+ * One knob the hosted agent exposes for a session.
+ *
+ * ACP has no model field: the model is one of these, with `category: 'model'`.
+ * Which values a `select` accepts is the agent's to decide and changes under
+ * us — picking a model re-derives which modes exist — so this is never
+ * hardcoded, only rendered.
+ */
+export interface AcpConfigOption {
+  id: string
+  name: string
+  description?: string
+  /** `model` | `mode` | `effort` | … Advisory; `id` is the fallback. */
+  category: string | null
+  /** `select` | `boolean`. Only `select` is drawn as a picker. */
+  type: string | null
+  /** A value id for a select, a boolean for a toggle. */
+  currentValue: unknown
+  options: AcpConfigOptionValue[]
+}
+
+export interface AcpConfigOptionValue {
+  value: string
+  name: string
+  description?: string
+}
+
 /** What the settings page learned by starting the adapter and greeting it. */
 export interface AcpCheck {
   ok: boolean
