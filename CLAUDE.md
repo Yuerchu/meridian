@@ -281,6 +281,18 @@ the machines that want this already have node and a signed-in `claude`.
   is what lands in `messages.model_id`, so a hosted transcript names the model that
   actually answered. `claude-code` in that column is the fallback and means the adapter
   did not say — it is not a model id and nothing may treat it as one.
+- **`toolCallId` is unique per session here, and nowhere else in this app.** So the ACP
+  layer is the only place that may dedupe by it — and must, because the adapter announces
+  a call as soon as it knows one is coming and again once the input has streamed. The
+  front end deliberately does the opposite (`handleToolCall` pushes regardless): an
+  OpenAI-compatible gateway reuses `"0"` within a turn and two cards there are two calls.
+  A repeat revises the card instead; `reviseToolCall` is the only event allowed to match
+  on id alone.
+- **The tool's name is in `_meta.claudeCode.toolName`.** ACP's own fields cannot supply
+  one: `title` is prose for a person and `kind` is one of five categories. Reading `title`
+  put "Terminal" on every shell command — the adapter's stand-in for a `Bash` call whose
+  command it has not been told yet — and then the command itself, which belongs in the
+  arguments the card already renders.
 - **A hosted session does not fire the hook gates**, and that needs both repositories.
   The agent inside loads the user's own Claude Code configuration, plugin included, so a
   hosted turn otherwise ends by asking *this* app to review it over the loopback endpoint:
