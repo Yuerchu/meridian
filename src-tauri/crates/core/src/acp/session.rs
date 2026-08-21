@@ -27,7 +27,7 @@ use crate::agent::engine::transcript::{append_tool_result, begin_assistant, comp
 use crate::agent::tool_calls::serialize_tool_calls_openai;
 use crate::db::models::message::MessageUsage;
 use crate::db::models::queue::QueuedPrompt;
-use crate::db::models::turn::TurnStatus;
+use crate::db::models::turn::{TurnPhase, TurnStatus};
 use crate::provider;
 use crate::services::Services;
 use crate::turn::TurnOrigin;
@@ -288,6 +288,7 @@ impl Shared {
                     "message_id": message_id,
                     "conversation_id": self.conversation_id,
                 }));
+                self.record_phase(TurnPhase::RunningTool, Some(&tool_name)).await;
             }
             Effect::ToolCallRevised {
                 call_id,
@@ -299,15 +300,23 @@ impl Shared {
                 result,
                 outcome,
             } => {
-                let Some(message_id) = self.with_turn(|t| {
+                let Some((message_id, quiet)) = self.with_turn(|t| {
                     t.row.results.push((call_id.clone(), result.clone(), outcome));
                     // This round is over. Whatever the agent says next is the
                     // next one talking, and gets a row of its own.
                     t.row.settled = true;
-                    t.row.message_id.clone()
+                    // Claude Code runs calls in parallel, and the phase is one
+                    // value. Only the last result outstanding puts the turn back
+                    // to streaming — otherwise the first one to land would say
+                    // no tool is running while three still are, which is exactly
+                    // the claim the warning must not make wrongly.
+                    (t.row.message_id.clone(), t.row.results.len() >= t.row.tool_calls.len())
                 }) else {
                     return;
                 };
+                if quiet {
+                    self.record_phase(TurnPhase::Streaming, None).await;
+                }
                 self.emit(serde_json::json!({
                     "type": "tool_result",
                     "call_id": call_id,
@@ -509,6 +518,40 @@ impl Shared {
         }
     }
 
+    /// Record where in a turn this session is, for whoever finds the row after
+    /// a crash.
+    ///
+    /// Written *before* the thing it describes, which is the whole point: what
+    /// is stored when the process dies is where it died. `RunningTool` is the
+    /// one that earns this — the agent had started a call and no result was
+    /// recorded, so whatever it does may already be done. Without it a hosted
+    /// turn killed mid-`Bash` reports as "stopped part way through writing a
+    /// reply", the mildest of the four, when it is the most dangerous.
+    ///
+    /// The tool ran in the adapter rather than here, but the fact being
+    /// recorded is the same one: a call was announced and never came back.
+    async fn record_phase(&self, phase: TurnPhase, tool: Option<&str>) {
+        let Some(turn_id) = self.with_turn(|t| t.turn_id.clone()) else {
+            return;
+        };
+        let pool = self.services.db.clone();
+        let tool = tool.map(str::to_string);
+        let written = tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            crate::db::ops::turn::set_phase(&mut conn, &turn_id, phase, tool.as_deref(), now_ms())
+                .map_err(|e| e.to_string())
+        })
+        .await;
+        // Logged, never fatal. A phase that did not land costs a vaguer warning
+        // after a crash that may not happen; a turn ended over it costs the
+        // answer somebody is reading.
+        match written {
+            Ok(Ok(_)) => {}
+            Ok(Err(e)) => tracing::debug!(error = %e, "could not record an ACP turn phase"),
+            Err(e) => tracing::debug!(error = %e, "recording an ACP turn phase panicked"),
+        }
+    }
+
     /// Fill in a call that was announced before it knew what it was.
     ///
     /// Both the stored row and the card on screen: the row because that is what
@@ -624,6 +667,55 @@ impl Handler for Shared {
             // declared unsupported. An agent should not send them; one that
             // does gets a refusal rather than silence.
             other => Err(format!("`{other}` is not supported by this client")),
+        }
+    }
+}
+
+/// What a turn is carrying that has to be settled once the agent has read it.
+///
+/// Held together because they settle together and on the same evidence — a
+/// `session/prompt` that came back at all, whatever its stop reason. Anything
+/// weaker settles nothing: a turn can assemble this and then die on a pipe that
+/// closed, having told nobody. Anything stronger settles too little: a turn the
+/// user stopped after two seconds still delivered the prompt that carried this.
+#[derive(Default)]
+struct Owed {
+    turns: Option<crate::agent::interrupted::Report>,
+    queued: Option<crate::agent::queue::Doubtful>,
+}
+
+impl Owed {
+    /// The message with whatever has to be explained in front of it.
+    ///
+    /// A hosted prompt is one lump of text, so there is nowhere else to put
+    /// this. Ahead of the message rather than behind it, because it is context
+    /// for reading the message rather than a footnote to it.
+    fn in_front_of(&self, text: &str) -> String {
+        let mut parts: Vec<&str> = Vec::new();
+        if let Some(report) = &self.turns {
+            parts.push(report.text());
+        }
+        if let Some(report) = &self.queued {
+            parts.push(report.text());
+        }
+        if parts.is_empty() {
+            return text.to_string();
+        }
+        parts.push(text);
+        parts.join("\n\n")
+    }
+
+    fn is_empty(&self) -> bool {
+        self.turns.is_none() && self.queued.is_none()
+    }
+
+    /// Write both ledgers down, now that the agent has had it.
+    async fn settle(self, services: &Services) {
+        if let Some(report) = self.turns {
+            crate::agent::interrupted::confirm_delivered(&services.db, report).await;
+        }
+        if let Some(report) = self.queued {
+            crate::agent::queue::confirm_reported(services, report).await;
         }
     }
 }
@@ -977,9 +1069,13 @@ impl AcpSession {
             "conversation_id": self.conversation_id,
         }));
 
+        // Read after the turn record exists, so `asking` can exclude it, and
+        // sent in front of the message rather than stored: this is background
+        // the agent needs for *this* answer, not something anybody said.
+        let owed = self.owed_explanations(services, &turn_id).await;
         let params = serde_json::to_value(protocol::PromptParams {
             session_id: self.acp_session_id.clone(),
-            prompt: vec![protocol::ContentBlock::text(text)],
+            prompt: vec![protocol::ContentBlock::text(owed.in_front_of(text))],
         })
         .map_err(|e| e.to_string())?;
 
@@ -1019,7 +1115,24 @@ impl AcpSession {
         // closing sentence among them. See `Peer::drain_notifications`.
         self.peer.drain_notifications().await;
 
-        self.finish(services, &turn_id, outcome, lease, dropped_before).await
+        self.finish(services, &turn_id, outcome, lease, dropped_before, owed)
+            .await
+    }
+
+    /// What this session still owes the agent an explanation for.
+    ///
+    /// Two ledgers, one message. A hosted session has never carried either:
+    /// `load_block` was called from the desktop path alone, so a Claude Code
+    /// conversation whose app was killed mid-tool started its next turn as if
+    /// nothing had happened — which is the case the warning exists for, since
+    /// the adapter's own memory of that turn died with the process while
+    /// whatever the tool did to the disk did not.
+    async fn owed_explanations(&self, services: &Services, turn_id: &str) -> Owed {
+        Owed {
+            turns: crate::agent::interrupted::load_block(&services.db, &services.turns, &self.conversation_id, turn_id)
+                .await,
+            queued: crate::agent::queue::owed(services, &self.conversation_id).await,
+        }
     }
 
     /// Write the user's row and the turn record — and, when this prompt came
@@ -1122,7 +1235,18 @@ impl AcpSession {
         outcome: Result<serde_json::Value, PeerError>,
         lease: crate::turn::TurnLease,
         dropped_before: u64,
+        owed: Owed,
     ) -> Result<(), String> {
+        // Before anything else can return early. The evidence is the reply
+        // itself: `session/prompt` answering at all means the adapter took the
+        // prompt, and the prompt is where this was written. A `cancelled` stop
+        // reason still means it was read — the user stopped the work, not the
+        // reading — while an `Err` is a pipe that may have closed before the
+        // request went out, and leaves both ledgers owing.
+        if outcome.is_ok() && !owed.is_empty() {
+            owed.settle(services).await;
+        }
+
         let state = self.shared.turn.lock().ok().and_then(|mut slot| slot.take());
         let Some(state) = state else {
             drop(lease);
@@ -1391,6 +1515,41 @@ mod tests {
 
         assert_eq!(held[0].options.len(), 1);
         assert_eq!(held[0].options[0].value, "code");
+    }
+
+    /// A hosted prompt is one lump of text, so anything that has to be
+    /// explained goes in front of the message rather than beside it — and when
+    /// there is nothing to explain, the message is passed through untouched
+    /// rather than wrapped in an empty frame.
+    #[test]
+    fn what_is_owed_goes_in_front_of_the_message_and_nothing_else_does() {
+        let plain = Owed::default();
+        assert!(plain.is_empty());
+        assert_eq!(plain.in_front_of("do the thing"), "do the thing");
+
+        let mut conn = crate::db::test_db().get().unwrap();
+        crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 0).unwrap();
+        crate::db::ops::turn::begin(&mut conn, "dead", "c1", crate::turn::TurnOrigin::ClaudeCode, None, 1000).unwrap();
+        crate::db::ops::turn::set_phase(&mut conn, "dead", TurnPhase::RunningTool, Some("Bash"), 1001).unwrap();
+
+        let owed = Owed {
+            turns: crate::agent::interrupted::block(
+                &mut conn,
+                &crate::turn::TurnCoordinator::new(),
+                "c1",
+                Some("asking"),
+            ),
+            queued: None,
+        };
+        assert!(!owed.is_empty(), "a turn killed inside a tool is owed an explanation");
+
+        let sent = owed.in_front_of("carry on");
+        assert!(sent.starts_with("<interrupted_turn>"), "{sent}");
+        assert!(sent.ends_with("carry on"), "{sent}");
+        assert!(
+            sent.contains("Bash") && sent.contains("may have taken effect"),
+            "a hosted turn caught inside a tool says the dangerous thing, not the mild one: {sent}"
+        );
     }
 
     /// Only what the update mentions is touched, and a knob it has never

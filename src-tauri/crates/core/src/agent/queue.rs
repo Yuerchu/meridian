@@ -83,6 +83,111 @@ pub fn announce(services: &Services, conversation_id: &str) {
     );
 }
 
+/// How many doubtful items one message may describe.
+///
+/// Rarely more than one — an in-doubt item stops the queue, so a second can
+/// only appear after somebody released it — and nothing beyond the cap is
+/// dropped. It stays unreported and comes back on the next message, exactly as
+/// an unreported turn does.
+const AT_MOST: usize = 3;
+
+/// What the agent is told about queued messages that may or may not have
+/// reached it, and which items that settles.
+///
+/// The same shape as `interrupted::Report`, and settled by the same rule:
+/// reading it is not telling anyone, so the two travel together and only a
+/// reply read to the end writes anything down.
+pub struct Doubtful {
+    text: String,
+    ids: Vec<String>,
+}
+
+impl Doubtful {
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+}
+
+/// What to tell the agent about queued messages whose delivery is unknown.
+///
+/// Reading this settles nothing — see [`confirm_reported`].
+pub async fn owed(services: &Services, conversation_id: &str) -> Option<Doubtful> {
+    let pool = services.db.clone();
+    let id = conversation_id.to_string();
+    let items = tokio::task::spawn_blocking(move || {
+        let mut conn = pool.get().ok()?;
+        crate::db::ops::queue::unreported_in_doubt(&mut conn, &id).ok()
+    })
+    .await
+    .ok()
+    .flatten()?;
+
+    let items: Vec<QueuedPrompt> = items.into_iter().take(AT_MOST).collect();
+    if items.is_empty() {
+        return None;
+    }
+    Some(Doubtful {
+        text: describe(&items),
+        ids: items.into_iter().map(|i| i.id).collect(),
+    })
+}
+
+/// Record that the agent has now been told about these.
+///
+/// Called at the one moment that proves it, for the same reason
+/// `interrupted::confirm_delivered` is: reading the record is not telling
+/// anyone, and a turn can read it and then die before a byte leaves. Every way
+/// of getting this wrong repeats the warning rather than losing it, including a
+/// failed write, and that is the direction to fail in.
+pub async fn confirm_reported(services: &Services, report: Doubtful) {
+    let pool = services.db.clone();
+    let written = tokio::task::spawn_blocking(move || {
+        let mut conn = get_conn(&pool)?;
+        crate::db::ops::queue::mark_reported(&mut conn, &report.ids, now_ms()).map_err(|e| e.to_string())
+    })
+    .await;
+    match written {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => tracing::warn!(error = %e, "could not record that a queued message was reported"),
+        Err(e) => tracing::warn!(error = %e, "recording a reported queue item panicked"),
+    }
+}
+
+/// Says what is not known, and says plainly that it will not be retried.
+///
+/// The temptation is to have the agent re-do the instruction to be safe, and
+/// that is precisely the failure this design exists to prevent: the message may
+/// have been "delete the old migration", and doing it twice is not the same as
+/// doing it once. So the text asks for the state to be checked rather than for
+/// the work to be repeated, and it never says which of the two happened —
+/// because nothing here knows.
+fn describe(items: &[QueuedPrompt]) -> String {
+    // Verbatim, in a tag of its own. A queued message is the user's own words
+    // and gets the same treatment an ordinary prompt does — quoting it into one
+    // line would fold a multi-line instruction into `\n`s and escaped quotes,
+    // which is worse to read and no safer.
+    let quoted: Vec<String> = items
+        .iter()
+        .map(|i| format!("<message>\n{}\n</message>", i.content))
+        .collect();
+    let opening = match items.len() {
+        1 => "A message you had queued was sent to you and never acknowledged, so it may have \
+              reached you or may not have. It said:"
+            .to_string(),
+        n => format!(
+            "{n} messages you had queued were sent to you and never acknowledged, so they may \
+             have reached you or may not have. Oldest first:"
+        ),
+    };
+    format!(
+        "<undelivered_queue>\n{opening}\n{}\n\nThey have not been sent again. If one did arrive, \
+         you may already have acted on it, and doing the work a second time is not the same as \
+         doing it once. Check the current state before assuming either way, and say what you find \
+         rather than silently repeating anything.\n</undelivered_queue>",
+        quoted.join("\n")
+    )
+}
+
 /// The next item, asked for the way the runner's state allows.
 ///
 /// `steerable` narrows to interjections; idle takes the front of the queue
@@ -132,6 +237,61 @@ where
     })
     .await
     .map_err(|e| e.to_string())?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn doubtful(content: &str) -> QueuedPrompt {
+        QueuedPrompt {
+            id: format!("q-{content}"),
+            conversation_id: "c1".into(),
+            content: content.into(),
+            delivery: "interject".into(),
+            position: 0,
+            created_at: 0,
+            dispatched_at: Some(1),
+            dispatched_turn_id: Some("t1".into()),
+            settled_at: None,
+            settled_message_id: None,
+            held_at: None,
+            reported_at: None,
+        }
+    }
+
+    /// The one thing this text must not do is ask for the work to be redone.
+    /// "It may not have arrived, so do it again" is how a queue deletes a
+    /// migration twice — and the agent cannot check the claim, because nothing
+    /// here knows which of the two happened.
+    #[test]
+    fn the_warning_asks_for_the_state_to_be_checked_not_for_a_retry() {
+        let text = describe(&[doubtful("delete the old migration")]);
+        assert!(text.contains("delete the old migration"), "it quotes the message");
+        assert!(text.contains("may have reached you or may not have"));
+        assert!(text.contains("have not been sent again"));
+        assert!(text.contains("Check the current state"));
+    }
+
+    /// A queued message is often several lines, and it has to survive as
+    /// several lines: an instruction folded into escaped `\n`s is harder to
+    /// read and no safer, since these are the user's own words either way.
+    #[test]
+    fn a_multi_line_message_stays_multi_line() {
+        let text = describe(&[doubtful("do this\nthen that")]);
+        assert!(text.contains("do this\nthen that"), "{text}");
+        assert!(!text.contains("\\n"), "nothing is escaped into one line: {text}");
+    }
+
+    /// More than one reads as a list, and says so — a single sentence naming
+    /// three messages would read as one message in three parts.
+    #[test]
+    fn several_are_listed_oldest_first() {
+        let text = describe(&[doubtful("first"), doubtful("second")]);
+        assert!(text.contains("2 messages"));
+        assert!(text.contains("Oldest first"));
+        assert!(text.find("first") < text.find("second"));
+    }
 }
 
 /// Delivering into a session running in an adapter, over ACP.
