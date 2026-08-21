@@ -95,6 +95,18 @@ impl OneBotAction {
         }
     }
 
+    /// Exchange a merged-forward handle for the messages inside it. The id is a
+    /// string on the wire even where it is all digits, and adapters disagree on
+    /// which parameter carries it — `id` is the OneBot 11 name, `message_id`
+    /// what several implementations actually read, so both are sent.
+    pub fn get_forward_msg(id: &str, echo: String) -> Self {
+        Self {
+            action: "get_forward_msg".into(),
+            params: serde_json::json!({ "id": id, "message_id": id }),
+            echo: Some(echo),
+        }
+    }
+
     pub fn send_private_msg(user_id: i64, message: Vec<MessageSegment>) -> Self {
         Self {
             action: "send_private_msg".into(),

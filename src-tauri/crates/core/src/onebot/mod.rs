@@ -7,6 +7,7 @@ mod media;
 mod notice;
 mod protocol;
 mod qq_tools;
+mod quote;
 mod session;
 mod stickers;
 

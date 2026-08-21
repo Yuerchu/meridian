@@ -12,9 +12,15 @@ const MAX_MSG_LEN: usize = 4000;
 pub const IMAGE_SENTINEL: char = '\u{E000}';
 pub const RECORD_SENTINEL: char = '\u{E001}';
 pub const STICKER_SENTINEL: char = '\u{E002}';
+/// A merged-forward bubble, which cannot be resolved without a second API call
+/// (`get_forward_msg`) and so is a sentinel for the same reason the others are:
+/// the async layer replaces it by position once the contents arrive.
+pub const FORWARD_SENTINEL: char = '\u{E003}';
 
 static AT_MENTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[@[^(\]]*\((\d+)\)\]").unwrap());
 static CQ_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[CQ:([A-Za-z0-9_-]+)((?:,[^\]]*)?)\]").unwrap());
+static XML_BRIEF_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r#"brief\s*=\s*"([^"]*)""#).unwrap());
+static XML_TITLE_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"<title[^>]*>([^<]*)</title>").unwrap());
 
 fn decode_cq(value: &str) -> String {
     value
@@ -59,6 +65,121 @@ fn cq_to_segments(message: &str) -> Vec<serde_json::Value> {
     segments
 }
 
+/// Read a string field off a segment's `data`, tolerating the number an adapter
+/// sometimes sends where the spec says string (ids and sizes, mostly).
+fn seg_str(data: Option<&serde_json::Value>, key: &str) -> Option<String> {
+    data.and_then(|d| d.get(key)).and_then(|v| {
+        v.as_str()
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+            .or_else(|| v.as_i64().map(|number| number.to_string()))
+    })
+}
+
+/// How much of a card's description survives into the transcript. These run to
+/// several hundred characters of marketing copy on a shared article, and what
+/// the reader needs from one is what it is about.
+const CARD_DESC_CHARS: usize = 80;
+
+fn truncate_chars(value: &str, limit: usize) -> String {
+    let mut out: String = value.chars().take(limit).collect();
+    if out.chars().count() < value.chars().count() {
+        out.push('…');
+    }
+    out
+}
+
+fn human_size(bytes: u64) -> String {
+    const UNITS: [&str; 4] = ["B", "KB", "MB", "GB"];
+    let mut size = bytes as f64;
+    let mut unit = 0;
+    while size >= 1024.0 && unit < UNITS.len() - 1 {
+        size /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{size:.1} {}", UNITS[unit])
+    }
+}
+
+/// Render a structured-message card — a shared link, a mini-app, a music post —
+/// as the one line a person would see of it.
+///
+/// The payload is a JSON document inside a JSON string, and its shape is set by
+/// whichever app built it: `com.tencent.structmsg` files the interesting part
+/// under `meta.news`, the mini-app one under `meta.detail_1`, and there are more
+/// of these than are worth enumerating. So the first object under `meta` is what
+/// gets read, and `prompt` — which every one of them carries, being what QQ
+/// itself shows in the conversation list — is the fallback.
+fn render_json_card(data: Option<&serde_json::Value>) -> String {
+    let payload = match data.and_then(|d| d.get("data")) {
+        Some(serde_json::Value::String(raw)) => serde_json::from_str::<serde_json::Value>(raw).ok(),
+        Some(value @ serde_json::Value::Object(_)) => Some(value.clone()),
+        _ => None,
+    };
+    let Some(payload) = payload else {
+        return "[卡片]".to_string();
+    };
+
+    let detail = payload
+        .get("meta")
+        .and_then(|meta| meta.as_object())
+        .and_then(|meta| meta.values().find(|value| value.is_object()));
+    let field = |key: &str| -> Option<&str> {
+        detail
+            .and_then(|d| d.get(key))
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    };
+
+    let prompt = payload
+        .get("prompt")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let title = field("title").or(prompt);
+    let desc = field("desc").or_else(|| field("summary"));
+    let url = ["jumpUrl", "qqdocurl", "jump_url", "url", "musicUrl"]
+        .iter()
+        .find_map(|key| field(key));
+
+    let mut out = String::from("[卡片");
+    if let Some(title) = title {
+        out.push_str(&format!(": {}", truncate_chars(title, CARD_DESC_CHARS)));
+    }
+    if let Some(desc) = desc.filter(|d| Some(*d) != title) {
+        out.push_str(&format!(" — {}", truncate_chars(desc, CARD_DESC_CHARS)));
+    }
+    if let Some(url) = url {
+        out.push_str(&format!(" ({url})"));
+    }
+    out.push(']');
+    out
+}
+
+/// The XML flavour of the same thing, from before cards were JSON. Parsing XML
+/// properly to recover one line of it is not worth a dependency: every one of
+/// these carries a `brief` attribute, which is exactly that line.
+fn render_xml_card(data: Option<&serde_json::Value>) -> String {
+    let Some(raw) = data.and_then(|d| d.get("data")).and_then(|v| v.as_str()) else {
+        return "[卡片]".to_string();
+    };
+    let brief = XML_BRIEF_RE
+        .captures(raw)
+        .or_else(|| XML_TITLE_RE.captures(raw))
+        .and_then(|caps| caps.get(1))
+        .map(|m| decode_cq(m.as_str()).replace("&quot;", "\"").replace("&#39;", "'"))
+        .map(|s| truncate_chars(s.trim(), CARD_DESC_CHARS))
+        .filter(|s| !s.is_empty());
+    match brief {
+        Some(brief) => format!("[卡片: {brief}]"),
+        None => "[卡片]".to_string(),
+    }
+}
+
 /// A media reference extracted from an image segment.
 #[derive(Debug, Clone, Default)]
 pub struct MediaRef {
@@ -74,6 +195,14 @@ pub struct StickerRef {
     pub url: Option<String>,
     pub file: Option<String>,
     pub summary: Option<String>,
+}
+
+/// A merged-forward bubble. Some adapters inline the messages in the segment
+/// (`content`), most give only an id that has to be exchanged for them.
+#[derive(Debug, Clone, Default)]
+pub struct ForwardRef {
+    pub id: Option<String>,
+    pub inline: Option<serde_json::Value>,
 }
 
 /// Parsed OneBot message: plain text (with placeholders) plus media references.
@@ -95,6 +224,9 @@ pub struct ParsedMessage {
     pub stickers: Vec<StickerRef>,
     /// Filled by the capture layer in the same order as `stickers`.
     pub sticker_ids: Vec<Option<String>>,
+    /// Merged-forward bubbles, in the same order as `FORWARD_SENTINEL` appears
+    /// in `text`. Resolved by `quote::expand_forwards`, which is async.
+    pub forwards: Vec<ForwardRef>,
     pub has_record: bool,
 }
 
@@ -109,7 +241,7 @@ impl ParsedMessage {
     }
 
     pub fn has_media(&self) -> bool {
-        !self.images.is_empty() || !self.stickers.is_empty() || self.has_record
+        !self.images.is_empty() || !self.stickers.is_empty() || !self.forwards.is_empty() || self.has_record
     }
 }
 
@@ -117,11 +249,19 @@ impl ParsedMessage {
 /// Strips @bot mentions when `self_id` is provided. Media sentinels are restored
 /// to human-readable "[图片]"/"[语音]" for display paths.
 pub fn segments_to_text(message: &serde_json::Value, self_id: Option<i64>) -> String {
-    parse_segments(message, self_id)
-        .text
-        .replace(IMAGE_SENTINEL, "[图片]")
+    restore_sentinels(&parse_segments(message, self_id).text)
+}
+
+/// Turn the private-use placeholders back into something a person can read.
+///
+/// This is the *last* thing done to a piece of text, and doing it earlier is
+/// how a quoted sticker used to become the five literal characters `[动画表情]`
+/// — see `quote::fetch`.
+pub fn restore_sentinels(text: &str) -> String {
+    text.replace(IMAGE_SENTINEL, "[图片]")
         .replace(RECORD_SENTINEL, "[语音]")
         .replace(STICKER_SENTINEL, "[动画表情]")
+        .replace(FORWARD_SENTINEL, "[聊天记录]")
 }
 
 /// Parse OneBot message segments into text + media references.
@@ -178,14 +318,7 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
                 }
             }
             "image" => {
-                let get_str = |key: &str| -> Option<String> {
-                    data.and_then(|d| d.get(key)).and_then(|v| {
-                        v.as_str()
-                            .filter(|s| !s.is_empty())
-                            .map(String::from)
-                            .or_else(|| v.as_i64().map(|number| number.to_string()))
-                    })
-                };
+                let get_str = |key: &str| seg_str(data, key);
                 let summary = get_str("summary");
                 let emoji_id = get_str("emoji_id");
                 let package_id = get_str("emoji_package_id");
@@ -248,14 +381,7 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
                 });
             }
             "mface" | "market_face" => {
-                let get_str = |key: &str| -> Option<String> {
-                    data.and_then(|d| d.get(key)).and_then(|v| {
-                        v.as_str()
-                            .filter(|s| !s.is_empty())
-                            .map(String::from)
-                            .or_else(|| v.as_i64().map(|number| number.to_string()))
-                    })
-                };
+                let get_str = |key: &str| seg_str(data, key);
                 text.push(STICKER_SENTINEL);
                 let emoji_id = get_str("emoji_id").or_else(|| get_str("id"));
                 let package_id = get_str("emoji_package_id").or_else(|| get_str("package_id"));
@@ -277,16 +403,105 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
                 text.push(RECORD_SENTINEL);
                 parsed.has_record = true;
             }
-            "video" => {
-                text.push_str("[视频]");
-            }
+            "video" => match seg_str(data, "file").or_else(|| seg_str(data, "name")) {
+                Some(name) if !name.starts_with("http") => text.push_str(&format!("[视频: {name}]")),
+                _ => text.push_str("[视频]"),
+            },
             "file" => {
-                text.push_str("[文件]");
+                let name = seg_str(data, "name")
+                    .or_else(|| seg_str(data, "file_name"))
+                    .or_else(|| seg_str(data, "file").filter(|f| !f.starts_with("http")));
+                let size = seg_str(data, "size")
+                    .or_else(|| seg_str(data, "file_size"))
+                    .and_then(|s| s.parse::<u64>().ok())
+                    .map(human_size);
+                match (name, size) {
+                    (Some(name), Some(size)) => text.push_str(&format!("[文件: {name} ({size})]")),
+                    (Some(name), None) => text.push_str(&format!("[文件: {name}]")),
+                    (None, _) => text.push_str("[文件]"),
+                }
             }
+            // A merged-forward bubble. What is in it takes a second API call, so
+            // all that can be done here is mark the position and record the
+            // handle; `quote::expand_forwards` fills it in.
+            "forward" => {
+                text.push(FORWARD_SENTINEL);
+                parsed.forwards.push(ForwardRef {
+                    id: seg_str(data, "id"),
+                    inline: data.and_then(|d| d.get("content")).filter(|c| c.is_array()).cloned(),
+                });
+            }
+            "json" => text.push_str(&render_json_card(data)),
+            "xml" => text.push_str(&render_xml_card(data)),
+            // Everything below is something a person can send that carries no
+            // media we could fetch, and whose whole content is its own label.
+            // Left unhandled they arrived as an empty message, which reads as
+            // the person having said nothing at all.
+            "redbag" | "hongbao" => match seg_str(data, "title") {
+                Some(title) => text.push_str(&format!("[红包: {title}]")),
+                None => text.push_str("[红包]"),
+            },
+            "location" => {
+                let title = seg_str(data, "title").unwrap_or_default();
+                let content = seg_str(data, "content").unwrap_or_default();
+                let coords = match (seg_str(data, "lat"), seg_str(data, "lon")) {
+                    (Some(lat), Some(lon)) => format!(" ({lat}, {lon})"),
+                    _ => String::new(),
+                };
+                let label = [title, content].join(" ").trim().to_string();
+                match label.is_empty() {
+                    true => text.push_str(&format!("[位置{coords}]")),
+                    false => text.push_str(&format!("[位置: {label}{coords}]")),
+                }
+            }
+            "contact" => {
+                let kind = match seg_str(data, "type").as_deref() {
+                    Some("group") => "群",
+                    _ => "好友",
+                };
+                match seg_str(data, "id") {
+                    Some(id) => text.push_str(&format!("[推荐{kind}: {id}]")),
+                    None => text.push_str(&format!("[推荐{kind}]")),
+                }
+            }
+            "music" => match seg_str(data, "title") {
+                Some(title) => text.push_str(&format!("[音乐: {title}]")),
+                None => text.push_str("[音乐分享]"),
+            },
+            "share" => {
+                let title = seg_str(data, "title").unwrap_or_else(|| "分享".into());
+                match seg_str(data, "url") {
+                    Some(url) => text.push_str(&format!("[分享: {title} ({url})]")),
+                    None => text.push_str(&format!("[分享: {title}]")),
+                }
+            }
+            "dice" => match seg_str(data, "result").or_else(|| seg_str(data, "value")) {
+                Some(result) => text.push_str(&format!("[骰子: {result}]")),
+                None => text.push_str("[骰子]"),
+            },
+            "rps" => match seg_str(data, "result").or_else(|| seg_str(data, "value")) {
+                // 1/2/3 is the wire encoding; the words are what was meant.
+                Some(result) => {
+                    let played = match result.as_str() {
+                        "1" => "布",
+                        "2" => "剪刀",
+                        "3" => "石头",
+                        other => other,
+                    };
+                    text.push_str(&format!("[猜拳: {played}]"));
+                }
+                None => text.push_str("[猜拳]"),
+            },
+            "poke" => text.push_str("[戳了戳]"),
+            "shake" => text.push_str("[窗口抖动]"),
             "reply" => {
                 // Ignore reply context; we use conversation history instead
             }
-            _ => {}
+            other => {
+                if !other.is_empty() {
+                    tracing::debug!(segment = other, "unhandled OneBot message segment");
+                }
+            }
         }
     }
     parsed.text = text.trim().to_string();
@@ -482,6 +697,120 @@ pub fn ask_user_prompt(arguments: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The bug this whole path exists for, stated as the two halves it is made
+    /// of: flattening a message to text destroys its stickers, and that is
+    /// correct for a *display* string and fatal for one about to be shown to a
+    /// model. `quote::fetch` used to call the first and needed the second.
+    #[test]
+    fn flattening_a_sticker_to_text_is_lossy_and_parsing_it_is_not() {
+        let message = serde_json::json!([
+            { "type": "mface", "data": { "emoji_id": "abc", "summary": "[开心]", "url": "http://x/1.gif" } }
+        ]);
+        assert_eq!(segments_to_text(&message, None), "[动画表情]");
+
+        let parsed = parse_segments(&message, None);
+        assert_eq!(parsed.stickers.len(), 1, "the sticker survives parsing");
+        assert_eq!(parsed.stickers[0].source_key.as_deref(), Some("abc"));
+        assert!(parsed.text.contains(STICKER_SENTINEL), "and holds its position");
+    }
+
+    /// Each of these used to fall through the `_ => {}` arm and produce an empty
+    /// message — which `handle_message` then dropped, so sharing a link with the
+    /// bot @mentioned looked exactly like the bot ignoring you.
+    #[test]
+    fn a_message_that_is_only_a_card_is_not_an_empty_message() {
+        let shared = serde_json::json!([{
+            "type": "json",
+            "data": { "data": r#"{"app":"com.tencent.structmsg","prompt":"[分享]标题",
+                "meta":{"news":{"title":"标题","desc":"一段描述","jumpUrl":"https://example.com/a"}}}"# }
+        }]);
+        let text = parse_segments(&shared, None).text;
+        assert!(text.contains("标题"), "{text}");
+        assert!(text.contains("一段描述"), "{text}");
+        assert!(text.contains("https://example.com/a"), "{text}");
+    }
+
+    #[test]
+    fn a_card_with_no_meta_falls_back_to_the_prompt_qq_itself_shows() {
+        let card = serde_json::json!([{
+            "type": "json",
+            "data": { "data": r#"{"app":"com.tencent.miniapp_01","prompt":"[QQ小程序]哔哩哔哩"}"# }
+        }]);
+        assert_eq!(parse_segments(&card, None).text, "[卡片: [QQ小程序]哔哩哔哩]");
+
+        let unparseable = serde_json::json!([{ "type": "json", "data": { "data": "not json at all" } }]);
+        assert_eq!(parse_segments(&unparseable, None).text, "[卡片]");
+    }
+
+    #[test]
+    fn an_xml_card_is_read_off_its_brief_attribute() {
+        let card = serde_json::json!([{
+            "type": "xml",
+            "data": { "data": r#"<?xml version="1.0"?><msg brief="&#91;聊天记录&#93;摘要" serviceID="35"></msg>"# }
+        }]);
+        assert_eq!(parse_segments(&card, None).text, "[卡片: [聊天记录]摘要]");
+    }
+
+    /// A forward is a handle, not content: the segment marks its position and
+    /// records the id, and `quote::expand_forwards` does the fetching.
+    #[test]
+    fn a_forward_becomes_a_sentinel_and_a_handle() {
+        let message = serde_json::json!([
+            { "type": "text", "data": { "text": "看这个" } },
+            { "type": "forward", "data": { "id": "7318..." } }
+        ]);
+        let parsed = parse_segments(&message, None);
+        assert_eq!(parsed.forwards.len(), 1);
+        assert_eq!(parsed.forwards[0].id.as_deref(), Some("7318..."));
+        assert_eq!(parsed.text, format!("看这个{FORWARD_SENTINEL}"));
+        assert!(parsed.has_media(), "a forward is content the turn must wait for");
+        // Unresolved, it still has to read as something.
+        assert_eq!(segments_to_text(&message, None), "看这个[聊天记录]");
+    }
+
+    #[test]
+    fn a_file_carries_its_name_and_size() {
+        let message = serde_json::json!([
+            { "type": "file", "data": { "name": "报告.pdf", "size": 1536 } }
+        ]);
+        assert_eq!(parse_segments(&message, None).text, "[文件: 报告.pdf (1.5 KB)]");
+
+        let nameless = serde_json::json!([{ "type": "file", "data": {} }]);
+        assert_eq!(parse_segments(&nameless, None).text, "[文件]");
+    }
+
+    #[test]
+    fn the_small_segments_say_what_they_are() {
+        let cases = [
+            (
+                serde_json::json!({ "type": "dice", "data": { "result": 4 } }),
+                "[骰子: 4]",
+            ),
+            (
+                serde_json::json!({ "type": "rps", "data": { "result": 3 } }),
+                "[猜拳: 石头]",
+            ),
+            (
+                serde_json::json!({ "type": "redbag", "data": { "title": "恭喜发财" } }),
+                "[红包: 恭喜发财]",
+            ),
+            (serde_json::json!({ "type": "poke", "data": {} }), "[戳了戳]"),
+            (
+                serde_json::json!({ "type": "contact", "data": { "type": "group", "id": "12345" } }),
+                "[推荐群: 12345]",
+            ),
+            (
+                serde_json::json!({ "type": "location", "data": { "title": "公司", "lat": "31.2", "lon": "121.4" } }),
+                "[位置: 公司 (31.2, 121.4)]",
+            ),
+        ];
+        for (segment, expected) in cases {
+            let parsed = parse_segments(&serde_json::json!([segment.clone()]), None);
+            assert_eq!(parsed.text, expected, "for {segment}");
+            assert!(parsed.typed.is_empty(), "nobody typed this: {segment}");
+        }
+    }
 
     #[test]
     fn test_segments_to_text_basic() {

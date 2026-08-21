@@ -89,6 +89,34 @@ src-tauri/
   narrowing costs no cache. `shown_as_admin` and `exposes_full_toolset` in
   `qq_tools.rs` are the two decisions, kept out of the call sites.
 
+- **A quoted message is content, not a citation.** `quote::fetch` parses what a
+  reply quotes into an ordinary `ParsedMessage` and the caller merges its media
+  into the turn. It used to be flattened with `segments_to_text`, which is right
+  for something a person reads and destroys everything else: a quoted sticker
+  arrived as the five literal characters `[动画表情]`. That is not an edge case
+  on a phone, where QQ gives no way to @ the bot *and* attach a sticker in one
+  message — quoting one **is** how a group member shows the bot a sticker, and
+  the empty-body check dropped the whole gesture besides.
+
+  Three things hold the merge together. The quoted message is processed *first*,
+  because that is where its sentinels land in the enriched text, and both media
+  lists are concatenated in that order. `align_sticker_ids` pads each side to its
+  own sticker count — a short list does not lose an id, it slides every sticker
+  after the gap onto somebody else's. And voice is transcribed against the
+  *quoted* id, not the turn's, which is why `process_media` takes one rather than
+  reading `event`.
+
+  A reply can quote anything, so `parse_segments` covers what people actually
+  send: cards (`json`/`xml` — the payload is a JSON document inside a JSON
+  string, and its shape is set by whichever app built it), files with their
+  names, red packets, locations, dice. Each of these used to fall through to
+  `_ => {}` and produce an *empty* message, which then read as the bot ignoring
+  you. A merged forward is the one that cannot be resolved in a pure function:
+  `FORWARD_SENTINEL` holds its place and `expand_forwards` exchanges the handle
+  for the messages, two levels deep and twenty messages wide, with media inside
+  left as placeholders — there is no turn for those sentinels to be aligned
+  against.
+
   The other half of that split is that **authority follows the speaker, and a
   turn has more than one.** A round can open with several people's queued
   messages, a `TurnEnd::Continue` round is whoever spoke next, and steering adds

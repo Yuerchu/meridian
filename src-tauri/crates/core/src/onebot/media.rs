@@ -4,8 +4,8 @@
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use super::format::{IMAGE_SENTINEL, ParsedMessage, RECORD_SENTINEL};
-use super::protocol::{OneBotAction, OneBotEvent};
+use super::format::{FORWARD_SENTINEL, IMAGE_SENTINEL, ParsedMessage, RECORD_SENTINEL};
+use super::protocol::OneBotAction;
 use super::{SharedState, call_api_with_timeout};
 
 pub const MAX_IMAGES: usize = 5;
@@ -22,12 +22,21 @@ pub struct MediaOutcome {
 
 /// Process media segments of an incoming message. Must be called after the
 /// session is established (needs `conversation_id` for file storage).
+///
+/// `record_message_id` is the id of the message the voice segment belongs to,
+/// which is not always the turn's own: a reply quoting a voice note has to be
+/// transcribed against the *quoted* id, and passing the reply's yields nothing.
+///
+/// `image_budget` is how many images this call may fetch. A turn that also
+/// carries a quoted message runs this twice and the two share one budget, so
+/// quoting a nine-image album cannot push the turn to eighteen downloads.
 pub async fn process_media(
     state: &Arc<SharedState>,
-    event: &OneBotEvent,
+    record_message_id: Option<i64>,
     parsed: &ParsedMessage,
     conversation_id: &str,
     model_override: Option<&str>,
+    image_budget: usize,
 ) -> MediaOutcome {
     let mut text = parsed.text.clone();
     let mut image_uris = Vec::new();
@@ -35,7 +44,7 @@ pub async fn process_media(
     // Voice transcription runs concurrently with the image work below.
     let record_fut = async {
         if parsed.has_record
-            && let Some(mid) = event.message_id
+            && let Some(mid) = record_message_id
         {
             return transcribe_record(state, mid).await;
         }
@@ -55,7 +64,7 @@ pub async fn process_media(
             .url
             .as_deref()
             .or_else(|| media.file.as_deref().filter(|f| f.starts_with("http")));
-        let Some(url) = url.filter(|_| i < MAX_IMAGES) else {
+        let Some(url) = url.filter(|_| i < image_budget) else {
             return (None, None);
         };
         if supports_images {
@@ -84,11 +93,14 @@ pub async fn process_media(
         text = merge_ocr_into_text(&text, &ocr_results);
     }
 
-    // Restore any sentinels left over (voice failed, image beyond MAX_IMAGES,
-    // OCR empty) to human-readable placeholders before the model sees the text.
+    // Restore any sentinels left over (voice failed, image beyond the budget,
+    // OCR empty, a forward that could not be fetched) to human-readable
+    // placeholders before the model sees the text. Sticker sentinels are the
+    // exception: the caller splits on them to build the content parts.
     text = text
         .replace(IMAGE_SENTINEL, "[图片]")
-        .replace(RECORD_SENTINEL, "[语音]");
+        .replace(RECORD_SENTINEL, "[语音]")
+        .replace(FORWARD_SENTINEL, "[聊天记录]");
 
     MediaOutcome { text, image_uris }
 }
