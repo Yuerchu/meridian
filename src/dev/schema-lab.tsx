@@ -1,0 +1,689 @@
+// 数据库模型画布。`#playground/schema`。
+//
+// 这里画的是 `schema-data.ts`,那份数据一半是散文、一半由
+// `scripts/check-db-schema.mjs` 拿迁移核着。所以这个文件只管画,不带任何关于
+// schema 的判断——一条边是不是外键、一列该不该加重,都是数据说了算。
+//
+// 节点全字段展开,不折叠:一张表要么值得画出来,要么不该在图上。折叠起来的字段
+// 等于让人在图和文档之间来回跳,而这张图存在的理由就是不用跳。
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Moon, Sun, Xmark } from '@gravity-ui/icons'
+import {
+  Background,
+  Controls,
+  Handle,
+  MiniMap,
+  Position,
+  ReactFlow,
+  ReactFlowProvider,
+  useEdgesState,
+  useNodesState,
+  useReactFlow,
+  type Edge,
+  type Node,
+  type NodeProps,
+} from '@xyflow/react'
+import '@xyflow/react/dist/style.css'
+
+import { Button, Input, Tooltip } from '@heroui/react'
+import { cn } from '@/lib/utils'
+import { useAppTheme } from '@/lib/theme'
+import {
+  EDGES,
+  EDGE_COLUMNS,
+  GHOSTS,
+  GHOST_BY_ID,
+  GROUPS,
+  GROUP_BY_ID,
+  NODE_WIDTH,
+  ROW_HEIGHT,
+  TABLES,
+  TABLE_BY_NAME,
+  ghostId,
+  nodeX,
+  type SchemaColumn,
+  type SchemaEdge,
+  type SchemaGhost,
+  type SchemaTable,
+} from './schema-data'
+
+/**
+ * 说明文字里只有 `<code>` 和 `<b>` 两种标记。
+ *
+ * 手写这十行而不是 `dangerouslySetInnerHTML`:数据是自己的,但把一个能塞任意
+ * HTML 的口子留在预览页里,下一个往说明里粘一段别处文案的人就会踩到。
+ */
+const MARKUP = /<(code|b)>([\s\S]*?)<\/\1>/g
+
+function unescape(s: string) {
+  return s
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&amp;/g, '&')
+}
+
+function richText(source: string): ReactNode[] {
+  const out: ReactNode[] = []
+  let last = 0
+  let key = 0
+  for (const m of source.matchAll(MARKUP)) {
+    const at = m.index
+    if (at > last) out.push(unescape(source.slice(last, at)))
+    const inner = unescape(m[2])
+    out.push(
+      m[1] === 'code' ? (
+        <code key={key++} className="rounded bg-default px-1 py-0.5 font-mono text-xs wrap-anywhere">
+          {inner}
+        </code>
+      ) : (
+        <b key={key++} className="font-semibold text-foreground">
+          {inner}
+        </b>
+      ),
+    )
+    last = at + m[0].length
+  }
+  if (last < source.length) out.push(unescape(source.slice(last)))
+  return out
+}
+
+// ── 节点 ──────────────────────────────────────────────────────────────────
+
+type TableNodeData = { table: SchemaTable; dimmed: boolean; hit: boolean }
+
+function ColumnRow({ table, column, keyed }: { table: SchemaTable; column: SchemaColumn; keyed: boolean }) {
+  const isPk = column.flags.includes('PK')
+  // 列上的点说的是「这里连着什么」:外键、逻辑引用,或者一条断掉的外键。
+  // 断的那种必须自己有颜色——它长得像外键,却什么都约束不了。
+  const mark = EDGE_COLUMNS.get(`${table.name}.${column.name}`)
+  const isBroken = mark === 'broken'
+  const isSoft = mark === 'soft'
+  const isFk = !isBroken && !isSoft && column.flags.includes('FK')
+
+  // 一列的两侧各挂一对 handle。边往哪边走由两张表的相对位置决定,所以两侧都得备着。
+  const handles = (['l', 'r'] as const).map((side) => {
+    const position = side === 'l' ? Position.Left : Position.Right
+    return [
+      <Handle
+        key={`${side}t`}
+        type="target"
+        id={`${column.name}__${side}t`}
+        position={position}
+        isConnectable={false}
+      />,
+      <Handle
+        key={`${side}s`}
+        type="source"
+        id={`${column.name}__${side}s`}
+        position={position}
+        isConnectable={false}
+      />,
+    ]
+  })
+
+  return (
+    <div
+      data-slot="schema-column"
+      className="relative flex items-center gap-2 px-3 hover:bg-default/60"
+      style={{ height: ROW_HEIGHT }}
+    >
+      {handles}
+      <span
+        aria-hidden
+        className={cn(
+          'size-1.5 shrink-0 rounded-full',
+          isBroken && 'bg-danger ring-1 ring-danger/60',
+          !isBroken && isPk && 'bg-warning',
+          !isBroken && isFk && 'bg-success',
+          !isBroken && isSoft && 'bg-warning/40 ring-1 ring-warning/60',
+          !isBroken && !isPk && !isFk && !isSoft && 'bg-border',
+        )}
+      />
+      <span
+        className={cn(
+          'truncate font-mono text-xs',
+          isBroken ? 'text-danger' : isPk ? 'text-warning' : keyed ? 'text-foreground' : 'text-muted',
+        )}
+      >
+        {column.name}
+      </span>
+      <span className="ml-auto font-mono text-xs text-muted/60">{column.type}</span>
+    </div>
+  )
+}
+
+function TableNode({ data, selected }: NodeProps<Node<TableNodeData>>) {
+  const { table, dimmed, hit } = data
+  const group = GROUP_BY_ID.get(table.group)
+  const keyed = useMemo(() => new Set(table.show), [table.show])
+
+  return (
+    <div
+      data-slot="schema-table"
+      className={cn(
+        'overflow-hidden rounded-xl border bg-surface shadow-surface transition-opacity',
+        selected ? 'border-accent ring-1 ring-accent' : 'border-border',
+        hit && !selected && 'border-warning',
+        dimmed && 'opacity-25',
+      )}
+      style={{ width: NODE_WIDTH }}
+    >
+      <div className="flex items-center gap-2 border-b border-border bg-default/50 px-3 py-2">
+        <span aria-hidden className="size-4 shrink-0 rounded" style={{ background: group?.color }} />
+        <span className={cn('font-mono text-sm font-semibold', table.legacy && 'text-muted line-through')}>
+          {table.name}
+        </span>
+        <span className="ml-auto font-mono text-xs text-muted/70">迁移 {table.mig}</span>
+      </div>
+      <div className="flex items-baseline gap-2 px-3 pt-1.5 pb-0.5 text-xs text-muted">
+        <span className="truncate">{table.title}</span>
+        <span className="ml-auto shrink-0 font-mono text-muted/60">{table.columns.length} 列</span>
+      </div>
+      <div className="py-1">
+        {table.columns.map((c) => (
+          <ColumnRow key={c.name} table={table} column={c} keyed={keyed.has(c.name)} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 一张已经不在库里、却仍被外键指着的表。
+ *
+ * 它存在的唯一理由是给那条断掉的边一个诚实的终点。画成虚线空框而不是一张表，
+ * 是因为它不是一张表——里面没有字段可画，只有「这里本该有东西」这一件事。
+ */
+function GhostNode({ data }: NodeProps<Node<{ ghost: SchemaGhost; dimmed: boolean }>>) {
+  const { ghost, dimmed } = data
+  return (
+    <div
+      data-slot="schema-ghost"
+      className={cn(
+        'flex flex-col justify-center rounded-xl border-2 border-dashed border-danger/60 bg-danger/5 px-3',
+        dimmed && 'opacity-25',
+      )}
+      style={{ width: NODE_WIDTH, height: ghost.h }}
+    >
+      {/* 只需要一个入口：指着它的边从右边过来。 */}
+      <Handle type="target" id="id__rt" position={Position.Right} isConnectable={false} />
+      <Handle type="target" id="id__lt" position={Position.Left} isConnectable={false} />
+      <span className="font-mono text-sm font-semibold text-danger line-through">{ghost.name}</span>
+      <span className="text-xs text-danger/80">这张表已经不存在 · {ghost.referencedBy} 仍指着它</span>
+    </div>
+  )
+}
+
+const nodeTypes = { table: TableNode, ghost: GhostNode }
+
+// ── 边 ────────────────────────────────────────────────────────────────────
+
+function buildEdges(showSoft: boolean, selected: string | null): Edge[] {
+  // 开关管的是逻辑引用。broken 是库里真实存在的外键约束，只是目标没了，
+  // 跟着逻辑引用一起被关掉会让它在图上凭空消失。
+  return EDGES.filter((e) => e.kind !== 'soft' || showSoft).map((e, i) => {
+    // 断掉的边连到墓碑,不连到 `to`。`to` 是这条外键的本意,而线的两端是一句陈述:
+    // 把它连回那张好好存在的表,就是在说「它引用着这张表」——恰恰是不成立的那句。
+    const target = e.kind === 'broken' && e.actualTarget ? ghostId(e.actualTarget) : e.to
+    const fromX = nodeX(e.from)
+    const toX = nodeX(target)
+    // 往右还是往左,由两端的相对位置决定;自环固定走右侧。
+    const side = e.self || fromX < toX ? 'r' : fromX > toX ? 'l' : 'r'
+    const related = selected !== null && (e.from === selected || target === selected || e.to === selected)
+    return {
+      id: `e${i}`,
+      source: e.from,
+      target,
+      sourceHandle: `${e.col}__${side}s`,
+      targetHandle: `${e.toCol}__${side === 'r' ? 'l' : 'r'}t`,
+      type: e.self ? 'smoothstep' : 'default',
+      className: cn(
+        e.kind === 'soft' && 'schema-edge-soft',
+        e.kind === 'broken' && 'schema-edge-broken',
+        related && 'schema-edge-hl',
+        selected !== null && !related && 'schema-edge-dim',
+      ),
+      // 全部边都挂标签会糊成一片:外键常驻(它标的是删除行为,是这张图的重点),
+      // 逻辑引用只在选中相关表时才说话。断掉的那条永远说话——终点已经把事实说清楚了,
+      // 标签补的是「它本来要指哪」。
+      label:
+        e.kind === 'broken' ? `✕ ${e.act} · 本意是 ${e.to}` : e.kind === 'fk' ? e.act : related ? e.act : undefined,
+      labelShowBg: true,
+      labelBgPadding: [4, 2] as [number, number],
+      labelBgBorderRadius: 3,
+    }
+  })
+}
+
+// ── 画布 ──────────────────────────────────────────────────────────────────
+
+function Canvas({
+  query,
+  hiddenGroups,
+  showSoft,
+  selected,
+  onSelect,
+}: {
+  query: string
+  hiddenGroups: Set<string>
+  showSoft: boolean
+  selected: string | null
+  onSelect: (name: string | null) => void
+}) {
+  const rf = useReactFlow()
+  const { resolvedTheme } = useAppTheme()
+
+  const initial = useMemo<Node[]>(
+    () => [
+      ...TABLES.map((t) => ({
+        id: t.name,
+        type: 'table',
+        position: { x: t.x, y: t.y },
+        data: { table: t, dimmed: false, hit: false },
+        // 带上尺寸,否则首次 fitView 会赶在节点测量之前跑,视口停在左上角。
+        width: NODE_WIDTH,
+        height: t.h,
+      })),
+      ...GHOSTS.map((g) => ({
+        id: g.id,
+        type: 'ghost',
+        position: { x: g.x, y: g.y },
+        data: { ghost: g, dimmed: false },
+        width: NODE_WIDTH,
+        height: g.h,
+      })),
+    ],
+    [],
+  )
+  const [nodes, setNodes, onNodesChange] = useNodesState(initial)
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([])
+
+  useEffect(() => setEdges(buildEdges(showSoft, selected)), [showSoft, selected, setEdges])
+
+  useEffect(() => {
+    const q = query.trim().toLowerCase()
+    setNodes((ns) =>
+      ns.map((n) => {
+        const t = TABLE_BY_NAME.get(n.id)
+        if (!t) {
+          // 墓碑：跟着指着它的那张表一起显示或隐藏，不然会剩下一个没有来处的空框。
+          const ghost = GHOST_BY_ID.get(n.id)
+          const owner = ghost && TABLE_BY_NAME.get(ghost.referencedBy)
+          const hit = q.length > 0 && (ghost?.name.toLowerCase().includes(q) ?? false)
+          return {
+            ...n,
+            hidden: owner ? hiddenGroups.has(owner.group) : false,
+            selected: false,
+            data: { ...n.data, dimmed: q.length > 0 && !hit },
+          }
+        }
+        const hit =
+          q.length > 0 &&
+          (t.name.toLowerCase().includes(q) ||
+            t.title.toLowerCase().includes(q) ||
+            t.columns.some((c) => c.name.toLowerCase().includes(q)))
+        return {
+          ...n,
+          hidden: hiddenGroups.has(t.group),
+          selected: n.id === selected,
+          data: { ...n.data, hit, dimmed: q.length > 0 && !hit },
+        }
+      }),
+    )
+  }, [query, hiddenGroups, selected, setNodes])
+
+  // 收一次视口。initial 里给了尺寸,但节点测量仍在下一帧,`fitView` prop 会早一步。
+  useEffect(() => {
+    const id = setTimeout(() => void rf.fitView({ padding: 0.06 }), 80)
+    return () => clearTimeout(id)
+  }, [rf])
+
+  // 点墓碑等于点它的来处：墓碑自己没有内容可看，而想知道的事（谁还指着它、为什么）
+  // 都写在那张表的说明里。
+  const onNodeClick = useCallback(
+    (_: unknown, node: Node) => onSelect(GHOST_BY_ID.get(node.id)?.referencedBy ?? node.id),
+    [onSelect],
+  )
+  const onPaneClick = useCallback(() => onSelect(null), [onSelect])
+
+  return (
+    <ReactFlow
+      nodes={nodes}
+      edges={edges}
+      onNodesChange={onNodesChange}
+      onEdgesChange={onEdgesChange}
+      nodeTypes={nodeTypes}
+      onNodeClick={onNodeClick}
+      onPaneClick={onPaneClick}
+      colorMode={resolvedTheme === 'dark' ? 'dark' : 'light'}
+      fitView
+      minZoom={0.15}
+      maxZoom={2}
+      nodesConnectable={false}
+      proOptions={{ hideAttribution: true }}
+    >
+      <Background gap={22} size={1.6} />
+      <Controls showInteractive={false} />
+      <MiniMap
+        pannable
+        zoomable
+        nodeColor={(n) => {
+          const t = TABLE_BY_NAME.get(n.id)
+          if (!t) return 'var(--color-danger)' // 墓碑
+          return GROUP_BY_ID.get(t.group)?.color ?? '#888'
+        }}
+        nodeStrokeWidth={0}
+      />
+    </ReactFlow>
+  )
+}
+
+// ── 详情面板 ──────────────────────────────────────────────────────────────
+
+function FlagChip({ flag }: { flag: string }) {
+  const tone =
+    flag === 'PK'
+      ? 'text-warning border-warning/40'
+      : flag === 'FK'
+        ? 'text-success border-success/40'
+        : flag === 'UQ'
+          ? 'text-info border-info/40'
+          : 'text-muted border-border'
+  return <span className={cn('rounded border px-1 font-mono text-xs', tone)}>{flag}</span>
+}
+
+function EdgeRow({ edge, dir, onJump }: { edge: SchemaEdge; dir: 'out' | 'in'; onJump: (n: string) => void }) {
+  const text = dir === 'out' ? `${edge.col} → ${edge.to}.${edge.toCol}` : `${edge.from}.${edge.col} → ${edge.toCol}`
+  return (
+    <Button
+      variant="ghost"
+      onClick={() => onJump(dir === 'out' ? edge.to : edge.from)}
+      // flex-wrap + wrap-anywhere：断掉那条边的说明比一行长，不换行就被面板右缘吃掉。
+      className="h-auto w-full flex-wrap justify-start gap-x-2 gap-y-0.5 rounded-md px-4 py-1 font-normal"
+    >
+      <span
+        className={cn(
+          'font-mono text-xs wrap-anywhere',
+          edge.kind === 'broken' ? 'text-danger' : edge.kind === 'soft' ? 'text-warning' : 'text-foreground',
+        )}
+      >
+        {text}
+      </span>
+      <span
+        className={cn('ml-auto font-mono text-xs wrap-anywhere', edge.kind === 'broken' ? 'text-danger' : 'text-muted')}
+      >
+        {edge.kind === 'soft' ? '逻辑 · ' : edge.kind === 'broken' ? `✕ 实际指向 ${edge.actualTarget} · ` : ''}
+        {edge.act}
+      </span>
+    </Button>
+  )
+}
+
+function SectionTitle({ children }: { children: ReactNode }) {
+  return <h3 className="px-4 pt-4 pb-1 text-xs font-semibold tracking-wider text-muted uppercase">{children}</h3>
+}
+
+function DetailPanel({
+  name,
+  onClose,
+  onJump,
+}: {
+  name: string | null
+  onClose: () => void
+  onJump: (n: string) => void
+}) {
+  if (!name) {
+    return (
+      <aside className="flex w-[420px] shrink-0 items-center justify-center border-l border-border bg-surface p-8 text-center text-sm text-muted">
+        <div className="space-y-2">
+          <p>点一个表看它的全部字段、跨字段约束与关联关系</p>
+          <p className="text-xs">拖动节点重新排布 · 滚轮缩放 · 选中一个表会把它的边挑出来</p>
+        </div>
+      </aside>
+    )
+  }
+
+  // 不用非空断言：选中的 id 可能来自画布上任何一个节点，而墓碑不是表。
+  const table = TABLE_BY_NAME.get(name)
+  if (!table) return null
+  const group = GROUP_BY_ID.get(table.group)
+  const out = EDGES.filter((e) => e.from === name)
+  const inc = EDGES.filter((e) => e.to === name)
+
+  return (
+    <aside className="flex w-[420px] shrink-0 flex-col border-l border-border bg-surface">
+      <header className="border-b border-border px-4 py-3">
+        <div className="flex items-start gap-2">
+          <div className="min-w-0">
+            <h2 className="font-mono text-base font-semibold">{table.name}</h2>
+            <p className="text-xs text-muted">
+              {table.title} · {group?.title} · 迁移 {table.mig}
+            </p>
+          </div>
+          <Tooltip delay={0}>
+            <Button isIconOnly aria-label="关闭详情" variant="ghost" size="sm" className="ml-auto" onClick={onClose}>
+              <Xmark className="size-4" />
+            </Button>
+            <Tooltip.Content placement="left">关闭</Tooltip.Content>
+          </Tooltip>
+        </div>
+        {table.tags && table.tags.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {table.tags.map((tag) => (
+              <span key={tag} className="rounded border border-border px-2 py-0.5 font-mono text-xs text-muted">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto pb-10">
+        {table.note && (
+          <p className="border-b border-border bg-default/40 px-4 py-3 text-xs leading-relaxed text-muted">
+            {richText(table.note)}
+          </p>
+        )}
+
+        <SectionTitle>字段 · {table.columns.length} 列</SectionTitle>
+        {/* 一列一块,不是表格:说明里带着 `messages.compact_anchor_id` 这种长标识符,
+            在 420px 宽的面板里排成三栏会把最后一栏顶出可视区。 */}
+        <ul>
+          {table.columns.map((c) => (
+            <li key={c.name} className="border-b border-border/50 px-4 py-2 hover:bg-default/40">
+              <div className="flex items-baseline gap-2">
+                <span className="font-mono text-xs break-all">{c.name}</span>
+                <span className="ml-auto shrink-0 font-mono text-xs text-info">{c.type}</span>
+              </div>
+              <div className="mt-1 flex flex-wrap items-center gap-1">
+                {c.flags.map((f) => (
+                  <FlagChip key={f} flag={f} />
+                ))}
+                {c.def !== '—' && <span className="font-mono text-xs text-muted/70">默认 {c.def}</span>}
+              </div>
+              {c.desc && <p className="mt-1 text-xs leading-relaxed break-words text-muted">{richText(c.desc)}</p>}
+            </li>
+          ))}
+        </ul>
+
+        {out.length > 0 && <SectionTitle>指向别人</SectionTitle>}
+        {out.map((e) => (
+          <EdgeRow key={`o${e.col}${e.to}${e.toCol}`} edge={e} dir="out" onJump={onJump} />
+        ))}
+
+        {inc.length > 0 && <SectionTitle>被谁指着</SectionTitle>}
+        {inc.map((e) => (
+          <EdgeRow key={`i${e.from}${e.col}${e.toCol}`} edge={e} dir="in" onJump={onJump} />
+        ))}
+
+        {table.rels && table.rels.length > 0 && (
+          <>
+            <SectionTitle>关联关系</SectionTitle>
+            <ul className="space-y-2 px-4 pl-8 text-xs leading-relaxed text-muted">
+              {table.rels.map((r, i) => (
+                <li key={i} className="list-disc">
+                  {richText(r)}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        {table.rules && table.rules.length > 0 && (
+          <>
+            <SectionTitle>跨字段约束与不变式</SectionTitle>
+            <ul className="space-y-2 px-4 pl-8 text-xs leading-relaxed text-muted">
+              {table.rules.map((r, i) => (
+                <li key={i} className="list-disc">
+                  {richText(r)}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </div>
+    </aside>
+  )
+}
+
+// ── 页面 ──────────────────────────────────────────────────────────────────
+
+function Lab() {
+  const rf = useReactFlow()
+  const { resolvedTheme, setTheme } = useAppTheme()
+  const [query, setQuery] = useState('')
+  const [hiddenGroups, setHiddenGroups] = useState<Set<string>>(new Set())
+  const [showSoft, setShowSoft] = useState(true)
+  const [selected, setSelected] = useState<string | null>(null)
+
+  const fkCount = EDGES.filter((e) => e.kind === 'fk').length
+  const softCount = EDGES.filter((e) => e.kind === 'soft').length
+  const brokenCount = EDGES.filter((e) => e.kind === 'broken').length
+
+  const jump = useCallback(
+    (name: string) => {
+      const table = TABLE_BY_NAME.get(name)
+      if (!table) return
+      setSelected(name)
+      void rf.setCenter(table.x + NODE_WIDTH / 2, table.y + table.h / 2, { zoom: 0.8, duration: 500 })
+    },
+    [rf],
+  )
+
+  const toggleGroup = (id: string) =>
+    setHiddenGroups((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+
+  return (
+    <div className="flex h-full flex-col bg-background text-foreground">
+      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-4 py-2">
+        <h1 className="text-sm font-semibold whitespace-nowrap">数据库模型</h1>
+        <span className="font-mono text-xs whitespace-nowrap text-muted">
+          {TABLES.length} 表 · {fkCount} 外键 · {softCount} 逻辑引用
+          {brokenCount > 0 && <span className="text-danger"> · {brokenCount} 断</span>}
+        </span>
+        <Input
+          type="search"
+          aria-label="搜索表名或字段"
+          placeholder="搜表名 / 字段，回车跳转"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key !== 'Enter') return
+            const q = query.trim().toLowerCase()
+            const found = TABLES.find((t) => t.name.toLowerCase().includes(q))
+            if (found) jump(found.name)
+          }}
+          className="w-56"
+        />
+        <Button variant={showSoft ? 'primary' : 'outline'} size="sm" onClick={() => setShowSoft((v) => !v)}>
+          逻辑引用
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => void rf.fitView({ padding: 0.06, duration: 400 })}>
+          适应画布
+        </Button>
+
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {GROUPS.map((g) => {
+            const off = hiddenGroups.has(g.id)
+            return (
+              <Tooltip key={g.id} delay={300}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => toggleGroup(g.id)}
+                  aria-pressed={!off}
+                  className={cn('h-7 gap-1.5 rounded-full px-2.5 text-xs font-normal', off && 'opacity-40')}
+                >
+                  <span aria-hidden className="size-2 rounded-sm" style={{ background: g.color }} />
+                  {g.title}
+                </Button>
+                <Tooltip.Content placement="bottom">{g.desc}</Tooltip.Content>
+              </Tooltip>
+            )
+          })}
+          <Tooltip delay={0}>
+            <Button
+              isIconOnly
+              aria-label="切换主题"
+              variant="outline"
+              size="sm"
+              onClick={() => setTheme(resolvedTheme === 'dark' ? 'light' : 'dark')}
+            >
+              <Sun className="hidden size-4 dark:block" />
+              <Moon className="size-4 dark:hidden" />
+            </Button>
+            <Tooltip.Content placement="bottom">切换主题</Tooltip.Content>
+          </Tooltip>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        <div className="relative min-w-0 flex-1">
+          <Canvas
+            query={query}
+            hiddenGroups={hiddenGroups}
+            showSoft={showSoft}
+            selected={selected}
+            onSelect={setSelected}
+          />
+          <p className="pointer-events-none absolute bottom-3.5 left-14 z-5 rounded-md border border-border bg-background/80 px-2.5 py-1 text-xs text-muted backdrop-blur-sm">
+            实线 = 真外键（标注 ON DELETE 行为） · 虚线 = 代码维护的逻辑引用，故意不建外键 · 红色断线 =
+            库里有这条外键但它指向一张不存在的表
+          </p>
+        </div>
+        <DetailPanel name={selected} onClose={() => setSelected(null)} onJump={jump} />
+      </div>
+    </div>
+  )
+}
+
+export default function SchemaLab() {
+  return (
+    <ReactFlowProvider>
+      {/* React Flow 的连线颜色只能从它自己的类名上改;这几条是这个预览页独有的
+          语义(外键 / 逻辑引用 / 选中相关 / 被压暗),不值得进 index.css。 */}
+      <style>{`
+        /* 连线用 --muted 而不是 --border:border 是给分隔线用的,在浅色主题下淡到
+           看不出走向,而这张图上的线本身就是内容。 */
+        .react-flow__edge-path { stroke: var(--color-muted); stroke-width: 1.4px; opacity: .55; }
+        .schema-edge-soft .react-flow__edge-path { stroke: var(--color-warning); stroke-dasharray: 5 4; opacity: .75; }
+        /* 断掉的外键:库里有这条约束,但它指向一张不存在的表。画成断开的红线,
+           因为画成正常外键就是在陈述一件不成立的事。 */
+        .schema-edge-broken .react-flow__edge-path { stroke: var(--color-danger); stroke-dasharray: 2 5; stroke-width: 2px; opacity: .9; }
+        .schema-edge-broken .react-flow__edge-text { fill: var(--color-danger); }
+        .schema-edge-hl .react-flow__edge-path { stroke: var(--color-accent); stroke-width: 2.2px; opacity: 1; }
+        .schema-edge-dim { opacity: .12; }
+        .react-flow__edge-text { fill: var(--color-muted); font-size: 9px; }
+        .react-flow__edge-textbg { fill: var(--color-background); opacity: .85; }
+        .react-flow__handle { opacity: 0; min-width: 6px; min-height: 6px; width: 6px; height: 6px; border: 0; }
+      `}</style>
+      <Lab />
+    </ReactFlowProvider>
+  )
+}

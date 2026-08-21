@@ -37,6 +37,7 @@ import {
   type TurnStatus,
 } from '@/components/ui/turn'
 import HeroUiLab from './heroui-lab'
+import SchemaLab from './schema-lab'
 import ScrollLab from './scroll-lab'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { TurnItem } from '@/components/chat/turn-item'
@@ -512,6 +513,7 @@ export default function Playground() {
   // a whole cannot give it.
   if (window.location.hash === '#playground/scroll') return <ScrollLab />
   if (window.location.hash === '#playground/heroui') return <HeroUiLab />
+  if (window.location.hash === '#playground/schema') return <SchemaLab />
   return <Gallery />
 }
 

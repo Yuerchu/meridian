@@ -357,6 +357,67 @@ rather than in core because what it dispatches to are the Tauri commands.
 - New call sites default to `debug!`. Only user-visible state changes and failures earn info and above, because only those reach the file.
 - `RUST_LOG` steers stdout only. The file level is the `logging.level` preference, so a debug session cannot evict the records it was meant to keep.
 
+## The schema canvas
+
+`#playground/schema` (`pnpm schema`) draws the database with React Flow: every table
+full-height with all its columns, edges anchored to the *column* rather than the table,
+and a panel with the whole of what a table means. `src/dev/schema-lab.tsx` only draws —
+whether an edge is a foreign key, whether a column is worth emphasis, all of it comes
+from `src/dev/schema-data.ts`, which is the single source both halves of this feed on.
+
+- **Half of that data is prose and only a person can write it.** Which table has which
+  column is recoverable from the migration; *why `parent_id` carries no foreign key*, why
+  `NULL` and `0` are different answers on the cache columns, why the price is copied onto
+  the audit row — none of it is. A new column is worth a line saying what it decides;
+  a new table is worth `note` / `rels` / `rules`.
+- **The other half is checked by a machine, against a real SQLite.**
+  `scripts/check-db-schema.mjs` runs every `migrations/*/up.sql` into an in-memory
+  `node:sqlite` — under `PRAGMA foreign_keys=OFF`, which is how `db/mod.rs:78` runs them —
+  and reads the result back through `PRAGMA table_info` / `foreign_key_list`. Structure
+  that drifts is worse than no diagram: it is wrong in a way that reads as authoritative.
+
+  It used to parse the SQL itself, and that version was wrong about the one thing worth
+  being right about. `ALTER TABLE … RENAME TO` does not just rename: since SQLite 3.25 it
+  **rewrites the `REFERENCES` clauses of other tables that point at it** — under both
+  `foreign_keys` settings, measured on 3.50.4. Migration 24 is exactly that shape, and a
+  checker that models a rename as a rename goes quiet precisely where it is needed.
+
+  What that turned up is a real defect, and how it is recorded is the point.
+  `REWRITTEN_REFERENCES` restores **only the target table name** on the SQL side and hands
+  the edge back for the ordinary comparison, so the column, the `ON DELETE` and the edge's
+  existence on the doc side are all still checked. The first version suppressed the whole
+  edge by key, which bought two holes: it could never notice it had become unnecessary, and
+  it waved through a changed `ON DELETE` on the one edge already known to be suspect. A rule
+  that stops matching is reported, so fixing the migration forces the rule to retire.
+- **A defect has to be visible in the drawing, not just next to it.** That edge is
+  `kind: 'broken'`, and what it *terminates on* is the part that matters: a tombstone node
+  for `mcp_servers_old`, derived from the edge itself and parked left of every layout
+  column. Ending it on the live `mcp_servers` would have the line assert the one thing that
+  is not true — colour and a label do not outrank where a line stops, and the diagram is
+  what gets believed. `to` stays the *intent* (which is what the checker compares against);
+  `actualTarget` is the reality, and it is the end the canvas draws.
+
+  The two halves hold each other up: an edge marked `broken` whose target is fine in the
+  database is an error, and so is a rewritten reference the data still calls an ordinary
+  `fk`. A tombstone is not a node type anyone adds by hand — it exists for exactly as long
+  as a broken edge names it.
+- **`--staged` is what `pre-commit` runs**, and the distinction is the point: a working-tree
+  check passes when the migration is staged and the matching edit to `schema-data.ts` is
+  not, and then the commit contains a version where the structure moved and the diagram
+  did not.
+- **Needs Node >= 22.18** (`engines`, and the script says so itself before failing):
+  it imports the `.ts` directly and relies on built-in type stripping, so nothing in
+  `schema-data.ts` may be non-erasable syntax — no `enum`, no `namespace`. `node:sqlite`
+  still needs a flag on Node 22, which the script re-executes itself to add, so callers
+  only ever say `node scripts/check-db-schema.mjs`.
+- **The layout is derived, not written down.** Nodes are as tall as their column count, so
+  a hand-placed `y` would need rewriting every time a column lands. `schema-data.ts`
+  declares only which canvas column a table sits in and in what order; the rest falls out
+  of the row counts, and a table missing from that list throws rather than silently
+  stacking at the origin.
+- React Flow is a real dependency, not a dev-only one — the canvas is where it earned its
+  place, but nothing about it is playground-specific.
+
 ## UI Conventions
 
 Built on HeroUI v3 (React Aria underneath). Read the component's own CSS before styling it — `node_modules/@heroui/styles/dist/components/*.css` says what it already does, and most "why won't this override" questions are answered there. The `heroui-react` skill fetches the official docs.
@@ -459,6 +520,15 @@ is in: 68-ish directories means staged, `dist/postinstall` alone means stub.
 Incremental installs are unaffected. `ERR_PNPM_IGNORED_BUILDS` on every install
 is expected — those two build scripts are declined on purpose (see
 `pnpm-workspace.yaml`), and the exit code is 0.
+
+Two things that setup does which are not wanted. It appends an `allowBuilds`
+block to `pnpm-workspace.yaml` turning those same two build scripts back on —
+**revert that**, the refusal above is the deliberate half of this arrangement.
+And `pnpm add <anything>` can decide to rebuild rather than extend
+`node_modules`, which empties the package again; on Windows it will also fail
+outright with `ERR_PNPM_EPERM` if a `vite`/`tauri dev` is running, because the
+dev server holds `@rolldown/binding-win32-x64-msvc`'s `.node` open. Stop the dev
+servers first, then add, then re-run the setup and check the count.
 
 ## Environment Variables
 

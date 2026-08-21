@@ -15,6 +15,9 @@
     "doctor": "react-doctor",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "schema": "vite --open /#playground/schema",
+    "schema:check": "node scripts/check-db-schema.mjs",
+    "schema:check:staged": "node scripts/check-db-schema.mjs --staged",
     "prepare": "husky"
   },
   "lint-staged": {
@@ -25,6 +28,9 @@
     "*.{css,json,html}": [
       "prettier --write"
     ]
+  },
+  "engines": {
+    "node": ">=22.18"
   },
   "license": "LicenseRef-Proprietary-Yuerchu",
   "author": "于小丘 Yuerchu <admin@yuxiaoqiu.cn>",
@@ -85,6 +91,7 @@
     "@tiptap/react": "^3.30.0",
     "@tiptap/starter-kit": "^3.30.0",
     "@tiptap/suggestion": "^3.30.0",
+    "@xyflow/react": "^12.11.3",
     "clsx": "^2.1.1",
     "diff": "^9.0.0",
     "embla-carousel": "^8.6.0",
