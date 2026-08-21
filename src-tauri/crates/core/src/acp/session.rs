@@ -7,14 +7,17 @@
 //! the transcript view all already understand. Nothing about it is a special
 //! case below `chat-view`.
 //!
-//! **A turn here is flattened.** The adapter may go round the model several
-//! times in one `session/prompt`, and all of it lands on one assistant row with
-//! every tool call attached to it, rather than the row-per-round a native turn
-//! writes. The shape is legal — an assistant row carries a list of calls, and
-//! each result is its own row — and it reads correctly; what it loses is which
-//! text came before which call. Recovering that means splitting the row at the
-//! first result, which is worth doing when something needs the distinction and
-//! not before.
+//! **A turn is written round by round**, the way a native one is: the prose
+//! that introduced a call stays on the row carrying that call, its result is
+//! its own row, and whatever the agent says afterwards opens the next row.
+//!
+//! This used to be flattened onto a single assistant row, on the reasoning that
+//! the shape was legal and only lost which text came before which call. It lost
+//! more than that. `lib/turns.ts` takes the steps *after* the last tool call as
+//! the turn's conclusion, so a flattened turn has none — its closing sentence
+//! sits before the calls — and a turn with tools and no conclusion is drawn as
+//! `interrupted`, with the whole answer folded away as process. Every finished
+//! hosted turn that called a tool was reported as stopped.
 
 use std::sync::{Arc, Mutex};
 
@@ -37,21 +40,70 @@ use super::{AcpConfig, approvals};
 
 /// What this app calls itself when it introduces itself to the adapter.
 const CLIENT_NAME: &str = "meridian";
-/// Recorded on every assistant row so a transcript says what wrote it. Not a
-/// model id — which model the adapter chose is its business and it does not
-/// report one.
+/// Stands in until the agent says which model it is using, and means exactly
+/// "it has not said". Not a model id, and nothing should treat it as one.
+///
+/// It usually does say: ACP carries the model as a session configuration option
+/// (`category: "model"`), present in the `session/new` response and re-sent
+/// whenever it changes, so a row normally records the real id. This is what a
+/// row gets when the adapter is old enough, or quiet enough, not to report one.
 const MODEL_LABEL: &str = "claude-code";
+/// Copied onto every row beside the model label, the way a provider's name is.
+const PROVIDER_LABEL: &str = "Claude Code";
 
-/// The turn in flight, if there is one.
-struct TurnState {
-    turn_id: String,
-    assistant_message_id: String,
-    cancel: CancellationToken,
+/// One assistant row, while it is still being written.
+///
+/// A row holds the prose that came *before* its tool calls, plus those calls.
+/// Everything after their results belongs to the next row — which is how a
+/// native turn writes a multi-round answer, and it is not cosmetic. The
+/// transcript reader takes the steps after the last tool call as the turn's
+/// conclusion (`lib/turns.ts`, `splitAtConclusion`); with every round crammed
+/// into one row the final sentence sits *before* the calls instead of after
+/// them, so there is no conclusion, and a finished turn is drawn as
+/// `interrupted` with its whole answer folded away as process.
+struct OpenRow {
+    message_id: String,
     text: String,
     reasoning: String,
     tool_calls: Vec<provider::ToolCall>,
     /// `(call_id, output, outcome)`, in the order the calls finished.
     results: Vec<(String, String, &'static str)>,
+    /// A result has landed on this row, so the next prose opens a new one.
+    settled: bool,
+    /// This row is already in the database and must not be written again.
+    /// Only set when opening the next round failed part way — see
+    /// [`Shared::open_round_if_settled`].
+    written: bool,
+}
+
+impl OpenRow {
+    fn new(message_id: String) -> Self {
+        Self {
+            message_id,
+            text: String::new(),
+            reasoning: String::new(),
+            tool_calls: Vec::new(),
+            results: Vec::new(),
+            settled: false,
+            written: false,
+        }
+    }
+
+    /// Nothing worth a row of its own. Checked before opening a new round so a
+    /// turn cannot end on an empty bubble.
+    fn is_empty(&self) -> bool {
+        self.text.trim().is_empty() && self.reasoning.is_empty() && self.tool_calls.is_empty()
+    }
+}
+
+/// The turn in flight, if there is one.
+struct TurnState {
+    turn_id: String,
+    cancel: CancellationToken,
+    /// The round being written.
+    row: OpenRow,
+    /// The last row landed in the database, which the next one hangs off.
+    parent: String,
 }
 
 /// The half of a session the protocol handler needs.
@@ -63,6 +115,11 @@ struct Shared {
     services: Services,
     conversation_id: String,
     turn: Mutex<Option<TurnState>>,
+    /// The agent's id for the model that is answering, once it has said.
+    ///
+    /// Kept on the session rather than the turn: it is a property of the
+    /// session, arrives before the first turn, and can change under one.
+    model: Mutex<Option<String>>,
 }
 
 impl Shared {
@@ -83,6 +140,24 @@ impl Shared {
         guard.as_mut().map(f)
     }
 
+    /// What to record as the model on a row written now.
+    fn model(&self) -> String {
+        self.model
+            .lock()
+            .ok()
+            .and_then(|m| m.clone())
+            .unwrap_or_else(|| MODEL_LABEL.to_string())
+    }
+
+    fn set_model(&self, model: String) {
+        let Ok(mut slot) = self.model.lock() else { return };
+        if slot.as_deref() == Some(model.as_str()) {
+            return;
+        }
+        tracing::info!(model = %model, conversation_id = %self.conversation_id, "ACP session model");
+        *slot = Some(model);
+    }
+
     async fn absorb(&self, notification: SessionNotification) {
         let effect = mapping::effect_of(notification.update);
         // Every branch below takes the lock, drops it, and only then emits.
@@ -90,9 +165,12 @@ impl Shared {
         // section the reader is feeding.
         match effect {
             Effect::Text(chunk) => {
+                // Prose arriving after a result is the next round talking, so it
+                // gets a row of its own — see [`OpenRow`] for what depends on it.
+                self.open_round_if_settled().await;
                 let Some(message_id) = self.with_turn(|t| {
-                    t.text.push_str(&chunk);
-                    t.assistant_message_id.clone()
+                    t.row.text.push_str(&chunk);
+                    t.row.message_id.clone()
                 }) else {
                     return;
                 };
@@ -104,9 +182,10 @@ impl Shared {
                 }));
             }
             Effect::Reasoning(chunk) => {
+                self.open_round_if_settled().await;
                 let Some(message_id) = self.with_turn(|t| {
-                    t.reasoning.push_str(&chunk);
-                    t.assistant_message_id.clone()
+                    t.row.reasoning.push_str(&chunk);
+                    t.row.message_id.clone()
                 }) else {
                     return;
                 };
@@ -133,7 +212,7 @@ impl Shared {
                 // calls). That makes this the only place that can tell the
                 // difference, and getting it wrong drew every shell command
                 // twice — once as the placeholder, once as itself.
-                let known = self.with_turn(|t| t.tool_calls.iter().any(|c| c.id == call_id));
+                let known = self.with_turn(|t| t.row.tool_calls.iter().any(|c| c.id == call_id));
                 match known {
                     Some(true) => {
                         self.revise(&call_id, &tool_name, &arguments);
@@ -144,12 +223,12 @@ impl Shared {
                 }
 
                 let Some(message_id) = self.with_turn(|t| {
-                    t.tool_calls.push(provider::ToolCall {
+                    t.row.tool_calls.push(provider::ToolCall {
                         id: call_id.clone(),
                         name: tool_name.clone(),
                         arguments: arguments.clone(),
                     });
-                    t.assistant_message_id.clone()
+                    t.row.message_id.clone()
                 }) else {
                     return;
                 };
@@ -173,8 +252,11 @@ impl Shared {
                 outcome,
             } => {
                 let Some(message_id) = self.with_turn(|t| {
-                    t.results.push((call_id.clone(), result.clone(), outcome));
-                    t.assistant_message_id.clone()
+                    t.row.results.push((call_id.clone(), result.clone(), outcome));
+                    // This round is over. Whatever the agent says next is the
+                    // next one talking, and gets a row of its own.
+                    t.row.settled = true;
+                    t.row.message_id.clone()
                 }) else {
                     return;
                 };
@@ -195,7 +277,123 @@ impl Shared {
             Effect::Usage { used, size } => {
                 tracing::debug!(used, size, conversation_id = %self.conversation_id, "acp context usage")
             }
+            Effect::ModelSelected(model) => self.set_model(model),
             Effect::Ignored => {}
+        }
+    }
+
+    /// Land a finished round: the assistant row, then its tool results.
+    ///
+    /// Returns the id of the last row written, which is what the next one hangs
+    /// off. A failed tool-result write leaves the chain on the last row that did
+    /// land, for the same reason a native turn does — the tool already ran, so
+    /// the row is worth less than the turn.
+    async fn write_row(&self, turn_id: &str, parent: &str, row: &OpenRow) -> String {
+        let tool_calls_json = (!row.tool_calls.is_empty()).then(|| serialize_tool_calls_openai(&row.tool_calls));
+        if let Err(e) = complete_assistant(
+            &self.services.db,
+            &row.message_id,
+            &row.text,
+            (!row.reasoning.is_empty()).then_some(row.reasoning.as_str()),
+            tool_calls_json.as_deref(),
+            None,
+            MessageUsage {
+                input_tokens: None,
+                output_tokens: None,
+                cache_read_tokens: None,
+                cache_write_tokens: None,
+            },
+        )
+        .await
+        {
+            tracing::error!(error = %e, "could not store an ACP assistant row");
+            return parent.to_string();
+        }
+
+        let mut last = row.message_id.clone();
+        for (call_id, output, outcome) in &row.results {
+            if let Some(id) = append_tool_result(
+                &self.services.db,
+                &self.conversation_id,
+                turn_id,
+                call_id,
+                output,
+                outcome,
+                Some(&last),
+            )
+            .await
+            {
+                last = id;
+            }
+        }
+        last
+    }
+
+    /// Close the current round and open the next one, if the current one is
+    /// finished.
+    ///
+    /// Called before prose is recorded, and does nothing until a result has
+    /// landed — so a turn that never calls a tool stays one row, and one that
+    /// does gets the row-per-round shape a native turn writes.
+    async fn open_round_if_settled(&self) {
+        // Decided and taken in one critical section: nothing may land on a row
+        // that is already being written out.
+        let taken = self
+            .with_turn(|t| {
+                if !t.row.settled || t.row.is_empty() {
+                    return None;
+                }
+                let carried = OpenRow::new(t.row.message_id.clone());
+                Some((
+                    t.turn_id.clone(),
+                    t.parent.clone(),
+                    std::mem::replace(&mut t.row, carried),
+                ))
+            })
+            .flatten();
+        let Some((turn_id, parent, finished)) = taken else {
+            return;
+        };
+
+        let last = self.write_row(&turn_id, &parent, &finished).await;
+
+        match begin_assistant(
+            &self.services.db,
+            &self.conversation_id,
+            &turn_id,
+            (None, Some(PROVIDER_LABEL)),
+            &self.model(),
+            Some(&last),
+        )
+        .await
+        {
+            Ok(id) => {
+                self.with_turn(|t| {
+                    t.row = OpenRow::new(id.clone());
+                    t.parent = last;
+                });
+                // Same event a native turn sends at the top of every round; it
+                // is what makes the front end start a new bubble rather than
+                // append to the one that just closed.
+                self.emit(serde_json::json!({
+                    "type": "message_start",
+                    "message_id": id,
+                    "conversation_id": self.conversation_id,
+                }));
+            }
+            // The database is not answering, which the rest of this turn is
+            // going to keep discovering. Stop here rather than carry on writing
+            // into a row that has already been completed — that would replace
+            // what was just stored with what comes next. The turn is cancelled
+            // so it ends down the ordinary path and reports the failure.
+            Err(e) => {
+                tracing::error!(error = %e, "could not open the next ACP round");
+                self.with_turn(|t| {
+                    t.parent = last;
+                    t.row.written = true;
+                    t.cancel.cancel();
+                });
+            }
         }
     }
 
@@ -212,18 +410,14 @@ impl Shared {
         let empty_args = arguments.trim().is_empty() || arguments == "{}";
 
         let updated = self.with_turn(|t| {
-            let call = t.tool_calls.iter_mut().find(|c| c.id == call_id)?;
+            let call = t.row.tool_calls.iter_mut().find(|c| c.id == call_id)?;
             if !tool_name.is_empty() {
                 call.name = tool_name.to_string();
             }
             if !empty_args {
                 call.arguments = arguments.to_string();
             }
-            Some((
-                call.name.clone(),
-                call.arguments.clone(),
-                t.assistant_message_id.clone(),
-            ))
+            Some((call.name.clone(), call.arguments.clone(), t.row.message_id.clone()))
         });
 
         let Some(Some((tool_name, arguments, message_id))) = updated else {
@@ -299,7 +493,7 @@ impl Handler for Shared {
                 let context = self.turn.lock().ok().and_then(|t| {
                     t.as_ref().map(|t| approvals::TurnContext {
                         turn_id: t.turn_id.clone(),
-                        assistant_message_id: t.assistant_message_id.clone(),
+                        assistant_message_id: t.row.message_id.clone(),
                         cancel: t.cancel.clone(),
                     })
                 });
@@ -349,6 +543,7 @@ impl AcpSession {
             services,
             conversation_id: conversation_id.clone(),
             turn: Mutex::new(None),
+            model: Mutex::new(None),
         });
         let peer = Peer::start(process, shared.clone() as Arc<dyn Handler>);
 
@@ -357,7 +552,7 @@ impl AcpSession {
         // live child nobody has a handle to any more — an orphaned node process
         // per failed attempt, and the usual reason to fail (not signed in) is
         // one the user retries.
-        match Self::handshake(&peer, &cwd).await {
+        match Self::handshake(&peer, &shared, &cwd).await {
             Ok(acp_session_id) => {
                 tracing::info!(
                     conversation_id = %conversation_id,
@@ -383,7 +578,7 @@ impl AcpSession {
     ///
     /// Split out so [`open`](Self::open) has exactly one failure path to clean
     /// up after, rather than four `?`s that each need remembering.
-    async fn handshake(peer: &Arc<Peer>, cwd: &str) -> Result<String, String> {
+    async fn handshake(peer: &Arc<Peer>, shared: &Shared, cwd: &str) -> Result<String, String> {
         let init = peer
             .request(
                 "initialize",
@@ -431,6 +626,12 @@ impl AcpSession {
             .await
             .map_err(|e| describe(peer, e))?;
         let session: protocol::NewSessionResult = serde_json::from_value(session).map_err(|e| e.to_string())?;
+        // Known from the moment the session exists, so the first row of the
+        // first turn records the real model rather than the placeholder. It is
+        // re-sent on every change after this, as a `config_option_update`.
+        if let Some(model) = session.config_options.iter().find_map(|o| o.as_model()) {
+            shared.set_model(model.to_string());
+        }
         Ok(session.session_id)
     }
 
@@ -475,8 +676,8 @@ impl AcpSession {
             &services.db,
             &self.conversation_id,
             &turn_id,
-            (None, Some("Claude Code")),
-            MODEL_LABEL,
+            (None, Some(PROVIDER_LABEL)),
+            &self.shared.model(),
             Some(&user_message_id),
         )
         .await?;
@@ -484,12 +685,10 @@ impl AcpSession {
         if let Ok(mut slot) = self.shared.turn.lock() {
             *slot = Some(TurnState {
                 turn_id: turn_id.clone(),
-                assistant_message_id: assistant_message_id.clone(),
                 cancel: cancel.clone(),
-                text: String::new(),
-                reasoning: String::new(),
-                tool_calls: Vec::new(),
-                results: Vec::new(),
+                row: OpenRow::new(assistant_message_id.clone()),
+                // The question. Every row this turn writes chains from it.
+                parent: user_message_id.clone(),
             });
         }
 
@@ -645,40 +844,16 @@ impl AcpSession {
         state.cancel.cancel();
         self.retire_approvals(services, turn_id);
 
-        let tool_calls_json = (!state.tool_calls.is_empty()).then(|| serialize_tool_calls_openai(&state.tool_calls));
-        complete_assistant(
-            &services.db,
-            &state.assistant_message_id,
-            &state.text,
-            (!state.reasoning.is_empty()).then_some(state.reasoning.as_str()),
-            tool_calls_json.as_deref(),
-            None,
-            MessageUsage {
-                input_tokens: None,
-                output_tokens: None,
-                cache_read_tokens: None,
-                cache_write_tokens: None,
-            },
-        )
-        .await?;
-
-        // Each result hangs off the one before it, so the path through the tree
-        // is the order the calls finished in.
-        let mut parent = state.assistant_message_id.clone();
-        for (call_id, output, outcome) in &state.results {
-            if let Some(id) = append_tool_result(
-                &services.db,
-                &self.conversation_id,
-                turn_id,
-                call_id,
-                output,
-                outcome,
-                Some(&parent),
-            )
-            .await
-            {
-                parent = id;
-            }
+        // The last round. Earlier ones were written as they closed, each by the
+        // prose that opened the next — so this is only ever the tail.
+        //
+        // Skipped when the row has nothing on it, which happens on exactly one
+        // path: the next round was opened and then failed to, leaving a carried
+        // id that already holds the previous round's answer. Completing it again
+        // would replace that answer with nothing.
+        let last_row = state.row;
+        if !last_row.written {
+            self.shared.write_row(turn_id, &state.parent, &last_row).await;
         }
 
         let (status, reason, error) = match &outcome {
@@ -729,7 +904,7 @@ impl AcpSession {
             "type": "stop",
             "reason": reason,
             "done": true,
-            "message_id": state.assistant_message_id,
+            "message_id": last_row.message_id,
             "turn_id": turn_id,
             "conversation_id": self.conversation_id,
             "input_tokens": 0,

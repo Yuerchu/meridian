@@ -261,12 +261,35 @@ the machines that want this already have node and a signed-in `claude`.
   `acp.command` names a binary this app executes. A remote caller who can write it has
   arbitrary code execution on the host — not the self-lockout the rest of that list guards.
   `acp_save_config` and `acp_check_adapter` are `local` for the same reason.
-- **A hosted conversation is an ordinary row set.** `agent_kind = 'claude_code'`, written
-  with the same `begin_assistant` / `complete_assistant` / `append_tool_result` a native
-  turn uses, so search, branching and the transcript view need no special case. One
-  difference worth knowing: the turn is *flattened* — the adapter may go round the model
-  several times inside one `session/prompt`, and all of it lands on one assistant row with
-  every call attached, rather than the row-per-round a native turn writes.
+- **A hosted conversation is an ordinary row set, down to the round boundaries.**
+  `agent_kind = 'claude_code'`, written with the same `begin_assistant` /
+  `complete_assistant` / `append_tool_result` a native turn uses, so search, branching and
+  the transcript view need no special case.
+
+  The adapter goes round the model several times inside one `session/prompt`, and each
+  round gets its own assistant row: the prose that introduced a call stays with the call,
+  the result is its own row, and what the agent says next opens the next row. This was
+  flattened onto a single row to begin with, on the reasoning that the shape was legal and
+  only lost which text came before which call. It lost more: `lib/turns.ts` reads the
+  steps *after* the last tool call as the turn's conclusion, so a flattened turn has none,
+  and a turn with tools and no conclusion is drawn as `interrupted` with its whole answer
+  folded away as process. Every finished hosted turn that touched a tool was reported as
+  stopped. A shape that is merely legal is not the same as one the reader agrees with.
+- **The model is read off the session's config options.** ACP has no model field; it
+  carries the model as a configuration option whose `category` is `model`, present in the
+  `session/new` response and re-sent as a `config_option_update` whenever it changes. That
+  is what lands in `messages.model_id`, so a hosted transcript names the model that
+  actually answered. `claude-code` in that column is the fallback and means the adapter
+  did not say — it is not a model id and nothing may treat it as one.
+- **A hosted session does not fire the hook gates**, and that needs both repositories.
+  The agent inside loads the user's own Claude Code configuration, plugin included, so a
+  hosted turn otherwise ends by asking *this* app to review it over the loopback endpoint:
+  a second model for minutes while the turn waits on the hook, and another conversation in
+  the sidebar — for a transcript this app already has. `AdapterProcess::spawn` sets
+  `MERIDIAN_ACP_HOSTED` on the child and the two hook scripts in
+  `~/.claude/plugins/local/meridian-plan-gate/scripts/` stand down when they see it. The
+  gates keep doing what they are for: sessions Meridian did not start. The variable name
+  is a contract across the two repositories.
 - **No session table yet.** The registry is in memory and the working directory is a
   preference (`acp.cwd.<conversation_id>`), which is frank about being a stopgap. A session
   is a child process: when the app exits the adapter goes with it and its `sessionId` means

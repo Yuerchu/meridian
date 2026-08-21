@@ -233,6 +233,54 @@ pub struct NewSessionParams {
 #[serde(rename_all = "camelCase")]
 pub struct NewSessionResult {
     pub session_id: String,
+    /// Present from the moment the session opens, which is what lets the first
+    /// row of the first turn record the right model rather than a placeholder.
+    #[serde(default)]
+    pub config_options: Vec<SessionConfigOption>,
+}
+
+/// One knob the agent exposes for the session.
+///
+/// This is how ACP reports the model: not as a field of its own, but as a
+/// configuration option whose `category` is `model`, whose `current_value` is
+/// the model id, and which is re-sent whenever it changes. Everything else in
+/// here — modes, thought levels, whatever an agent invents — is read the same
+/// way and ignored.
+///
+/// Deliberately lax. The shape is a `oneOf` on `type` (`select` or `boolean`)
+/// and gains members; a strict parse would refuse the whole notification over a
+/// knob this app does not care about.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionConfigOption {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    /// `model` / `mode` / `model_config` / `thought_level`, or something an
+    /// agent made up. Optional in the schema and described there as UX-only, so
+    /// it is a hint rather than a guarantee.
+    #[serde(default)]
+    pub category: Option<String>,
+    /// A value id for a `select`, a boolean for a toggle. Untyped because this
+    /// only ever reads the one case it understands.
+    #[serde(default)]
+    pub current_value: Option<serde_json::Value>,
+}
+
+impl SessionConfigOption {
+    /// The model id this option names, if it is the model selector.
+    ///
+    /// Falls back to matching the id when the category is absent: `category` is
+    /// documented as advisory, and an agent that omits it still calls the knob
+    /// `model`.
+    pub fn as_model(&self) -> Option<&str> {
+        let names_a_model = self.category.as_deref() == Some("model")
+            || (self.category.is_none() && self.id.eq_ignore_ascii_case("model"));
+        if !names_a_model {
+            return None;
+        }
+        self.current_value.as_ref()?.as_str().filter(|v| !v.is_empty())
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -309,6 +357,13 @@ pub enum SessionUpdate {
         entries: Vec<PlanEntry>,
     },
     UsageUpdate(Usage),
+    /// The agent's knobs and their current values, re-sent whole on every
+    /// change. Read for one thing: which model is answering.
+    #[serde(rename_all = "camelCase")]
+    ConfigOptionUpdate {
+        #[serde(default)]
+        config_options: Vec<SessionConfigOption>,
+    },
     /// Everything this step does not draw — `available_commands_update`,
     /// `current_mode_update`, and whatever the adapter adds next.
     #[serde(other)]

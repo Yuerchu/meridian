@@ -52,6 +52,8 @@ pub enum Effect {
     Plan(Vec<PlanItem>),
     /// Context usage. Reported, never priced — see [`Usage::cost`].
     Usage { used: u64, size: u64 },
+    /// Which model is answering, as the agent's own id for it.
+    ModelSelected(String),
     /// A call that has been announced but has not finished, and everything this
     /// step does not draw.
     Ignored,
@@ -105,6 +107,11 @@ pub fn effect_of(update: SessionUpdate) -> Effect {
         },
         SessionUpdate::Plan { entries } => Effect::Plan(entries.iter().map(plan_item).collect()),
         SessionUpdate::UsageUpdate(Usage { used, size, .. }) => Effect::Usage { used, size },
+        SessionUpdate::ConfigOptionUpdate { config_options } => config_options
+            .iter()
+            .find_map(|o| o.as_model())
+            .map(|m| Effect::ModelSelected(m.to_string()))
+            .unwrap_or(Effect::Ignored),
         SessionUpdate::Unhandled => Effect::Ignored,
     }
 }
@@ -415,6 +422,38 @@ mod tests {
                 size: 200000
             }
         );
+    }
+
+    /// ACP has no model field. It reports the model as one of the session's
+    /// configuration options, and this is the one thing read out of them.
+    #[test]
+    fn the_model_is_read_off_the_config_options() {
+        let effect = effect_of(update(
+            r#"{"sessionUpdate":"config_option_update","configOptions":[
+                {"id":"mode","name":"Mode","category":"mode","type":"select",
+                 "currentValue":"code","options":[]},
+                {"id":"model","name":"Model","category":"model","type":"select",
+                 "currentValue":"claude-sonnet-4-5","options":[]}]}"#,
+        ));
+        assert_eq!(effect, Effect::ModelSelected("claude-sonnet-4-5".into()));
+    }
+
+    /// `category` is documented as advisory and an agent may leave it out. The
+    /// id is the fallback, and nothing else is guessed at.
+    #[test]
+    fn a_model_option_without_a_category_is_still_recognised() {
+        let effect = effect_of(update(
+            r#"{"sessionUpdate":"config_option_update","configOptions":[
+                {"id":"model","name":"Model","type":"select","currentValue":"opus-4"}]}"#,
+        ));
+        assert_eq!(effect, Effect::ModelSelected("opus-4".into()));
+
+        // A toggle, whose `currentValue` is a boolean. Nothing to read.
+        let effect = effect_of(update(
+            r#"{"sessionUpdate":"config_option_update","configOptions":[
+                {"id":"thinking","name":"Thinking","type":"boolean","currentValue":true}]}"#,
+        ));
+        assert_eq!(effect, Effect::Ignored);
     }
 
     /// The reason the parse is lax, stated as behaviour: a variant this build

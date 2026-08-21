@@ -26,6 +26,22 @@ use tokio::process::{Child, ChildStdin, ChildStdout};
 const STDERR_TAIL_LINES: usize = 8;
 const STDERR_LINE_CHARS: usize = 400;
 
+/// Set on the adapter, and inherited by everything the agent runs.
+///
+/// The agent inside loads the user's own Claude Code configuration, which on
+/// this machine includes the `meridian-plan-gate` plugin — so without this a
+/// hosted turn ends by asking *this* app to review it over the loopback hook
+/// endpoint. That gate exists for sessions Meridian did not start: it fetches a
+/// diff, runs a second model for minutes while the turn waits on the hook, and
+/// files the result as another conversation in the sidebar. Reviewing a session
+/// this app is already hosting, with a transcript it already has, is the same
+/// work done twice and a turn that appears to hang at the end.
+///
+/// The plugin reads this and stands down. It lives in another repository
+/// (`~/.claude/plugins/local/meridian-plan-gate`), so the name is a contract
+/// between the two and changing it needs both.
+pub const HOSTED_MARKER: &str = "MERIDIAN_ACP_HOSTED";
+
 /// What `command` actually names on this system, when the OS will not work it
 /// out for itself.
 ///
@@ -112,6 +128,7 @@ impl AdapterProcess {
     pub async fn spawn(command: &str, args: &[String]) -> Result<Self, String> {
         let mut cmd = tokio::process::Command::new(program_for(command));
         cmd.args(args)
+            .env(HOSTED_MARKER, "1")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
