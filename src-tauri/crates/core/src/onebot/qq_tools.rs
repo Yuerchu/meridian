@@ -827,6 +827,28 @@ pub(super) fn exposes_full_toolset(kind: &SessionKind, is_admin: bool) -> bool {
     is_admin && *kind == SessionKind::Private
 }
 
+/// Registry tools a QQ session may offer whoever is in it, `exposes_full_toolset`
+/// having said no to the rest.
+///
+/// That refusal is about what a *definition reveals*: an MCP tool carries the
+/// user's own server names and argument schemas, a file tool names paths on this
+/// machine, and a group cannot show one member any of it without showing
+/// everyone. `web_search` reveals none of that — its description is our own
+/// fixed prose, it reads nothing here, and a QQ session's file access is an
+/// empty root set regardless. On that test it belongs with the QQ tools rather
+/// than with the registry it happens to live in, and being swept up with them
+/// was the accident.
+///
+/// Fixed per session and not per speaker, like the rest of the tool array: it
+/// goes to everyone in a session or to nobody, so it cannot be the thing that
+/// makes an admin's turn and a member's turn two different cached prefixes.
+///
+/// Narrowing only. An assistant that has `web_search` switched off still does
+/// not get it — `ToolExposure::Only` filters what `enabled_tools` already
+/// allowed — and its `Permission::Ask` is unchanged, so a search still asks
+/// before it runs.
+pub(super) const OPEN_REGISTRY_TOOLS: &[&str] = &["web_search"];
+
 fn spec_available(spec: &ToolSpec, kind: &SessionKind, is_admin: bool) -> bool {
     if spec.admin_only && !is_admin {
         return false;

@@ -89,6 +89,18 @@ src-tauri/
   narrowing costs no cache. `shown_as_admin` and `exposes_full_toolset` in
   `qq_tools.rs` are the two decisions, kept out of the call sites.
 
+  **The test is what a definition reveals, not which registry it came from**, and
+  reading it as the latter cost a group `web_search` for no reason: its
+  description is our own fixed prose, it reads nothing on this machine, and a QQ
+  session's file access is an empty root set either way. On the actual test it
+  belongs with the QQ tools. `OPEN_REGISTRY_TOOLS` is that list and
+  `ToolExposure::Only` is how it is applied — narrowing what `enabled_tools`
+  already allowed, so naming a tool there cannot hand back one the user switched
+  off, and leaving `Permission::Ask` alone, so a search still asks first. What
+  `offered` authorises is read back off `tool_defs` rather than off the constant:
+  a tool advertised to the whole group and then refused at dispatch is a model
+  calling it over and over in front of an audience.
+
 - **A quoted message is content, not a citation.** `quote::fetch` parses what a
   reply quotes into an ordinary `ParsedMessage` and the caller merges its media
   into the turn. It used to be flattened with `segments_to_text`, which is right

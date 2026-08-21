@@ -68,7 +68,7 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
             // The turn's own, carried rather than resolved again.
             sub_agents: Some(self.sub_agents.clone()),
             mcp_defs,
-            include_tools: self.supports_tools,
+            exposure: meridian_core::agent::turn_config::ToolExposure::when(self.supports_tools),
             persona: self.persona.clone(),
             context_blocks: self.context_blocks.clone(),
         };
@@ -651,7 +651,7 @@ async fn chat_inner(
                 mode: meridian_core::agent::modes::Modes::Switchable(mode),
                 sub_agents: Some(catalog.clone()),
                 mcp_defs,
-                include_tools: supports_tools,
+                exposure: meridian_core::agent::turn_config::ToolExposure::when(supports_tools),
                 persona: persona2,
                 context_blocks: blocks,
             };

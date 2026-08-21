@@ -604,7 +604,7 @@ impl DesktopSubAgents {
             mcp_defs,
             // The child model's answer, not the parent's. They can differ, and
             // handing a model tools it cannot call earns a 400.
-            include_tools: turn_params.caps.supports_tools,
+            exposure: meridian_core::agent::turn_config::ToolExposure::when(turn_params.caps.supports_tools),
             persona: assistant.system_prompt.clone(),
             context_blocks: Vec::new(),
         };
@@ -851,7 +851,7 @@ mod tests {
                 mode: Modes::Fixed,
                 sub_agents: None,
                 mcp_defs: Vec::new(),
-                include_tools: true,
+                exposure: meridian_core::agent::turn_config::ToolExposure::All,
                 persona: String::new(),
                 context_blocks: Vec::new(),
             },

@@ -595,7 +595,17 @@ async fn headless_chat_inner(
             mcp_defs,
             // Session-scoped, not speaker-scoped — see `full_toolset` above.
             // The QQ tools are appended further down, on the same footing.
-            include_tools: full_toolset && supports_tools,
+            //
+            // A session that cannot have the registry still gets the few tools
+            // whose definitions say nothing about this machine; `web_search` was
+            // only ever excluded by being filed with the rest.
+            exposure: if !supports_tools {
+                crate::agent::turn_config::ToolExposure::None
+            } else if full_toolset {
+                crate::agent::turn_config::ToolExposure::All
+            } else {
+                crate::agent::turn_config::ToolExposure::Only(super::qq_tools::OPEN_REGISTRY_TOOLS)
+            },
             persona: assistant.as_ref().map(|a| a.system_prompt.clone()).unwrap_or_default(),
             // Memory is absent on purpose — it ships as a user-role message.
             context_blocks: Vec::new(),
@@ -734,6 +744,13 @@ async fn headless_chat_inner(
     // `ordinary_names` rather than `permitted_names`: the executor was built
     // with the authority this *turn* opened with, and a round that a plain
     // member started or joined must not read its permissions off that.
+    //
+    // The open registry tools are read back off `tool_defs` rather than from the
+    // constant, so a tool the assistant has switched off is not authorised by a
+    // list that only says which ones *may* be shown. Shown to everyone, so
+    // runnable by everyone: withholding at dispatch what the array advertises to
+    // the whole group is how you get a model repeatedly calling a tool it is
+    // told it has, in front of an audience.
     let offered: std::collections::HashSet<String> = if is_admin {
         tool_defs.iter().map(|t| t.name.clone()).collect()
     } else {
@@ -742,6 +759,12 @@ async fn headless_chat_inner(
             .map(|q| q.ordinary_names())
             .unwrap_or_default()
             .into_iter()
+            .chain(
+                tool_defs
+                    .iter()
+                    .map(|t| t.name.clone())
+                    .filter(|name| super::qq_tools::OPEN_REGISTRY_TOOLS.contains(&name.as_str())),
+            )
             .collect()
     };
 

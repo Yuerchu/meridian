@@ -730,7 +730,7 @@ async fn build_config(
         // An explicit whitelist and nothing outside it. MCP tools ask
         // unconditionally, and nobody is watching this run.
         mcp_defs: Vec::new(),
-        include_tools: params.caps.supports_tools,
+        exposure: crate::agent::turn_config::ToolExposure::when(params.caps.supports_tools),
         persona: assistant.system_prompt.clone(),
         context_blocks: Vec::new(),
     };

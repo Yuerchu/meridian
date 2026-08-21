@@ -436,7 +436,7 @@ async fn assemble_system_prompt(
                 // wrong about.
                 sub_agents: Some(sub_agents),
                 mcp_defs,
-                include_tools: true,
+                exposure: meridian_core::agent::turn_config::ToolExposure::All,
                 persona,
                 context_blocks,
             },
