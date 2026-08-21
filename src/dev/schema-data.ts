@@ -897,6 +897,55 @@ const RAW_TABLES: RawTable[] = [
     rels: ['<code>todo_lists</code>（CASCADE）。'],
     rules: ['约定：同一清单里 <code>in_progress</code> 最多一条（应用层保证，无索引强制）。'],
   },
+  {
+    name: 'queued_prompts',
+    group: 'task',
+    title: '提示词队列（双投递语义 + 崩溃账本）',
+    mig: 34,
+    show: ['id', 'conversation_id', 'content', 'delivery', 'position'],
+    note: '用户写好但还没交给 agent 的消息。子 agent 的 steering inbox 是 <code>Mutex&lt;HashMap&gt;</code>，随进程消失——那是对的，因为那个 inbox 只在那次运行期间有意义。而人<b>攒</b>出来的队列相反：提前几分钟写下，是「接下来要做什么」的记录，静默丢掉就是丢掉人做过的事。所以它是一张表。',
+    cols: [
+      ['id', 'TEXT', ['PK', 'NN'], '—', ''],
+      ['conversation_id', 'TEXT', ['FK', 'NN', 'IDX'], '—', '→ <code>conversations(id)</code> ON DELETE CASCADE'],
+      [
+        'content',
+        'TEXT',
+        ['NN'],
+        '—',
+        '纯文本，或与 <code>messages.content</code> 同款的 JSON parts；它会原样变成一行消息，两套编码就是两处要同步的东西',
+      ],
+      [
+        'delivery',
+        'TEXT',
+        ['NN'],
+        '—',
+        '<code>follow_up</code>（整轮结束后另起一轮）| <code>interject</code>（下一个接受输入的间隙插进当前轮）',
+      ],
+      [
+        'position',
+        'INTEGER',
+        ['NN', 'IDX'],
+        '—',
+        '重排时整体重写；列表很短且有人在看着，为省一次 UPDATE 换来不可预测的顺序不划算',
+      ],
+      ['created_at', 'BIGINT', ['NN'], '—', ''],
+      ['dispatched_at', 'BIGINT', ['NULL'], 'NULL', '已交给 runner，结果未知'],
+      ['dispatched_turn_id', 'TEXT', ['NULL'], 'NULL', '交给了哪一轮'],
+      ['settled_at', 'BIGINT', ['NULL'], 'NULL', '已确认成为 transcript 里的一行'],
+      ['settled_message_id', 'TEXT', ['NULL'], 'NULL', '成为了哪一行'],
+      ['held_at', 'BIGINT', ['NULL'], 'NULL', '前一轮没跑完，整队挂起等人'],
+      ['reported_at', 'BIGINT', ['NULL', 'IDX'], 'NULL', '存疑项已告知 agent；语义同 <code>turns.reported_at</code>'],
+    ],
+    rels: ['<code>conversations</code>（CASCADE）。'],
+    rules: [
+      '<b>状态就是「哪几个时间戳有值」</b>，不另设 status 列：时间戳是写操作真正产生的东西，旁边再放一个状态列，部分写入后两者就会互相矛盾。四态——全空=待发 / 有 dispatched 无 settled=<b>存疑</b> / 有 settled=已投递 / 有 held=挂起。',
+      '<b>出队与写消息行在同一个事务里</b>（<code>ops::queue::take_next</code>）。这是整张表存在的理由：kill 只可能落在事务两侧之一——要么条目还在队列且没有消息行（重发安全），要么行已存在且条目已 settled（不会重发）。拆成两次写就会留下「行已存在但队列还以为欠着」的窗口，而那个窗口唯一的修复手段是猜 agent 有没有动过手。',
+      '<b>存疑条目永不重发。</b>「不确定送到没有」就重发一遍「删掉旧迁移」，是队列变危险的方式。改为在下一轮告知 agent，由它看着 transcript 和文件自己判断——与 <code>interrupted.rs</code> 报告被打断的轮次同一套纪律，<code>reported_at</code> 也同样只在回复被完整读完后才写。',
+      '<b>原生轮次与 hosted 会话在这里不对称</b>，这是设计里最要紧的一点：原生轮次每轮重发完整 history，所以只要行写进了 transcript，模型必定看到——自愈。hosted ACP 会话的对话状态在 adapter 进程里、我们不重发 history，所以这边写了行<b>并不能证明</b> agent 收到了 <code>_session/steering</code>。存疑窗口在那一侧不可消除，账本因此必须落在这张表上，而不能从 <code>messages</code> 反推。',
+      '<b>存疑条目阻塞队列，而不是被跳过。</b>指令是当作一个序列写下的，因为第二条没结果就先发第三条，等于把人的意图乱序执行。',
+      '<b>一轮失败挂起整队</b>，不只是队头：后面那些指令与失败的那步建立在同一个前提上——「接着把那个函数重命名」在函数根本没建成时毫无意义。',
+    ],
+  },
 
   // ── 工具、技能与 MCP ─────────────────────────────────────────
   {
@@ -1380,6 +1429,7 @@ export const EDGES: SchemaEdge[] = [
   { from: 'mode_artifacts', col: 'conversation_id', to: 'conversations', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'todo_lists', col: 'conversation_id', to: 'conversations', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'todo_items', col: 'list_id', to: 'todo_lists', toCol: 'id', kind: 'fk', act: 'CASCADE' },
+  { from: 'queued_prompts', col: 'conversation_id', to: 'conversations', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'attachments', col: 'message_id', to: 'messages', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'message_stickers', col: 'message_id', to: 'messages', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'message_stickers', col: 'sticker_id', to: 'emojis', toCol: 'id', kind: 'fk', act: 'RESTRICT' },
@@ -1475,7 +1525,10 @@ const LAYOUT: { x: number; tables: string[] }[] = [
     ],
   },
   { x: 1020, tables: ['turns', 'conversations', 'mode_artifacts', 'todo_lists', 'preferences'] },
-  { x: 1360, tables: ['messages', 'attachments', 'message_stickers', 'todo_items', 'audit_messages'] },
+  {
+    x: 1360,
+    tables: ['messages', 'attachments', 'message_stickers', 'todo_items', 'queued_prompts', 'audit_messages'],
+  },
   { x: 1700, tables: ['emoji_packs', 'emojis', 'assistant_emoji_packs'] },
 ]
 

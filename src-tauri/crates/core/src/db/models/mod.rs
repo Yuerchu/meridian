@@ -16,6 +16,7 @@ pub mod preference;
 pub mod project;
 pub mod prompt_template;
 pub mod provider;
+pub mod queue;
 pub mod skill;
 pub mod skill_binding;
 pub mod todo;

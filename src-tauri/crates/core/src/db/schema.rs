@@ -415,6 +415,23 @@ diesel::table! {
 }
 
 diesel::table! {
+    queued_prompts (id) {
+        id -> Text,
+        conversation_id -> Text,
+        content -> Text,
+        delivery -> Text,
+        position -> Integer,
+        created_at -> BigInt,
+        dispatched_at -> Nullable<BigInt>,
+        dispatched_turn_id -> Nullable<Text>,
+        settled_at -> Nullable<BigInt>,
+        settled_message_id -> Nullable<Text>,
+        held_at -> Nullable<BigInt>,
+        reported_at -> Nullable<BigInt>,
+    }
+}
+
+diesel::table! {
     todo_lists (id) {
         id -> Text,
         conversation_id -> Text,
@@ -501,6 +518,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     projects,
     prompt_templates,
     providers,
+    queued_prompts,
     skill_bindings_assistant,
     skill_bindings_global,
     skill_bindings_project,
