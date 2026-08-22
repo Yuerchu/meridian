@@ -808,6 +808,8 @@
   "chat.placeholderSteer": "对正在进行的运行说点什么…",
   "chat.placeholderQueue": "排队接下来要做的事…",
   "chat.agentOptions": "Agent 选项",
+  "chat.context.hostedAgent": "Claude Code",
+  "chat.context.hostedCompaction": "上下文由 agent 自己管理。",
   "chat.acp.knob.model": "模型",
   "chat.acp.knob.mode": "权限模式",
   "chat.acp.knob.effort": "思考档位",

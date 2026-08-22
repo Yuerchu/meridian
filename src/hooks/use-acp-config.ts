@@ -18,16 +18,35 @@ import type { AcpConfigOption } from '@/types'
  * running. Both mean the same thing to a caller — there is nothing to offer —
  * which is why they are not distinguished here.
  */
+/**
+ * How full the *agent's* context window is, as it last reported.
+ *
+ * `used`/`size` is not `input_tokens`/`output_tokens` and is not stored
+ * anywhere — see `acp/session.rs`. It is the only honest reading for a hosted
+ * conversation, because this app's own estimate describes a request it never
+ * makes: a different model, a different limit, and a history the agent is not
+ * being sent.
+ */
+export interface AcpUsage {
+  used: number
+  size: number
+}
+
 export function useAcpConfig(conversationId: string, isHosted: boolean) {
   const [options, setOptions] = useState<AcpConfigOption[]>([])
+  const [usage, setUsage] = useState<AcpUsage | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
     if (!isHosted) {
       setOptions([])
+      setUsage(null)
       return
     }
     let alive = true
+    // Empty for a conversation whose adapter is not running yet, which after a
+    // restart is every one of them until the first message wakes it. What
+    // fills it then is the announcement below, not this.
     api
       .acpSessionConfig(conversationId)
       .then((next) => {
@@ -36,27 +55,42 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
       .catch(() => {
         if (alive) setOptions([])
       })
+    // Not fetched, only listened for: the agent reports it during a turn and
+    // there is nowhere it is kept, so before the first report of this session
+    // there is nothing to ask for. Absent is drawn as absent.
+    setUsage(null)
     return () => {
       alive = false
     }
   }, [conversationId, isHosted])
 
-  // The agent changes these on its own — a slash command, a model that turns
-  // out to be unavailable — so the set is pushed as well as fetched. Without
-  // this the composer would show the value it last set rather than the one in
-  // force.
+  // Pushed as well as fetched, and for two reasons that are easy to conflate.
+  // The agent changes the knobs on its own — a slash command, a model that
+  // turns out to be unavailable — so a fetched set goes stale. And the *first*
+  // set arrives this way too: a session opened lazily, which is every reopen
+  // after a restart, exists only after the fetch above has already answered
+  // empty.
   useEffect(() => {
     if (!isHosted) return
     let alive = true
-    const unlisten = listen<{ conversation_id?: string; config_options?: AcpConfigOption[] }>(
-      'chat-stream',
-      (event) => {
-        const payload = event.payload as { type?: string; conversation_id?: string; config_options?: AcpConfigOption[] }
-        if (payload?.type !== 'acp_config') return
-        if (payload.conversation_id !== conversationId) return
-        if (alive && payload.config_options) setOptions(payload.config_options)
-      },
-    )
+    const unlisten = listen('chat-stream', (event) => {
+      const payload = event.payload as {
+        type?: string
+        conversation_id?: string
+        config_options?: AcpConfigOption[]
+        used?: number
+        size?: number
+      }
+      if (!alive || payload?.conversation_id !== conversationId) return
+      if (payload.type === 'acp_config' && payload.config_options) {
+        setOptions(payload.config_options)
+      }
+      // A window of zero is the agent saying nothing useful rather than saying
+      // the context is empty, and dividing by it is how a gauge shows NaN%.
+      if (payload.type === 'acp_usage' && typeof payload.used === 'number' && (payload.size ?? 0) > 0) {
+        setUsage({ used: payload.used, size: payload.size as number })
+      }
+    })
     return () => {
       alive = false
       void unlisten.then((off) => off())
@@ -76,7 +110,7 @@ export function useAcpConfig(conversationId: string, isHosted: boolean) {
     [conversationId],
   )
 
-  return { options, set, busy }
+  return { options, usage, set, busy }
 }
 
 /** The option the agent calls `what`, by category or — when it omits one — by id. */

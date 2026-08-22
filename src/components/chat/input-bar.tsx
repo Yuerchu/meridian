@@ -4,7 +4,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import { ArrowDownToSquare, ChevronDown, Copy, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, ListBox, Popover, ProgressCircle, Tooltip } from '@heroui/react'
+import { Button, ListBox, Popover, Tooltip } from '@heroui/react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -31,6 +31,7 @@ import { MobileOptionsMenu } from './toolbar'
 import { ComposerMenu } from './composer-menu'
 import { EmojiPicker } from './emoji-picker'
 import { ToolbarSelect } from './toolbar-select'
+import { ContextGauge, type ContextReading } from './context-gauge'
 import { isSelect, useAcpConfig } from '@/hooks/use-acp-config'
 import type { TFunction } from 'i18next'
 import type {
@@ -44,23 +45,6 @@ import type {
   QueueDelivery,
   ThinkingLevel,
 } from '@/types'
-
-interface ContextInfo {
-  messageCount: number
-  estimatedTokens: number
-  contextLimit: number
-  autoCompactEnabled: boolean
-  autoCompactThreshold: number
-  /** `closed` while compaction is being attempted. Anything else means enough
-   *  summarisations failed in a row that it has stopped trying — the setting is
-   *  still on, and the count will only keep climbing, so it has to be said. */
-  compactBreaker: string
-  /** Whose window the numbers above describe. */
-  model: string
-  /** Set when this conversation is a delegated run, so the panel can say that
-   *  the window it is reporting is not the one next door. */
-  agentKind?: string
-}
 
 /**
  * One file the composer is holding, named either by a path on the machine that
@@ -135,7 +119,7 @@ interface InputBarProps {
   acceptEdits: boolean
   onToggleAcceptEdits: (next: boolean) => void
   capabilities?: ProviderCapabilities | null
-  contextInfo?: ContextInfo
+  contextInfo?: ContextReading
   compacting?: boolean
   onCompact?: () => void
 }
@@ -205,9 +189,8 @@ function currentValueName(t: TFunction, option: AcpConfigOption): string | null 
  * id, the same way `SessionConfigOption::as_model` already reads the model,
  * because the model is what a transcript row records as having answered.
  */
-function HostedSessionKnobs({ conversationId, isHosted }: { conversationId: string; isHosted: boolean }) {
+function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAcpConfig>, 'options' | 'set' | 'busy'>) {
   const { t } = useTranslation()
-  const { options, set, busy } = useAcpConfig(conversationId, isHosted)
   // A select with nothing in it is not offered: the agent has told us a knob
   // exists without saying what it accepts, and an empty menu reads as a bug.
   const pickers = options.filter((o) => isSelect(o) && o.options.length > 0)
@@ -351,6 +334,17 @@ export function InputBar({
   const { t } = useTranslation()
   const platform = usePlatform()
   const isAndroid = platform === 'android'
+  // One subscription for the whole composer. The knobs and the context gauge
+  // both read the hosted session's state, and two calls would mean two fetches
+  // and two listeners answering the same events.
+  const acp = useAcpConfig(conversationId, !!isHosted)
+  // Which model the *agent* says is answering, for the gauge to name. Not
+  // `contextInfo.model`, which is this app's assistant and has nothing to do
+  // with a hosted turn.
+  const hostedModel = (() => {
+    const model = acp.options.find((o) => o.id === 'model' || o.category === 'model')
+    return model ? currentValueName(t, model) : null
+  })()
   // A message sent to a machine that is not answering fails, and a field that
   // looks live while that is true is a lie the user only finds out about after
   // typing. This is the one connection state the composer has to care about.
@@ -744,7 +738,7 @@ export function InputBar({
                       working, and it is worth seeing without opening
                       anything. A hosted session's knobs are the agent's and
                       arrive over ACP; everything else stays in the menu. */}
-                  <HostedSessionKnobs conversationId={conversationId} isHosted={!!isHosted} />
+                  <HostedSessionKnobs options={acp.options} set={acp.set} busy={acp.busy} />
                   {/* Only while the next Enter would queue. The two are not
                       urgency levels, so the control names what will happen
                       rather than how urgent it is — and it is here rather than
@@ -789,108 +783,15 @@ export function InputBar({
                     </Tooltip.Content>
                   </Tooltip>
                 )}
-                {contextInfo &&
-                  contextInfo.messageCount > 0 &&
-                  (() => {
-                    const ratio = contextInfo.estimatedTokens / contextInfo.contextLimit
-                    // Below the warning threshold the ring is ambient, not a
-                    // reading — quieter than `color="default"`, which is a
-                    // foreground shade.
-                    const color = ratio > 0.95 ? 'danger' : ratio > 0.8 ? 'warning' : undefined
-                    // A popover rather than a tooltip. This panel has a button in
-                    // it, and a tooltip is not a place a button can live: it is
-                    // announced as a description, it closes when the pointer leaves
-                    // on the way to what it contains, and nothing in it is
-                    // reachable from the keyboard. That was already true of the
-                    // manual-compact link, which is why it needed a hand-rolled
-                    // `<button>` with a lint exemption to look right in there.
-                    return (
-                      <Popover>
-                        <Popover.Trigger
-                          aria-label={t('chat.context.tokens', {
-                            used: contextInfo.estimatedTokens.toLocaleString(),
-                            limit: contextInfo.contextLimit.toLocaleString(),
-                          })}
-                          className="inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                        >
-                          <ProgressCircle
-                            aria-hidden
-                            value={contextInfo.estimatedTokens}
-                            maxValue={contextInfo.contextLimit}
-                            isIndeterminate={compacting}
-                            color={color}
-                            className={color && !compacting ? undefined : '[--progress-circle-stroke:var(--muted)]'}
-                          >
-                            <ProgressCircle.Track className="size-4.5">
-                              <ProgressCircle.TrackCircle />
-                              <ProgressCircle.FillCircle />
-                            </ProgressCircle.Track>
-                          </ProgressCircle>
-                        </Popover.Trigger>
-                        <Popover.Content placement="top" className="max-w-64">
-                          <Popover.Dialog className="flex flex-col gap-1 text-xs tabular-nums">
-                            {compacting ? (
-                              <span>{t('chat.compact.inProgress')}</span>
-                            ) : (
-                              <>
-                                {/* Whose window this is. A delegated run has its own
-                                model and its own limit, so the same percentage
-                                means a different number of tokens — and the
-                                conversation it was started from is one tap away,
-                                which is exactly when that gets confusing. */}
-                                <span className="text-muted">
-                                  {contextInfo.agentKind
-                                    ? t('chat.context.forSubAgent', {
-                                        kind: t(
-                                          `chat.subAgent.${contextInfo.agentKind === 'explore' ? 'explore' : 'agent'}`,
-                                        ),
-                                        model: contextInfo.model,
-                                      })
-                                    : contextInfo.model}
-                                </span>
-                                <span>{t('chat.context.messages', { count: contextInfo.messageCount })}</span>
-                                <span>
-                                  {t('chat.context.tokens', {
-                                    used: contextInfo.estimatedTokens.toLocaleString(),
-                                    limit: contextInfo.contextLimit.toLocaleString(),
-                                  })}
-                                </span>
-                                {contextInfo.autoCompactEnabled && contextInfo.compactBreaker !== 'closed' ? (
-                                  // Before the countdown, and instead of it: "0% until
-                                  // auto-compact" next to a number that never moves
-                                  // reads as a bug in the indicator rather than as
-                                  // compaction having given up.
-                                  <span className="text-warning">{t('chat.compact.circuitBreakerOpen')}</span>
-                                ) : (
-                                  contextInfo.autoCompactEnabled &&
-                                  contextInfo.autoCompactThreshold > 0 && (
-                                    <span>
-                                      {Math.max(
-                                        0,
-                                        Math.round(
-                                          (1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100,
-                                        ),
-                                      )}
-                                      % {t('chat.compact.untilAutoCompact')}
-                                    </span>
-                                  )
-                                )}
-                                {onCompact && !streaming && (
-                                  <Button
-                                    variant="ghost"
-                                    className="mt-1 h-auto justify-start px-0 py-0 text-xs font-normal underline underline-offset-2"
-                                    onPress={onCompact}
-                                  >
-                                    {t('chat.compact.manual')}
-                                  </Button>
-                                )}
-                              </>
-                            )}
-                          </Popover.Dialog>
-                        </Popover.Content>
-                      </Popover>
-                    )
-                  })()}
+                <ContextGauge
+                  context={contextInfo}
+                  hosted={!!isHosted}
+                  agentUsage={acp.usage}
+                  agentModel={hostedModel}
+                  compacting={compacting}
+                  streaming={streaming}
+                  onCompact={onCompact}
+                />
               </>
             }
           />

@@ -216,12 +216,27 @@ impl Shared {
     ///
     /// Also keeps the model in step: it is one of these options, and reading it
     /// from anywhere else would be a second source that could disagree.
+    ///
+    /// **And it announces, on every path.** The emit used to sit on the
+    /// `config_option_update` branch alone, so a set established by
+    /// `session/new` or `session/load` reached nobody: the composer fetches
+    /// once when the conversation is opened, which for a session started
+    /// lazily — every reopen after a restart — is *before* there is anything to
+    /// fetch. The knobs then stayed missing until the agent happened to change
+    /// one of its own accord. Announcing here is what makes that unforgettable,
+    /// since there is no other way to change the set.
     fn merge_config(&self, incoming: Vec<protocol::SessionConfigOption>) {
         if let Some(model) = incoming.iter().find_map(|o| o.as_model()) {
             self.set_model(model.to_string());
         }
-        let Ok(mut held) = self.config.lock() else { return };
-        merge_options(&mut held, incoming);
+        if let Ok(mut held) = self.config.lock() {
+            merge_options(&mut held, incoming);
+        }
+        self.emit(serde_json::json!({
+            "type": "acp_config",
+            "conversation_id": self.conversation_id,
+            "config_options": self.config_options(),
+        }));
     }
 
     fn config_options(&self) -> Vec<protocol::SessionConfigOption> {
@@ -360,17 +375,22 @@ impl Shared {
             // it into those columns would feed a wrong number to everything that
             // reads them — the usage report most of all.
             Effect::Usage { used, size } => {
-                tracing::debug!(used, size, conversation_id = %self.conversation_id, "acp context usage")
-            }
-            Effect::ConfigOptions(options) => {
-                self.merge_config(options);
-                // The composer is showing the old value until it hears.
+                // Passed on, still not stored. It is how full the *agent's*
+                // window is, which is the only honest thing to show for a
+                // hosted conversation — this app's own estimate describes a
+                // request it never makes, against a model that is not
+                // answering and a limit that is not in force. Writing it into
+                // `input_tokens`/`output_tokens` would still be wrong, which is
+                // why it travels as an event rather than to a column.
                 self.emit(serde_json::json!({
-                    "type": "acp_config",
+                    "type": "acp_usage",
                     "conversation_id": self.conversation_id,
-                    "config_options": self.config_options(),
+                    "used": used,
+                    "size": size,
                 }));
             }
+            // Nothing to do beyond merging: `merge_config` announces.
+            Effect::ConfigOptions(options) => self.merge_config(options),
             Effect::Ignored => {}
         }
     }

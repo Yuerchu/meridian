@@ -810,6 +810,8 @@
   "chat.placeholderSteer": "Say something to the run...",
   "chat.placeholderQueue": "Queue what to do next...",
   "chat.agentOptions": "Agent options",
+  "chat.context.hostedAgent": "Claude Code",
+  "chat.context.hostedCompaction": "The agent manages its own context.",
   "chat.acp.knob.model": "Model",
   "chat.acp.knob.mode": "Permission mode",
   "chat.acp.knob.effort": "Reasoning effort",
