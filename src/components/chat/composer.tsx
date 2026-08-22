@@ -165,8 +165,28 @@ export function Composer({
             />
           </PromptInput.Content>
           <PromptInput.Toolbar>
-            <PromptInput.ToolbarStart>{toolbarStart}</PromptInput.ToolbarStart>
-            <PromptInput.ToolbarEnd>
+            {/* Pro's toolbar is a `space-between` flex row inside a shell that
+                clips, and neither half is told what to do when the left one
+                runs out of room. So a wide left half pushes Send past the
+                shell's edge and it is simply gone — which is what a hosted
+                session's knobs did. Scrolling is the fix rather than shrinking:
+                a squashed picker is unreadable, and the reason there is
+                anything to scroll is that the agent decides how many controls
+                there are.
+
+                `scrollbar-none` because the app's own scrollbars are 10px and
+                one of those under a 32px toolbar is taller than the thing it is
+                scrolling — see the note in `index.css` on why the `scrollbar-*`
+                utilities other than this one do nothing here. */}
+            {/* `py-1 -my-1` is not spacing: `overflow-x: auto` forces
+                `overflow-y` to compute as auto too, so without a little slack a
+                focus ring on a control in here is clipped at the top and bottom
+                — and the negative margin gives the slack back, leaving the row
+                exactly where it was. */}
+            <PromptInput.ToolbarStart className="-my-1 min-w-0 overflow-x-auto py-1 scrollbar-none [&>*]:shrink-0">
+              {toolbarStart}
+            </PromptInput.ToolbarStart>
+            <PromptInput.ToolbarEnd className="shrink-0">
               {toolbarEnd}
               {/* Exactly when Send is not already a Stop, so the two are never
                   up at once and the run is never unstoppable. */}

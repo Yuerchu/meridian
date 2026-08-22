@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToSquare, Copy, Scissors, Sliders, SquareDashedText, Xmark } from '@gravity-ui/icons'
+import { ArrowDownToSquare, ChevronDown, Copy, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
 import { Button, ListBox, Popover, ProgressCircle, Tooltip } from '@heroui/react'
@@ -31,8 +31,19 @@ import { MobileOptionsMenu } from './toolbar'
 import { ComposerMenu } from './composer-menu'
 import { EmojiPicker } from './emoji-picker'
 import { ToolbarSelect } from './toolbar-select'
-import { findOption, isSelect, useAcpConfig } from '@/hooks/use-acp-config'
-import type { Assistant, ChatMode, Emoji, Provider, ProviderCapabilities, QueueDelivery, ThinkingLevel } from '@/types'
+import { isSelect, useAcpConfig } from '@/hooks/use-acp-config'
+import type { TFunction } from 'i18next'
+import type {
+  AcpConfigOption,
+  AcpConfigOptionValue,
+  Assistant,
+  ChatMode,
+  Emoji,
+  Provider,
+  ProviderCapabilities,
+  QueueDelivery,
+  ThinkingLevel,
+} from '@/types'
 
 interface ContextInfo {
   messageCount: number
@@ -141,28 +152,58 @@ interface InputBarProps {
  * add clipboard history and translation to it, so let the WebView have it.
  */
 /**
- * The knobs a hosted Claude Code session exposes.
+ * What to call a knob, and what to call the value it is set to.
+ *
+ * The agent's own strings are English and always will be: `name` is composed in
+ * the adapter, so in a Chinese window a row of them reads `Mode / Effort / Fast
+ * mode` with nothing translated. The ids it uses for the knobs it defines are a
+ * short documented set (`mode`, `model`, `effort`, `fast`, `agent`), so those
+ * get translations here and everything else falls back to what the agent said —
+ * which is the only right answer for a knob some other agent invented.
+ *
+ * Keyed on `id` rather than `category`, and that is not interchangeable: the
+ * reasoning knob is `id: "effort"` under `category: "thought_level"`, and Fast
+ * mode is `id: "fast"` under `category: "model_config"` — a category naming a
+ * *class* of setting rather than the setting. Only the id names the thing.
+ */
+function knobName(t: TFunction, option: AcpConfigOption): string {
+  const fallback = option.name || option.id
+  return t(`chat.acp.knob.${option.id.toLowerCase()}`, { defaultValue: fallback })
+}
+
+function knobValueName(t: TFunction, option: AcpConfigOption, value: AcpConfigOptionValue): string {
+  const fallback = value.name || value.value
+  // Scoped per knob, because `default` means a different thing on each of them
+  // and a model id must never find a translation at all.
+  return t(`chat.acp.value.${option.id.toLowerCase()}.${value.value.toLowerCase()}`, { defaultValue: fallback })
+}
+
+function currentValueName(t: TFunction, option: AcpConfigOption): string | null {
+  if (typeof option.currentValue !== 'string') return null
+  const value = option.options.find((v) => v.value === option.currentValue)
+  return value ? knobValueName(t, option, value) : option.currentValue
+}
+
+/**
+ * Everything a hosted Claude Code session lets you set, in one control.
  *
  * Renders nothing at all for an ordinary conversation, and nothing for a hosted
  * one whose adapter is not running — there is no session to change anything on,
  * and a picker that cannot pick is worse than no picker.
  *
- * Which knobs exist is the *agent's* answer, not ours: it reports the model, the
- * permission mode and the reasoning effort as configuration options and
- * re-derives their values as it goes, so this draws every `select` it is given
- * rather than naming the three it expects.
+ * **One control, because a picker in this toolbar can only show its value.**
+ * That is fine for the model — "Opus" says what it is — and says nothing for
+ * anything else: the row used to read `Auto · Default (recommend… · Xhigh · On
+ * · Default`, five controls naming none of the five things they set, two of them
+ * truncated for the privilege, and the send button pushed out of the shell
+ * behind them. So the trigger carries the two values worth reading at a glance
+ * — the model and, when it is not on its default, the effort — and opening it
+ * gives every knob a name, the agent's own description, and its values laid out
+ * with the current one ticked.
  *
- * **Only the model goes in the toolbar, and that is the whole rule.** A picker
- * there shows its current *value* and nothing else, which is what makes it worth
- * the space — "Opus" says what it is. Every other knob's value says nothing on
- * its own: a row reading `Xhigh  On  Default` names none of the three things it
- * is setting, which is exactly how it looked. They go behind one button instead,
- * where each has room for its name and the agent's own description of it.
- *
- * Singling the model out is not a new hardcode. `SessionConfigOption::as_model`
- * already makes the same test, for the same reason — it is the one knob this app
- * reads rather than merely relays, because it is what a row records as having
- * answered.
+ * Which knobs exist stays the agent's answer. The two it singles out are read by
+ * id, the same way `SessionConfigOption::as_model` already reads the model,
+ * because the model is what a transcript row records as having answered.
  */
 function HostedSessionKnobs({ conversationId, isHosted }: { conversationId: string; isHosted: boolean }) {
   const { t } = useTranslation()
@@ -170,82 +211,79 @@ function HostedSessionKnobs({ conversationId, isHosted }: { conversationId: stri
   // A select with nothing in it is not offered: the agent has told us a knob
   // exists without saying what it accepts, and an empty menu reads as a bug.
   const pickers = options.filter((o) => isSelect(o) && o.options.length > 0)
-  const model = findOption(pickers, 'model')
-  const rest = pickers.filter((o) => o !== model)
+  if (pickers.length === 0) return null
+
+  // Category as well as id, so an agent that names one and omits the other is
+  // still understood. `thought_level` is the category the adapter files effort
+  // under; `effort` is its id.
+  const model = pickers.find((o) => o.id === 'model' || o.category === 'model')
+  const effort = pickers.find((o) => o.id === 'effort' || o.category === 'thought_level')
+  const summary = [
+    model && currentValueName(t, model),
+    // Left off when it is on its default: a permanent "· 默认" is noise, and the
+    // width it takes is the width the send button needs.
+    effort && effort.currentValue !== 'default' ? currentValueName(t, effort) : null,
+  ].filter(Boolean)
+
   // A refusal leaves the set as it was, which is already what is on screen —
   // the agent did not change, so neither should the picker.
   const choose = (id: string, value: string) => void set(id, value).catch(() => {})
-  if (pickers.length === 0) return null
 
   return (
-    <>
-      {model && (
-        <ToolbarSelect
-          aria-label={model.name || model.id}
-          placeholder={model.name || model.id}
-          value={typeof model.currentValue === 'string' ? model.currentValue : null}
+    <Popover>
+      {/* Tooltip inside the popover rather than around it, the same way
+          `ComposerMenu` does it: React Aria passes press and focus down through
+          context, so the one Button at the bottom picks up both behaviours
+          without either wrapper knowing about the other. */}
+      <Tooltip delay={0}>
+        {/* `h-*`/`px-*` and `rounded-*` overridden together: HeroUI's own radius
+            is much rounder than the composer this sits in, and changing the
+            height without the radius is how a hover fill gets clipped. */}
+        <Button
+          variant="ghost"
+          aria-label={t('chat.agentOptions')}
+          data-slot="agent-options-trigger"
           isDisabled={busy}
-          choices={model.options.map((v) => ({
-            value: v.value,
-            label: v.name || v.value,
-            hint: v.description,
-          }))}
-          onSelect={(value) => choose(model.id, value)}
-        />
-      )}
-      {rest.length > 0 && (
-        <Popover>
-          {/* Tooltip inside the popover rather than around it, the same way
-              `ComposerMenu` does it: React Aria passes press and focus down
-              through context, so the one Button at the bottom picks up both
-              behaviours without either wrapper knowing about the other. */}
-          <Tooltip delay={0}>
-            <Button
-              isIconOnly
-              variant="ghost"
-              aria-label={t('chat.agentOptions')}
-              data-slot="agent-options-trigger"
-              className="text-muted hover:text-foreground"
-            >
-              <Sliders className="size-4" />
-            </Button>
-            <Tooltip.Content placement="top">{t('chat.agentOptions')}</Tooltip.Content>
-          </Tooltip>
-          <Popover.Content placement="top start" className="w-64">
-            <Popover.Dialog className="flex max-h-80 flex-col gap-3 overflow-y-auto">
-              {rest.map((option) => (
-                <div key={option.id} data-slot="agent-knob">
-                  <p className="px-2 text-xs font-medium">{option.name || option.id}</p>
-                  {option.description && <p className="px-2 pt-0.5 text-xs text-muted">{option.description}</p>}
-                  {/* A flat list rather than a second dropdown. Every value is
-                      visible at once and the current one is ticked, which is
-                      the thing the toolbar could not say — and it keeps this
-                      from being an overlay inside an overlay. */}
-                  <ListBox
-                    aria-label={option.name || option.id}
-                    className="mt-1 p-1"
-                    selectionMode="single"
-                    disallowEmptySelection
-                    selectedKeys={typeof option.currentValue === 'string' ? [option.currentValue] : []}
-                    onSelectionChange={(keys) => {
-                      const next = [...(keys as Set<string>)][0]
-                      if (next) choose(option.id, next)
-                    }}
-                  >
-                    {option.options.map((v) => (
-                      <ListBox.Item key={v.value} id={v.value} textValue={v.name || v.value}>
-                        <span className="min-w-0 flex-1 truncate text-sm">{v.name || v.value}</span>
-                        <ListBox.ItemIndicator />
-                      </ListBox.Item>
-                    ))}
-                  </ListBox>
-                </div>
-              ))}
-            </Popover.Dialog>
-          </Popover.Content>
-        </Popover>
-      )}
-    </>
+          className="h-8 max-w-[220px] gap-1 rounded-lg px-2 text-sm font-normal"
+        >
+          <span className="truncate">{summary.length > 0 ? summary.join(' · ') : t('chat.agentOptions')}</span>
+          <ChevronDown className="size-4 shrink-0 text-muted" />
+        </Button>
+        <Tooltip.Content placement="top">{t('chat.agentOptions')}</Tooltip.Content>
+      </Tooltip>
+      <Popover.Content placement="top start" className="w-72">
+        <Popover.Dialog className="flex max-h-[min(420px,calc(100vh-6rem))] flex-col gap-3 overflow-y-auto">
+          {pickers.map((option) => (
+            <div key={option.id} data-slot="agent-knob">
+              <p className="px-2 text-xs font-medium">{knobName(t, option)}</p>
+              {option.description && <p className="px-2 pt-0.5 text-xs text-muted">{option.description}</p>}
+              {/* A flat list rather than a second dropdown. Every value is
+                  visible at once and the current one is ticked, which is the
+                  thing the toolbar could not say — and it keeps this from being
+                  an overlay inside an overlay. */}
+              <ListBox
+                aria-label={knobName(t, option)}
+                className="mt-1 p-1"
+                selectionMode="single"
+                disallowEmptySelection
+                selectedKeys={typeof option.currentValue === 'string' ? [option.currentValue] : []}
+                onSelectionChange={(keys) => {
+                  const next = [...(keys as Set<string>)][0]
+                  if (next) choose(option.id, next)
+                }}
+              >
+                {option.options.map((v) => (
+                  <ListBox.Item key={v.value} id={v.value} textValue={knobValueName(t, option, v)}>
+                    <span className="min-w-0 flex-1 truncate text-sm">{knobValueName(t, option, v)}</span>
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </div>
+          ))}
+        </Popover.Dialog>
+      </Popover.Content>
+    </Popover>
   )
 }
 
