@@ -57,6 +57,8 @@ export interface TurnItemProps {
   onEdit?: (id: string, content: string) => void
   onRate?: (id: string, rating: number | null) => void
   isOneBot?: boolean
+  /** A hosted Claude Code session: the assistant answering is not this app's. */
+  isHosted?: boolean
   emojiMap?: EmojiMap
   /** Nicknames for the ids on user rows. Only a group has more than one. */
   senderNames?: SenderNames
@@ -82,6 +84,7 @@ export const TurnItem = React.memo(function TurnItem({
   onEdit,
   onRate,
   isOneBot,
+  isHosted,
   emojiMap,
   senderNames,
   assistantAvatar,
@@ -332,7 +335,7 @@ export const TurnItem = React.memo(function TurnItem({
           between the question and the answer as a whole. */}
       <MessageScrollerAnchor messageId={answerAnchorId(turn.id)} className="space-y-2.5">
         <div className="flex w-full min-w-0 gap-2 text-sm">
-          <AssistantAvatar src={assistantAvatar} modelId={assistants[0]?.model_id} />
+          <AssistantAvatar src={assistantAvatar} modelId={assistants[0]?.model_id} hosted={isHosted} />
           <div className="flex w-full min-w-0 flex-col">
             {assistants[0] && <MessageMeta modelId={assistants[0].model_id} createdAt={assistants[0].created_at} />}
             <TurnCollapse status={turn.status} isExpanded={open} onExpandedChange={handleOpenChange}>

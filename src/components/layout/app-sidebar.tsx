@@ -20,7 +20,8 @@ import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Button, Input } from '@heroui/react'
 import { Sidebar, useSidebar } from '@heroui-pro/react/sidebar'
-import { Archive, ArrowLeft, Comment, FolderOpen, FolderPlus, Gear, Pin, Plus, Terminal } from '@gravity-ui/icons'
+import { Archive, ArrowLeft, FolderOpen, FolderPlus, Gear, Pin, Plus, Terminal } from '@gravity-ui/icons'
+import { ConversationIcon } from '@/components/ui/agent-icon'
 
 import { can } from '@/lib/capabilities'
 import type { Conversation, Project } from '@/types'
@@ -505,7 +506,9 @@ export function AppSidebar({
         onAction={() => selectConversation(conv.id)}
         className={conv.is_archived ? 'opacity-50' : undefined}
       >
-        <Sidebar.MenuIcon>{conv.is_archived ? <Archive /> : <Comment />}</Sidebar.MenuIcon>
+        <Sidebar.MenuIcon>
+          {conv.is_archived ? <Archive /> : <ConversationIcon agentKind={conv.agent_kind} />}
+        </Sidebar.MenuIcon>
         <Sidebar.MenuLabel>{title}</Sidebar.MenuLabel>
         <Sidebar.MenuChip>
           {/* Pinned rows were sorted to the top and said nothing about why they

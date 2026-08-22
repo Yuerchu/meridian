@@ -264,6 +264,7 @@ function ChatViewInner({
         onEdit={handleEdit}
         onRate={handleRate}
         isOneBot={isOneBot}
+        isHosted={isHostedAgent}
         emojiMap={emojiMap}
         senderNames={senderNames}
         assistantAvatar={settings.selectedAssistant?.avatar}
