@@ -1,6 +1,16 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    acp_sessions (conversation_id) {
+        conversation_id -> Text,
+        acp_session_id -> Nullable<Text>,
+        cwd -> Text,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
     assistant_emoji_packs (assistant_id, pack_id) {
         assistant_id -> Text,
         pack_id -> Text,
@@ -497,8 +507,10 @@ diesel::joinable!(mode_artifacts -> conversations (conversation_id));
 diesel::joinable!(todo_lists -> conversations (conversation_id));
 diesel::joinable!(todo_items -> todo_lists (list_id));
 diesel::joinable!(turns -> conversations (conversation_id));
+diesel::joinable!(acp_sessions -> conversations (conversation_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    acp_sessions,
     assistant_emoji_packs,
     assistants,
     cached_models,

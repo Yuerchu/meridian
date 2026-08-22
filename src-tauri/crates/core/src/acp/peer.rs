@@ -1262,6 +1262,74 @@ mod tests {
             peer.stop().await;
         }
 
+        /// Resuming a session, and the two things about it that are not
+        /// obvious from the schema.
+        ///
+        /// The reply names a *different* session than the request — the agent
+        /// resumes through the SDK and answers with whatever it recovered — so
+        /// a client that writes down what it asked for rather than what it was
+        /// told will chase an id that does not exist on the next launch.
+        ///
+        /// And the history arrives as ordinary `session/update` notifications
+        /// before the reply, which is why the client's replay gate has to be
+        /// held open across the reply *and* a drain rather than just the
+        /// request: the reply travels a different route and overtakes them.
+        #[tokio::test]
+        async fn a_resumed_session_recites_its_history_and_answers_with_its_own_id() {
+            let Some(args) = adapter() else {
+                eprintln!("skipping: node is not available");
+                return;
+            };
+
+            let process = AdapterProcess::spawn("node", &args).await.expect("spawn");
+            let probe = Arc::new(Probe::default());
+            let peer = Peer::start(process, probe.clone() as Arc<dyn Handler>);
+
+            let loaded = peer
+                .request(
+                    "session/load",
+                    serde_json::to_value(protocol::LoadSessionParams {
+                        session_id: "sess-7".into(),
+                        cwd: ".".into(),
+                        mcp_servers: Vec::new(),
+                    })
+                    .unwrap(),
+                )
+                .await
+                .expect("the adapter resumes");
+            let loaded: protocol::NewSessionResult = serde_json::from_value(loaded).unwrap();
+            assert_eq!(
+                loaded.session_id, "sess-7-resumed",
+                "the reply is authoritative about which session this now is"
+            );
+
+            peer.drain_notifications().await;
+            let heard = probe.updates.lock().unwrap().join(" ");
+            assert!(
+                heard.contains("REPLAYED"),
+                "the history really does come back as updates: {heard}"
+            );
+
+            // A session id outlives the session it names. That has to be a
+            // recoverable error rather than a dead conversation.
+            let gone = peer
+                .request(
+                    "session/load",
+                    serde_json::to_value(protocol::LoadSessionParams {
+                        session_id: "sess-gone".into(),
+                        cwd: ".".into(),
+                        mcp_servers: Vec::new(),
+                    })
+                    .unwrap(),
+                )
+                .await
+                .expect_err("that one is gone");
+            assert!(!gone.is_dead(), "a refusal must not kill the peer: {gone}");
+            assert!(peer.is_alive());
+
+            peer.stop().await;
+        }
+
         /// Steering, both ways round, against a pipe.
         ///
         /// Two things are being checked and neither can be checked without one.

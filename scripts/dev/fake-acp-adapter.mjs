@@ -83,6 +83,24 @@ rl.on('line', async (line) => {
     return
   }
 
+  // Picking a session back up. Two things the client has to get right are
+  // modelled here: the history comes back as ordinary `session/update`
+  // notifications *before* the reply, and the reply names whichever session was
+  // actually recovered — which is deliberately not the one that was asked for.
+  if (msg.method === 'session/load') {
+    if (msg.params?.sessionId === 'sess-gone') {
+      send({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'no such session' } })
+      return
+    }
+    const sid = msg.params.sessionId
+    const upd = (update) => send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: sid, update } })
+    upd({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'REPLAYED question' } })
+    upd({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'REPLAYED answer' } })
+    upd({ sessionUpdate: 'tool_call', toolCallId: 'r1', title: 'Replayed', kind: 'execute', status: 'completed' })
+    send({ jsonrpc: '2.0', id: msg.id, result: { sessionId: `${sid}-resumed` } })
+    return
+  }
+
   if (msg.method === 'session/cancel') {
     note('cancel received')
     return

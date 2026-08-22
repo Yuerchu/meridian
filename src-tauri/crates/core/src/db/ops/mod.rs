@@ -1,3 +1,4 @@
+pub mod acp_session;
 pub mod assistant;
 pub mod audit;
 pub mod cached_model;

@@ -1,3 +1,4 @@
+pub mod acp_session;
 pub mod assistant;
 pub mod assistant_emoji_pack;
 pub mod audit;

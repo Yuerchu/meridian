@@ -225,16 +225,38 @@ impl AcpConfig {
     }
 }
 
-/// Where a hosted conversation's working directory is kept.
+/// Write down what a session opened as, so the next run can pick it up.
 ///
-/// A preference keyed by conversation, which is frank about being a stopgap. It
-/// belongs in a table beside the `sessionId`, and that table is what
-/// `session/load` will need — so it is being written once, when there is a
-/// second thing to put in it. Meanwhile this is what lets a conversation
-/// reopened after a restart start a new adapter in the directory it was about,
-/// instead of becoming unusable.
-fn cwd_key(conversation_id: &str) -> String {
-    format!("acp.cwd.{conversation_id}")
+/// Called after every successful open, resumed or not. The id is the *agent's*
+/// answer rather than what was asked for: a resume goes through the SDK and it
+/// says which session it actually recovered.
+///
+/// A failure here is logged and not returned. The session is running and the
+/// user is waiting on their message; what a lost write costs is one
+/// conversation that starts fresh next time, which is what it did before this
+/// table existed.
+async fn remember_session(services: &crate::services::Services, session: &AcpSession) {
+    let pool = services.db.clone();
+    let conversation_id = session.conversation_id.clone();
+    let acp_session_id = session.acp_session_id.clone();
+    let cwd = session.cwd.clone();
+    let written = tokio::task::spawn_blocking(move || {
+        let mut conn = crate::util::get_conn(&pool)?;
+        crate::db::ops::acp_session::upsert(
+            &mut conn,
+            &conversation_id,
+            Some(&acp_session_id),
+            &cwd,
+            crate::util::now_ms(),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await;
+    match written {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => tracing::warn!(error = %e, "could not record which agent session this conversation is"),
+        Err(e) => tracing::warn!(error = %e, "recording the agent session panicked"),
+    }
 }
 
 /// Open a new hosted session, and give it a conversation.
@@ -259,10 +281,11 @@ pub async fn open_session(services: &crate::services::Services, cwd: &str) -> Re
     // The id was minted a few lines up and belongs to nobody else, so there is
     // no contest here — but going through the same door as `reopen_session`
     // keeps `insert`-that-silently-overwrites from existing at all.
-    let (_, loser) = services.acp.adopt(session);
+    let (session, loser) = services.acp.adopt(session);
     if let Some(loser) = loser {
         loser.close().await;
     }
+    remember_session(services, &session).await;
 
     let _ = services.events.emit(
         "conversation-updated",
@@ -273,9 +296,12 @@ pub async fn open_session(services: &crate::services::Services, cwd: &str) -> Re
 
 /// Bring a conversation from an earlier run back to life.
 ///
-/// A *new* adapter session in the same directory, not the old one resumed: the
-/// transcript below it is this app's and survives, but the agent has no memory
-/// of it. Saying so is the caller's job — this returns quietly.
+/// The agent's own session is resumed when there is one on record and it still
+/// exists — which is the whole point of `acp_sessions`. When it cannot be, the
+/// adapter starts a fresh one in the same directory and the agent is told, on
+/// its first prompt, that the transcript above is invisible to it. That is not
+/// a nicety: a hosted prompt carries only the newest message, so a blind agent
+/// stays blind and would otherwise answer as though it had been following along.
 pub async fn reopen_session(
     services: &crate::services::Services,
     conversation_id: &str,
@@ -287,18 +313,36 @@ pub async fn reopen_session(
     }
 
     let pool = services.db.clone();
-    let key = cwd_key(conversation_id);
-    let cwd = tokio::task::spawn_blocking(move || {
-        let mut conn = pool.get().map_err(|e| e.to_string())?;
-        crate::db::ops::preference::get_preference(&mut conn, &key).map_err(|e| e.to_string())
+    let id = conversation_id.to_string();
+    // Both facts in one read, because they are one row. `head_message_id`
+    // answers the third question — whether there is anything above for the
+    // agent to be blind to — and a conversation opened and never used has
+    // nothing, so telling it would be noise.
+    let (cwd, resume, transcript_above) = tokio::task::spawn_blocking(move || {
+        let mut conn = crate::util::get_conn(&pool)?;
+        let row = crate::db::ops::acp_session::get(&mut conn, &id)
+            .map_err(|e| e.to_string())?
+            .filter(|row| !row.cwd.trim().is_empty())
+            .ok_or("this conversation has no recorded working directory; start a new session")?;
+        let has_messages = crate::db::ops::conversation::get_conversation(&mut conn, &id)
+            .ok()
+            .and_then(|c| c.head_message_id)
+            .is_some();
+        Ok::<_, String>((row.cwd, row.acp_session_id, has_messages))
     })
     .await
-    .map_err(|e| e.to_string())??
-    .filter(|s| !s.trim().is_empty())
-    .ok_or("this conversation has no recorded working directory; start a new session")?;
+    .map_err(|e| e.to_string())??;
 
     let config = AcpConfig::load(&services.db);
-    let session = AcpSession::open(services.clone(), &config, conversation_id.to_string(), cwd).await?;
+    let session = AcpSession::reopen(
+        services.clone(),
+        &config,
+        conversation_id.to_string(),
+        cwd,
+        resume,
+        transcript_above,
+    )
+    .await?;
 
     // The check at the top of this function is not a claim on the conversation,
     // and starting an adapter takes seconds — long enough for a second caller
@@ -310,6 +354,9 @@ pub async fn reopen_session(
     if let Some(loser) = loser {
         loser.close().await;
     }
+    // After `adopt`, so the id written down is the session that won. The loser's
+    // would name a process that is being shut down two lines up.
+    remember_session(services, &session).await;
     Ok(session)
 }
 
@@ -326,7 +373,6 @@ async fn write_conversation_row(
     let conversation_id = conversation_id.to_string();
     let cwd = cwd.to_string();
     let title = title_for(&cwd);
-    let key = cwd_key(&conversation_id);
 
     tokio::task::spawn_blocking(move || {
         let mut conn = crate::util::get_conn(&pool)?;
@@ -361,7 +407,12 @@ async fn write_conversation_row(
                     agent_model_id: None,
                 },
             )?;
-            crate::db::ops::preference::set_preference(conn, &key, &cwd, now)?;
+            // The directory, in the same transaction as the row it belongs to.
+            // No session id yet — the adapter has one by now, but this write
+            // happens before `adopt` decides which session won, and a row
+            // naming the loser is a row naming a process being killed. It
+            // arrives a moment later through `remember_session`.
+            crate::db::ops::acp_session::upsert(conn, &conversation_id, None, &cwd, now)?;
             Ok(())
         })
         .map_err(|e| e.to_string())

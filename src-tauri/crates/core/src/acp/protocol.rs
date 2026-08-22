@@ -260,6 +260,26 @@ pub struct NewSessionParams {
     pub mcp_servers: Vec<serde_json::Value>,
 }
 
+/// Pick a session up where it was left, instead of starting one.
+///
+/// The same shape as `session/new` plus the id, and it answers with the same
+/// [`NewSessionResult`] — which is not a shortcut on this side: the agent
+/// really does resume through `createSession(..., { resume })` and hand back a
+/// whole new session description.
+///
+/// **The `sessionId` that comes back is not necessarily this one.** What id the
+/// SDK actually recovered is its answer, so the reply is what gets written down
+/// rather than the request. Ask with a stale id often enough and the stored one
+/// stops naming anything that exists.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadSessionParams {
+    pub session_id: String,
+    /// Must be absolute — the agent refuses a relative one outright.
+    pub cwd: String,
+    pub mcp_servers: Vec<serde_json::Value>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewSessionResult {

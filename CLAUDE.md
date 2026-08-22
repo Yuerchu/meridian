@@ -342,12 +342,48 @@ the machines that want this already have node and a signed-in `claude`.
   `~/.claude/plugins/local/meridian-plan-gate/scripts/` stand down when they see it. The
   gates keep doing what they are for: sessions Meridian did not start. The variable name
   is a contract across the two repositories.
-- **No session table yet.** The registry is in memory and the working directory is a
-  preference (`acp.cwd.<conversation_id>`), which is frank about being a stopgap. A session
-  is a child process: when the app exits the adapter goes with it and its `sessionId` means
-  nothing to the next one. Reopening writes a *new* adapter session in the same directory —
-  the transcript survives, the agent's memory of it does not. `session/load` is what earns
-  a real table, and that is the same step that would give it a second column.
+- **A session is resumed, not restarted, and `acp_sessions` is what makes that possible.**
+  The working directory used to be a preference (`acp.cwd.<conversation_id>`) holding half
+  the answer: the directory survived a restart and the session id was never written down at
+  all, so reopening started a fresh agent in the same folder. That is worse than amnesia.
+  A hosted prompt carries only the newest message — this app's transcript never enters the
+  agent's context — so a fresh agent is not hazy about what came before, it cannot see any
+  of it while the person it is talking to can see all of it.
+
+  Three things about the table (migration 38) that are not the obvious reading.
+  **One row per conversation, not per session**: resuming reuses the id and failing to
+  resume overwrites it, and `AcpRegistry` is keyed the same way — a table able to describe
+  a state the registry cannot is describing something that does not happen. **A NULL
+  `acp_session_id` is a state, not a gap**: it is what a conversation from before the table
+  gets, and what one whose adapter came up but never opened a session gets, and both mean
+  the same thing to every caller. **And the id that gets stored is the one in the reply.**
+  `session/load` resumes through the SDK, which answers with whichever session it actually
+  recovered; writing back the request instead would have the next launch chase an id that
+  never existed.
+
+- **A load replays the whole conversation, and ignoring it is deliberate rather than
+  lucky.** `session/load` re-emits the history as ordinary `session/update` notifications
+  — every one of them a row this database already has. It happens to fall on the floor
+  without any help, because each branch of `absorb` asks `with_turn` first and no turn runs
+  during a load; but two branches do not ask, and that is two unrelated rules lining up
+  rather than a decision. `Shared::replaying` says it instead, and the gate is held across
+  the reply *and* a drain, because the reply takes a different route and overtakes the
+  notifications. Saying it out loud is also what makes the opposite answer expressible:
+  adopting a session this app did not start needs the replay *written*, since there it is
+  the only transcript there is.
+
+- **When a session cannot be resumed, the agent is told — and it is the agent that tells
+  the user.** The notice rides `Owed`, beside the interrupted-turn report and the queue's
+  in-doubt items, under the same rule: reading it is not saying it, so it is cleared only
+  once a prompt carrying it came back. It goes first of the three, because the other two
+  describe things that happened inside a conversation the agent is assumed to be following
+  and this one says it is following none of it. There is no second UI for it: the agent's
+  own first sentence lands exactly where the confusion would have been.
+
+  Existing conversations from before migration 38 have no id to resume and never will.
+  They get the notice instead of silently pretending. `session/list` is how they could be
+  attached to a session found on disk, and that is the same call the sidebar of
+  terminal-started sessions needs — see the roadmap.
 - **`fs` and `terminal` capabilities are declared unsupported.** The agent does its own IO
   and we only hear about it in `tool_call` notifications. Turning `fs` on means answering
   `fs/read_text_file` and `fs/write_text_file`, after which every file it touches goes
@@ -707,10 +743,15 @@ means rewriting it for the second.
 because ACP turned out to cost far less than the paragraph above assumed — the protocol
 carries the lifecycle, so there was nothing to reverse-engineer. What is left:
 
-1. Read-only session panel — tail `~/.claude/projects/<project>/<session-id>.jsonl`, list
-   sessions started in a terminal. Still the answer for sessions Meridian did not start,
-   and still needs no protocol: `cwd`, `gitBranch`, `ai-title` and `last-prompt` are all
-   in the transcript already.
+1. Session panel — list sessions Meridian did not start, including ones from a terminal.
+   **Not by tailing `~/.claude/projects/<project>/<session-id>.jsonl`**, which is what this
+   said before the adapter was read properly: it advertises
+   `sessionCapabilities: { list, resume, fork, delete, close }`, and `session/list` answers
+   with `{ sessionId, cwd, title, updatedAt }` per session, scoped by directory. So there
+   is no format to reverse-engineer and no file to watch — and what it returns is exactly
+   what `acp_sessions` already stores, so adopting one is a conversation plus a row.
+   It is also the way to rescue a conversation from before migration 38, which has a
+   directory and no id: list that directory and let the user say which session it was.
 2. Approval queue for those sessions — forward `PermissionRequest` to Meridian, card
    beside the thread. The timeout semantics are settled (see the correction above: it
    falls back to `ask`), and the queue itself already exists — `attention` /

@@ -146,6 +146,28 @@ struct Shared {
     /// exist. See [`Shared::merge_config`] for why this is merged rather than
     /// replaced.
     config: Mutex<Vec<protocol::SessionConfigOption>>,
+    /// A `session/load` is in progress and the updates arriving are the agent
+    /// reciting a conversation we already have rows for.
+    ///
+    /// It happens to be harmless without this — every branch of [`absorb`]
+    /// asks `with_turn` first and no turn is running during a load, so the
+    /// replay falls on the floor. But that is an accident of two unrelated
+    /// rules lining up, and two of the branches (`Plan`, `ConfigOptions`) do
+    /// not ask. Saying it out loud costs one atomic and makes the *other*
+    /// answer expressible: adopting a session this app did not start needs the
+    /// replay written down, because there it is the only transcript there is.
+    ///
+    /// [`absorb`]: Shared::absorb
+    replaying: std::sync::atomic::AtomicBool,
+    /// The agent is answering into a conversation it cannot see, and has not
+    /// been told yet.
+    ///
+    /// Set when a session was opened for a conversation that already had a
+    /// transcript and the agent's own memory of it could not be resumed. Read
+    /// when a turn assembles its prompt and cleared only once that prompt has
+    /// been delivered — the same rule the interrupted-turn report follows, for
+    /// the same reason.
+    memory_lost: Mutex<bool>,
 }
 
 impl Shared {
@@ -207,6 +229,12 @@ impl Shared {
     }
 
     async fn absorb(&self, notification: SessionNotification) {
+        // The agent reciting what it already has. Every one of these is a row
+        // this database wrote the first time round, so writing them again would
+        // double the transcript — see [`Shared::replaying`].
+        if self.replaying.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
         let effect = mapping::effect_of(notification.update);
         // Every branch below takes the lock, drops it, and only then emits.
         // Emitting under the lock would put a sink's latency inside a critical
@@ -367,6 +395,7 @@ impl Shared {
                 output_tokens: None,
                 cache_read_tokens: None,
                 cache_write_tokens: None,
+                server_tool_calls: None,
             },
         )
         .await
@@ -682,7 +711,32 @@ impl Handler for Shared {
 struct Owed {
     turns: Option<crate::agent::interrupted::Report>,
     queued: Option<crate::agent::queue::Doubtful>,
+    /// The agent cannot see the conversation it is answering into.
+    ///
+    /// Not a ledger like the other two — there is nothing to write down, only
+    /// something to say once. It settles with them because it settles on the
+    /// same evidence and forgetting to clear it would repeat the notice on
+    /// every turn for the life of the session.
+    memory_lost: bool,
 }
+
+/// What the agent is told when it has been given a conversation it has no
+/// record of.
+///
+/// Worth saying plainly because the situation is worse than forgetting: a
+/// hosted prompt carries only the new message, so this app's transcript never
+/// enters the agent's context at all. It is not hazy about what came before —
+/// it cannot see any of it, while the person it is talking to can see all of
+/// it. Left unsaid, both sides spend a few turns confused about which of them
+/// is being obtuse.
+const NO_MEMORY: &str = "<no_session_memory>\n\
+This conversation has a transcript above that you cannot see. The agent session \
+it belonged to could not be resumed, so you are starting with no record of any \
+of it — and a prompt carries only the newest message, so none of it will reach \
+you later either. The user can see all of it.\n\
+Do not answer as though you remember. Say plainly that this session lost its \
+memory of the conversation, and ask them to restate whatever matters.\n\
+</no_session_memory>";
 
 impl Owed {
     /// The message with whatever has to be explained in front of it.
@@ -692,6 +746,12 @@ impl Owed {
     /// for reading the message rather than a footnote to it.
     fn in_front_of(&self, text: &str) -> String {
         let mut parts: Vec<&str> = Vec::new();
+        // First of the three. The other two describe things that happened
+        // *within* a conversation the agent is assumed to be following, and
+        // this one says it is not following any of it.
+        if self.memory_lost {
+            parts.push(NO_MEMORY);
+        }
         if let Some(report) = &self.turns {
             parts.push(report.text());
         }
@@ -706,16 +766,21 @@ impl Owed {
     }
 
     fn is_empty(&self) -> bool {
-        self.turns.is_none() && self.queued.is_none()
+        self.turns.is_none() && self.queued.is_none() && !self.memory_lost
     }
 
-    /// Write both ledgers down, now that the agent has had it.
-    async fn settle(self, services: &Services) {
+    /// Write the ledgers down, now that the agent has had them.
+    async fn settle(self, services: &Services, shared: &Shared) {
         if let Some(report) = self.turns {
             crate::agent::interrupted::confirm_delivered(&services.db, report).await;
         }
         if let Some(report) = self.queued {
             crate::agent::queue::confirm_reported(services, report).await;
+        }
+        if self.memory_lost
+            && let Ok(mut slot) = shared.memory_lost.lock()
+        {
+            *slot = false;
         }
     }
 }
@@ -733,20 +798,45 @@ pub struct AcpSession {
     /// wait for the turn to end and go as an ordinary prompt, which is what
     /// Claude Code did before the extension existed.
     steering: bool,
+    /// Whether the agent picked up the session it had rather than starting one.
+    ///
+    /// The caller writes the id back either way — a resume answers with
+    /// whichever session the SDK actually recovered, which need not be the one
+    /// asked for.
+    pub resumed: bool,
+}
+
+/// What the handshake settled.
+struct Handshook {
+    acp_session_id: String,
+    steering: bool,
+    resumed: bool,
+}
+
+/// How a session is being opened.
+struct Opening<'a> {
+    cwd: &'a str,
+    /// The session to pick up, when there is one on record. Absent for a
+    /// conversation being created, and for one from before there was anywhere
+    /// to write the id down.
+    resume: Option<&'a str>,
+    /// Whether failing to resume is worth telling the agent about. False for a
+    /// new conversation: there is no transcript above for it to be blind to.
+    transcript_above: bool,
 }
 
 impl AcpSession {
-    /// Start an adapter and open a session in `cwd`.
+    /// Start an adapter and open a session in `cwd`, resuming if asked to.
     ///
     /// The conversation must already exist: creating it is the caller's job
     /// because only the caller knows whether this is a new conversation or one
     /// being reopened, and a half-created conversation whose adapter failed to
     /// start is worse than none.
-    pub async fn open(
+    async fn open_with(
         services: Services,
         config: &AcpConfig,
         conversation_id: String,
-        cwd: String,
+        opening: Opening<'_>,
     ) -> Result<Arc<Self>, String> {
         let process = AdapterProcess::spawn(&config.command, &config.args).await?;
 
@@ -756,6 +846,8 @@ impl AcpSession {
             turn: Mutex::new(None),
             model: Mutex::new(None),
             config: Mutex::new(Vec::new()),
+            replaying: std::sync::atomic::AtomicBool::new(false),
+            memory_lost: Mutex::new(false),
         });
         let peer = Peer::start(process, shared.clone() as Arc<dyn Handler>);
 
@@ -764,12 +856,25 @@ impl AcpSession {
         // live child nobody has a handle to any more — an orphaned node process
         // per failed attempt, and the usual reason to fail (not signed in) is
         // one the user retries.
-        match Self::handshake(&peer, &shared, &cwd).await {
-            Ok((acp_session_id, steering)) => {
+        match Self::handshake(&peer, &shared, &opening).await {
+            Ok(Handshook {
+                acp_session_id,
+                steering,
+                resumed,
+            }) => {
+                // Only now, because only now is it true. A conversation with a
+                // transcript whose agent did not resume is answering blind.
+                if opening.transcript_above
+                    && !resumed
+                    && let Ok(mut slot) = shared.memory_lost.lock()
+                {
+                    *slot = true;
+                }
                 tracing::info!(
                     conversation_id = %conversation_id,
                     acp_session_id = %acp_session_id,
                     steering,
+                    resumed,
                     "ACP session opened"
                 );
                 Ok(Arc::new(Self {
@@ -777,8 +882,9 @@ impl AcpSession {
                     shared,
                     conversation_id,
                     acp_session_id,
-                    cwd,
+                    cwd: opening.cwd.to_string(),
                     steering,
+                    resumed,
                 }))
             }
             Err(e) => {
@@ -788,11 +894,56 @@ impl AcpSession {
         }
     }
 
+    /// A session for a conversation being created. Nothing to resume, and
+    /// nothing above for the agent to be blind to.
+    pub async fn open(
+        services: Services,
+        config: &AcpConfig,
+        conversation_id: String,
+        cwd: String,
+    ) -> Result<Arc<Self>, String> {
+        Self::open_with(
+            services,
+            config,
+            conversation_id,
+            Opening {
+                cwd: &cwd,
+                resume: None,
+                transcript_above: false,
+            },
+        )
+        .await
+    }
+
+    /// A session for a conversation that already exists, picking up `resume` if
+    /// the agent still has it.
+    pub async fn reopen(
+        services: Services,
+        config: &AcpConfig,
+        conversation_id: String,
+        cwd: String,
+        resume: Option<String>,
+        transcript_above: bool,
+    ) -> Result<Arc<Self>, String> {
+        Self::open_with(
+            services,
+            config,
+            conversation_id,
+            Opening {
+                cwd: &cwd,
+                resume: resume.as_deref(),
+                transcript_above,
+            },
+        )
+        .await
+    }
+
     /// Greet the adapter and open a session in `cwd`.
     ///
-    /// Split out so [`open`](Self::open) has exactly one failure path to clean
-    /// up after, rather than four `?`s that each need remembering.
-    async fn handshake(peer: &Arc<Peer>, shared: &Shared, cwd: &str) -> Result<(String, bool), String> {
+    /// Split out so [`open_with`](Self::open_with) has exactly one failure path
+    /// to clean up after, rather than four `?`s that each need remembering.
+    async fn handshake(peer: &Arc<Peer>, shared: &Shared, opening: &Opening<'_>) -> Result<Handshook, String> {
+        let cwd = opening.cwd;
         let init = peer
             .request(
                 "initialize",
@@ -824,6 +975,29 @@ impl AcpSession {
             "ACP adapter initialised"
         );
 
+        // Picking the session back up, when there is one and the agent can.
+        // Tried first and allowed to fail: a session id outlives the session it
+        // names — the user can delete it, `claude` can prune it — and the right
+        // answer to "that one is gone" is a fresh session, not a dead
+        // conversation.
+        if let Some(resume) = opening.resume.filter(|_| init.agent_capabilities.load_session) {
+            match Self::load(peer, shared, cwd, resume).await {
+                Ok(session) => {
+                    return Ok(Handshook {
+                        acp_session_id: session,
+                        steering,
+                        resumed: true,
+                    });
+                }
+                Err(e) => tracing::warn!(
+                    error = %e,
+                    resume,
+                    conversation_id = %shared.conversation_id,
+                    "could not resume the agent session; starting a new one"
+                ),
+            }
+        }
+
         // No `authenticate` call. `authMethods` lists what the adapter *can*
         // do, not what it still needs — `claude-code-acp` reports several while
         // already signed in as whatever `claude` is signed in as, so treating a
@@ -847,7 +1021,41 @@ impl AcpSession {
         // the composer has something to offer before anyone has typed. Re-sent
         // on every change after this, as a `config_option_update`.
         shared.merge_config(session.config_options);
-        Ok((session.session_id, steering))
+        Ok(Handshook {
+            acp_session_id: session.session_id,
+            steering,
+            resumed: false,
+        })
+    }
+
+    /// Ask the agent to pick a session back up, and swallow the recital.
+    ///
+    /// A load replays the whole conversation as `session/update` notifications
+    /// — every one of them a row this database already has. So the gate goes up
+    /// before the request and comes down only after the reply *and* a drain:
+    /// the reply travels a different route from the notifications and routinely
+    /// overtakes them, which is the same reason `prompt` drains before it
+    /// finishes a turn.
+    async fn load(peer: &Arc<Peer>, shared: &Shared, cwd: &str, resume: &str) -> Result<String, String> {
+        let params = serde_json::to_value(protocol::LoadSessionParams {
+            session_id: resume.to_string(),
+            cwd: cwd.to_string(),
+            mcp_servers: Vec::new(),
+        })
+        .map_err(|e| e.to_string())?;
+
+        shared.replaying.store(true, std::sync::atomic::Ordering::Relaxed);
+        let answered = peer.request("session/load", params).await;
+        peer.drain_notifications().await;
+        shared.replaying.store(false, std::sync::atomic::Ordering::Relaxed);
+
+        let session: protocol::NewSessionResult =
+            serde_json::from_value(answered.map_err(|e| describe(peer, e))?).map_err(|e| e.to_string())?;
+        shared.merge_config(session.config_options);
+        // The reply, not the request. Resuming goes through the SDK and it
+        // answers with whichever session it actually recovered; storing what we
+        // asked for would have the next resume chase an id that never existed.
+        Ok(session.session_id)
     }
 
     pub fn is_alive(&self) -> bool {
@@ -1132,6 +1340,10 @@ impl AcpSession {
             turns: crate::agent::interrupted::load_block(&services.db, &services.turns, &self.conversation_id, turn_id)
                 .await,
             queued: crate::agent::queue::owed(services, &self.conversation_id).await,
+            // Read, not taken. A turn can assemble this and then die before a
+            // byte leaves; clearing it here would spend the one chance to say
+            // it on a prompt nobody received.
+            memory_lost: self.shared.memory_lost.lock().is_ok_and(|slot| *slot),
         }
     }
 
@@ -1195,6 +1407,7 @@ impl AcpSession {
                         tool_outcome: None,
                         cache_read_tokens: None,
                         cache_write_tokens: None,
+                        server_tool_calls: None,
                         provider_name: None,
                     },
                     head.as_deref(),
@@ -1244,7 +1457,7 @@ impl AcpSession {
         // reading — while an `Err` is a pipe that may have closed before the
         // request went out, and leaves both ledgers owing.
         if outcome.is_ok() && !owed.is_empty() {
-            owed.settle(services).await;
+            owed.settle(services, &self.shared).await;
         }
 
         let state = self.shared.turn.lock().ok().and_then(|mut slot| slot.take());
@@ -1540,6 +1753,7 @@ mod tests {
                 Some("asking"),
             ),
             queued: None,
+            memory_lost: false,
         };
         assert!(!owed.is_empty(), "a turn killed inside a tool is owed an explanation");
 
@@ -1550,6 +1764,37 @@ mod tests {
             sent.contains("Bash") && sent.contains("may have taken effect"),
             "a hosted turn caught inside a tool says the dangerous thing, not the mild one: {sent}"
         );
+
+        // And the blindness goes first. The other two describe things that
+        // happened inside a conversation the agent is assumed to be following;
+        // this one says it is following none of it, which changes how the rest
+        // should be read.
+        let blind = Owed {
+            turns: crate::agent::interrupted::block(
+                &mut conn,
+                &crate::turn::TurnCoordinator::new(),
+                "c1",
+                Some("asking"),
+            ),
+            queued: None,
+            memory_lost: true,
+        };
+        let sent = blind.in_front_of("carry on");
+        assert!(sent.starts_with("<no_session_memory>"), "{sent}");
+        assert!(
+            sent.find("<no_session_memory>") < sent.find("<interrupted_turn>"),
+            "{sent}"
+        );
+        assert!(sent.ends_with("carry on"));
+
+        // On its own it is still worth saying, and still nothing more than a
+        // prefix — the message itself is untouched.
+        let alone = Owed {
+            memory_lost: true,
+            ..Owed::default()
+        };
+        assert!(!alone.is_empty());
+        assert!(alone.in_front_of("hello").ends_with("\n\nhello"));
     }
 
     /// Only what the update mentions is touched, and a knob it has never
