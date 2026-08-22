@@ -809,6 +809,7 @@
   "chat.placeholderVoice": "Send a message, or hold to talk...",
   "chat.placeholderSteer": "Say something to the run...",
   "chat.placeholderQueue": "Queue what to do next...",
+  "chat.agentOptions": "Agent options",
   "chat.queue.mode": "When to send this",
   "chat.queue.followUp": "After it finishes",
   "chat.queue.followUpHint": "waits for the whole task",

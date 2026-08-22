@@ -807,6 +807,7 @@
   "chat.placeholderVoice": "发送消息，或长按说话…",
   "chat.placeholderSteer": "对正在进行的运行说点什么…",
   "chat.placeholderQueue": "排队接下来要做的事…",
+  "chat.agentOptions": "Agent 选项",
   "chat.queue.mode": "什么时候发送",
   "chat.queue.followUp": "做完再说",
   "chat.queue.followUpHint": "等整个任务结束",
