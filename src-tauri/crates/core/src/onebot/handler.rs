@@ -286,7 +286,11 @@ async fn handle_text_message(
         ),
         None => None,
     };
-    let spent = quoted_media.as_ref().map_or(0, |m| m.image_uris.len());
+    // What the quoted message *tried*, not what it stored. See
+    // `MediaOutcome::spent`: counting uris reported nothing spent whenever the
+    // model has no vision and every image went to OCR, which handed the turn's
+    // own images a second full budget.
+    let spent = quoted_media.as_ref().map_or(0, |m| m.spent);
     let media = super::media::process_media(
         state,
         event_message_id,

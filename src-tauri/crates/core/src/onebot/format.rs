@@ -532,8 +532,24 @@ pub fn is_at_bot(message: &serde_json::Value, self_id: i64) -> bool {
     })
 }
 
+/// Which message a reply is quoting, if it is one.
+///
+/// **Both wire formats**, like [`is_at_bot`] two functions up. Whether
+/// `message` arrives as an array of segments or as a CQ string is an
+/// implementation's own setting — go-cqhttp and its successors offer both —
+/// and reading only the array made a reply from a string-format server look
+/// like an ordinary message. What that costs is the whole quoted half of the
+/// turn: no quoted text, no quoted media, and on a phone that is the only way
+/// to show the bot a sticker.
 pub fn extract_reply_message_id(message: &serde_json::Value) -> Option<i64> {
-    let segments = message.as_array()?;
+    let cq;
+    let segments = match message.as_array() {
+        Some(arr) => arr,
+        None => {
+            cq = cq_to_segments(message.as_str()?);
+            &cq
+        }
+    };
     segments.iter().find_map(|seg| {
         if seg.get("type").and_then(|v| v.as_str()) == Some("reply") {
             seg.get("data")
@@ -952,6 +968,27 @@ mod tests {
         assert_eq!(parsed.stickers.len(), 1);
         assert_eq!(parsed.stickers[0].source_key.as_deref(), Some("2:9"));
         assert_eq!(parsed.typed, "");
+    }
+
+    /// Whether a reply arrives as segments or as a CQ string is the server's
+    /// own setting, and reading only the array made a string-format reply
+    /// indistinguishable from an ordinary message — losing the quoted text, the
+    /// quoted media, and with it the one way a phone can show the bot a
+    /// sticker.
+    #[test]
+    fn a_reply_is_found_in_either_wire_format() {
+        let array = serde_json::json!([
+            { "type": "reply", "data": { "id": "998" } },
+            { "type": "text", "data": { "text": " 这个" } },
+        ]);
+        assert_eq!(extract_reply_message_id(&array), Some(998));
+
+        let cq = serde_json::Value::String("[CQ:reply,id=998][CQ:at,qq=12345] 这个".into());
+        assert_eq!(extract_reply_message_id(&cq), Some(998));
+
+        // And a message that quotes nothing still quotes nothing.
+        let plain = serde_json::Value::String("[CQ:at,qq=12345] 在吗".into());
+        assert_eq!(extract_reply_message_id(&plain), None);
     }
 
     #[test]
