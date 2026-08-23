@@ -254,6 +254,7 @@ mod tests {
             tool_outcome: None,
             cache_read_tokens: None,
             cache_write_tokens: None,
+            server_tool_calls: None,
             provider_name: None,
             provider_state: None,
             auto_review: None,

@@ -248,6 +248,8 @@ diesel::table! {
         cache_read_price -> Nullable<Double>,
         cache_write_price -> Nullable<Double>,
         self_id -> Nullable<BigInt>,
+        server_tool_calls -> Nullable<Integer>,
+        server_tool_price -> Nullable<Double>,
     }
 }
 
@@ -277,6 +279,7 @@ diesel::table! {
         tool_outcome -> Nullable<Text>,
         cache_read_tokens -> Nullable<Integer>,
         cache_write_tokens -> Nullable<Integer>,
+        server_tool_calls -> Nullable<Integer>,
         provider_name -> Nullable<Text>,
         provider_state -> Nullable<Text>,
         auto_review -> Nullable<Text>,
@@ -421,6 +424,9 @@ diesel::table! {
         updated_at -> BigInt,
         capability_overrides -> Nullable<Text>,
         cache_write_price -> Nullable<Double>,
+        price_tiers -> Nullable<Text>,
+        server_tools -> Nullable<Text>,
+        server_tool_price -> Nullable<Double>,
     }
 }
 

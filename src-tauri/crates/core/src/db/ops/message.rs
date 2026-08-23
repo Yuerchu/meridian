@@ -214,6 +214,7 @@ fn copy_of<'a>(n: &NewMessage<'a>) -> NewMessage<'a> {
         tool_outcome: n.tool_outcome,
         cache_read_tokens: n.cache_read_tokens,
         cache_write_tokens: n.cache_write_tokens,
+        server_tool_calls: None,
         provider_name: n.provider_name,
     }
 }
@@ -570,6 +571,7 @@ mod tests {
             tool_outcome: None,
             cache_read_tokens: None,
             cache_write_tokens: None,
+            server_tool_calls: None,
             provider_name: None,
         }
     }
@@ -677,6 +679,7 @@ mod tests {
             output_tokens: Some(11),
             cache_read_tokens: Some(41),
             cache_write_tokens: Some(43),
+            server_tool_calls: None,
             tool_calls: Some("[]"),
             tool_call_id: Some("call-1"),
             sort_order: 0,
@@ -729,6 +732,7 @@ mod tests {
             tool_outcome,
             cache_read_tokens,
             cache_write_tokens,
+            server_tool_calls: _,
             provider_name,
             provider_state,
             auto_review,

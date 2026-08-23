@@ -218,6 +218,43 @@ pub async fn fetch_provider_models(
     Ok(models)
 }
 
+/// What is left on this provider's account, for the few upstreams that say.
+///
+/// Never cached. A balance is the one figure here whose whole value is being
+/// current, and a stale one is worse than none — it is the number somebody
+/// decides not to top up on. `Ok(None)` means this upstream publishes nothing,
+/// which is most of them and is not an error to show anybody.
+#[tauri::command]
+pub async fn get_provider_balance(
+    app: tauri::AppHandle,
+    provider_id: String,
+) -> Result<Option<meridian_core::provider::balance::ProviderBalance>, String> {
+    let services = app.services();
+    let pool = services.db.clone();
+    let secrets = services.secrets.clone();
+
+    let (provider_type, base_url) = {
+        let pid = provider_id.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = pool.get().map_err(|e| e.to_string())?;
+            let p = db::ops::provider::get_provider(&mut conn, &pid).map_err(|e| e.to_string())?;
+            Ok::<_, String>((p.provider_type, p.base_url))
+        })
+        .await
+        .map_err(|e| e.to_string())??
+    };
+
+    if !meridian_core::provider::balance::supports_balance(&provider_type) {
+        return Ok(None);
+    }
+
+    let api_key = get_provider_api_key(&secrets, &provider_id).ok_or("API Key not set for this provider")?;
+    meridian_core::provider::balance::fetch_balance(&provider_type, &base_url, &api_key)
+        .await
+        .map(Some)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn get_provider_capabilities(
     app: tauri::AppHandle,

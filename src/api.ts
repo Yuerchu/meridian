@@ -36,6 +36,7 @@ import type {
   Project,
   PromptTemplate,
   Provider,
+  ProviderBalance,
   ProviderCapabilities,
   QueueDelivery,
   QueuedPrompt,
@@ -312,6 +313,15 @@ export const api = {
   getProviderCapabilities: (providerId: string, modelId: string) =>
     invoke<ProviderCapabilities>('get_provider_capabilities', { providerId, modelId }),
 
+  /**
+   * What is left on the account. Never cached anywhere — a stale balance is the
+   * number somebody decides not to top up on.
+   *
+   * `null` means this upstream publishes no balance, which is most of them and
+   * is not an error to show.
+   */
+  getProviderBalance: (providerId: string) => invoke<ProviderBalance | null>('get_provider_balance', { providerId }),
+
   // All three address an `approval_id` the backend minted, not the provider's
   // tool call id, and all three reject when nothing is waiting on it any more —
   // the caller turns that into an `orphaned` card rather than spinning.
@@ -552,6 +562,7 @@ export const api = {
       assistant_id: string | null
       admin_users: number[]
       ack_emoji_id: string
+      balance_alert_threshold: number | null
     }>('get_onebot_config'),
 
   saveOneBotConfig: (config: {
@@ -562,6 +573,7 @@ export const api = {
     assistant_id: string | null
     admin_users: number[]
     ack_emoji_id: string
+    balance_alert_threshold: number | null
   }) => invoke<void>('save_onebot_config', { config }),
 
   startOneBot: () => invoke<void>('start_onebot'),

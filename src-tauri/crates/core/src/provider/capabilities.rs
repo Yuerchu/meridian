@@ -38,6 +38,7 @@ struct CatalogEntry {
     supports_fast: Option<bool>,
     supports_verbosity: Option<bool>,
     default_verbosity: Option<String>,
+    server_tools: Option<Vec<String>>,
 }
 
 static CATALOG: LazyLock<Catalog> = LazyLock::new(|| {
@@ -97,6 +98,9 @@ fn apply(base: &mut ProviderCapabilities, entry: &CatalogEntry) {
     }
     if let Some(ref v) = entry.default_verbosity {
         base.default_verbosity = Some(v.clone());
+    }
+    if let Some(ref v) = entry.server_tools {
+        base.server_tools = v.clone();
     }
 }
 
@@ -165,6 +169,38 @@ fn deepseek_default() -> ProviderCapabilities {
     }
 }
 
+/// Every Grok in the catalog reasons and none of them can be told not to —
+/// xAI's own wording is "reasoning cannot be disabled" — so the default is
+/// thinking on with effort as the only knob.
+///
+/// `grok-4.20-non-reasoning` is the exception and this cannot express it: the
+/// variant is a *suffix* of the model id, which longest-prefix matching cannot
+/// reach, so it inherits `supports_thinking` and needs a `capability_overrides`
+/// entry to correct. The catalog entry for `grok-4.20` says so.
+///
+/// The context window is deliberately the smallest of the family (256k, which
+/// is `grok-code-fast`'s) rather than 4.6's 500k: an unknown model inheriting
+/// this gets a limit that is too small at worst, and a limit that is too large
+/// is a request the provider refuses after the whole prompt has been assembled.
+fn xai_default() -> ProviderCapabilities {
+    ProviderCapabilities {
+        supports_tools: true,
+        supports_streaming_tools: true,
+        supports_thinking: true,
+        supports_thinking_off: false,
+        supports_images: true,
+        supports_temperature: true,
+        supports_top_p: true,
+        max_context_tokens: Some(256_000),
+        max_output_tokens: Some(64_000),
+        max_temperature: Some(2.0),
+        thinking_style: ThinkingStyle::EffortOnly,
+        supported_efforts: vec!["low".into(), "medium".into(), "high".into()],
+        default_effort: Some("high".into()),
+        ..Default::default()
+    }
+}
+
 fn generic_default() -> ProviderCapabilities {
     ProviderCapabilities {
         supports_tools: true,
@@ -220,7 +256,21 @@ pub fn resolve(provider_type: &str, api_format: Option<&str>, model: &str) -> Pr
     // to a namespace with no entries so it only ever gets its default.
     let (mut caps, catalog_provider) = match provider_type {
         "anthropic" => (anthropic_default(), "anthropic"),
-        "deepseek" => (deepseek_default(), "deepseek"),
+        "deepseek" => {
+            let mut caps = deepseek_default();
+            if api_format == Some("responses") {
+                // `ToggleOff` exists only in the chat adapter, which sends
+                // `thinking: {"type": "disabled"}`. The Responses adapter has
+                // never heard of it, so turning thinking off there sent nothing
+                // at all and the model reasoned anyway — a switch that reported
+                // itself off while having no effect. Effort is what this dialect
+                // does support, per DeepSeek's own compatibility table.
+                caps.supports_thinking_off = false;
+                caps.thinking_style = ThinkingStyle::EffortOnly;
+            }
+            (caps, "deepseek")
+        }
+        "xai" => (xai_default(), "xai"),
         "google" => (google_default(), "google"),
         _ => match api_format {
             Some("responses") => (openai_responses_default(), "openai"),
@@ -228,11 +278,43 @@ pub fn resolve(provider_type: &str, api_format: Option<&str>, model: &str) -> Pr
             _ => (generic_default(), "openai"),
         },
     };
+    caps.server_tools = server_tools_for(provider_type, api_format);
     if let Some(entry) = find_longest_prefix_match(catalog_provider, model) {
         apply(&mut caps, entry);
     }
     caps.supports_reasoning_effort = !caps.supported_efforts.is_empty();
     caps
+}
+
+/// Which provider-side tools this dialect offers at all.
+///
+/// Gated on the Responses API because that is the only place they exist. xAI's
+/// chat-completions endpoint answers `{"type":"web_search"}` with a 422 —
+/// "expected `function` or `live_search`" — so offering the switch there would
+/// be offering a setting that turns every request into an error.
+///
+/// Deliberately short. Only what has been measured against a live endpoint
+/// (xAI) or spelled out in a compatibility table (DeepSeek) is listed; OpenAI's
+/// own Responses tools are absent because their wire names have moved around
+/// (`web_search_preview`) and a wrong name here is a 400 on every request. A
+/// model that needs one it does not inherit can be given it in
+/// `capability_overrides`.
+fn server_tools_for(provider_type: &str, api_format: Option<&str>) -> Vec<String> {
+    if api_format != Some("responses") {
+        return Vec::new();
+    }
+    let names: &[&str] = match provider_type {
+        "xai" => &[
+            crate::provider::SERVER_TOOL_WEB_SEARCH,
+            crate::provider::SERVER_TOOL_X_SEARCH,
+            crate::provider::SERVER_TOOL_CODE_EXECUTION,
+        ],
+        // Its compatibility table lists `function` and `web_search` as the
+        // supported tool types and says everything else is ignored.
+        "deepseek" => &[crate::provider::SERVER_TOOL_WEB_SEARCH],
+        _ => &[],
+    };
+    names.iter().map(|name| (*name).to_string()).collect()
 }
 
 /// Merge a user-authored JSON patch from `model_configs.capability_overrides`.
@@ -317,6 +399,11 @@ pub fn apply_overrides(caps: &mut ProviderCapabilities, overrides: Option<&str>)
                         .filter(|tier| arr.iter().any(|v| v.as_str() == Some(**tier)))
                         .map(|tier| (*tier).to_string())
                         .collect();
+                }
+            }
+            "server_tools" => {
+                if let Some(arr) = value.as_array() {
+                    caps.server_tools = arr.iter().filter_map(|v| v.as_str()).map(str::to_string).collect();
                 }
             }
             "default_effort" => caps.default_effort = value.as_str().map(str::to_string),
@@ -547,6 +634,123 @@ mod tests {
         assert!(caps.supports_thinking);
         assert!(caps.supports_reasoning_effort);
         assert!(!caps.supports_temperature);
+    }
+
+    #[test]
+    fn grok_4_6_reasons_and_cannot_be_told_not_to() {
+        let caps = resolve("xai", Some("chat_completions"), "grok-4.6");
+        assert!(caps.supports_thinking);
+        assert!(!caps.supports_thinking_off, "xAI: reasoning cannot be disabled");
+        assert_eq!(caps.thinking_style, ThinkingStyle::EffortOnly);
+        assert_eq!(caps.supported_efforts, vec!["low", "medium", "high", "xhigh"]);
+        assert_eq!(caps.default_effort.as_deref(), Some("high"));
+        assert_eq!(caps.max_context_tokens, Some(500_000));
+        assert!(caps.supports_images);
+        assert!(caps.supports_temperature, "measured: 0.7 is accepted");
+        assert!(!caps.supports_fast, "xAI has no priority tier");
+    }
+
+    /// Turning thinking off has no wire value here, so the request must not
+    /// simply omit the effort — `filter_params` turns it back on and lets the
+    /// model default apply, the same as Gemini.
+    #[test]
+    fn asking_grok_not_to_think_yields_the_model_default() {
+        let caps = resolve("xai", None, "grok-4.6");
+        let mut params = ChatParams {
+            model: "grok-4.6".into(),
+            thinking_enabled: false,
+            temperature: Some(0.7),
+            ..Default::default()
+        };
+        filter_params(&mut params, &caps);
+        assert!(params.thinking_enabled);
+        assert_eq!(params.thinking_effort, None);
+        assert_eq!(params.temperature, Some(0.7), "sampling is fine on Grok");
+    }
+
+    /// 4.5 accepts `xhigh` but treats it as `high`, so offering it would be a
+    /// tier that silently does nothing. It has to land on the median instead.
+    #[test]
+    fn grok_4_5_coerces_xhigh_rather_than_offering_it() {
+        let caps = resolve("xai", None, "grok-4.5");
+        assert_eq!(caps.supported_efforts, vec!["low", "medium", "high"]);
+        let mut params = ChatParams {
+            model: "grok-4.5".into(),
+            thinking_enabled: true,
+            thinking_effort: Some("xhigh".into()),
+            ..Default::default()
+        };
+        filter_params(&mut params, &caps);
+        assert_eq!(params.thinking_effort, Some("medium".into()));
+    }
+
+    /// The aliases and the real id are the same model, and both are things a
+    /// user can pick out of the model list.
+    #[test]
+    fn both_names_for_grok_code_fast_resolve_alike() {
+        let by_alias = resolve("xai", None, "grok-code-fast-1");
+        let by_id = resolve("xai", None, "grok-build-0.1");
+        assert_eq!(by_alias.max_context_tokens, Some(256_000));
+        assert_eq!(by_id.max_context_tokens, by_alias.max_context_tokens);
+        assert_eq!(by_id.supported_efforts, by_alias.supported_efforts);
+    }
+
+    /// A Grok nobody has catalogued yet still reasons, and still gets a context
+    /// limit small enough that the provider will accept the request.
+    #[test]
+    fn an_uncatalogued_grok_keeps_reasoning_and_the_smallest_window() {
+        let caps = resolve("xai", None, "grok-5-something");
+        assert!(caps.supports_thinking);
+        assert!(caps.supports_reasoning_effort);
+        assert_eq!(caps.max_context_tokens, Some(256_000));
+    }
+
+    /// Server-side tools exist only on the Responses API. Offering the switch on
+    /// chat-completions would be offering a setting that turns every request
+    /// into a 422 — measured: xAI answers "expected `function` or `live_search`".
+    #[test]
+    fn server_tools_are_a_responses_api_thing_only() {
+        let responses = resolve("xai", Some("responses"), "grok-4.6");
+        assert_eq!(responses.server_tools, vec!["web_search", "x_search", "code_execution"]);
+
+        for format in [Some("chat_completions"), None] {
+            assert!(
+                resolve("xai", format, "grok-4.6").server_tools.is_empty(),
+                "chat-completions has no such thing",
+            );
+        }
+    }
+
+    /// DeepSeek's compatibility table lists `function` and `web_search` as the
+    /// supported tool types and says the rest are ignored.
+    #[test]
+    fn deepseek_offers_only_the_one_it_documents() {
+        let caps = resolve("deepseek", Some("responses"), "deepseek-v4-flash");
+        assert_eq!(caps.server_tools, vec!["web_search"]);
+    }
+
+    /// A provider nobody has measured gets none, rather than a guess. A wrong
+    /// tool name is a 400 on every request the setting is on for.
+    #[test]
+    fn an_unmeasured_provider_is_offered_none() {
+        assert!(resolve("openai", Some("responses"), "gpt-5.6").server_tools.is_empty());
+        assert!(
+            resolve("anthropic", Some("responses"), "claude-opus-4-8")
+                .server_tools
+                .is_empty()
+        );
+    }
+
+    /// The escape hatch for a model whose support differs from its provider's
+    /// default — including taking them all away.
+    #[test]
+    fn an_override_can_reshape_the_server_tool_list() {
+        let mut caps = resolve("xai", Some("responses"), "grok-4.6");
+        apply_overrides(&mut caps, Some(r#"{"server_tools":["web_search"]}"#));
+        assert_eq!(caps.server_tools, vec!["web_search"]);
+
+        apply_overrides(&mut caps, Some(r#"{"server_tools":[]}"#));
+        assert!(caps.server_tools.is_empty());
     }
 
     #[test]

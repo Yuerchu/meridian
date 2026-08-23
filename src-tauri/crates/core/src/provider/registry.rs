@@ -15,7 +15,22 @@ pub fn create_provider(
 ) -> Box<dyn ChatProvider> {
     match provider_type {
         "anthropic" => Box::new(AnthropicProvider::new(base_url, api_key)),
-        "deepseek" => Box::new(DeepSeekProvider::new(base_url, api_key)),
+        // Both of these speak two dialects, and the choice is not cosmetic: the
+        // server-side tools (Grok's own web search, DeepSeek's) exist only on
+        // the Responses API. xAI's chat-completions endpoint rejects
+        // `{"type":"web_search"}` outright — measured, it answers 422 with
+        // "expected `function` or `live_search`".
+        "deepseek" => match api_format {
+            Some("responses") => Box::new(OpenAIResponsesProvider::new(base_url, api_key)),
+            _ => Box::new(DeepSeekProvider::new(base_url, api_key)),
+        },
+        // Chat-completions here is ordinary chat-completions plus one header;
+        // see `OpenAICompatFlavor` for why that is a flavor rather than an
+        // adapter of its own.
+        "xai" => match api_format {
+            Some("responses") => Box::new(OpenAIResponsesProvider::new(base_url, api_key)),
+            _ => Box::new(OpenAICompatProvider::new_xai(base_url, api_key)),
+        },
         "google" => match api_format {
             Some("gemini_generate_content") => Box::new(GoogleGenerateContentProvider::new(base_url, api_key)),
             _ => Box::new(OpenAICompatProvider::new_google(base_url, api_key)),

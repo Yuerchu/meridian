@@ -108,6 +108,34 @@ pub(crate) async fn consume_stream(
                             entry.2 = arguments.clone();
                         }
                     }
+                    Ok(Some(Ok(provider::StreamEvent::ServerToolCall(ref call)))) => {
+                        // Announced, never dispatched: the upstream has already
+                        // run it. Without this the reader gets a minute of
+                        // silence and then an answer out of nowhere.
+                        //
+                        // Not accumulated into the row either — this is what the
+                        // provider did on its own side, and the transcript
+                        // records what was said.
+                        //
+                        // So the card lives as long as the front end's own copy
+                        // of the round does: the snapshot taken when the turn
+                        // stops rebuilds the row from the database, where this
+                        // was never written. The answer and its citations
+                        // survive; the searching does not. That is the right way
+                        // round, but it is sooner than "on reload" — worth
+                        // knowing before wondering where the card went.
+                        if let Some(e) = emit {
+                            e.emit(
+                                "chat-stream",
+                                serde_json::json!({
+                                    "type": "server_tool",
+                                    "message_id": message_id,
+                                    "conversation_id": conversation_id,
+                                    "call": call,
+                                }),
+                            )?;
+                        }
+                    }
                     Ok(Some(Ok(provider::StreamEvent::UsageUpdate { usage: ref u }))) => {
                         usage = Some(u.clone());
                     }

@@ -1,4 +1,5 @@
 pub mod anthropic;
+pub mod balance;
 pub mod capabilities;
 pub mod deepseek;
 mod dto;
@@ -341,6 +342,31 @@ pub struct ChatParams {
     pub fast: bool,
     /// OpenAI Responses `text.verbosity`. Ignored by every other provider.
     pub verbosity: Option<String>,
+    /// Which conversation this request belongs to, for providers that route by
+    /// it to reach a warm prompt cache.
+    ///
+    /// Two spellings, decided by the dialect rather than by the vendor:
+    /// chat-completions sends it as xAI's `x-grok-conv-id` header and only for
+    /// that flavor, while the Responses API sends it as `prompt_cache_key` for
+    /// every provider — OpenAI defines that field, and DeepSeek's compatibility
+    /// table says an unsupported parameter is ignored rather than refused.
+    ///
+    /// What it buys is a warm cache: xAI's is per-server, and this is what pins
+    /// a conversation to the one already holding its prefix. Without it a
+    /// request lands wherever the balancer sends it and pays full input price on
+    /// a cold server — a cost difference rather than a behavioural one, so
+    /// nothing about the reply says it went wrong.
+    ///
+    /// Deliberately not the model or the assistant: what has to be stable is the
+    /// *prefix*, and that is the conversation.
+    pub cache_key: Option<String>,
+    /// Provider-side tools to switch on for this request, by wire `type`.
+    ///
+    /// Already narrowed to what the model supports and what the user enabled —
+    /// see `resolve_turn_params`. An adapter sends these verbatim and does not
+    /// second-guess the list: a name that reaches here has been through both
+    /// filters.
+    pub server_tools: Vec<String>,
     /// Copied in by `capabilities::filter_params` so providers can pick the
     /// right request shape without needing the whole capability struct.
     pub thinking_style: ThinkingStyle,
@@ -348,16 +374,102 @@ pub struct ChatParams {
 
 #[derive(Debug, Clone)]
 pub enum StreamEvent {
-    MessageStart { message_id: String },
-    Text { content: String },
-    Reasoning { content: String },
-    ProviderStateUpdate { update: state::ProviderStateUpdate },
-    ToolCallStart { index: usize, id: String, name: String },
-    ToolCallDelta { index: usize, arguments: String },
-    ToolCallDone { index: usize, arguments: String },
-    UsageUpdate { usage: TokenUsage },
-    Stop { reason: String, usage: Option<TokenUsage> },
-    Error { message: String },
+    MessageStart {
+        message_id: String,
+    },
+    Text {
+        content: String,
+    },
+    Reasoning {
+        content: String,
+    },
+    ProviderStateUpdate {
+        update: state::ProviderStateUpdate,
+    },
+    ToolCallStart {
+        index: usize,
+        id: String,
+        name: String,
+    },
+    ToolCallDelta {
+        index: usize,
+        arguments: String,
+    },
+    ToolCallDone {
+        index: usize,
+        arguments: String,
+    },
+    /// A tool the *provider* ran, on its own side.
+    ///
+    /// Deliberately not a `ToolCall`, and the distinction is load-bearing:
+    /// nothing here is dispatched, approved or executed by us. By the time this
+    /// arrives the upstream has already run it and fed the result back to the
+    /// model. Routed through the tool machinery instead, the turn loop would
+    /// try to run `web_search` locally, ask the user to approve it, and then
+    /// send back a result the model never asked for — while the real result is
+    /// already in its context.
+    ///
+    /// So this is an announcement, not a request. The only thing it changes is
+    /// what the reader sees, which without it is a minute of silence followed
+    /// by an answer from nowhere.
+    ServerToolCall(ServerToolCall),
+    UsageUpdate {
+        usage: TokenUsage,
+    },
+    Stop {
+        reason: String,
+        usage: Option<TokenUsage>,
+    },
+    Error {
+        message: String,
+    },
+}
+
+/// One run of a provider-side tool, as far as the stream has told us.
+///
+/// Announced twice: once when it starts and once when it finishes. The second
+/// is where the substance is — xAI's `output_item.added` carries an empty query
+/// and no sources, and fills both in on `output_item.done`. A reader that drew
+/// only the first would show "searching for nothing" and never correct itself.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ServerToolCall {
+    /// The provider's own item id, stable across the two announcements. What a
+    /// card is revised by, rather than appended for a second time.
+    pub id: String,
+    /// What the provider called it — `web_search`, `x_keyword_search`,
+    /// `code_execution`. Not always the name of the tool that was *requested*:
+    /// asking xAI for `x_search` produces calls named `x_user_search` and
+    /// `x_keyword_search`, which are the operations it decomposed into.
+    pub name: String,
+    /// What it was called with, as a JSON object string, or `None` until the
+    /// provider says. Shaped like a function call's arguments so a card can
+    /// render it the same way — the two wire forms it comes from do not agree
+    /// on anything else.
+    pub arguments: Option<String>,
+    /// The pages it looked at, when the provider itemises them.
+    pub sources: Vec<String>,
+    pub completed: bool,
+}
+
+/// The provider-side tools this app knows how to ask for and draw.
+///
+/// Names are the wire `type` values, which is what a request carries and what
+/// `capabilities` and `model_configs.server_tools` are checked against — one
+/// spelling, everywhere.
+pub const SERVER_TOOL_WEB_SEARCH: &str = "web_search";
+pub const SERVER_TOOL_X_SEARCH: &str = "x_search";
+pub const SERVER_TOOL_CODE_EXECUTION: &str = "code_execution";
+
+/// Which local tool a provider-side one makes redundant.
+///
+/// Running both is not merely wasteful: the model is handed two ways to search,
+/// one of which stops to ask permission and needs a Tavily key, and it will pick
+/// between them unpredictably. See `turn_config`, which drops the local one.
+pub fn superseded_local_tool(server_tool: &str) -> Option<&'static str> {
+    match server_tool {
+        SERVER_TOOL_WEB_SEARCH => Some("web_search"),
+        _ => None,
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -411,6 +523,18 @@ pub struct TokenUsage {
     /// `cache_hit_tokens` / `cache_miss_tokens` pair.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_write_tokens: Option<i32>,
+    /// Provider-side tool invocations that carry a per-call charge.
+    ///
+    /// Not a token count, and the only figure here that is not: xAI bills $5 per
+    /// 1000 searches *on top of* the tokens. A reply with one search came to
+    /// $0.0128 against $0.0078 of tokens, so leaving this out under-reports a
+    /// searching turn by a third.
+    ///
+    /// Already narrowed to what is billable. The upstream itemises its calls and
+    /// several kinds are free — image understanding inside a search, remote MCP —
+    /// so counting `num_server_side_tools_used` would charge for those too.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub billable_tool_calls: Option<i32>,
 }
 
 impl TokenUsage {
@@ -479,6 +603,14 @@ pub struct ProviderCapabilities {
     pub supports_fast: bool,
     pub supports_verbosity: bool,
     pub default_verbosity: Option<String>,
+    /// Provider-side tools this model can be asked to run, by wire `type`.
+    ///
+    /// What it *can* do, not what it is doing: `model_configs.server_tools` says
+    /// which of these the user switched on, and `resolve_turn_params` intersects
+    /// the two. Empty for every model reached over chat-completions, because
+    /// that dialect has no such thing.
+    #[serde(default)]
+    pub server_tools: Vec<String>,
 }
 
 /// Returned by the non-streaming `chat_with_tools` path, which no caller has
@@ -671,6 +803,18 @@ mod usage_tests {
                 "gemma_tool",
                 openai_style(r#"{"prompt_tokens":512,"completion_tokens":8}"#),
                 512,
+            ),
+            // The prompt side is OpenAI's exactly; where xAI differs is the
+            // *output* side, which this table does not describe — see
+            // `openai_compat::xai_tests`.
+            (
+                "xai",
+                openai_style(
+                    r#"{"prompt_tokens":214,"completion_tokens":1,"total_tokens":274,
+                        "prompt_tokens_details":{"cached_tokens":128},
+                        "completion_tokens_details":{"reasoning_tokens":59}}"#,
+                ),
+                128 + 86,
             ),
             (
                 "anthropic",

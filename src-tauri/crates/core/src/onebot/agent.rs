@@ -543,18 +543,26 @@ async fn headless_chat_inner(
     //
     // Ahead of the tool set because what the model can be sent at all — whether
     // it takes a tools field — decides what that set may contain.
-    let turn_params = {
+    let mut turn_params = {
         let pool2 = pool.clone();
         let assistant2 = assistant.clone();
         let pt = provider_type.clone();
         let af = api_format.clone();
         let em = effective_model.clone();
+        // The provider this turn actually resolved to, not the assistant's
+        // stored field. They differ whenever the assistant names none and the
+        // fallback picked the first enabled one — and with the assistant's
+        // empty field there is no `model_configs` row to find, so that turn
+        // silently loses its context window, its prices, its capability
+        // overrides and its provider-side tools. The desktop has always passed
+        // the resolved id.
+        let pid = provider_id.clone();
         tokio::task::spawn_blocking(move || {
             crate::agent::resolve_turn_params(
                 &pool2,
                 crate::agent::TurnParamsInput {
                     assistant: assistant2.as_ref(),
-                    provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                    provider_id: Some(pid.as_str()),
                     provider_type: &pt,
                     api_format: &af,
                     model: &em,
@@ -566,6 +574,10 @@ async fn headless_chat_inner(
         .await
         .map_err(|e| e.to_string())??
     };
+    // The same reasoning as the desktop path: one room, one stable prefix, one
+    // server holding it. Worth more here than there, since a group's prefix is
+    // long and every message in it is another turn against the same one.
+    turn_params.params.cache_key = Some(conversation_id.to_string());
     let context_limit = turn_params.context_limit;
     // Off `turn_params` rather than a second `get_capabilities` call. That one
     // goes through `capabilities::resolve` without `apply_overrides`, so a
@@ -581,6 +593,7 @@ async fn headless_chat_inner(
         let pool2 = pool.clone();
         let registry = tool_registry.clone();
         let input = crate::agent::turn_config::TurnConfigInput {
+            server_tools: turn_params.params.server_tools.clone(),
             assistant: assistant.clone(),
             conversation_id: conversation_id.to_string(),
             project_id: project_id.map(|s| s.to_string()),
@@ -837,6 +850,7 @@ async fn headless_chat_inner(
                         // What someone said cost no tokens and came from no upstream.
                         cache_read_tokens: None,
                         cache_write_tokens: None,
+                        server_tool_calls: None,
                         provider_name: None,
                     },
                     parent.as_deref(),
@@ -1002,6 +1016,10 @@ async fn headless_chat_inner(
             files_root,
             interrupted,
             compaction: engine::CompactionPolicy::OneBot,
+            // A QQ turn accumulates tokens for the session summary and has
+            // nowhere to show a price. The bill for it is built from the audit
+            // rows like everyone else's, and those are tier-priced at write time.
+            pricing: None,
         },
         engine::TurnPorts {
             emit,

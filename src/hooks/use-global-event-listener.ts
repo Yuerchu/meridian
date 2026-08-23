@@ -46,6 +46,28 @@ function enqueueChunk(convId: string, messageId: string, type: 'text' | 'reasoni
   }
 }
 
+/**
+ * A provider-side call's result, in the shape the card that draws it expects.
+ *
+ * `web_search` routes to `WebSearchBlock`, whose `parseWebSearchResult` accepts
+ * one thing: `{"sources": [{title, url, content}]}`. Anything else it reads as a
+ * raw error string and draws in red as "search failed" — so handing it a plain
+ * list of URLs turned *every successful* provider search into a visible failure.
+ *
+ * The upstream itemises URLs and nothing else, so the host stands in for a
+ * title. It can be a relative path (`/question/what-is-xai` has been seen in a
+ * live response), which is why this cannot just be `new URL(...).hostname`.
+ */
+function serverToolResult(call: NonNullable<StreamChunk['call']>): string {
+  return JSON.stringify({
+    sources: call.sources.map((url) => ({
+      title: url.replace(/^https?:\/\//, '').replace(/^www\./, '') || url,
+      url,
+      content: '',
+    })),
+  })
+}
+
 function shouldNotify(convId: string): boolean {
   const { activeId } = useConversationStore.getState()
   return !document.hasFocus() || convId !== activeId
@@ -97,6 +119,27 @@ export function useGlobalEventListener() {
           streamStartTimes.set(streamKey, Date.now())
         }
         store.handleMessageStart(convId, p.message_id, p.turn_id)
+        return
+      }
+
+      // A tool the provider ran on its own side — Grok's web search, DeepSeek's.
+      // Drawn as an ordinary tool card, which is what it is minus the part where
+      // we run it: without one the reader gets a minute of silence and then an
+      // answer out of nowhere.
+      //
+      // Announced twice under one id. The query and the sources only exist on
+      // the second, so the first opens the card and the second revises it and
+      // closes it out — there is no result event coming, because nothing here is
+      // waiting to be executed.
+      if (p.type === 'server_tool' && p.message_id && p.call) {
+        const call = p.call
+        const args = call.arguments ?? '{}'
+        if (call.completed) {
+          store.reviseToolCall(convId, p.message_id, call.id, call.name, args)
+          store.handleToolResult(convId, p.message_id, call.id, serverToolResult(call))
+        } else {
+          store.handleToolCall(convId, p.message_id, call.id, call.name, args)
+        }
         return
       }
 

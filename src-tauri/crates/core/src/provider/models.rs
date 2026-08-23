@@ -19,6 +19,13 @@ pub async fn fetch_models(
 ) -> Result<Vec<ModelInfo>, ProviderError> {
     match provider_type {
         "anthropic" => fetch_anthropic_models(base_url, api_key).await,
+        "xai" => {
+            let models = fetch_openai_models(base_url, api_key).await?;
+            Ok(models
+                .into_iter()
+                .filter(|model| is_xai_text_model(&model.id))
+                .collect())
+        }
         "google" => {
             let models = if api_format == Some("gemini_generate_content") {
                 fetch_google_models(base_url, api_key).await?
@@ -49,9 +56,30 @@ fn is_google_agent_model(id: &str) -> bool {
     id.contains("-flash-lite") || id.contains("-flash") || id.contains("-pro")
 }
 
+/// xAI answers `/v1/models` with its image and video models mixed in among the
+/// Grok ones, and nothing in the OpenAI-compatible shape distinguishes them —
+/// the modality fields only exist on their own `/v1/language-models`. Offering
+/// `grok-imagine-video` in a chat model picker is a turn that fails at the
+/// first request, so the family names are matched instead.
+fn is_xai_text_model(id: &str) -> bool {
+    let id = id.to_ascii_lowercase();
+    !["imagine", "image", "video", "embed"]
+        .iter()
+        .any(|part| id.contains(part))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::is_google_agent_model;
+    use super::{is_google_agent_model, is_xai_text_model};
+
+    #[test]
+    fn xai_filter_keeps_grok_and_drops_the_other_modalities() {
+        assert!(is_xai_text_model("grok-4.6"));
+        assert!(is_xai_text_model("grok-4.20-0309-non-reasoning"));
+        assert!(is_xai_text_model("grok-build-0.1"));
+        assert!(!is_xai_text_model("grok-imagine-image-2.0"));
+        assert!(!is_xai_text_model("grok-imagine-video-1.5"));
+    }
 
     #[test]
     fn google_filter_keeps_general_gemini_3_models() {

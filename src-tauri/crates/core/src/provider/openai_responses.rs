@@ -60,24 +60,35 @@ impl OpenAIResponsesProvider {
             // The config-facing name is "fast"; the wire value is the priority tier.
             body["service_tier"] = serde_json::json!("priority");
         }
-        if let Some(tools) = tools
-            && !tools.is_empty()
-        {
-            body["tools"] = serde_json::json!(
-                tools
-                    .iter()
-                    .map(|t| {
-                        serde_json::json!({
-                            "type": "function",
-                            "name": t.name,
-                            "description": t.description,
-                            "parameters": t.parameters,
-                            "strict": false,
-                        })
-                    })
-                    .collect::<Vec<_>>()
-            );
+        // Server-side tools sit in the same array as our own, and go first: the
+        // tool list is the front of what a provider caches, and ours change with
+        // the mode while these do not.
+        let mut wire_tools: Vec<serde_json::Value> = params
+            .server_tools
+            .iter()
+            .map(|name| serde_json::json!({ "type": name }))
+            .collect();
+        if let Some(tools) = tools {
+            wire_tools.extend(tools.iter().map(|t| {
+                serde_json::json!({
+                    "type": "function",
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                    "strict": false,
+                })
+            }));
+        }
+        if !wire_tools.is_empty() {
+            body["tools"] = serde_json::Value::Array(wire_tools);
             body["tool_choice"] = serde_json::json!("auto");
+        }
+        // xAI's spelling of the cache-routing key on this API; the header is the
+        // chat-completions form. DeepSeek ignores the field, which its own
+        // compatibility table says is what happens to anything it does not
+        // support — its cache is managed for it.
+        if let Some(key) = params.cache_key.as_deref() {
+            body["prompt_cache_key"] = serde_json::json!(key);
         }
 
         let mut req = Request::new(http::Method::POST, format!("{}/responses", self.base_url));
@@ -166,11 +177,61 @@ pub(super) struct ResponseUsage {
     /// `prompt_tokens_details`. Same nesting, same reason for a struct of its
     /// own: serde cannot reach into a nested object from a flat field.
     input_tokens_details: Option<ResponseInputTokensDetails>,
+    /// Absent on every endpoint that has no server-side tools, which is why it
+    /// is an `Option` rather than a defaulted struct: "none ran" and "this API
+    /// has none" both read as nothing to bill, and neither is a zero worth
+    /// recording.
+    server_side_tool_usage_details: Option<ServerToolUsage>,
 }
 
 #[derive(Deserialize)]
 struct ResponseInputTokensDetails {
     cached_tokens: Option<i64>,
+}
+
+/// What the provider ran on its own side, itemised.
+///
+/// Read per tool rather than off `num_server_side_tools_used`, because that
+/// total includes invocations that carry no charge: image understanding inside a
+/// search, X video understanding, remote MCP calls. Billing those would inflate
+/// every search that happened to look at a picture.
+///
+/// The three counted here are the three this app can ask for, and xAI charges
+/// $5/1000 for each. The ones deliberately absent are priced differently
+/// (`attachment_search` at $10, `collections_search` at $2.50) and are never
+/// requested — if one ever appears, it is worth a line in the log rather than a
+/// number invented at a rate nobody configured.
+#[derive(Deserialize, Default)]
+struct ServerToolUsage {
+    #[serde(default)]
+    web_search_calls: i64,
+    #[serde(default)]
+    x_search_calls: i64,
+    /// xAI's own field name for what its pricing table calls `code_execution`.
+    #[serde(default)]
+    code_interpreter_calls: i64,
+    #[serde(default)]
+    file_search_calls: i64,
+    #[serde(default)]
+    document_search_calls: i64,
+    #[serde(default)]
+    image_generation_calls: i64,
+}
+
+impl ServerToolUsage {
+    fn billable(&self) -> i64 {
+        let unpriced = self.file_search_calls + self.document_search_calls + self.image_generation_calls;
+        if unpriced > 0 {
+            // Not counted, and not silently: these are billed at rates this app
+            // has nowhere to store, so the total below is short by whatever they
+            // cost.
+            tracing::warn!(
+                calls = unpriced,
+                "the provider ran tools this app has no rate for; their cost is not included"
+            );
+        }
+        self.web_search_calls + self.x_search_calls + self.code_interpreter_calls
+    }
 }
 
 /// `input_tokens` here is the whole prompt, as in chat-completions — only the
@@ -182,6 +243,7 @@ pub(super) fn normalise_responses_usage(u: &ResponseUsage) -> TokenUsage {
         prompt_tokens: u.input_tokens.map(|v| v as i32),
         completion_tokens: u.output_tokens.map(|v| v as i32),
         total_tokens: u.total_tokens.map(|v| v as i32),
+        billable_tool_calls: u.server_side_tool_usage_details.as_ref().map(|d| d.billable() as i32),
         cache_read_tokens: u
             .input_tokens_details
             .as_ref()
@@ -197,6 +259,87 @@ pub(super) fn normalise_responses_usage(u: &ResponseUsage) -> TokenUsage {
 struct ResponseError {
     code: Option<String>,
     message: Option<String>,
+}
+
+/// Read a provider-side tool call out of an output item, if that is what it is.
+///
+/// **Two wire shapes, and they agree on almost nothing.** Measured against
+/// `grok-4.6`:
+///
+/// * `{"type": "web_search_call", "action": {"query": …, "sources": […]}}` —
+///   the tool's name is the item type with `_call` removed.
+/// * `{"type": "custom_tool_call", "name": "x_keyword_search",
+///    "input": "{\"query\":…}"}` — the name is a field and the arguments are a
+///   JSON *string*. This is how xAI delivers `x_search`, which it decomposes
+///   into `x_user_search` and `x_keyword_search` calls.
+///
+/// The second shape was excluded here at first, on the reading that
+/// `custom_tool_call` belongs to DeepSeek's `apply_patch` compatibility tool.
+/// It does — and xAI reuses the same envelope for its own searches, so
+/// excluding it made every X search invisible: no card, no query, nothing
+/// between the question and a minute of silence.
+///
+/// Treating an unrequested `custom_tool_call` as provider-side is safe because
+/// this app never asks for one: `build_request` emits `function` entries and the
+/// server-tool types, never `{"type": "custom"}`. If that ever changes, the
+/// check has to become "did we ask for a custom tool by this name" — and the
+/// consequence of getting it wrong is a card drawn for something we should have
+/// run, which is why it is written down here.
+///
+/// Anything unrecognised is still announced rather than dropped. Nothing here is
+/// executed, so an unfamiliar card is the safe failure and silence is not.
+fn server_tool_call(item: &serde_json::Value, completed: bool) -> Option<super::ServerToolCall> {
+    let item_type = item["type"].as_str()?;
+    let id = item["id"].as_str().unwrap_or_default().to_string();
+
+    if item_type == "custom_tool_call" {
+        return Some(super::ServerToolCall {
+            id,
+            // Absent on the opening event, which carries only the id.
+            name: item["name"].as_str().unwrap_or_default().to_string(),
+            arguments: item["input"].as_str().filter(|i| !i.is_empty()).map(str::to_string),
+            // This shape itemises nothing; the citations arrive as annotations
+            // on the answer instead.
+            sources: Vec::new(),
+            completed,
+        });
+    }
+
+    let name = item_type.strip_suffix("_call")?;
+    // Everything here is a call the *client* is supposed to execute and answer
+    // with a matching `_call_output`. Announcing one as provider-side would
+    // claim it had already run — so the model would be shown a card for work
+    // nobody did, and then wait for a reply that never comes. Unreachable while
+    // this app never requests them, and one `capability_overrides` entry away
+    // from being reachable.
+    if matches!(
+        name,
+        "" | "function" | "computer" | "local_shell" | "apply_patch" | "mcp"
+    ) {
+        return None;
+    }
+    let action = &item["action"];
+    Some(super::ServerToolCall {
+        id,
+        name: name.to_string(),
+        // Empty is how the opening event spells "not known yet", and an empty
+        // string shown as a query reads as a search for nothing.
+        arguments: action["query"]
+            .as_str()
+            .filter(|q| !q.is_empty())
+            .map(|query| serde_json::json!({ "query": query }).to_string()),
+        sources: action["sources"]
+            .as_array()
+            .map(|sources| {
+                sources
+                    .iter()
+                    .filter_map(|source| source["url"].as_str())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        completed,
+    })
 }
 
 fn parse_responses_event(
@@ -221,7 +364,13 @@ fn parse_responses_event(
                 Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
             }
         }
-        "response.reasoning_summary_text.delta" => {
+        // Two spellings of the same thing. xAI streams a summary of its
+        // reasoning under the first; DeepSeek streams the chain itself under the
+        // second (`response.reasoning_text.delta`, per its compatibility table)
+        // and produces no summary at all. Handling only one leaves that
+        // provider's thinking invisible while it happens — which reads as the
+        // model having stalled.
+        "response.reasoning_summary_text.delta" | "response.reasoning_text.delta" => {
             let parsed: Result<serde_json::Value, _> = serde_json::from_str(data);
             match parsed {
                 Ok(v) => {
@@ -260,6 +409,9 @@ fn parse_responses_event(
                             name,
                         })];
                     }
+                    if let Some(call) = server_tool_call(item, false) {
+                        return vec![Ok(StreamEvent::ServerToolCall(call))];
+                    }
                     vec![]
                 }
                 Err(e) => vec![Err(ProviderError::Parse(e.to_string()))],
@@ -276,6 +428,11 @@ fn parse_responses_event(
                         if let Some(&index) = state.call_id_to_index.get(call_id) {
                             return vec![Ok(StreamEvent::ToolCallDone { index, arguments })];
                         }
+                    }
+                    // Where the substance of a server-side call actually is: the
+                    // `added` event carries an empty query and no sources.
+                    if let Some(call) = server_tool_call(item, true) {
+                        return vec![Ok(StreamEvent::ServerToolCall(call))];
                     }
                     vec![]
                 }
@@ -562,5 +719,154 @@ mod tests {
         let body = body_for("gpt-5.2", |p| p.thinking_effort = Some("max".into()));
         assert_eq!(body["reasoning"]["effort"], "medium");
         assert!(body.get("service_tier").is_none(), "gpt-5.2 has no fast tier");
+    }
+
+    /// Server-side tools share the array with our own, and go first — the tool
+    /// list is the front of what a provider caches and these do not change with
+    /// the mode.
+    #[test]
+    fn server_tools_lead_the_tool_array() {
+        let provider = OpenAIResponsesProvider::new("https://api.x.ai/v1", "k");
+        let params = ChatParams {
+            model: "grok-4.6".into(),
+            server_tools: vec!["web_search".into(), "x_search".into()],
+            cache_key: Some("conv-9".into()),
+            ..Default::default()
+        };
+        let defs = [ToolDefinition {
+            name: "read_file".into(),
+            description: "read".into(),
+            parameters: serde_json::json!({"type": "object"}),
+        }];
+        let req = provider.build_request(&[ChatMessage::user("hi")], Some(&defs), &params, true);
+        let Some(RequestBody::Json(body)) = req.body else {
+            panic!("JSON body")
+        };
+        let tools = body["tools"].as_array().expect("a tools array");
+        assert_eq!(tools[0], serde_json::json!({"type": "web_search"}));
+        assert_eq!(tools[1], serde_json::json!({"type": "x_search"}));
+        assert_eq!(tools[2]["type"], "function");
+        assert_eq!(tools[2]["name"], "read_file");
+        // This API's spelling of the cache key; the header is the
+        // chat-completions form and must not appear here.
+        assert_eq!(body["prompt_cache_key"], "conv-9");
+        assert!(req.headers.get("x-grok-conv-id").is_none());
+    }
+
+    /// A turn with server-side tools and none of our own still sends an array —
+    /// otherwise switching the local tools off switches the provider's off too.
+    #[test]
+    fn server_tools_alone_still_produce_a_tool_array() {
+        let provider = OpenAIResponsesProvider::new("https://api.x.ai/v1", "k");
+        let params = ChatParams {
+            model: "grok-4.6".into(),
+            server_tools: vec!["web_search".into()],
+            ..Default::default()
+        };
+        let req = provider.build_request(&[ChatMessage::user("hi")], None, &params, true);
+        let Some(RequestBody::Json(body)) = req.body else {
+            panic!("JSON body")
+        };
+        assert_eq!(body["tools"], serde_json::json!([{"type": "web_search"}]));
+    }
+
+    /// Verbatim from a live `grok-4.6` stream. The opening event carries an
+    /// empty query and no sources; both arrive on completion, which is why a
+    /// card has to be revised rather than drawn once.
+    #[test]
+    fn a_search_item_is_read_at_both_ends_of_its_life() {
+        let opening: serde_json::Value = serde_json::from_str(
+            r#"{"id":"ws_abc-0","type":"web_search_call","status":"in_progress",
+                "action":{"type":"search","query":"","sources":[]}}"#,
+        )
+        .unwrap();
+        let started = server_tool_call(&opening, false).expect("a server tool call");
+        assert_eq!(started.name, "web_search");
+        assert_eq!(started.id, "ws_abc-0");
+        assert_eq!(started.arguments, None, "an empty query is not a search for nothing");
+        assert!(!started.completed);
+
+        let finished: serde_json::Value = serde_json::from_str(
+            r#"{"id":"ws_abc-0","type":"web_search_call","status":"completed",
+                "action":{"type":"search","query":"What is xAI",
+                "sources":[{"type":"url","url":"https://x.ai/about"},
+                           {"type":"url","url":"https://docs.x.ai/models"}]}}"#,
+        )
+        .unwrap();
+        let done = server_tool_call(&finished, true).expect("a server tool call");
+        assert_eq!(done.id, started.id, "the same card, revised");
+        assert_eq!(done.arguments.as_deref(), Some(r#"{"query":"What is xAI"}"#));
+        assert_eq!(done.sources.len(), 2);
+        assert!(done.completed);
+    }
+
+    /// The other wire shape, verbatim from a live stream. Asking xAI for
+    /// `x_search` produces `custom_tool_call` items whose real name is a field
+    /// and whose arguments are a JSON string — nothing like the shape above.
+    ///
+    /// This was excluded to begin with, on the reading that `custom_tool_call`
+    /// is DeepSeek's `apply_patch` envelope. It is that too, and the cost of
+    /// excluding it was that every X search happened invisibly.
+    #[test]
+    fn an_x_search_is_read_out_of_the_custom_tool_shape() {
+        let item: serde_json::Value = serde_json::from_str(
+            r#"{"call_id":"xs_call-f1f-0","input":"{\"query\":\"from:thsottiaux\",\"limit\":\"5\"}",
+                "name":"x_keyword_search","type":"custom_tool_call","id":"ctc_1c3-0","status":"completed"}"#,
+        )
+        .unwrap();
+        let call = server_tool_call(&item, true).expect("a server tool call");
+        assert_eq!(call.name, "x_keyword_search");
+        assert_eq!(
+            call.id, "ctc_1c3-0",
+            "the item id, not the call id — the card keys on it"
+        );
+        assert_eq!(
+            call.arguments.as_deref(),
+            Some(r#"{"query":"from:thsottiaux","limit":"5"}"#)
+        );
+        assert!(call.sources.is_empty(), "this shape itemises none");
+
+        // The opening event carries only the id.
+        let opening = serde_json::json!({"id": "ctc_1c3-0", "type": "custom_tool_call"});
+        let started = server_tool_call(&opening, false).expect("still announced");
+        assert_eq!(started.id, "ctc_1c3-0");
+        assert_eq!(started.arguments, None);
+    }
+
+    /// Our own calls are not server-side ones. Reading a `function_call` as one
+    /// would draw a card for it *and* skip running it.
+    #[test]
+    fn a_function_call_is_never_mistaken_for_a_server_tool() {
+        for item in [
+            serde_json::json!({"id": "fc_1", "type": "function_call", "name": "read_file", "call_id": "c1"}),
+            serde_json::json!({"id": "msg_1", "type": "message"}),
+            serde_json::json!({"id": "rs_1", "type": "reasoning"}),
+        ] {
+            assert!(server_tool_call(&item, true).is_none(), "{item}");
+        }
+    }
+
+    /// A tool nobody has heard of is still drawn. Nothing here is executed, so
+    /// an unfamiliar card is the safe failure — silence is not.
+    #[test]
+    fn an_unfamiliar_server_tool_is_still_announced() {
+        let item = serde_json::json!({"id": "zz_1", "type": "document_search_call", "status": "completed"});
+        let call = server_tool_call(&item, true).expect("still announced");
+        assert_eq!(call.name, "document_search");
+    }
+
+    /// DeepSeek streams its chain of thought under a different event name than
+    /// xAI's summary, and produces no summary at all. Handling only one leaves
+    /// that provider's thinking invisible, which reads as a stalled model.
+    #[test]
+    fn both_spellings_of_a_reasoning_delta_are_understood() {
+        let mut state = StreamState::default();
+        for event in ["response.reasoning_summary_text.delta", "response.reasoning_text.delta"] {
+            let out = parse_responses_event(event, r#"{"delta":"thinking"}"#, &mut state);
+            assert!(
+                matches!(out.first(), Some(Ok(StreamEvent::Reasoning { content })) if content == "thinking"),
+                "{event} produced {out:?}",
+            );
+        }
     }
 }

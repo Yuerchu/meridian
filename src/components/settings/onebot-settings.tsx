@@ -15,6 +15,13 @@ interface OneBotConfig {
   assistant_id: string | null
   admin_users: number[]
   ack_emoji_id: string
+  /**
+   * Null switches the balance watcher off, which is the default — it makes
+   * periodic requests with the user's API keys. Zero keeps it but drops the
+   * early warning: the admins hear only when an upstream reports the account
+   * unusable.
+   */
+  balance_alert_threshold: number | null
 }
 
 interface OneBotStatus {
@@ -35,10 +42,14 @@ export function OneBotSettings() {
     assistant_id: null,
     admin_users: [],
     ack_emoji_id: '76',
+    balance_alert_threshold: null,
   })
   const [status, setStatus] = useState<OneBotStatus | null>(null)
   const [assistants, setAssistants] = useState<Assistant[]>([])
   const [adminInput, setAdminInput] = useState('')
+  // Held as text like the admin list, so a half-typed "1." is representable.
+  // Empty is a real setting here — it switches the watcher off.
+  const [balanceInput, setBalanceInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, markSaved] = useTemporaryFlag()
   const [error, setError] = useState<string | null>(null)
@@ -50,6 +61,7 @@ export function OneBotSettings() {
       setStatus(sts)
       setAssistants(assts)
       setAdminInput(cfg.admin_users.join(', '))
+      setBalanceInput(cfg.balance_alert_threshold?.toString() ?? '')
     } catch (err) {
       setError(String(err))
     }
@@ -80,9 +92,16 @@ export function OneBotSettings() {
         .map((s) => parseInt(s.trim(), 10))
         .filter((n) => !isNaN(n) && n > 0)
 
-      const newConfig = { ...config, admin_users: adminUsers }
+      // Anything that is not a non-negative number switches the watcher off,
+      // and the field is rewritten from what was saved — so a typo shows up as
+      // an emptied box rather than as an alert that never arrives.
+      const typed = Number(balanceInput.trim())
+      const threshold = balanceInput.trim() !== '' && Number.isFinite(typed) && typed >= 0 ? typed : null
+
+      const newConfig = { ...config, admin_users: adminUsers, balance_alert_threshold: threshold }
       await api.saveOneBotConfig(newConfig)
       setConfig(newConfig)
+      setBalanceInput(threshold?.toString() ?? '')
       markSaved()
       return true
     } catch (err) {
@@ -147,7 +166,7 @@ export function OneBotSettings() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
         <TextField fullWidth>
           <Label>{t('settings.onebot.host')}</Label>
           <Input
@@ -202,6 +221,16 @@ export function OneBotSettings() {
           placeholder="76"
         />
         <Description>{t('settings.onebot.ackEmojiHint')}</Description>
+      </TextField>
+
+      <TextField fullWidth>
+        <Label>{t('settings.onebot.balanceAlert')}</Label>
+        <Input
+          value={balanceInput}
+          onChange={(e) => setBalanceInput(e.target.value)}
+          placeholder={t('settings.onebot.balanceAlertPlaceholder')}
+        />
+        <Description>{t('settings.onebot.balanceAlertHint')}</Description>
       </TextField>
 
       {error && <p className="text-xs text-danger break-all">{error}</p>}

@@ -384,6 +384,11 @@ async fn assemble_system_prompt(
     project_id: Option<&str>,
     context_limit: usize,
     active_path: &[db::models::message::Message],
+    // `server_tools` is the turn's own, resolved by the caller. Counting the
+    // local `web_search` that a provider-side one displaces would make the
+    // estimate disagree with the prompt actually sent — the drift this function
+    // exists to avoid, not to introduce.
+    server_tools: Vec<String>,
 ) -> (String, String) {
     // Off the published snapshot, so the context estimator cannot be blocked by
     // a server that is busy answering something else.
@@ -426,6 +431,9 @@ async fn assemble_system_prompt(
             meridian_core::agent::turn_config::TurnConfigInput {
                 assistant,
                 conversation_id: conv_id,
+                // The estimate has to count the prompt the chat loop will send,
+                // and a provider-side tool takes the local one out of it.
+                server_tools,
                 project_id: pid,
                 // The estimate has to count the prompt the chat loop will
                 // actually send, transitions included.
@@ -543,6 +551,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
         project_id.as_deref(),
         context_limit,
         &ctx.path,
+        turn.params.server_tools.clone(),
     )
     .await;
 

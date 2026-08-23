@@ -137,6 +137,7 @@ macro_rules! with_all_commands {
                 provider_id: String,
                 model_id: String,
             ),
+            async commands::provider => get_provider_balance(provider_id: String),
 
             async commands::model_config => list_model_configs(provider_id: String),
             async commands::model_config => get_model_config(

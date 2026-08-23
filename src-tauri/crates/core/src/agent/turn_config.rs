@@ -61,6 +61,10 @@ pub struct TurnConfigInput {
     /// `PlanTransitions` re-resolves mid-turn and would undo anything a call
     /// site had filtered.
     pub sub_agents: Option<crate::agent::sub_agents::SubAgentCatalog>,
+    /// Provider-side tools this turn is asking the upstream to run, already
+    /// narrowed by `resolve_turn_params`. Each one that supersedes a local tool
+    /// takes it out of the set below.
+    pub server_tools: Vec<String>,
     /// The assistant's own prompt, template variables already resolved.
     pub persona: String,
     /// Slotted in after the persona: project instructions, file access notes.
@@ -87,6 +91,7 @@ pub fn resolve(conn: &mut SqliteConnection, registry: &ToolRegistry, input: Turn
         mcp_defs,
         exposure,
         sub_agents,
+        server_tools,
         persona,
         context_blocks,
     } = input;
@@ -135,6 +140,18 @@ pub fn resolve(conn: &mut SqliteConnection, registry: &ToolRegistry, input: Turn
         });
         super::tool_defs::apply_skill_catalog(&mut defs, &available);
         super::tool_defs::apply_sub_agent_catalog(&mut defs, sub_agents.as_ref());
+        // A tool the provider is doing itself is one we must not also offer.
+        // Not a matter of tidiness: the model would be shown two ways to search,
+        // and the local one stops to ask permission and needs a Tavily key — so
+        // whichever it picked would be a coin toss between "searches" and "asks
+        // to search, then fails for want of a key". The upstream's own is
+        // strictly better where it exists: no key, no card, and the results
+        // never come back through our context window.
+        for server_tool in &server_tools {
+            if let Some(local) = crate::provider::superseded_local_tool(server_tool) {
+                defs.retain(|definition| definition.name != local);
+            }
+        }
         // Last, so that a narrowed session is narrowed against the *final* set
         // rather than an intermediate one — the sticker pair, the skill catalog
         // and the sub-agent tool are all added above, and each would otherwise
@@ -335,6 +352,7 @@ mod tests {
             project_id: None,
             mode,
             sub_agents: None,
+            server_tools: Vec::new(),
             mcp_defs: Vec::new(),
             exposure: ToolExposure::All,
             persona: "You are a test.".into(),
@@ -552,6 +570,47 @@ mod tests {
             "the assistant never enabled it: {:?}",
             cfg.offered
         );
+    }
+
+    /// The provider is doing the searching, so we must not also offer it.
+    ///
+    /// Two ways to search is worse than either alone: the local one stops for
+    /// approval and needs a Tavily key, so a model that picked it would ask
+    /// permission and then fail, having had the better option taken from it.
+    #[test]
+    fn a_provider_side_search_takes_the_local_one_out_of_the_set() {
+        let (pool, reg) = setup();
+        let mut conn = pool.get().unwrap();
+
+        let with_local = resolve(&mut conn, &reg, input(switchable(None), None));
+        assert!(with_local.offered.contains("web_search"), "the baseline");
+
+        let mut i = input(switchable(None), None);
+        i.server_tools = vec!["web_search".into()];
+        let cfg = resolve(&mut conn, &reg, i);
+
+        assert!(!cfg.offered.contains("web_search"));
+        assert!(
+            !cfg.tool_defs.iter().any(|d| d.name == "web_search"),
+            "not merely unauthorised — not even advertised",
+        );
+        assert!(cfg.offered.contains("read_file"), "everything else is untouched");
+    }
+
+    /// A provider-side tool with no local counterpart removes nothing. The map
+    /// is deliberately partial: `x_search` and `code_execution` have no
+    /// equivalent here, and a blanket "drop anything with a similar name" would
+    /// quietly take away tools nobody replaced.
+    #[test]
+    fn a_server_tool_with_no_local_twin_removes_nothing() {
+        let (pool, reg) = setup();
+        let mut conn = pool.get().unwrap();
+        let mut i = input(switchable(None), None);
+        i.server_tools = vec!["x_search".into(), "code_execution".into()];
+        let cfg = resolve(&mut conn, &reg, i);
+
+        assert!(cfg.offered.contains("web_search"));
+        assert!(cfg.offered.contains("read_file"));
     }
 
     #[test]

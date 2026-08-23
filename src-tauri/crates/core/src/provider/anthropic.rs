@@ -321,6 +321,9 @@ pub(super) fn normalise_anthropic_usage(u: &AnthropicUsage) -> TokenUsage {
         total_tokens: None,
         cache_read_tokens: u.cache_read_input_tokens,
         cache_write_tokens: u.cache_creation_input_tokens,
+        // Chat-completions has no server-side tools; the Responses adapter is
+        // the only one with anything to report here.
+        billable_tool_calls: None,
     }
 }
 

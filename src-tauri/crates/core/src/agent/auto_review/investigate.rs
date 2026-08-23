@@ -61,6 +61,9 @@ pub(super) struct Job<'a> {
 pub(super) struct Findings {
     pub read: Read,
     pub usage: MessageUsage,
+    /// The largest single round's prompt. Summed usage cannot answer "which
+    /// price tier did this reach" — see `ReviewCost::peak_prompt_tokens`.
+    pub peak_prompt: Option<i32>,
     /// What it actually looked at, filed beside the verdict. This is the part a
     /// user reads when they want to know whether a denial was informed.
     pub evidence: Vec<serde_json::Value>,
@@ -175,6 +178,7 @@ async fn drive(job: &Job<'_>, cancel: &CancellationToken, deadline: tokio::time:
         ChatMessage::user(ESCALATION),
     ];
     let mut usage = MessageUsage::default();
+    let mut peak_prompt: Option<i32> = None;
     let mut evidence: Vec<serde_json::Value> = Vec::new();
 
     for round in 0..MAX_ROUNDS {
@@ -194,6 +198,7 @@ async fn drive(job: &Job<'_>, cancel: &CancellationToken, deadline: tokio::time:
                 return Findings {
                     read: Read::Unreadable("深入审查超时"),
                     usage,
+                    peak_prompt,
                     evidence,
                 };
             }
@@ -202,17 +207,21 @@ async fn drive(job: &Job<'_>, cancel: &CancellationToken, deadline: tokio::time:
                 return Findings {
                     read: Read::Unreadable("深入审查中断"),
                     usage,
+                    peak_prompt,
                     evidence,
                 };
             }
             Ok(Ok(a)) => a,
         };
-        usage = super::add(usage, super::usage_of(answer.usage.as_ref()));
+        let round = super::usage_of(answer.usage.as_ref());
+        peak_prompt = super::peak(peak_prompt, round.input_tokens);
+        usage = super::add(usage, round);
 
         if answer.tool_calls.is_empty() {
             return Findings {
                 read: assessment::parse(&answer.text),
                 usage,
+                peak_prompt,
                 evidence,
             };
         }
@@ -257,6 +266,7 @@ async fn drive(job: &Job<'_>, cancel: &CancellationToken, deadline: tokio::time:
     Findings {
         read: Read::Unreadable("深入审查用尽了轮数仍未给出裁决"),
         usage,
+        peak_prompt,
         evidence,
     }
 }

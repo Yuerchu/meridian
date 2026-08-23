@@ -746,6 +746,12 @@ export interface ProviderCapabilities {
   supports_fast?: boolean
   supports_verbosity?: boolean
   default_verbosity?: string | null
+  /**
+   * Provider-side tools this model *can* be asked to run, by wire type name.
+   * What it will run is `ModelConfig.server_tools`, narrowed against this.
+   * Empty on chat-completions, where no such thing exists.
+   */
+  server_tools?: string[]
 }
 
 export interface ModelConfig {
@@ -770,6 +776,79 @@ export interface ModelConfig {
   updated_at: number
   /** JSON patch over the built-in catalog; malformed content is ignored. */
   capability_overrides: string | null
+  /**
+   * Rates that take over above a prompt size, as a JSON array of
+   * {@link PriceTier}. Null means one price at every size, which is most
+   * models. Crossing a threshold re-prices the *whole* request, not the excess.
+   */
+  price_tiers: string | null
+  /**
+   * Provider-side tools switched on for this model, as a JSON array of wire
+   * type names. Narrowed against the model's capabilities at turn time, so a
+   * name here cannot outlive the support it refers to.
+   */
+  server_tools: string | null
+  /**
+   * What one provider-side tool invocation costs, per **thousand** calls — the
+   * unit the upstreams publish it in. Null means nobody has said, which is not
+   * zero: a searching turn priced at nothing is under-reported, not free.
+   */
+  server_tool_price: number | null
+}
+
+/**
+ * One run of a provider-side tool, as the stream reports it.
+ *
+ * Announced twice — starting and finished — under the same `id`, because the
+ * query and the sources only exist on the second. A card is revised, not
+ * appended.
+ */
+export interface ServerToolCall {
+  id: string
+  name: string
+  /** What it was called with, as a JSON object string. Shaped like a function
+   *  call's arguments so a card renders it the same way. */
+  arguments: string | null
+  sources: string[]
+  completed: boolean
+}
+
+/** One currency's worth of credit on a provider account. */
+export interface BalanceAccount {
+  currency: string
+  /** What can actually be spent — the figure worth acting on. */
+  total: number
+  /** Promotional credit, which typically expires. */
+  granted: number | null
+  topped_up: number | null
+}
+
+/**
+ * What is left on a provider account, for the few upstreams that publish it.
+ *
+ * `is_available` is the upstream's own verdict and is kept apart from the
+ * numbers on purpose: it accounts for postpaid arrangements, expired grants and
+ * holds, none of which a total shows.
+ */
+export interface ProviderBalance {
+  is_available: boolean
+  accounts: BalanceAccount[]
+}
+
+/**
+ * A rate set that takes over once the prompt is large enough.
+ *
+ * The threshold counts the whole prompt, cached part included, and crossing it
+ * re-prices the entire request rather than the part above it — xAI, Gemini and
+ * OpenAI all do this. Reading it as a tax bracket understates a long request by
+ * nearly the base rate.
+ */
+export interface PriceTier {
+  min_prompt_tokens: number
+  input: number
+  output: number
+  cache_read?: number | null
+  cache_write?: number | null
 }
 
 export interface ModelConfigInput {
@@ -784,6 +863,9 @@ export interface ModelConfigInput {
   cache_price?: number | null
   cache_write_price?: number | null
   capability_overrides?: string | null
+  price_tiers?: string | null
+  server_tools?: string | null
+  server_tool_price?: number | null
 }
 
 /**
@@ -946,6 +1028,8 @@ export interface StreamChunk {
   arguments?: string
   result?: string
   outcome?: string
+  /** Only on `server_tool`: a tool the provider ran on its own side. */
+  call?: ServerToolCall
   /** Only on `tool_approval_req`. What the answer must be addressed to. */
   approval_id?: string
   /** Set only when this approval is a sandbox-blocked call asking to run

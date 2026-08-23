@@ -45,6 +45,10 @@ struct PlanTransitions {
     /// or take away — the ability to delegate, and change which models it may
     /// reach, in the middle of a turn.
     sub_agents: meridian_core::agent::sub_agents::SubAgentCatalog,
+    /// And once more. This rebuilds the tool set, so a suppression applied only
+    /// where the turn was set up is undone by the first mode switch — handing
+    /// back a local `web_search` to sit beside the provider-side one.
+    server_tools: Vec<String>,
 }
 
 #[async_trait::async_trait]
@@ -61,6 +65,7 @@ impl meridian_core::agent::engine::Transitions for PlanTransitions {
         let registry = self.registry.clone();
         let input = meridian_core::agent::turn_config::TurnConfigInput {
             assistant: self.assistant.clone(),
+            server_tools: self.server_tools.clone(),
             conversation_id: self.conversation_id.clone(),
             project_id: self.project_id.clone(),
             // This type exists to answer the question, so the answer is yes.
@@ -721,6 +726,10 @@ async fn chat_inner(
     // later in the turn.
     let supports_tools = turn_params.caps.supports_tools;
     let supports_images = turn_params.caps.supports_images;
+    // Copied for the same reason as the two above: `turn_params.params` is moved
+    // later in the turn, and a mid-turn mode switch rebuilds the tool set — so
+    // the list that suppresses the local `web_search` has to survive that.
+    let turn_server_tools = turn_params.params.server_tools.clone();
     if !supports_tools {
         tracing::info!(model = %model, "the model cannot take tools; none are offered this turn");
     }
@@ -735,11 +744,13 @@ async fn chat_inner(
         let assistant2 = assistant.clone();
         let (conv_id, pid) = (conversation_id.clone(), project_id.clone());
         let (persona2, blocks) = (persona.clone(), context_blocks.clone());
+        let server_tools = turn_server_tools.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = get_conn(&pool2)?;
             let catalog = meridian_core::agent::sub_agents::catalog(&mut conn);
             let input = meridian_core::agent::turn_config::TurnConfigInput {
                 assistant: assistant2,
+                server_tools,
                 conversation_id: conv_id,
                 project_id: pid,
                 mode: meridian_core::agent::modes::Modes::Switchable(mode),
@@ -1004,6 +1015,7 @@ async fn chat_inner(
                         // What the user typed cost no tokens and came from no upstream.
                         cache_read_tokens: None,
                         cache_write_tokens: None,
+                        server_tool_calls: None,
                         provider_name: None,
                     },
                     parent.as_deref(),
@@ -1099,6 +1111,7 @@ async fn chat_inner(
         context_blocks,
         supports_tools,
         sub_agents: sub_agent_catalog,
+        server_tools: turn_server_tools.clone(),
     };
 
     // Assembled here rather than per call: by the time a `run_agent` arrives,
@@ -1193,6 +1206,13 @@ async fn chat_inner(
                 enabled: auto_compact,
                 breaker: circuit_breaker.clone(),
             },
+            // The turn prices itself as it goes. It has to: a model with tiered
+            // rates cannot be billed from the totals this loop leaves behind,
+            // because the totals are a sum over requests that were each priced
+            // on their own size.
+            pricing: model_config
+                .as_ref()
+                .and_then(meridian_core::agent::pricing::TurnPricing::of),
         },
         engine::TurnPorts {
             emit: Some(&emitter),
@@ -1220,27 +1240,18 @@ async fn chat_inner(
     let assistant_msg_id = outcome.progress.message_id.clone().unwrap_or_default();
     let total_input_tokens = outcome.progress.input_tokens;
     let total_output_tokens = outcome.progress.output_tokens;
-    let total_cache_read = outcome.progress.cache_read_tokens;
-    let total_cache_write = outcome.progress.cache_write_tokens;
     let turn_aborted = outcome.progress.aborted;
     let last_assistant_text = outcome.reply?;
 
-    let cost_info = model_config
-        .as_ref()
-        .filter(|mc| meridian_core::agent::pricing::has_pricing(mc))
-        .map(|mc| {
-            let usage = meridian_core::provider::TokenUsage {
-                prompt_tokens: Some(total_input_tokens),
-                completion_tokens: Some(total_output_tokens),
-                total_tokens: Some(total_input_tokens + total_output_tokens),
-                // Zero from a turn where nothing was reported reads the same as
-                // zero from one where nothing was cached, and for a price that is
-                // the right answer either way: both cost the full input rate.
-                cache_read_tokens: Some(total_cache_read),
-                cache_write_tokens: Some(total_cache_write),
-            };
-            meridian_core::agent::pricing::compute_cost(&usage, &meridian_core::agent::pricing::Prices::of(mc))
-        });
+    // Summed round by round inside the turn rather than computed here from the
+    // totals. Those totals cannot answer it on a model that prices by prompt
+    // size: five 50k requests and one 250k request leave the same numbers behind
+    // and are billed at different rates, and only the loop saw which this was.
+    //
+    // `None` means no cost could be worked out: an unpriced model, or a turn
+    // where no round reported usage. Either way the field is left off rather
+    // than sent as a confident zero.
+    let cost_info = outcome.progress.cost.clone();
 
     // This is the only place that knows how the loop was left, and the three
     // ways out are genuinely different: the loop guard cutting a repeating
@@ -1271,6 +1282,9 @@ async fn chat_inner(
             "input": cost.input_cost,
             "output": cost.output_cost,
             "cache": cost.cache_cost,
+            // Its own slot: on a searching turn this is a third of the bill and
+            // divides by nothing the other three do.
+            "tools": cost.tool_cost,
         });
     }
     // Released ahead of the event it announces, not after it.
@@ -1302,14 +1316,50 @@ async fn chat_inner(
             temperature: Some(0.3),
             ..Default::default()
         };
-        if let Ok(title) = provider.chat(title_messages, title_params).await {
-            let title = title.trim().trim_matches('"').trim_matches('\'').to_string();
+        // `chat_with_tools` with an empty list, for the usage `chat` throws
+        // away. Naming a conversation is small and constant, but it happens on
+        // every first exchange and used to appear on no bill at all.
+        if let Ok(answer) = provider.chat_with_tools(title_messages, Vec::new(), title_params).await {
+            let title = answer.text.trim().trim_matches('"').trim_matches('\'').to_string();
+            let title_usage = answer.usage;
             if !title.is_empty() {
                 let pool = pool.clone();
                 let conv_id = conversation_id.clone();
+                let assistant_row = assistant_msg_id.clone();
+                let (pid, pname, mid) = (
+                    resolved.provider_id.clone(),
+                    resolved.provider_name.clone(),
+                    model.clone(),
+                );
                 let _ = tokio::task::spawn_blocking(move || {
                     if let Ok(mut conn) = pool.get() {
                         let _ = db::ops::conversation::update_title(&mut conn, &conv_id, &title, now_ms());
+                        // Filed against the reply the title was taken from —
+                        // there is no row of its own, and this is the one it
+                        // describes.
+                        if let Some(usage) = title_usage {
+                            let cost = db::ops::audit::SideRequestCost {
+                                role: db::ops::audit::TITLE_ROLE,
+                                message_id: &assistant_row,
+                                conversation_id: &conv_id,
+                                turn_id: None,
+                                provider_id: Some(&pid),
+                                provider_name: Some(&pname),
+                                model_id: Some(&mid),
+                                usage: db::models::message::MessageUsage {
+                                    input_tokens: usage.prompt_tokens,
+                                    output_tokens: usage.completion_tokens,
+                                    cache_read_tokens: usage.cache_read_tokens,
+                                    cache_write_tokens: usage.cache_write_tokens,
+                                    server_tool_calls: usage.billable_tool_calls,
+                                },
+                                peak_prompt_tokens: usage.prompt_tokens,
+                                summary: "title",
+                            };
+                            if let Err(e) = db::ops::audit::record_side_request(&mut conn, cost) {
+                                tracing::warn!(error = %e, "could not record what the title cost");
+                            }
+                        }
                     }
                 })
                 .await;

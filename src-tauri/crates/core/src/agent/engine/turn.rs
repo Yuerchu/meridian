@@ -241,6 +241,10 @@ pub struct TurnSetup<'a> {
     /// and not by reading the record.
     pub interrupted: Option<crate::agent::interrupted::Report>,
     pub compaction: CompactionPolicy,
+    /// What this model costs, so each round can be priced at its own prompt
+    /// size. `None` leaves `progress.cost` unset — for a model nobody has
+    /// priced, and for the runners that report tokens rather than money.
+    pub pricing: Option<crate::agent::pricing::TurnPricing>,
 }
 
 /// What one reply reported, in the shape a row stores.
@@ -260,6 +264,7 @@ fn row_usage(usage: Option<&crate::provider::TokenUsage>) -> MessageUsage {
             output_tokens: u.completion_tokens,
             cache_read_tokens: u.cache_read_tokens,
             cache_write_tokens: u.cache_write_tokens,
+            server_tool_calls: u.billable_tool_calls,
         },
         None => MessageUsage::default(),
     }
@@ -284,6 +289,20 @@ pub struct TurnProgress {
     /// exactly one reporter.
     pub cache_read_tokens: i32,
     pub cache_write_tokens: i32,
+    /// What this turn cost, summed per round rather than derived from the totals
+    /// above.
+    ///
+    /// The distinction only matters where a model prices by prompt size, and
+    /// there it matters a lot: five 50k requests and one 250k request leave
+    /// identical totals behind, and on `grok-4.6` the second is billed at twice
+    /// the rate. Only this loop ever sees the individual sizes, so pricing after
+    /// the fact from `input_tokens` would put the first turn in the second one's
+    /// bracket.
+    ///
+    /// `None` means no cost could be worked out — either nobody priced this
+    /// model, or no round reported any usage to price. Both are distinct from
+    /// zero, which would be a claim that the turn was free.
+    pub cost: Option<crate::agent::pricing::RequestCost>,
     /// The loop guard cut it short.
     pub aborted: bool,
     /// How many times the model was asked — one per assistant row. Not tool
@@ -370,6 +389,7 @@ async fn run(
         files_root,
         mut interrupted,
         compaction,
+        pricing,
     } = setup;
     let pool = services.pool;
     let emit = ports.emit;
@@ -617,6 +637,14 @@ async fn run(
             // "tokens paid for at full price" subtracts them rather than adds.
             progress.cache_read_tokens += u.cache_read_tokens.unwrap_or(0);
             progress.cache_write_tokens += u.cache_write_tokens.unwrap_or(0);
+            // Priced here, per round, because this is the last place the size of
+            // *this* request is known. Everything downstream has only the sums,
+            // and on a model with tiered rates the sum sits in a bracket no
+            // single request necessarily reached.
+            if let Some(ref pricing) = pricing {
+                let prices = pricing.for_prompt(u.prompt_tokens.unwrap_or(0) as i64);
+                *progress.cost.get_or_insert_default() += crate::agent::pricing::compute_cost(u, &prices);
+            }
             budget.calibrate_from_usage(u);
         }
 
@@ -1225,19 +1253,27 @@ mod tests {
         }
 
         async fn chat(&self, _messages: Vec<ChatMessage>, _params: ChatParams) -> Result<String, ProviderError> {
-            match self.summary {
-                Some(ref s) => Ok(s.clone()),
-                None => Err(ProviderError::NotImplemented("not used by the loop".into())),
-            }
+            Err(ProviderError::NotImplemented("the summariser needs usage back".into()))
         }
 
+        /// Mid-turn compaction goes through here, empty tool list and all,
+        /// because this is the call that reports what the summary cost.
         async fn chat_with_tools(
             &self,
             _messages: Vec<ChatMessage>,
             _tools: Vec<ToolDefinition>,
             _params: ChatParams,
         ) -> Result<crate::provider::AgentResponse, ProviderError> {
-            Err(ProviderError::NotImplemented("not used by the loop".into()))
+            match self.summary {
+                Some(ref s) => Ok(crate::provider::AgentResponse {
+                    text: s.clone(),
+                    reasoning_content: None,
+                    tool_calls: Vec::new(),
+                    usage: None,
+                    provider_state: None,
+                }),
+                None => Err(ProviderError::NotImplemented("not used by the loop".into())),
+            }
         }
     }
 
@@ -1469,6 +1505,7 @@ mod tests {
             files_root: None,
             interrupted: None,
             compaction: CompactionPolicy::OneBot,
+            pricing: None,
         }
     }
 

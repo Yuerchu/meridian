@@ -54,6 +54,9 @@ pub async fn save_model_config(app: tauri::AppHandle, input: ModelConfigInput) -
             created_at: now,
             updated_at: now,
             capability_overrides: input.capability_overrides.as_deref(),
+            price_tiers: input.price_tiers.as_deref(),
+            server_tools: input.server_tools.as_deref(),
+            server_tool_price: input.server_tool_price,
         };
         db::ops::model_config::upsert(&mut conn, &new).map_err(|e| e.to_string())
     })
