@@ -42,7 +42,8 @@ impl Tool for ApplyPatchTool {
                 "base_path": {
                     "type": "string",
                     "description": "Base directory path to resolve relative file paths in the patch (optional)"
-                }
+                },
+                "description": super::description_property(),
             },
             "required": ["patch"]
         })

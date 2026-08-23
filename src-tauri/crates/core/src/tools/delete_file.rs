@@ -26,7 +26,8 @@ impl Tool for DeleteFileTool {
                 "recursive": {
                     "type": "boolean",
                     "description": "If true, delete a directory and all its contents. Default: false."
-                }
+                },
+                "description": super::description_property(),
             },
             "required": ["path"]
         })

@@ -36,11 +36,12 @@ export function TodoBarView({ todos, className }: { todos: TodoArgs; className?:
       className={cn('px-4 pt-2 pl-[max(1rem,var(--safe-left))] pr-[max(1rem,var(--safe-right))]', className)}
     >
       <div className="mx-auto max-w-2xl">
-        {/* Same card as the tool cards: HeroUI's `.card` values (24px radius,
-            opaque `bg-surface`, `shadow-surface`) and no border. */}
+        {/* Same card as the tool cards, edge included — see `CHAT_TOOL_CARD` in
+            `ui/chat-tool.tsx` for why a card in the transcript cannot rely on
+            fill and shadow alone. */}
         <Disclosure
           data-slot="todo-bar"
-          className="w-full overflow-hidden rounded-2xl bg-surface text-sm shadow-surface"
+          className="w-full overflow-hidden rounded-2xl bg-surface text-sm shadow-surface ring-1 ring-border ring-inset"
         >
           <Disclosure.Heading>
             {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto`

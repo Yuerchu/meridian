@@ -24,7 +24,8 @@ impl Tool for RunCommandTool {
                 "command": {
                     "type": "string",
                     "description": "The shell command to execute"
-                }
+                },
+                "description": super::description_property(),
             },
             "required": ["command"]
         })

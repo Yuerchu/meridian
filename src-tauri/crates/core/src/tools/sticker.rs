@@ -120,7 +120,8 @@ impl Tool for SendStickerTool {
         json!({
             "type": "object",
             "properties": {
-                "sticker_id": { "type": "string", "description": "Exact id returned by list_stickers" }
+                "sticker_id": { "type": "string", "description": "Exact id returned by list_stickers" },
+                "description": super::description_property(),
             },
             "required": ["sticker_id"]
         })

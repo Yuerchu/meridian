@@ -24,7 +24,8 @@ impl Tool for WriteFileTool {
                 "content": {
                     "type": "string",
                     "description": "Content to write to the file"
-                }
+                },
+                "description": super::description_property(),
             },
             "required": ["path", "content"]
         })

@@ -405,6 +405,36 @@ pub fn decode_sandbox_denied(err: &str) -> Option<&str> {
     err.strip_prefix(SANDBOX_DENIED_MARKER)
 }
 
+/// The `description` property, for the tools that change something.
+///
+/// A tool card shows one line beside the name, and for a read that line is the
+/// path or the pattern — which says everything there is to say. For a call with
+/// effects it does not: `cd … && git log --reverse --diff-filter=A --format=…`
+/// says what will run and nothing about why, and that is the half a person needs
+/// in order to approve it. Claude Code reached the same answer and gives `Bash`
+/// and `Task` a description and nothing else one.
+///
+/// So this is only on tools that write, delete, move, run or send — not on the
+/// read tools, where it would cost output tokens on every call to restate an
+/// argument the card is already showing.
+///
+/// **Optional, deliberately.** Required, a model that forgot it would produce a
+/// call that fails validation mid-turn; missing, the card falls back to the
+/// argument summary, which is what it drew before this existed. That asymmetry
+/// is the whole argument — the failure of the soft version costs nothing.
+///
+/// One definition rather than a dozen copies: the wording is what decides
+/// whether the model writes "Run a command" or something worth reading, and the
+/// tool whose copy had drifted would be the one card that says nothing.
+pub fn description_property() -> serde_json::Value {
+    serde_json::json!({
+        "type": "string",
+        "description": "One short line saying what this call does and why, written for the user to \
+                        read — in the language they are writing in. It is shown in place of the raw \
+                        arguments on the tool card and in the approval prompt.",
+    })
+}
+
 #[async_trait]
 pub trait Tool: Send + Sync {
     fn name(&self) -> &str;
