@@ -93,7 +93,14 @@ function levelsFor(capabilities: ProviderCapabilities | null | undefined) {
 export interface MobileOptionsMenuProps extends ToolbarProps {
   onTakePhoto: () => void
   onPickGallery: () => void
-  onPickFile: () => void
+  /**
+   * Absent hides the entry, the way `ComposerMenu` already treats it.
+   *
+   * `supportsImages` covers the camera and the gallery but not this one, so
+   * without its own switch there was no way to withhold attachments — which a
+   * hosted session needs, its prompt being a single text block.
+   */
+  onPickFile?: () => void
   supportsImages: boolean
 }
 
@@ -216,10 +223,12 @@ export function MobileOptionsMenu({
                       </Button>
                     </>
                   )}
-                  <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickFile)}>
-                    <Paperclip className="w-4 h-4 text-muted" />
-                    {t('chat.attachFile')}
-                  </Button>
+                  {onPickFile && (
+                    <Button variant="ghost" className={itemCls} onClick={() => handleAction(onPickFile)}>
+                      <Paperclip className="w-4 h-4 text-muted" />
+                      {t('chat.attachFile')}
+                    </Button>
+                  )}
                   <div className="h-px bg-border mx-4 my-1" />
                   <Button variant="ghost" className={cn(itemCls, 'justify-between')} onClick={() => setPanel('mode')}>
                     <span className="flex items-center gap-3">

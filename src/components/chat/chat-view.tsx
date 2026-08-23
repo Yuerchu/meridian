@@ -93,10 +93,12 @@ function ChatViewInner({
   // whatever is running now. Null falls back to "stop this conversation's
   // current turn", which is all a reloaded window knows.
   //
-  // A hosted session stops through its own command: `stop_chat` cancels a turn
-  // in this app's engine, and a Claude Code turn is not one — stopping it means
-  // a `session/cancel` down the pipe, after which the adapter still ends the
-  // turn the ordinary way.
+  // A hosted session stops through its own command, though **not because
+  // `stop_chat` would miss it** — that used to be the reason given here and it
+  // is not true. A hosted turn holds an ordinary lease, so `stop_chat` reaches
+  // its cancellation token and `prompt_with` sends `session/cancel` off the
+  // back of it. `acp_cancel` is the same act named for what it is, and it does
+  // not need the turn id a reloaded window may not have.
   const handleStop = useCallback(() => {
     if (isHostedAgent) {
       api.acpCancel(conversationId)
@@ -225,7 +227,16 @@ function ChatViewInner({
       return
     }
 
-    if (!pendingSticker && attachedFiles.length === 0 && text.startsWith('/compact')) {
+    // `!isHostedAgent` for the same reason the gauge hides its manual compact
+    // button: summarising a hosted transcript spends the user's own provider on
+    // a history the agent never reads — it compacts its own context on its own
+    // terms and a hosted prompt carries only the newest message — and then
+    // folds their transcript away behind a summary nothing will use. On an
+    // imported session, which is the longest kind there is, that is one of the
+    // most expensive requests this app can make. Left through, it reaches
+    // `commands::compact`, which has no `agent_kind` check and would price it
+    // against the default assistant's model.
+    if (!isHostedAgent && !pendingSticker && attachedFiles.length === 0 && text.startsWith('/compact')) {
       const instructions = text.slice('/compact'.length).trim() || undefined
       setInput('')
       handleCompact(instructions)
@@ -246,6 +257,7 @@ function ChatViewInner({
     attachedFiles,
     pendingSticker,
     handleCompact,
+    isHostedAgent,
     steering,
     steerMessage,
     queueing,
@@ -260,8 +272,15 @@ function ChatViewInner({
         conversationId={conversationId}
         streaming={streaming}
         onDelete={handleDelete}
-        onRegenerate={handleRegenerate}
-        onEdit={handleEdit}
+        // Regenerate and edit are withheld on a hosted session. Both re-ask
+        // from a point in the history, and a hosted session's history lives in
+        // the adapter's process — `useSendMessage` refuses them for exactly
+        // that reason, so leaving the buttons up offers an action whose only
+        // outcome is an error message. The refusal stays as the backstop; this
+        // is the affordance agreeing with it. Delete is still offered: it does
+        // what it says, removing rows from *this* app's copy.
+        onRegenerate={isHostedAgent ? undefined : handleRegenerate}
+        onEdit={isHostedAgent ? undefined : handleEdit}
         onRate={handleRate}
         isOneBot={isOneBot}
         isHosted={isHostedAgent}

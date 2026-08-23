@@ -164,6 +164,36 @@ impl Death {
     }
 }
 
+/// The adapter has stopped accepting input.
+///
+/// **The writer declares this itself** rather than stopping and leaving it to
+/// the reader. Leaving it was reasonable while the only failure was the pipe as
+/// a whole going, where the reader is a moment behind and has the better
+/// wording — and wrong in the case that matters: an adapter that closes its
+/// stdin and keeps running. Its stdout never ends, so the reader reports
+/// nothing, ever, and every request already parked on a reply waits for the
+/// life of the process while holding that conversation's turn lease.
+///
+/// [`Death`] keeps the first cause, so the reader's better wording still wins
+/// whenever it does arrive — including in the message the waiters are given,
+/// which is read back out rather than assumed to be this one.
+///
+/// Cancelling `stop` is what everything downstream keys off: the supervisor
+/// reaps the child, `is_alive` starts answering no, and the session is reopened
+/// rather than reused.
+///
+/// A free function so the failure can be tested without arranging for a child
+/// process to close its stdin at exactly the right moment — which is the whole
+/// difficulty of the case this exists for.
+fn stdin_closed(death: &Death, pending: &Pending, stop: &CancellationToken) {
+    let reason = "the adapter stopped accepting input".to_string();
+    if death.set(reason.clone()) {
+        tracing::warn!("{reason}");
+    }
+    pending.drain_with(&death.get().unwrap_or(reason));
+    stop.cancel();
+}
+
 pub struct Peer {
     writes: mpsc::Sender<String>,
     /// Kept so a caller can put a barrier through the same queue the updates
@@ -214,6 +244,8 @@ impl Peer {
         // ------------------------------------------------------------ writer
         {
             let stop = stop.clone();
+            let pending = pending.clone();
+            let death = death.clone();
             tokio::spawn(async move {
                 loop {
                     let line = tokio::select! {
@@ -228,9 +260,7 @@ impl Peer {
                         || stdin.write_all(b"\n").await.is_err()
                         || stdin.flush().await.is_err()
                     {
-                        // The reader will report the death with a better
-                        // reason a moment later; this task's job is only to
-                        // stop trying.
+                        stdin_closed(&death, &pending, &stop);
                         break;
                     }
                 }
@@ -466,6 +496,18 @@ impl Peer {
         // somewhere to put it.
         self.pending.insert(id, tx);
 
+        // **Asked again, because the check above and this insert are not one
+        // step.** The adapter can die in between: the reader sets `death` and
+        // `drain_with`s the table, and the entry that lands afterwards is one
+        // nothing will ever complete — `rx.await` below then blocks for the
+        // life of the process, which for `session/prompt` is a turn that never
+        // ends and a conversation that can never be used again. Either the
+        // drain saw this entry and answered it, or it did not and this does.
+        if let Some(reason) = self.death.get() {
+            self.pending.take(id);
+            return Err(PeerError::Dead(reason));
+        }
+
         let body = serde_json::to_string(&Request::new(id, method, Some(params)))
             .map_err(|e| PeerError::Rpc(format!("could not encode `{method}`: {e}")))?;
 
@@ -650,6 +692,48 @@ mod tests {
                 assert!(err.is_dead(), "a drained caller must learn the adapter died: {err}");
                 assert!(err.to_string().contains("code 1"));
             }
+        }
+
+        /// An adapter that closes its stdin and keeps running.
+        ///
+        /// The one shape the reader cannot report: its stdout never ends, so
+        /// nothing there ever fires, and a caller parked on a reply waits for
+        /// the life of the process — holding that conversation's turn lease,
+        /// with a session that looks busy and is not.
+        #[tokio::test]
+        async fn a_half_closed_stdin_wakes_everyone_already_waiting() {
+            let pending = Pending::default();
+            let death = Death::default();
+            let stop = CancellationToken::new();
+            let (tx, rx) = oneshot::channel();
+            pending.insert(1, tx);
+
+            stdin_closed(&death, &pending, &stop);
+
+            let err = rx.await.unwrap().unwrap_err();
+            assert!(err.is_dead(), "a half-closed pipe is fatal, not a refusal: {err}");
+            assert!(err.to_string().contains("stopped accepting input"));
+            assert!(stop.is_cancelled(), "the supervisor has to reap the child");
+            // What `Peer::request` re-reads after inserting its own slot, so the
+            // next caller is refused instead of joining the parked one.
+            assert!(death.get().is_some());
+        }
+
+        /// And when the reader got there first, the waiters are told *its*
+        /// reason. The exit code is what says whether this is worth reporting;
+        /// "stopped accepting input" is the consequence, not the cause.
+        #[tokio::test]
+        async fn a_death_already_explained_keeps_its_explanation() {
+            let pending = Pending::default();
+            let death = Death::default();
+            death.set("the ACP adapter exited with code 1".into());
+            let (tx, rx) = oneshot::channel();
+            pending.insert(1, tx);
+
+            stdin_closed(&death, &pending, &CancellationToken::new());
+
+            let err = rx.await.unwrap().unwrap_err();
+            assert!(err.to_string().contains("code 1"), "{err}");
         }
 
         /// The first explanation is the useful one; the cascade behind it is
@@ -892,8 +976,19 @@ mod tests {
             assert_eq!(result.stop_reason, "end_turn");
 
             let joined = probe.updates.lock().unwrap().join("\n");
-            assert!(joined.contains("Text(\"Hello \")"), "prose: {joined}");
-            assert!(joined.contains("Reasoning(\"thinking...\")"), "thinking: {joined}");
+            // By variant and by content rather than by the whole `Debug`
+            // spelling, which now carries the message id these chunks do not
+            // have — a live turn's updates are not stamped with one.
+            assert!(
+                joined.lines().any(|l| l.starts_with("Text") && l.contains("Hello ")),
+                "prose: {joined}"
+            );
+            assert!(
+                joined
+                    .lines()
+                    .any(|l| l.starts_with("Reasoning") && l.contains("thinking...")),
+                "thinking: {joined}"
+            );
             assert!(joined.contains("ToolCall"), "the call: {joined}");
             assert!(joined.contains("Plan("), "the plan: {joined}");
             assert!(joined.contains("Usage"), "usage: {joined}");
@@ -1326,6 +1421,165 @@ mod tests {
                 .expect_err("that one is gone");
             assert!(!gone.is_dead(), "a refusal must not kill the peer: {gone}");
             assert!(peer.is_alive());
+
+            // **The reply the schema actually permits.** `LoadSessionResponse`
+            // has no required field, so `result: null` is a success — and read
+            // as a missing member it becomes `Frame::Junk`, nothing completes
+            // the pending slot, and this `await` never returns. Against a pipe
+            // rather than a unit test because the failure is a hang, and only a
+            // real reader can hang.
+            let terse = tokio::time::timeout(
+                std::time::Duration::from_secs(10),
+                peer.request(
+                    "session/load",
+                    serde_json::to_value(protocol::LoadSessionParams {
+                        session_id: "sess-terse".into(),
+                        cwd: ".".into(),
+                        mcp_servers: Vec::new(),
+                    })
+                    .unwrap(),
+                ),
+            )
+            .await
+            .expect("a null result must complete its caller, not hang it")
+            .expect("and it is a success, not an error");
+            assert_eq!(terse, serde_json::Value::Null);
+            let terse = protocol::LoadSessionResult::read(terse).expect("which reads as an empty load reply");
+            assert_eq!(
+                terse.session_id, None,
+                "and the caller falls back to the id it asked for"
+            );
+
+            peer.stop().await;
+        }
+
+        /// Listing what is on disk, and turning one of them into rows.
+        ///
+        /// The half of importing that no unit test can reach: that the frames
+        /// really do carry `messageId`, that the recital arrives whole and in
+        /// order down a real pipe, and that `import::plan` makes the right
+        /// shape out of the actual bytes rather than out of hand-written
+        /// `Effect`s. Everything after this is a database write.
+        #[tokio::test]
+        async fn sessions_are_listed_and_a_recital_becomes_rows() {
+            let Some(args) = adapter() else {
+                eprintln!("skipping: node is not available");
+                return;
+            };
+
+            /// Keeps the effects themselves rather than their `Debug`
+            /// spelling, because this test hands them to the planner.
+            #[derive(Default)]
+            struct Recorder {
+                recital: Mutex<Vec<crate::acp::mapping::Effect>>,
+            }
+
+            #[async_trait::async_trait]
+            impl Handler for Recorder {
+                async fn notification(&self, method: String, params: serde_json::Value) {
+                    if method != "session/update" {
+                        return;
+                    }
+                    let Ok(n) = serde_json::from_value::<protocol::SessionNotification>(params) else {
+                        return;
+                    };
+                    let effect = crate::acp::mapping::effect_of(n.update);
+                    if effect != crate::acp::mapping::Effect::Ignored {
+                        self.recital.lock().unwrap().push(effect);
+                    }
+                }
+
+                async fn request(
+                    &self,
+                    method: String,
+                    _params: serde_json::Value,
+                ) -> Result<serde_json::Value, String> {
+                    Err(format!("unexpected {method}"))
+                }
+            }
+
+            let process = AdapterProcess::spawn("node", &args).await.expect("spawn");
+            let recorder = Arc::new(Recorder::default());
+            let peer = Peer::start(process, recorder.clone() as Arc<dyn Handler>);
+
+            let init = peer
+                .request(
+                    "initialize",
+                    serde_json::to_value(protocol::InitializeParams {
+                        protocol_version: protocol::PROTOCOL_VERSION,
+                        client_capabilities: protocol::ClientCapabilities::default(),
+                        client_info: protocol::Implementation {
+                            name: "meridian".into(),
+                            title: None,
+                            version: "test".into(),
+                        },
+                    })
+                    .unwrap(),
+                )
+                .await
+                .expect("initialize");
+            let init: protocol::InitializeResult = serde_json::from_value(init).unwrap();
+            assert!(
+                init.agent_capabilities.lists_sessions(),
+                "listing is advertised inside agentCapabilities, not beside loadSession"
+            );
+
+            let listed = peer
+                .request("session/list", serde_json::json!({}))
+                .await
+                .expect("session/list");
+            let listed: protocol::ListSessionsResult = serde_json::from_value(listed).unwrap();
+            assert_eq!(listed.sessions.len(), 2);
+            assert_eq!(listed.sessions[0].session_id, "sess-7");
+            assert_eq!(listed.sessions[0].title.as_deref(), Some("REPLAYED session"));
+            assert_eq!(
+                listed.sessions[1].title, None,
+                "a session with no title is still listed"
+            );
+
+            // Narrowed to one directory, which is what the attach picker asks.
+            let scoped = peer
+                .request("session/list", serde_json::json!({ "cwd": "/work/other" }))
+                .await
+                .expect("session/list");
+            let scoped: protocol::ListSessionsResult = serde_json::from_value(scoped).unwrap();
+            assert_eq!(scoped.sessions.len(), 1);
+
+            peer.request(
+                "session/load",
+                serde_json::to_value(protocol::LoadSessionParams {
+                    session_id: "sess-7".into(),
+                    cwd: ".".into(),
+                    mcp_servers: Vec::new(),
+                })
+                .unwrap(),
+            )
+            .await
+            .expect("session/load");
+            // The reply overtakes the notifications, here as everywhere.
+            peer.drain_notifications().await;
+
+            let recital = std::mem::take(&mut *recorder.recital.lock().unwrap());
+            let imported = crate::acp::import::plan_for_test(recital);
+            assert_eq!(
+                imported,
+                vec![
+                    (
+                        "REPLAYED question".to_string(),
+                        vec![
+                            // Two chunks, one message, one row — and the call
+                            // is on it with its result, which arrived after the
+                            // next message had already started.
+                            ("REPLAYED answer".to_string(), 1, 1),
+                            ("and done".to_string(), 0, 0),
+                        ]
+                    ),
+                    (
+                        "REPLAYED follow-up".to_string(),
+                        vec![("REPLAYED again".to_string(), 0, 0)]
+                    ),
+                ]
+            );
 
             peer.stop().await;
         }

@@ -1022,11 +1022,18 @@ async fn chat_inner(
                 )?;
                 db::ops::emoji::link_stickers_in_content(conn, &msg_id, &msg)?;
                 if let Some(queued) = &queued {
-                    // Refuses an item somebody else already took, and rolls the row
-                    // back with it. The turn lease makes that all but impossible;
-                    // "all but" is the wrong guarantee for a message that might say
-                    // "delete the old migration".
-                    if db::ops::queue::mark_dispatched(conn, queued, &turn, now)? == 0 {
+                    // Refuses an item somebody else already took, or that has
+                    // been held or dragged out of first place since it was
+                    // read, and rolls the row back with it. The turn lease
+                    // makes the first all but impossible; "all but" is the
+                    // wrong guarantee for a message that might say "delete the
+                    // old migration", and the lease says nothing at all about
+                    // the other two.
+                    //
+                    // `None`: a turn of its own takes whatever mode is at the
+                    // front, because with nothing running there is nothing for
+                    // an `interject` to wait for.
+                    if db::ops::queue::mark_dispatched(conn, &conv_id, queued, None, &turn, now)? == 0 {
                         return Err(diesel::result::Error::RollbackTransaction);
                     }
                     db::ops::queue::mark_settled(conn, queued, Some(&msg_id), now)?;

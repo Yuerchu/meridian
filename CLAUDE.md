@@ -326,11 +326,49 @@ the machines that want this already have node and a signed-in `claude`.
   was on screen — so requests are spawned and only the reply goes back through the writer.
   Notifications are the opposite: queued and handled one at a time, because they are text
   chunks and spawning loses their order.
+- **Read against the schema, not against the adapter — two hangs came from the difference.**
+  `claude-agent-acp` is generous: it answers `session/load` with a whole
+  `NewSessionResponse`, when `LoadSessionResponse` has *no required field at all* and not
+  even a `sessionId`. Both of the following were latent behind that generosity and neither
+  fails visibly:
+
+  `result: null` is a **success** carrying nothing, and it is the emptiest conforming answer
+  to a load. Read as an absent member — which is what a plain `Option<Value>` does with an
+  explicit null — the line is classified as junk, the pending slot is never completed, and
+  the caller waits until the process dies. `Incoming::result` is `Option<Option<_>>` with a
+  `deserialize_with` for that reason: the derive alone still collapses the two, because it
+  is the outer `Option` that turns null into `None`.
+
+  And the reply is parsed as `LoadSessionResult`, whose every field is optional, with the
+  requested id as the fallback when it names none. Parsed as a new session, every
+  spec-shaped answer looks like a failure — sending a reopen down the `session/new` path and
+  losing the agent's memory of the conversation without a word. The fake adapter answers
+  `sess-terse` the way the schema permits so both stay tested.
+- **A pending slot is registered and then the death is asked about again.** The adapter can
+  exit between the check at the top of `Peer::request` and the insert below it: the reader
+  sets `death` and drains the table, and the entry landing afterwards is one nothing will
+  ever complete. For `session/prompt` that is a turn which never ends on a conversation that
+  can never be used again.
 - **Stopping does not abandon the request.** `session/cancel` is a notification, and the
   agent still answers the prompt it interrupts with `stopReason: cancelled`. Waiting for
   that reply is what lets a stopped turn end down the ordinary path with whatever text had
   already arrived; dropping the future instead leaves the adapter mid-turn with nobody
   reading, and the next prompt collides with it.
+
+  **A stop that beats the first poll is the exception, and it costs a second fact.**
+  `Peer::request` is lazy, so a token cancelled a moment earlier can win the select's very
+  first pass and put `session/cancel` on the wire ahead of the prompt it is meant to stop —
+  which an adapter with no turn ignores, leaving the prompt to run with `cancel_sent`
+  blocking any second attempt. So the loop is `biased;` and the already-cancelled case does
+  not send at all, ending the turn from a reply this app writes itself.
+
+  That reply is the trap. `finish` settles what the prompt was carrying — the
+  interrupted-turn report, the in-doubt queue items, the memory-loss notice — on the
+  evidence that `session/prompt` answered, which is sound for every reply the *adapter*
+  sends and false for the manufactured one. All three clear exactly once, so settling there
+  spends them on an agent that received none of them and the next turn says nothing.
+  `PromptDelivery` is the missing half, and `PromptDelivery::read_by` is where the two are
+  combined; inferring it from the outcome alone is the defect, not a shortcut.
 - **Approvals go through `services.approvals`, unchanged.** Same register, same
   `tool_approval_req` event, so the attention queue, the toast stack,
   `all_pending_approvals` after a reload and the turn guard all work here without knowing
@@ -359,6 +397,13 @@ the machines that want this already have node and a signed-in `claude`.
   and a turn with tools and no conclusion is drawn as `interrupted` with its whole answer
   folded away as process. Every finished hosted turn that touched a tool was reported as
   stopped. A shape that is merely legal is not the same as one the reader agrees with.
+
+  **All three of prose, reasoning and a tool call open the next round**, and the third was
+  missing. A round that ends and is followed by another call with nothing said in between —
+  Claude acting twice in a row, which is ordinary — put the second call on the row that made
+  the first, recording `assistant(A, B) → result A → result B`: two calls issued together,
+  when B was in fact decided after seeing A's result. A serial dependency persisted as a
+  parallel one. `import.rs` had the same hole from the same omission.
 - **The model is read off the session's config options.** ACP has no model field; it
   carries the model as a configuration option whose `category` is `model`, present in the
   `session/new` response and re-sent as a `config_option_update` whenever it changes. That
@@ -372,6 +417,27 @@ the machines that want this already have node and a signed-in `claude`.
   OpenAI-compatible gateway reuses `"0"` within a turn and two cards there are two calls.
   A repeat revises the card instead; `reviseToolCall` is the only event allowed to match
   on id alone.
+
+  **And the dedupe is asked of the session, not of the row being written** — `Shared::announced`,
+  not `t.row.tool_calls`. The row is the wrong scope by exactly one boundary: the two
+  announcements come from two sources that can arrive in either order, and
+  `Call(A) → Result(A) → Call(B)` rotates the round in between, so a late repeat of `A`
+  meets a row holding only `B` and reads as new. That draws a second card no result will
+  ever close, and leaves the round with more calls than results — which is the test
+  (`results.len() >= tool_calls.len()`) that puts the phase back to `Streaming`, so the
+  turn sits at `RunningTool` and a crash there is reported as "a tool may already have
+  run".
+
+  **And the repeat is the one that carries the arguments**, so it may not simply be
+  dropped once its round has closed. The first announcement is routinely a placeholder —
+  the adapter knows a call is coming before it knows what it is — and `Call(A) {} →
+  Result(A) → Call(B)` puts `A`'s row in the database before the real arguments arrive.
+  `Shared::revise` therefore has two places to look: the open row, and failing that
+  `db::ops::message::revise_tool_call`, which finds the call by id among the turn's stored
+  rows and patches it in place. Stopping at the open row leaves `{}` in the transcript and
+  in the audit copy for ever, which reads as a call that genuinely took no arguments. Both
+  paths only ever *add* — a revision with neither a name nor arguments is an ordinary
+  progress beat and returns before it costs a scan.
 - **The tool's name is in `_meta.claudeCode.toolName`.** ACP's own fields cannot supply
   one: `title` is prose for a person and `kind` is one of five categories. Reading `title`
   put "Terminal" on every shell command — the adapter's stand-in for a `Bash` call whose
@@ -405,16 +471,93 @@ the machines that want this already have node and a signed-in `claude`.
   recovered; writing back the request instead would have the next launch chase an id that
   never existed.
 
-- **A load replays the whole conversation, and ignoring it is deliberate rather than
-  lucky.** `session/load` re-emits the history as ordinary `session/update` notifications
-  — every one of them a row this database already has. It happens to fall on the floor
-  without any help, because each branch of `absorb` asks `with_turn` first and no turn runs
-  during a load; but two branches do not ask, and that is two unrelated rules lining up
-  rather than a decision. `Shared::replaying` says it instead, and the gate is held across
-  the reply *and* a drain, because the reply takes a different route and overtakes the
-  notifications. Saying it out loud is also what makes the opposite answer expressible:
-  adopting a session this app did not start needs the replay *written*, since there it is
-  the only transcript there is.
+- **A load replays the whole conversation, and what that recital is for is a mode, not a
+  flag.** `session/load` re-emits the history as ordinary `session/update` notifications.
+  Reopening a conversation this database already holds, every one of them is a row said
+  twice — and it happens to fall on the floor without any help, because each branch of
+  `absorb` asks `with_turn` first and no turn runs during a load; but two branches do not
+  ask, and that is two unrelated rules lining up rather than a decision. `Replay::Discard`
+  says it instead, and the gate is held across the reply *and* a drain, because the reply
+  takes a different route and overtakes the notifications.
+
+  `Replay::Collect` is the other answer, and the one `acp/import.rs` exists for: a session
+  started in a terminal has no rows here, so the recital is the only transcript there is.
+  Same frames, opposite conclusion — which is why `user_message_chunk` stopped being
+  `Ignored` in the mapping and started being dropped in `absorb`. That it is an echo of a
+  row this app wrote before sending is a fact about the live path, not about the update.
+
+- **A recital is not the session. Above 5 MiB it is the tail after the last compaction.**
+  Measured on a real 39.7 MB transcript: 17 of its 199 questions came back, everything
+  before its final compaction absent. That is `getSessionMessages` inside the Agent SDK
+  (`if (t > 5242880) return postBoundaryBuf`) — no flag, no error, nothing on the wire
+  saying so, since `compact_boundary` is a `system` message and the adapter asks for none.
+  The sessions worth importing are exactly the ones this hits.
+
+  The one signal is that the SDK opens the recital with **its own summary**, so
+  `CONTINUATION_PREFIX` is what the import matches on, and that decides two things.
+  `ImportOutcome::truncated` carries it back to the picker, which says it on the row — the
+  only place the user will ever be told. And the summary is written `role = "context"`, not
+  `user`: filed as a question it would be a model-written wall of text in the one trust
+  layer `auto_review`'s projection lets authorise anything, while its contents came out of
+  the tool output of the conversation it summarises. Not `is_compact_summary` either, whose
+  invariant wants an anchor and no turn — this row has both.
+
+- **What else an import rests on.** **The row boundary comes off the wire where it can and
+  off the rhythm where it cannot.** `messageId` is documented as "a change indicates a new
+  message has started", and for an assistant message that is exactly one API response —
+  prose plus the calls it issued, the shape a live turn writes a round as. It is not enough
+  alone, twice over: a row opened by a `tool_call` carries no id to compare against, and
+  the retired `@zed-industries/claude-code-acp` stamps none at all. So a landed result
+  closes a row here too, the way `open_round_if_settled` closes one live. Measured without
+  it: 82 turns in 2064 ended on a tool result with their closing sentence sitting *before*
+  the call, which `lib/turns.ts` draws as `interrupted` — the exact failure the
+  row-per-round shape exists to avoid — and with ids stripped entirely every turn collapsed
+  into a single row.
+
+  **A result belongs to its call, across turns.** Somebody typing while a tool runs closes
+  the turn between the call and its answer; scoped to the open turn, 40 results in 2064
+  turns were being dropped, each leaving a `tool_calls` entry with nothing answering it and
+  a card that never finishes.
+
+  **It is one transaction and writes its own rows**, not `begin_assistant` /
+  `complete_assistant`: those are a round trip each and the second files an audit copy of
+  every reply, a row with no tokens and no price that `db::ops::usage` counts into
+  `unpriced_messages`. An imported reply is spend on whatever `claude` is signed in as —
+  the `usage_update` rule again — so it is reported nowhere, and all-or-nothing falls out
+  for free. **And a recital that lost an update is refused rather than written**: `peer`
+  drops notifications on a full queue and counts them, and a transcript with an invisible
+  hole in it would be believed. Measured, that guard does not fire in practice — the
+  recital is capped by the context window at ~1100 frames and the notifier keeps up at 50×
+  that — so it is cheap insurance rather than a limit on long sessions.
+
+  The clock starts at the session's own `updatedAt` rather than at the import, because
+  `trg_messages_count_insert` drags `conversations.updated_at` to the last row's
+  `created_at` — stamped now, every session imported in one sitting piles up at the top of
+  the sidebar in the order it was clicked.
+
+- **What an import cannot bring across**, none of it recoverable at this layer, all of it
+  measured. An `Edit`/`Write` diff: ACP sends it as a `diff` block, only text is stored,
+  so 181 edits in one session became 181 empty tool cards — the same as a live hosted turn
+  after a reload, so not a regression, just concentrated. Images, which reach
+  `ContentBlock::as_text` as `None`. Slash commands with their output, which the adapter
+  strips whole, leaving the conversation looking as if it skipped. And per-message
+  timestamps, which exist in the JSONL and ACP does not forward — so every imported turn
+  reports a few milliseconds of elapsed time.
+
+  Two more that are about scale rather than fidelity. `session/load` on a large session
+  takes ~37 seconds inside the SDK, and it is paid *again* on the first message after every
+  app restart, because that is when the lazy reopen resumes it. And `session/list` returns
+  596 sessions on one working laptop, which is why the picker draws only the most recent
+  hundred and counts the rest.
+
+- **Attaching writes the id and nothing else, and never opens an adapter.** The other half
+  of importing, for a conversation from before `acp_sessions` existed: it has a directory
+  and no session id, so every reopen starts a blank agent under a transcript it cannot
+  see. Its rows came from that same session, so replaying them would double the
+  transcript — which is also why the list is enough evidence that the session exists and
+  nothing needs loading to prove it. Whatever adapter the conversation had is closed, and
+  the next message resumes against the new id down the path that already exists; the
+  memory-loss notice below then simply does not fire, with no second mechanism.
 
 - **When a session cannot be resumed, the agent is told — and it is the agent that tells
   the user.** The notice rides `Owed`, beside the interrupted-turn report and the queue's
@@ -468,6 +611,52 @@ work they did.
   the item's removal one transaction; there is no in-doubt state on that side to report. A
   hosted turn's history lives in the adapter, so a row here proves nothing and the doubt is
   real.
+
+  **Which of the two is read off `agent_kind`, never off the registry.** Asking whether an
+  adapter is alive answers a different question, and the two come apart exactly when it
+  matters: after a restart, or once an adapter has died, a hosted conversation has no live
+  session — and `native::pump` would then answer its queue with the user's own provider and
+  this app's tool set, appending a turn to a Claude Code transcript whose agent knows
+  nothing about it. Wrong agent, wrong bill, wrong conversation. A dormant hosted
+  conversation goes to `hosted::pump`, which does nothing, and the queue waits.
+
+- **A claim on a queued item is the affected-row count, and every caller has to look.**
+  `mark_dispatched` only matches a row that is still undelivered, so its count is what says
+  who won it — two pumps can read the same item (a turn ending as the user adds one, a
+  window and a phone) and both go on to deliver it otherwise. `write_prompt_row` and
+  `run_turn` roll back on zero; the steer path was discarding it, which is the one place
+  where losing meant sending "delete the old migration" twice.
+
+- **A crash holds the queue, and that is written where the crash is noticed.**
+  `ops::turn::reconcile_interrupted` marks the killed turns *and* `hold_all`s the
+  conversations they were on, in one transaction. The rule that only a turn reaching an
+  ending lets the next item go otherwise survived everything except the one event it exists
+  for — nobody is present at a crash, and the next enqueue would pump a follow-up whose
+  premise died with the process.
+
+  **A hold reaches a row that is merely claimed, and that is the other half of it.** A
+  claim is not a delivery: `hosted::steer` marks the row dispatched *before* asking the
+  adapter, the answer can be `promptRequired` — the agent saying it did not take the
+  message — and `undispatch` puts it back. `hold_all` used to skip dispatched rows, so a
+  hold landing inside that round trip missed the only row it was about: the turn failed,
+  the claimed item came back plainly `Queued`, and the instruction ran on a premise that
+  had died without anybody pressing release. Marking it costs nothing while the claim
+  stands, because `QueueState` reads `dispatched_at` before `held_at` and an in-doubt row
+  is already a barrier — the flag only starts meaning something at the moment the dispatch
+  is cleared, which is exactly when it should. `release_all` clears it there too, and
+  `dispatched_at` still outranks it, so releasing a held queue cannot resurrect an item
+  whose delivery is unresolved.
+
+  The pump's half is to **ask the queue again** after a `NotTaken` rather than deliver the
+  row it read before the claim. That row is stale by exactly the window the hold can land
+  in; reusing it leaves `mark_dispatched` to refuse the claim and roll the turn back —
+  correct, and reported as a failed turn rather than as the barrier it is.
+
+- **A barrier cannot be dragged past.** `reorder` moves only rows that are still queued,
+  and places them after the last `held` or `in_doubt` position — otherwise a drag puts a
+  later message in front of an unresolved one, `next_pending` reaches it first, and the
+  instructions run out of the order they were written in. The drag handle is withheld from
+  those rows too, so the affordance does not offer what the write refuses.
 - **`dispatched_at` without `settled_at` is never re-delivered.** Re-sending "delete the old
   migration" because we are unsure whether it landed is how a queue becomes dangerous — and
   what it guards is not the agent's memory, which died with the adapter, but the *effects*
@@ -839,19 +1028,30 @@ means rewriting it for the second.
 because ACP turned out to cost far less than the paragraph above assumed — the protocol
 carries the lifecycle, so there was nothing to reverse-engineer. What is left:
 
-1. Session panel — list sessions Meridian did not start, including ones from a terminal.
-   **Not by tailing `~/.claude/projects/<project>/<session-id>.jsonl`**, which is what this
-   said before the adapter was read properly: it advertises
+1. ~~Session panel~~ — done, see `acp/import.rs`. Worth keeping the correction it turned
+   on: **not by tailing `~/.claude/projects/<project>/<session-id>.jsonl`**, which is what
+   this said before the adapter was read properly. It advertises
    `sessionCapabilities: { list, resume, fork, delete, close }`, and `session/list` answers
-   with `{ sessionId, cwd, title, updatedAt }` per session, scoped by directory. So there
-   is no format to reverse-engineer and no file to watch — and what it returns is exactly
-   what `acp_sessions` already stores, so adopting one is a conversation plus a row.
-   It is also the way to rescue a conversation from before migration 38, which has a
-   directory and no id: list that directory and let the user say which session it was.
-2. Approval queue for those sessions — forward `PermissionRequest` to Meridian, card
-   beside the thread. The timeout semantics are settled (see the correction above: it
-   falls back to `ask`), and the queue itself already exists — `attention` /
-   `attentionOrder`, which the ACP path reuses unchanged.
+   with `{ sessionId, cwd, title, updatedAt }` per session, optionally scoped by directory.
+   So there was no format to reverse-engineer and no file to watch.
+
+   What that leaves is a session started anywhere becoming a conversation here, transcript
+   and all — and the rescue of a conversation from before migration 38, which has a
+   directory and no id, through the same list.
+
+   Two things it does *not* do, both deliberate. It **takes a session over rather than
+   copying it** (`session/fork` exists but does not replay, so a copy would cost a load and
+   a fork), which means importing one a terminal still has open leaves two processes
+   appending to one file — the list shows `updatedAt` and nothing enforces more. And it
+   **cannot exclude Meridian's own sessions from the list**: the SDK's `includeProgrammatic`
+   defaults to true and the adapter does not forward the parameter, so they are marked
+   against `acp_sessions` instead — which is the better answer anyway, since hiding them
+   makes "where did that session go" unanswerable.
+2. Approval queue for sessions Meridian is *not* hosting — forward `PermissionRequest` to
+   Meridian, card beside the thread. The timeout semantics are settled (see the correction
+   above: it falls back to `ask`), and the queue itself already exists — `attention` /
+   `attentionOrder`, which the ACP path reuses unchanged. Less pressing now that a terminal
+   session can simply be imported, which brings its approvals onto the ACP path with it.
 3. ~~Hosting a session in-process~~ — done, see the ACP section.
 
 **Deferred from remote access**, roughly in order of how much they are missed:

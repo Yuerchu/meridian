@@ -47,7 +47,10 @@ rl.on('line', async (line) => {
       id: msg.id,
       result: {
         protocolVersion: 1,
-        agentCapabilities: { loadSession: true },
+        // `loadSession` is top-level and `list` is a session capability —
+        // separate switches by the schema's own admission, so a client has to
+        // ask both.
+        agentCapabilities: { loadSession: true, sessionCapabilities: { list: {} } },
         authMethods: [{ id: 'claude', name: 'Claude subscription' }],
         agentInfo: { name: 'fake-acp', version: '0.0.1' },
         // The steering extension is advertised here, at the top level, beside
@@ -83,20 +86,73 @@ rl.on('line', async (line) => {
     return
   }
 
-  // Picking a session back up. Two things the client has to get right are
+  // What is on disk. One page, no cursor — which is what the real adapter does
+  // too: it ignores the `cursor` parameter and answers with everything.
+  if (msg.method === 'session/list') {
+    const all = [
+      {
+        sessionId: 'sess-7',
+        cwd: '/work/meridian',
+        title: 'REPLAYED session',
+        updatedAt: '2026-08-20T11:00:00.000Z',
+      },
+      // No title and no timestamp: both are optional and a session missing
+      // them is still one worth offering.
+      { sessionId: 'sess-8', cwd: '/work/other' },
+    ]
+    const cwd = msg.params?.cwd
+    send({
+      jsonrpc: '2.0',
+      id: msg.id,
+      result: { sessions: cwd ? all.filter((s) => s.cwd === cwd) : all },
+    })
+    return
+  }
+
+  // Picking a session back up. Three things the client has to get right are
   // modelled here: the history comes back as ordinary `session/update`
-  // notifications *before* the reply, and the reply names whichever session was
-  // actually recovered — which is deliberately not the one that was asked for.
+  // notifications *before* the reply; the reply names whichever session was
+  // actually recovered, which is deliberately not the one that was asked for;
+  // and the chunks carry `messageId`, which is the only thing marking where one
+  // message ends and the next begins.
   if (msg.method === 'session/load') {
     if (msg.params?.sessionId === 'sess-gone') {
       send({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'no such session' } })
       return
     }
+    // What the *schema* allows, as opposed to what this adapter happens to
+    // send. `LoadSessionResponse` has no required field, so `result: null` is a
+    // conforming success — and a client that reads it as a missing member
+    // waits for ever. The generous reply below is the reason that has never
+    // been noticed.
+    if (msg.params?.sessionId === 'sess-terse') {
+      send({ jsonrpc: '2.0', id: msg.id, result: null })
+      return
+    }
     const sid = msg.params.sessionId
     const upd = (update) => send({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: sid, update } })
-    upd({ sessionUpdate: 'user_message_chunk', content: { type: 'text', text: 'REPLAYED question' } })
-    upd({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'REPLAYED answer' } })
-    upd({ sessionUpdate: 'tool_call', toolCallId: 'r1', title: 'Replayed', kind: 'execute', status: 'completed' })
+
+    upd({ sessionUpdate: 'user_message_chunk', messageId: 'u-1', content: { type: 'text', text: 'REPLAYED question' } })
+    // Two chunks of one message, which must not become two rows.
+    upd({ sessionUpdate: 'agent_message_chunk', messageId: 'm-1', content: { type: 'text', text: 'REPLAYED ' } })
+    upd({ sessionUpdate: 'agent_message_chunk', messageId: 'm-1', content: { type: 'text', text: 'answer' } })
+    upd({ sessionUpdate: 'tool_call', toolCallId: 'r1', title: 'Replayed', kind: 'execute', status: 'pending' })
+    // A different message, so a new row — and the result of the call above
+    // arrives *after* it, the way a parallel call comes back.
+    upd({ sessionUpdate: 'agent_message_chunk', messageId: 'm-2', content: { type: 'text', text: 'and done' } })
+    upd({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'r1',
+      status: 'completed',
+      content: [{ type: 'content', content: { type: 'text', text: 'replayed output' } }],
+    })
+    upd({
+      sessionUpdate: 'user_message_chunk',
+      messageId: 'u-2',
+      content: { type: 'text', text: 'REPLAYED follow-up' },
+    })
+    upd({ sessionUpdate: 'agent_message_chunk', messageId: 'm-3', content: { type: 'text', text: 'REPLAYED again' } })
+
     send({ jsonrpc: '2.0', id: msg.id, result: { sessionId: `${sid}-resumed` } })
     return
   }

@@ -28,6 +28,14 @@ pub fn list(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<V
 /// `position` is one past whatever is there now rather than a count of the
 /// rows: settled rows keep their positions, so counting would collide with the
 /// last live one.
+///
+/// **Immediate, not deferred.** Reading the last position and inserting one
+/// past it is a read-then-write, and a deferred transaction takes its write
+/// lock at the insert — by which time another enqueue may have read the same
+/// maximum and be about to claim the same number. Two rows sharing a position
+/// leaves their order to whatever the query planner feels like, in the one
+/// feature whose entire promise is that the instructions run in the order they
+/// were written. `BEGIN IMMEDIATE` takes the lock before the read instead.
 pub fn enqueue(
     conn: &mut SqliteConnection,
     id: &str,
@@ -36,26 +44,28 @@ pub fn enqueue(
     delivery: Delivery,
     now: i64,
 ) -> QueryResult<QueuedPrompt> {
-    let last: Option<i32> = queued_prompts::table
-        .filter(queued_prompts::conversation_id.eq(conversation_id))
-        .select(diesel::dsl::max(queued_prompts::position))
-        .first(conn)?;
+    conn.immediate_transaction(|conn| {
+        let last: Option<i32> = queued_prompts::table
+            .filter(queued_prompts::conversation_id.eq(conversation_id))
+            .select(diesel::dsl::max(queued_prompts::position))
+            .first(conn)?;
 
-    diesel::insert_into(queued_prompts::table)
-        .values(&NewQueuedPrompt {
-            id,
-            conversation_id,
-            content,
-            delivery: delivery.as_str(),
-            position: last.unwrap_or(-1) + 1,
-            created_at: now,
-        })
-        .execute(conn)?;
+        diesel::insert_into(queued_prompts::table)
+            .values(&NewQueuedPrompt {
+                id,
+                conversation_id,
+                content,
+                delivery: delivery.as_str(),
+                position: last.unwrap_or(-1) + 1,
+                created_at: now,
+            })
+            .execute(conn)?;
 
-    queued_prompts::table
-        .find(id)
-        .select(QueuedPrompt::as_select())
-        .first(conn)
+        queued_prompts::table
+            .find(id)
+            .select(QueuedPrompt::as_select())
+            .first(conn)
+    })
 }
 
 /// Drop one that has not been delivered.
@@ -63,10 +73,16 @@ pub fn enqueue(
 /// Refuses a settled or in-doubt row: the first has already become part of the
 /// transcript, and the second is the one whose fate is unknown — deleting it
 /// would destroy the only record that the agent may be about to act on it.
-pub fn remove(conn: &mut SqliteConnection, id: &str) -> QueryResult<usize> {
+/// Constrained to the conversation the caller named, like every other write
+/// here. A `queued_prompts.id` is a uuid so nobody is guessing one, but the
+/// caller always knows which conversation it is acting on and saying so costs a
+/// clause — the alternative is a command that takes a conversation id and does
+/// not use it, which reads as a check and is not one.
+pub fn remove(conn: &mut SqliteConnection, conversation_id: &str, id: &str) -> QueryResult<usize> {
     diesel::delete(
         queued_prompts::table
             .find(id)
+            .filter(queued_prompts::conversation_id.eq(conversation_id))
             .filter(queued_prompts::dispatched_at.is_null())
             .filter(queued_prompts::settled_at.is_null()),
     )
@@ -77,26 +93,59 @@ pub fn remove(conn: &mut SqliteConnection, id: &str) -> QueryResult<usize> {
 ///
 /// The ids are trusted to be this conversation's — the filter makes a stray one
 /// a no-op rather than a way to move somebody else's row.
+///
+/// **Only rows that are still waiting may move, and none of them may move in
+/// front of a barrier.** A `held` or `in_doubt` row stops the queue
+/// ([`next_pending`]), and that is the whole of what stops a follow-up running
+/// on a premise nobody has confirmed. Left free, a drag could put a queued row
+/// ahead of an in-doubt one and the barrier would simply not be reached — the
+/// instructions were written as a sequence, and stepping around the unresolved
+/// one runs them out of order. So the barrier keeps its position and anything
+/// dragged in front of it lands immediately behind it instead.
 pub fn reorder(conn: &mut SqliteConnection, conversation_id: &str, ids: &[String]) -> QueryResult<()> {
     conn.transaction(|conn| {
-        for (index, id) in ids.iter().enumerate() {
-            diesel::update(
+        // The last position occupied by something the user may not move. Every
+        // reordered row is placed after it, so the barrier still bites.
+        let floor = list(conn, conversation_id)?
+            .iter()
+            .filter(|item| matches!(item.state(), QueueState::Held | QueueState::InDoubt))
+            .map(|item| item.position)
+            .max();
+
+        let mut next = floor.map_or(0, |p| p + 1);
+        for id in ids {
+            let updated = diesel::update(
                 queued_prompts::table
                     .find(id)
-                    .filter(queued_prompts::conversation_id.eq(conversation_id)),
+                    .filter(queued_prompts::conversation_id.eq(conversation_id))
+                    // Undelivered only. A settled row's position means nothing
+                    // and a barrier's is what everything else is measured
+                    // against.
+                    .filter(queued_prompts::dispatched_at.is_null())
+                    .filter(queued_prompts::settled_at.is_null())
+                    .filter(queued_prompts::held_at.is_null()),
             )
-            .set(queued_prompts::position.eq(index as i32))
+            .set(queued_prompts::position.eq(next))
             .execute(conn)?;
+            if updated > 0 {
+                next += 1;
+            }
         }
         Ok(())
     })
 }
 
 /// Change one item's delivery mode while it is still waiting.
-pub fn set_delivery(conn: &mut SqliteConnection, id: &str, delivery: Delivery) -> QueryResult<usize> {
+pub fn set_delivery(
+    conn: &mut SqliteConnection,
+    conversation_id: &str,
+    id: &str,
+    delivery: Delivery,
+) -> QueryResult<usize> {
     diesel::update(
         queued_prompts::table
             .find(id)
+            .filter(queued_prompts::conversation_id.eq(conversation_id))
             .filter(queued_prompts::dispatched_at.is_null())
             .filter(queued_prompts::settled_at.is_null()),
     )
@@ -171,6 +220,10 @@ pub fn take_next(
     parent: Option<&str>,
     now: i64,
 ) -> QueryResult<Option<QueuedPrompt>> {
+    // Plain, because the caller is already inside one — `take_one` has to peek
+    // before it can build the row this writes, so the transaction that spans
+    // the read and the write is *its*, and that is the one that is immediate.
+    // A `BEGIN IMMEDIATE` here would be a nested begin, which SQLite refuses.
     conn.transaction(|conn| {
         let Some(item) = next_deliverable(conn, conversation_id, delivery)? else {
             return Ok(None);
@@ -206,10 +259,49 @@ pub fn take_next(
 /// respect to *the agent*, and this records the attempt before it is made —
 /// which is what turns a kill in the gap into a reportable doubt instead of a
 /// silent loss.
-pub fn mark_dispatched(conn: &mut SqliteConnection, id: &str, turn_id: &str, now: i64) -> QueryResult<usize> {
+///
+/// **It is a claim on the deliverable front, not on an id.** Everything a
+/// runner checked before it got here — that the item is not held, that it is
+/// still first, that it is still the mode that was read — can change in the
+/// gap, which for a hosted steer spans a round trip to a child process. Only
+/// `dispatched_at` was being re-checked, so a queue held by a person between
+/// the read and the claim was delivered anyway, and so was an item somebody had
+/// just dragged out of first place.
+///
+/// `expect` is the mode the caller intends to deliver *in*: `Some(Interject)`
+/// for a steer, which is void if the user switched the row to `follow_up`, and
+/// `None` for a turn of its own, where any mode is deliverable because there is
+/// nothing to wait for.
+///
+/// Assumes the caller is inside a transaction — two of the three are, writing
+/// the message row in the same one. [`super::super::agent::queue`]'s steer path
+/// opens its own, because there the claim stands alone.
+pub fn mark_dispatched(
+    conn: &mut SqliteConnection,
+    conversation_id: &str,
+    id: &str,
+    expect: Option<Delivery>,
+    turn_id: &str,
+    now: i64,
+) -> QueryResult<usize> {
+    // The front is the first row that is not settled — which is exactly what
+    // `next_pending` walks to, since a settled row is stepped over and a held
+    // or in-doubt one stops it. So being the front and being deliverable are
+    // one question asked of one row.
+    let Some(front) = list(conn, conversation_id)?
+        .into_iter()
+        .find(|item| item.state() != QueueState::Settled)
+    else {
+        return Ok(0);
+    };
+    if front.id != id || front.state() != QueueState::Queued || expect.is_some_and(|mode| front.delivery() != mode) {
+        return Ok(0);
+    }
+
     diesel::update(
         queued_prompts::table
             .find(id)
+            .filter(queued_prompts::conversation_id.eq(conversation_id))
             .filter(queued_prompts::dispatched_at.is_null()),
     )
     .set((
@@ -270,11 +362,25 @@ pub fn undispatch(conn: &mut SqliteConnection, id: &str) -> QueryResult<usize> {
 /// as a sequence, and the ones after a failure rest on the same assumption the
 /// failed step broke. "Now rename that function" means nothing if the function
 /// was never created.
+///
+/// **Everything unsettled, including a row already claimed**, and that is the
+/// one filter it is tempting to add back. A claim is not a delivery: `steer`
+/// marks a row dispatched *before* asking the adapter, and the answer can be
+/// `promptRequired` — the agent saying it did not take the message — which
+/// [`undispatch`] puts back on the queue. Skipping claimed rows, a hold landing
+/// inside that window is missed by the only row it was about: the turn fails,
+/// `hold_all` steps over the claimed item, `undispatch` returns it as plainly
+/// `Queued`, and the instruction runs on a premise that died — with no
+/// `queue_release` from anybody.
+///
+/// Marking it costs nothing while it is claimed, because [`QueueState`] reads
+/// `dispatched_at` first and an in-doubt row is already a barrier. The flag only
+/// starts meaning something at the moment `undispatch` clears the dispatch,
+/// which is exactly when it should.
 pub fn hold_all(conn: &mut SqliteConnection, conversation_id: &str, now: i64) -> QueryResult<usize> {
     diesel::update(
         queued_prompts::table
             .filter(queued_prompts::conversation_id.eq(conversation_id))
-            .filter(queued_prompts::dispatched_at.is_null())
             .filter(queued_prompts::settled_at.is_null())
             .filter(queued_prompts::held_at.is_null()),
     )
@@ -378,7 +484,7 @@ mod tests {
         let item = add(&mut conn, "c1", "one", Delivery::FollowUp);
         assert_eq!(item.state(), QueueState::Queued);
 
-        mark_dispatched(&mut conn, &item.id, "t1", 1).unwrap();
+        mark_dispatched(&mut conn, "c1", &item.id, None, "t1", 1).unwrap();
         let item = list(&mut conn, "c1").unwrap().remove(0);
         assert_eq!(item.state(), QueueState::InDoubt, "dispatched and unanswered");
 
@@ -465,7 +571,7 @@ mod tests {
         let first = add(&mut conn, "c1", "first", Delivery::FollowUp);
         add(&mut conn, "c1", "second", Delivery::FollowUp);
 
-        mark_dispatched(&mut conn, &first.id, "t1", 1).unwrap();
+        mark_dispatched(&mut conn, "c1", &first.id, None, "t1", 1).unwrap();
 
         assert!(
             next_deliverable(&mut conn, "c1", Delivery::FollowUp).unwrap().is_none(),
@@ -477,6 +583,113 @@ mod tests {
         assert_eq!(owed[0].id, first.id);
     }
 
+    /// **Reordering cannot step around a barrier.**
+    ///
+    /// An in-doubt row stops the queue, and that is the whole of what keeps a
+    /// follow-up from running on a premise nobody has confirmed. Dragging a
+    /// later message in front of it would reach it first and run it — out of
+    /// the order the instructions were written in, which is the one thing the
+    /// queue promises.
+    #[test]
+    fn reordering_cannot_move_anything_in_front_of_an_unresolved_item() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conversation(&mut conn, "c1");
+        let doubtful = add(&mut conn, "c1", "delete the old migration", Delivery::FollowUp);
+        let second = add(&mut conn, "c1", "then rename it", Delivery::FollowUp);
+        let third = add(&mut conn, "c1", "and run the tests", Delivery::FollowUp);
+        mark_dispatched(&mut conn, "c1", &doubtful.id, None, "t1", 1).unwrap();
+
+        // What a drag of the third row to the very front asks for.
+        reorder(
+            &mut conn,
+            "c1",
+            &[third.id.clone(), doubtful.id.clone(), second.id.clone()],
+        )
+        .unwrap();
+
+        let order: Vec<String> = list(&mut conn, "c1").unwrap().into_iter().map(|i| i.content).collect();
+        assert_eq!(
+            order,
+            ["delete the old migration", "and run the tests", "then rename it"],
+            "the two queued rows swapped, and neither got past the one in doubt",
+        );
+        assert!(
+            next_pending(&mut conn, "c1").unwrap().is_none(),
+            "and the queue is still stopped",
+        );
+    }
+
+    /// **A claim is on the deliverable front, not on an id.**
+    ///
+    /// A runner reads the next item, then goes away to a child process and
+    /// comes back to claim it. Everything it checked can have changed in that
+    /// gap, and each of these was getting through: a queue the user held, a row
+    /// they dragged out of first place, a row they switched to the other
+    /// delivery mode.
+    #[test]
+    fn a_claim_is_refused_once_the_item_stops_being_deliverable() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conversation(&mut conn, "c1");
+
+        // Held between the read and the claim.
+        let a = add(&mut conn, "c1", "first", Delivery::FollowUp);
+        hold_all(&mut conn, "c1", 5).unwrap();
+        assert_eq!(mark_dispatched(&mut conn, "c1", &a.id, None, "t1", 6).unwrap(), 0);
+        release_all(&mut conn, "c1").unwrap();
+
+        // No longer the front: something was dragged ahead of it.
+        let b = add(&mut conn, "c1", "second", Delivery::FollowUp);
+        reorder(&mut conn, "c1", &[b.id.clone(), a.id.clone()]).unwrap();
+        assert_eq!(
+            mark_dispatched(&mut conn, "c1", &a.id, None, "t1", 7).unwrap(),
+            0,
+            "the row behind the front cannot be taken out of turn"
+        );
+
+        // Switched to the other mode while a steer was in flight for it.
+        set_delivery(&mut conn, "c1", &b.id, Delivery::FollowUp).unwrap();
+        assert_eq!(
+            mark_dispatched(&mut conn, "c1", &b.id, Some(Delivery::Interject), "t1", 8).unwrap(),
+            0,
+            "a steer's claim is void once the row is no longer an interjection"
+        );
+
+        // And the honest case still goes through, exactly once.
+        assert_eq!(mark_dispatched(&mut conn, "c1", &b.id, None, "t1", 9).unwrap(), 1);
+        assert_eq!(
+            mark_dispatched(&mut conn, "c1", &b.id, None, "t2", 10).unwrap(),
+            0,
+            "and a second pump gets nothing"
+        );
+
+        // Another conversation's row is not claimable through this one.
+        conversation(&mut conn, "c2");
+        let elsewhere = add(&mut conn, "c2", "theirs", Delivery::FollowUp);
+        assert_eq!(
+            mark_dispatched(&mut conn, "c1", &elsewhere.id, None, "t1", 11).unwrap(),
+            0
+        );
+    }
+
+    /// A held queue is the same barrier by a different name — that is a person
+    /// having been asked and not yet answered.
+    #[test]
+    fn reordering_cannot_move_anything_in_front_of_a_held_item() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conversation(&mut conn, "c1");
+        let first = add(&mut conn, "c1", "first", Delivery::FollowUp);
+        let second = add(&mut conn, "c1", "second", Delivery::FollowUp);
+        hold_all(&mut conn, "c1", 5).unwrap();
+
+        reorder(&mut conn, "c1", &[second.id.clone(), first.id.clone()]).unwrap();
+
+        let order: Vec<String> = list(&mut conn, "c1").unwrap().into_iter().map(|i| i.content).collect();
+        assert_eq!(order, ["first", "second"], "a held row does not move at all");
+    }
+
     /// Reporting is settled by a separate write, so a crash between reading and
     /// telling repeats the warning rather than losing it.
     #[test]
@@ -485,7 +698,7 @@ mod tests {
         let mut conn = pool.get().unwrap();
         conversation(&mut conn, "c1");
         let item = add(&mut conn, "c1", "one", Delivery::FollowUp);
-        mark_dispatched(&mut conn, &item.id, "t1", 1).unwrap();
+        mark_dispatched(&mut conn, "c1", &item.id, None, "t1", 1).unwrap();
 
         assert_eq!(unreported_in_doubt(&mut conn, "c1").unwrap().len(), 1);
         // Read again without telling anyone: still owed.
@@ -511,6 +724,84 @@ mod tests {
         release_all(&mut conn, "c1").unwrap();
         let next = next_deliverable(&mut conn, "c1", Delivery::FollowUp).unwrap();
         assert_eq!(next.map(|i| i.content), Some("first".to_string()));
+    }
+
+    /// A hold that lands while an item is claimed still applies to it.
+    ///
+    /// The sequence is an ordinary steer: `mark_dispatched` claims the row
+    /// *before* the adapter is asked, and the turn it was meant to interrupt can
+    /// fail during that round trip. Skipping claimed rows, `hold_all` steps over
+    /// the only row it was about, `undispatch` returns it plainly `Queued`, and
+    /// the instruction runs on a premise that died — with nobody having pressed
+    /// release.
+    ///
+    /// Being marked costs nothing while the claim stands: `state()` reads
+    /// `dispatched_at` first, so the row is `InDoubt` either way and already a
+    /// barrier.
+    #[test]
+    fn a_hold_during_a_claim_is_not_lost_when_the_claim_comes_back() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conversation(&mut conn, "c1");
+        let steered = add(&mut conn, "c1", "actually, stop", Delivery::Interject);
+        add(&mut conn, "c1", "then write it up", Delivery::FollowUp);
+
+        // The steer claims it, and the adapter is asked.
+        assert_eq!(
+            mark_dispatched(&mut conn, "c1", &steered.id, Some(Delivery::Interject), "t1", 2).unwrap(),
+            1
+        );
+        assert_eq!(list(&mut conn, "c1").unwrap()[0].state(), QueueState::InDoubt);
+
+        // The turn it was interrupting dies while that round trip is open.
+        assert_eq!(
+            hold_all(&mut conn, "c1", 3).unwrap(),
+            2,
+            "the claimed row is held too, not stepped over"
+        );
+
+        // And the adapter answers `promptRequired`: it did not take the message.
+        undispatch(&mut conn, &steered.id).unwrap();
+
+        let rows = list(&mut conn, "c1").unwrap();
+        assert_eq!(
+            rows[0].state(),
+            QueueState::Held,
+            "back on the queue, and behind the barrier the failed turn put up"
+        );
+        assert!(
+            next_pending(&mut conn, "c1").unwrap().is_none(),
+            "nothing runs until a person releases it"
+        );
+
+        // Which is exactly what release is for, and it works on this row like
+        // any other.
+        release_all(&mut conn, "c1").unwrap();
+        assert_eq!(
+            next_pending(&mut conn, "c1").unwrap().map(|i| i.content),
+            Some("actually, stop".to_string())
+        );
+    }
+
+    /// Release does not resurrect an item whose delivery is still unresolved.
+    ///
+    /// `hold_all` now marks claimed rows, so `release_all` clears the flag on
+    /// them as well — and that must not turn "we do not know whether the agent
+    /// acted on this" into "send it again". `dispatched_at` outranks `held_at`
+    /// in [`QueueState`], which is what keeps the two apart.
+    #[test]
+    fn releasing_a_held_queue_leaves_an_unresolved_item_unresolved() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conversation(&mut conn, "c1");
+        let claimed = add(&mut conn, "c1", "delete the old migration", Delivery::Interject);
+
+        mark_dispatched(&mut conn, "c1", &claimed.id, Some(Delivery::Interject), "t1", 2).unwrap();
+        hold_all(&mut conn, "c1", 3).unwrap();
+        release_all(&mut conn, "c1").unwrap();
+
+        assert_eq!(list(&mut conn, "c1").unwrap()[0].state(), QueueState::InDoubt);
+        assert!(next_pending(&mut conn, "c1").unwrap().is_none());
     }
 
     /// The two modes are asked for separately, and an item of the other kind at
@@ -580,11 +871,11 @@ mod tests {
         conversation(&mut conn, "c1");
         let item = add(&mut conn, "c1", "one", Delivery::FollowUp);
 
-        assert_eq!(remove(&mut conn, &item.id).unwrap(), 1, "a queued one goes");
+        assert_eq!(remove(&mut conn, "c1", &item.id).unwrap(), 1, "a queued one goes");
 
         let item = add(&mut conn, "c1", "two", Delivery::FollowUp);
-        mark_dispatched(&mut conn, &item.id, "t1", 1).unwrap();
-        assert_eq!(remove(&mut conn, &item.id).unwrap(), 0, "a doubtful one stays");
+        mark_dispatched(&mut conn, "c1", &item.id, None, "t1", 1).unwrap();
+        assert_eq!(remove(&mut conn, "c1", &item.id).unwrap(), 0, "a doubtful one stays");
     }
 
     /// While a turn runs the modes are asked for separately; with nothing
@@ -621,7 +912,7 @@ mod tests {
         conversation(&mut conn, "c1");
         let item = add(&mut conn, "c1", "one", Delivery::Interject);
 
-        mark_dispatched(&mut conn, &item.id, "t1", 1).unwrap();
+        mark_dispatched(&mut conn, "c1", &item.id, None, "t1", 1).unwrap();
         undispatch(&mut conn, &item.id).unwrap();
 
         let item = list(&mut conn, "c1").unwrap().remove(0);
@@ -644,7 +935,7 @@ mod tests {
         let first = add(&mut conn, "c1", "one", Delivery::Interject);
         add(&mut conn, "c1", "two", Delivery::Interject);
 
-        mark_dispatched(&mut conn, &first.id, "t1", 1).unwrap();
+        mark_dispatched(&mut conn, "c1", &first.id, None, "t1", 1).unwrap();
         mark_settled(&mut conn, &first.id, None, 2).unwrap();
         assert_eq!(
             next_pending(&mut conn, "c1").unwrap().map(|i| i.content),

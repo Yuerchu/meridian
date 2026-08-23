@@ -19,6 +19,27 @@ pub fn get(conn: &mut SqliteConnection, conversation_id: &str) -> QueryResult<Op
         .optional()
 }
 
+/// Which conversation owns each agent session this app knows about.
+///
+/// The whole ownership register, and it is small — one row per hosted
+/// conversation. Read whole rather than queried per session because the caller
+/// is annotating a list the agent just handed over, and a lookup per row would
+/// be one statement per session on the machine.
+///
+/// Rows with no session id are left out: they own nothing, and `None` is a
+/// state rather than a gap (see [`upsert`]).
+pub fn owners(conn: &mut SqliteConnection) -> QueryResult<Vec<(String, String)>> {
+    acp_sessions::table
+        .filter(acp_sessions::acp_session_id.is_not_null())
+        .select((acp_sessions::acp_session_id, acp_sessions::conversation_id))
+        .load::<(Option<String>, String)>(conn)
+        .map(|rows| {
+            rows.into_iter()
+                .filter_map(|(session, conversation)| Some((session?, conversation)))
+                .collect()
+        })
+}
+
 /// Write what a session opened as, whether it is the first one or the tenth.
 ///
 /// Upsert rather than insert-then-update: the row exists for a conversation
@@ -108,6 +129,32 @@ mod tests {
         upsert(&mut conn, "c2", None, "/b", 2).unwrap();
         conversation(&mut conn, "c3");
         upsert(&mut conn, "c3", None, "/c", 3).unwrap();
+    }
+
+    /// The register a session list is annotated against. A conversation with
+    /// no session id owns nothing and must not appear — otherwise every
+    /// listed session in that directory would be reported as already taken.
+    #[test]
+    fn the_owner_list_names_only_conversations_that_hold_a_session() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conversation(&mut conn, "c1");
+        conversation(&mut conn, "c2");
+        conversation(&mut conn, "c3");
+
+        upsert(&mut conn, "c1", Some("sess-1"), "/a", 1).unwrap();
+        upsert(&mut conn, "c2", None, "/b", 2).unwrap();
+        upsert(&mut conn, "c3", Some("sess-3"), "/c", 3).unwrap();
+
+        let mut owned = owners(&mut conn).unwrap();
+        owned.sort();
+        assert_eq!(
+            owned,
+            vec![
+                ("sess-1".to_string(), "c1".to_string()),
+                ("sess-3".to_string(), "c3".to_string()),
+            ]
+        );
     }
 
     /// The row belongs to the conversation and goes with it. Left behind, it

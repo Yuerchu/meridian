@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Button, Input, Label, TextArea } from '@heroui/react'
 import { api } from '@/api'
@@ -40,16 +40,32 @@ export function AcpSettings() {
   const [saved, setSaved] = useState(false)
   const [checking, setChecking] = useState(false)
   const [check, setCheck] = useState<AcpCheck | null>(null)
+  /**
+   * What is on disk, as opposed to what is in the fields.
+   *
+   * The check runs the *saved* command — `acp_check_adapter` reads the
+   * preferences, not the form — so a verdict about an edited-but-unsaved field
+   * is a verdict about something else entirely, delivered by the one control on
+   * this page that looks authoritative. `save` already clears a stale verdict
+   * for the same reason; this is the other direction.
+   */
+  const [onDisk, setOnDisk] = useState<AcpConfig | null>(null)
+  /** Which check is the current one. See the picker's `generation`: the button
+   *  is pressable again while a 120-second timeout is still outstanding, and
+   *  the slow answer must not land on top of the fast one. */
+  const attempt = useRef(0)
 
   useEffect(() => {
     api
       .acpGetConfig()
       .then((loaded) => {
         setConfig(loaded)
+        setOnDisk(loaded)
         setArgsText(loaded.args.join('\n'))
       })
       .catch(() => {
         setConfig(DEFAULTS)
+        setOnDisk(DEFAULTS)
         setArgsText(DEFAULTS.args.join('\n'))
       })
   }, [])
@@ -58,26 +74,46 @@ export function AcpSettings() {
     if (!config) return
     const next = await api.acpSaveConfig({ command: config.command.trim(), args: parseArgs(argsText) })
     setConfig(next)
+    setOnDisk(next)
     setArgsText(next.args.join('\n'))
     // A stale verdict is worse than none: it was about the command that was
     // configured a moment ago, and it is the one thing on this page that looks
     // authoritative.
+    //
+    // Clearing it is not enough on its own. `acp_check_adapter` runs the saved
+    // command with a 120-second budget, so a check started before this save is
+    // still outstanding — and it would land afterwards, under the new command,
+    // saying something true about the old one. Retiring its generation is what
+    // stops that; `checking` goes with it, because the answer that would have
+    // cleared the spinner is no longer allowed to touch anything.
+    attempt.current += 1
+    setChecking(false)
     setCheck(null)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }, [config, argsText])
 
   const runCheck = useCallback(async () => {
+    const mine = ++attempt.current
     setChecking(true)
     setCheck(null)
     try {
-      setCheck(await api.acpCheckAdapter())
+      const verdict = await api.acpCheckAdapter()
+      if (attempt.current === mine) setCheck(verdict)
     } catch (err) {
-      setCheck({ ok: false, agent: null, protocol_version: null, load_session: false, error: String(err) })
+      if (attempt.current === mine) {
+        setCheck({ ok: false, agent: null, protocol_version: null, load_session: false, error: String(err) })
+      }
     } finally {
-      setChecking(false)
+      if (attempt.current === mine) setChecking(false)
     }
   }, [])
+
+  /** The fields say something the saved configuration does not. */
+  const dirty =
+    config !== null &&
+    onDisk !== null &&
+    (config.command.trim() !== onDisk.command || parseArgs(argsText).join('\n') !== onDisk.args.join('\n'))
 
   // First load only. A refresh gets the spinner on the button that asked for it.
   if (!config) {
@@ -126,9 +162,13 @@ export function AcpSettings() {
         <Button variant="primary" onClick={() => void save()} isDisabled={!config.command.trim()}>
           {t('common.save')}
         </Button>
-        <Button variant="secondary" onClick={() => void runCheck()} isDisabled={checking}>
+        {/* Refused while the fields are ahead of the file: the check starts
+            the *saved* command, so a verdict now would be about the previous
+            one and would read as being about what is on screen. */}
+        <Button variant="secondary" onClick={() => void runCheck()} isDisabled={checking || dirty}>
           {checking ? t('settings.acp.checking') : t('settings.acp.check')}
         </Button>
+        {dirty && !checking && <p className="text-xs text-muted">{t('settings.acp.saveBeforeCheck')}</p>}
       </div>
 
       {check && (

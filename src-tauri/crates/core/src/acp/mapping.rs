@@ -20,9 +20,17 @@ use super::protocol::{PlanEntry, SessionConfigOption, SessionUpdate, ToolCall, U
 #[derive(Debug, PartialEq)]
 pub enum Effect {
     /// Visible prose from the agent.
-    Text(String),
+    Text { message_id: Option<String>, text: String },
     /// Its thinking, drawn separately.
-    Reasoning(String),
+    Reasoning { message_id: Option<String>, text: String },
+    /// Something a *person* said.
+    ///
+    /// On the live path this is the agent echoing the prompt back, and the
+    /// session drops it — that row was written before the prompt was ever sent.
+    /// On a replay it is the other half of the transcript and the only record
+    /// of it there is. The difference is a fact about the caller, not about the
+    /// update, which is why it is no longer decided here.
+    UserText { message_id: Option<String>, text: String },
     /// A call has started. `arguments` is JSON, because that is what the tool
     /// card renders and what `PendingApproval` stores.
     ToolCall {
@@ -73,17 +81,27 @@ pub struct PlanItem {
 
 pub fn effect_of(update: SessionUpdate) -> Effect {
     match update {
-        SessionUpdate::AgentMessageChunk { content } => match content.as_text() {
-            Some(text) if !text.is_empty() => Effect::Text(text.to_string()),
+        SessionUpdate::AgentMessageChunk { content, message_id } => match content.as_text() {
+            Some(text) if !text.is_empty() => Effect::Text {
+                message_id,
+                text: text.to_string(),
+            },
             _ => Effect::Ignored,
         },
-        SessionUpdate::AgentThoughtChunk { content } => match content.as_text() {
-            Some(text) if !text.is_empty() => Effect::Reasoning(text.to_string()),
+        SessionUpdate::AgentThoughtChunk { content, message_id } => match content.as_text() {
+            Some(text) if !text.is_empty() => Effect::Reasoning {
+                message_id,
+                text: text.to_string(),
+            },
             _ => Effect::Ignored,
         },
-        // The agent echoing what it was sent. This app wrote that row before it
-        // ever reached the adapter, so drawing it again would double it.
-        SessionUpdate::UserMessageChunk { .. } => Effect::Ignored,
+        SessionUpdate::UserMessageChunk { content, message_id } => match content.as_text() {
+            Some(text) if !text.is_empty() => Effect::UserText {
+                message_id,
+                text: text.to_string(),
+            },
+            _ => Effect::Ignored,
+        },
         SessionUpdate::ToolCall(call) => Effect::ToolCall {
             call_id: call.tool_call_id.clone(),
             tool_name: tool_name_of(&call),
@@ -212,26 +230,53 @@ mod tests {
             effect_of(update(
                 r#"{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"hello"}}"#
             )),
-            Effect::Text("hello".into())
+            Effect::Text {
+                message_id: None,
+                text: "hello".into()
+            }
         );
         assert_eq!(
             effect_of(update(
                 r#"{"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"hmm"}}"#
             )),
-            Effect::Reasoning("hmm".into())
+            Effect::Reasoning {
+                message_id: None,
+                text: "hmm".into()
+            }
         );
     }
 
-    /// The adapter echoes the prompt back as a `user_message_chunk`. This app
-    /// wrote that row itself before sending it, so drawing the echo would show
-    /// the question twice.
+    /// What a person said is carried, not dropped. Whether to *draw* it is the
+    /// caller's question and the two callers answer it differently: a live turn
+    /// wrote that row before the prompt was sent and would double it, a replay
+    /// has no other record of it. See `Shared::absorb`.
     #[test]
-    fn the_echo_of_our_own_prompt_is_dropped() {
+    fn what_the_user_said_is_carried_with_the_message_it_belongs_to() {
         assert_eq!(
             effect_of(update(
-                r#"{"sessionUpdate":"user_message_chunk","content":{"type":"text","text":"do it"}}"#
+                r#"{"sessionUpdate":"user_message_chunk","messageId":"u-1",
+                    "content":{"type":"text","text":"do it"}}"#
             )),
-            Effect::Ignored
+            Effect::UserText {
+                message_id: Some("u-1".into()),
+                text: "do it".into()
+            }
+        );
+    }
+
+    /// Which message a chunk belongs to, which is what tells one replayed row
+    /// from the next. Nothing else in a replay marks the boundary.
+    #[test]
+    fn a_chunk_carries_the_id_of_the_message_it_belongs_to() {
+        assert_eq!(
+            effect_of(update(
+                r#"{"sessionUpdate":"agent_message_chunk","messageId":"msg_01",
+                    "content":{"type":"text","text":"hello"}}"#
+            )),
+            Effect::Text {
+                message_id: Some("msg_01".into()),
+                text: "hello".into()
+            }
         );
     }
 
@@ -455,6 +500,24 @@ mod tests {
         assert!(mode.is_select());
         assert_eq!(mode.options.len(), 2);
         assert_eq!(mode.current_str(), Some("code"));
+    }
+
+    /// `"default"` is what the knob says when nobody picked a model, and it is
+    /// not one. Taken at face value it would be written into `model_id` on
+    /// every row — including, for an import, several hundred at once — where a
+    /// reader has no way to tell it from a model actually called that.
+    #[test]
+    fn the_model_knob_saying_default_is_the_same_as_not_saying() {
+        let effect = effect_of(update(
+            r#"{"sessionUpdate":"config_option_update","configOptions":[
+                {"id":"model","name":"Model","category":"model","type":"select","currentValue":"default"}]}"#,
+        ));
+        let Effect::ConfigOptions(options) = effect else {
+            panic!("expected the option set, got {effect:?}");
+        };
+        assert_eq!(options.iter().find_map(|o| o.as_model()), None);
+        // And the knob itself still travels, because the composer offers it.
+        assert!(options[0].names_a("model"));
     }
 
     /// `category` is documented as advisory and an agent may leave it out. The

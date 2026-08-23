@@ -297,6 +297,23 @@ macro_rules! with_all_commands {
             async commands::acp => acp_open_session(cwd: String),
             #[cfg(not(target_os = "android"))]
             async commands::acp => acp_send(conversation_id: String, message: String, turn_id: Option<String>),
+            // Not `local`, for the same reason `acp_open_session` is not: that
+            // row already lets a remote caller start an adapter in a directory
+            // it chose. Listing what sessions exist and taking one over are the
+            // same privilege, on a machine whose transcripts the caller can
+            // already read.
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_list_sessions(cwd: Option<String>),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_import_session(session: meridian_core::acp::import::ImportRequest),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_attach_session(
+                conversation_id: String,
+                session_id: String,
+                cwd: String,
+            ),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_conversation_session(conversation_id: String),
             #[cfg(not(target_os = "android"))]
             async commands::acp => acp_cancel(conversation_id: String),
             #[cfg(not(target_os = "android"))]

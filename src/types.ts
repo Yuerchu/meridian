@@ -139,6 +139,53 @@ export interface AcpConfigOptionValue {
 }
 
 /**
+ * A Claude Code session the agent found on this machine.
+ *
+ * camelCase because most of it is the ACP `SessionInfo` passed straight
+ * through, the way `AcpConfigOption` is.
+ */
+export interface AcpDiscoveredSession {
+  sessionId: string
+  /** Absolute, and where the session's work happened. */
+  cwd: string
+  /** The SDK's own summary: a `/rename` if there was one, else a generated
+   *  line, else the first prompt. Absent for a session too new to have one. */
+  title: string | null
+  /** ISO 8601. */
+  updatedAt: string | null
+  /**
+   * The conversation here that already resumes this session.
+   *
+   * Sessions Meridian started come back in this list too — the adapter has no
+   * way to leave them out — so they are marked rather than hidden.
+   */
+  ownedBy: string | null
+}
+
+/** What one import produced. */
+export interface AcpImportOutcome {
+  conversationId: string
+  /**
+   * Only the tail of the session came back.
+   *
+   * Above 5 MiB the Claude Agent SDK replays just what follows the last
+   * compaction — no flag, no warning, no marker on the wire. The one signal is
+   * its own summary at the head of the recital, and this is the only place the
+   * user will ever be told.
+   */
+  truncated: boolean
+  messages: number
+}
+
+/** Which agent session a hosted conversation follows, and where it works. */
+export interface AcpConversationSession {
+  cwd: string
+  /** `null` for a conversation from before the session table existed, which is
+   *  exactly the one worth attaching to something. */
+  acp_session_id: string | null
+}
+
+/**
  * When a queued message is handed to the agent.
  *
  * Not urgency levels — two different points in the run. `follow_up` waits for

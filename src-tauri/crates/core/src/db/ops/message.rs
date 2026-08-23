@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
@@ -278,6 +280,65 @@ pub fn update_assistant_message(
     Ok(())
 }
 
+/// Fill in one tool call inside a row that has already been stored.
+///
+/// For the case an in-memory patch cannot reach: a hosted adapter announces a
+/// call twice, from two sources that can arrive in either order, and the first
+/// announcement is routinely a placeholder with no arguments. If the round
+/// holding it closes before the second one lands — a result and the next call
+/// are enough to do that — the row is already in the database and the real
+/// arguments have nowhere to go. Left there, the transcript and the audit copy
+/// keep `{}` for ever, which is worse than a card that reads "Terminal": a
+/// reader cannot tell a call whose arguments were never recorded from one that
+/// genuinely took none.
+///
+/// Scoped by turn because that is what the caller has and it bounds the scan;
+/// within an ACP session a `toolCallId` is unique anyway. Rows are few and each
+/// carries at most a handful of calls, so this is a scan rather than a JSON
+/// query — SQLite's `json_each` would tie the storage format to the query.
+///
+/// `None` for either field leaves it alone. This only ever *adds* information:
+/// the adapter sends plain progress beats on the same shape, and taking them at
+/// face value would blank arguments already recorded.
+///
+/// Answers with the row it landed on, or `None` when no row in this turn holds
+/// the call.
+pub fn revise_tool_call(
+    conn: &mut SqliteConnection,
+    turn_id: &str,
+    call_id: &str,
+    tool_name: Option<&str>,
+    arguments: Option<&str>,
+) -> QueryResult<Option<(String, String, String)>> {
+    let rows: Vec<(String, Option<String>)> = messages::table
+        .filter(messages::turn_id.eq(turn_id))
+        .filter(messages::tool_calls.is_not_null())
+        // Newest first: a late revision belongs to a round that closed a moment
+        // ago far more often than to one at the top of the turn.
+        .order(messages::sort_order.desc())
+        .select((messages::id, messages::tool_calls))
+        .load(conn)?;
+
+    for (id, json) in rows {
+        let mut calls = crate::agent::tool_calls::parse_openai_tool_calls(json.as_deref());
+        let Some(call) = calls.iter_mut().find(|c| c.id == call_id) else {
+            continue;
+        };
+        if let Some(name) = tool_name {
+            call.name = name.to_string();
+        }
+        if let Some(args) = arguments {
+            call.arguments = args.to_string();
+        }
+        let found = (call.name.clone(), call.arguments.clone());
+        diesel::update(messages::table.find(&id))
+            .set(messages::tool_calls.eq(Some(crate::agent::tool_calls::serialize_tool_calls_openai(&calls))))
+            .execute(conn)?;
+        return Ok(Some((id, found.0, found.1)));
+    }
+    Ok(None)
+}
+
 // `update_tokens` was here, and had no callers. It wrote the same two columns
 // `update_assistant_message` writes, from nowhere, which meant a second answer
 // to "how does a row get its token counts" that could drift from the first. The
@@ -450,11 +511,11 @@ pub struct BranchPoint {
 /// hanging off the context row while the old one hangs off its parent, the two
 /// stop being siblings, and the version pager silently disappears from a
 /// message that certainly has more than one version.
-fn effective_parent(history: &[Message], m: &Message) -> Option<String> {
+fn effective_parent(by_id: &HashMap<&str, &Message>, m: &Message) -> Option<String> {
     let mut cursor = m.parent_id.clone();
     while let Some(id) = cursor {
         // A parent that is not in `history` is as far as this can go.
-        let Some(parent) = history.iter().find(|h| h.id == id) else {
+        let Some(parent) = by_id.get(id.as_str()) else {
             return Some(id);
         };
         if parent.role != "context" {
@@ -465,34 +526,51 @@ fn effective_parent(history: &[Message], m: &Message) -> Option<String> {
     None
 }
 
+/// Every step on the path that has more than one version, with its siblings.
+///
+/// **Grouped once rather than searched per row.** This used to be three nested
+/// linear scans — a row on the path, every row in the history, and a lookup by
+/// id inside `effective_parent` — which is n³ on a conversation with no
+/// branches at all, the exact shape an imported session has. Measured: 0.3s at
+/// 622 rows, 10s at 2000, on every mount of the transcript and up to four times
+/// per snapshot attempt. Importing a terminal session is what made a
+/// conversation that size reachable in one click.
 pub fn branch_points(history: &[Message], path: &[Message]) -> Vec<BranchPoint> {
+    let by_id: HashMap<&str, &Message> = history.iter().map(|m| (m.id.as_str(), m)).collect();
+
+    // Keyed on the effective parent, `None` for the roots — editing the opening
+    // message produces a second one, which is a version of the same step.
+    let mut families: HashMap<Option<String>, Vec<&Message>> = HashMap::new();
+    for m in history
+        .iter()
+        .filter(|s| s.is_compact_summary == 0 && s.role != "context")
+    {
+        families.entry(effective_parent(&by_id, m)).or_default().push(m);
+    }
+    for siblings in families.values_mut() {
+        siblings.sort_by_key(|s| s.sort_order);
+    }
+
     let mut out = Vec::new();
     for m in path {
         // Injected background has no versions to page through.
         if m.role == "context" {
             continue;
         }
-        let parent = effective_parent(history, m);
-        // Roots are grouped together: editing the opening message produces a
-        // second one, which is a version of the same step.
-        let mut siblings: Vec<&Message> = history
-            .iter()
-            .filter(|s| s.is_compact_summary == 0 && s.role != "context")
-            .filter(|s| effective_parent(history, s) == parent)
-            .collect();
+        let Some(siblings) = families.get(&effective_parent(&by_id, m)) else {
+            continue;
+        };
         if siblings.len() < 2 {
             continue;
         }
-        siblings.sort_by_key(|s| s.sort_order);
-        let ids: Vec<String> = siblings.iter().map(|s| s.id.clone()).collect();
-        let Some(index) = ids.iter().position(|id| id == &m.id) else {
+        let Some(index) = siblings.iter().position(|s| s.id == m.id) else {
             continue;
         };
         out.push(BranchPoint {
             message_id: m.id.clone(),
             index,
-            total: ids.len(),
-            sibling_ids: ids,
+            total: siblings.len(),
+            sibling_ids: siblings.iter().map(|s| s.id.clone()).collect(),
         });
     }
     out

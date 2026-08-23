@@ -20,10 +20,22 @@ import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
 import { Button, Input } from '@heroui/react'
 import { Sidebar, useSidebar } from '@heroui-pro/react/sidebar'
-import { Archive, ArrowLeft, FolderOpen, FolderPlus, Gear, Pin, Plus, Terminal } from '@gravity-ui/icons'
+import {
+  Archive,
+  ArrowDownToSquare,
+  ArrowLeft,
+  FolderOpen,
+  FolderPlus,
+  Gear,
+  Pin,
+  Plus,
+  Terminal,
+} from '@gravity-ui/icons'
 import { ConversationIcon } from '@/components/ui/agent-icon'
+import { ClaudeSessionPicker } from './claude-session-picker'
 
 import { can } from '@/lib/capabilities'
+import { isRemote } from '@/lib/transport'
 import type { Conversation, Project } from '@/types'
 import type { Page } from './shell-props'
 // Not from the settings barrel: this is a value import, and the barrel would
@@ -69,16 +81,70 @@ interface AppSidebarProps {
   onCreateHostedSession: (cwd: string) => Promise<string | null>
 }
 
+/**
+ * The draft, held above the two sidebars rather than inside them.
+ *
+ * Below 768px Pro renders this tree twice — the panel, hidden with
+ * `display: none`, and the sheet — so a `useState` in the form is two pieces of
+ * state, and crossing the breakpoint swaps which one is on screen. Typing a
+ * project name in a narrow window and then widening it produced an empty form.
+ * One hook, lifted to the component that exists once.
+ */
+function useDraft(): {
+  name: string
+  path: string
+  setName: (v: string) => void
+  setPath: (v: string) => void
+  reset: () => void
+} {
+  const [name, setName] = useState('')
+  const [path, setPath] = useState('')
+  const reset = useCallback(() => {
+    setName('')
+    setPath('')
+  }, [])
+  return { name, path, setName, setPath, reset }
+}
+
+/**
+ * The hosted form's *request*, lifted for the same reason its fields are — and
+ * for a worse consequence.
+ *
+ * Starting a session takes seconds, long enough to download the adapter on a
+ * machine that has never run it, so the form stays up and disables its button
+ * while it waits. Held in the form, that flag is two flags: cross 768px during
+ * the wait and the instance that appears has never started anything, so the
+ * button is live and the same directory can be submitted again. Two adapters,
+ * two sessions, one folder — and the first one's failure would land on an
+ * instance nobody can see, which is why `error` comes up here too.
+ */
+function useHostedLaunch(): {
+  starting: boolean
+  error: string | null
+  setStarting: (v: boolean) => void
+  setError: (v: string | null) => void
+  reset: () => void
+} {
+  const [starting, setStarting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const reset = useCallback(() => {
+    setStarting(false)
+    setError(null)
+  }, [])
+  return { starting, error, setStarting, setError, reset }
+}
+
 function NewProjectForm({
+  draft,
   onSubmit,
   onCancel,
 }: {
+  draft: ReturnType<typeof useDraft>
   onSubmit: (name: string, path: string) => void
   onCancel: () => void
 }) {
   const { t } = useTranslation()
-  const [name, setName] = useState('')
-  const [path, setPath] = useState('')
+  const { name, path, setName, setPath } = draft
 
   const handleBrowse = useCallback(async () => {
     // Cancelling the picker rejects on Android instead of resolving to null.
@@ -90,7 +156,7 @@ function NewProjectForm({
         setName(parts[parts.length - 1] || '')
       }
     }
-  }, [name])
+  }, [name, setName, setPath])
 
   return (
     <div className="px-2 py-1.5 space-y-1.5">
@@ -143,7 +209,9 @@ function NewProjectForm({
         >
           {t('common.save')}
         </Button>
-        <Button variant="ghost" onClick={onCancel}>
+        {/* The glyph is not a name: a screen reader reads U+2715 as nothing, or
+            as "multiplication x". */}
+        <Button variant="ghost" aria-label={t('common.cancel')} onClick={onCancel}>
           ✕
         </Button>
       </div>
@@ -160,22 +228,27 @@ function NewProjectForm({
  * logged in as.
  */
 function NewHostedSessionForm({
+  draft,
+  launch,
   onSubmit,
   onCancel,
 }: {
+  /** Lifted for the same reason as the project form's — see {@link useDraft}. */
+  draft: ReturnType<typeof useDraft>
+  /** And so is the request it makes — see {@link useHostedLaunch}. */
+  launch: ReturnType<typeof useHostedLaunch>
   onSubmit: (cwd: string) => Promise<string | null>
   onCancel: () => void
 }) {
   const { t } = useTranslation()
-  const [path, setPath] = useState('')
-  const [starting, setStarting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { path, setPath } = draft
+  const { starting, error, setStarting, setError } = launch
 
   const handleBrowse = useCallback(async () => {
     // Cancelling the picker rejects on Android instead of resolving to null.
     const selected = await open({ directory: true, multiple: false }).catch(() => null)
     if (selected) setPath(selected)
-  }, [])
+  }, [setPath])
 
   // Starting an adapter takes seconds — on a machine that has never run it, long
   // enough to download the package first. The form stays up and says so, because
@@ -234,7 +307,7 @@ function NewHostedSessionForm({
         >
           {starting ? t('sidebar.startingHostedSession') : t('sidebar.startHostedSession')}
         </Button>
-        <Button variant="ghost" onClick={onCancel} isDisabled={starting}>
+        <Button variant="ghost" aria-label={t('common.cancel')} onClick={onCancel} isDisabled={starting}>
           ✕
         </Button>
       </div>
@@ -325,9 +398,29 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const { t } = useTranslation()
   const platform = usePlatform()
+  /**
+   * Whether the machine that would run the adapter can run one.
+   *
+   * A session is a child process and Android has none — the commands are
+   * compiled out there — so on a phone answering for itself these rows can only
+   * fail. **But in remote mode the phone is not the machine that would run
+   * it.** The turn runs on the host, the four ACP commands are declared
+   * remote-reachable for exactly that reason, and the directory the picker
+   * offers is the host's. Reading the local platform in that case hid a feature
+   * that works, which is what this used to do and called conservative.
+   */
+  const canHostSessions = platform !== 'android' || isRemote
   const { isMobileOpen, setMobileOpen } = useSidebar()
   const [showNewProject, setShowNewProject] = useState(false)
   const [showNewHosted, setShowNewHosted] = useState(false)
+  // Held here because `settingsSide`/`appSide` below are rendered twice under
+  // 768px — once as the hidden panel, once as the sheet. See `useDraft`.
+  const projectDraft = useDraft()
+  const hostedDraft = useDraft()
+  const hostedLaunch = useHostedLaunch()
+  /** The session picker, and which of its two jobs it is doing. `attach`
+   *  carries the conversation being repointed. */
+  const [picker, setPicker] = useState<{ mode: 'import' | 'attach'; conversationId?: string } | null>(null)
   const [renameTarget, setRenameTarget] = useState<{ type: 'conversation' | 'project'; id: string } | null>(null)
   const { confirm, confirmDialog } = useConfirm()
 
@@ -400,6 +493,17 @@ export function AppSidebar({
     onRequestDelete: async (id) => {
       if (await confirm({ body: t('confirm.deleteConversation') })) onDelete(id)
     },
+    // Only where there is an agent session to point at, and only where a
+    // session can exist at all — Android has no child processes, so the
+    // commands behind this are compiled out there.
+    //
+    // Through `dismissing` like every other row action that opens something
+    // outside the sheet: this one puts up a full-screen dialog rather than a
+    // surface inside the sheet, so leaving the sheet open would stack the two
+    // and closing the dialog would land back on the sheet.
+    onRequestAttachSession: canHostSessions
+      ? (id: string) => dismissing(() => setPicker({ mode: 'attach', conversationId: id }))()
+      : undefined,
   })
   const projectActions = useProjectActions({
     onRequestRename: (id) => setRenameTarget({ type: 'project', id }),
@@ -420,6 +524,13 @@ export function AppSidebar({
       ? projectActions(hitProject)
       : []
 
+  const recordHit = useCallback((scope: string, target: EventTarget | null) => {
+    const row = (target as HTMLElement | null)?.closest('[data-row-id]')
+    const id = row?.getAttribute('data-row-id')
+    const kind = row?.getAttribute('data-row-kind') as MenuHit['kind'] | null | undefined
+    hitRef.current = id && kind ? { scope, kind, id } : null
+  }, [])
+
   // base-ui reads the cursor position off the Root, so the Root has to enclose
   // its own Trigger — a Root parked next to the dialogs at the bottom of this
   // component throws `ContextMenuRootContext is missing` at render, which
@@ -427,13 +538,17 @@ export function AppSidebar({
   const rowMenu = useCallback(
     (scope: string, actions: RowAction[], children: React.ReactNode) => (
       <ContextMenu open={menu?.scope === scope} onOpenChange={(open) => setMenu(open ? hitRef.current : null)}>
+        {/* Recorded on `pointerdown` as well as on `contextmenu`, because the
+            two ways this menu opens do not agree on which event comes first. A
+            right-click fires `contextmenu` and base-ui opens from it; a touch
+            starts base-ui's own 500ms long-press timer, and the WebView's native
+            `contextmenu` is on roughly the same fuse. Whichever wins, the
+            controlled `open` below reads `hitRef` — and read before the row was
+            recorded it is null, so the menu is asked to open with nothing
+            selected and silently does not. `pointerdown` precedes both. */}
         <ContextMenuTrigger
-          onContextMenu={(e: React.MouseEvent) => {
-            const row = (e.target as HTMLElement).closest('[data-row-id]')
-            const id = row?.getAttribute('data-row-id')
-            const kind = row?.getAttribute('data-row-kind') as MenuHit['kind'] | null | undefined
-            hitRef.current = id && kind ? { scope, kind, id } : null
-          }}
+          onPointerDown={(e: React.PointerEvent) => recordHit(scope, e.target)}
+          onContextMenu={(e: React.MouseEvent) => recordHit(scope, e.target)}
         >
           {children}
         </ContextMenuTrigger>
@@ -442,7 +557,7 @@ export function AppSidebar({
         </ContextMenuContent>
       </ContextMenu>
     ),
-    [menu],
+    [menu, recordHit],
   )
 
   const renaming =
@@ -531,13 +646,9 @@ export function AppSidebar({
             </Sidebar.MenuIcon>
             <Sidebar.MenuLabel>{t('sidebar.newChat')}</Sidebar.MenuLabel>
           </Sidebar.MenuItem>
-          {/* A session is a child process, which Android does not have — the
-              command is compiled out there, so offering it would be a row that
-              can only fail. Read off the platform rather than `can`, which is
-              about *remote* sessions: a phone driving a desktop cannot host one
-              either, because the phone is where this check runs, and that is
-              the conservative answer to a question the client cannot ask. */}
-          {platform !== 'android' && (
+          {/* See `canHostSessions`: the question is what the machine running
+              the adapter can do, which in remote mode is not this one. */}
+          {canHostSessions && (
             <Sidebar.MenuItem
               id={`${prefix}new-hosted`}
               textValue={t('sidebar.newHostedSession')}
@@ -549,16 +660,43 @@ export function AppSidebar({
               <Sidebar.MenuLabel>{t('sidebar.newHostedSession')}</Sidebar.MenuLabel>
             </Sidebar.MenuItem>
           )}
+          {/* Beside starting one, because it is the other way a hosted
+              conversation comes into being — and the more common one for
+              anybody who already has terminals open. Also the one that works
+              best from a phone: the list and the directories in it are the
+              host's, so nothing here needs a local file picker. */}
+          {canHostSessions && (
+            <Sidebar.MenuItem
+              id={`${prefix}import-hosted`}
+              textValue={t('sidebar.importHostedSession')}
+              onAction={dismissing(() => setPicker({ mode: 'import' }))}
+            >
+              <Sidebar.MenuIcon>
+                <ArrowDownToSquare />
+              </Sidebar.MenuIcon>
+              <Sidebar.MenuLabel>{t('sidebar.importHostedSession')}</Sidebar.MenuLabel>
+            </Sidebar.MenuItem>
+          )}
         </Sidebar.Menu>
         {showNewHosted && (
           <NewHostedSessionForm
+            draft={hostedDraft}
+            launch={hostedLaunch}
             onSubmit={async (cwd) => {
               const failure = await onCreateHostedSession(cwd)
               // Left open on failure so the reason has somewhere to be read.
-              if (!failure) setShowNewHosted(false)
+              if (!failure) {
+                setShowNewHosted(false)
+                hostedDraft.reset()
+                hostedLaunch.reset()
+              }
               return failure
             }}
-            onCancel={() => setShowNewHosted(false)}
+            onCancel={() => {
+              setShowNewHosted(false)
+              hostedDraft.reset()
+              hostedLaunch.reset()
+            }}
           />
         )}
       </Sidebar.Header>
@@ -641,11 +779,16 @@ export function AppSidebar({
           )}
           {showNewProject && (
             <NewProjectForm
+              draft={projectDraft}
               onSubmit={(name, path) => {
                 onCreateProject(name, path)
                 setShowNewProject(false)
+                projectDraft.reset()
               }}
-              onCancel={() => setShowNewProject(false)}
+              onCancel={() => {
+                setShowNewProject(false)
+                projectDraft.reset()
+              }}
             />
           )}
         </Sidebar.Group>
@@ -722,6 +865,20 @@ export function AppSidebar({
           else onRename(renameTarget.id, value)
         }}
       />
+
+      {/* One instance for both jobs, mounted only while it is open: it fetches
+          on mount and the list is a process start, not a query. */}
+      {picker && (
+        <ClaudeSessionPicker
+          isOpen
+          onOpenChange={(open) => {
+            if (!open) setPicker(null)
+          }}
+          mode={picker.mode}
+          conversationId={picker.conversationId}
+          onOpenConversation={selectConversation}
+        />
+      )}
 
       {confirmDialog}
     </>

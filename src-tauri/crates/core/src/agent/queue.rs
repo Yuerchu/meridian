@@ -41,14 +41,59 @@ pub use native::Interjections;
 /// which is the ordinary case: this runs after every turn of every hosted
 /// conversation, and most of them have an empty queue.
 pub async fn pump(services: &Services, conversation_id: &str) {
-    // A session is a child process, so Android has none — and a conversation
-    // with one is never also a native one, so this returning early is what
-    // sends the rest here.
+    // **Which runner is a property of the conversation, not of what happens to
+    // be running.** Asking the registry answers "is an adapter alive right
+    // now", and the two questions come apart exactly when it matters: after a
+    // restart, or when the adapter died, a hosted conversation has no live
+    // session — and the queue would then be delivered by `native::pump`, which
+    // runs a turn with the user's own provider and this app's tool set and
+    // appends it to a Claude Code transcript. The message would be answered by
+    // the wrong agent, billed to the wrong account, and written into a
+    // conversation whose agent has no idea it happened.
+    //
+    // A session is a child process, so Android has none, and `agent_kind` can
+    // never be `claude_code` there.
     #[cfg(not(target_os = "android"))]
-    if services.acp.get(conversation_id).is_some_and(|s| s.is_alive()) {
+    if is_hosted(services, conversation_id).await {
         return hosted::pump(services, conversation_id).await;
     }
     native::pump(services, conversation_id).await;
+}
+
+/// Whether this conversation belongs to a hosted agent, from the row rather
+/// than from the registry.
+#[cfg(not(target_os = "android"))]
+async fn is_hosted(services: &Services, conversation_id: &str) -> bool {
+    let pool = services.db.clone();
+    let id = conversation_id.to_string();
+    // Every failure has to stay distinguishable from "this is not hosted", so
+    // the errors are carried rather than flattened with `.ok()?`. Written the
+    // short way, a busy pool or a transient query error read exactly like an
+    // ordinary conversation — and the recovery from a transient error is a
+    // Claude Code queue answered by the user's own provider.
+    let kind: Result<Result<Option<String>, String>, _> = tokio::task::spawn_blocking(move || {
+        let mut conn = crate::util::get_conn(&pool)?;
+        crate::db::ops::conversation::get_conversation(&mut conn, &id)
+            .map(|c| c.agent_kind)
+            .map_err(|e| e.to_string())
+    })
+    .await;
+
+    match kind {
+        Ok(Ok(kind)) => kind.as_deref() == Some(crate::acp::AGENT_KIND),
+        // Nothing was learned, and the two answers are not symmetrical:
+        // `hosted::pump` with no session does nothing and the queue waits,
+        // while `native::pump` starts a turn. So an unanswered question is
+        // answered "hosted".
+        Ok(Err(e)) => {
+            tracing::warn!(error = %e, "could not tell which runner owns this queue; leaving it alone");
+            true
+        }
+        Err(e) => {
+            tracing::warn!(error = %e, "the runner lookup panicked; leaving the queue alone");
+            true
+        }
+    }
 }
 
 /// The same, later and elsewhere.
@@ -272,9 +317,13 @@ async fn read(services: &Services, conversation_id: &str, steerable: bool) -> Op
 // Android has no runner to deliver to: a hosted session is a child process, and
 // the native path is not connected yet.
 #[cfg_attr(target_os = "android", allow(dead_code, reason = "nothing delivers there yet"))]
-async fn write<F>(services: &Services, id: String, f: F) -> Result<(), String>
+async fn write<F, T>(services: &Services, id: String, f: F) -> Result<T, String>
 where
-    F: FnOnce(&mut diesel::SqliteConnection, String) -> diesel::QueryResult<()> + Send + 'static,
+    F: FnOnce(&mut diesel::SqliteConnection, String) -> diesel::QueryResult<T> + Send + 'static,
+    // Generic in the result so a caller can read the affected-row count back.
+    // Most of these writes are notes and `()` is all there is to say; a
+    // `mark_dispatched` is a claim, and the count is the claim's answer.
+    T: Send + 'static,
 {
     let pool = services.db.clone();
     tokio::task::spawn_blocking(move || {
@@ -375,20 +424,32 @@ mod hosted {
             return;
         };
 
-        if let Some(turn_id) = steerable.filter(|_| next.delivery() == Delivery::Interject) {
-            match steer(services, &session, &next, &turn_id).await {
+        let next = match steerable.filter(|_| next.delivery() == Delivery::Interject) {
+            None => next,
+            Some(turn_id) => match steer(services, &session, &next, &turn_id).await {
                 // Delivered, and the running turn is already adapting.
                 // Whatever is behind it waits for that turn to end.
                 Steered::Delivered => return,
-                // The turn ended in the gap. Fall through and deliver it as a
-                // turn of its own, which is what it would have got a moment
-                // later anyway.
-                Steered::NotTaken => {}
+                // The turn ended in the gap, or another pump had the item.
+                // Either way what was read before the claim is stale by exactly
+                // the window the claim was open — and that window is where a
+                // hold lands: the turn this was meant to interrupt can fail
+                // while the adapter is being asked, and `hold_all` reaches the
+                // claimed row so that `undispatch` returns it *held* rather than
+                // ready. Asking again is what reads that. Reusing `next` would
+                // hand `deliver_queued` a row the queue has since stopped, and
+                // leave it to `mark_dispatched` to refuse the claim and roll the
+                // turn back — correct, and reported as a failure rather than as
+                // the barrier it is.
+                Steered::NotTaken => match read(services, conversation_id, false).await {
+                    Some(again) => again,
+                    None => return,
+                },
                 // In doubt, and the queue is stopped behind it until somebody
                 // is told. Retrying is the one thing this design refuses.
                 Steered::Unknown => return,
-            }
-        }
+            },
+        };
 
         // A turn of its own. Awaited rather than spawned: the caller is either
         // a command the user is waiting on or an already-detached task, and
@@ -413,14 +474,50 @@ mod hosted {
         // the whole reason the ledger exists. Killed in the gap, the agent may
         // already have run a command — and a command's effects outlive both
         // this process and the adapter's memory of having asked for it.
+        //
+        // **And it is a claim, not a note.** `mark_dispatched` re-checks that
+        // this row is still the deliverable front, and its affected-row count
+        // is what says whether *this* caller won it. Discarded, two pumps that
+        // both read the same item — a turn ending as the user adds one, a
+        // window and a phone — would both go on to `session.steer`, and "delete
+        // the old migration" would be sent twice.
+        //
+        // The gap this closes is not hypothetical here: between the read in
+        // `pump` and this line there is a round trip to a child process, and
+        // the user can hold the queue, drag the row out of first place or
+        // switch it to `follow_up` in that time. `Some(Interject)` is what
+        // makes the last of those void the claim.
+        //
+        // In a transaction of its own because the read and the update have to
+        // be one step, and unlike `write_prompt_row` and `run_turn` this claim
+        // is not already inside one.
         let turn = turn_id.to_string();
-        if let Err(e) = write(services, item.id.clone(), move |conn, id| {
-            crate::db::ops::queue::mark_dispatched(conn, &id, &turn, now_ms()).map(|_| ())
+        let conversation = session.conversation_id.clone();
+        let claimed = write(services, item.id.clone(), move |conn, id| {
+            conn.immediate_transaction(|conn| {
+                crate::db::ops::queue::mark_dispatched(
+                    conn,
+                    &conversation,
+                    &id,
+                    Some(Delivery::Interject),
+                    &turn,
+                    now_ms(),
+                )
+            })
         })
-        .await
-        {
-            tracing::warn!(error = %e, "could not record a steer before making it");
-            return Steered::Unknown;
+        .await;
+        match claimed {
+            Ok(1..) => {}
+            // Somebody else has it. Not a failure and not in doubt: whoever
+            // took it is delivering it, and this pump has nothing to report.
+            Ok(_) => {
+                tracing::debug!(item = %item.id, "a queued item was taken by another pump");
+                return Steered::NotTaken;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "could not record a steer before making it");
+                return Steered::Unknown;
+            }
         }
         announce(services, &session.conversation_id);
 

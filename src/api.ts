@@ -6,6 +6,9 @@ import type {
   AcpCheck,
   AcpConfig,
   AcpConfigOption,
+  AcpConversationSession,
+  AcpDiscoveredSession,
+  AcpImportOutcome,
   AppInfo,
   Assistant,
   ChatMode,
@@ -192,6 +195,26 @@ export const api = {
   // reason — the composer locks on it before the backend has been reached, and
   // the stop event it waits for has to carry it back.
   acpOpenSession: (cwd: string) => invoke<string>('acp_open_session', { cwd }),
+
+  // Sessions that already exist on this machine, including every one started
+  // from a terminal. Starts a short-lived adapter, so it takes a second or two.
+  // `cwd` narrows it to one directory; omitted means every project.
+  acpListSessions: (cwd?: string | null) => invoke<AcpDiscoveredSession[]>('acp_list_sessions', { cwd: cwd ?? null }),
+
+  // Take one over. The transcript comes with it — `session/load` recites the
+  // whole history and this is the one path that writes the recital down.
+  // Resolves to the new conversation's id.
+  acpImportSession: (session: Pick<AcpDiscoveredSession, 'sessionId' | 'cwd' | 'title' | 'updatedAt'>) =>
+    invoke<AcpImportOutcome>('acp_import_session', { session }),
+
+  // Point a conversation that already exists at a session on disk. Writes the
+  // id and nothing else: the rows are here already and came from that session,
+  // so replaying them would double the transcript.
+  acpAttachSession: (conversationId: string, sessionId: string, cwd: string) =>
+    invoke<void>('acp_attach_session', { conversationId, sessionId, cwd }),
+
+  acpConversationSession: (conversationId: string) =>
+    invoke<AcpConversationSession | null>('acp_conversation_session', { conversationId }),
 
   acpSend: (conversationId: string, message: string, turnId?: string) =>
     invoke<void>('acp_send', { conversationId, message, turnId: turnId ?? null }),

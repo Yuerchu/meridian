@@ -13,6 +13,7 @@
 //! Desktop only. Every session is a child process, which Android does not have.
 
 pub mod approvals;
+pub mod import;
 pub mod mapping;
 pub mod peer;
 pub mod process;
@@ -87,8 +88,27 @@ impl AcpRegistry {
         }
     }
 
+    /// Everything the registry is holding, dead or alive.
+    ///
+    /// For shutting things down, where a dead entry is still worth closing —
+    /// the pipe ending does not mean the process was reaped.
     pub fn conversations(&self) -> Vec<String> {
         self.lock().keys().cloned().collect()
+    }
+
+    /// The ones that could still answer.
+    ///
+    /// What a caller asking "is this session running" means. A session stays in
+    /// the map after its adapter dies — nothing removes it until somebody calls
+    /// `close` — so the unfiltered list reports an adapter that exited half an
+    /// hour ago as live, and the composer offers knobs for a session that
+    /// cannot take them.
+    pub fn live_conversations(&self) -> Vec<String> {
+        self.lock()
+            .iter()
+            .filter(|(_, session)| session.is_alive())
+            .map(|(id, _)| id.clone())
+            .collect()
     }
 
     /// Take a session out and shut it down. Absent is success: closing twice is
@@ -156,6 +176,17 @@ const ADAPTER_PACKAGE: &str = "@agentclientprotocol/claude-agent-acp";
 /// and is left alone.
 const RETIRED_ADAPTER_PACKAGE: &str = "@zed-industries/claude-code-acp";
 
+/// **Deliberately unpinned, and that is a standing hazard rather than an
+/// oversight.** The package is a fast-moving `0.x` (64 releases by 0.70) that
+/// wraps a `claude` updating on its own schedule, so pinning trades one kind of
+/// drift for another: a pinned adapter falls behind the CLI it is a shim for.
+///
+/// What it costs is that everything this client knows about the adapter's
+/// behaviour — that message chunks carry `messageId`, what `session/list`
+/// returns, that a load recites the history at all — was measured against one
+/// build and can change with no commit here. Two mitigations, both cheap:
+/// `handshake` logs the version that answered, and anyone who wants a pin puts
+/// one in `acp.args`, which is a user setting.
 impl Default for AcpConfig {
     fn default() -> Self {
         Self {

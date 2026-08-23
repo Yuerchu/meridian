@@ -620,7 +620,12 @@ export function InputBar({
                     : t('chat.placeholder')
             }
             onFieldReady={handleFieldReady}
-            onDropFiles={onAttachFiles && can.dropFiles ? handleDropFiles : undefined}
+            // `!isHosted` for the same reason the attach menu and the sticker
+            // picker are withheld: an attachment reaches a hosted agent as the
+            // JSON that carries it, because an ACP prompt is a single text
+            // block. Closing the menus and leaving the whole window droppable
+            // would be the same failure with a better hiding place.
+            onDropFiles={!isHosted && onAttachFiles && can.dropFiles ? handleDropFiles : undefined}
             // Offline takes the line over: a disabled field with nothing to
             // say about why reads as the app having broken.
             notice={
@@ -758,7 +763,17 @@ export function InputBar({
                     acceptEdits={acceptEdits}
                     onToggleAcceptEdits={onToggleAcceptEdits}
                     capabilities={capabilities}
-                    onPickFile={onAttachFiles && capabilities?.supports_images !== false ? handlePickFile : undefined}
+                    // **Not on a hosted session.** An attachment is carried by
+                    // packing the message into a JSON array of parts, and the
+                    // ACP path sends whatever it is handed as a *single text
+                    // block* — so the agent receives the JSON itself while the
+                    // composer shows an attachment going out. Real support
+                    // means mapping parts onto ACP content blocks and asking
+                    // `promptCapabilities` first; until then the honest thing
+                    // is not to offer it.
+                    onPickFile={
+                      !isHosted && onAttachFiles && capabilities?.supports_images !== false ? handlePickFile : undefined
+                    }
                   />
                   {/* Beside the menu rather than inside it. Which model is
                       answering is the one setting a person changes while
@@ -788,7 +803,12 @@ export function InputBar({
             }
             toolbarEnd={
               <>
-                <EmojiPicker assistantId={currentAssistantId} onSelect={(sticker) => onSelectSticker?.(sticker)} />
+                {/* A sticker travels the same way an attachment does — as a
+                    part in a JSON array — and reaches a hosted agent as that
+                    JSON rather than as anything it can see. See `onPickFile`. */}
+                {!isHosted && (
+                  <EmojiPicker assistantId={currentAssistantId} onSelect={(sticker) => onSelectSticker?.(sticker)} />
+                )}
                 {!isAndroid && onVoiceSend && (
                   <Tooltip delay={0}>
                     {/* The button inside picks the tooltip's trigger props up from

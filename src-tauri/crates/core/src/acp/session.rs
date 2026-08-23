@@ -19,6 +19,7 @@
 //! `interrupted`, with the whole answer folded away as process. Every finished
 //! hosted turn that called a tool was reported as stopped.
 
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
 use tokio_util::sync::CancellationToken;
@@ -50,7 +51,11 @@ const CLIENT_NAME: &str = "meridian";
 /// row gets when the adapter is old enough, or quiet enough, not to report one.
 const MODEL_LABEL: &str = "claude-code";
 /// Copied onto every row beside the model label, the way a provider's name is.
-const PROVIDER_LABEL: &str = "Claude Code";
+///
+/// `pub(super)` for the import path, which writes the same rows a live turn
+/// does and must label them identically — two spellings of the provider in one
+/// transcript would look like two providers.
+pub(super) const PROVIDER_LABEL: &str = "Claude Code";
 
 /// One assistant row, while it is still being written.
 ///
@@ -96,6 +101,46 @@ impl OpenRow {
         self.text.trim().is_empty() && self.reasoning.is_empty() && self.tool_calls.is_empty()
     }
 }
+
+/// What a `session/load`'s recital is for.
+///
+/// A load replays the whole conversation as ordinary `session/update`
+/// notifications, and there are two entirely different reasons to ask for one.
+///
+/// It happens to be harmless without any of this — every branch of
+/// [`Shared::absorb`] asks `with_turn` first and no turn is running during a
+/// load, so the replay falls on the floor. But that is an accident of two
+/// unrelated rules lining up, and two of the branches (`Plan`,
+/// `ConfigOptions`) do not ask. Saying it out loud is also what makes the other
+/// answer expressible: adopting a session this app did not start needs the
+/// replay *written*, because there it is the only transcript there is.
+enum Replay {
+    /// No load in progress. Updates are the turn talking.
+    No,
+    /// Reopening a conversation this database already has the rows for. Every
+    /// update is one of them said twice.
+    Discard,
+    /// Importing a session started somewhere else. Every update is a row
+    /// nothing here has ever written, kept until the load is over and then
+    /// turned into a transcript in one transaction.
+    Collect(Vec<Recital>),
+}
+
+impl Replay {
+    /// Whether an update belongs to the conversation happening now, rather than
+    /// to a recital of one that already happened.
+    fn is_live(&self) -> bool {
+        matches!(self, Replay::No)
+    }
+}
+
+/// One line of a recited conversation, kept in the order it arrived.
+///
+/// Deliberately the mapping's own vocabulary rather than a second one: the
+/// difference between a live update and a replayed one is what is *done* with
+/// it, and inventing a parallel type here would be somewhere for the two to
+/// drift apart.
+pub(super) type Recital = Effect;
 
 /// A message the user put into a turn that was already running, which the
 /// agent has taken and the transcript still owes a row.
@@ -146,19 +191,37 @@ struct Shared {
     /// exist. See [`Shared::merge_config`] for why this is merged rather than
     /// replaced.
     config: Mutex<Vec<protocol::SessionConfigOption>>,
-    /// A `session/load` is in progress and the updates arriving are the agent
-    /// reciting a conversation we already have rows for.
+    /// Whether a `session/load` is in progress, and what to do with what it
+    /// recites. See [`Replay`].
+    replay: Mutex<Replay>,
+    /// Every `toolCallId` this session has ever announced.
     ///
-    /// It happens to be harmless without this — every branch of [`absorb`]
-    /// asks `with_turn` first and no turn is running during a load, so the
-    /// replay falls on the floor. But that is an accident of two unrelated
-    /// rules lining up, and two of the branches (`Plan`, `ConfigOptions`) do
-    /// not ask. Saying it out loud costs one atomic and makes the *other*
-    /// answer expressible: adopting a session this app did not start needs the
-    /// replay written down, because there it is the only transcript there is.
+    /// **On the session, because that is the scope the id is unique in** — and
+    /// because the row it landed on is gone by the time the repeat arrives. The
+    /// adapter announces a call twice, from two sources that can arrive in
+    /// either order, and the second one can be overtaken by the first call's
+    /// result *and* by the next call. Asked of the open row instead, that late
+    /// repeat looks new: it is pushed onto whichever round is open by then,
+    /// drawing a second card no result will ever close, and leaving that round
+    /// with more calls than results — which is what
+    /// [`Shared::absorb`]'s `ToolResult` arm reads to decide the turn has
+    /// stopped running tools, so the phase stays at `RunningTool` for the rest
+    /// of the turn.
     ///
-    /// [`absorb`]: Shared::absorb
-    replaying: std::sync::atomic::AtomicBool,
+    /// Only ever grows, and only during a live turn: the [`Replay`] gate at the
+    /// top of `absorb` returns before this is reached, so a recital cannot fill
+    /// it with ids belonging to rows this app already has.
+    announced: Mutex<HashSet<String>>,
+    /// Assistant rows this turn produced and could not store.
+    ///
+    /// A refused write leaves the answer on screen and absent from the
+    /// database: well-formed, and missing a paragraph the moment anybody
+    /// reloads. That is the same shape as an update the reader had to drop, and
+    /// it gets the same treatment — [`AcpSession::finish`] refuses to call such
+    /// a turn `Done`. Counted rather than returned because the two writers are
+    /// `open_round_if_settled`, which cannot fail a turn from where it stands,
+    /// and `finish` itself.
+    unwritten_rows: std::sync::atomic::AtomicUsize,
     /// The agent is answering into a conversation it cannot see, and has not
     /// been told yet.
     ///
@@ -186,6 +249,16 @@ impl Shared {
     fn with_turn<T>(&self, f: impl FnOnce(&mut TurnState) -> T) -> Option<T> {
         let mut guard = self.turn.lock().ok()?;
         guard.as_mut().map(f)
+    }
+
+    /// Record a `toolCallId` as announced, answering whether that was the first
+    /// time. `None` is a poisoned lock, treated the way [`Shared::with_turn`]
+    /// treats one: the update is dropped rather than guessed at.
+    ///
+    /// See [`Shared::announced`] for why the session is the right scope.
+    fn announce(&self, call_id: &str) -> Option<bool> {
+        let mut seen = self.announced.lock().ok()?;
+        Some(seen.insert(call_id.to_string()))
     }
 
     /// What to record as the model on a row written now.
@@ -225,6 +298,11 @@ impl Shared {
     /// fetch. The knobs then stayed missing until the agent happened to change
     /// one of its own accord. Announcing here is what makes that unforgettable,
     /// since there is no other way to change the set.
+    /// **Except while a session is being imported**, where the conversation
+    /// this would name does not exist yet — it is written in the same
+    /// transaction as the transcript, once the recital is complete. The model
+    /// is still merged, because that is how the imported rows learn which model
+    /// answered; only the announcement is held back.
     fn merge_config(&self, incoming: Vec<protocol::SessionConfigOption>) {
         if let Some(model) = incoming.iter().find_map(|o| o.as_model()) {
             self.set_model(model.to_string());
@@ -232,11 +310,30 @@ impl Shared {
         if let Ok(mut held) = self.config.lock() {
             merge_options(&mut held, incoming);
         }
-        self.emit(serde_json::json!({
-            "type": "acp_config",
-            "conversation_id": self.conversation_id,
-            "config_options": self.config_options(),
-        }));
+        if !self.importing() {
+            self.emit(serde_json::json!({
+                "type": "acp_config",
+                "conversation_id": self.conversation_id,
+                "config_options": self.config_options(),
+            }));
+        }
+    }
+
+    /// Whether this session exists only to be read into a transcript.
+    ///
+    /// Takes the `replay` lock, which is not reentrant: no caller may already
+    /// hold it. Today none does — `absorb`'s gate is a `let` chain whose guard
+    /// is dropped at the end of its `if`, and the `match` after it is a
+    /// separate statement — but a `merge_config` moved *into* that gate block
+    /// would deadlock rather than fail to compile.
+    fn importing(&self) -> bool {
+        self.replay.lock().is_ok_and(|r| matches!(*r, Replay::Collect(_)))
+    }
+
+    fn set_replay(&self, mode: Replay) {
+        if let Ok(mut slot) = self.replay.lock() {
+            *slot = mode;
+        }
     }
 
     fn config_options(&self) -> Vec<protocol::SessionConfigOption> {
@@ -244,18 +341,34 @@ impl Shared {
     }
 
     async fn absorb(&self, notification: SessionNotification) {
-        // The agent reciting what it already has. Every one of these is a row
-        // this database wrote the first time round, so writing them again would
-        // double the transcript — see [`Shared::replaying`].
-        if self.replaying.load(std::sync::atomic::Ordering::Relaxed) {
+        let effect = mapping::effect_of(notification.update);
+
+        // The agent reciting rather than answering. Which of the two things
+        // that means is [`Replay`]'s to say; this is the one place either is
+        // acted on, and both of them end the update's journey here.
+        if let Ok(mut replay) = self.replay.lock()
+            && !replay.is_live()
+        {
+            if let Replay::Collect(recital) = &mut *replay
+                && effect != Effect::Ignored
+            {
+                recital.push(effect);
+            }
             return;
         }
-        let effect = mapping::effect_of(notification.update);
+
         // Every branch below takes the lock, drops it, and only then emits.
         // Emitting under the lock would put a sink's latency inside a critical
         // section the reader is feeding.
         match effect {
-            Effect::Text(chunk) => {
+            // The agent echoing back the prompt it was sent. This app wrote
+            // that row before the prompt ever reached the adapter, so drawing
+            // the echo would show the question twice. Dropped *here* rather
+            // than in the mapping because it is a fact about this path: the
+            // same update, arriving during an import, is the only record of the
+            // question there is.
+            Effect::UserText { .. } => {}
+            Effect::Text { text: chunk, .. } => {
                 // Prose arriving after a result is the next round talking, so it
                 // gets a row of its own — see [`OpenRow`] for what depends on it.
                 self.open_round_if_settled().await;
@@ -272,7 +385,7 @@ impl Shared {
                     "conversation_id": self.conversation_id,
                 }));
             }
-            Effect::Reasoning(chunk) => {
+            Effect::Reasoning { text: chunk, .. } => {
                 self.open_round_if_settled().await;
                 let Some(message_id) = self.with_turn(|t| {
                     t.row.reasoning.push_str(&chunk);
@@ -292,6 +405,23 @@ impl Shared {
                 tool_name,
                 arguments,
             } => {
+                // **Deduplicated before the round is rotated, and the order is
+                // the whole of it.** The adapter announces a call twice, and
+                // the second announcement can arrive *after* the result — at
+                // which point the row is settled. Rotating first empties the
+                // row this call is already on, so the repeat finds nothing to
+                // match, opens a round of its own and draws a second card that
+                // no result will ever close.
+                //
+                // So: a known id revises where it stands. Only an id nobody has
+                // seen is allowed to start the next round — which it must,
+                // because a round can end and the next one open with a call and
+                // no prose at all. Left joined to the previous row the
+                // transcript records `assistant(A, B) → result A → result B`:
+                // two calls issued together, when B was in fact decided after
+                // seeing A's result. A serial dependency persisted as a
+                // parallel one.
+                //
                 // A `toolCallId` is unique within an ACP session, so the same id
                 // twice is one call being announced twice — which the adapter
                 // does, from two sources that can arrive in either order, and
@@ -303,15 +433,33 @@ impl Shared {
                 // calls). That makes this the only place that can tell the
                 // difference, and getting it wrong drew every shell command
                 // twice — once as the placeholder, once as itself.
-                let known = self.with_turn(|t| t.row.tool_calls.iter().any(|c| c.id == call_id));
-                match known {
-                    Some(true) => {
-                        self.revise(&call_id, &tool_name, &arguments);
+                //
+                // **Asked of the session, not of the row.** The row is the wrong
+                // scope by exactly one boundary: `Call(A) → Result(A) → Call(B)`
+                // rotates the round, and a repeat of `A` arriving after that
+                // finds a row holding only `B`. See [`Shared::announced`].
+
+                // Nothing to land on, so nothing is recorded as announced
+                // either — an id spent between turns must not suppress itself.
+                if self.with_turn(|_| ()).is_none() {
+                    return;
+                }
+                match self.announce(&call_id) {
+                    // Where it still stands, this fills it in; where the round
+                    // holding it has already been written out, `revise` reaches
+                    // the stored row instead. That second case is the common
+                    // one for the announcement that carries the real arguments,
+                    // which is why it may not simply be dropped.
+                    Some(false) => {
+                        self.revise(&call_id, &tool_name, &arguments).await;
                         return;
                     }
-                    Some(false) => {}
+                    Some(true) => {}
                     None => return,
                 }
+
+                // Only now, with the id known to be new.
+                self.open_round_if_settled().await;
 
                 let Some(message_id) = self.with_turn(|t| {
                     t.row.tool_calls.push(provider::ToolCall {
@@ -337,7 +485,7 @@ impl Shared {
                 call_id,
                 tool_name,
                 arguments,
-            } => self.revise(&call_id, &tool_name, &arguments),
+            } => self.revise(&call_id, &tool_name, &arguments).await,
             Effect::ToolResult {
                 call_id,
                 result,
@@ -410,17 +558,23 @@ impl Shared {
             (!row.reasoning.is_empty()).then_some(row.reasoning.as_str()),
             tool_calls_json.as_deref(),
             None,
-            MessageUsage {
-                input_tokens: None,
-                output_tokens: None,
-                cache_read_tokens: None,
-                cache_write_tokens: None,
-                server_tool_calls: None,
-            },
+            // Nothing to declare, and nothing this path could declare: the
+            // tokens went to whatever `claude` is signed in as and no figure
+            // here would be about a request this app made. Written as the
+            // default rather than five `None`s so that a column added to the
+            // usage struct does not have to be echoed by a module that has no
+            // opinion about any of them.
+            MessageUsage::default(),
         )
         .await
         {
             tracing::error!(error = %e, "could not store an ACP assistant row");
+            // Counted, not just logged. What the reader saw stream past is now
+            // in no database, and every later row still lands — so the
+            // transcript reloads well-formed with a paragraph missing and
+            // nothing to say so. `finish` reads this and refuses to call the
+            // turn `Done`, exactly as it does for a dropped update.
+            self.unwritten_rows.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             return parent.to_string();
         }
 
@@ -609,22 +763,47 @@ impl Shared {
     ///
     /// Only ever *adds* information. A revision that arrived without arguments
     /// would otherwise blank the ones already shown — the adapter sends plain
-    /// progress beats on the same shape.
-    fn revise(&self, call_id: &str, tool_name: &str, arguments: &str) {
-        let empty_args = arguments.trim().is_empty() || arguments == "{}";
+    /// progress beats on the same shape, and those are the majority.
+    ///
+    /// **Two places to look, and the second one is not an edge case.** The open
+    /// row is the fast path. But the two announcements come from two sources
+    /// that arrive in either order, and `Call(A) {} → Result(A) → Call(B)`
+    /// closes the round holding `A` — so the one carrying its real arguments
+    /// can land after the row is already in the database. Stopping at the open
+    /// row leaves `{}` in the transcript and in the audit copy for ever, which
+    /// reads as a call that genuinely took no arguments.
+    async fn revise(&self, call_id: &str, tool_name: &str, arguments: &str) {
+        let name = (!tool_name.is_empty()).then_some(tool_name);
+        let args = (!(arguments.trim().is_empty() || arguments == "{}")).then_some(arguments);
+        if name.is_none() && args.is_none() {
+            // An ordinary progress beat. Nothing to add, and nothing worth a
+            // database scan — these arrive throughout a long call.
+            return;
+        }
 
         let updated = self.with_turn(|t| {
             let call = t.row.tool_calls.iter_mut().find(|c| c.id == call_id)?;
-            if !tool_name.is_empty() {
-                call.name = tool_name.to_string();
+            if let Some(name) = name {
+                call.name = name.to_string();
             }
-            if !empty_args {
-                call.arguments = arguments.to_string();
+            if let Some(args) = args {
+                call.arguments = args.to_string();
             }
             Some((call.name.clone(), call.arguments.clone(), t.row.message_id.clone()))
         });
 
-        let Some(Some((tool_name, arguments, message_id))) = updated else {
+        let landed = match updated {
+            Some(Some((tool_name, arguments, message_id))) => Some((message_id, tool_name, arguments)),
+            // Either no turn is running, or the round this call belongs to has
+            // been written out. Only the second is worth chasing, and it needs
+            // the turn id to bound the search.
+            _ => match self.with_turn(|t| t.turn_id.clone()) {
+                Some(turn_id) => self.revise_stored(&turn_id, call_id, name, args).await,
+                None => None,
+            },
+        };
+
+        let Some((message_id, tool_name, arguments)) = landed else {
             return;
         };
         self.emit(serde_json::json!({
@@ -635,6 +814,39 @@ impl Shared {
             "message_id": message_id,
             "conversation_id": self.conversation_id,
         }));
+    }
+
+    /// The half of [`Shared::revise`] that reaches a row already stored.
+    async fn revise_stored(
+        &self,
+        turn_id: &str,
+        call_id: &str,
+        tool_name: Option<&str>,
+        arguments: Option<&str>,
+    ) -> Option<(String, String, String)> {
+        let pool = self.services.db.clone();
+        let (turn_id, call_id) = (turn_id.to_string(), call_id.to_string());
+        let (name, args) = (tool_name.map(str::to_string), arguments.map(str::to_string));
+        let found = tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            crate::db::ops::message::revise_tool_call(&mut conn, &turn_id, &call_id, name.as_deref(), args.as_deref())
+                .map_err(|e| e.to_string())
+        })
+        .await;
+
+        // Logged, never fatal. What is lost is the arguments on one card, which
+        // is what was already lost before this path existed.
+        match found {
+            Ok(Ok(row)) => row,
+            Ok(Err(e)) => {
+                tracing::debug!(error = %e, "could not fill in a stored ACP tool call");
+                None
+            }
+            Err(e) => {
+                tracing::debug!(error = %e, "filling in a stored ACP tool call panicked");
+                None
+            }
+        }
     }
 
     /// Mirror the agent's plan into the todo list.
@@ -740,6 +952,37 @@ struct Owed {
     memory_lost: bool,
 }
 
+/// Whether the prompt carrying an [`Owed`] ever reached the adapter.
+///
+/// [`AcpSession::finish`] used to read this off the outcome — a reply means the
+/// adapter took the prompt, and the prompt is what the explanations rode on.
+/// That is true of every reply the *adapter* sends and false of the one this app
+/// writes itself: a turn stopped before its request was first polled deliberately
+/// does not send it, and is written up as `cancelled` from a synthesised success.
+/// Settling there spends the interrupted-turn report, the in-doubt queue items
+/// and the memory-loss notice on an agent that received none of them — and all
+/// three clear exactly once, so the turn that does reach the adapter says
+/// nothing about any of it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PromptDelivery {
+    Sent,
+    NeverSent,
+}
+
+impl PromptDelivery {
+    /// Whether a turn ending this way is proof the agent read what rode on the
+    /// prompt.
+    ///
+    /// Both halves are needed and neither is enough. The reply is what says the
+    /// adapter took it — a `cancelled` stop reason included, since the user
+    /// stopped the work rather than the reading, while an `Err` may be a pipe
+    /// that closed before the request went out. And `Sent` is what says the
+    /// reply came from the adapter at all.
+    fn read_by(self, outcome: &Result<serde_json::Value, PeerError>) -> bool {
+        self == PromptDelivery::Sent && outcome.is_ok()
+    }
+}
+
 /// What the agent is told when it has been given a conversation it has no
 /// record of.
 ///
@@ -843,6 +1086,20 @@ struct Opening<'a> {
     /// Whether failing to resume is worth telling the agent about. False for a
     /// new conversation: there is no transcript above for it to be blind to.
     transcript_above: bool,
+    /// Whether the recital a resume produces is something this app already has
+    /// rows for, or the only copy of a conversation it has never seen.
+    keep_recital: bool,
+    /// Whether a resume that fails should start a fresh session instead.
+    ///
+    /// Right for a conversation being reopened — a session id outlives the
+    /// session it names, and the answer to "that one is gone" is a new session
+    /// rather than a dead conversation. Wrong for an import, where there is
+    /// nothing to import from a session that was just created, and creating one
+    /// leaves a stray session behind on the agent's disk every time somebody
+    /// tries. It also buries the reason: "not found", "cwd does not exist" and
+    /// "the adapter cannot load sessions" want three different responses and
+    /// the fallback turns all three into the same one.
+    fall_back_to_new: bool,
 }
 
 impl AcpSession {
@@ -866,7 +1123,9 @@ impl AcpSession {
             turn: Mutex::new(None),
             model: Mutex::new(None),
             config: Mutex::new(Vec::new()),
-            replaying: std::sync::atomic::AtomicBool::new(false),
+            replay: Mutex::new(Replay::No),
+            announced: Mutex::new(HashSet::new()),
+            unwritten_rows: std::sync::atomic::AtomicUsize::new(0),
             memory_lost: Mutex::new(false),
         });
         let peer = Peer::start(process, shared.clone() as Arc<dyn Handler>);
@@ -930,6 +1189,8 @@ impl AcpSession {
                 cwd: &cwd,
                 resume: None,
                 transcript_above: false,
+                keep_recital: false,
+                fall_back_to_new: true,
             },
         )
         .await
@@ -953,9 +1214,79 @@ impl AcpSession {
                 cwd: &cwd,
                 resume: resume.as_deref(),
                 transcript_above,
+                keep_recital: false,
+                fall_back_to_new: true,
             },
         )
         .await
+    }
+
+    /// A session opened only to be read.
+    ///
+    /// The conversation id is minted by the caller and does **not** exist in
+    /// the database yet: nothing is written until the recital is complete, so
+    /// that the conversation row, the `acp_sessions` row and every message land
+    /// in one transaction or not at all. A half-imported conversation sitting
+    /// in the sidebar is the failure this shape rules out.
+    ///
+    /// Fails rather than falling back when the session cannot be loaded, and
+    /// the failure carries the agent's own words. For a reopen a fresh session
+    /// is the right answer; here there is nothing to import from one, and
+    /// making one anyway leaves a stray session on the agent's disk for every
+    /// attempt while replacing three distinguishable reasons — gone, wrong
+    /// directory, adapter cannot load — with one guess.
+    pub(super) async fn open_for_import(
+        services: Services,
+        config: &AcpConfig,
+        conversation_id: String,
+        cwd: &str,
+        session_id: &str,
+    ) -> Result<Arc<Self>, String> {
+        Self::open_with(
+            services,
+            config,
+            conversation_id,
+            Opening {
+                cwd,
+                resume: Some(session_id),
+                transcript_above: false,
+                keep_recital: true,
+                fall_back_to_new: false,
+            },
+        )
+        .await
+    }
+
+    /// The recited conversation, taken out of the session that collected it.
+    ///
+    /// Taken rather than borrowed: it is written once, and a second caller
+    /// getting a second copy would be a second transcript.
+    pub(super) fn take_recital(&self) -> Vec<Recital> {
+        let Ok(mut replay) = self.shared.replay.lock() else {
+            return Vec::new();
+        };
+        match std::mem::replace(&mut *replay, Replay::No) {
+            Replay::Collect(recital) => recital,
+            other => {
+                *replay = other;
+                Vec::new()
+            }
+        }
+    }
+
+    /// What the agent last said about its own knobs, which is where the model
+    /// is. Read by an import to record which model wrote the rows.
+    pub(super) fn model(&self) -> String {
+        self.shared.model()
+    }
+
+    /// How many updates the reader had to throw away over this session's life.
+    ///
+    /// An import reads it across the load: a replay is a burst, the notify
+    /// queue drops on overflow, and a transcript with an invisible hole in it
+    /// is worse than no import at all.
+    pub(super) fn dropped_notifications(&self) -> u64 {
+        self.peer.dropped_notifications()
     }
 
     /// Greet the adapter and open a session in `cwd`.
@@ -989,25 +1320,47 @@ impl AcpSession {
         let steering = init.steering_supported();
         tracing::info!(
             protocol_version = init.protocol_version,
+            // The default command is an unpinned `npx -y`, so which adapter
+            // answered is a fact about *today* and nothing in this repository
+            // records it. Everything this client knows about replay shapes,
+            // `messageId` stamping and what `session/list` returns was measured
+            // against one version; when that stops being true the symptom will
+            // be a transcript that is subtly wrong, and this line is the only
+            // place that will say which build produced it.
+            agent = init.agent_info.as_ref().map(|a| format!("{} {}", a.name, a.version)),
             load_session = init.agent_capabilities.load_session,
+            lists_sessions = init.agent_capabilities.lists_sessions(),
             auth_method_count = init.auth_methods.len(),
             steering,
             "ACP adapter initialised"
         );
 
         // Picking the session back up, when there is one and the agent can.
-        // Tried first and allowed to fail: a session id outlives the session it
-        // names — the user can delete it, `claude` can prune it — and the right
-        // answer to "that one is gone" is a fresh session, not a dead
-        // conversation.
-        if let Some(resume) = opening.resume.filter(|_| init.agent_capabilities.load_session) {
-            match Self::load(peer, shared, cwd, resume).await {
+        // Tried first and — for a reopen — allowed to fail: a session id
+        // outlives the session it names, the user can delete it and `claude`
+        // can prune it, and the right answer to "that one is gone" is a fresh
+        // session rather than a dead conversation. `fall_back_to_new` is where
+        // that stops being right.
+        if let Some(resume) = opening.resume {
+            let refused = (!init.agent_capabilities.load_session)
+                .then(|| "this adapter cannot load existing sessions".to_string());
+            let outcome = match refused {
+                Some(why) => Err(why),
+                None => Self::load(peer, shared, cwd, resume, opening.keep_recital).await,
+            };
+            match outcome {
                 Ok(session) => {
                     return Ok(Handshook {
                         acp_session_id: session,
                         steering,
                         resumed: true,
                     });
+                }
+                // Nothing to fall back *to*: an import wants that session or
+                // none, and a `session/new` here would create one on the
+                // agent's disk that nobody asked for and nothing will use.
+                Err(e) if !opening.fall_back_to_new => {
+                    return Err(format!("could not open session `{resume}`: {e}"));
                 }
                 Err(e) => tracing::warn!(
                     error = %e,
@@ -1048,15 +1401,20 @@ impl AcpSession {
         })
     }
 
-    /// Ask the agent to pick a session back up, and swallow the recital.
+    /// Ask the agent to pick a session back up, and deal with the recital.
     ///
-    /// A load replays the whole conversation as `session/update` notifications
-    /// — every one of them a row this database already has. So the gate goes up
-    /// before the request and comes down only after the reply *and* a drain:
-    /// the reply travels a different route from the notifications and routinely
-    /// overtakes them, which is the same reason `prompt` drains before it
-    /// finishes a turn.
-    async fn load(peer: &Arc<Peer>, shared: &Shared, cwd: &str, resume: &str) -> Result<String, String> {
+    /// A load replays the whole conversation as `session/update` notifications.
+    /// `keep` says which kind of recital that is — [`Replay::Discard`] for a
+    /// conversation this database already holds, [`Replay::Collect`] for one it
+    /// has never seen. Either way the gate goes up before the request and comes
+    /// down only after the reply *and* a drain: the reply travels a different
+    /// route from the notifications and routinely overtakes them, which is the
+    /// same reason `prompt` drains before it finishes a turn.
+    ///
+    /// The gate is also still up while the options are merged, because that is
+    /// what keeps an import from announcing knobs for a conversation whose row
+    /// has not been written yet.
+    async fn load(peer: &Arc<Peer>, shared: &Shared, cwd: &str, resume: &str, keep: bool) -> Result<String, String> {
         let params = serde_json::to_value(protocol::LoadSessionParams {
             session_id: resume.to_string(),
             cwd: cwd.to_string(),
@@ -1064,18 +1422,50 @@ impl AcpSession {
         })
         .map_err(|e| e.to_string())?;
 
-        shared.replaying.store(true, std::sync::atomic::Ordering::Relaxed);
+        shared.set_replay(if keep {
+            Replay::Collect(Vec::new())
+        } else {
+            Replay::Discard
+        });
         let answered = peer.request("session/load", params).await;
         peer.drain_notifications().await;
-        shared.replaying.store(false, std::sync::atomic::Ordering::Relaxed);
 
-        let session: protocol::NewSessionResult =
-            serde_json::from_value(answered.map_err(|e| describe(peer, e))?).map_err(|e| e.to_string())?;
+        // The gate has to come down on the failure path as well. A load that
+        // fails falls back to `session/new` on the same session, and one still
+        // set to discard would swallow that session's first turn — every chunk
+        // of it read as more recital.
+        // `LoadSessionResult`, not `NewSessionResult`: the schema's load
+        // response has no `sessionId` and no required field at all, so `{}` and
+        // `null` are both conforming answers. Parsed as a new session they
+        // would read as a failure, send a reopen down the `session/new`
+        // fallback and lose the agent's memory of the conversation silently.
+        // `null` reaches here as `Value::Null`, which deserialises to the
+        // default rather than an error.
+        let session = match answered
+            .map_err(|e| describe(peer, e))
+            .and_then(protocol::LoadSessionResult::read)
+        {
+            Ok(session) => session,
+            // The gate has to come down on the failure path as well. A load
+            // that fails falls back to `session/new` on the same session, and
+            // one still set to discard would swallow that session's first turn
+            // — every chunk of it read as more recital.
+            Err(e) => {
+                shared.set_replay(Replay::No);
+                return Err(e);
+            }
+        };
         shared.merge_config(session.config_options);
-        // The reply, not the request. Resuming goes through the SDK and it
-        // answers with whichever session it actually recovered; storing what we
-        // asked for would have the next resume chase an id that never existed.
-        Ok(session.session_id)
+        // A collection stays up until the caller takes it with `take_recital`,
+        // which is also what puts the session back to live.
+        if !keep {
+            shared.set_replay(Replay::No);
+        }
+        // The reply when it names one, because a resume can land on a different
+        // session than the one asked for and storing the request would have the
+        // next resume chase an id that never existed. Silence means it took the
+        // one it was given — there is nothing else it could mean.
+        Ok(session.session_id.unwrap_or_else(|| resume.to_string()))
     }
 
     pub fn is_alive(&self) -> bool {
@@ -1319,9 +1709,45 @@ impl AcpSession {
         // next prompt would collide with it.
         let prompt = self.peer.request("session/prompt", params);
         tokio::pin!(prompt);
+        // Already stopped before the request was ever polled. Sending it now
+        // and cancelling afterwards is a race nobody wins: the cancel would
+        // reach an adapter with no turn to cancel and be ignored, and the
+        // prompt behind it would then run to completion with `cancel_sent`
+        // blocking any second attempt. Not sending it at all is both cheaper
+        // and the thing the user asked for — the turn is written up as
+        // cancelled by `finish`, down the ordinary path.
+        //
+        // `NeverSent` is the whole of what makes that safe. The reply below is
+        // written here rather than by the adapter, so it is not evidence that
+        // anything was read — see [`PromptDelivery`].
+        if cancel.is_cancelled() {
+            tracing::debug!(
+                conversation_id = %self.conversation_id,
+                "the turn was stopped before its prompt went out"
+            );
+            return self
+                .finish(
+                    services,
+                    &turn_id,
+                    Ok(serde_json::json!({ "stopReason": "cancelled" })),
+                    lease,
+                    dropped_before,
+                    owed,
+                    PromptDelivery::NeverSent,
+                )
+                .await;
+        }
         let mut cancel_sent = false;
         let outcome = loop {
             tokio::select! {
+                // **Biased, so the prompt is polled first.** `request` is lazy
+                // — nothing is written until its first poll — and with a random
+                // order a token cancelled a moment ago can win the very first
+                // pass, putting `session/cancel` on the wire ahead of the
+                // prompt it is meant to stop. The check above covers a stop
+                // that arrived before the loop; this covers one that arrives
+                // during it.
+                biased;
                 result = &mut prompt => break result,
                 // The guard is what keeps this from spinning: a cancelled token
                 // stays cancelled, so without it this arm would be ready for
@@ -1343,8 +1769,16 @@ impl AcpSession {
         // closing sentence among them. See `Peer::drain_notifications`.
         self.peer.drain_notifications().await;
 
-        self.finish(services, &turn_id, outcome, lease, dropped_before, owed)
-            .await
+        self.finish(
+            services,
+            &turn_id,
+            outcome,
+            lease,
+            dropped_before,
+            owed,
+            PromptDelivery::Sent,
+        )
+        .await
     }
 
     /// What this session still owes the agent an explanation for.
@@ -1441,7 +1875,12 @@ impl AcpSession {
                     // cannot both hold the conversation — and "all but" is the
                     // wrong guarantee for a message that says "delete the old
                     // migration".
-                    if crate::db::ops::queue::mark_dispatched(conn, queued, &turn_id, now)? == 0 {
+                    // `None`: this is a turn of its own, and with nothing
+                    // running every mode is deliverable — an `interject` left
+                    // over from a turn that has ended is still the next thing
+                    // the user meant to happen.
+                    if crate::db::ops::queue::mark_dispatched(conn, &conversation_id, queued, None, &turn_id, now)? == 0
+                    {
                         return Err(diesel::result::Error::RollbackTransaction);
                     }
                     crate::db::ops::queue::mark_settled(conn, queued, Some(&message_id), now)?;
@@ -1469,14 +1908,18 @@ impl AcpSession {
         lease: crate::turn::TurnLease,
         dropped_before: u64,
         owed: Owed,
+        sent: PromptDelivery,
     ) -> Result<(), String> {
-        // Before anything else can return early. The evidence is the reply
-        // itself: `session/prompt` answering at all means the adapter took the
+        // Before anything else can return early. The evidence is a reply the
+        // *adapter* sent: `session/prompt` answering at all means it took the
         // prompt, and the prompt is where this was written. A `cancelled` stop
         // reason still means it was read — the user stopped the work, not the
         // reading — while an `Err` is a pipe that may have closed before the
         // request went out, and leaves both ledgers owing.
-        if outcome.is_ok() && !owed.is_empty() {
+        //
+        // `sent` is the half the outcome cannot carry, and getting it from the
+        // outcome alone was a real defect: see [`PromptDelivery`].
+        if sent.read_by(&outcome) && !owed.is_empty() {
             owed.settle(services, &self.shared).await;
         }
 
@@ -1545,20 +1988,25 @@ impl AcpSession {
         // `Done` here is the failure mode with no symptom at all — the user
         // reads a truncated answer as the whole answer. Overriding a real
         // failure would be worse, so this only demotes success.
+        //
+        // A row the database refused is the same failure arriving from the
+        // other side — the answer streamed, and it is not stored — so the two
+        // are counted together rather than given separate rules.
         let lost = self.peer.dropped_notifications().saturating_sub(dropped_before);
-        let (status, reason, error) = if lost > 0 && status == TurnStatus::Done {
+        let unwritten = self.shared.unwritten_rows.swap(0, std::sync::atomic::Ordering::Relaxed);
+        let (status, reason, error) = if (lost > 0 || unwritten > 0) && status == TurnStatus::Done {
             tracing::error!(
                 lost,
+                unwritten,
                 conversation_id = %self.conversation_id,
-                "an ACP turn lost updates; its transcript is incomplete"
+                "an ACP turn's transcript is incomplete"
             );
-            (
-                TurnStatus::Failed,
-                "error".to_string(),
-                Some(format!(
-                    "{lost} update(s) from Claude Code were dropped, so this answer is incomplete."
-                )),
-            )
+            let why = if unwritten > 0 {
+                format!("{unwritten} part(s) of this answer could not be saved, so it is incomplete.")
+            } else {
+                format!("{lost} update(s) from Claude Code were dropped, so this answer is incomplete.")
+            };
+            (TurnStatus::Failed, "error".to_string(), Some(why))
         } else {
             (status, reason, error)
         };
@@ -1831,5 +2279,196 @@ mod tests {
         assert_eq!(held[0].current_str(), Some("sonnet"));
         assert_eq!(held[1].current_str(), Some("code"));
         assert_eq!(held[2].id, "effort");
+    }
+
+    /// What an ended turn proves about the explanations it carried.
+    ///
+    /// The regression this pins is the third row: a turn stopped before its
+    /// request was first polled is written up from a reply this app composes
+    /// itself, so `outcome.is_ok()` says nothing about whether anything was
+    /// read. Settling on it spends the interrupted-turn report, the in-doubt
+    /// queue items and the memory-loss notice on an agent that never saw them,
+    /// and all three clear exactly once.
+    #[test]
+    fn only_a_reply_the_adapter_actually_sent_settles_what_is_owed() {
+        let ended = |stop: &str| Ok(serde_json::json!({ "stopReason": stop }));
+        let died = || Err(PeerError::Dead("the ACP adapter exited with code 1".into()));
+
+        assert!(PromptDelivery::Sent.read_by(&ended("end_turn")));
+        // The user stopped the work, not the reading: the prompt went out and
+        // came back, so what rode on it was read.
+        assert!(PromptDelivery::Sent.read_by(&ended("cancelled")));
+
+        assert!(
+            !PromptDelivery::NeverSent.read_by(&ended("cancelled")),
+            "a reply this app wrote itself is not evidence about the agent"
+        );
+        assert!(
+            !PromptDelivery::Sent.read_by(&died()),
+            "a pipe that closed may have closed before the request went out"
+        );
+        assert!(!PromptDelivery::NeverSent.read_by(&died()));
+    }
+
+    /// A `Services` with nothing running behind it.
+    ///
+    /// Every part of it is lazy — the secrets manager does not reach the
+    /// keyring until asked, the MCP registry has no servers, the sleep
+    /// inhibitor nothing to inhibit — so this costs an in-memory database and a
+    /// temp directory. Local to this module because it is the only one that
+    /// drives [`Shared`] directly; the second caller should move it to
+    /// `services.rs`.
+    fn bare_services(dir: &std::path::Path) -> Services {
+        crate::services::Services::new(crate::services::ServicesInner {
+            db: crate::db::test_db(),
+            secrets: Arc::new(crate::secrets::SecretsManager::new(dir.to_path_buf())),
+            tools: Arc::new(crate::tools::ToolRegistry::new(dir.join("skills"), dir.join("logs"))),
+            mcp: crate::mcp::McpRegistry::new(),
+            turns: Arc::new(crate::turn::TurnCoordinator::new()),
+            approvals: crate::state::ApprovalWaiters::new(),
+            sub_agent_inboxes: crate::state::AppSubAgentInboxes::default(),
+            compact_breakers: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+            voice: crate::state::VoiceState::new(),
+            sleep: crate::sleep_inhibitor::AppSleepInhibitor::new(),
+            events: crate::events::EventBus::new(),
+            paths: crate::services::Paths {
+                data_dir: dir.to_path_buf(),
+                skills_root: dir.join("skills"),
+            },
+            #[cfg(not(target_os = "android"))]
+            acp: crate::acp::AcpRegistry::new(),
+            turn_starter: std::sync::OnceLock::new(),
+        })
+    }
+
+    fn update(json: serde_json::Value) -> SessionNotification {
+        serde_json::from_value(serde_json::json!({ "sessionId": "s", "update": json })).expect("a session update")
+    }
+
+    fn call(id: &str, name: &str, args: serde_json::Value) -> serde_json::Value {
+        serde_json::json!({
+            "sessionUpdate": "tool_call",
+            "toolCallId": id,
+            "_meta": { "claudeCode": { "toolName": name } },
+            "rawInput": args,
+        })
+    }
+
+    /// The repeat announcement that arrives after the round it belonged to has
+    /// closed.
+    ///
+    /// The adapter announces a call twice — once when it knows one is coming,
+    /// once when the input has streamed — from two sources that can arrive in
+    /// either order. `Call(A) → Result(A) → Call(B)` rotates the round, so by
+    /// the time the second `A` lands the open row holds only `B`.
+    ///
+    /// Deduplicated against that row, as this did, the repeat reads as new: a
+    /// second card for `A` that no result will ever close, and a round whose
+    /// `results.len() >= tool_calls.len()` can never come true — which is the
+    /// test that puts the turn's phase back to `Streaming`, so it sits at
+    /// `RunningTool` for the rest of the turn and a crash there is reported as
+    /// "a tool may already have run".
+    #[tokio::test]
+    async fn a_repeated_tool_call_is_not_a_second_card_once_its_round_has_closed() {
+        let dir = std::env::temp_dir().join(format!("meridian-acp-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let services = bare_services(&dir);
+
+        {
+            let mut conn = services.db.get().unwrap();
+            crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 0).unwrap();
+            crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::ClaudeCode, None, 1000).unwrap();
+        }
+        let first = begin_assistant(
+            &services.db,
+            "c1",
+            "t1",
+            (None, Some(PROVIDER_LABEL)),
+            "claude-code",
+            None,
+        )
+        .await
+        .unwrap();
+
+        let shared = Shared {
+            services: services.clone(),
+            conversation_id: "c1".into(),
+            turn: Mutex::new(Some(TurnState {
+                turn_id: "t1".into(),
+                cancel: CancellationToken::new(),
+                row: OpenRow::new(first.clone()),
+                parent: first.clone(),
+                interjected: Vec::new(),
+            })),
+            model: Mutex::new(None),
+            config: Mutex::new(Vec::new()),
+            replay: Mutex::new(Replay::No),
+            announced: Mutex::new(HashSet::new()),
+            unwritten_rows: std::sync::atomic::AtomicUsize::new(0),
+            memory_lost: Mutex::new(false),
+        };
+
+        // The first announcement is the placeholder one: the adapter knows a
+        // call is coming and not yet what it is.
+        shared.absorb(update(call("A", "Bash", serde_json::json!({})))).await;
+        shared
+            .absorb(update(serde_json::json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "A",
+                "status": "completed",
+                "content": [{ "type": "content", "content": { "type": "text", "text": "a.txt" } }],
+            })))
+            .await;
+        // Opens the next round: the row holding `A` is written out here.
+        shared
+            .absorb(update(call("B", "Read", serde_json::json!({ "file_path": "a.txt" }))))
+            .await;
+        // And now the adapter's other source finally gets round to `A`, with
+        // the arguments it did not have the first time.
+        shared
+            .absorb(update(call("A", "Bash", serde_json::json!({ "command": "ls" }))))
+            .await;
+
+        let calls = shared.with_turn(|t| t.row.tool_calls.clone()).unwrap();
+        assert_eq!(
+            calls.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
+            vec!["B"],
+            "the late repeat of A landed on B's round"
+        );
+
+        // Not dropped either. The row it belongs to is in the database by now,
+        // and `{}` left there is indistinguishable from a call that took no
+        // arguments — in the transcript and in the audit copy alike.
+        let stored = {
+            let mut conn = services.db.get().unwrap();
+            crate::db::ops::message::list_messages(&mut conn, "c1")
+                .unwrap()
+                .into_iter()
+                .filter_map(|m| m.tool_calls)
+                .flat_map(|json| crate::agent::tool_calls::parse_openai_tool_calls(Some(&json)))
+                .find(|c| c.id == "A")
+                .expect("A's row was written")
+        };
+        assert_eq!(
+            stored.arguments, r#"{"command":"ls"}"#,
+            "the late arguments reached the row"
+        );
+
+        // And the round can still settle, which is the half that decides the
+        // turn phase. With A wrongly on it, one result never reaches two calls.
+        shared
+            .absorb(update(serde_json::json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "B",
+                "status": "completed",
+                "content": [{ "type": "content", "content": { "type": "text", "text": "hello" } }],
+            })))
+            .await;
+        let (results, calls) = shared
+            .with_turn(|t| (t.row.results.len(), t.row.tool_calls.len()))
+            .unwrap();
+        assert!(results >= calls, "{results} result(s) for {calls} call(s)");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

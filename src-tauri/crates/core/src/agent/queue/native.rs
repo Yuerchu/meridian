@@ -153,7 +153,11 @@ fn take_one(
     turn_id: &str,
     now: i64,
 ) -> QueryResult<Option<(String, String)>> {
-    conn.transaction(|conn| {
+    // Immediate: this is the transaction that spans the peek and the take, so
+    // it is the one that has to hold the write lock across both. Deferred, it
+    // takes the lock at the first write — after the peek — and two drains could
+    // read the same item.
+    conn.immediate_transaction(|conn| {
         let Some(item) = crate::db::ops::queue::next_deliverable(conn, conversation_id, Delivery::Interject)? else {
             return Ok(None);
         };

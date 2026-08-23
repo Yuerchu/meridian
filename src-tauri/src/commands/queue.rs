@@ -68,9 +68,10 @@ pub async fn queue_enqueue(
 pub async fn queue_remove(app: tauri::AppHandle, conversation_id: String, id: String) -> Result<(), String> {
     let services = app.services();
     let pool = services.db.clone();
+    let conversation = conversation_id.clone();
     let removed = blocking(move || {
         let mut conn = get_conn(&pool)?;
-        ops::remove(&mut conn, &id).map_err(|e| e.to_string())
+        ops::remove(&mut conn, &conversation, &id).map_err(|e| e.to_string())
     })
     .await?;
 
@@ -114,9 +115,10 @@ pub async fn queue_set_delivery(
     let services = app.services();
     let pool = services.db.clone();
     let delivery = Delivery::parse_or_wait(&delivery);
+    let conversation = conversation_id.clone();
     let changed = blocking(move || {
         let mut conn = get_conn(&pool)?;
-        ops::set_delivery(&mut conn, &id, delivery).map_err(|e| e.to_string())
+        ops::set_delivery(&mut conn, &conversation, &id, delivery).map_err(|e| e.to_string())
     })
     .await?;
 

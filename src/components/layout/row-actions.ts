@@ -1,7 +1,7 @@
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 import { save } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToLine, Pencil, Pin, PinSlash, TrashBin } from '@gravity-ui/icons'
+import { ArrowDownToLine, Link, Pencil, Pin, PinSlash, TrashBin } from '@gravity-ui/icons'
 
 import { api } from '@/api'
 import { can } from '@/lib/capabilities'
@@ -20,7 +20,7 @@ import type { Conversation, Project } from '@/types'
  * refresh.
  */
 export interface RowAction {
-  key: 'pin' | 'rename' | 'export-sft' | 'export-dpo' | 'delete'
+  key: 'pin' | 'rename' | 'attach-session' | 'export-sft' | 'export-dpo' | 'delete'
   icon: React.ComponentType<{ className?: string }>
   label: string
   variant?: 'default' | 'destructive'
@@ -62,9 +62,18 @@ export function useConversationActions(args: {
   onTogglePin: (id: string) => void
   onRequestRename: (id: string) => void
   onRequestDelete: (id: string) => void
+  /**
+   * Point a hosted conversation at a Claude Code session on disk.
+   *
+   * Absent means the platform cannot host one at all, and the item is left out
+   * rather than disabled — a row that can only ever be greyed is clutter. Even
+   * when present it is only offered on a `claude_code` conversation: an
+   * ordinary one has no directory and no agent to resume.
+   */
+  onRequestAttachSession?: (id: string) => void
 }): (conversation: Conversation) => RowAction[] {
   const { t } = useTranslation()
-  const { onTogglePin, onRequestRename, onRequestDelete } = args
+  const { onTogglePin, onRequestRename, onRequestDelete, onRequestAttachSession } = args
 
   // The picker returns a path on the machine the *user* is at, and the export
   // is written by the machine the app is on. Connected to another one those are
@@ -85,6 +94,16 @@ export function useConversationActions(args: {
         label: t('contextMenu.rename'),
         run: () => onRequestRename(conversation.id),
       },
+      ...(onRequestAttachSession && conversation.agent_kind === 'claude_code'
+        ? [
+            {
+              key: 'attach-session' as const,
+              icon: Link,
+              label: t('sessionPicker.attachAction'),
+              run: () => onRequestAttachSession(conversation.id),
+            },
+          ]
+        : []),
       {
         key: 'export-sft',
         icon: ArrowDownToLine,
@@ -107,7 +126,7 @@ export function useConversationActions(args: {
         run: () => onRequestDelete(conversation.id),
       },
     ],
-    [t, exportBlocked, onTogglePin, onRequestRename, onRequestDelete],
+    [t, exportBlocked, onTogglePin, onRequestRename, onRequestDelete, onRequestAttachSession],
   )
 }
 

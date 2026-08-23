@@ -46,7 +46,9 @@ export function PromptQueue({ items, held, onRemove, onReorder, onSetDelivery, o
         <div data-slot="queue-held" className="flex items-center gap-2 px-3 py-2 text-xs text-warning" role="status">
           <TriangleExclamation className="size-4 shrink-0" />
           <span className="min-w-0 flex-1">{t('chat.queue.held')}</span>
-          <Button size="sm" variant="ghost" className="h-auto px-2 py-0.5 text-xs" onPress={onRelease}>
+          {/* The only way to restart a held queue, and about 20px tall without
+              the expanded hit area. */}
+          <Button size="sm" variant="ghost" className="touch-hitbox h-auto px-2 py-0.5 text-xs" onPress={onRelease}>
             {t('chat.queue.release')}
           </Button>
         </div>
@@ -61,10 +63,22 @@ export function PromptQueue({ items, held, onRemove, onReorder, onSetDelivery, o
           // *somewhere* until it appears in the conversation.
           const taken = state === 'settled'
           const settled = doubtful || taken
+          // Nothing the user may move. A held row is the third: it is a barrier
+          // like a doubtful one, `reorder` refuses to move it, and everything
+          // else is placed *after* it — so a handle there offers a drag whose
+          // only outcome is the row springing back.
+          const pinned = settled || state === 'held'
           const interject = item.delivery === 'interject'
           return (
             <PromptInput.Queue.Item key={item.id} value={item}>
-              <PromptInput.Queue.Item.Handle aria-label={t('chat.queue.reorder')} />
+              {/* No handle on a row that must not move. A settled row's
+                  position means nothing, and a doubtful one is the barrier
+                  that stops everything behind it from running on a premise
+                  nobody has confirmed — dragging past it is stepping around
+                  the very thing it is for. The backend refuses either way
+                  (`db::ops::queue::reorder`); this is so the affordance does
+                  not offer something that will not happen. */}
+              {!pinned && <PromptInput.Queue.Item.Handle aria-label={t('chat.queue.reorder')} />}
               <PromptInput.Queue.Item.Body>
                 {/* For a doubtful row the icon is the doubt rather than the
                     mode: what happens to it next is the only thing about it

@@ -79,10 +79,45 @@ pub struct Incoming {
     pub method: Option<String>,
     #[serde(default)]
     pub params: Option<serde_json::Value>,
-    #[serde(default)]
-    pub result: Option<serde_json::Value>,
+    /// **Doubly optional, and it has to be.** JSON-RPC distinguishes "no
+    /// `result` member" from "`result: null`", and the second is a *successful*
+    /// answer carrying nothing — which is what the spec's own
+    /// `LoadSessionResponse` permits, every field of it being optional.
+    ///
+    /// A plain `Option` collapses the two: serde reads an explicit `null` for
+    /// `Option<T>` as `None`, [`classify`] then finds neither a result nor an
+    /// error and calls the line [`Frame::Junk`], and the caller parked on that
+    /// id waits for ever. `Option<Option<_>>` with `default` keeps them apart —
+    /// absent is `None`, `null` is `Some(None)`.
+    ///
+    /// Not hypothetical for a different agent: `claude-agent-acp` answers
+    /// `session/load` with a whole `NewSessionResponse`, which is more than the
+    /// schema asks of it, and that generosity is the only reason this has not
+    /// hung yet.
+    ///
+    /// The derive alone will not do it — `Option<Option<T>>` still collapses,
+    /// because the *outer* `Option`'s own `Deserialize` is what turns `null`
+    /// into `None`. [`present`] is only called when the member exists, which is
+    /// what puts the distinction back.
+    ///
+    /// [`classify`]: Incoming::classify
+    /// [`present`]: self::present
+    #[serde(default, deserialize_with = "present")]
+    pub result: Option<Option<serde_json::Value>>,
     #[serde(default)]
     pub error: Option<RpcError>,
+}
+
+/// Records that a member was *there*, whatever it said.
+///
+/// serde only calls a field's `deserialize_with` when the member is present, so
+/// reaching here is itself the answer to the question the plain `Option` cannot
+/// express. Absent comes from `#[serde(default)]` instead and stays `None`.
+fn present<'de, D>(deserializer: D) -> Result<Option<Option<serde_json::Value>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    Option::<serde_json::Value>::deserialize(deserializer).map(Some)
 }
 
 /// What a line actually was.
@@ -127,8 +162,14 @@ impl Incoming {
                         id,
                         result: Err(format!("ACP error {}: {}", e.code, e.message)),
                     },
-                    (Some(value), None) => Frame::Response { id, result: Ok(value) },
-                    // An id with neither is not an answer to anything.
+                    // `result: null` is a success that carries nothing, and it
+                    // reaches the caller as `Value::Null` rather than being
+                    // dropped — see the field's own note.
+                    (Some(value), None) => Frame::Response {
+                        id,
+                        result: Ok(value.unwrap_or(serde_json::Value::Null)),
+                    },
+                    // An id with neither member is not an answer to anything.
                     (None, None) => Frame::Junk,
                 }
             }
@@ -236,6 +277,32 @@ pub struct SteeringCapability {
 pub struct AgentCapabilities {
     #[serde(default)]
     pub load_session: bool,
+    /// The session lifecycle methods beyond the four every agent must have.
+    ///
+    /// `session/load` is deliberately *not* in here — the schema says so in as
+    /// many words ("still handled by the top-level `load_session` capability")
+    /// — so the two have to be asked separately.
+    #[serde(default)]
+    pub session_capabilities: SessionCapabilities,
+}
+
+/// Presence is the answer. Each of these is `{}` when supported and absent or
+/// `null` when not, so the value carries nothing and only the option does.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCapabilities {
+    #[serde(default)]
+    pub list: Option<serde_json::Value>,
+}
+
+impl AgentCapabilities {
+    /// Whether this agent answers `session/list`.
+    ///
+    /// `null` is a legal way to say no, which `Option::is_some` would read as
+    /// yes — serde hands back `Some(Value::Null)` for an explicit null.
+    pub fn lists_sessions(&self) -> bool {
+        self.session_capabilities.list.as_ref().is_some_and(|v| !v.is_null())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -278,6 +345,91 @@ pub struct LoadSessionParams {
     /// Must be absolute — the agent refuses a relative one outright.
     pub cwd: String,
     pub mcp_servers: Vec<serde_json::Value>,
+}
+
+/// Everything the agent has on disk, optionally narrowed to one directory.
+///
+/// `cwd` absent means every project on the machine, which is what a panel
+/// offering to import a session wants — the whole point is the sessions started
+/// somewhere this app has never heard of.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListSessionsParams {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    /// From a previous reply's `next_cursor`. `claude-agent-acp` ignores it and
+    /// answers with everything in one go; the field exists because the protocol
+    /// says an agent may paginate and a client that cannot follow would silently
+    /// show a prefix.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListSessionsResult {
+    #[serde(default)]
+    pub sessions: Vec<SessionInfo>,
+    #[serde(default)]
+    pub next_cursor: Option<String>,
+}
+
+/// One session the agent knows about.
+///
+/// `title` is the SDK's own summary of the conversation — a `/rename` if there
+/// was one, otherwise a generated line, otherwise the first prompt. Far better
+/// than naming the folder, which is all a session started here gets.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionInfo {
+    pub session_id: String,
+    /// Absolute. The adapter drops any session that has none, so this is never
+    /// the empty string in practice.
+    pub cwd: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    /// ISO 8601. Kept as the string it arrived as rather than parsed here:
+    /// nothing in core sorts on it, and the front end formats it anyway.
+    #[serde(default)]
+    pub updated_at: Option<String>,
+}
+
+/// What `session/load` answers with.
+///
+/// **Every field is optional, `sessionId` most of all — the schema does not
+/// have one.** `LoadSessionResponse` is `{ modes?, configOptions?, _meta? }`,
+/// so a conforming agent may answer `{}` or even `null`, and this parse has to
+/// survive both. Reusing [`NewSessionResult`] here read the adapter rather than
+/// the spec: `claude-agent-acp` returns a whole `NewSessionResponse` from its
+/// load, which is more than it owes, and against any agent that answers what
+/// the schema says the parse would have failed — sending a reopen down the
+/// `session/new` fallback and losing the agent's memory of the conversation
+/// without a word.
+///
+/// An absent `session_id` means the agent recovered the session that was asked
+/// for; there is nothing else it could mean.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoadSessionResult {
+    #[serde(default)]
+    pub session_id: Option<String>,
+    #[serde(default)]
+    pub config_options: Vec<SessionConfigOption>,
+}
+
+impl LoadSessionResult {
+    /// Read one out of whatever came back, `null` included.
+    ///
+    /// A struct cannot deserialize from `null` — serde refuses with "invalid
+    /// type" — and `null` is precisely the emptiest conforming answer, so the
+    /// one shape most likely to arrive from an agent that implements the schema
+    /// exactly is the one a plain `from_value` rejects.
+    pub fn read(value: serde_json::Value) -> Result<Self, String> {
+        if value.is_null() {
+            return Ok(Self::default());
+        }
+        serde_json::from_value(value).map_err(|e| e.to_string())
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -341,6 +493,16 @@ pub struct ConfigOptionValue {
     pub description: Option<String>,
 }
 
+/// What Claude Code's model knob says when the user has never picked one.
+///
+/// A real value on the wire and not a model id, so it must not be recorded as
+/// one: `messages.model_id` is read back as the model that answered, and
+/// `claude-code` is already the agreed way of saying "it did not say". Measured
+/// — a session with no explicit model comes back with `currentValue:
+/// "default"`, and an import bakes whatever this returns into every row it
+/// writes.
+const UNSPECIFIED_MODEL: &str = "default";
+
 impl SessionConfigOption {
     /// The model id this option names, if it is the model selector.
     ///
@@ -351,7 +513,10 @@ impl SessionConfigOption {
         if !self.names_a("model") {
             return None;
         }
-        self.current_value.as_ref()?.as_str().filter(|v| !v.is_empty())
+        self.current_value
+            .as_ref()?
+            .as_str()
+            .filter(|v| !v.is_empty() && *v != UNSPECIFIED_MODEL)
     }
 
     /// Whether this option is the one called `what`, by category or by id.
@@ -558,14 +723,37 @@ pub struct SessionNotification {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "sessionUpdate", rename_all = "snake_case")]
 pub enum SessionUpdate {
+    #[serde(rename_all = "camelCase")]
     UserMessageChunk {
         content: ContentBlock,
+        /// See [`SessionUpdate::AgentMessageChunk`] — the field means the same
+        /// thing here, and for a replayed user message it is the SDK's uuid for
+        /// the row rather than an API message id.
+        #[serde(default)]
+        message_id: Option<String>,
     },
+    #[serde(rename_all = "camelCase")]
     AgentMessageChunk {
         content: ContentBlock,
+        /// Which message these chunks belong to. The schema's own words: "All
+        /// chunks belonging to the same message share the same `messageId`. A
+        /// change in `messageId` indicates a new message has started."
+        ///
+        /// The live path does not need it — a round boundary there is a tool
+        /// result landing — but a replay has no such rhythm, so this is what
+        /// says where one assistant row ends and the next begins. Absent from
+        /// `tool_call` and `plan`, which do not need one: they arrive in order
+        /// and belong to whichever message is open.
+        #[serde(default)]
+        message_id: Option<String>,
     },
+    #[serde(rename_all = "camelCase")]
     AgentThoughtChunk {
         content: ContentBlock,
+        /// The same id as the prose it was thought for: thinking blocks live in
+        /// the same API message.
+        #[serde(default)]
+        message_id: Option<String>,
     },
     ToolCall(ToolCall),
     ToolCallUpdate(ToolCall),
@@ -758,6 +946,57 @@ mod tests {
         assert!(matches!(parsed.classify(), Frame::Notification { .. }));
     }
 
+    /// **`result: null` is a success, and reading it as a missing member hangs
+    /// the caller for ever.**
+    ///
+    /// JSON-RPC requires the `result` member on success and says nothing about
+    /// it being non-null; ACP's own `LoadSessionResponse` has no required field
+    /// at all, so `null` is a conforming answer to `session/load`. Collapsed
+    /// into "absent", the line becomes `Junk`, nothing completes the pending
+    /// slot, and a reopen blocks until the process dies.
+    #[test]
+    fn a_null_result_completes_its_caller_instead_of_being_dropped() {
+        let raw = r#"{"jsonrpc":"2.0","id":4,"result":null}"#;
+        let parsed: Incoming = serde_json::from_str(raw).unwrap();
+        match parsed.classify() {
+            Frame::Response { id, result } => {
+                assert_eq!(id, 4);
+                assert_eq!(result.unwrap(), serde_json::Value::Null);
+            }
+            _ => panic!("a null result is an answer, not junk"),
+        }
+
+        // And an id carrying neither member still is junk — that is what the
+        // double option keeps distinguishable.
+        let neither: Incoming = serde_json::from_str(r#"{"jsonrpc":"2.0","id":5}"#).unwrap();
+        assert!(matches!(neither.classify(), Frame::Junk));
+    }
+
+    /// The load reply has no required field, `sessionId` least of all — the
+    /// schema's `LoadSessionResponse` is `{ modes?, configOptions?, _meta? }`.
+    /// Parsed as a `NewSessionResult` every conforming answer would look like a
+    /// failure, and a reopen would silently start a fresh session instead.
+    #[test]
+    fn a_load_reply_may_say_nothing_at_all() {
+        let empty = LoadSessionResult::read(serde_json::json!({})).unwrap();
+        assert_eq!(empty.session_id, None);
+        assert!(empty.config_options.is_empty());
+
+        let null = LoadSessionResult::read(serde_json::Value::Null).unwrap();
+        assert_eq!(null.session_id, None);
+
+        // And the adapter's own over-delivery still parses, id and all.
+        let generous = LoadSessionResult::read(serde_json::json!({
+            "sessionId": "sess-7-resumed",
+            "configOptions": [
+                {"id": "model", "name": "Model", "category": "model", "type": "select", "currentValue": "opus"}
+            ],
+        }))
+        .unwrap();
+        assert_eq!(generous.session_id.as_deref(), Some("sess-7-resumed"));
+        assert_eq!(generous.config_options.len(), 1);
+    }
+
     /// An error response is still a response: the pipe is fine, the agent said
     /// no. Treating it as a broken frame would tear down a healthy session.
     #[test]
@@ -789,7 +1028,7 @@ mod tests {
             "content":{"type":"image","data":"...","mimeType":"image/png"}}}"#;
         let n: SessionNotification = serde_json::from_str(raw).unwrap();
         match n.update {
-            SessionUpdate::AgentMessageChunk { content } => {
+            SessionUpdate::AgentMessageChunk { content, .. } => {
                 assert_eq!(content.kind, "image");
                 assert_eq!(content.as_text(), None);
             }
@@ -887,6 +1126,81 @@ mod tests {
         );
         assert_eq!(read(r#"{"outcome":"startedNewTurn"}"#), SteerOutcome::StartedNewTurn);
         assert!(matches!(read(r#"{"outcome":"teleported"}"#), SteerOutcome::Unknown(_)));
+    }
+
+    /// `session/list` is advertised inside `agentCapabilities`, and `null` is a
+    /// legal way to decline it. Reading that as `Some` would have this client
+    /// call a method the agent does not have, on every adapter that spells the
+    /// refusal out.
+    #[test]
+    fn listing_is_advertised_by_presence_and_declined_by_null() {
+        let read = |raw: &str| serde_json::from_str::<InitializeResult>(raw).unwrap();
+
+        let yes = read(r#"{"protocolVersion":1,"agentCapabilities":{"sessionCapabilities":{"list":{}}}}"#);
+        assert!(yes.agent_capabilities.lists_sessions());
+
+        let explicit_no = read(r#"{"protocolVersion":1,"agentCapabilities":{"sessionCapabilities":{"list":null}}}"#);
+        assert!(!explicit_no.agent_capabilities.lists_sessions());
+
+        let silent = read(r#"{"protocolVersion":1,"agentCapabilities":{"loadSession":true}}"#);
+        assert!(!silent.agent_capabilities.lists_sessions());
+        // And the two capabilities are independent: `loadSession` is top-level
+        // by the schema's own admission, so neither implies the other.
+        assert!(silent.agent_capabilities.load_session);
+    }
+
+    /// A session with no title or timestamp is still a session worth offering.
+    /// The adapter drops anything with no `cwd`, so that one is required.
+    #[test]
+    fn a_listed_session_survives_its_optional_fields_being_absent() {
+        let raw = r#"{"sessions":[
+            {"sessionId":"s1","cwd":"/work/meridian","title":"Fix the queue","updatedAt":"2026-08-20T11:00:00.000Z"},
+            {"sessionId":"s2","cwd":"/work/other"}]}"#;
+        let result: ListSessionsResult = serde_json::from_str(raw).unwrap();
+        assert_eq!(result.sessions.len(), 2);
+        assert_eq!(result.sessions[0].title.as_deref(), Some("Fix the queue"));
+        assert_eq!(result.sessions[1].title, None);
+        assert_eq!(result.sessions[1].updated_at, None);
+        assert_eq!(result.next_cursor, None);
+    }
+
+    /// Omitted rather than sent as null: `cwd: null` is documented as "every
+    /// project", but an agent reading it strictly would see a request to filter
+    /// on nothing.
+    #[test]
+    fn listing_everything_sends_no_filter_at_all() {
+        let encoded = serde_json::to_value(ListSessionsParams::default()).unwrap();
+        assert_eq!(encoded, serde_json::json!({}));
+
+        let narrowed = serde_json::to_value(ListSessionsParams {
+            cwd: Some("/work/meridian".into()),
+            cursor: None,
+        })
+        .unwrap();
+        assert_eq!(narrowed, serde_json::json!({ "cwd": "/work/meridian" }));
+    }
+
+    /// The field that tells one replayed message from the next. Absent on the
+    /// live path's own chunks, which is why it has to be optional.
+    #[test]
+    fn a_message_chunk_carries_the_id_of_the_message_it_belongs_to() {
+        let raw = r#"{"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk",
+            "messageId":"msg_01ABC","content":{"type":"text","text":"hello"}}}"#;
+        let n: SessionNotification = serde_json::from_str(raw).unwrap();
+        match n.update {
+            SessionUpdate::AgentMessageChunk { message_id, .. } => {
+                assert_eq!(message_id.as_deref(), Some("msg_01ABC"));
+            }
+            other => panic!("expected an agent message chunk, got {other:?}"),
+        }
+
+        let live = r#"{"sessionId":"s1","update":{"sessionUpdate":"agent_message_chunk",
+            "content":{"type":"text","text":"hello"}}}"#;
+        let n: SessionNotification = serde_json::from_str(live).unwrap();
+        match n.update {
+            SessionUpdate::AgentMessageChunk { message_id, .. } => assert_eq!(message_id, None),
+            other => panic!("expected an agent message chunk, got {other:?}"),
+        }
     }
 
     /// The wire shape of an answer is nested — `outcome.outcome` — and getting

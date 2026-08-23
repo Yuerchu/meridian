@@ -45,6 +45,93 @@ pub async fn acp_send(
     session.prompt(&services, &message, turn_id).await
 }
 
+/// Every Claude Code session on this machine, with the ones a conversation here
+/// already follows marked.
+///
+/// `cwd` narrows it to one directory (and its git worktrees, which is the SDK's
+/// own behaviour); absent means every project. A short-lived adapter, so this
+/// costs an `npx` start each time the picker is opened — the same wait the
+/// settings page's check button has.
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn acp_list_sessions(
+    app: tauri::AppHandle,
+    cwd: Option<String>,
+) -> Result<Vec<acp::import::DiscoveredSession>, String> {
+    let cwd = cwd.map(|c| c.trim().to_string()).filter(|c| !c.is_empty());
+    acp::import::discover(&app.services(), cwd.as_deref()).await
+}
+
+/// Take a session over and give it a conversation here.
+///
+/// The transcript comes back with it: `session/load` recites the history and
+/// this is the one caller that writes the recital down rather than throwing it
+/// away. The answer is more than the conversation id because it has to carry
+/// `truncated` — a long session comes back only from its last compaction, and
+/// nothing else on screen would ever say so.
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn acp_import_session(
+    app: tauri::AppHandle,
+    session: acp::import::ImportRequest,
+) -> Result<acp::import::ImportOutcome, String> {
+    acp::import::import(&app.services(), &session).await
+}
+
+/// Point an existing conversation at a session on disk.
+///
+/// For a conversation from before `acp_sessions` existed: it has a directory and
+/// no session id, so every reopen starts a blank agent under a transcript it
+/// cannot see. Nothing is written but the id — the rows are already here, and
+/// they came from this same session.
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn acp_attach_session(
+    app: tauri::AppHandle,
+    conversation_id: String,
+    session_id: String,
+    cwd: String,
+) -> Result<(), String> {
+    acp::import::attach(&app.services(), &conversation_id, &session_id, &cwd).await
+}
+
+/// Which agent session a conversation follows, and where it works.
+///
+/// What the attach picker opens with: the directory to narrow the list to, and
+/// whether there is already an id — a conversation that resumes perfectly well
+/// is not one to repoint by accident.
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn acp_conversation_session(
+    app: tauri::AppHandle,
+    conversation_id: String,
+) -> Result<Option<AcpConversationSession>, String> {
+    let services = app.services();
+    let pool = services.db.clone();
+    tokio::task::spawn_blocking(move || {
+        let mut conn = meridian_core::util::get_conn(&pool)?;
+        meridian_core::db::ops::acp_session::get(&mut conn, &conversation_id)
+            .map(|row| {
+                row.map(|row| AcpConversationSession {
+                    cwd: row.cwd,
+                    acp_session_id: row.acp_session_id,
+                })
+            })
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[cfg(not(target_os = "android"))]
+#[derive(serde::Serialize)]
+pub struct AcpConversationSession {
+    pub cwd: String,
+    /// `None` is a state rather than a gap: a conversation from before the
+    /// table, or one whose adapter came up and never opened a session.
+    pub acp_session_id: Option<String>,
+}
+
 /// Stop the turn in flight, leaving the session open.
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
@@ -68,7 +155,7 @@ pub async fn acp_close(app: tauri::AppHandle, conversation_id: String) -> Result
 #[cfg(not(target_os = "android"))]
 #[tauri::command]
 pub async fn acp_live_sessions(app: tauri::AppHandle) -> Result<Vec<String>, String> {
-    Ok(app.services().acp.conversations())
+    Ok(app.services().acp.live_conversations())
 }
 
 /// The knobs the agent exposes for this session: model, mode, effort, and
