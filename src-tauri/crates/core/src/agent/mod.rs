@@ -14,11 +14,15 @@ pub mod modes;
 pub mod pricing;
 mod project_instructions;
 mod provider_config;
+pub mod queue;
 pub mod skills;
 mod stream;
 pub mod sub_agents;
 pub(crate) mod tokenizer;
-mod tool_calls;
+// `pub(crate)` for `acp::session`, which writes the same `messages.tool_calls`
+// column a native turn does and must encode it identically — two encoders would
+// mean a transcript that renders differently depending on who wrote it.
+pub(crate) mod tool_calls;
 pub(crate) mod tool_defs;
 mod truncate;
 pub mod turn_config;

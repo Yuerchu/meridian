@@ -1,7 +1,23 @@
 import { useCallback, useMemo, useState } from 'react'
 
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useIsNarrow } from '@/hooks/use-narrow'
 import { useHistoryLevel } from '@/hooks/use-history-level'
+
+// The left column at its widest (`w-48`, which MCP asks for), the wider of the
+// two gaps (`gap-6`), and 320px for the detail. That last number is a labelled
+// `text-xs` field plus the model editor's own `px-3` shell and border — below
+// it the list column takes more than it gives back, and the drilldown, which
+// hands the detail the whole container, is simply the better layout.
+//
+// One number rather than one per caller: two panels in the same settings layer
+// flipping at different window widths would leave one drilled down while its
+// neighbour is still two columns.
+//
+// What it buys, beyond the 769px window that prompted it: collapsing the
+// sidebar to icons now wins two columns back at ~650px, where before this the
+// sidebar's own width was invisible to the layout it was squeezing.
+const TWO_COLUMN_MIN = 536
 
 /**
  * A list beside its detail on a desktop, one behind the other on a phone.
@@ -24,7 +40,13 @@ import { useHistoryLevel } from '@/hooks/use-history-level'
  * servers never do.
  */
 export interface MasterDetailNav<Aux extends string = never> {
-  isMobile: boolean
+  /**
+   * Too narrow for two columns — which is not the same question as "is this a
+   * phone", and is why this is no longer called `isMobile`.
+   */
+  isNarrow: boolean
+  /** Hang this on the box whose width decides the layout. See {@link useIsNarrow}. */
+  ref: (node: HTMLElement | null) => void
   selectedId: string | null
   aux: Aux | null
   /** The phone is showing a detail rather than the list. */
@@ -39,7 +61,12 @@ export interface MasterDetailNav<Aux extends string = never> {
 }
 
 export function useMasterDetail<Aux extends string = never>(): MasterDetailNav<Aux> {
-  const isMobile = useIsMobile()
+  // The viewport is only the fallback. A box that has never been laid out has
+  // no width to offer, and there the viewport is the last thing that still
+  // knows anything — but once the box answers, it wins: the same 769px window
+  // fits two columns with the sidebar collapsed and does not with it open, and
+  // the viewport cannot tell those apart.
+  const { ref, isNarrow } = useIsNarrow(TWO_COLUMN_MIN, useIsMobile())
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [aux, setAux] = useState<Aux | null>(null)
 
@@ -62,25 +89,26 @@ export function useMasterDetail<Aux extends string = never>(): MasterDetailNav<A
     else setSelectedId(null)
   }, [aux])
 
-  const showsDetail = isMobile && (selectedId !== null || aux !== null)
+  const showsDetail = isNarrow && (selectedId !== null || aux !== null)
 
   // Claims a history entry for the detail, so the hardware back key returns to
-  // the list before it leaves settings. Inert on a desktop, where `showsDetail`
-  // can never be true.
+  // the list before it leaves settings. Inert while there is room for two
+  // columns, where `showsDetail` can never be true.
   useHistoryLevel(showsDetail, back)
 
   return useMemo(
     () => ({
-      isMobile,
+      isNarrow,
+      ref,
       selectedId,
       aux,
       showsDetail,
-      showsList: !isMobile || !showsDetail,
+      showsList: !isNarrow || !showsDetail,
       openItem,
       openAux,
       select,
       back,
     }),
-    [isMobile, selectedId, aux, showsDetail, openItem, openAux, select, back],
+    [isNarrow, ref, selectedId, aux, showsDetail, openItem, openAux, select, back],
   )
 }

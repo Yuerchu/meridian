@@ -340,6 +340,50 @@ describe('reconcileTurns', () => {
   })
 })
 
+/// A hosted ACP turn is written by `acp/session.rs`, and these are the two
+/// shapes it can produce. They are here rather than in the Rust because what
+/// went wrong was never visible from that side: the rows were well-formed and
+/// the turn record said `done`, and the mistake only became a mistake when this
+/// function read them.
+describe('buildTurns — a hosted session writes rounds, not one row', () => {
+  /// What flattening produced, and what it cost.
+  ///
+  /// Every round of a Claude Code turn landed on one assistant row, so the
+  /// closing sentence sat *before* the tool calls instead of after them. There
+  /// is no text past the last tool call, so there is no conclusion — and a turn
+  /// with tools and no conclusion is `interrupted`. Every finished hosted turn
+  /// with a single tool call in it was drawn as stopped, with its whole answer
+  /// folded away as process.
+  it('reads a flattened turn as interrupted, which is why it is not written that way', () => {
+    const u = msg('user', { content: 'q' })
+    const a = msg('assistant', {
+      _blocks: [text('Let me look.'), text('Here is the answer.'), tool('read_file')],
+      content: 'Let me look.\nHere is the answer.',
+    })
+
+    const turn = buildTurns([u, a])[0]
+    expect(turn.status).toBe('interrupted')
+    expect(turn.result).toBeNull()
+  })
+
+  /// The shape it writes now: the prose that introduced a call stays with the
+  /// call, the result is its own row, and what the agent said afterwards opens
+  /// the next round. Identical to what a native turn produces.
+  it('reads the round-per-row shape as a finished answer', () => {
+    const u = msg('user', { content: 'q' })
+    const first = msg('assistant', { _blocks: [text('Let me look.'), tool('read_file')] })
+    const result = msg('tool', { content: 'file contents', tool_call_id: 'read_file-1' })
+    const last = msg('assistant', { _blocks: [text('Here is the answer.')] })
+
+    const turn = buildTurns([u, first, result, last])[0]
+    expect(turn.status).toBe('complete')
+    expect(turn.result?.text).toBe('Here is the answer.')
+    // The call still counts as process, so the turn collapses the way any
+    // answer with a tool in it does.
+    expect(turn.summary.toolCount).toBe(1)
+  })
+})
+
 describe('buildTurns — turns that never finished', () => {
   const crashed = (...ids: string[]) => ({ crashedTurnIds: new Set(ids) })
 

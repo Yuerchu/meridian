@@ -2,6 +2,8 @@
 import { createElement } from 'react'
 import '@testing-library/jest-dom/vitest'
 
+import { installResizeObserverStub } from './resize'
+
 // `@lobehub/icons`' entry point re-exports its doc-site components, which reach
 // `@lobehub/ui` and from there a JSON module that Node's ESM loader refuses
 // without an import attribute. Vite handles it for the browser build, but
@@ -31,14 +33,11 @@ if (!('IntersectionObserver' in globalThis)) {
   globalThis.IntersectionObserver = IntersectionObserverStub as unknown as typeof IntersectionObserver
 }
 
-if (!('ResizeObserver' in globalThis)) {
-  class ResizeObserverStub implements ResizeObserver {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  }
-  globalThis.ResizeObserver = ResizeObserverStub as unknown as typeof ResizeObserver
-}
+// The ResizeObserver half is programmable — see `test/resize.ts`. It still
+// never fires on its own, so everything that merely wants the class to exist is
+// unaffected; what it adds is `setContainerWidth`, which is the only way a test
+// can hand `useIsNarrow` a width in an environment that does no layout.
+installResizeObserverStub()
 
 // jsdom implements none of the Web Animations API. React Aria's
 // `SharedElementTransition` — which is what `Tabs.Indicator` slides with —

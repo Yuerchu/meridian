@@ -11,7 +11,16 @@ import { MasterDetail } from './master-detail'
 import { SavedHint, SettingsRow, SettingsSelect, SettingsSkeleton } from './primitives'
 import { useMasterDetail } from './use-master-detail'
 import { EFFORT_LADDER } from '@/lib/thinking'
-import type { ModelConfig, ModelConfigInput, Provider, ModelInfo, ProviderCapabilities, ThinkingEffort } from '@/types'
+import type {
+  ModelConfig,
+  ModelConfigInput,
+  PriceTier,
+  Provider,
+  ProviderBalance,
+  ModelInfo,
+  ProviderCapabilities,
+  ThinkingEffort,
+} from '@/types'
 
 /**
  * Capability overrides are tri-state on purpose. A plain checkbox cannot express
@@ -24,8 +33,41 @@ const PROVIDER_DEFAULT_URLS: Record<string, string> = {
   openai: 'https://api.openai.com/v1',
   anthropic: 'https://api.anthropic.com',
   deepseek: 'https://api.deepseek.com',
+  xai: 'https://api.x.ai/v1',
   google: 'https://generativelanguage.googleapis.com',
 }
+
+/**
+ * Provider types whose adapter is decided by the type alone, so the wire format
+ * is not a choice.
+ *
+ * Deliberately a denylist — a type nobody has thought about yet keeps the
+ * control rather than silently losing it.
+ */
+const SINGLE_FORMAT_TYPES = ['anthropic']
+
+/**
+ * Types that speak both dialects but not the `gemma_tool` simulation.
+ *
+ * The choice is not cosmetic for these two: the server-side tools — Grok's own
+ * web search, DeepSeek's — exist only on the Responses API. xAI's
+ * chat-completions endpoint rejects `{"type":"web_search"}` outright with
+ * "expected `function` or `live_search`". Chat-completions is still the better
+ * default for xAI on everything else, since that is where `x-grok-conv-id`
+ * routes the prompt cache.
+ */
+const DUAL_FORMAT_TYPES = ['xai', 'deepseek']
+
+/**
+ * Provider types that publish an account balance.
+ *
+ * Mirrors `provider::balance::supports_balance`, which is the authority — asking
+ * one that does not returns null and this form says so, so a drift here is
+ * visible rather than silent. It exists only to keep a "check balance" button
+ * off the panels where it could never do anything: Anthropic and xAI publish
+ * nothing, and OpenAI withdrew the endpoint that used to.
+ */
+const BALANCE_TYPES = ['deepseek']
 
 const GOOGLE_FORMAT_DEFAULT_URLS: Record<string, string> = {
   gemini_generate_content: 'https://generativelanguage.googleapis.com',
@@ -74,6 +116,166 @@ function safeThreshold(contextWindow: number, maxOutput: number | null): number 
   return Math.max(contextWindow - reserve - headroom, Math.floor(contextWindow / 2))
 }
 
+/** A stored JSON array of names, or nothing at all if it will not parse. */
+function nameList(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((name): name is string => typeof name === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * One tier as the form holds it.
+ *
+ * Strings, like every other price box here, because a half-typed number is not
+ * a number — parsing on each keystroke makes "4." unrepresentable and the field
+ * impossible to type a decimal into.
+ */
+type TierDraft = { threshold: string; input: string; output: string; cacheRead: string; cacheWrite: string }
+
+const BLANK_TIER: TierDraft = { threshold: '', input: '', output: '', cacheRead: '', cacheWrite: '' }
+
+function tiersFrom(raw: string | null | undefined): TierDraft[] {
+  if (!raw) return []
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return (parsed as PriceTier[])
+      .filter((tier) => !!tier && typeof tier === 'object')
+      .map((tier) => ({
+        threshold: tier.min_prompt_tokens?.toString() ?? '',
+        input: tier.input?.toString() ?? '',
+        output: tier.output?.toString() ?? '',
+        cacheRead: tier.cache_read == null ? '' : tier.cache_read.toString(),
+        cacheWrite: tier.cache_write == null ? '' : tier.cache_write.toString(),
+      }))
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Drop the rows that say nothing and sort what is left.
+ *
+ * A tier needs a threshold above zero and both rates: one at zero would read as
+ * "free above 200k" rather than as the half-filled row it is, and the backend
+ * discards a zero threshold anyway. Sorted here as well as in `parse_tiers`
+ * because the stored order is what a human reads back.
+ */
+function tiersTo(drafts: TierDraft[]): string | null {
+  const tiers = drafts
+    .map((draft) => ({
+      min_prompt_tokens: parseInt(draft.threshold),
+      input: parseFloat(draft.input),
+      output: parseFloat(draft.output),
+      cache_read: draft.cacheRead ? parseFloat(draft.cacheRead) : null,
+      cache_write: draft.cacheWrite ? parseFloat(draft.cacheWrite) : null,
+    }))
+    .filter(
+      (tier) =>
+        Number.isFinite(tier.min_prompt_tokens) &&
+        tier.min_prompt_tokens > 0 &&
+        Number.isFinite(tier.input) &&
+        Number.isFinite(tier.output),
+    )
+    .sort((a, b) => a.min_prompt_tokens - b.min_prompt_tokens)
+  return tiers.length > 0 ? JSON.stringify(tiers) : null
+}
+
+/**
+ * The rates that take over above a prompt size.
+ *
+ * Laid out one tier per card rather than one per row: five numbers across the
+ * detail pane would each be too narrow to read a price in, and this list is
+ * nearly always empty or one entry long.
+ */
+function PriceTierEditor({ tiers, onChange }: { tiers: TierDraft[]; onChange: (next: TierDraft[]) => void }) {
+  const { t } = useTranslation()
+  const patch = (index: number, field: keyof TierDraft, value: string) =>
+    onChange(tiers.map((tier, i) => (i === index ? { ...tier, [field]: value } : tier)))
+
+  return (
+    <div data-slot="price-tiers" className="space-y-2">
+      <p className="text-xs text-muted">{t('settings.model.priceTiersHint')}</p>
+      {tiers.map((tier, index) => (
+        <div key={index} data-slot="price-tier" className="rounded-lg border border-border p-2 space-y-2">
+          <div className="flex items-end gap-2">
+            <TextField fullWidth>
+              <Label>{t('settings.model.tierThreshold')}</Label>
+              <Input
+                value={tier.threshold}
+                onChange={(e) => patch(index, 'threshold', e.target.value)}
+                placeholder="200000"
+                className="h-7 pointer-coarse:h-10 text-xs"
+              />
+            </TextField>
+            <Tooltip>
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label={t('settings.model.removeTier')}
+                className="h-7 pointer-coarse:h-10 rounded-md px-2 text-danger"
+                onClick={() => onChange(tiers.filter((_, i) => i !== index))}
+              >
+                <TrashBin className="size-3.5" />
+              </Button>
+              <Tooltip.Content>{t('settings.model.removeTier')}</Tooltip.Content>
+            </Tooltip>
+          </div>
+          <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
+            <TextField fullWidth>
+              <Label>{t('settings.model.inputPrice')}</Label>
+              <Input
+                value={tier.input}
+                onChange={(e) => patch(index, 'input', e.target.value)}
+                className="h-7 pointer-coarse:h-10 text-xs"
+              />
+            </TextField>
+            <TextField fullWidth>
+              <Label>{t('settings.model.outputPrice')}</Label>
+              <Input
+                value={tier.output}
+                onChange={(e) => patch(index, 'output', e.target.value)}
+                className="h-7 pointer-coarse:h-10 text-xs"
+              />
+            </TextField>
+            <TextField fullWidth>
+              <Label>{t('settings.model.cachePrice')}</Label>
+              <Input
+                value={tier.cacheRead}
+                onChange={(e) => patch(index, 'cacheRead', e.target.value)}
+                placeholder="—"
+                className="h-7 pointer-coarse:h-10 text-xs"
+              />
+            </TextField>
+            <TextField fullWidth>
+              <Label>{t('settings.model.cacheWritePrice')}</Label>
+              <Input
+                value={tier.cacheWrite}
+                onChange={(e) => patch(index, 'cacheWrite', e.target.value)}
+                placeholder="—"
+                className="h-7 pointer-coarse:h-10 text-xs"
+              />
+            </TextField>
+          </div>
+        </div>
+      ))}
+      <Button
+        size="sm"
+        variant="outline"
+        className="h-7 pointer-coarse:h-10 rounded-md text-xs"
+        onClick={() => onChange([...tiers, { ...BLANK_TIER }])}
+      >
+        <Plus className="size-3.5" />
+        {t('settings.model.addTier')}
+      </Button>
+    </div>
+  )
+}
+
 function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tri; onChange: (next: Tri) => void }) {
   const { t } = useTranslation()
   const options: Array<{ value: Tri; label: string }> = [
@@ -99,12 +301,17 @@ function CapabilityTriRow({ label, value, onChange }: { label: string; value: Tr
 function ModelConfigEditor({
   providerId,
   modelId,
+  apiFormat,
   existing,
   onSave,
   onDelete,
 }: {
   providerId: string
   modelId: string
+  /** Not read directly — it is here so the capability lookup re-runs when the
+   *  dialect changes, which is what decides whether this model has any
+   *  provider-side tools at all. */
+  apiFormat: string
   existing?: ModelConfig
   onSave: (input: ModelConfigInput) => void
   onDelete?: () => void
@@ -117,7 +324,7 @@ function ModelConfigEditor({
       .getProviderCapabilities(providerId, modelId)
       .then(setCaps)
       .catch(() => {})
-  }, [providerId, modelId])
+  }, [providerId, modelId, apiFormat])
 
   const defaultCtx = existing?.context_window ?? caps?.max_context_tokens ?? 128000
   const defaultMaxOut = existing?.max_output_tokens ?? caps?.max_output_tokens ?? null
@@ -130,6 +337,12 @@ function ModelConfigEditor({
   const [outputPrice, setOutputPrice] = useState(existing?.output_price?.toString() ?? '0')
   const [cachePrice, setCachePrice] = useState(existing?.cache_price?.toString() ?? '')
   const [cacheWritePrice, setCacheWritePrice] = useState(existing?.cache_write_price?.toString() ?? '')
+  const [tiers, setTiers] = useState<TierDraft[]>(() => tiersFrom(existing?.price_tiers))
+  const [serverTools, setServerTools] = useState<string[]>(() => nameList(existing?.server_tools))
+  const [serverToolPrice, setServerToolPrice] = useState(existing?.server_tool_price?.toString() ?? '')
+  // Open when there is something in it, so a tiered model does not look
+  // single-priced until someone thinks to expand a collapsed section.
+  const [showTiers, setShowTiers] = useState(tiers.length > 0)
 
   const [showCaps, setShowCaps] = useState(false)
   const [efforts, setEfforts] = useState<ThinkingEffort[]>([])
@@ -193,22 +406,41 @@ function ModelConfigEditor({
       cache_price: cachePrice ? parseFloat(cachePrice) : null,
       cache_write_price: cacheWritePrice ? parseFloat(cacheWritePrice) : null,
       capability_overrides: buildOverrides(),
+      price_tiers: tiersTo(tiers),
+      // What the user asked for, not what is currently supported. Filtering here
+      // against `caps` looked like defence and was a way to lose the setting:
+      // capabilities load asynchronously, so a save while that request was still
+      // in flight — or after it failed — silently wrote an empty list over a
+      // switch the user had just turned on. The narrowing that matters happens
+      // per turn in `resolve_turn_params`, where the model's support is known
+      // for certain and a stale name costs nothing.
+      server_tools: serverTools.length > 0 ? JSON.stringify(serverTools) : null,
+      server_tool_price: serverToolPrice ? parseFloat(serverToolPrice) : null,
     })
   }
 
   return (
+    // Every control in here overrides HeroUI's height down to 28px, which is a
+    // deliberate density for a form of this many fields and a pointer. HeroUI's
+    // own sizing is mobile-first (`h-10 md:h-9`) and the override threw that
+    // away on every device, so the coarse-pointer variants put it back where a
+    // finger is doing the aiming and leave the desktop exactly as it was.
     <div className="px-3 pb-3 space-y-2 bg-default/30">
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
         <TextField fullWidth>
           <Label>{t('settings.model.contextWindow')}</Label>
-          <Input value={contextWindow} onChange={(e) => setContextWindow(e.target.value)} className="h-7 text-xs" />
+          <Input
+            value={contextWindow}
+            onChange={(e) => setContextWindow(e.target.value)}
+            className="h-7 pointer-coarse:h-10 text-xs"
+          />
         </TextField>
         <TextField fullWidth>
           <Label>{t('settings.model.compactThreshold')}</Label>
           <Input
             value={compactThreshold}
             onChange={(e) => setCompactThreshold(e.target.value)}
-            className="h-7 text-xs"
+            className="h-7 pointer-coarse:h-10 text-xs"
           />
         </TextField>
       </div>
@@ -218,20 +450,28 @@ function ModelConfigEditor({
           value={maxOutput}
           onChange={(e) => setMaxOutput(e.target.value)}
           placeholder={t('settings.model.optional')}
-          className="h-7 text-xs"
+          className="h-7 pointer-coarse:h-10 text-xs"
         />
       </TextField>
       {/* Four rates, all per million tokens. The two cache boxes are blank by
           default and blank means "priced like input" — which is what every
           provider but Anthropic does, and what the usage report bills them at. */}
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
         <TextField fullWidth>
           <Label>{t('settings.model.inputPrice')}</Label>
-          <Input value={inputPrice} onChange={(e) => setInputPrice(e.target.value)} className="h-7 text-xs" />
+          <Input
+            value={inputPrice}
+            onChange={(e) => setInputPrice(e.target.value)}
+            className="h-7 pointer-coarse:h-10 text-xs"
+          />
         </TextField>
         <TextField fullWidth>
           <Label>{t('settings.model.outputPrice')}</Label>
-          <Input value={outputPrice} onChange={(e) => setOutputPrice(e.target.value)} className="h-7 text-xs" />
+          <Input
+            value={outputPrice}
+            onChange={(e) => setOutputPrice(e.target.value)}
+            className="h-7 pointer-coarse:h-10 text-xs"
+          />
         </TextField>
         <TextField fullWidth>
           <Label>{t('settings.model.cachePrice')}</Label>
@@ -239,7 +479,7 @@ function ModelConfigEditor({
             value={cachePrice}
             onChange={(e) => setCachePrice(e.target.value)}
             placeholder="—"
-            className="h-7 text-xs"
+            className="h-7 pointer-coarse:h-10 text-xs"
           />
           <Description className="text-xs">{t('settings.model.cachePriceHint')}</Description>
         </TextField>
@@ -249,11 +489,68 @@ function ModelConfigEditor({
             value={cacheWritePrice}
             onChange={(e) => setCacheWritePrice(e.target.value)}
             placeholder="—"
-            className="h-7 text-xs"
+            className="h-7 pointer-coarse:h-10 text-xs"
           />
           <Description className="text-xs">{t('settings.model.cacheWritePriceHint')}</Description>
         </TextField>
       </div>
+      {/* Only where the model has any. Elsewhere this is not a switch that is
+          off, it is a thing that does not exist — and an empty section reads as
+          a feature that failed to load. */}
+      {(caps?.server_tools?.length ?? 0) > 0 && (
+        <div data-slot="server-tools" className="space-y-1.5 pt-1">
+          <p className="text-xs text-muted">{t('settings.model.serverTools')}</p>
+          <div className="flex flex-wrap gap-1">
+            {caps?.server_tools?.map((name) => {
+              const on = serverTools.includes(name)
+              return (
+                <Button
+                  key={name}
+                  data-slot="server-tool-chip"
+                  variant={on ? 'primary' : 'outline'}
+                  size="sm"
+                  aria-pressed={on}
+                  className="h-6 pointer-coarse:h-9 rounded-md px-2 text-xs font-normal"
+                  onClick={() => setServerTools(on ? serverTools.filter((x) => x !== name) : [...serverTools, name])}
+                >
+                  {t(`settings.model.serverTool.${name}`, name)}
+                </Button>
+              )
+            })}
+          </div>
+          <TextField fullWidth>
+            <Label>{t('settings.model.serverToolPrice')}</Label>
+            <Input
+              value={serverToolPrice}
+              onChange={(e) => setServerToolPrice(e.target.value)}
+              placeholder="5"
+              className="h-7 pointer-coarse:h-10 text-xs"
+            />
+            <Description className="text-xs">{t('settings.model.serverToolPriceHint')}</Description>
+          </TextField>
+          <p className="text-xs text-muted">{t('settings.model.serverToolsHint')}</p>
+        </div>
+      )}
+      <Disclosure
+        data-slot="price-tier-section"
+        className="pt-1"
+        isExpanded={showTiers}
+        onExpandedChange={setShowTiers}
+      >
+        <Disclosure.Heading>
+          <Disclosure.Trigger className="inline-flex items-center gap-1 rounded-md text-xs text-muted transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50">
+            {tiers.length > 0
+              ? t('settings.model.priceTiersCount', { count: tiers.length })
+              : t('settings.model.priceTiers')}
+            <Disclosure.Indicator className="size-3.5" />
+          </Disclosure.Trigger>
+        </Disclosure.Heading>
+        <Disclosure.Content className="min-h-0 w-full">
+          <Disclosure.Body className="pt-1">
+            <PriceTierEditor tiers={tiers} onChange={setTiers} />
+          </Disclosure.Body>
+        </Disclosure.Content>
+      </Disclosure>
       <Disclosure
         data-slot="capability-overrides"
         className="pt-1"
@@ -285,7 +582,7 @@ function ModelConfigEditor({
                       variant={on ? 'primary' : 'outline'}
                       size="sm"
                       aria-pressed={on}
-                      className="h-6 px-2 text-xs font-normal"
+                      className="h-6 pointer-coarse:h-9 px-2 text-xs font-normal"
                       onClick={() => {
                         // Rebuild from the ladder so the stored array stays in
                         // ascending order -- the median coercion ranks on position.
@@ -305,7 +602,7 @@ function ModelConfigEditor({
             <Button
               variant="ghost"
               size="sm"
-              className="h-6 px-0 text-xs text-muted hover:text-foreground"
+              className="h-6 pointer-coarse:h-9 px-0 text-xs text-muted hover:text-foreground"
               onClick={resetOverrides}
             >
               {t('settings.model.capReset')}
@@ -314,11 +611,11 @@ function ModelConfigEditor({
         </Disclosure.Content>
       </Disclosure>
       <div className="flex items-center gap-2 pt-1">
-        <Button size="sm" className="h-7 text-xs" onClick={handleSave}>
+        <Button size="sm" className="h-7 pointer-coarse:h-10 text-xs" onClick={handleSave}>
           {t('common.save')}
         </Button>
         {onDelete && (
-          <Button size="sm" variant="ghost" className="h-7 text-xs text-danger" onClick={onDelete}>
+          <Button size="sm" variant="ghost" className="h-7 pointer-coarse:h-10 text-xs text-danger" onClick={onDelete}>
             {t('common.delete')}
           </Button>
         )}
@@ -355,6 +652,9 @@ function ProviderEditor({
   const [models, setModels] = useState<ModelInfo[]>([])
   const [fetchingModels, setFetchingModels] = useState(false)
   const [modelsError, setModelsError] = useState<string | null>(null)
+  const [balance, setBalance] = useState<ProviderBalance | null>(null)
+  const [fetchingBalance, setFetchingBalance] = useState(false)
+  const [balanceError, setBalanceError] = useState<string | null>(null)
   const [modelConfigs, setModelConfigs] = useState<Map<string, ModelConfig>>(new Map())
   const [editingModelId, setEditingModelId] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
@@ -440,6 +740,32 @@ function ProviderEditor({
     }
   }, [provider.id, apiKey, markKeySaved])
 
+  /**
+   * Asked for, never polled.
+   *
+   * A balance is only worth anything while it is current, so there is nothing to
+   * cache and nothing to refresh in the background — the button is the whole
+   * feature. The alerting half is OneBot's, which is where somebody can actually
+   * be told without looking.
+   */
+  const handleFetchBalance = useCallback(async () => {
+    setFetchingBalance(true)
+    setBalanceError(null)
+    try {
+      const result = await api.getProviderBalance(provider.id)
+      setBalance(result)
+      // The backend is the authority on which upstreams publish one, so a null
+      // here means the list below has drifted from `supports_balance`.
+      if (!result) setBalanceError(t('settings.provider.balanceUnsupported'))
+    } catch (err) {
+      console.error('Failed to read the balance:', err)
+      setBalance(null)
+      setBalanceError(String(err))
+    } finally {
+      setFetchingBalance(false)
+    }
+  }, [provider.id, t])
+
   const loadModelConfigs = useCallback(async () => {
     try {
       const configs = await api.listModelConfigs(provider.id)
@@ -493,6 +819,7 @@ function ProviderEditor({
     // Previously unreachable from the UI, which silently sent every DeepSeek
     // provider down the generic path with reasoning support switched off.
     { value: 'deepseek', label: t('settings.provider.typeDeepSeek') },
+    { value: 'xai', label: t('settings.provider.typeXAI') },
     { value: 'google', label: t('settings.provider.typeGoogle') },
   ]
   const formatOptions = [
@@ -504,6 +831,9 @@ function ProviderEditor({
     { value: 'gemini_generate_content', label: t('settings.provider.apiFormatGeminiGenerateContent') },
     { value: 'chat_completions', label: t('settings.provider.apiFormatOpenAICompatible') },
   ]
+  // `gemma_tool` simulates function calling through prompt injection on a plain
+  // chat endpoint. It is meaningless against either of these.
+  const dualFormatOptions = formatOptions.filter((option) => option.value !== 'gemma_tool')
   const formatDescription =
     providerType === 'google'
       ? apiFormat === 'gemini_generate_content'
@@ -539,11 +869,17 @@ function ProviderEditor({
         />
       </TextField>
 
-      {providerType !== 'anthropic' && (
+      {!SINGLE_FORMAT_TYPES.includes(providerType) && (
         <SettingsSelect
           label={t('settings.provider.apiFormat')}
           value={apiFormat}
-          options={providerType === 'google' ? googleFormatOptions : formatOptions}
+          options={
+            providerType === 'google'
+              ? googleFormatOptions
+              : DUAL_FORMAT_TYPES.includes(providerType)
+                ? dualFormatOptions
+                : formatOptions
+          }
           onChange={handleApiFormatChange}
           description={formatDescription}
           fullWidth
@@ -596,6 +932,46 @@ function ProviderEditor({
         )}
       </div>
 
+      {BALANCE_TYPES.includes(providerType) && (
+        <div data-slot="provider-balance" className="border-t border-border pt-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-muted">{t('settings.provider.balance')}</p>
+            <Button variant="outline" onClick={handleFetchBalance} isDisabled={fetchingBalance || keyStatus !== 'set'}>
+              <ArrowsRotateRight className={cn('w-3.5 h-3.5', fetchingBalance && 'animate-spin')} />
+              {t('settings.provider.checkBalance')}
+            </Button>
+          </div>
+          {balanceError && <p className="text-xs text-danger break-all">{balanceError}</p>}
+          {balance && (
+            <div className="rounded-lg border border-border p-3 space-y-1.5">
+              {!balance.is_available && (
+                <p className="text-xs text-danger">{t('settings.provider.balanceUnavailable')}</p>
+              )}
+              {balance.accounts.map((account) => (
+                <div key={account.currency} className="flex items-baseline justify-between gap-2">
+                  <span className="text-sm">
+                    {account.currency} {account.total.toFixed(2)}
+                  </span>
+                  {/* The split is the point: a total held up by expiring
+                      promotional credit is closer to empty than it looks. */}
+                  {account.topped_up != null && account.granted != null && (
+                    <span className="text-xs text-muted">
+                      {t('settings.provider.balanceSplit', {
+                        toppedUp: account.topped_up.toFixed(2),
+                        granted: account.granted.toFixed(2),
+                      })}
+                    </span>
+                  )}
+                </div>
+              ))}
+              {balance.accounts.length === 0 && (
+                <p className="text-xs text-muted">{t('settings.provider.balanceNoDetail')}</p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="border-t border-border pt-4 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted">{t('settings.provider.models')}</p>
@@ -630,10 +1006,20 @@ function ProviderEditor({
                         </>
                       )}
                     </span>
+                    {/* The only way into a model's settings, at 24px and with no
+                        accessible name — the icon swaps between two glyphs and
+                        neither says anything. `touch-hitbox` because the `h-6`
+                        overrides HeroUI's own mobile-first sizing, which would
+                        otherwise have made it 40px here. */}
                     <Button
                       isIconOnly
                       variant="ghost"
-                      className="h-6 w-6"
+                      aria-label={
+                        isEditing
+                          ? t('settings.provider.closeModelConfig', { model: m.name })
+                          : t('settings.provider.editModelConfig', { model: m.name })
+                      }
+                      className="touch-hitbox h-6 w-6"
                       onClick={() => setEditingModelId(isEditing ? null : m.id)}
                     >
                       {isEditing ? <Xmark className="w-3.5 h-3.5" /> : <Sliders className="w-3.5 h-3.5" />}
@@ -643,6 +1029,11 @@ function ProviderEditor({
                     <ModelConfigEditor
                       providerId={provider.id}
                       modelId={m.id}
+                      // Which provider-side tools exist depends on the dialect,
+                      // so the capability lookup has to be redone when it
+                      // changes — otherwise switching to Responses leaves the
+                      // panel insisting this model has none.
+                      apiFormat={apiFormat}
                       existing={cfg}
                       onSave={handleSaveModelConfig}
                       onDelete={cfg ? () => handleDeleteModelConfig(cfg.id) : undefined}
@@ -672,7 +1063,7 @@ function ProviderEditor({
 export function ProviderSettings() {
   const { t } = useTranslation()
   const nav = useMasterDetail()
-  const { isMobile, selectedId } = nav
+  const { isNarrow, selectedId } = nav
   const [providers, setProviders] = useState<Provider[]>([])
   const [loading, setLoading] = useState(true)
   const initialized = useRef(false)
@@ -686,16 +1077,20 @@ export function ProviderSettings() {
   useEffect(() => {
     if (initialized.current) return
     initialized.current = true
-    refresh().then((list) => {
-      // Not on a phone: the list is the whole screen there, and opening the
-      // first provider over it would hide the other ones behind a back button
-      // nobody asked for.
-      if (list.length > 0 && !isMobile) {
-        nav.select(list[0].id)
-      }
-      setLoading(false)
-    })
-  }, [refresh, isMobile, nav])
+    refresh().then(() => setLoading(false))
+  }, [refresh])
+
+  // Derived rather than decided inside the fetch above: the width is measured,
+  // so at the moment the request was sent it may still have been answering from
+  // the viewport. Written there, it also never ran again — a list loaded on a
+  // phone and then widened left the second column empty for good.
+  //
+  // Not while narrow: the list is the whole screen there, and opening the first
+  // provider over it hides the others behind a back button nobody asked for.
+  useEffect(() => {
+    if (loading || isNarrow || selectedId !== null || providers.length === 0) return
+    nav.select(providers[0].id)
+  }, [loading, isNarrow, selectedId, providers, nav])
 
   const handleCreate = useCallback(async () => {
     const p = await api.createProvider('New Provider', 'openai', 'https://api.openai.com/v1', 'responses')

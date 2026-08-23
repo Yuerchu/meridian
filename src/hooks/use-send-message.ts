@@ -96,6 +96,13 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
   const storeLoadMessages = useConversationStore((s) => s.loadMessages)
   const storeSetError = useConversationStore((s) => s.setError)
   const submittingRef = useRef(false)
+  // A hosted session's turn runs in another process, so it goes to another
+  // command. Everything either side of that — the optimistic bubble, the turn
+  // id, the abort path — is the same, which is why this is one branch rather
+  // than a second hook.
+  const isHosted = useConversationStore(
+    (s) => s.conversations.find((c) => c.id === conversationId)?.agent_kind === 'claude_code',
+  )
 
   const { streaming, selectedAssistantId, selectedModelId, selectedProviderId, thinkingLevel, fastMode, mode } = opts
 
@@ -110,6 +117,14 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
     ) => {
       // A null message means "regenerate", which needs no text of its own.
       if ((text === null ? !replaces : !text.trim() && !sticker) || streaming || submittingRef.current) return
+      // Regenerating and editing rewrite history and ask again from a point in
+      // it. A hosted session's history lives in the adapter's process, not
+      // here, so re-asking would send the question to an agent that still
+      // remembers having answered it. Refused rather than half-done.
+      if (isHosted && (text === null || replaces)) {
+        storeSetError(conversationId, 'A Claude Code session cannot regenerate or edit an earlier message.')
+        return
+      }
       submittingRef.current = true
       // Minted here, not by the backend, and handed to it. The composer locks on
       // this line; the backend's first event is several awaits away. Anything
@@ -163,30 +178,36 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
         appendTempUser(conversationId, messageContent, now)
       }
 
-      api
-        .chat(conversationId, messageContent, {
-          turnId,
-          replaces,
-          modelOverride: selectedModelId ?? undefined,
-          providerOverride: selectedProviderId ?? undefined,
-          thinkingLevel: thinkingLevel !== 'default' ? thinkingLevel : undefined,
-          assistantId: selectedAssistantId ?? undefined,
-          fast: fastMode || undefined,
-          mode,
-          voice: voice || undefined,
-        })
-        .catch((err) => {
-          // Message and all, by id: a rejection can land after the user has given
-          // up and resent, and it must neither unlock the composer on the turn
-          // that replaced it nor report its failure against it.
-          storeAbortTurn(conversationId, turnId, String(err))
-          submittingRef.current = false
-          storeLoadMessages(conversationId)
-        })
+      // The toolbar's model, thinking tier and mode are all this app's own
+      // settings and mean nothing to an adapter that picks its own; sending
+      // them would suggest they had an effect.
+      const dispatched = isHosted
+        ? api.acpSend(conversationId, messageContent ?? '', turnId)
+        : api.chat(conversationId, messageContent, {
+            turnId,
+            replaces,
+            modelOverride: selectedModelId ?? undefined,
+            providerOverride: selectedProviderId ?? undefined,
+            thinkingLevel: thinkingLevel !== 'default' ? thinkingLevel : undefined,
+            assistantId: selectedAssistantId ?? undefined,
+            fast: fastMode || undefined,
+            mode,
+            voice: voice || undefined,
+          })
+
+      dispatched.catch((err) => {
+        // Message and all, by id: a rejection can land after the user has given
+        // up and resent, and it must neither unlock the composer on the turn
+        // that replaced it nor report its failure against it.
+        storeAbortTurn(conversationId, turnId, String(err))
+        submittingRef.current = false
+        storeLoadMessages(conversationId)
+      })
     },
     [
       conversationId,
       streaming,
+      isHosted,
       selectedModelId,
       selectedProviderId,
       thinkingLevel,
@@ -196,6 +217,7 @@ export function useSendMessage(conversationId: string, opts: SendOptions): SendM
       storeBeginTurn,
       storeAbortTurn,
       storeLoadMessages,
+      storeSetError,
     ],
   )
 

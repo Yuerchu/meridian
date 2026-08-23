@@ -51,6 +51,11 @@ pub enum TurnOrigin {
     /// proposed. Its own variant because a report that cannot tell the two
     /// apart would name the wrong gate.
     ImplReview,
+    /// A turn running inside a hosted Claude Code session, over ACP. The user
+    /// started it and is watching it, like `Desktop` — but the work is happening
+    /// in another process, so an interruption report must not claim this app
+    /// knows how far it got.
+    ClaudeCode,
 }
 
 impl TurnOrigin {
@@ -141,6 +146,12 @@ impl std::fmt::Display for Busy {
                 write!(
                     f,
                     "A review of these changes is already running. Wait for it to finish."
+                )
+            }
+            Busy::Turn(TurnOrigin::ClaudeCode) => {
+                write!(
+                    f,
+                    "Claude Code is still working on this. Wait for it to finish, or stop it first."
                 )
             }
             Busy::Mutation(kind) => {

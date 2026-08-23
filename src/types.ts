@@ -97,6 +97,137 @@ export interface Conversation {
    * irreversible, never a path that makes code run later.
    */
   accept_edits: number
+  /**
+   * `claude_code` for a hosted ACP session, `plan_review` / `impl_review` for a
+   * gate's transcript, absent for an ordinary conversation. What the composer
+   * reads to decide which backend command a message goes to.
+   */
+  agent_kind?: string | null
+}
+
+/** How to start the ACP adapter. `command` names a binary this app executes. */
+export interface AcpConfig {
+  command: string
+  args: string[]
+}
+
+/**
+ * One knob the hosted agent exposes for a session.
+ *
+ * ACP has no model field: the model is one of these, with `category: 'model'`.
+ * Which values a `select` accepts is the agent's to decide and changes under
+ * us — picking a model re-derives which modes exist — so this is never
+ * hardcoded, only rendered.
+ */
+export interface AcpConfigOption {
+  id: string
+  name: string
+  description?: string
+  /** `model` | `mode` | `effort` | … Advisory; `id` is the fallback. */
+  category: string | null
+  /** `select` | `boolean`. Only `select` is drawn as a picker. */
+  type: string | null
+  /** A value id for a select, a boolean for a toggle. */
+  currentValue: unknown
+  options: AcpConfigOptionValue[]
+}
+
+export interface AcpConfigOptionValue {
+  value: string
+  name: string
+  description?: string
+}
+
+/**
+ * A Claude Code session the agent found on this machine.
+ *
+ * camelCase because most of it is the ACP `SessionInfo` passed straight
+ * through, the way `AcpConfigOption` is.
+ */
+export interface AcpDiscoveredSession {
+  sessionId: string
+  /** Absolute, and where the session's work happened. */
+  cwd: string
+  /** The SDK's own summary: a `/rename` if there was one, else a generated
+   *  line, else the first prompt. Absent for a session too new to have one. */
+  title: string | null
+  /** ISO 8601. */
+  updatedAt: string | null
+  /**
+   * The conversation here that already resumes this session.
+   *
+   * Sessions Meridian started come back in this list too — the adapter has no
+   * way to leave them out — so they are marked rather than hidden.
+   */
+  ownedBy: string | null
+}
+
+/** What one import produced. */
+export interface AcpImportOutcome {
+  conversationId: string
+  /**
+   * Only the tail of the session came back.
+   *
+   * Above 5 MiB the Claude Agent SDK replays just what follows the last
+   * compaction — no flag, no warning, no marker on the wire. The one signal is
+   * its own summary at the head of the recital, and this is the only place the
+   * user will ever be told.
+   */
+  truncated: boolean
+  messages: number
+}
+
+/** Which agent session a hosted conversation follows, and where it works. */
+export interface AcpConversationSession {
+  cwd: string
+  /** `null` for a conversation from before the session table existed, which is
+   *  exactly the one worth attaching to something. */
+  acp_session_id: string | null
+}
+
+/**
+ * When a queued message is handed to the agent.
+ *
+ * Not urgency levels — two different points in the run. `follow_up` waits for
+ * the turn to reach an ending and then starts a new one; `interject` goes in at
+ * the next point the agent accepts input, between rounds of the turn already
+ * going. Claude Code offers only the second, which makes every thought you
+ * queue while something long runs an interruption.
+ */
+export type QueueDelivery = 'follow_up' | 'interject'
+
+/**
+ * Where a queued message has got to. Derived on the backend from which
+ * timestamps are set, never stored — see the migration.
+ *
+ * `in_doubt` is the one worth drawing differently: it was handed over and what
+ * became of it is not known. It is never sent again, and it stops everything
+ * behind it until the agent has been told about it.
+ */
+export type QueueState = 'queued' | 'in_doubt' | 'settled' | 'held'
+
+export interface QueuedPrompt {
+  id: string
+  conversation_id: string
+  content: string
+  delivery: string
+  position: number
+  created_at: number
+  dispatched_at: number | null
+  dispatched_turn_id: string | null
+  settled_at: number | null
+  settled_message_id: string | null
+  held_at: number | null
+  reported_at: number | null
+}
+
+/** What the settings page learned by starting the adapter and greeting it. */
+export interface AcpCheck {
+  ok: boolean
+  agent: string | null
+  protocol_version: number | null
+  load_session: boolean
+  error: string | null
 }
 
 /** A step on the active path that was answered more than once. */
@@ -662,6 +793,12 @@ export interface ProviderCapabilities {
   supports_fast?: boolean
   supports_verbosity?: boolean
   default_verbosity?: string | null
+  /**
+   * Provider-side tools this model *can* be asked to run, by wire type name.
+   * What it will run is `ModelConfig.server_tools`, narrowed against this.
+   * Empty on chat-completions, where no such thing exists.
+   */
+  server_tools?: string[]
 }
 
 export interface ModelConfig {
@@ -686,6 +823,79 @@ export interface ModelConfig {
   updated_at: number
   /** JSON patch over the built-in catalog; malformed content is ignored. */
   capability_overrides: string | null
+  /**
+   * Rates that take over above a prompt size, as a JSON array of
+   * {@link PriceTier}. Null means one price at every size, which is most
+   * models. Crossing a threshold re-prices the *whole* request, not the excess.
+   */
+  price_tiers: string | null
+  /**
+   * Provider-side tools switched on for this model, as a JSON array of wire
+   * type names. Narrowed against the model's capabilities at turn time, so a
+   * name here cannot outlive the support it refers to.
+   */
+  server_tools: string | null
+  /**
+   * What one provider-side tool invocation costs, per **thousand** calls — the
+   * unit the upstreams publish it in. Null means nobody has said, which is not
+   * zero: a searching turn priced at nothing is under-reported, not free.
+   */
+  server_tool_price: number | null
+}
+
+/**
+ * One run of a provider-side tool, as the stream reports it.
+ *
+ * Announced twice — starting and finished — under the same `id`, because the
+ * query and the sources only exist on the second. A card is revised, not
+ * appended.
+ */
+export interface ServerToolCall {
+  id: string
+  name: string
+  /** What it was called with, as a JSON object string. Shaped like a function
+   *  call's arguments so a card renders it the same way. */
+  arguments: string | null
+  sources: string[]
+  completed: boolean
+}
+
+/** One currency's worth of credit on a provider account. */
+export interface BalanceAccount {
+  currency: string
+  /** What can actually be spent — the figure worth acting on. */
+  total: number
+  /** Promotional credit, which typically expires. */
+  granted: number | null
+  topped_up: number | null
+}
+
+/**
+ * What is left on a provider account, for the few upstreams that publish it.
+ *
+ * `is_available` is the upstream's own verdict and is kept apart from the
+ * numbers on purpose: it accounts for postpaid arrangements, expired grants and
+ * holds, none of which a total shows.
+ */
+export interface ProviderBalance {
+  is_available: boolean
+  accounts: BalanceAccount[]
+}
+
+/**
+ * A rate set that takes over once the prompt is large enough.
+ *
+ * The threshold counts the whole prompt, cached part included, and crossing it
+ * re-prices the entire request rather than the part above it — xAI, Gemini and
+ * OpenAI all do this. Reading it as a tax bracket understates a long request by
+ * nearly the base rate.
+ */
+export interface PriceTier {
+  min_prompt_tokens: number
+  input: number
+  output: number
+  cache_read?: number | null
+  cache_write?: number | null
 }
 
 export interface ModelConfigInput {
@@ -700,6 +910,9 @@ export interface ModelConfigInput {
   cache_price?: number | null
   cache_write_price?: number | null
   capability_overrides?: string | null
+  price_tiers?: string | null
+  server_tools?: string | null
+  server_tool_price?: number | null
 }
 
 /**
@@ -862,6 +1075,8 @@ export interface StreamChunk {
   arguments?: string
   result?: string
   outcome?: string
+  /** Only on `server_tool`: a tool the provider ran on its own side. */
+  call?: ServerToolCall
   /** Only on `tool_approval_req`. What the answer must be addressed to. */
   approval_id?: string
   /** Set only when this approval is a sandbox-blocked call asking to run

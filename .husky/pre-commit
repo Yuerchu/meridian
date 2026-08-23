@@ -5,3 +5,12 @@ pnpm exec lint-staged
 if git diff --cached --name-only | grep -q '^src-tauri/.*\.rs$'; then
   cargo fmt --all --manifest-path src-tauri/Cargo.toml --check
 fi
+
+# 动了迁移就核一遍 src/dev/schema-data.ts:那份数据一半是说明文字,只能人写;
+# 另一半是纯结构,一旦和迁移对不上,那张图就开始很有说服力地骗人。
+#
+# --staged:校验的是**将要提交的东西**。读工作树的话,暂存了迁移、却把 schema-data.ts
+# 的改动留在工作区没暂存,这里会通过,而提交进去的两半对不上。
+if git diff --cached --name-only | grep -qE '^src-tauri/crates/core/migrations/|^src/dev/schema-data\.ts$'; then
+  node scripts/check-db-schema.mjs --staged
+fi

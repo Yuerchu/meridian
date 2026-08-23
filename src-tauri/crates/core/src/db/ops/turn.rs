@@ -267,6 +267,15 @@ pub fn list_for_conversation(conn: &mut SqliteConnection, conversation_id: &str)
         .load::<Turn>(conn)
 }
 
+/// One turn's record, for a caller that has the id and wants the verdict.
+///
+/// `None` for an id with no row, which is not an error: a turn can fail before
+/// it has written one, and the callers here treat "no record" and "did not
+/// reach an ending" the same way.
+pub fn get(conn: &mut SqliteConnection, turn_id: &str) -> QueryResult<Option<Turn>> {
+    turns::table.find(turn_id).first::<Turn>(conn).optional()
+}
+
 /// Mark every turn still recorded as running as interrupted, and report how
 /// many there were.
 ///
@@ -279,14 +288,45 @@ pub fn list_for_conversation(conn: &mut SqliteConnection, conversation_id: &str)
 /// database, where one would declare the other's live turns dead. That is
 /// already impossible for other reasons (the OneBot listener binds a port, MCP
 /// servers are spawned as children) and is not designed for.
+/// **It also holds those conversations' queues**, and that is not a second
+/// concern bolted on — it is the same fact written in the other place it has to
+/// be. The queue's rule is that a turn which did not reach an ending holds
+/// everything behind it: "now rename that function" means nothing if the
+/// function was never created, and only a person can decide otherwise. A crash
+/// is the purest case of a turn that reached no ending, and without this the
+/// rule survives everything except the one event it was written for — the next
+/// enqueue would pump a follow-up whose premise died with the process.
 pub fn reconcile_interrupted(conn: &mut SqliteConnection, now: i64) -> QueryResult<usize> {
-    diesel::update(turns::table.filter(turns::status.eq(TurnStatus::Running.as_str())))
-        .set((
-            turns::status.eq(TurnStatus::Interrupted.as_str()),
-            turns::ended_at.eq(Some(now)),
-            turns::updated_at.eq(now),
-        ))
-        .execute(conn)
+    conn.transaction(|conn| {
+        // Read before the update, because after it there is nothing left to
+        // tell these conversations apart from any other.
+        let stranded: Vec<String> = turns::table
+            .filter(turns::status.eq(TurnStatus::Running.as_str()))
+            .select(turns::conversation_id)
+            .distinct()
+            .load(conn)?;
+
+        let interrupted = diesel::update(turns::table.filter(turns::status.eq(TurnStatus::Running.as_str())))
+            .set((
+                turns::status.eq(TurnStatus::Interrupted.as_str()),
+                turns::ended_at.eq(Some(now)),
+                turns::updated_at.eq(now),
+            ))
+            .execute(conn)?;
+
+        let mut held = 0;
+        for conversation_id in &stranded {
+            held += crate::db::ops::queue::hold_all(conn, conversation_id, now)?;
+        }
+        if held > 0 {
+            tracing::info!(
+                items = held,
+                conversations = stranded.len(),
+                "held queued prompts whose turn was cut off",
+            );
+        }
+        Ok(interrupted)
+    })
 }
 
 #[cfg(test)]
@@ -367,6 +407,44 @@ mod tests {
             "the phase is the diagnosis; reconciliation must not erase it",
         );
         assert_eq!(t.phase_tool.as_deref(), Some("edit_file"));
+    }
+
+    /// **A killed turn holds whatever was queued behind it.**
+    ///
+    /// The queue's rule is that only a turn reaching an ending lets the next
+    /// item go — "now rename that function" means nothing if the function was
+    /// never created. A crash is the purest case of a turn that reached no
+    /// ending, and it is also the only one where nobody is there to see it, so
+    /// without this the rule survived every situation except the one it was
+    /// written for.
+    #[test]
+    fn a_killed_turn_holds_the_queue_that_was_waiting_on_it() {
+        use crate::db::models::queue::{Delivery, QueueState};
+        use crate::db::ops::queue;
+
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conv(&mut conn, "crashed");
+        conv(&mut conn, "idle");
+        begin(&mut conn, "t1", "crashed", TurnOrigin::Desktop, None, 1000).unwrap();
+
+        queue::enqueue(&mut conn, "q1", "crashed", "now rename it", Delivery::FollowUp, 1).unwrap();
+        // A conversation nothing was running on has nothing to be in the dark
+        // about, and its queue must not be swept up along with the other's.
+        queue::enqueue(&mut conn, "q2", "idle", "unrelated", Delivery::FollowUp, 1).unwrap();
+
+        assert_eq!(reconcile_interrupted(&mut conn, 2000).unwrap(), 1);
+
+        assert_eq!(queue::list(&mut conn, "crashed").unwrap()[0].state(), QueueState::Held);
+        assert!(
+            queue::next_pending(&mut conn, "crashed").unwrap().is_none(),
+            "and so it waits for a person rather than running on a dead premise",
+        );
+        assert_eq!(
+            queue::list(&mut conn, "idle").unwrap()[0].state(),
+            QueueState::Queued,
+            "an untouched conversation's queue is not collateral",
+        );
     }
 
     #[test]

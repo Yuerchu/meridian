@@ -183,6 +183,27 @@ impl Stranded {
 pub struct Steered {
     pub text: String,
     pub origin: SteeredOrigin,
+    /// The transcript row this message already has, when whoever produced it
+    /// wrote one. `None` means the loop writes it, which is the ordinary case.
+    ///
+    /// A durable queue cannot leave it to the loop. Taking the item off the
+    /// queue and writing the row it becomes have to be one transaction, or a
+    /// kill in between leaves a state nobody can repair: either the item is
+    /// still queued and no row exists — deliver it again, safely — or the row
+    /// exists and the item is spent. So it arrives already written and says
+    /// where, rather than getting a second row for the same message.
+    pub row: Option<String>,
+}
+
+impl Steered {
+    /// A message with no row of its own, which the loop will write.
+    pub fn typed(text: String, origin: SteeredOrigin) -> Self {
+        Self {
+            text,
+            origin,
+            row: None,
+        }
+    }
 }
 
 /// Who put it there, which decides what the model reads it as.
@@ -204,11 +225,18 @@ pub enum SteeredOrigin {
 /// Messages that turned up mid-turn.
 ///
 /// Drained between rounds rather than at any point in one, so a request is
-/// never assembled from a history that is being appended to. Not `async`: the
-/// implementation is a queue behind a lock, and making it a future would put an
-/// await inside the loop's hottest branch for no reason anyone can name.
+/// never assembled from a history that is being appended to.
+///
+/// This was deliberately not `async`, on the grounds that every implementation
+/// was a queue behind a lock and a future would put an await in the loop for no
+/// reason anyone could name. There is a reason now: the desktop's queue is a
+/// *table*, and taking an item off it means a transaction — which has to happen
+/// on a blocking thread rather than on the runtime, and has to include the row
+/// write (see [`Steered::row`]). Both drains are already inside `async fn`s, so
+/// what it costs is this line.
+#[async_trait::async_trait]
 pub trait Steering: Send + Sync {
-    fn drain(&self) -> Vec<Steered>;
+    async fn drain(&self) -> Vec<Steered>;
 
     /// What may still be run now that those messages have joined the turn.
     ///

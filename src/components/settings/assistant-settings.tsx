@@ -199,7 +199,7 @@ function AssistantEditor({
         emptyProviderLabel={t('settings.assistant.providerDefault')}
       />
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
         <TextField fullWidth type="number">
           <Label>{t('settings.assistant.temperature')}</Label>
           <Input
@@ -300,7 +300,7 @@ function AssistantEditor({
             <div
               role="group"
               aria-label={t('settings.assistant.tools')}
-              className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2"
+              className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-1 p-2"
             >
               {allTools.map((tool) => (
                 <Checkbox
@@ -333,7 +333,7 @@ function AssistantEditor({
           <div
             role="group"
             aria-label={t('settings.assistant.emojiPacks')}
-            className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2 border border-border rounded-lg"
+            className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-1 p-2 border border-border rounded-lg"
           >
             {allPacks.map((pack) => (
               <Checkbox
@@ -376,7 +376,7 @@ function AssistantEditor({
             <div
               role="group"
               aria-label={t('settings.skills.assistantSection')}
-              className="grid grid-cols-1 md:grid-cols-2 gap-1 p-2"
+              className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-1 p-2"
             >
               {allSkills.map((skill) => (
                 <Checkbox
@@ -510,11 +510,17 @@ export function AssistantSettings() {
                     and `shrink-0`, which only mean anything inside a flex container.
                     `text-start` undoes the button element's centred UA default. */}
                 <Disclosure.Trigger className="flex w-full items-center gap-2 px-3 py-2.5 text-start text-sm transition-colors outline-none hover:bg-default/30 focus-visible:bg-default/30">
-                  <span className="flex-1 truncate">{a.name}</span>
+                  <span className="min-w-0 flex-1 truncate">{a.name}</span>
                   {/* eslint-disable-next-line no-restricted-syntax -- gold-star semantics: default-assistant marker is intentionally amber (CLAUDE.md whitelist) */}
                   {isDefault && <StarFill className="w-3.5 h-3.5 text-amber-500" />}
-                  {providerName && <span className="text-xs text-muted">{providerName}</span>}
-                  {a.model_id && <span className="text-xs text-muted">{a.model_id}</span>}
+                  {/* Both truncate, and both need `min-w-0` to be allowed to.
+                      A model id has no spaces in it, so its min-content width is
+                      the whole string: on a narrow row these two took what they
+                      liked and the assistant's own name — the one thing the row
+                      is for — was squeezed to nothing before either of them gave
+                      up a character. */}
+                  {providerName && <span className="min-w-0 truncate text-xs text-muted">{providerName}</span>}
+                  {a.model_id && <span className="min-w-0 truncate text-xs text-muted">{a.model_id}</span>}
                   <Disclosure.Indicator className="size-4 shrink-0 text-muted" />
                 </Disclosure.Trigger>
               </Disclosure.Heading>

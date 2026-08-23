@@ -98,6 +98,7 @@ pub(crate) async fn begin_assistant(
                 // this row in is what supplies them.
                 cache_read_tokens: None,
                 cache_write_tokens: None,
+                server_tool_calls: None,
                 provider_name: provider_name.as_deref(),
             },
             parent.as_deref(),
@@ -230,6 +231,7 @@ pub(crate) async fn append_tool_result(
                 // paid to produce.
                 cache_read_tokens: None,
                 cache_write_tokens: None,
+                server_tool_calls: None,
                 provider_name: None,
             },
             parent.as_deref(),
@@ -329,6 +331,7 @@ pub async fn write_steering(
                 tool_outcome: None,
                 cache_read_tokens: None,
                 cache_write_tokens: None,
+                server_tool_calls: None,
                 provider_name: None,
             },
             parent.as_deref(),
@@ -426,6 +429,7 @@ mod tests {
                 output_tokens: Some(11),
                 cache_read_tokens: Some(41),
                 cache_write_tokens: Some(43),
+                server_tool_calls: None,
             },
         )
         .await
@@ -477,6 +481,7 @@ mod tests {
                 output_tokens: Some(20),
                 cache_read_tokens: Some(180),
                 cache_write_tokens: None,
+                server_tool_calls: None,
             },
         )
         .await

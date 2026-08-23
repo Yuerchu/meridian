@@ -40,6 +40,9 @@ struct Prices {
     output: Option<f64>,
     cache_read: Option<f64>,
     cache_write: Option<f64>,
+    /// Per thousand invocations, not per million tokens — the unit the
+    /// upstream publishes it in.
+    server_tool: Option<f64>,
 }
 
 /// The role an automatic-review request is filed under.
@@ -49,28 +52,68 @@ struct Prices {
 /// total nobody can act on. `db::ops::usage` counts both.
 pub const AUTO_REVIEW_ROLE: &str = "auto_review";
 
-fn prices_for(conn: &mut SqliteConnection, provider_id: Option<&str>, model_id: Option<&str>) -> Prices {
+/// Summarising a conversation so it fits again.
+///
+/// The most expensive request the app makes on its own behalf — its prompt is
+/// the whole history being compacted — and until this existed it was the one
+/// upstream charge that appeared nowhere at all. The summary it produces is
+/// written as a `user` row, so it could never have been counted through the
+/// ordinary path.
+pub const COMPACTION_ROLE: &str = "compaction";
+
+/// Naming a conversation from its first exchange. Small, frequent, and equally
+/// invisible before this.
+pub const TITLE_ROLE: &str = "title";
+
+/// Every role that carries spend.
+///
+/// The list `db::ops::usage` filters on. A role missing from here is traffic
+/// that was paid for and reported as nothing — which is how compaction and
+/// titles went unrecorded for as long as they did, so adding a role means adding
+/// it here in the same change.
+pub const BILLED_ROLES: &[&str] = &["assistant", AUTO_REVIEW_ROLE, COMPACTION_ROLE, TITLE_ROLE];
+
+/// The rates this reply was charged, with any tiered pricing already resolved.
+///
+/// **This is where a tier is decided, and the only place it can be.** The tier
+/// depends on how big *this* prompt was, and that number exists here and nowhere
+/// downstream: `db::ops::usage` reads back a `SUM` over rows that are no longer
+/// one request, so re-deciding at read time would mean inventing a prompt size.
+/// What lands in the four price columns is the tier's own rates, which makes a
+/// crossing of the threshold look — to the reporting query — exactly like a
+/// price change mid-month, and that is a thing it already handles.
+///
+/// `prompt_tokens` is the whole prompt, cached part included, because that is
+/// what the upstreams measure against. A row with no token count falls to the
+/// base rates: an unknown prompt size cannot be argued into a tier, and the base
+/// rate is the one that cannot overcharge.
+fn prices_for(
+    conn: &mut SqliteConnection,
+    provider_id: Option<&str>,
+    model_id: Option<&str>,
+    prompt_tokens: Option<i32>,
+) -> Prices {
     let (Some(provider), Some(model)) = (provider_id, model_id) else {
         return Prices::default();
     };
     model_configs::table
         .filter(model_configs::provider_id.eq(provider))
         .filter(model_configs::model_id.eq(model))
-        .select((
-            model_configs::input_price,
-            model_configs::output_price,
-            model_configs::cache_price,
-            model_configs::cache_write_price,
-        ))
-        .first::<(f64, f64, Option<f64>, Option<f64>)>(conn)
-        .map(|(input, output, cache_read, cache_write)| Prices {
-            input: Some(input),
-            output: Some(output),
-            // Left as stored: a blank cache price means "priced like input", and
-            // `compute_cost` is the one place that reading belongs. Filling it in
-            // here would put the same rule in two places, to disagree later.
-            cache_read,
-            cache_write,
+        .select(crate::db::models::model_config::ModelConfig::as_select())
+        .first(conn)
+        .map(|config| {
+            let effective = crate::agent::pricing::Prices::for_prompt(&config, prompt_tokens.unwrap_or(0) as i64);
+            Prices {
+                input: Some(effective.input),
+                output: Some(effective.output),
+                // Left as resolved but not defaulted: a blank cache price means
+                // "priced like input", and `compute_cost` is the one place that
+                // reading belongs. Filling it in here would put the same rule in
+                // two places, to disagree later.
+                cache_read: effective.cache_read,
+                cache_write: effective.cache_write,
+                server_tool: effective.server_tool,
+            }
         })
         .unwrap_or_default()
 }
@@ -86,6 +129,9 @@ struct Subject<'a> {
     sender_id: Option<i64>,
     provider_id: Option<&'a str>,
     model_id: Option<&'a str>,
+    /// The whole prompt, which is what decides the price tier. `None` on a
+    /// user row, which has no tokens to price.
+    prompt_tokens: Option<i32>,
 }
 
 fn snapshot(conn: &mut SqliteConnection, msg: &Message) -> Snapshot {
@@ -97,6 +143,7 @@ fn snapshot(conn: &mut SqliteConnection, msg: &Message) -> Snapshot {
             sender_id: msg.sender_id,
             provider_id: msg.provider_id.as_deref(),
             model_id: msg.model_id.as_deref(),
+            prompt_tokens: msg.input_tokens,
         },
     )
 }
@@ -149,7 +196,7 @@ fn snapshot_of(conn: &mut SqliteConnection, subject: Subject<'_>) -> Snapshot {
         turn_origin,
         self_id,
         sender_name,
-        prices: prices_for(conn, subject.provider_id, subject.model_id),
+        prices: prices_for(conn, subject.provider_id, subject.model_id, subject.prompt_tokens),
     }
 }
 
@@ -189,30 +236,55 @@ pub fn record(conn: &mut SqliteConnection, msg: &Message) -> QueryResult<()> {
             output_tokens: msg.output_tokens,
             cache_read_tokens: msg.cache_read_tokens,
             cache_write_tokens: msg.cache_write_tokens,
+            server_tool_calls: msg.server_tool_calls,
             created_at: msg.created_at,
             input_price: snap.prices.input,
             output_price: snap.prices.output,
             cache_read_price: snap.prices.cache_read,
             cache_write_price: snap.prices.cache_write,
+            server_tool_price: snap.prices.server_tool,
             self_id: snap.self_id,
         })
         .execute(conn)?;
     Ok(())
 }
 
-/// What one automatic review cost, and against which message.
+/// What one request the app made on its own behalf cost.
+///
+/// A review, a summary, a title: none of them is something a person asked for
+/// directly, none has a `messages` row of its own to be copied from, and every
+/// one of them is charged for. `role` is what keeps them separable — a total
+/// nobody can decompose is one nobody can act on.
 #[derive(Debug, Clone)]
-pub struct ReviewCost<'a> {
-    /// The assistant message whose tool call was judged. There is no `messages`
-    /// row for the review itself — the verdict lives in that row's
-    /// `auto_review` column, and this table records only what it cost.
+pub struct SideRequestCost<'a> {
+    /// One of the `*_ROLE` constants above.
+    pub role: &'a str,
+    /// The row this spend is filed against: the message a review judged, the
+    /// summary a compaction wrote, the reply a title was taken from. Something
+    /// real, so the record can be traced back — never invented.
     pub message_id: &'a str,
     pub conversation_id: &'a str,
     pub turn_id: Option<&'a str>,
     pub provider_id: Option<&'a str>,
     pub provider_name: Option<&'a str>,
     pub model_id: Option<&'a str>,
+    /// Summed across every request the review made — a quick pass plus up to six
+    /// escalating rounds.
     pub usage: crate::db::models::message::MessageUsage,
+    /// The largest single request's prompt, which is what decides the price
+    /// tier.
+    ///
+    /// **Not `usage.input_tokens`, and the difference costs real money.** That
+    /// figure is a sum over as many as seven requests, so a review whose every
+    /// round sat comfortably under a threshold still adds up to something above
+    /// it — and billing the whole row at the long-context rate then doubles it.
+    /// This is the same mistake the turn loop avoids by pricing each round as it
+    /// goes; a review has one audit row to put its cost in, so the closest it can
+    /// get is the tier its biggest round actually reached.
+    ///
+    /// `None` falls back to the base rate, which is what a review with no
+    /// reported usage should cost.
+    pub peak_prompt_tokens: Option<i32>,
     /// One line, for reading the log back. Never the transcript that was sent:
     /// this table is exportable and the projection carries the user's own
     /// messages.
@@ -225,7 +297,7 @@ pub struct ReviewCost<'a> {
 /// takes the same snapshot, prices at the same moment against the same table,
 /// and lands in the same place. Two ledgers would disagree the first time
 /// somebody changed a rate.
-pub fn record_review(conn: &mut SqliteConnection, cost: ReviewCost<'_>) -> QueryResult<()> {
+pub fn record_side_request(conn: &mut SqliteConnection, cost: SideRequestCost<'_>) -> QueryResult<()> {
     let snap = snapshot_of(
         conn,
         Subject {
@@ -236,6 +308,9 @@ pub fn record_review(conn: &mut SqliteConnection, cost: ReviewCost<'_>) -> Query
             sender_id: None,
             provider_id: cost.provider_id,
             model_id: cost.model_id,
+            // The biggest round's prompt, never the sum of all of them — see
+            // `ReviewCost::peak_prompt_tokens`.
+            prompt_tokens: cost.peak_prompt_tokens,
         },
     );
     let id = uuid::Uuid::new_v4().to_string();
@@ -250,7 +325,7 @@ pub fn record_review(conn: &mut SqliteConnection, cost: ReviewCost<'_>) -> Query
             source_type: snap.source_type.as_deref(),
             source_id: snap.source_id.as_deref(),
             turn_origin: snap.turn_origin.as_deref(),
-            role: AUTO_REVIEW_ROLE,
+            role: cost.role,
             content: cost.summary,
             sender_id: None,
             sender_name: None,
@@ -261,11 +336,13 @@ pub fn record_review(conn: &mut SqliteConnection, cost: ReviewCost<'_>) -> Query
             output_tokens: cost.usage.output_tokens,
             cache_read_tokens: cost.usage.cache_read_tokens,
             cache_write_tokens: cost.usage.cache_write_tokens,
+            server_tool_calls: cost.usage.server_tool_calls,
             created_at: now,
             input_price: snap.prices.input,
             output_price: snap.prices.output,
             cache_read_price: snap.prices.cache_read,
             cache_write_price: snap.prices.cache_write,
+            server_tool_price: snap.prices.server_tool,
             self_id: snap.self_id,
         })
         .execute(conn)?;
@@ -320,6 +397,7 @@ mod tests {
             tool_outcome: None,
             cache_read_tokens: None,
             cache_write_tokens: None,
+            server_tool_calls: None,
             provider_name: None,
         }
     }
@@ -394,6 +472,9 @@ mod tests {
                 created_at: 0,
                 updated_at: 0,
                 capability_overrides: None,
+                price_tiers: None,
+                server_tools: None,
+                server_tool_price: None,
             },
         )
         .unwrap();
@@ -429,10 +510,97 @@ mod tests {
                 created_at: 0,
                 updated_at: 0,
                 capability_overrides: None,
+                price_tiers: None,
+                server_tools: None,
+                server_tool_price: None,
             },
         )
         .unwrap();
         assert_eq!(list_recent(&mut conn, 10).unwrap()[0].input_price, Some(3.0));
+    }
+
+    /// A tiered model is priced against *this* reply's prompt, at write time.
+    ///
+    /// This is the only place that decision can be made — the reporting query
+    /// sees a `SUM` over rows that are no longer one request — so what lands in
+    /// the four price columns has to be the tier's own rates. Two replies from
+    /// one model on opposite sides of the threshold then arrive at the report as
+    /// two price sets, which is a thing it already knows how to add up.
+    #[test]
+    fn a_long_prompt_is_snapshotted_at_its_tier_rate() {
+        use crate::db::models::model_config::NewModelConfig;
+        use crate::db::models::provider::NewProvider;
+
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        create_conversation(&mut conn, "c1", None, None, None, 1).unwrap();
+        diesel::insert_into(crate::db::schema::providers::table)
+            .values(&NewProvider {
+                id: "p1",
+                name: "Acme",
+                provider_type: "xai",
+                base_url: "https://example.invalid",
+                is_enabled: 1,
+                sort_order: 0,
+                created_at: 0,
+                updated_at: 0,
+                api_format: "chat",
+            })
+            .execute(&mut conn)
+            .unwrap();
+        crate::db::ops::model_config::upsert(
+            &mut conn,
+            &NewModelConfig {
+                id: "mc1",
+                provider_id: "p1",
+                model_id: "grok-4.6",
+                display_name: None,
+                context_window: 500_000,
+                compact_threshold: 400_000,
+                max_output_tokens: None,
+                input_price: 2.0,
+                output_price: 6.0,
+                cache_price: Some(0.5),
+                cache_write_price: None,
+                created_at: 0,
+                updated_at: 0,
+                server_tools: None,
+                server_tool_price: None,
+                capability_overrides: None,
+                price_tiers: Some(r#"[{"min_prompt_tokens":200000,"input":4.0,"output":12.0,"cache_read":1.0}]"#),
+            },
+        )
+        .unwrap();
+
+        let mut short = user_row("m1", "c1");
+        short.role = "assistant";
+        short.provider_id = Some("p1");
+        short.model_id = Some("grok-4.6");
+        short.input_tokens = Some(100_000);
+        let short = append_message(&mut conn, &short, None).unwrap();
+        record(&mut conn, &short).unwrap();
+
+        let mut long = user_row("m2", "c1");
+        long.role = "assistant";
+        long.provider_id = Some("p1");
+        long.model_id = Some("grok-4.6");
+        long.input_tokens = Some(250_000);
+        long.created_at = 2_000;
+        let long = append_message(&mut conn, &long, None).unwrap();
+        record(&mut conn, &long).unwrap();
+
+        let logged = list_recent(&mut conn, 10).unwrap();
+        let of = |id: &str| {
+            logged
+                .iter()
+                .find(|row| row.message_id == id && row.role == "assistant")
+                .expect("recorded")
+        };
+        assert_eq!(of("m1").input_price, Some(2.0), "under the threshold");
+        assert_eq!(of("m1").cache_read_price, Some(0.5));
+        assert_eq!(of("m2").input_price, Some(4.0), "over it, and the whole prompt");
+        assert_eq!(of("m2").output_price, Some(12.0));
+        assert_eq!(of("m2").cache_read_price, Some(1.0));
     }
 
     /// A question has no model and so no price. Storing a zero would make it
@@ -492,14 +660,18 @@ mod tests {
                 created_at: 0,
                 updated_at: 0,
                 capability_overrides: None,
+                price_tiers: None,
+                server_tools: None,
+                server_tool_price: None,
             },
         )
         .unwrap();
         let judged = append_message(&mut conn, &user_row("m1", "c1"), None).unwrap();
 
-        record_review(
+        record_side_request(
             &mut conn,
-            ReviewCost {
+            SideRequestCost {
+                role: AUTO_REVIEW_ROLE,
                 message_id: &judged.id,
                 conversation_id: "c1",
                 turn_id: None,
@@ -511,6 +683,7 @@ mod tests {
                     output_tokens: Some(20),
                     ..Default::default()
                 },
+                peak_prompt_tokens: Some(900),
                 summary: "Deny/High: 目标不在授权范围内",
             },
         )

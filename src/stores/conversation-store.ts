@@ -719,9 +719,16 @@ export interface ConversationStore {
    *  `setError` the caller makes first. */
   abortTurn: (convId: string, turnId: string, error?: string) => void
   handleMessageStart: (convId: string, messageId: string, turnId?: string) => void
+  handleUserMessage: (convId: string, messageId: string, content: string) => void
   handleText: (convId: string, messageId: string, content: string) => void
   handleReasoning: (convId: string, messageId: string, content: string) => void
   handleToolCall: (convId: string, messageId: string, callId: string, toolName: string, args: string) => void
+  /** A card already drawn now knows what it is. Hosted ACP sessions announce a
+   *  call as soon as one is coming, which can be before its arguments have
+   *  finished streaming — so the first draw can say "Terminal" with nothing in
+   *  it. Safe to match by id there, and only there: an ACP `toolCallId` is
+   *  unique within its session, while a provider call id is not. */
+  reviseToolCall: (convId: string, messageId: string, callId: string, toolName: string, args: string) => void
   handleToolApproval: (
     convId: string,
     messageId: string,
@@ -1127,6 +1134,47 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     )
   },
 
+  // A message from the *user* that this window did not send: a queued
+  // interjection, delivered into a turn that was already running.
+  //
+  // The composer appends what it sends itself, so nothing else needs this — but
+  // an interjection is sent by the runner, minutes after it was typed and
+  // possibly from another device. Without it the agent visibly changes course
+  // with nothing on screen to say why, until the conversation is reloaded.
+  handleUserMessage: (convId, messageId, content) => {
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        // The backend writes the row once and may announce it more than once —
+        // a resync after a reconnect replays nothing, but `queue-updated` and
+        // this can both land for the same delivery.
+        if (session.messages.some((m) => m.id === messageId)) return
+        session.messages.push({
+          id: messageId,
+          conversation_id: convId,
+          role: 'user',
+          content,
+          provider_id: null,
+          model_id: null,
+          input_tokens: null,
+          output_tokens: null,
+          cache_read_tokens: null,
+          cache_write_tokens: null,
+          provider_name: null,
+          tool_calls: null,
+          tool_call_id: null,
+          sort_order: session.messages.length,
+          created_at: Date.now(),
+          reasoning_content: null,
+          rating: null,
+          schema_version: 2,
+          is_compact_summary: 0,
+        })
+      }),
+    )
+  },
+
   handleText: (convId, messageId, content) => {
     set(
       produce((state: ConversationStore) => {
@@ -1207,6 +1255,27 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             status: 'running',
           },
         })
+      }),
+    )
+  },
+
+  reviseToolCall: (convId, messageId, callId, toolName, args) => {
+    set(
+      produce((state: ConversationStore) => {
+        const session = state.sessions[convId]
+        if (!session) return
+        const idx = findAssistantMsg(session.messages, messageId)
+        if (idx < 0) return
+        const target = session.messages[idx]
+        // The first card with this id that has not been answered. Unanswered
+        // matters: a revision arriving late must not reopen a call that has
+        // already produced its result.
+        const card = (target._blocks ?? []).find(
+          (b) => b.type === 'tool_call' && b.data.call_id === callId && !ANSWERED.has(b.data.status),
+        )
+        if (card?.type !== 'tool_call') return
+        card.data.tool_name = toolName
+        card.data.arguments = args
       }),
     )
   },

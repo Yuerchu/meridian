@@ -221,6 +221,7 @@ struct InboxSteering<'a> {
     demoted: std::sync::atomic::AtomicBool,
 }
 
+#[async_trait::async_trait]
 impl crate::agent::engine::Steering for InboxSteering<'_> {
     fn narrowed(&self) -> Option<std::collections::HashSet<String>> {
         self.demoted
@@ -228,7 +229,7 @@ impl crate::agent::engine::Steering for InboxSteering<'_> {
             .then(|| self.ordinary.clone())
     }
 
-    fn drain(&self) -> Vec<crate::agent::engine::Steered> {
+    async fn drain(&self) -> Vec<crate::agent::engine::Steered> {
         let items = self.inbox.drain();
         // A notice carries no sender — nobody said it, so it cannot lower
         // anything. Only a person who is not an admin does.
@@ -237,15 +238,17 @@ impl crate::agent::engine::Steering for InboxSteering<'_> {
         }
         items
             .into_iter()
-            .map(|item| crate::agent::engine::Steered {
-                text: item.text,
-                // A notice is something the system generated rather than
-                // something a person said, and it travels as context instead of
-                // as a user message.
-                origin: match item.sender.as_ref() {
-                    Some(s) => crate::agent::engine::SteeredOrigin::User(Some(s.into())),
-                    None => crate::agent::engine::SteeredOrigin::System,
-                },
+            .map(|item| {
+                crate::agent::engine::Steered::typed(
+                    item.text,
+                    // A notice is something the system generated rather than
+                    // something a person said, and it travels as context instead
+                    // of as a user message.
+                    match item.sender.as_ref() {
+                        Some(s) => crate::agent::engine::SteeredOrigin::User(Some(s.into())),
+                        None => crate::agent::engine::SteeredOrigin::System,
+                    },
+                )
             })
             .collect()
     }
@@ -540,18 +543,26 @@ async fn headless_chat_inner(
     //
     // Ahead of the tool set because what the model can be sent at all — whether
     // it takes a tools field — decides what that set may contain.
-    let turn_params = {
+    let mut turn_params = {
         let pool2 = pool.clone();
         let assistant2 = assistant.clone();
         let pt = provider_type.clone();
         let af = api_format.clone();
         let em = effective_model.clone();
+        // The provider this turn actually resolved to, not the assistant's
+        // stored field. They differ whenever the assistant names none and the
+        // fallback picked the first enabled one — and with the assistant's
+        // empty field there is no `model_configs` row to find, so that turn
+        // silently loses its context window, its prices, its capability
+        // overrides and its provider-side tools. The desktop has always passed
+        // the resolved id.
+        let pid = provider_id.clone();
         tokio::task::spawn_blocking(move || {
             crate::agent::resolve_turn_params(
                 &pool2,
                 crate::agent::TurnParamsInput {
                     assistant: assistant2.as_ref(),
-                    provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
+                    provider_id: Some(pid.as_str()),
                     provider_type: &pt,
                     api_format: &af,
                     model: &em,
@@ -563,6 +574,10 @@ async fn headless_chat_inner(
         .await
         .map_err(|e| e.to_string())??
     };
+    // The same reasoning as the desktop path: one room, one stable prefix, one
+    // server holding it. Worth more here than there, since a group's prefix is
+    // long and every message in it is another turn against the same one.
+    turn_params.params.cache_key = Some(conversation_id.to_string());
     let context_limit = turn_params.context_limit;
     // Off `turn_params` rather than a second `get_capabilities` call. That one
     // goes through `capabilities::resolve` without `apply_overrides`, so a
@@ -578,6 +593,7 @@ async fn headless_chat_inner(
         let pool2 = pool.clone();
         let registry = tool_registry.clone();
         let input = crate::agent::turn_config::TurnConfigInput {
+            server_tools: turn_params.params.server_tools.clone(),
             assistant: assistant.clone(),
             conversation_id: conversation_id.to_string(),
             project_id: project_id.map(|s| s.to_string()),
@@ -595,7 +611,17 @@ async fn headless_chat_inner(
             mcp_defs,
             // Session-scoped, not speaker-scoped — see `full_toolset` above.
             // The QQ tools are appended further down, on the same footing.
-            include_tools: full_toolset && supports_tools,
+            //
+            // A session that cannot have the registry still gets the few tools
+            // whose definitions say nothing about this machine; `web_search` was
+            // only ever excluded by being filed with the rest.
+            exposure: if !supports_tools {
+                crate::agent::turn_config::ToolExposure::None
+            } else if full_toolset {
+                crate::agent::turn_config::ToolExposure::All
+            } else {
+                crate::agent::turn_config::ToolExposure::Only(super::qq_tools::OPEN_REGISTRY_TOOLS)
+            },
             persona: assistant.as_ref().map(|a| a.system_prompt.clone()).unwrap_or_default(),
             // Memory is absent on purpose — it ships as a user-role message.
             context_blocks: Vec::new(),
@@ -734,6 +760,13 @@ async fn headless_chat_inner(
     // `ordinary_names` rather than `permitted_names`: the executor was built
     // with the authority this *turn* opened with, and a round that a plain
     // member started or joined must not read its permissions off that.
+    //
+    // The open registry tools are read back off `tool_defs` rather than from the
+    // constant, so a tool the assistant has switched off is not authorised by a
+    // list that only says which ones *may* be shown. Shown to everyone, so
+    // runnable by everyone: withholding at dispatch what the array advertises to
+    // the whole group is how you get a model repeatedly calling a tool it is
+    // told it has, in front of an audience.
     let offered: std::collections::HashSet<String> = if is_admin {
         tool_defs.iter().map(|t| t.name.clone()).collect()
     } else {
@@ -742,6 +775,12 @@ async fn headless_chat_inner(
             .map(|q| q.ordinary_names())
             .unwrap_or_default()
             .into_iter()
+            .chain(
+                tool_defs
+                    .iter()
+                    .map(|t| t.name.clone())
+                    .filter(|name| super::qq_tools::OPEN_REGISTRY_TOOLS.contains(&name.as_str())),
+            )
             .collect()
     };
 
@@ -811,6 +850,7 @@ async fn headless_chat_inner(
                         // What someone said cost no tokens and came from no upstream.
                         cache_read_tokens: None,
                         cache_write_tokens: None,
+                        server_tool_calls: None,
                         provider_name: None,
                     },
                     parent.as_deref(),
@@ -976,6 +1016,10 @@ async fn headless_chat_inner(
             files_root,
             interrupted,
             compaction: engine::CompactionPolicy::OneBot,
+            // A QQ turn accumulates tokens for the session summary and has
+            // nowhere to show a price. The bill for it is built from the audit
+            // rows like everyone else's, and those are tier-priced at write time.
+            pricing: None,
         },
         engine::TurnPorts {
             emit,

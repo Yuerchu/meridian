@@ -185,7 +185,7 @@ export function RemoteAccessSettings() {
         <p className="text-xs text-warning-soft-foreground">{t('settings.remote.trustWarning')}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
         <TextField fullWidth>
           <Label>{t('settings.remote.host')}</Label>
           <Input

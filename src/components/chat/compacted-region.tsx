@@ -84,10 +84,12 @@ export function CompactedRegion({
       )}
       <Marker variant="separator" className="py-3 px-2">
         <MarkerContent>
+          {/* `h-auto py-0` leaves this about 18px tall, and it is the only way
+              to open the summary of what was compacted away. */}
           <Button
             variant="ghost"
             onClick={() => setShowCompactSummary((v) => !v)}
-            className="text-xs text-muted hover:text-muted whitespace-nowrap h-auto px-2 py-0"
+            className="touch-hitbox text-xs text-muted hover:text-muted whitespace-nowrap h-auto px-2 py-0"
           >
             {t('chat.compact.boundary', { count: compactedCount })}
           </Button>

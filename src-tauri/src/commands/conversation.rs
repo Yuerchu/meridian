@@ -267,6 +267,18 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
         .map(|c| meridian_core::files::conversation_files_dir(&services.paths.data_dir, c))
         .collect();
 
+    // Before the rows go, and after the leases above make the set final. A
+    // hosted session is a child process keyed by conversation id: delete the
+    // conversation without this and the adapter keeps running, serving a
+    // transcript that no longer exists, unreachable because the id nobody can
+    // look up any more is the only handle on it.
+    #[cfg(not(target_os = "android"))]
+    {
+        let mut all = doomed.clone();
+        all.push(id.clone());
+        services.acp.close_each(&all).await;
+    }
+
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         db::ops::conversation::delete_conversation(&mut conn, &id).map_err(|e| e.to_string())?;
@@ -372,6 +384,11 @@ async fn assemble_system_prompt(
     project_id: Option<&str>,
     context_limit: usize,
     active_path: &[db::models::message::Message],
+    // `server_tools` is the turn's own, resolved by the caller. Counting the
+    // local `web_search` that a provider-side one displaces would make the
+    // estimate disagree with the prompt actually sent — the drift this function
+    // exists to avoid, not to introduce.
+    server_tools: Vec<String>,
 ) -> (String, String) {
     // Off the published snapshot, so the context estimator cannot be blocked by
     // a server that is busy answering something else.
@@ -414,6 +431,9 @@ async fn assemble_system_prompt(
             meridian_core::agent::turn_config::TurnConfigInput {
                 assistant,
                 conversation_id: conv_id,
+                // The estimate has to count the prompt the chat loop will send,
+                // and a provider-side tool takes the local one out of it.
+                server_tools,
                 project_id: pid,
                 // The estimate has to count the prompt the chat loop will
                 // actually send, transitions included.
@@ -424,7 +444,7 @@ async fn assemble_system_prompt(
                 // wrong about.
                 sub_agents: Some(sub_agents),
                 mcp_defs,
-                include_tools: true,
+                exposure: meridian_core::agent::turn_config::ToolExposure::All,
                 persona,
                 context_blocks,
             },
@@ -531,6 +551,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
         project_id.as_deref(),
         context_limit,
         &ctx.path,
+        turn.params.server_tools.clone(),
     )
     .await;
 

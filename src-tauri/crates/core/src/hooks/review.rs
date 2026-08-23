@@ -339,6 +339,13 @@ async fn resolve_params(state: &SharedState, assistant: &Assistant) -> Result<cr
     // short verdict after a lot of reading — letting the provider fit the reply
     // to the room it has is closer to right than any number carried over here.
     params.params.max_tokens = None;
+    // The reviewer's four read-only tools are the whole of what it may do, and
+    // `turn_config` is only half of enforcing that: the tools the *provider*
+    // runs never pass through a tool set at all, they ride on the request
+    // parameters. Left in, a reviewer pointed at a model with server-side search
+    // switched on could search the open web about an uncommitted diff — with no
+    // approval, and no sign of it in the transcript.
+    params.params.server_tools = Vec::new();
     Ok(params)
 }
 
@@ -514,6 +521,7 @@ async fn write_round(
                     tool_outcome: None,
                     cache_read_tokens: None,
                     cache_write_tokens: None,
+                    server_tool_calls: None,
                     provider_name: None,
                 },
                 None,
@@ -657,6 +665,9 @@ async fn run_turn(
             enabled: true,
             breaker: Arc::new(crate::agent::CompactCircuitBreaker::new()),
         },
+        // The gate reports tokens, not money — see the response it builds. What
+        // the review cost is still recorded, on its audit rows.
+        pricing: None,
     };
     // Streams into the conversation view exactly like a desktop turn, so the
     // review can be watched while `ExitPlanMode` blocks on it. Nobody is
@@ -722,6 +733,9 @@ async fn build_config(
     params: &crate::agent::TurnParams,
 ) -> Result<crate::agent::turn_config::TurnConfig, String> {
     let input = crate::agent::turn_config::TurnConfigInput {
+        // The reviewer gets four read-only tools and no shell; searching
+        // the web is not among them, provider-side or otherwise.
+        server_tools: Vec::new(),
         assistant: Some(assistant.clone()),
         conversation_id: conversation_id.to_string(),
         project_id: None,
@@ -730,7 +744,7 @@ async fn build_config(
         // An explicit whitelist and nothing outside it. MCP tools ask
         // unconditionally, and nobody is watching this run.
         mcp_defs: Vec::new(),
-        include_tools: params.caps.supports_tools,
+        exposure: crate::agent::turn_config::ToolExposure::when(params.caps.supports_tools),
         persona: assistant.system_prompt.clone(),
         context_blocks: Vec::new(),
     };

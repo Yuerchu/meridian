@@ -41,6 +41,14 @@ interface ComposerProps {
   toolbarEnd?: ReactNode
   /** One line above the shell. Not `PromptInput.Footer`, which is below it. */
   notice?: ReactNode
+  /**
+   * Queued messages, in their own card above the shell.
+   *
+   * A sibling of `PromptInput.Shell` rather than a slot inside it, which is
+   * where Pro puts it and where it belongs: the rows are about messages that
+   * have already been written, not about the one being typed.
+   */
+  queue?: ReactNode
   /** Absolute paths of files dropped on the window. Desktop only. */
   onDropFiles?: (paths: string[]) => void
   /**
@@ -80,6 +88,7 @@ export function Composer({
   toolbarStart,
   toolbarEnd,
   notice,
+  queue,
   onDropFiles,
   onFieldReady,
 }: ComposerProps) {
@@ -136,6 +145,7 @@ export function Composer({
         allowSubmitWhileRunning={steerable}
         maxHeight={200}
       >
+        {queue}
         {/* Pro styles this state — dotted accent border and a soft fill — but
             sets it for nobody; it is left for whoever owns the drag. */}
         <PromptInput.Shell data-dragging={dropping ? 'true' : undefined}>
@@ -155,8 +165,42 @@ export function Composer({
             />
           </PromptInput.Content>
           <PromptInput.Toolbar>
-            <PromptInput.ToolbarStart>{toolbarStart}</PromptInput.ToolbarStart>
-            <PromptInput.ToolbarEnd>
+            {/* Pro's toolbar is a `space-between` flex row inside a shell that
+                clips, and neither half is told what to do when the left one
+                runs out of room. So a wide left half pushes Send past the
+                shell's edge and it is simply gone — which is what a hosted
+                session's knobs did. Scrolling is the fix rather than shrinking:
+                a squashed picker is unreadable, and the reason there is
+                anything to scroll is that the agent decides how many controls
+                there are.
+
+                `scrollbar-none` because the app's own scrollbars are 10px and
+                one of those under a 32px toolbar is taller than the thing it is
+                scrolling — see the note in `index.css` on why the `scrollbar-*`
+                utilities other than this one do nothing here. */}
+            {/* `p-1 -m-1` is not spacing: `overflow-x: auto` forces
+                `overflow-y` to compute as auto too, so without a little slack a
+                focus ring on a control in here is clipped at the top and bottom
+                — and the negative margin gives the slack back, leaving the row
+                exactly where it was.
+
+                The horizontal half was added later and for a second reason:
+                Pro leaves this slot no inline padding, so the first control sat
+                flush against a scroll container's edge and `touch-hitbox` had
+                nowhere to expand sideways. The `+` button came out 44px tall
+                and still 40px wide — which the harness at
+                `#playground/responsive` is what noticed. */}
+            {/* `shrink` as well as `min-w-0`, and it is the half that was
+                missing: Pro sets `flex-shrink: 0` on this slot, and a flex item
+                that may not shrink ignores `min-w-0` entirely — so the scroller
+                above was real but never narrower than its contents, and Send
+                still went over the clipped edge. Both halves of the toolbar
+                carry Pro's `shrink-0`; this is the one that gives way, because
+                the other one is Send. */}
+            <PromptInput.ToolbarStart className="-m-1 min-w-0 shrink overflow-x-auto p-1 scrollbar-none [&>*]:shrink-0">
+              {toolbarStart}
+            </PromptInput.ToolbarStart>
+            <PromptInput.ToolbarEnd className="shrink-0">
               {toolbarEnd}
               {/* Exactly when Send is not already a Stop, so the two are never
                   up at once and the run is never unstoppable. */}

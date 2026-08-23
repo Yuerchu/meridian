@@ -366,3 +366,105 @@ describe('web search sources', () => {
     expect(shellOpen).toHaveBeenCalledWith('https://heroui.com/docs')
   })
 })
+
+/**
+ * The two lines beside the tool's name. Together they are the whole of what a
+ * collapsed card says, so a tool neither has an answer for is a column of
+ * identical cards.
+ */
+describe('the summary lines beside the tool name', () => {
+  beforeAll(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  function summary(container: HTMLElement): string | null {
+    return container.querySelector('[data-slot="tool-arg"]')?.textContent ?? null
+  }
+
+  function subtitle(container: HTMLElement): string | null {
+    return container.querySelector('[data-slot="chat-tool-subtitle"]')?.textContent ?? null
+  }
+
+  /**
+   * Both, and on separate lines. The description read better as the single
+   * summary and quietly took the path off a `write_file` card — whose body
+   * renders a diff rather than the raw arguments, with only the file's own name
+   * in the header and the directory in a `title` no touch screen can reach.
+   * Approving a write is exactly when the directory matters.
+   */
+  it('shows the description beside the argument it explains, not instead of it', () => {
+    const { container } = render(
+      <ToolCallBlock
+        data={toolCall(
+          'Bash',
+          { command: 'git log --reverse --diff-filter=A --format=%h', description: 'List migrations by date added' },
+          'completed',
+        )}
+      />,
+    )
+    expect(summary(container)).toBe('git log --reverse --diff-filter=A --format=%h')
+    expect(subtitle(container)).toBe('List migrations by date added')
+  })
+
+  /** The case that motivated the two lines: a pending write, whose directory is
+   *  the whole of what is being approved. */
+  it('keeps the path on a write that also carries a description', () => {
+    const { container } = render(
+      <ToolCallBlock
+        data={toolCall('write_file', {
+          path: '/home/me/.ssh/config',
+          content: 'Host *',
+          description: 'Add the jump host',
+        })}
+      />,
+    )
+    expect(summary(container)).toBe('/home/me/.ssh/config')
+    expect(subtitle(container)).toBe('Add the jump host')
+  })
+
+  it('draws no second line when nothing wrote a description', () => {
+    const { container } = render(<ToolCallBlock data={toolCall('Bash', { command: 'ls' }, 'completed')} />)
+    expect(subtitle(container)).toBeNull()
+  })
+
+  it('falls back to the argument when nothing wrote a description', () => {
+    const { container } = render(<ToolCallBlock data={toolCall('Bash', { command: 'pnpm test' }, 'completed')} />)
+    expect(summary(container)).toBe('pnpm test')
+  })
+
+  /**
+   * Claude Code's names arrive through `_meta.claudeCode.toolName`, so a hosted
+   * transcript is drawn from the same switch as a native one. Without these
+   * every one of these cards said only `Read`, `Glob`, `Grep`.
+   */
+  it.each([
+    ['Read', { file_path: 'src/main.rs' }, 'src/main.rs'],
+    ['Edit', { file_path: 'src/lib.rs', old_string: 'a', new_string: 'b' }, 'src/lib.rs'],
+    ['Write', { file_path: 'notes.md', content: 'x' }, 'notes.md'],
+    ['Glob', { pattern: '**/*.tsx' }, '**/*.tsx'],
+    ['Grep', { pattern: 'fn main' }, 'fn main'],
+    ['WebFetch', { url: 'https://example.com' }, 'https://example.com'],
+  ])('names the file or pattern a hosted %s touched', (name, args, expected) => {
+    const { container } = render(<ToolCallBlock data={toolCall(name, args, 'completed')} />)
+    expect(summary(container)).toBe(expected)
+  })
+
+  /**
+   * The bare id, not a guess. Anything from MCP or the custom registry has a
+   * schema this cannot know, and `toolLabel` deliberately hands back the key it
+   * was given when no translation exists.
+   */
+  it('says nothing about a tool it has no schema for', () => {
+    const { container } = render(
+      <ToolCallBlock data={toolCall('mcp__linear__list_issues', { teamId: 'abc' }, 'completed')} />,
+    )
+    expect(summary(container)).toBeNull()
+    expect(screen.getByText('mcp__linear__list_issues')).toBeInTheDocument()
+  })
+
+  it('translates a hosted tool rather than showing its bare id', () => {
+    render(<ToolCallBlock data={toolCall('Bash', { command: 'ls' }, 'completed')} />)
+    expect(screen.getByText(i18n.t('chat.tool.name.Bash'))).toBeInTheDocument()
+    expect(screen.queryByText('Bash')).toBeNull()
+  })
+})

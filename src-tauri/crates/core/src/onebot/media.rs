@@ -4,8 +4,8 @@
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use super::format::{IMAGE_SENTINEL, ParsedMessage, RECORD_SENTINEL};
-use super::protocol::{OneBotAction, OneBotEvent};
+use super::format::{FORWARD_SENTINEL, IMAGE_SENTINEL, ParsedMessage, RECORD_SENTINEL};
+use super::protocol::OneBotAction;
 use super::{SharedState, call_api_with_timeout};
 
 pub const MAX_IMAGES: usize = 5;
@@ -13,21 +13,53 @@ pub const MAX_IMAGE_BYTES: u64 = 10 * 1024 * 1024;
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(15);
 const MEDIA_API_TIMEOUT: Duration = Duration::from_secs(30);
 
+/// Where an image can be fetched from, if anywhere.
+///
+/// One definition, used both to count the budget and to spend it — two copies
+/// of this rule that drifted would make the count describe a different set of
+/// images than the one being fetched.
+fn image_url(media: &crate::onebot::format::MediaRef) -> Option<&str> {
+    media
+        .url
+        .as_deref()
+        .or_else(|| media.file.as_deref().filter(|f| f.starts_with("http")))
+}
+
 pub struct MediaOutcome {
     /// Message text with voice/OCR results merged in.
     pub text: String,
     /// file:/// URIs of stored images (vision path only).
     pub image_uris: Vec<String>,
+    /// How much of the budget this call used.
+    ///
+    /// **Attempts, not successes**, and the distinction is the whole reason
+    /// this field exists rather than the caller counting `image_uris`. An
+    /// image that fell back to OCR, or whose download failed, or whose OCR came
+    /// back empty, produces no uri and still cost a fetch — so a quoted message
+    /// of five images with no vision model reported nothing spent, and the
+    /// turn's own images were then given the full budget again. Two calls, ten
+    /// OCR requests, against a `MAX_IMAGES` of five and a doc comment promising
+    /// they share one budget.
+    pub spent: usize,
 }
 
 /// Process media segments of an incoming message. Must be called after the
 /// session is established (needs `conversation_id` for file storage).
+///
+/// `record_message_id` is the id of the message the voice segment belongs to,
+/// which is not always the turn's own: a reply quoting a voice note has to be
+/// transcribed against the *quoted* id, and passing the reply's yields nothing.
+///
+/// `image_budget` is how many images this call may fetch. A turn that also
+/// carries a quoted message runs this twice and the two share one budget, so
+/// quoting a nine-image album cannot push the turn to eighteen downloads.
 pub async fn process_media(
     state: &Arc<SharedState>,
-    event: &OneBotEvent,
+    record_message_id: Option<i64>,
     parsed: &ParsedMessage,
     conversation_id: &str,
     model_override: Option<&str>,
+    image_budget: usize,
 ) -> MediaOutcome {
     let mut text = parsed.text.clone();
     let mut image_uris = Vec::new();
@@ -35,7 +67,7 @@ pub async fn process_media(
     // Voice transcription runs concurrently with the image work below.
     let record_fut = async {
         if parsed.has_record
-            && let Some(mid) = event.message_id
+            && let Some(mid) = record_message_id
         {
             return transcribe_record(state, mid).await;
         }
@@ -50,12 +82,18 @@ pub async fn process_media(
 
     // Each image independently: vision download when supported, else OCR.
     // Returns (Option<uri>, Option<ocr_text>) so both lists rebuild in order.
+    // What the budget is actually being spent on, decided by the same rule the
+    // futures below use. Counted here because the answer has to survive every
+    // way an attempt can come back empty.
+    let spent = parsed
+        .images
+        .iter()
+        .take(image_budget)
+        .filter(|media| image_url(media).is_some())
+        .count();
+
     let image_futs = parsed.images.iter().enumerate().map(|(i, media)| async move {
-        let url = media
-            .url
-            .as_deref()
-            .or_else(|| media.file.as_deref().filter(|f| f.starts_with("http")));
-        let Some(url) = url.filter(|_| i < MAX_IMAGES) else {
+        let Some(url) = image_url(media).filter(|_| i < image_budget) else {
             return (None, None);
         };
         if supports_images {
@@ -84,13 +122,20 @@ pub async fn process_media(
         text = merge_ocr_into_text(&text, &ocr_results);
     }
 
-    // Restore any sentinels left over (voice failed, image beyond MAX_IMAGES,
-    // OCR empty) to human-readable placeholders before the model sees the text.
+    // Restore any sentinels left over (voice failed, image beyond the budget,
+    // OCR empty, a forward that could not be fetched) to human-readable
+    // placeholders before the model sees the text. Sticker sentinels are the
+    // exception: the caller splits on them to build the content parts.
     text = text
         .replace(IMAGE_SENTINEL, "[图片]")
-        .replace(RECORD_SENTINEL, "[语音]");
+        .replace(RECORD_SENTINEL, "[语音]")
+        .replace(FORWARD_SENTINEL, "[聊天记录]");
 
-    MediaOutcome { text, image_uris }
+    MediaOutcome {
+        text,
+        image_uris,
+        spent,
+    }
 }
 
 /// Replace the i-th image sentinel with its OCR text (when present), matching

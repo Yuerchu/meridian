@@ -17,6 +17,31 @@ use crate::tools::ToolRegistry;
 
 use super::modes::Modes;
 
+/// How much of the tool registry this runner may be shown.
+///
+/// Three-valued rather than two because a QQ group is neither: the registry as a
+/// whole cannot go there — an MCP definition carries the user's own server names
+/// and argument schemas, and one member cannot be shown those without showing
+/// everyone present — while a few tools whose definitions reveal nothing about
+/// this machine can. See `onebot::qq_tools::OPEN_REGISTRY_TOOLS`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolExposure {
+    /// Everything the assistant has enabled.
+    All,
+    /// Only these of them — and still only if the assistant enabled them, so
+    /// this narrows and never widens.
+    Only(&'static [&'static str]),
+    /// Nothing, for a model that cannot take a tools field at all.
+    None,
+}
+
+impl ToolExposure {
+    /// The ordinary case: everything, unless the model takes no tools.
+    pub fn when(supports_tools: bool) -> Self {
+        if supports_tools { Self::All } else { Self::None }
+    }
+}
+
 pub struct TurnConfigInput {
     pub assistant: Option<Assistant>,
     pub conversation_id: String,
@@ -27,8 +52,7 @@ pub struct TurnConfigInput {
     pub mode: Modes,
     /// Fetched by the caller: the MCP manager sits behind an async lock.
     pub mcp_defs: Vec<ToolDefinition>,
-    /// False for OneBot's non-admin sessions, which get no tools at all.
-    pub include_tools: bool,
+    pub exposure: ToolExposure,
     /// Whether this runner can delegate, and to which models.
     ///
     /// `None` is not "no models" — it is "there is no `SubAgents` port here", so
@@ -37,6 +61,10 @@ pub struct TurnConfigInput {
     /// `PlanTransitions` re-resolves mid-turn and would undo anything a call
     /// site had filtered.
     pub sub_agents: Option<crate::agent::sub_agents::SubAgentCatalog>,
+    /// Provider-side tools this turn is asking the upstream to run, already
+    /// narrowed by `resolve_turn_params`. Each one that supersedes a local tool
+    /// takes it out of the set below.
+    pub server_tools: Vec<String>,
     /// The assistant's own prompt, template variables already resolved.
     pub persona: String,
     /// Slotted in after the persona: project instructions, file access notes.
@@ -61,13 +89,14 @@ pub fn resolve(conn: &mut SqliteConnection, registry: &ToolRegistry, input: Turn
         project_id,
         mode,
         mcp_defs,
-        include_tools,
+        exposure,
         sub_agents,
+        server_tools,
         persona,
         context_blocks,
     } = input;
 
-    let tool_defs = if include_tools {
+    let tool_defs = if exposure != ToolExposure::None {
         let enabled = enabled_tools(conn, assistant.as_ref());
         let mut defs = super::tool_defs::collect(registry, mcp_defs, enabled.as_deref());
         // Sticker availability is data, not an assistant preset. Keep the two
@@ -111,6 +140,25 @@ pub fn resolve(conn: &mut SqliteConnection, registry: &ToolRegistry, input: Turn
         });
         super::tool_defs::apply_skill_catalog(&mut defs, &available);
         super::tool_defs::apply_sub_agent_catalog(&mut defs, sub_agents.as_ref());
+        // A tool the provider is doing itself is one we must not also offer.
+        // Not a matter of tidiness: the model would be shown two ways to search,
+        // and the local one stops to ask permission and needs a Tavily key — so
+        // whichever it picked would be a coin toss between "searches" and "asks
+        // to search, then fails for want of a key". The upstream's own is
+        // strictly better where it exists: no key, no card, and the results
+        // never come back through our context window.
+        for server_tool in &server_tools {
+            if let Some(local) = crate::provider::superseded_local_tool(server_tool) {
+                defs.retain(|definition| definition.name != local);
+            }
+        }
+        // Last, so that a narrowed session is narrowed against the *final* set
+        // rather than an intermediate one — the sticker pair, the skill catalog
+        // and the sub-agent tool are all added above, and each would otherwise
+        // slip past a filter applied before it.
+        if let ToolExposure::Only(allowed) = exposure {
+            defs.retain(|definition| allowed.contains(&definition.name.as_str()));
+        }
         defs
     } else {
         Vec::new()
@@ -304,8 +352,9 @@ mod tests {
             project_id: None,
             mode,
             sub_agents: None,
+            server_tools: Vec::new(),
             mcp_defs: Vec::new(),
-            include_tools: true,
+            exposure: ToolExposure::All,
             persona: "You are a test.".into(),
             context_blocks: Vec::new(),
         }
@@ -453,7 +502,7 @@ mod tests {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
         let mut i = input(switchable(None), None);
-        i.include_tools = false;
+        i.exposure = ToolExposure::None;
         let cfg = resolve(&mut conn, &reg, i);
 
         assert!(cfg.offered.is_empty(), "got: {:?}", cfg.offered);
@@ -488,12 +537,88 @@ mod tests {
         );
     }
 
+    /// A QQ group: no registry, no MCP, but the one tool whose definition says
+    /// nothing about this machine. It used to be excluded by being filed with
+    /// the rest, so a group could not search the web at all.
+    #[test]
+    fn a_narrowed_session_keeps_the_tools_that_reveal_nothing() {
+        let (pool, reg) = setup();
+        let mut conn = pool.get().unwrap();
+        let mut i = input(Modes::Fixed, None);
+        i.exposure = ToolExposure::Only(&["web_search"]);
+        let cfg = resolve(&mut conn, &reg, i);
+
+        assert!(cfg.offered.contains("web_search"));
+        assert!(!cfg.offered.contains("read_file"), "nothing that names a path");
+        assert!(!cfg.offered.contains("write_file"));
+        assert_eq!(cfg.offered.len(), 1);
+    }
+
+    /// `Only` filters what the assistant allowed rather than replacing it, so
+    /// naming a tool here cannot hand back one the user switched off.
+    #[test]
+    fn narrowing_cannot_widen() {
+        let (pool, reg) = setup();
+        let mut conn = pool.get().unwrap();
+        let assistant = assistant_with(None, Some(r#"["read_file"]"#));
+        let mut i = input(Modes::Fixed, Some(assistant));
+        i.exposure = ToolExposure::Only(&["web_search"]);
+        let cfg = resolve(&mut conn, &reg, i);
+
+        assert!(
+            cfg.offered.is_empty(),
+            "the assistant never enabled it: {:?}",
+            cfg.offered
+        );
+    }
+
+    /// The provider is doing the searching, so we must not also offer it.
+    ///
+    /// Two ways to search is worse than either alone: the local one stops for
+    /// approval and needs a Tavily key, so a model that picked it would ask
+    /// permission and then fail, having had the better option taken from it.
+    #[test]
+    fn a_provider_side_search_takes_the_local_one_out_of_the_set() {
+        let (pool, reg) = setup();
+        let mut conn = pool.get().unwrap();
+
+        let with_local = resolve(&mut conn, &reg, input(switchable(None), None));
+        assert!(with_local.offered.contains("web_search"), "the baseline");
+
+        let mut i = input(switchable(None), None);
+        i.server_tools = vec!["web_search".into()];
+        let cfg = resolve(&mut conn, &reg, i);
+
+        assert!(!cfg.offered.contains("web_search"));
+        assert!(
+            !cfg.tool_defs.iter().any(|d| d.name == "web_search"),
+            "not merely unauthorised — not even advertised",
+        );
+        assert!(cfg.offered.contains("read_file"), "everything else is untouched");
+    }
+
+    /// A provider-side tool with no local counterpart removes nothing. The map
+    /// is deliberately partial: `x_search` and `code_execution` have no
+    /// equivalent here, and a blanket "drop anything with a similar name" would
+    /// quietly take away tools nobody replaced.
+    #[test]
+    fn a_server_tool_with_no_local_twin_removes_nothing() {
+        let (pool, reg) = setup();
+        let mut conn = pool.get().unwrap();
+        let mut i = input(switchable(None), None);
+        i.server_tools = vec!["x_search".into(), "code_execution".into()];
+        let cfg = resolve(&mut conn, &reg, i);
+
+        assert!(cfg.offered.contains("web_search"));
+        assert!(cfg.offered.contains("read_file"));
+    }
+
     #[test]
     fn a_session_without_tools_still_gets_a_prompt() {
         let (pool, reg) = setup();
         let mut conn = pool.get().unwrap();
         let mut i = input(switchable(None), None);
-        i.include_tools = false;
+        i.exposure = ToolExposure::None;
         let cfg = resolve(&mut conn, &reg, i);
 
         assert!(cfg.tool_defs.is_empty());

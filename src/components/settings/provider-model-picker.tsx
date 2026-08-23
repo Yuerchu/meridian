@@ -91,7 +91,7 @@ export function ProviderModelPicker({
   }
 
   return (
-    <div data-slot="provider-model-picker" className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div data-slot="provider-model-picker" className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
       <SettingsSelect
         {...name(t('settings.assistant.provider'))}
         value={providerId || NO_PROVIDER}

@@ -14,6 +14,7 @@ import {
   Sliders,
   Smartphone,
   Sparkles,
+  Terminal,
   Wrench,
 } from '@gravity-ui/icons'
 
@@ -41,6 +42,7 @@ export type SettingsTab =
   | 'voice'
   | 'onebot'
   | 'hooks'
+  | 'acp'
   | 'remote'
   | 'general'
   | 'developer'
@@ -71,6 +73,9 @@ const settingsTabs: SettingsTabDef[] = [
   { id: 'voice', labelKey: 'settings.voice', icon: Microphone },
   { id: 'onebot', labelKey: 'settings.onebot', icon: BroadcastSignal },
   { id: 'hooks', labelKey: 'settings.hooks', icon: Link },
+  // Next to the hook gates because both are about another coding agent, and
+  // whoever is setting one up is usually setting up the other.
+  { id: 'acp', labelKey: 'settings.acp', icon: Terminal },
   // Last of the three panels that open a socket, and beside them for that
   // reason: OneBot, the hook endpoint and this one are the same decision made
   // three times, and a user looking for "what is this machine serving" should
@@ -81,8 +86,14 @@ const settingsTabs: SettingsTabDef[] = [
   { id: 'about', labelKey: 'settings.about', icon: CircleInfo },
 ]
 
-/** Panels backed by a listening socket, which Android does not have. */
-const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks', 'remote']
+/**
+ * Panels for things Android cannot run: three listening sockets, and one child
+ * process. `acp` is the odd one out mechanically — it serves nothing — but it
+ * lands in the same place for the same two reasons: the command is compiled out
+ * on Android, and what it configures is a binary on the machine the *backend* is
+ * on, which is not the one a remote client is holding.
+ */
+const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks', 'acp', 'remote']
 
 /**
  * Android has no OneBot connection and nothing to serve the hook endpoint to,

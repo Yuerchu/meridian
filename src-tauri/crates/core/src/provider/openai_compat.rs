@@ -17,10 +17,18 @@ pub struct OpenAICompatProvider {
     flavor: OpenAICompatFlavor,
 }
 
+/// What a chat-completions endpoint needs *beyond* the dialect itself.
+///
+/// A flavor exists only where the wire format is the same but the endpoint
+/// wants something extra: Google's thought signatures, xAI's cache routing
+/// header. Anything that needs a different request or response shape belongs in
+/// its own adapter instead — which is what `deepseek.rs` and `gemma_tool.rs`
+/// are.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum OpenAICompatFlavor {
     Generic,
     Google,
+    Xai,
 }
 
 impl OpenAICompatProvider {
@@ -40,6 +48,14 @@ impl OpenAICompatProvider {
         }
     }
 
+    pub fn new_xai(base_url: &str, api_key: &str) -> Self {
+        Self {
+            base_url: base_url.trim_end_matches('/').to_string(),
+            api_key: api_key.to_string(),
+            flavor: OpenAICompatFlavor::Xai,
+        }
+    }
+
     fn build_request(
         &self,
         messages: &[ChatMessage],
@@ -50,7 +66,9 @@ impl OpenAICompatProvider {
         let mut body = serde_json::json!({
             "model": params.model,
             "messages": match self.flavor {
-                OpenAICompatFlavor::Generic => serialize_openai_messages(messages),
+                // Spelled out rather than wildcarded: the next flavor should
+                // have to say which serialisation it wants.
+                OpenAICompatFlavor::Generic | OpenAICompatFlavor::Xai => serialize_openai_messages(messages),
                 OpenAICompatFlavor::Google => serialize_google_messages(messages, &params.model),
             },
             "stream": stream,
@@ -110,6 +128,27 @@ impl OpenAICompatProvider {
             http::header::AUTHORIZATION,
             super::auth_header_value(&format!("Bearer {}", self.api_key)),
         );
+        // xAI's prompt cache lives on whichever server answered, so this header
+        // is what sends a conversation back to the one already holding its
+        // prefix. Their own docs put it plainly: without it you often pay full
+        // input price on a cache-cold server.
+        //
+        // A key that cannot be a header value is dropped rather than replaced
+        // with a placeholder: unlike the API key, nothing here fails visibly, so
+        // a stand-in would silently pin every such conversation to one server.
+        if self.flavor == OpenAICompatFlavor::Xai
+            && let Some(key) = params.cache_key.as_deref()
+        {
+            match http::HeaderValue::from_str(key) {
+                Ok(value) => {
+                    req.headers.insert("x-grok-conv-id", value);
+                }
+                Err(_) => tracing::warn!(
+                    key_chars = key.chars().count(),
+                    "the cache key is not representable as a header; this turn will not route to a warm cache"
+                ),
+            }
+        }
         req.body = Some(RequestBody::Json(body));
         req
     }
@@ -456,6 +495,10 @@ pub struct ChunkUsage {
     /// `serde_json::Value` here would push "is this key present" down into the
     /// normaliser where it is easy to get wrong.
     pub prompt_tokens_details: Option<PromptTokensDetails>,
+    /// Where the reasoning count lives in this dialect. Read because the two
+    /// endpoints speaking it disagree about whether `completion_tokens` already
+    /// includes it — see `billable_completion_tokens`.
+    pub completion_tokens_details: Option<CompletionTokensDetails>,
     #[serde(default, flatten)]
     extra: ExtraIgnore,
 }
@@ -464,6 +507,9 @@ impl ChunkUsage {
     fn warn_ignored_fields(&self) {
         warn_extra_fields("chunk_usage", &self.extra);
         if let Some(details) = &self.prompt_tokens_details {
+            details.warn_ignored_fields();
+        }
+        if let Some(details) = &self.completion_tokens_details {
             details.warn_ignored_fields();
         }
     }
@@ -481,6 +527,20 @@ pub struct PromptTokensDetails {
 impl PromptTokensDetails {
     fn warn_ignored_fields(&self) {
         warn_extra_fields("prompt_tokens_details", &self.extra);
+    }
+}
+
+/// The reasoning half of the same story, for the same reason.
+#[derive(Deserialize)]
+pub struct CompletionTokensDetails {
+    pub reasoning_tokens: Option<i32>,
+    #[serde(default, flatten)]
+    extra: ExtraIgnore,
+}
+
+impl CompletionTokensDetails {
+    fn warn_ignored_fields(&self) {
+        warn_extra_fields("completion_tokens_details", &self.extra);
     }
 }
 
@@ -604,10 +664,53 @@ pub fn normalise_openai_usage(u: &ChunkUsage) -> TokenUsage {
         .or_else(|| u.prompt_tokens_details.as_ref().and_then(|d| d.cached_tokens));
     TokenUsage {
         prompt_tokens: u.prompt_tokens,
-        completion_tokens: u.completion_tokens,
+        completion_tokens: billable_completion_tokens(u),
         total_tokens: u.total_tokens,
         cache_read_tokens: cache_read,
         cache_write_tokens: None,
+        // Chat-completions has no server-side tools — xAI answers a request
+        // carrying one with a 422 — so there is never anything to bill here.
+        billable_tool_calls: None,
+    }
+}
+
+/// Output tokens as they are *billed*, which is not always what
+/// `completion_tokens` says.
+///
+/// Reasoning tokens cost the output rate everywhere that has them, and OpenAI
+/// and DeepSeek both count them inside `completion_tokens`. xAI does not: a
+/// measured `grok-4.6` reply reported `prompt 214 / completion 1 /
+/// reasoning 59 / total 274`, and its own `cost_in_usd_ticks` billed all sixty
+/// output tokens. Taking `completion_tokens` at face value there under-reports
+/// a reasoning-heavy turn by an order of magnitude — the same failure mode as
+/// the cache-rate bug, and just as invisible, since the number stays plausible.
+///
+/// The provider's own `total_tokens` is what decides, rather than which vendor
+/// we think we are talking to. A dialect that already includes reasoning
+/// satisfies `total - prompt == completion` and is left alone; one that does not
+/// leaves exactly `reasoning_tokens` unaccounted for, and only then are they
+/// added. Anything else — a missing total, an arithmetic that adds up to
+/// neither — is not evidence, so nothing is changed. That way a relay with a
+/// vague usage block can only ever be reported as it reported itself, never
+/// inflated by us.
+fn billable_completion_tokens(u: &ChunkUsage) -> Option<i32> {
+    let completion = u.completion_tokens?;
+    let reasoning = u
+        .completion_tokens_details
+        .as_ref()
+        .and_then(|d| d.reasoning_tokens)
+        .unwrap_or(0);
+    if reasoning <= 0 {
+        return Some(completion);
+    }
+    let unaccounted = match (u.total_tokens, u.prompt_tokens) {
+        (Some(total), Some(prompt)) => total.saturating_sub(prompt).saturating_sub(completion),
+        _ => return Some(completion),
+    };
+    if unaccounted == reasoning {
+        Some(completion.saturating_add(reasoning))
+    } else {
+        Some(completion)
     }
 }
 
@@ -860,6 +963,125 @@ fn google_state_from_message(
         }
     }
     Ok(state.finish())
+}
+
+#[cfg(test)]
+mod xai_tests {
+    use super::*;
+    use crate::client::RequestBody;
+
+    fn params() -> ChatParams {
+        ChatParams {
+            model: "grok-4.6".into(),
+            thinking_enabled: true,
+            thinking_effort: Some("xhigh".into()),
+            temperature: Some(0.7),
+            cache_key: Some("conv-42".into()),
+            ..Default::default()
+        }
+    }
+
+    /// The header is the whole reason this flavor exists. Without it a
+    /// conversation lands on whichever server the balancer picks and pays full
+    /// input price against a cold cache — nothing about the reply says so.
+    #[test]
+    fn the_cache_key_becomes_the_routing_header() {
+        let provider = OpenAICompatProvider::new_xai("https://api.x.ai/v1", "key");
+        let req = provider.build_request(&[ChatMessage::user("hello")], None, &params(), true);
+        assert_eq!(req.headers.get("x-grok-conv-id").unwrap(), "conv-42");
+
+        let Some(RequestBody::Json(body)) = req.body else {
+            panic!("JSON body")
+        };
+        // Measured against the live API: all three are accepted on grok-4.6.
+        assert_eq!(body["reasoning_effort"], "xhigh");
+        assert_eq!(body["temperature"], 0.7);
+        assert_eq!(body["stream_options"]["include_usage"], true);
+    }
+
+    #[test]
+    fn no_cache_key_means_no_header_rather_than_an_empty_one() {
+        let provider = OpenAICompatProvider::new_xai("https://api.x.ai/v1", "key");
+        let mut p = params();
+        p.cache_key = None;
+        let req = provider.build_request(&[ChatMessage::user("hello")], None, &p, true);
+        assert!(req.headers.get("x-grok-conv-id").is_none());
+    }
+
+    /// It is a vendor header. An OpenAI-compatible relay that receives one it
+    /// does not know may reject the request outright.
+    #[test]
+    fn a_generic_endpoint_is_not_sent_the_vendor_header() {
+        let provider = OpenAICompatProvider::new("https://api.example.test/v1", "key");
+        let req = provider.build_request(&[ChatMessage::user("hello")], None, &params(), true);
+        assert!(req.headers.get("x-grok-conv-id").is_none());
+    }
+
+    fn usage(json: &str) -> ChunkUsage {
+        serde_json::from_str(json).expect("a chat-completions usage body")
+    }
+
+    /// A real `grok-4.6` reply: 214 prompt, 1 content token, 59 reasoning
+    /// tokens, 274 total. xAI's own `cost_in_usd_ticks` billed 60 output
+    /// tokens, so reporting 1 understates that turn ~60x.
+    #[test]
+    fn grok_reasoning_tokens_are_counted_as_output() {
+        let u = normalise_openai_usage(&usage(
+            r#"{"prompt_tokens":214,"completion_tokens":1,"total_tokens":274,
+                "prompt_tokens_details":{"cached_tokens":128},
+                "completion_tokens_details":{"reasoning_tokens":59}}"#,
+        ));
+        assert_eq!(u.completion_tokens, Some(60));
+        assert_eq!(u.prompt_tokens, Some(214), "the prompt is untouched");
+        assert_eq!(u.cache_read_tokens, Some(128));
+        assert_eq!(u.uncached_prompt_tokens(), 86);
+    }
+
+    /// OpenAI counts reasoning *inside* `completion_tokens`, and its own total
+    /// says so. Adding them there would double-bill every o-series turn.
+    #[test]
+    fn an_inclusive_dialect_is_left_alone() {
+        let u = normalise_openai_usage(&usage(
+            r#"{"prompt_tokens":100,"completion_tokens":80,"total_tokens":180,
+                "completion_tokens_details":{"reasoning_tokens":64}}"#,
+        ));
+        assert_eq!(u.completion_tokens, Some(80));
+    }
+
+    /// Without a total there is no evidence either way, and a guess that
+    /// inflates the bill is worse than one that reports what was said.
+    #[test]
+    fn an_ambiguous_usage_block_is_reported_as_given() {
+        let no_total = normalise_openai_usage(&usage(
+            r#"{"prompt_tokens":100,"completion_tokens":10,
+                "completion_tokens_details":{"reasoning_tokens":50}}"#,
+        ));
+        assert_eq!(no_total.completion_tokens, Some(10));
+
+        // A total that matches neither reading: something else is in it.
+        let odd = normalise_openai_usage(&usage(
+            r#"{"prompt_tokens":100,"completion_tokens":10,"total_tokens":200,
+                "completion_tokens_details":{"reasoning_tokens":50}}"#,
+        ));
+        assert_eq!(odd.completion_tokens, Some(10));
+    }
+
+    /// The usage-only chunk that closes an xAI stream carries `choices: []`.
+    /// Required-but-empty is not the same as missing, and the accounting for
+    /// the whole turn arrives in it.
+    #[test]
+    fn the_trailing_usage_chunk_parses_with_empty_choices() {
+        let chunk: ChatChunk = serde_json::from_str(
+            r#"{"choices":[],"usage":{"prompt_tokens":292,"completion_tokens":13,"total_tokens":366,
+                "prompt_tokens_details":{"cached_tokens":256},
+                "completion_tokens_details":{"reasoning_tokens":61}}}"#,
+        )
+        .expect("the closing chunk of a real xAI stream");
+        let (events, finish, usage) = parse_openai_sse_events(&chunk);
+        assert!(events.is_empty());
+        assert_eq!(finish, None);
+        assert_eq!(usage.expect("usage").completion_tokens, Some(74));
+    }
 }
 
 #[cfg(test)]

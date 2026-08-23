@@ -57,6 +57,7 @@ export function AppShell(props: ShellProps) {
     onTogglePin,
     onSelectProject,
     onCreateProject,
+    onCreateHostedSession,
     onDeleteProject,
     onRenameProject,
     onOpenSettings,
@@ -125,6 +126,7 @@ export function AppShell(props: ShellProps) {
         activeProjectId={activeProjectId}
         onSelectProject={onSelectProject}
         onCreateProject={onCreateProject}
+        onCreateHostedSession={onCreateHostedSession}
         onRename={onRename}
         onTogglePin={onTogglePin}
         onDeleteProject={onDeleteProject}
@@ -231,7 +233,16 @@ export function AppShell(props: ShellProps) {
                   nobody can get back. */}
               {showChanges && activeId && (
                 <>
-                  <Resizable.Handle aria-label={t('chat.changes.title')} />
+                  {/* Pro's handle is a 1px line with an 8px hit area, which is a
+                      pointer's measurement. This panel only mounts above 768px,
+                      and a touch laptop or a tablet in landscape is squarely in
+                      that range — the divider was there and could not be
+                      dragged. The line itself is unchanged; only what catches
+                      the finger grows. */}
+                  <Resizable.Handle
+                    aria-label={t('chat.changes.title')}
+                    className="[--resizable-handle-hit-area:16px] pointer-coarse:[--resizable-handle-hit-area:24px]"
+                  />
                   <Resizable.Panel id="changes" defaultSize={30} minSize={18} maxSize={50}>
                     <ChangesPanel conversationId={activeId} onClose={() => setChangesOpen(false)} />
                   </Resizable.Panel>

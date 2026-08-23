@@ -61,6 +61,40 @@ pub struct ServicesInner {
     pub sleep: AppSleepInhibitor,
     pub events: EventBus,
     pub paths: Paths,
+    /// Hosted coding-agent sessions. Absent on Android, where a session — a
+    /// child process — cannot exist.
+    #[cfg(not(target_os = "android"))]
+    pub acp: Arc<crate::acp::AcpRegistry>,
+    /// How to start an ordinary turn, once the shell has said.
+    ///
+    /// The one direction that has to cross the line the other way. Running a
+    /// turn is `commands::chat`, which is a Tauri command and lives above it;
+    /// the prompt queue is below and has to be able to start one. Moving
+    /// `commands/` down would be the other answer and is a much larger change
+    /// for a single call — see the architecture note on why that stays where it
+    /// is until something without a window needs to serve commands.
+    ///
+    /// A `OnceLock` because it is registered once at startup and read for the
+    /// life of the process, and because leaving it unset has to be safe: a
+    /// build with no desktop runner simply never delivers a follow-up.
+    pub turn_starter: std::sync::OnceLock<Arc<dyn StartTurn>>,
+}
+
+/// Starting an ordinary turn, from something that is not a window.
+///
+/// Deliberately narrow. Everything a composer would decide — which model, which
+/// mode, how much thinking — is left out, because a queued message was typed
+/// without any of that in front of it and the conversation's own configuration
+/// is the answer it was written under.
+#[async_trait::async_trait]
+pub trait StartTurn: Send + Sync {
+    /// Run one turn to completion, with `queued` as the message.
+    ///
+    /// The queue item's id travels with it so the runner can spend it in the
+    /// same transaction that writes its row — the rule the whole ledger rests
+    /// on, and one only the runner is in a position to keep.
+    async fn start(&self, conversation_id: &str, queued: &crate::db::models::queue::QueuedPrompt)
+    -> Result<(), String>;
 }
 
 impl Services {

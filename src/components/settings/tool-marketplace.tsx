@@ -63,7 +63,7 @@ function CustomToolEditor({
   // the page or the body of an already-bounded disclosure row.
   return (
     <div data-slot="custom-tool-editor" className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-2">
         <TextField fullWidth>
           <Label>{t('settings.tools.name')}</Label>
           <Input

@@ -43,11 +43,23 @@ const ChatToolNestedContext = React.createContext(false)
 /**
  * 16px, not the 24px a HeroUI `Card` uses. A collapsed tool row is 48px tall,
  * and a 24px radius on a 48px box makes both ends exact semicircles — a column
- * of them reads as loose capsules rather than one run of steps. Everything else
- * about the card is HeroUI's: no border, a surface fill above the page, and the
- * shadow that separates the two.
+ * of them reads as loose capsules rather than one run of steps.
+ *
+ * **The edge is not decoration here, and dropping it made these cards vanish.**
+ * A HeroUI card carries none because it is told apart by being lighter than the
+ * *page* plus `--surface-shadow`, and both halves of that fail in the one place
+ * these are drawn. The transcript is inside `Sidebar.Main`, which Pro paints
+ * `background-color: var(--surface)` under `variant="inset"` — so a `bg-surface`
+ * card is exactly its parent's colour, not one step above the page. And HeroUI
+ * sets `--surface-shadow: 0 0 0 0 transparent inset` in dark mode on purpose
+ * ("No shadow on dark mode"), which leaves a dark-theme card with no fill
+ * difference, no shadow and no border: nothing at all.
+ *
+ * A ring rather than a border, for the reason the status variants below give —
+ * it takes no space, so recolouring it for `output-error` costs no reflow and
+ * needs no second mechanism.
  */
-const CHAT_TOOL_CARD = 'overflow-hidden rounded-2xl bg-surface shadow-surface'
+const CHAT_TOOL_CARD = 'overflow-hidden rounded-2xl bg-surface shadow-surface ring-1 ring-border ring-inset'
 
 const chatToolVariants = tv({
   slots: {
@@ -65,16 +77,16 @@ const chatToolVariants = tv({
       true: { base: 'border-t border-separator' },
       false: { base: CHAT_TOOL_CARD },
     },
-    // A HeroUI card carries no edge, so the three ordinary states now have
-    // none — which is the point of the change, and what makes the two that do
-    // carry one worth noticing.
+    // The ordinary states leave the card's own `ring-border` alone; these two
+    // recolour it, which is what makes them worth noticing without adding a
+    // second edge beside the first.
     //
-    // A ring rather than a border, and only where there is something to say.
-    // The alternative measured worse: `.alert`'s way of colouring a status
-    // surface is a `-soft` wash, but `--danger-soft` under the trigger drops
-    // `text-muted` from 4.74:1 to 3.63:1 in light mode, and the argument
-    // summary in a real tool row is muted. A ring sits under no text at all,
-    // takes no space, and `ring-inset` keeps it inside the rounded corner.
+    // A ring rather than a border. The alternative measured worse: `.alert`'s
+    // way of colouring a status surface is a `-soft` wash, but `--danger-soft`
+    // under the trigger drops `text-muted` from 4.74:1 to 3.63:1 in light mode,
+    // and the argument summary in a real tool row is muted. A ring sits under no
+    // text at all, takes no space, and `ring-inset` keeps it inside the rounded
+    // corner.
     state: {
       'input-streaming': {},
       'input-available': {},
@@ -117,12 +129,23 @@ interface ChatToolTriggerProps extends Omit<React.ComponentProps<typeof Disclosu
    * between the two instead of pushing everything over.
    */
   endContent?: React.ReactNode
+  /**
+   * A second line under the label, for prose about the call.
+   *
+   * Its own line rather than another item in the label row, because the two
+   * say different things and both are wanted. A path or a command identifies
+   * *which* call this is and is what an approval rests on; a description says
+   * what it is for. Competing for one row of a narrow card, two truncating
+   * strings leave neither readable — and whichever lost would be missing from
+   * a collapsed card entirely.
+   */
+  subtitle?: React.ReactNode
   // Narrower than HeroUI's, which also accepts a render function: this trigger
   // lays its children out in a label row, and a function has nothing to lay out.
   children?: React.ReactNode
 }
 
-function ChatToolTrigger({ className, children, endContent, ...props }: ChatToolTriggerProps) {
+function ChatToolTrigger({ className, children, endContent, subtitle, ...props }: ChatToolTriggerProps) {
   return (
     <Disclosure.Heading>
       {/* `flex` is not optional: HeroUI styles the indicator with `ms-auto` and
@@ -132,8 +155,15 @@ function ChatToolTrigger({ className, children, endContent, ...props }: ChatTool
         className={cn(chatToolVariants().trigger(), className)}
         {...props}
       >
-        <div data-slot="chat-tool-trigger-label" className="flex min-w-0 flex-1 items-center gap-2">
-          {children}
+        <div data-slot="chat-tool-trigger-lines" className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div data-slot="chat-tool-trigger-label" className="flex min-w-0 items-center gap-2">
+            {children}
+          </div>
+          {subtitle != null && subtitle !== '' && (
+            <span data-slot="chat-tool-subtitle" className="truncate text-left text-xs text-muted">
+              {subtitle}
+            </span>
+          )}
         </div>
         {endContent}
         <Disclosure.Indicator className="size-3.5 shrink-0 text-muted" />

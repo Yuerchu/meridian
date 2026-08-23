@@ -156,6 +156,8 @@ struct GroupRow {
     cache_read_price: Option<f64>,
     #[diesel(sql_type = Nullable<Double>)]
     cache_write_price: Option<f64>,
+    #[diesel(sql_type = Nullable<Double>)]
+    server_tool_price: Option<f64>,
     #[diesel(sql_type = BigInt)]
     messages: i64,
     #[diesel(sql_type = BigInt)]
@@ -166,6 +168,9 @@ struct GroupRow {
     cache_read_tokens: i64,
     #[diesel(sql_type = BigInt)]
     cache_write_tokens: i64,
+    /// Provider-side invocations, which bill per call rather than per token.
+    #[diesel(sql_type = BigInt)]
+    server_tool_calls: i64,
 }
 
 /// Group the log, price each group, and add the groups up.
@@ -197,6 +202,7 @@ pub fn report(
                     group.output_tokens,
                     group.cache_read_tokens,
                     group.cache_write_tokens,
+                    group.server_tool_calls,
                 );
                 entry.cost += cost_of(&tokens, &prices).total_cost;
             }
@@ -235,6 +241,7 @@ fn resolve(group: &GroupRow, current: &HashMap<(String, String), Prices>) -> Opt
             output,
             cache_read: group.cache_read_price,
             cache_write: group.cache_write_price,
+            server_tool: group.server_tool_price,
         }),
         _ => None,
     };
@@ -255,21 +262,25 @@ fn current_prices(conn: &mut SqliteConnection) -> QueryResult<HashMap<(String, S
             model_configs::output_price,
             model_configs::cache_price,
             model_configs::cache_write_price,
+            model_configs::server_tool_price,
         ))
-        .load::<(String, String, f64, f64, Option<f64>, Option<f64>)>(conn)?;
+        .load::<(String, String, f64, f64, Option<f64>, Option<f64>, Option<f64>)>(conn)?;
     Ok(rows
         .into_iter()
-        .map(|(provider, model, input, output, cache_read, cache_write)| {
-            (
-                (provider, model),
-                Prices {
-                    input,
-                    output,
-                    cache_read,
-                    cache_write,
-                },
-            )
-        })
+        .map(
+            |(provider, model, input, output, cache_read, cache_write, server_tool)| {
+                (
+                    (provider, model),
+                    Prices {
+                        input,
+                        output,
+                        cache_read,
+                        cache_write,
+                        server_tool,
+                    },
+                )
+            },
+        )
         .collect())
 }
 
@@ -290,19 +301,29 @@ fn grouped(conn: &mut SqliteConnection, dimension: UsageDimension, filter: &Usag
         "SELECT {key} AS bucket_key,
                 provider_id, model_id,
                 input_price, output_price, cache_read_price, cache_write_price,
+                server_tool_price,
                 COUNT(*) AS messages,
                 COALESCE(SUM(input_tokens), 0) AS input_tokens,
                 COALESCE(SUM(output_tokens), 0) AS output_tokens,
                 COALESCE(SUM(cache_read_tokens), 0) AS cache_read_tokens,
-                COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens
+                COALESCE(SUM(cache_write_tokens), 0) AS cache_write_tokens,
+                COALESCE(SUM(server_tool_calls), 0) AS server_tool_calls
            FROM audit_messages
-          WHERE role IN ('assistant', 'auto_review')
+          WHERE role IN ({roles})
             AND (? IS NULL OR created_at >= ?)
             AND (? IS NULL OR created_at < ?)
             AND (? IS NULL OR turn_origin = ?)
        GROUP BY bucket_key, provider_id, model_id,
-                input_price, output_price, cache_read_price, cache_write_price",
+                input_price, output_price, cache_read_price, cache_write_price,
+                server_tool_price",
         key = dimension.key_expr(),
+        // A `&'static str` built from a constant, never a caller's string — the
+        // same rule the key expression follows.
+        roles = crate::db::ops::audit::BILLED_ROLES
+            .iter()
+            .map(|role| format!("'{role}'"))
+            .collect::<Vec<_>>()
+            .join(", "),
     );
 
     diesel::sql_query(sql)
@@ -399,6 +420,8 @@ mod tests {
                 output_price: prices.map(|p| p.1),
                 cache_read_price: None,
                 cache_write_price: None,
+                server_tool_calls: None,
+                server_tool_price: None,
                 self_id: Some(10001),
             })
             .execute(conn)
@@ -433,6 +456,8 @@ mod tests {
                 output_price: Some(0.0),
                 cache_read_price: None,
                 cache_write_price: None,
+                server_tool_calls: None,
+                server_tool_price: None,
                 self_id: None,
             })
             .execute(conn)
@@ -476,6 +501,49 @@ mod tests {
         assert_eq!(all.messages, 2);
         assert!((all.cost - 30.0).abs() < 0.001, "10 + 20, not 2 x either");
         assert_eq!(all.unpriced_messages, 0);
+    }
+
+    /// A model with tiered rates reaches this query as two price sets, and needs
+    /// no special handling because of it.
+    ///
+    /// The tier was resolved when each row was written, from that request's own
+    /// prompt — the one place it can be. Here there is only a `SUM` over rows
+    /// that were separate requests, so re-deciding would mean inventing a prompt
+    /// size, and the report would then disagree with the stop event the user was
+    /// already shown.
+    #[test]
+    fn a_tiered_model_bills_each_side_of_the_threshold_at_its_own_rate() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        // grok-4.6: 100k under the 200k threshold at 2/M, then 250k over it at
+        // 4/M — the whole prompt, not the excess.
+        reply(
+            &mut conn,
+            "a",
+            "grok-4.6",
+            1_000,
+            (100_000, 0, 0, 0),
+            Some((2.0, 6.0)),
+            "desktop",
+        );
+        reply(
+            &mut conn,
+            "b",
+            "grok-4.6",
+            2_000,
+            (250_000, 0, 0, 0),
+            Some((4.0, 12.0)),
+            "desktop",
+        );
+
+        let all = total(&mut conn, &UsageFilter::default());
+        assert_eq!(all.messages, 2);
+        assert!((all.cost - 1.2).abs() < 1e-9, "0.2 + 1.0, got {}", all.cost);
+        // And the model is still one row in the breakdown: the tier is a price,
+        // not an identity.
+        let by_model = report(&mut conn, UsageDimension::Model, &UsageFilter::default()).unwrap();
+        assert_eq!(by_model.len(), 1);
+        assert_eq!(by_model[0].input_tokens, 350_000);
     }
 
     /// Reviews are spend the user did not ask for directly, so a total that
@@ -614,6 +682,9 @@ mod tests {
                 created_at: 0,
                 updated_at: 0,
                 capability_overrides: None,
+                price_tiers: None,
+                server_tools: None,
+                server_tool_price: None,
             },
         )
         .unwrap();

@@ -75,7 +75,12 @@ pub async fn handle_message(event: &OneBotEvent, state: &Arc<SharedState>, conn_
     if user_id != self_id && !parsed.stickers.is_empty() {
         parsed.sticker_ids = super::stickers::capture_stickers(state, self_id, &parsed.stickers).await;
     }
-    if parsed.text.is_empty() && !parsed.has_media() {
+    super::quote::expand_forwards(state, &mut parsed).await;
+    // A reply is content even when nothing was typed alongside it. On a phone QQ
+    // gives no way to @ the bot *and* attach a sticker in one message, so
+    // "quote the sticker, @ the bot, say nothing" is how a group member shows it
+    // one — and dropping that here made the whole gesture silently do nothing.
+    if parsed.text.is_empty() && !parsed.has_media() && reply_message_id.is_none() {
         return vec![];
     }
 
@@ -247,23 +252,93 @@ async fn handle_text_message(
         is_group,
     };
 
-    let quoted = if let Some(reply_id) = reply_to_message_id {
-        fetch_quoted_message(state, reply_id).await
-    } else {
-        None
+    let mut quoted = match reply_to_message_id {
+        Some(reply_id) => super::quote::fetch(state, reply_id).await,
+        None => None,
     };
 
-    let media = super::media::process_media(state, event, &parsed, &conversation_id, model_override.as_deref()).await;
+    // A quoted sticker needs an id like any other, or it renders as the words
+    // "[动画表情]" — which is the whole bug this path exists to fix. Captured
+    // even when the quoted message is the bot's own: `capture_stickers` is
+    // idempotent on `source_key`, so for something the bot sent it finds the
+    // pool entry it was sent from and only marks it seen.
+    if let Some(quoted) = quoted.as_mut()
+        && !quoted.parsed.stickers.is_empty()
+    {
+        let self_id = event.self_id.unwrap_or(0);
+        quoted.parsed.sticker_ids = super::stickers::capture_stickers(state, self_id, &quoted.parsed.stickers).await;
+    }
 
+    // The quoted message is processed first because that is where its sentinels
+    // land in the enriched text, and both media lists below are ordered to
+    // match. The two calls share one image budget.
+    let quoted_media = match quoted.as_ref() {
+        Some(quoted) => Some(
+            super::media::process_media(
+                state,
+                Some(quoted.message_id),
+                &quoted.parsed,
+                &conversation_id,
+                model_override.as_deref(),
+                super::media::MAX_IMAGES,
+            )
+            .await,
+        ),
+        None => None,
+    };
+    // What the quoted message *tried*, not what it stored. See
+    // `MediaOutcome::spent`: counting uris reported nothing spent whenever the
+    // model has no vision and every image went to OCR, which handed the turn's
+    // own images a second full budget.
+    let spent = quoted_media.as_ref().map_or(0, |m| m.spent);
+    let media = super::media::process_media(
+        state,
+        event_message_id,
+        &parsed,
+        &conversation_id,
+        model_override.as_deref(),
+        super::media::MAX_IMAGES.saturating_sub(spent),
+    )
+    .await;
+
+    // Named the way an @mention in the body is (`[@名字(QQ号)]`), because the
+    // usual thing to do about a quoted message is address whoever wrote it, and
+    // a name on its own is not something `text_to_rich_segments` can turn back
+    // into a mention.
+    let quoted_sender = quoted.as_ref().map(|quoted| match quoted.sender_id {
+        Some(id) => format!("{}({id})", quoted.sender),
+        None => quoted.sender.clone(),
+    });
     let enriched_text = format::format_enriched_message(
         &media.text,
         None,
-        quoted.as_ref().map(|(s, c)| (s.as_str(), c.as_str())),
+        quoted_sender
+            .as_deref()
+            .zip(quoted_media.as_ref())
+            .map(|(sender, rendered)| (sender, rendered.text.as_str())),
     );
+
+    // Sticker ids and image URIs are concatenated quoted-first, in the same
+    // order their sentinels appear above. `align_sticker_ids` is what keeps that
+    // true: a short id list would not merely lose an id, it would shift every
+    // sticker after it onto the wrong one.
+    let sticker_ids: Vec<Option<String>> = quoted
+        .as_ref()
+        .map(|quoted| align_sticker_ids(&quoted.parsed))
+        .unwrap_or_default()
+        .into_iter()
+        .chain(align_sticker_ids(&parsed))
+        .collect();
+    let image_uris: Vec<&String> = quoted_media
+        .iter()
+        .flat_map(|rendered| rendered.image_uris.iter())
+        .chain(media.image_uris.iter())
+        .collect();
+    let has_stickers = !sticker_ids.is_empty();
 
     // With images the content becomes OpenAI-style parts JSON; the existing
     // resolve_file_uris_in_messages pipeline converts file:/// URIs to base64.
-    let user_content = if media.image_uris.is_empty() && parsed.stickers.is_empty() {
+    let user_content = if image_uris.is_empty() && !has_stickers {
         enriched_text
     } else {
         let mut parts = Vec::new();
@@ -274,7 +349,7 @@ async fn handle_text_message(
                 parts.push(serde_json::json!({ "type": "text", "text": piece }));
             }
             if index + 1 < pieces.len() {
-                match parsed.sticker_ids.get(sticker_index).and_then(|id| id.as_deref()) {
+                match sticker_ids.get(sticker_index).and_then(|id| id.as_deref()) {
                     Some(sticker_id) => parts.push(serde_json::json!({
                         "type": "sticker",
                         "sticker_id": sticker_id,
@@ -285,8 +360,7 @@ async fn handle_text_message(
             }
         }
         parts.extend(
-            media
-                .image_uris
+            image_uris
                 .iter()
                 .map(|uri| serde_json::json!({ "type": "image_url", "image_url": { "url": uri } })),
         );
@@ -1964,28 +2038,17 @@ fn pool_clone(pool: &crate::db::DbPool) -> crate::db::DbPool {
     pool.clone()
 }
 
-async fn fetch_quoted_message(state: &Arc<SharedState>, message_id: i64) -> Option<(String, String)> {
-    let echo = uuid::Uuid::new_v4().to_string();
-    let action = OneBotAction::get_msg(message_id, echo);
-    let data = call_api(state, action).await.ok()?;
-
-    let sender = data
-        .get("sender")
-        .and_then(|s| {
-            s.get("card")
-                .and_then(|v| v.as_str())
-                .filter(|s| !s.is_empty())
-                .or_else(|| s.get("nickname").and_then(|v| v.as_str()))
-        })
-        .unwrap_or("Unknown")
-        .to_string();
-
-    let content = data
-        .get("message")
-        .map(|m| format::segments_to_text(m, None))
-        .filter(|s| !s.is_empty())?;
-
-    Some((sender, content))
+/// One id slot per sticker, padded with `None` rather than left short.
+///
+/// The renderer walks sticker sentinels and indexes this list by position, so a
+/// list shorter than the stickers it describes does not lose the tail — it
+/// shifts every sticker after the gap onto somebody else's id. Two sources are
+/// concatenated here (the quoted message and the reply), which is exactly where
+/// a short first list would corrupt the second.
+fn align_sticker_ids(parsed: &format::ParsedMessage) -> Vec<Option<String>> {
+    let mut ids = parsed.sticker_ids.clone();
+    ids.resize(parsed.stickers.len(), None);
+    ids
 }
 
 fn build_reply(event: &OneBotEvent, text: &str, reply_to_id: Option<i64>) -> Vec<OneBotAction> {
@@ -2036,6 +2099,43 @@ mod tests {
             created_at: 0,
             sender,
         }
+    }
+
+    fn sticker(key: &str) -> super::format::StickerRef {
+        super::format::StickerRef {
+            source: "onebot_mface",
+            source_key: Some(key.into()),
+            native_payload: serde_json::json!({}),
+            url: None,
+            file: None,
+            summary: None,
+        }
+    }
+
+    /// A turn's stickers come from two places now — the quoted message first,
+    /// then the reply — and the renderer indexes one flat list by the position
+    /// of each sentinel. So a list shorter than the stickers it describes is not
+    /// a missing id at the end; it slides the quoted message's stickers onto the
+    /// reply's ids, and every card after the gap names the wrong picture.
+    #[test]
+    fn ids_hold_their_places_when_a_capture_did_not_run() {
+        let quoted = super::format::ParsedMessage {
+            stickers: vec![sticker("a"), sticker("b")],
+            sticker_ids: vec![],
+            ..Default::default()
+        };
+        let own = super::format::ParsedMessage {
+            stickers: vec![sticker("c")],
+            sticker_ids: vec![Some("id-c".into())],
+            ..Default::default()
+        };
+
+        let merged: Vec<_> = super::align_sticker_ids(&quoted)
+            .into_iter()
+            .chain(super::align_sticker_ids(&own))
+            .collect();
+
+        assert_eq!(merged, vec![None, None, Some("id-c".into())]);
     }
 
     /// Whoever triggered a turn is not the only person in it, and authority is

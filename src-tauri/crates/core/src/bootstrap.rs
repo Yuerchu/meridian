@@ -329,6 +329,12 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
         sleep: AppSleepInhibitor::new(),
         events,
         paths: Paths { data_dir, skills_root },
+        #[cfg(not(target_os = "android"))]
+        acp: crate::acp::AcpRegistry::new(),
+        // Filled by the shell, which is the only half that knows how to run a
+        // turn. Left empty a follow-up is never delivered, which is the right
+        // way for this to be missing.
+        turn_starter: std::sync::OnceLock::new(),
     })
 }
 

@@ -52,6 +52,10 @@ pub struct AuditMessage {
     /// The bot account that answered. NULL for desktop traffic, which is a
     /// statement rather than a gap.
     pub self_id: Option<i64>,
+    /// Billable provider-side tool invocations on this request, and what one
+    /// cost per thousand — snapshotted for the same reason the token rates are.
+    pub server_tool_calls: Option<i32>,
+    pub server_tool_price: Option<f64>,
 }
 
 #[derive(Debug, Insertable)]
@@ -82,4 +86,8 @@ pub struct NewAuditMessage<'a> {
     pub cache_read_price: Option<f64>,
     pub cache_write_price: Option<f64>,
     pub self_id: Option<i64>,
+    /// Billable provider-side tool invocations on this request, and what one
+    /// cost per thousand — snapshotted for the same reason the token rates are.
+    pub server_tool_calls: Option<i32>,
+    pub server_tool_price: Option<f64>,
 }

@@ -70,6 +70,8 @@ export interface ChatTranscriptProps {
   onEdit?: (id: string, content: string) => void
   onRate?: (id: string, rating: number | null) => void
   isOneBot?: boolean
+  /** A hosted Claude Code session: the assistant answering is not this app's. */
+  isHosted?: boolean
   emojiMap?: EmojiMap
   /** Nicknames for the ids on user rows. Only a group has more than one. */
   senderNames?: SenderNames
@@ -99,6 +101,7 @@ export function ChatTranscript({
   onEdit,
   onRate,
   isOneBot,
+  isHosted,
   emojiMap,
   senderNames,
   assistantAvatar,
@@ -131,6 +134,7 @@ export function ChatTranscript({
                     onEdit={onEdit}
                     onRate={onRate}
                     isOneBot={isOneBot}
+                    isHosted={isHosted}
                     emojiMap={emojiMap}
                     senderNames={senderNames}
                     assistantAvatar={assistantAvatar}

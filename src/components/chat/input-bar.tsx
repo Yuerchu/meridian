@@ -1,10 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { open } from '@tauri-apps/plugin-dialog'
-import { ArrowDownToSquare, Copy, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
+import { ArrowDownToSquare, ChevronDown, Copy, Scissors, SquareDashedText, Xmark } from '@gravity-ui/icons'
 import { api } from '@/api'
 import { usePlatform } from '@/hooks/use-platform'
-import { Button, Popover, ProgressCircle, Tooltip } from '@heroui/react'
+import { Button, ListBox, Popover, Tooltip } from '@heroui/react'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -30,24 +30,21 @@ import { VoiceOverlay } from './voice-overlay'
 import { MobileOptionsMenu } from './toolbar'
 import { ComposerMenu } from './composer-menu'
 import { EmojiPicker } from './emoji-picker'
-import type { Assistant, ChatMode, Emoji, Provider, ProviderCapabilities, ThinkingLevel } from '@/types'
-
-interface ContextInfo {
-  messageCount: number
-  estimatedTokens: number
-  contextLimit: number
-  autoCompactEnabled: boolean
-  autoCompactThreshold: number
-  /** `closed` while compaction is being attempted. Anything else means enough
-   *  summarisations failed in a row that it has stopped trying — the setting is
-   *  still on, and the count will only keep climbing, so it has to be said. */
-  compactBreaker: string
-  /** Whose window the numbers above describe. */
-  model: string
-  /** Set when this conversation is a delegated run, so the panel can say that
-   *  the window it is reporting is not the one next door. */
-  agentKind?: string
-}
+import { ToolbarSelect } from './toolbar-select'
+import { ContextGauge, type ContextReading } from './context-gauge'
+import { isSelect, useAcpConfig } from '@/hooks/use-acp-config'
+import type { TFunction } from 'i18next'
+import type {
+  AcpConfigOption,
+  AcpConfigOptionValue,
+  Assistant,
+  ChatMode,
+  Emoji,
+  Provider,
+  ProviderCapabilities,
+  QueueDelivery,
+  ThinkingLevel,
+} from '@/types'
 
 /**
  * One file the composer is holding, named either by a path on the machine that
@@ -62,6 +59,12 @@ export interface PendingSticker {
 }
 
 interface InputBarProps {
+  /** Which conversation this composer belongs to. Needed because a hosted
+   *  session's model and mode are the *agent's* to report, per session, rather
+   *  than this app's settings. */
+  conversationId: string
+  /** A hosted Claude Code session, whose knobs come over ACP. */
+  isHosted?: boolean
   value: string
   onChange: (value: string) => void
   onSubmit: () => void
@@ -79,6 +82,21 @@ interface InputBarProps {
    * to start, and steering starts none.
    */
   steerable?: boolean
+  /**
+   * Enter stacks the message up instead of sending it.
+   *
+   * A hosted session with a turn running. Like `steerable` in that the field
+   * stays live and a Stop of its own appears, and unlike it in what happens
+   * next: steering goes straight into the run, while this is written down and
+   * delivered when the queue says so. The toolbar stays, because which of the
+   * two modes the next message goes in is a decision made *here*.
+   */
+  queueing?: boolean
+  /** What the next queued message will be. */
+  queueDelivery?: QueueDelivery
+  onSelectQueueDelivery?: (delivery: QueueDelivery) => void
+  /** The rows themselves, above the shell. */
+  queue?: React.ReactNode
   attachedFiles?: AttachedFile[]
   onAttachFiles?: (files: AttachedFile[]) => void
   onRemoveFile?: (index: number) => void
@@ -101,7 +119,7 @@ interface InputBarProps {
   acceptEdits: boolean
   onToggleAcceptEdits: (next: boolean) => void
   capabilities?: ProviderCapabilities | null
-  contextInfo?: ContextInfo
+  contextInfo?: ContextReading
   compacting?: boolean
   onCompact?: () => void
 }
@@ -117,6 +135,141 @@ interface InputBarProps {
  * platform's own long-press menu has none of those problems and custom ROMs
  * add clipboard history and translation to it, so let the WebView have it.
  */
+/**
+ * What to call a knob, and what to call the value it is set to.
+ *
+ * The agent's own strings are English and always will be: `name` is composed in
+ * the adapter, so in a Chinese window a row of them reads `Mode / Effort / Fast
+ * mode` with nothing translated. The ids it uses for the knobs it defines are a
+ * short documented set (`mode`, `model`, `effort`, `fast`, `agent`), so those
+ * get translations here and everything else falls back to what the agent said —
+ * which is the only right answer for a knob some other agent invented.
+ *
+ * Keyed on `id` rather than `category`, and that is not interchangeable: the
+ * reasoning knob is `id: "effort"` under `category: "thought_level"`, and Fast
+ * mode is `id: "fast"` under `category: "model_config"` — a category naming a
+ * *class* of setting rather than the setting. Only the id names the thing.
+ */
+function knobName(t: TFunction, option: AcpConfigOption): string {
+  const fallback = option.name || option.id
+  return t(`chat.acp.knob.${option.id.toLowerCase()}`, { defaultValue: fallback })
+}
+
+function knobValueName(t: TFunction, option: AcpConfigOption, value: AcpConfigOptionValue): string {
+  const fallback = value.name || value.value
+  // Scoped per knob, because `default` means a different thing on each of them
+  // and a model id must never find a translation at all.
+  return t(`chat.acp.value.${option.id.toLowerCase()}.${value.value.toLowerCase()}`, { defaultValue: fallback })
+}
+
+function currentValueName(t: TFunction, option: AcpConfigOption): string | null {
+  if (typeof option.currentValue !== 'string') return null
+  const value = option.options.find((v) => v.value === option.currentValue)
+  return value ? knobValueName(t, option, value) : option.currentValue
+}
+
+/**
+ * Everything a hosted Claude Code session lets you set, in one control.
+ *
+ * Renders nothing at all for an ordinary conversation, and nothing for a hosted
+ * one whose adapter is not running — there is no session to change anything on,
+ * and a picker that cannot pick is worse than no picker.
+ *
+ * **One control, because a picker in this toolbar can only show its value.**
+ * That is fine for the model — "Opus" says what it is — and says nothing for
+ * anything else: the row used to read `Auto · Default (recommend… · Xhigh · On
+ * · Default`, five controls naming none of the five things they set, two of them
+ * truncated for the privilege, and the send button pushed out of the shell
+ * behind them. So the trigger carries the two values worth reading at a glance
+ * — the model and, when it is not on its default, the effort — and opening it
+ * gives every knob a name, the agent's own description, and its values laid out
+ * with the current one ticked.
+ *
+ * Which knobs exist stays the agent's answer. The two it singles out are read by
+ * id, the same way `SessionConfigOption::as_model` already reads the model,
+ * because the model is what a transcript row records as having answered.
+ */
+function HostedSessionKnobs({ options, set, busy }: Pick<ReturnType<typeof useAcpConfig>, 'options' | 'set' | 'busy'>) {
+  const { t } = useTranslation()
+  // A select with nothing in it is not offered: the agent has told us a knob
+  // exists without saying what it accepts, and an empty menu reads as a bug.
+  const pickers = options.filter((o) => isSelect(o) && o.options.length > 0)
+  if (pickers.length === 0) return null
+
+  // Category as well as id, so an agent that names one and omits the other is
+  // still understood. `thought_level` is the category the adapter files effort
+  // under; `effort` is its id.
+  const model = pickers.find((o) => o.id === 'model' || o.category === 'model')
+  const effort = pickers.find((o) => o.id === 'effort' || o.category === 'thought_level')
+  const summary = [
+    model && currentValueName(t, model),
+    // Left off when it is on its default: a permanent "· 默认" is noise, and the
+    // width it takes is the width the send button needs.
+    effort && effort.currentValue !== 'default' ? currentValueName(t, effort) : null,
+  ].filter(Boolean)
+
+  // A refusal leaves the set as it was, which is already what is on screen —
+  // the agent did not change, so neither should the picker.
+  const choose = (id: string, value: string) => void set(id, value).catch(() => {})
+
+  return (
+    <Popover>
+      {/* Tooltip inside the popover rather than around it, the same way
+          `ComposerMenu` does it: React Aria passes press and focus down through
+          context, so the one Button at the bottom picks up both behaviours
+          without either wrapper knowing about the other. */}
+      <Tooltip delay={0}>
+        {/* `h-*`/`px-*` and `rounded-*` overridden together: HeroUI's own radius
+            is much rounder than the composer this sits in, and changing the
+            height without the radius is how a hover fill gets clipped. */}
+        <Button
+          variant="ghost"
+          aria-label={t('chat.agentOptions')}
+          data-slot="agent-options-trigger"
+          isDisabled={busy}
+          className="h-8 max-w-[220px] gap-1 rounded-lg px-2 text-sm font-normal"
+        >
+          <span className="truncate">{summary.length > 0 ? summary.join(' · ') : t('chat.agentOptions')}</span>
+          <ChevronDown className="size-4 shrink-0 text-muted" />
+        </Button>
+        <Tooltip.Content placement="top">{t('chat.agentOptions')}</Tooltip.Content>
+      </Tooltip>
+      <Popover.Content placement="top start" className="w-72">
+        <Popover.Dialog className="flex max-h-[min(420px,calc(100vh-6rem))] flex-col gap-3 overflow-y-auto">
+          {pickers.map((option) => (
+            <div key={option.id} data-slot="agent-knob">
+              <p className="px-2 text-xs font-medium">{knobName(t, option)}</p>
+              {option.description && <p className="px-2 pt-0.5 text-xs text-muted">{option.description}</p>}
+              {/* A flat list rather than a second dropdown. Every value is
+                  visible at once and the current one is ticked, which is the
+                  thing the toolbar could not say — and it keeps this from being
+                  an overlay inside an overlay. */}
+              <ListBox
+                aria-label={knobName(t, option)}
+                className="mt-1 p-1"
+                selectionMode="single"
+                disallowEmptySelection
+                selectedKeys={typeof option.currentValue === 'string' ? [option.currentValue] : []}
+                onSelectionChange={(keys) => {
+                  const next = [...(keys as Set<string>)][0]
+                  if (next) choose(option.id, next)
+                }}
+              >
+                {option.options.map((v) => (
+                  <ListBox.Item key={v.value} id={v.value} textValue={knobValueName(t, option, v)}>
+                    <span className="min-w-0 flex-1 truncate text-sm">{knobValueName(t, option, v)}</span>
+                    <ListBox.ItemIndicator />
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </div>
+          ))}
+        </Popover.Dialog>
+      </Popover.Content>
+    </Popover>
+  )
+}
+
 function ComposerContextMenu({
   enabled,
   onOpenChange,
@@ -138,6 +291,8 @@ function ComposerContextMenu({
 }
 
 export function InputBar({
+  conversationId,
+  isHosted,
   value,
   onChange,
   onSubmit,
@@ -146,6 +301,10 @@ export function InputBar({
   disabled,
   streaming,
   steerable,
+  queueing,
+  queueDelivery = 'follow_up',
+  onSelectQueueDelivery,
+  queue,
   assistants,
   providers,
   currentAssistantId,
@@ -175,6 +334,17 @@ export function InputBar({
   const { t } = useTranslation()
   const platform = usePlatform()
   const isAndroid = platform === 'android'
+  // One subscription for the whole composer. The knobs and the context gauge
+  // both read the hosted session's state, and two calls would mean two fetches
+  // and two listeners answering the same events.
+  const acp = useAcpConfig(conversationId, !!isHosted)
+  // Which model the *agent* says is answering, for the gauge to name. Not
+  // `contextInfo.model`, which is this app's assistant and has nothing to do
+  // with a hosted turn.
+  const hostedModel = (() => {
+    const model = acp.options.find((o) => o.id === 'model' || o.category === 'model')
+    return model ? currentValueName(t, model) : null
+  })()
   // A message sent to a machine that is not answering fails, and a field that
   // looks live while that is true is a lie the user only finds out about after
   // typing. This is the one connection state the composer has to care about.
@@ -247,10 +417,16 @@ export function InputBar({
   // what gets pressed, and it sits next to the candidate bar.
   // Composer holds Enter back mid-composition and disables Send on an empty
   // field; what stays here is the caller's own precondition.
+  // `disabled` is `streaming` at the call site, and the same two words mean two
+  // different things: the field is live while a reply comes in, and only Send
+  // turns into Stop. So this has to make the same exception `Composer` makes for
+  // its own `isDisabled` a few lines down — read literally it refuses every
+  // submit made during a run, which is precisely when a steer or a queued
+  // message is submitted.
   const handleSubmit = useCallback(() => {
-    if (disabled || (!value.trim() && !pendingSticker)) return
+    if ((disabled && !streaming) || (!value.trim() && !pendingSticker)) return
     onSubmit()
-  }, [disabled, value, pendingSticker, onSubmit])
+  }, [disabled, streaming, value, pendingSticker, onSubmit])
 
   const handleFieldReady = useCallback(
     (el: HTMLTextAreaElement | null) => {
@@ -427,18 +603,29 @@ export function InputBar({
             disabled={offline || (disabled && !streaming)}
             streaming={streaming}
             onStop={onStop}
-            steerable={steerable}
+            // Both mean "Enter works while a reply is coming, and Stop moves
+            // aside". What they do with the text is what differs, and that is
+            // the caller's business rather than the composer's.
+            steerable={steerable || queueing}
+            queue={queue}
             ariaLabel={t('chat.placeholder')}
             placeholder={
-              steerable && streaming
-                ? t('chat.placeholderSteer')
-                : // Only promises the hold while the hold is bound.
-                  voicePress
-                  ? t('chat.placeholderVoice')
-                  : t('chat.placeholder')
+              queueing
+                ? t('chat.placeholderQueue')
+                : steerable && streaming
+                  ? t('chat.placeholderSteer')
+                  : // Only promises the hold while the hold is bound.
+                    voicePress
+                    ? t('chat.placeholderVoice')
+                    : t('chat.placeholder')
             }
             onFieldReady={handleFieldReady}
-            onDropFiles={onAttachFiles && can.dropFiles ? handleDropFiles : undefined}
+            // `!isHosted` for the same reason the attach menu and the sticker
+            // picker are withheld: an attachment reaches a hosted agent as the
+            // JSON that carries it, because an ACP prompt is a single text
+            // block. Closing the menus and leaving the whole window droppable
+            // would be the same failure with a better hiding place.
+            onDropFiles={!isHosted && onAttachFiles && can.dropFiles ? handleDropFiles : undefined}
             // Offline takes the line over: a disabled field with nothing to
             // say about why reads as the app having broken.
             notice={
@@ -491,7 +678,7 @@ export function InputBar({
                           size="sm"
                           variant="primary"
                           aria-label={t('chat.removeSticker')}
-                          className="absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-sm"
+                          className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-sm"
                           onClick={onRemoveSticker}
                         >
                           <Xmark className="size-3.5" />
@@ -505,53 +692,123 @@ export function InputBar({
             hasPayload={!!pendingSticker}
             toolbarStart={
               steerable && streaming ? null : isAndroid ? (
-                <MobileOptionsMenu
-                  assistants={assistants}
-                  providers={providers}
-                  currentAssistantId={currentAssistantId}
-                  currentModelId={currentModelId}
-                  currentProviderId={currentProviderId}
-                  onSelectAssistant={onSelectAssistant}
-                  onSelectModel={onSelectModel}
-                  thinkingLevel={thinkingLevel}
-                  onSelectThinkingLevel={onSelectThinkingLevel}
-                  fastMode={fastMode}
-                  onToggleFast={onToggleFast}
-                  mode={mode}
-                  onSelectMode={onSelectMode}
-                  acceptEdits={acceptEdits}
-                  onToggleAcceptEdits={onToggleAcceptEdits}
-                  capabilities={capabilities}
-                  onTakePhoto={handleTakePhoto}
-                  onPickGallery={handlePickGallery}
-                  onPickFile={handlePickFile}
-                  supportsImages={capabilities?.supports_images !== false}
-                />
+                // The phone keeps the pickers in the one sheet: there is no room
+                // beside the field for them, and a truncated model name is worse
+                // than one tap.
+                <>
+                  <MobileOptionsMenu
+                    assistants={assistants}
+                    providers={providers}
+                    currentAssistantId={currentAssistantId}
+                    currentModelId={currentModelId}
+                    currentProviderId={currentProviderId}
+                    onSelectAssistant={onSelectAssistant}
+                    onSelectModel={onSelectModel}
+                    thinkingLevel={thinkingLevel}
+                    onSelectThinkingLevel={onSelectThinkingLevel}
+                    fastMode={fastMode}
+                    onToggleFast={onToggleFast}
+                    mode={mode}
+                    onSelectMode={onSelectMode}
+                    acceptEdits={acceptEdits}
+                    onToggleAcceptEdits={onToggleAcceptEdits}
+                    capabilities={capabilities}
+                    // Same reason as the desktop branch below: a hosted prompt is
+                    // one text block, so a picture picked here would reach the
+                    // agent as JSON. Reachable from a phone in remote mode, where
+                    // the conversation is hosted on the machine at the other end.
+                    onTakePhoto={handleTakePhoto}
+                    onPickGallery={handlePickGallery}
+                    onPickFile={isHosted ? undefined : handlePickFile}
+                    supportsImages={!isHosted && capabilities?.supports_images !== false}
+                  />
+                  {/* These two are the agent's knobs and the queue's, not the
+                      sheet's, so they sit beside it here exactly as they do on a
+                      desktop. Left out of this branch, a phone attached to a
+                      hosted session — which is how remote mode reaches one — had
+                      no way to change its model, permission mode or effort at
+                      all, and no way to choose a delivery before sending. Both
+                      are already compact triggers rather than rows, so there is
+                      nothing to fold into the sheet. */}
+                  <HostedSessionKnobs options={acp.options} set={acp.set} busy={acp.busy} />
+                  {queueing && onSelectQueueDelivery && (
+                    <ToolbarSelect
+                      aria-label={t('chat.queue.mode')}
+                      placeholder={t('chat.queue.followUp')}
+                      value={queueDelivery}
+                      choices={[
+                        { value: 'follow_up', label: t('chat.queue.followUp'), hint: t('chat.queue.followUpHint') },
+                        { value: 'interject', label: t('chat.queue.interject'), hint: t('chat.queue.interjectHint') },
+                      ]}
+                      onSelect={(value) => onSelectQueueDelivery(value as QueueDelivery)}
+                    />
+                  )}
+                </>
               ) : (
-                <ComposerMenu
-                  assistants={assistants}
-                  providers={providers}
-                  currentAssistantId={currentAssistantId}
-                  currentModelId={currentModelId}
-                  currentProviderId={currentProviderId}
-                  onSelectAssistant={onSelectAssistant}
-                  onSelectModel={onSelectModel}
-                  thinkingLevel={thinkingLevel}
-                  onSelectThinkingLevel={onSelectThinkingLevel}
-                  fastMode={fastMode}
-                  onToggleFast={onToggleFast}
-                  mode={mode}
-                  onSelectMode={onSelectMode}
-                  acceptEdits={acceptEdits}
-                  onToggleAcceptEdits={onToggleAcceptEdits}
-                  capabilities={capabilities}
-                  onPickFile={onAttachFiles && capabilities?.supports_images !== false ? handlePickFile : undefined}
-                />
+                <>
+                  <ComposerMenu
+                    assistants={assistants}
+                    providers={providers}
+                    currentAssistantId={currentAssistantId}
+                    currentModelId={currentModelId}
+                    currentProviderId={currentProviderId}
+                    onSelectAssistant={onSelectAssistant}
+                    onSelectModel={onSelectModel}
+                    thinkingLevel={thinkingLevel}
+                    onSelectThinkingLevel={onSelectThinkingLevel}
+                    fastMode={fastMode}
+                    onToggleFast={onToggleFast}
+                    mode={mode}
+                    onSelectMode={onSelectMode}
+                    acceptEdits={acceptEdits}
+                    onToggleAcceptEdits={onToggleAcceptEdits}
+                    capabilities={capabilities}
+                    // **Not on a hosted session.** An attachment is carried by
+                    // packing the message into a JSON array of parts, and the
+                    // ACP path sends whatever it is handed as a *single text
+                    // block* — so the agent receives the JSON itself while the
+                    // composer shows an attachment going out. Real support
+                    // means mapping parts onto ACP content blocks and asking
+                    // `promptCapabilities` first; until then the honest thing
+                    // is not to offer it.
+                    onPickFile={
+                      !isHosted && onAttachFiles && capabilities?.supports_images !== false ? handlePickFile : undefined
+                    }
+                  />
+                  {/* Beside the menu rather than inside it. Which model is
+                      answering is the one setting a person changes while
+                      working, and it is worth seeing without opening
+                      anything. A hosted session's knobs are the agent's and
+                      arrive over ACP; everything else stays in the menu. */}
+                  <HostedSessionKnobs options={acp.options} set={acp.set} busy={acp.busy} />
+                  {/* Only while the next Enter would queue. The two are not
+                      urgency levels, so the control names what will happen
+                      rather than how urgent it is — and it is here rather than
+                      on the row because it is a decision about the message
+                      being typed, made before it exists. */}
+                  {queueing && onSelectQueueDelivery && (
+                    <ToolbarSelect
+                      aria-label={t('chat.queue.mode')}
+                      placeholder={t('chat.queue.followUp')}
+                      value={queueDelivery}
+                      choices={[
+                        { value: 'follow_up', label: t('chat.queue.followUp'), hint: t('chat.queue.followUpHint') },
+                        { value: 'interject', label: t('chat.queue.interject'), hint: t('chat.queue.interjectHint') },
+                      ]}
+                      onSelect={(value) => onSelectQueueDelivery(value as QueueDelivery)}
+                    />
+                  )}
+                </>
               )
             }
             toolbarEnd={
               <>
-                <EmojiPicker assistantId={currentAssistantId} onSelect={(sticker) => onSelectSticker?.(sticker)} />
+                {/* A sticker travels the same way an attachment does — as a
+                    part in a JSON array — and reaches a hosted agent as that
+                    JSON rather than as anything it can see. See `onPickFile`. */}
+                {!isHosted && (
+                  <EmojiPicker assistantId={currentAssistantId} onSelect={(sticker) => onSelectSticker?.(sticker)} />
+                )}
                 {!isAndroid && onVoiceSend && (
                   <Tooltip delay={0}>
                     {/* The button inside picks the tooltip's trigger props up from
@@ -573,108 +830,15 @@ export function InputBar({
                     </Tooltip.Content>
                   </Tooltip>
                 )}
-                {contextInfo &&
-                  contextInfo.messageCount > 0 &&
-                  (() => {
-                    const ratio = contextInfo.estimatedTokens / contextInfo.contextLimit
-                    // Below the warning threshold the ring is ambient, not a
-                    // reading — quieter than `color="default"`, which is a
-                    // foreground shade.
-                    const color = ratio > 0.95 ? 'danger' : ratio > 0.8 ? 'warning' : undefined
-                    // A popover rather than a tooltip. This panel has a button in
-                    // it, and a tooltip is not a place a button can live: it is
-                    // announced as a description, it closes when the pointer leaves
-                    // on the way to what it contains, and nothing in it is
-                    // reachable from the keyboard. That was already true of the
-                    // manual-compact link, which is why it needed a hand-rolled
-                    // `<button>` with a lint exemption to look right in there.
-                    return (
-                      <Popover>
-                        <Popover.Trigger
-                          aria-label={t('chat.context.tokens', {
-                            used: contextInfo.estimatedTokens.toLocaleString(),
-                            limit: contextInfo.contextLimit.toLocaleString(),
-                          })}
-                          className="inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                        >
-                          <ProgressCircle
-                            aria-hidden
-                            value={contextInfo.estimatedTokens}
-                            maxValue={contextInfo.contextLimit}
-                            isIndeterminate={compacting}
-                            color={color}
-                            className={color && !compacting ? undefined : '[--progress-circle-stroke:var(--muted)]'}
-                          >
-                            <ProgressCircle.Track className="size-4.5">
-                              <ProgressCircle.TrackCircle />
-                              <ProgressCircle.FillCircle />
-                            </ProgressCircle.Track>
-                          </ProgressCircle>
-                        </Popover.Trigger>
-                        <Popover.Content placement="top" className="max-w-64">
-                          <Popover.Dialog className="flex flex-col gap-1 text-xs tabular-nums">
-                            {compacting ? (
-                              <span>{t('chat.compact.inProgress')}</span>
-                            ) : (
-                              <>
-                                {/* Whose window this is. A delegated run has its own
-                                model and its own limit, so the same percentage
-                                means a different number of tokens — and the
-                                conversation it was started from is one tap away,
-                                which is exactly when that gets confusing. */}
-                                <span className="text-muted">
-                                  {contextInfo.agentKind
-                                    ? t('chat.context.forSubAgent', {
-                                        kind: t(
-                                          `chat.subAgent.${contextInfo.agentKind === 'explore' ? 'explore' : 'agent'}`,
-                                        ),
-                                        model: contextInfo.model,
-                                      })
-                                    : contextInfo.model}
-                                </span>
-                                <span>{t('chat.context.messages', { count: contextInfo.messageCount })}</span>
-                                <span>
-                                  {t('chat.context.tokens', {
-                                    used: contextInfo.estimatedTokens.toLocaleString(),
-                                    limit: contextInfo.contextLimit.toLocaleString(),
-                                  })}
-                                </span>
-                                {contextInfo.autoCompactEnabled && contextInfo.compactBreaker !== 'closed' ? (
-                                  // Before the countdown, and instead of it: "0% until
-                                  // auto-compact" next to a number that never moves
-                                  // reads as a bug in the indicator rather than as
-                                  // compaction having given up.
-                                  <span className="text-warning">{t('chat.compact.circuitBreakerOpen')}</span>
-                                ) : (
-                                  contextInfo.autoCompactEnabled &&
-                                  contextInfo.autoCompactThreshold > 0 && (
-                                    <span>
-                                      {Math.max(
-                                        0,
-                                        Math.round(
-                                          (1 - contextInfo.estimatedTokens / contextInfo.autoCompactThreshold) * 100,
-                                        ),
-                                      )}
-                                      % {t('chat.compact.untilAutoCompact')}
-                                    </span>
-                                  )
-                                )}
-                                {onCompact && !streaming && (
-                                  <Button
-                                    variant="ghost"
-                                    className="mt-1 h-auto justify-start px-0 py-0 text-xs font-normal underline underline-offset-2"
-                                    onPress={onCompact}
-                                  >
-                                    {t('chat.compact.manual')}
-                                  </Button>
-                                )}
-                              </>
-                            )}
-                          </Popover.Dialog>
-                        </Popover.Content>
-                      </Popover>
-                    )
-                  })()}
+                <ContextGauge
+                  context={contextInfo}
+                  hosted={!!isHosted}
+                  agentUsage={acp.usage}
+                  agentModel={hostedModel}
+                  compacting={compacting}
+                  streaming={streaming}
+                  onCompact={onCompact}
+                />
               </>
             }
           />

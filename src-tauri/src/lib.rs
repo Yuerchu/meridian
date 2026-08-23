@@ -92,6 +92,13 @@ pub fn run() {
             events.register(Arc::new(WindowSink(app.handle().clone())), true);
 
             let services = bootstrap::bootstrap(data_dir, events);
+            // The one thing core needs from up here: how to run a turn. The
+            // prompt queue lives below the line and has to be able to start
+            // one, and `commands::chat` is a Tauri command. Set before anything
+            // can pump, which is anything a person does.
+            let _ = services
+                .turn_starter
+                .set(Arc::new(commands::chat::DesktopTurns(services.clone())));
             app.manage(services.clone());
 
             #[cfg(target_os = "android")]
@@ -198,19 +205,52 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|handle, event| {
             // The only place in the app that has to finish async work before the
-            // process goes away. MCP servers are child processes: without this
-            // they outlive every quit and pile up across restarts.
+            // process goes away. MCP servers and hosted ACP adapters are child
+            // processes: without this they outlive every quit and pile up across
+            // restarts. `kill_on_drop` does not cover it — `handle.exit` runs no
+            // destructors.
             if let tauri::RunEvent::ExitRequested { api, code, .. } = &event {
-                // RESTART_EXIT_CODE cannot be prevented, and a second pass would
-                // be re-entering a shutdown already under way.
-                if *code == Some(RESTART_EXIT_CODE) || SHUTTING_DOWN.swap(true, Ordering::SeqCst) {
+                // A restart is the one exit that cannot be deferred:
+                // `prevent_exit` ignores this code outright (tauri's
+                // `app.rs`), so the process is replaced as soon as this
+                // callback returns and the async path below never runs. That
+                // leaves nowhere to await, and returning without doing anything
+                // — which is what this did — hands the restart a set of live
+                // adapters that nothing will ever close again.
+                //
+                // So the cleanup happens here instead, synchronously, before
+                // the restart proceeds.
+                if *code == Some(RESTART_EXIT_CODE) {
+                    #[cfg(not(target_os = "android"))]
+                    stop_adapters_blocking(handle);
+                    return;
+                }
+                // A second pass would be re-entering a shutdown already under
+                // way — `handle.exit` below raises this event again.
+                if SHUTTING_DOWN.swap(true, Ordering::SeqCst) {
                     return;
                 }
                 api.prevent_exit();
                 let handle = handle.clone();
                 let code = code.unwrap_or(0);
                 tauri::async_runtime::spawn(async move {
-                    handle.state::<Services>().mcp.shutdown_all(MCP_SHUTDOWN_BUDGET).await;
+                    let services = handle.state::<Services>();
+                    services.mcp.shutdown_all(MCP_SHUTDOWN_BUDGET).await;
+                    // Bounded for the same reason the MCP budget is: an adapter
+                    // that will not die must not hold the window open after the
+                    // user has asked it to close. The child is killed rather
+                    // than asked politely, so this is a formality that only
+                    // matters if the OS is slow to reap.
+                    #[cfg(not(target_os = "android"))]
+                    {
+                        let acp = services.acp.clone();
+                        if tokio::time::timeout(ACP_SHUTDOWN_BUDGET, acp.close_all())
+                            .await
+                            .is_err()
+                        {
+                            tracing::warn!("gave up waiting for the ACP adapters to stop");
+                        }
+                    }
                     handle.exit(code);
                 });
             }
@@ -225,6 +265,51 @@ const RESTART_EXIT_CODE: i32 = tauri::RESTART_EXIT_CODE;
 /// second DELETE of its own, so without a ceiling a handful of them would hold
 /// the window open long after the user asked it to close.
 const MCP_SHUTDOWN_BUDGET: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// The same, for hosted ACP adapters. Shorter because there is no graceful
+/// handshake to wait out — the child is killed and this only covers the wait
+/// for it to actually be gone.
+#[cfg(not(target_os = "android"))]
+const ACP_SHUTDOWN_BUDGET: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Stop the hosted adapters from a caller that cannot await.
+///
+/// Only the restart path needs this. Every other exit prevents itself, does the
+/// work on the async runtime and *then* exits; a restart cannot be prevented, so
+/// the choice is between blocking here and leaking the children. Blocking wins:
+/// the window is going away either way, and `std::process::exit` runs no
+/// destructors, so `kill_on_drop` will not collect them afterwards.
+///
+/// Waits on a plain channel rather than `block_on`. This runs on the event-loop
+/// thread, and `block_on` panics if it is ever called from inside the runtime —
+/// a condition that depends on how the host set the runtime up rather than on
+/// anything visible here. Handing the work to the runtime and blocking on a
+/// `std` channel cannot be wrong either way.
+///
+/// MCP servers have the identical gap on this path and are deliberately left
+/// alone: that shutdown is a protocol conversation with a five-second budget of
+/// its own, which is a different decision from killing a child, and it was not
+/// this change's to make.
+#[cfg(not(target_os = "android"))]
+fn stop_adapters_blocking(handle: &tauri::AppHandle) {
+    let acp = handle.state::<Services>().acp.clone();
+    let (done, wait) = std::sync::mpsc::channel();
+    tauri::async_runtime::spawn(async move {
+        let _ = tokio::time::timeout(ACP_SHUTDOWN_BUDGET, acp.close_all()).await;
+        let _ = done.send(());
+    });
+    // Slightly longer than the budget the work itself is under, so the inner
+    // timeout is what normally ends this and the outer one only covers a
+    // runtime that never got to the task at all.
+    if wait.recv_timeout(ACP_SHUTDOWN_BUDGET + RESTART_GRACE).is_err() {
+        tracing::warn!("gave up waiting for the ACP adapters to stop before a restart");
+    }
+}
+
+/// How much longer than its own budget the restart path waits, before deciding
+/// the runtime is not going to get to the task.
+#[cfg(not(target_os = "android"))]
+const RESTART_GRACE: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// Guards against re-entering shutdown: `handle.exit` raises `ExitRequested`
 /// again, and without this the second pass would prevent its own exit.

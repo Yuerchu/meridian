@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react'
 
 import { ConfirmDialog, type ConfirmOptions } from '@/components/ui/confirm-dialog'
+import { useHistoryLevel } from './use-history-level'
 
 /**
  * The same dialog, asked for rather than declared.
@@ -36,6 +37,18 @@ export function useConfirm() {
     settleRef.current = null
     resolve?.(ok)
   }, [])
+
+  // Claimed here rather than at the twelve call sites, which is the whole
+  // reason this is a hook: the dialog is open exactly when `isOpen` says so,
+  // and the back gesture has to answer it — no — instead of reaching past it to
+  // whatever is behind. Escape and the scrim deliberately do not close this
+  // dialog (see `ConfirmDialog`), and back is not one of those: a hardware key
+  // that appears to do nothing reads as the app being stuck, and leaving is the
+  // one thing it must not silently do while a destructive question is up.
+  useHistoryLevel(isOpen, () => {
+    settle(false)
+    setOpen(false)
+  })
 
   const confirm = useCallback(
     (next: ConfirmOptions) => {

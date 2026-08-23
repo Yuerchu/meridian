@@ -1,4 +1,5 @@
 mod agent;
+mod balance_watch;
 mod command;
 mod extract;
 mod format;
@@ -7,6 +8,7 @@ mod media;
 mod notice;
 mod protocol;
 mod qq_tools;
+mod quote;
 mod session;
 mod stickers;
 
@@ -779,6 +781,18 @@ pub struct OneBotConfig {
     /// QQ emoji id used to acknowledge group messages; empty or "0" disables.
     #[serde(default = "default_ack_emoji")]
     pub ack_emoji_id: String,
+    /// Tell the admins when a provider's credit falls below this.
+    ///
+    /// `None` switches the watcher off entirely, which is the default: it makes
+    /// periodic requests with the user's API keys, so it should exist because
+    /// somebody asked for it rather than because they installed the app. `0`
+    /// keeps the watcher but drops the early warning — the admins are told only
+    /// when the upstream itself reports the account unusable.
+    ///
+    /// Compared per currency rather than against a sum; see
+    /// `ProviderBalance::is_low`.
+    #[serde(default)]
+    pub balance_alert_threshold: Option<f64>,
 }
 
 fn default_ack_emoji() -> String {
@@ -795,6 +809,7 @@ impl Default for OneBotConfig {
             assistant_id: None,
             admin_users: vec![],
             ack_emoji_id: default_ack_emoji(),
+            balance_alert_threshold: None,
         }
     }
 }
@@ -830,6 +845,12 @@ pub fn load_config(pool: &DbPool) -> OneBotConfig {
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default(),
         ack_emoji_id: get("onebot.ack_emoji_id").unwrap_or_else(default_ack_emoji),
+        // Empty means off, which is why this is not `unwrap_or(0.0)`: zero is a
+        // meaningful setting here — watch, but only alert when the upstream says
+        // the account has stopped working.
+        balance_alert_threshold: get("onebot.balance_alert_threshold")
+            .filter(|s| !s.trim().is_empty())
+            .and_then(|s| s.trim().parse().ok()),
     }
 }
 
@@ -851,6 +872,13 @@ pub fn save_config(pool: &DbPool, config: &OneBotConfig) -> Result<(), String> {
         &serde_json::to_string(&config.admin_users).unwrap_or_default(),
     )?;
     set("onebot.ack_emoji_id", &config.ack_emoji_id)?;
+    set(
+        "onebot.balance_alert_threshold",
+        &config
+            .balance_alert_threshold
+            .map(|v| v.to_string())
+            .unwrap_or_default(),
+    )?;
 
     Ok(())
 }
@@ -917,6 +945,11 @@ impl OneBotServer {
         let running = self.running.clone();
         let mut shutdown_rx = self.shutdown_tx.subscribe();
 
+        // Started below, once the port is actually bound. Spawning it here would
+        // leave a watcher polling every six hours behind a server that never came
+        // up — asking the provider for a balance it has nowhere to report.
+        let watcher = (self.state.clone(), self.shutdown_tx.subscribe());
+
         running.store(true, Ordering::Relaxed);
 
         tokio::spawn(async move {
@@ -932,6 +965,12 @@ impl OneBotServer {
                     return;
                 }
             };
+
+            // Its own task on the same shutdown signal: a six-hour timer has no
+            // business inside the accept loop, and it has to stop when the
+            // server does — a replaced server would otherwise leave a watcher
+            // behind holding the outgoing generation's admin list.
+            balance_watch::spawn(watcher.0, watcher.1);
 
             let mut conn_id_counter: u64 = 0;
 

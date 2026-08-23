@@ -194,6 +194,11 @@ function TurnBranchPager({
 }: TurnBranchPagerProps) {
   if (total <= 1) return null
   return (
+    // `touch-hitbox` on both arrows below: at `p-0.5` around a 14px chevron they
+    // are about 22px, and on a touch screen they are the only way to reach a
+    // regenerated or edited branch. Nothing here clips, so the expanded box
+    // survives — unlike the composer's toolbar, where the shell's
+    // `overflow: hidden` cuts it back off.
     <div
       data-slot="turn-branch-pager"
       className={cn('flex items-center gap-0.5 text-xs text-muted', className)}
@@ -205,7 +210,7 @@ function TurnBranchPager({
         aria-label={previousLabel}
         disabled={isDisabled || index <= 1}
         onClick={onPrevious}
-        className="rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50 disabled:pointer-events-none disabled:opacity-40"
+        className="touch-hitbox rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50 disabled:pointer-events-none disabled:opacity-40"
       >
         <ChevronLeft aria-hidden className="size-3.5" />
       </button>
@@ -218,7 +223,7 @@ function TurnBranchPager({
         aria-label={nextLabel}
         disabled={isDisabled || index >= total}
         onClick={onNext}
-        className="rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50 disabled:pointer-events-none disabled:opacity-40"
+        className="touch-hitbox rounded-sm p-0.5 transition-colors outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-focus/50 disabled:pointer-events-none disabled:opacity-40"
       >
         <ChevronRight aria-hidden className="size-3.5" />
       </button>

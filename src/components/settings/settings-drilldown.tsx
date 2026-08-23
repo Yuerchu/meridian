@@ -30,6 +30,11 @@ export function SettingsDrilldown({
   children: React.ReactNode
 }) {
   const { t } = useTranslation()
+  // The viewport, deliberately, and not the measured container `MasterDetail`
+  // moved to: the two branches below share no box to measure — the narrow one
+  // is a row plus a portal — so there is nothing to hang a probe on. And the
+  // pane this sits in is capped at `max-w-lg`, so the two rulers only disagree
+  // in a range where either answer reads fine. Not an oversight.
   const isMobile = useIsMobile()
   const [open, setOpen] = useState(false)
 
@@ -39,7 +44,11 @@ export function SettingsDrilldown({
 
   if (!pushes) {
     return (
-      <section data-slot="settings-drilldown" className="space-y-2">
+      // Both branches are `pane` containers, because a grid inside `children`
+      // has to resolve against whichever of the two it landed in — and the one
+      // below is portalled to `body`, so it is not even a descendant of the
+      // pane that rendered it.
+      <section data-slot="settings-drilldown" className="@container/pane space-y-2">
         <h3 className="text-sm font-medium">{title}</h3>
         {children}
       </section>
@@ -64,7 +73,7 @@ export function SettingsDrilldown({
                 </Button>
                 <span className="min-w-0 flex-1 truncate text-sm font-medium">{title}</span>
               </div>
-              <div className="flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-contain p-4 pb-[max(1rem,var(--safe-bottom))]">
+              <div className="@container/pane flex-1 min-h-0 space-y-4 overflow-y-auto overscroll-contain p-4 pb-[max(1rem,var(--safe-bottom))]">
                 {children}
               </div>
             </div>

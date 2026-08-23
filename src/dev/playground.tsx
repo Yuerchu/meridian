@@ -37,6 +37,8 @@ import {
   type TurnStatus,
 } from '@/components/ui/turn'
 import HeroUiLab from './heroui-lab'
+import ResponsiveLab, { ResponsiveFrame } from './responsive-lab'
+import SchemaLab from './schema-lab'
 import ScrollLab from './scroll-lab'
 import { ToolCallBlock } from '@/components/chat/tool-call-block'
 import { TurnItem } from '@/components/chat/turn-item'
@@ -512,6 +514,15 @@ export default function Playground() {
   // a whole cannot give it.
   if (window.location.hash === '#playground/scroll') return <ScrollLab />
   if (window.location.hash === '#playground/heroui') return <HeroUiLab />
+  if (window.location.hash === '#playground/schema') return <SchemaLab />
+  // One route, two sides: the harness and the frame it drives are the same
+  // document loaded twice, told apart by a query parameter rather than a second
+  // hash — the checks above are `===`, and a frame carrying its own hash suffix
+  // would have to loosen all of them.
+  if (window.location.hash === '#playground/responsive') {
+    const isFrame = new URLSearchParams(window.location.search).has('responsiveCase')
+    return isFrame ? <ResponsiveFrame /> : <ResponsiveLab />
+  }
   return <Gallery />
 }
 

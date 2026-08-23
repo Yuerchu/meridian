@@ -393,6 +393,7 @@ impl Active {
             .map_err(|e| e.to_string())?;
 
         let mut usage = usage_of(first.usage.as_ref());
+        let mut peak_prompt = usage.input_tokens;
         let mut stage = "quick";
         let mut evidence: Vec<serde_json::Value> = Vec::new();
 
@@ -419,6 +420,7 @@ impl Active {
             })
             .await;
             usage = add(usage, deeper.usage);
+            peak_prompt = peak(peak_prompt, deeper.peak_prompt);
             evidence = deeper.evidence;
             match deeper.read {
                 // The deep pass could not answer either. Keep whatever the
@@ -432,6 +434,7 @@ impl Active {
             read,
             stage,
             usage,
+            peak_prompt,
             evidence,
             model: model.to_string(),
             provider_id: resolved.provider_id,
@@ -461,9 +464,10 @@ impl Active {
             if let Err(e) = crate::db::ops::message::record_auto_review(&mut conn, &message_id, &call_id, &payload) {
                 tracing::warn!(error = %e, "could not file the auto-review verdict");
             }
-            if let Err(e) = crate::db::ops::audit::record_review(
+            if let Err(e) = crate::db::ops::audit::record_side_request(
                 &mut conn,
-                crate::db::ops::audit::ReviewCost {
+                crate::db::ops::audit::SideRequestCost {
+                    role: crate::db::ops::audit::AUTO_REVIEW_ROLE,
                     message_id: &message_id,
                     conversation_id: &conversation_id,
                     turn_id: Some(&turn_id),
@@ -471,6 +475,7 @@ impl Active {
                     provider_name: Some(&cost.provider_name),
                     model_id: Some(&cost.model_id),
                     usage: cost.usage,
+                    peak_prompt_tokens: cost.peak_prompt,
                     summary: &summary,
                 },
             ) {
@@ -487,6 +492,9 @@ struct Verdict {
     read: Read,
     stage: &'static str,
     usage: MessageUsage,
+    /// The largest single round's prompt, for choosing a price tier. Never
+    /// the sum in `usage` — see `ReviewCost::peak_prompt_tokens`.
+    peak_prompt: Option<i32>,
     evidence: Vec<serde_json::Value>,
     model: String,
     provider_id: String,
@@ -558,12 +566,27 @@ fn usage_of(usage: Option<&TokenUsage>) -> MessageUsage {
             output_tokens: u.completion_tokens,
             cache_read_tokens: u.cache_read_tokens,
             cache_write_tokens: u.cache_write_tokens,
+            server_tool_calls: None,
         },
     }
 }
 
 /// `None` stays `None`, because it means the upstream said nothing rather than
 /// that it said zero — the distinction migration 28 exists to keep.
+/// The larger of two rounds' prompts, keeping "nobody reported" distinct from
+/// zero.
+///
+/// A review's rounds are summed for what they cost, but a *tier* is a fact about
+/// one request. `add` answers the first question and this one answers the
+/// second; using the sum for both bills a review of seven small rounds as though
+/// it had made one enormous one.
+fn peak(current: Option<i32>, round: Option<i32>) -> Option<i32> {
+    match (current, round) {
+        (None, other) | (other, None) => other,
+        (Some(a), Some(b)) => Some(a.max(b)),
+    }
+}
+
 fn add(a: MessageUsage, b: MessageUsage) -> MessageUsage {
     let sum = |x: Option<i32>, y: Option<i32>| match (x, y) {
         (None, None) => None,
@@ -574,6 +597,7 @@ fn add(a: MessageUsage, b: MessageUsage) -> MessageUsage {
         output_tokens: sum(a.output_tokens, b.output_tokens),
         cache_read_tokens: sum(a.cache_read_tokens, b.cache_read_tokens),
         cache_write_tokens: sum(a.cache_write_tokens, b.cache_write_tokens),
+        server_tool_calls: None,
     }
 }
 
@@ -813,6 +837,28 @@ mod tests {
             c.allowed();
         }
         assert!(tripped);
+    }
+
+    /// A review is up to seven requests, and the two questions its usage answers
+    /// need different arithmetic: what it *cost* is the sum, which tier it
+    /// *reached* is the largest single round. Summing for both is what would bill
+    /// a review of seven small rounds at the long-context rate.
+    #[test]
+    fn a_peak_is_the_largest_round_not_the_running_total() {
+        assert_eq!(peak(None, None), None, "silence is not zero");
+        assert_eq!(peak(None, Some(40_000)), Some(40_000));
+        assert_eq!(peak(Some(40_000), None), Some(40_000));
+        assert_eq!(peak(Some(40_000), Some(90_000)), Some(90_000));
+        assert_eq!(peak(Some(90_000), Some(40_000)), Some(90_000), "never shrinks");
+
+        // Seven rounds of 50k: the sum crosses grok-4.6's 200k threshold and no
+        // single request came close to it.
+        let rounds = [50_000; 7];
+        let summed: i32 = rounds.iter().sum();
+        let highest = rounds.iter().fold(None, |acc, r| peak(acc, Some(*r)));
+        assert_eq!(summed, 350_000);
+        assert_eq!(highest, Some(50_000));
+        assert!(summed > 200_000 && highest.unwrap() < 200_000, "the whole point");
     }
 
     /// `None` means the upstream said nothing about caching and `Some(0)` means

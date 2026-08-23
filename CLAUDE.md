@@ -30,6 +30,7 @@ src-tauri/
       agent/engine/         # the turn loop, and the ports the runners plug into
       db/ provider/ tools/ mcp/ secrets/ …
       onebot/ hooks/        # the two non-desktop runners
+      acp/                  # hosting another coding agent, as its client
       services.rs           # every long-lived thing, in one value
       events.rs             # EventBus: where an event goes once it has happened
       bootstrap.rs          # bootstrap(data_dir, events) -> Services
@@ -88,6 +89,46 @@ src-tauri/
   narrowing costs no cache. `shown_as_admin` and `exposes_full_toolset` in
   `qq_tools.rs` are the two decisions, kept out of the call sites.
 
+  **The test is what a definition reveals, not which registry it came from**, and
+  reading it as the latter cost a group `web_search` for no reason: its
+  description is our own fixed prose, it reads nothing on this machine, and a QQ
+  session's file access is an empty root set either way. On the actual test it
+  belongs with the QQ tools. `OPEN_REGISTRY_TOOLS` is that list and
+  `ToolExposure::Only` is how it is applied — narrowing what `enabled_tools`
+  already allowed, so naming a tool there cannot hand back one the user switched
+  off, and leaving `Permission::Ask` alone, so a search still asks first. What
+  `offered` authorises is read back off `tool_defs` rather than off the constant:
+  a tool advertised to the whole group and then refused at dispatch is a model
+  calling it over and over in front of an audience.
+
+- **A quoted message is content, not a citation.** `quote::fetch` parses what a
+  reply quotes into an ordinary `ParsedMessage` and the caller merges its media
+  into the turn. It used to be flattened with `segments_to_text`, which is right
+  for something a person reads and destroys everything else: a quoted sticker
+  arrived as the five literal characters `[动画表情]`. That is not an edge case
+  on a phone, where QQ gives no way to @ the bot *and* attach a sticker in one
+  message — quoting one **is** how a group member shows the bot a sticker, and
+  the empty-body check dropped the whole gesture besides.
+
+  Three things hold the merge together. The quoted message is processed *first*,
+  because that is where its sentinels land in the enriched text, and both media
+  lists are concatenated in that order. `align_sticker_ids` pads each side to its
+  own sticker count — a short list does not lose an id, it slides every sticker
+  after the gap onto somebody else's. And voice is transcribed against the
+  *quoted* id, not the turn's, which is why `process_media` takes one rather than
+  reading `event`.
+
+  A reply can quote anything, so `parse_segments` covers what people actually
+  send: cards (`json`/`xml` — the payload is a JSON document inside a JSON
+  string, and its shape is set by whichever app built it), files with their
+  names, red packets, locations, dice. Each of these used to fall through to
+  `_ => {}` and produce an *empty* message, which then read as the bot ignoring
+  you. A merged forward is the one that cannot be resolved in a pure function:
+  `FORWARD_SENTINEL` holds its place and `expand_forwards` exchanges the handle
+  for the messages, two levels deep and twenty messages wide, with media inside
+  left as placeholders — there is no turn for those sentinels to be aligned
+  against.
+
   The other half of that split is that **authority follows the speaker, and a
   turn has more than one.** A round can open with several people's queued
   messages, a `TurnEnd::Continue` round is whoever spoke next, and steering adds
@@ -122,8 +163,52 @@ src-tauri/
   - **The roster goes after the message.** Who is present changes every turn and
     is never persisted, so placing it before the message re-creates the very
     divergence the frozen row removes.
+- **A request nobody typed still costs money, and `chat` was where that money disappeared.** The summariser, the title generator and the automatic reviewer are all requests the app makes on its own behalf. Two of them called `ChatProvider::chat`, which returns a bare `String` — so their usage was discarded at the adapter boundary and reached no ledger at all. On a long conversation the summariser's prompt is the whole history being compacted, which makes it the single largest request this app sends; it appeared on no bill for as long as it existed, and a comment claimed the turn had already recorded it, which was never true.
+
+  Both now go through `chat_with_tools` with an empty tool list, purely for the usage it hands back, and land in `audit_messages` through `record_side_request` under their own role. **The roles are the point**: `UsageDimension::Kind` separates answering the user from summarising, naming and reviewing, and `BILLED_ROLES` is the one list the reporting query filters on — a role missing from it is spend reported as nothing, which is exactly how these two went unnoticed. Mid-turn compaction is still unrecorded and says so at the call site: it runs inside a turn and has no row of its own to hang a cost on.
+
 - **A bill is priced once, in `agent::pricing`.** `compute_cost` carries a rule no summation expresses: a cached token bills at the cache rate *instead of* the input rate, not on top of it. That formula has been wrong once — the old one reported a DeepSeek turn at a 90% hit rate as costing nearly six times what it did — and three tests now stand on it. So nothing else computes a cost: not SQL, not the front end. `db::ops::usage` reduces millions of audit rows to a few dozen groups and hands each to `cost_of`, which is the same function behind the stop event's `cost_breakdown`. Two implementations would disagree in exactly the case the tests exist for. Report totals with `UsageDimension::Total` rather than adding a breakdown up, for the same reason.
 - **What a reply cost is a fact about the past, so the price travels with it.** `audit_messages` snapshots the four rates at write time (migration 30), beside the `provider_name` and `sender_name` it already copied. Joining `model_configs` at read time instead would mean correcting a typo in a rate silently rewrites what last month cost. Rows older than that migration have NULL there and fall back to today's configuration — the retroactive answer, kept only because it is the sole number those rows have. A model priced `0/0` is one nobody has filled in, not one that is free (the editor opens at zero): `Prices::known()` is the single definition, and traffic that fails it is counted into `unpriced_messages` and surfaced. A cost shown without that count is smaller than the truth with nothing to say so.
+- **A reasoning token is an output token, and one dialect hides that.** OpenAI and DeepSeek count reasoning inside `completion_tokens`; xAI does not. A measured `grok-4.6` reply reported `prompt 214 / completion 1 / reasoning 59 / total 274` and billed all sixty — taken at face value that turn is reported at a sixtieth of its cost, and the number stays entirely plausible while being wrong. `billable_completion_tokens` folds them in, but decides from the provider's own `total_tokens` rather than from which vendor we think we are talking to: a dialect that already includes reasoning satisfies `total - prompt == completion` and is left alone, one that does not leaves exactly `reasoning_tokens` unaccounted for, and anything else is not evidence and changes nothing. A relay with a vague usage block can only be under-reported by its own numbers, never inflated by ours.
+
+- **A price can move with the size of the prompt, and it is chosen once — at write time.** xAI doubles every rate on `grok-4.6` above a 200k prompt, Gemini has charged a long-context premium since 1.5, and OpenAI prices its long-context tiers separately. `model_configs.price_tiers` (migration 35) holds those as a JSON array and `agent::pricing::parse_tiers` is the only reader.
+
+  Two things about it are not the obvious reading. **The threshold counts the whole prompt, cached part included, and crossing it re-prices the entire request rather than the excess** — a 201k-token prompt costs double on all 201k. Read as a tax bracket, the formula comes out low by nearly the base rate; measured against the uncached remainder instead, a heavily-cached 400k conversation falls back into the cheap tier, which is the most likely case and the most expensive to miss.
+
+  **And the tier is resolved where the prompt size still exists**, which is two places and neither of them is the report. `db::ops::audit::prices_for` picks it per row and snapshots *that tier's* rates into the four price columns migration 30 already had — so to `db::ops::usage`, crossing a threshold looks exactly like a mid-month price change, which is a thing it has handled since it was written. Nothing there re-decides, because a `SUM` over rows that were separate requests has no prompt size in it and inventing one is how a report comes to disagree with the stop event the user was already shown. The live half is `TurnPricing`, carried into `engine::run_turn` and applied per round, for the same reason in miniature: five 50k requests and one 250k request leave identical totals behind and are billed differently, so `progress.cost` is summed as the turn goes rather than computed from `progress.input_tokens` at the end.
+
+- **A tool the provider runs is announced, never dispatched.** Grok and DeepSeek will both search the web on their own side, and by the time a `web_search_call` item reaches us the upstream has already run it and fed the result to the model. So `StreamEvent::ServerToolCall` is deliberately not a `ToolCall`: routed through the tool machinery, the loop would try to run `web_search` locally, ask the user to approve it, and send back a result the model never asked for — while the real one is already in its context. What it changes is only what the reader sees, which without it is a minute of silence followed by an answer from nowhere. The front end draws it as an ordinary tool card because that is what it is minus the running, and the two announcements share an `id` so the second revises the first: xAI's opening event carries an empty query and no sources, and both arrive on completion.
+
+  **They exist only on the Responses API, which is why `xai` and `deepseek` each speak two dialects.** Measured: xAI's chat-completions endpoint answers `{"type":"web_search"}` with a 422 — "expected `function` or `live_search`". That makes `api_format` load-bearing for those two rather than cosmetic, and it drags the cache key with it: `prompt_cache_key` is a body field on Responses, while `x-grok-conv-id` is the chat-completions header. Getting that wrong silently costs the cache rather than failing.
+
+  **The list is intersected with the model's capabilities every turn, not read.** A stored `["web_search"]` outlives the support it names — switch the model back to chat-completions and the row still says it — and an unknown tool type is a 422 on *every* request, so one stale setting becomes total failure. `capabilities::server_tools` says what a model can run and `model_configs.server_tools` says what it will; `resolve_turn_params` is where they meet. The catalog side is deliberately short: only xAI (measured) and DeepSeek (its compatibility table) are listed, because a wrong wire name is that same 422.
+
+  **Enabling the provider's search removes ours from the tool set** (`turn_config`, via `superseded_local_tool`). Two ways to search is worse than either alone: the local one stops for approval and needs a Tavily key, so a model that picked it would ask permission and then fail, having had the better option taken away. The map is partial on purpose — `x_search` and `code_execution` displace nothing.
+
+  **What that removes in a QQ group is the approval, and the group section's promise with it.** That section says a search "still asks first", which was true while the only searching was `web_search` at `Permission::Ask`. A provider-side one is never asked about, so with it switched on any group member's message can have the bot search on the owner's account and bill. It is opt-in per model and off by default; it is not something the group's own narrowing controls.
+
+  **`x_search` arrives as `custom_tool_call`, which is also DeepSeek's `apply_patch` envelope.** The name is a field rather than the item type (`x_keyword_search`, `x_user_search` — xAI decomposes the requested `x_search` into those), and the arguments are a JSON string in `input`. That shape was excluded at first as "somebody else's tool", which made every X search invisible: no card, nothing between the question and a minute of silence. Treating an unrequested one as provider-side is safe only because this app never asks for a custom tool; if that changes, the test has to become "did we ask for this one by name".
+
+  **They cost money outside the token price, and that is a fourth thing a bill has to carry.** A measured `grok-4.6` reply with one search billed $0.012818 against $0.007818 of tokens — the difference is xAI's $5 per 1000 invocations. So `TokenUsage::billable_tool_calls` counts them, `model_configs.server_tool_price` holds the rate (migration 37, per *thousand*, which is the unit upstreams publish), and `RequestCost::tool_cost` is its own slot: it divides by nothing the token costs do, and a total nobody can decompose is one nobody can act on.
+
+  Two details are easy to get wrong. **The count is narrowed on the way in**, from `server_side_tool_usage_details` rather than `num_server_side_tools_used` — image understanding inside a search and remote MCP calls are free, and billing those would inflate every search that happened to look at a picture. **And a tier never carries the rate**: a tier describes what a large prompt costs, an invocation costs the same whatever the prompt was, so `with_tool_rate` keeps the base rate across a tier switch. Without that, the long requests — the ones most likely to have searched — would silently stop being charged for it.
+
+  One rate rather than one per tool, because the three this app can ask for are all $5/1k. The ones priced differently (`attachment_search` at $10, `collections_search` at $2.50) are ones it never requests, and if one appears anyway the count excludes it and says so in the log rather than pricing it at a rate nobody configured.
+
+- **A tool that changes something says in one line what it is doing; a tool that reads does not.** `tools::description_property` is the one definition of that parameter, and it goes on `run_command`, `apply_patch`, the four file-mutating tools, `send_sticker`, and — via `qq_tools::with_description`, keyed off `needs_approval` so it cannot drift — every QQ write. Not on the reads: `read_file`'s path and `search_files`'s pattern already *are* the summary, and a description there is output tokens spent restating what the card is showing. Claude Code reached the same answer and gives it to `Bash` and `Task` alone.
+
+  Two things about it. **It is optional**, because required it would turn a model's omission into a call that fails validation mid-turn, while missing it only costs the card its prose and falls back to the argument — the failure of the soft version is the one the card already handled. In QQ it reaches further than the card: `handler::make_approval_fn` prints the arguments verbatim into the approval message, so for an admin being asked about a ten-minute mute this is the only part of that prompt written for a person.
+
+  **And it is drawn beside the identifying argument, never instead of it** — `ChatToolTrigger`'s `subtitle`, on a second line. Letting it win the one summary line reads better and is a security defect: it takes the path off a `write_file` card, and because `toolFileDiffs` renders a diff there rather than the raw arguments, what is left is the file's own name in the diff header with the directory only in a `title` — which a touch screen cannot reach. Approving a write is exactly when the directory matters. (That basename is itself only correct *because* the trigger prints the full path above it; the note in `fileNameOf` says so, and this is what invalidated it.) The two lines answer different questions — which call this is, and what it is for — and on a narrow card competing for one row leaves neither readable. The approval toast draws the same two lines, for the reason `ToolArgsSummary` is shared at all.
+
+- **A balance is asked for, and the alert lives with the thing that can speak.** `provider::balance` is a `match` over provider types rather than a `ChatProvider` method, because almost nobody publishes one: DeepSeek does, Anthropic and xAI publish nothing, and OpenAI withdrew the endpoint that used to. A trait method would put an unimplementable obligation on every adapter to answer a question only one of them can. Nothing is cached — a stale balance is the number somebody decides not to top up on — and `is_available` is kept apart from the figures because it is the more reliable signal: it accounts for postpaid arrangements and expired grants, which a total does not show.
+
+  The watcher is in `onebot/balance_watch.rs` rather than beside `bootstrap`, and that is the whole design: the notification *is* a QQ private message, so a watcher that outlived the listener would have found the problem and had nowhere to say it. It starts and stops on the server's own shutdown signal, so a restarted server does not leave one behind holding the outgoing generation's admin list. Off unless `balance_alert_threshold` is set **and** an admin is configured — it makes periodic requests with the user's API keys, so it exists because somebody asked rather than because they installed the app. `Some(0)` is a real setting distinct from `None`: keep checking, but say something only when an upstream reports the account unusable. The desktop's half is a button in provider settings, which is where somebody is already looking.
+
+- **A cache key is the conversation, and only the two real loops set one.** `ChatParams::cache_key` becomes xAI's `x-grok-conv-id` on chat-completions and `prompt_cache_key` on the Responses API — the spelling follows the dialect, not the vendor. It is what routes a request back to the server already holding its prefix; without it their own docs say you often pay full input price on a cold cache, and nothing about the reply says so. The desktop and OneBot loops set it. Everything else goes through `without_thinking`, which clears it along with the thinking knobs: a summariser, a title, an extraction pass and a review each send a prompt that is *not* the transcript's prefix, so pinning them to the server holding it buys nothing and would make this paragraph false.
+
+  **`without_thinking` clears the provider-side tools for a harder reason.** A summariser handed `web_search` is a background request that can reach the open internet, on a query the model composed out of whatever it was summarising, billed per call and reported to nobody. For `auto_review` it is worse: it is shown a projection built from untrusted tool output, its verdict goes back into the chat, and searching needs no approval — which is the exfiltration path the `FileAccess` rule in that module exists to close, reopened through another door. The hook reviewer clears the same field by hand, because it resolves its parameters without going through there. It is a flavor of `openai_compat` rather than an adapter of its own (`OpenAICompatFlavor::Xai`): the wire format is unchanged and one header is the whole difference. Sending that header to a generic OpenAI-compatible relay is not free — a vendor header it does not know may be rejected outright — so it is gated on the flavor and tested for its absence elsewhere.
+
 - **`--chart-1`..`--chart-4` are ours.** Pro's charts read them and Pro defines them in its base theme, which this project does not import — only the per-component CSS files. Undefined, every series draws transparent. They are categorical rather than a ramp, and deliberately clear of `--success` / `--warning` / `--danger`, which mean something here: a series that landed on the warning colour would read as a warning.
 
 ## Hook gates
@@ -220,6 +305,387 @@ that from answering the user, because a total nobody can decompose is one nobody
   by its *value* — pointing `autoreview.model` at something permissive, or appending a line
   to `autoreview.allow_rules`, turns a settings write into permission to run anything.
 
+## Hosting Claude Code (ACP)
+
+`src-tauri/crates/core/src/acp/` runs another coding agent *inside* Meridian. This app is
+the ACP **client**; `claude-code-acp` is a child process it speaks JSON-RPC to over stdio.
+The turn runs in the adapter, the transcript and the approval cards are ours. Desktop only
+— every session is a child process. The adapter is not bundled: it is a node package, and
+the machines that want this already have node and a signed-in `claude`.
+
+- **It is a peer, not a caller, and that is why none of `mcp/` is reused.** `mcp/stdio.rs`
+  pairs one request with one reply and discards everything in between; ACP holds a
+  `session/prompt` open for the length of a turn while narrating it in notifications and
+  stopping mid-way to ask the user something. What *is* copied from `mcp/` is what it
+  learned the hard way: `read_line` is not cancel-safe so one task owns the stream end to
+  end, stderr is drained continuously or the child blocks, `kill_on_drop`, and
+  `CREATE_NO_WINDOW`.
+- **The reader must never await the handler.** An inbound `session/request_permission` is
+  answered by a person, minutes later. Handled inline it would stall the same pipe carrying
+  that turn's own output, and the session would look frozen for exactly as long as the card
+  was on screen — so requests are spawned and only the reply goes back through the writer.
+  Notifications are the opposite: queued and handled one at a time, because they are text
+  chunks and spawning loses their order.
+- **Read against the schema, not against the adapter — two hangs came from the difference.**
+  `claude-agent-acp` is generous: it answers `session/load` with a whole
+  `NewSessionResponse`, when `LoadSessionResponse` has *no required field at all* and not
+  even a `sessionId`. Both of the following were latent behind that generosity and neither
+  fails visibly:
+
+  `result: null` is a **success** carrying nothing, and it is the emptiest conforming answer
+  to a load. Read as an absent member — which is what a plain `Option<Value>` does with an
+  explicit null — the line is classified as junk, the pending slot is never completed, and
+  the caller waits until the process dies. `Incoming::result` is `Option<Option<_>>` with a
+  `deserialize_with` for that reason: the derive alone still collapses the two, because it
+  is the outer `Option` that turns null into `None`.
+
+  And the reply is parsed as `LoadSessionResult`, whose every field is optional, with the
+  requested id as the fallback when it names none. Parsed as a new session, every
+  spec-shaped answer looks like a failure — sending a reopen down the `session/new` path and
+  losing the agent's memory of the conversation without a word. The fake adapter answers
+  `sess-terse` the way the schema permits so both stay tested.
+- **A pending slot is registered and then the death is asked about again.** The adapter can
+  exit between the check at the top of `Peer::request` and the insert below it: the reader
+  sets `death` and drains the table, and the entry landing afterwards is one nothing will
+  ever complete. For `session/prompt` that is a turn which never ends on a conversation that
+  can never be used again.
+- **Stopping does not abandon the request.** `session/cancel` is a notification, and the
+  agent still answers the prompt it interrupts with `stopReason: cancelled`. Waiting for
+  that reply is what lets a stopped turn end down the ordinary path with whatever text had
+  already arrived; dropping the future instead leaves the adapter mid-turn with nobody
+  reading, and the next prompt collides with it.
+
+  **A stop that beats the first poll is the exception, and it costs a second fact.**
+  `Peer::request` is lazy, so a token cancelled a moment earlier can win the select's very
+  first pass and put `session/cancel` on the wire ahead of the prompt it is meant to stop —
+  which an adapter with no turn ignores, leaving the prompt to run with `cancel_sent`
+  blocking any second attempt. So the loop is `biased;` and the already-cancelled case does
+  not send at all, ending the turn from a reply this app writes itself.
+
+  That reply is the trap. `finish` settles what the prompt was carrying — the
+  interrupted-turn report, the in-doubt queue items, the memory-loss notice — on the
+  evidence that `session/prompt` answered, which is sound for every reply the *adapter*
+  sends and false for the manufactured one. All three clear exactly once, so settling there
+  spends them on an agent that received none of them and the next turn says nothing.
+  `PromptDelivery` is the missing half, and `PromptDelivery::read_by` is where the two are
+  combined; inferring it from the outcome alone is the defect, not a shortcut.
+- **Approvals go through `services.approvals`, unchanged.** Same register, same
+  `tool_approval_req` event, so the attention queue, the toast stack,
+  `all_pending_approvals` after a reload and the turn guard all work here without knowing
+  ACP exists. The cost: ACP offers four options and `ApprovalDecision` has two, so only the
+  `_once` pair is offered — a card with two buttons must not produce a lasting decision the
+  user was never shown.
+- **`usage_update` is reported, never priced.** Those tokens are billed to whatever
+  `claude` is signed in as, and this app has no rate for them. Running them through
+  `agent::pricing` would produce an authoritative-looking number that is wrong; see the
+  bill-priced-once rule above for why there is exactly one place a cost may come from.
+- **`acp.` is in `SERVER_OWNED_PREFIXES`, and for a worse reason than the other four.**
+  `acp.command` names a binary this app executes. A remote caller who can write it has
+  arbitrary code execution on the host — not the self-lockout the rest of that list guards.
+  `acp_save_config` and `acp_check_adapter` are `local` for the same reason.
+- **A hosted conversation is an ordinary row set, down to the round boundaries.**
+  `agent_kind = 'claude_code'`, written with the same `begin_assistant` /
+  `complete_assistant` / `append_tool_result` a native turn uses, so search, branching and
+  the transcript view need no special case.
+
+  The adapter goes round the model several times inside one `session/prompt`, and each
+  round gets its own assistant row: the prose that introduced a call stays with the call,
+  the result is its own row, and what the agent says next opens the next row. This was
+  flattened onto a single row to begin with, on the reasoning that the shape was legal and
+  only lost which text came before which call. It lost more: `lib/turns.ts` reads the
+  steps *after* the last tool call as the turn's conclusion, so a flattened turn has none,
+  and a turn with tools and no conclusion is drawn as `interrupted` with its whole answer
+  folded away as process. Every finished hosted turn that touched a tool was reported as
+  stopped. A shape that is merely legal is not the same as one the reader agrees with.
+
+  **All three of prose, reasoning and a tool call open the next round**, and the third was
+  missing. A round that ends and is followed by another call with nothing said in between —
+  Claude acting twice in a row, which is ordinary — put the second call on the row that made
+  the first, recording `assistant(A, B) → result A → result B`: two calls issued together,
+  when B was in fact decided after seeing A's result. A serial dependency persisted as a
+  parallel one. `import.rs` had the same hole from the same omission.
+- **The model is read off the session's config options.** ACP has no model field; it
+  carries the model as a configuration option whose `category` is `model`, present in the
+  `session/new` response and re-sent as a `config_option_update` whenever it changes. That
+  is what lands in `messages.model_id`, so a hosted transcript names the model that
+  actually answered. `claude-code` in that column is the fallback and means the adapter
+  did not say — it is not a model id and nothing may treat it as one.
+- **`toolCallId` is unique per session here, and nowhere else in this app.** So the ACP
+  layer is the only place that may dedupe by it — and must, because the adapter announces
+  a call as soon as it knows one is coming and again once the input has streamed. The
+  front end deliberately does the opposite (`handleToolCall` pushes regardless): an
+  OpenAI-compatible gateway reuses `"0"` within a turn and two cards there are two calls.
+  A repeat revises the card instead; `reviseToolCall` is the only event allowed to match
+  on id alone.
+
+  **And the dedupe is asked of the session, not of the row being written** — `Shared::announced`,
+  not `t.row.tool_calls`. The row is the wrong scope by exactly one boundary: the two
+  announcements come from two sources that can arrive in either order, and
+  `Call(A) → Result(A) → Call(B)` rotates the round in between, so a late repeat of `A`
+  meets a row holding only `B` and reads as new. That draws a second card no result will
+  ever close, and leaves the round with more calls than results — which is the test
+  (`results.len() >= tool_calls.len()`) that puts the phase back to `Streaming`, so the
+  turn sits at `RunningTool` and a crash there is reported as "a tool may already have
+  run".
+
+  **And the repeat is the one that carries the arguments**, so it may not simply be
+  dropped once its round has closed. The first announcement is routinely a placeholder —
+  the adapter knows a call is coming before it knows what it is — and `Call(A) {} →
+  Result(A) → Call(B)` puts `A`'s row in the database before the real arguments arrive.
+  `Shared::revise` therefore has two places to look: the open row, and failing that
+  `db::ops::message::revise_tool_call`, which finds the call by id among the turn's stored
+  rows and patches it in place. Stopping at the open row leaves `{}` in the transcript and
+  in the audit copy for ever, which reads as a call that genuinely took no arguments. Both
+  paths only ever *add* — a revision with neither a name nor arguments is an ordinary
+  progress beat and returns before it costs a scan.
+- **The tool's name is in `_meta.claudeCode.toolName`.** ACP's own fields cannot supply
+  one: `title` is prose for a person and `kind` is one of five categories. Reading `title`
+  put "Terminal" on every shell command — the adapter's stand-in for a `Bash` call whose
+  command it has not been told yet — and then the command itself, which belongs in the
+  arguments the card already renders.
+- **A hosted session does not fire the hook gates**, and that needs both repositories.
+  The agent inside loads the user's own Claude Code configuration, plugin included, so a
+  hosted turn otherwise ends by asking *this* app to review it over the loopback endpoint:
+  a second model for minutes while the turn waits on the hook, and another conversation in
+  the sidebar — for a transcript this app already has. `AdapterProcess::spawn` sets
+  `MERIDIAN_ACP_HOSTED` on the child and the two hook scripts in
+  `~/.claude/plugins/local/meridian-plan-gate/scripts/` stand down when they see it. The
+  gates keep doing what they are for: sessions Meridian did not start. The variable name
+  is a contract across the two repositories.
+- **A session is resumed, not restarted, and `acp_sessions` is what makes that possible.**
+  The working directory used to be a preference (`acp.cwd.<conversation_id>`) holding half
+  the answer: the directory survived a restart and the session id was never written down at
+  all, so reopening started a fresh agent in the same folder. That is worse than amnesia.
+  A hosted prompt carries only the newest message — this app's transcript never enters the
+  agent's context — so a fresh agent is not hazy about what came before, it cannot see any
+  of it while the person it is talking to can see all of it.
+
+  Three things about the table (migration 38) that are not the obvious reading.
+  **One row per conversation, not per session**: resuming reuses the id and failing to
+  resume overwrites it, and `AcpRegistry` is keyed the same way — a table able to describe
+  a state the registry cannot is describing something that does not happen. **A NULL
+  `acp_session_id` is a state, not a gap**: it is what a conversation from before the table
+  gets, and what one whose adapter came up but never opened a session gets, and both mean
+  the same thing to every caller. **And the id that gets stored is the one in the reply.**
+  `session/load` resumes through the SDK, which answers with whichever session it actually
+  recovered; writing back the request instead would have the next launch chase an id that
+  never existed.
+
+- **A load replays the whole conversation, and what that recital is for is a mode, not a
+  flag.** `session/load` re-emits the history as ordinary `session/update` notifications.
+  Reopening a conversation this database already holds, every one of them is a row said
+  twice — and it happens to fall on the floor without any help, because each branch of
+  `absorb` asks `with_turn` first and no turn runs during a load; but two branches do not
+  ask, and that is two unrelated rules lining up rather than a decision. `Replay::Discard`
+  says it instead, and the gate is held across the reply *and* a drain, because the reply
+  takes a different route and overtakes the notifications.
+
+  `Replay::Collect` is the other answer, and the one `acp/import.rs` exists for: a session
+  started in a terminal has no rows here, so the recital is the only transcript there is.
+  Same frames, opposite conclusion — which is why `user_message_chunk` stopped being
+  `Ignored` in the mapping and started being dropped in `absorb`. That it is an echo of a
+  row this app wrote before sending is a fact about the live path, not about the update.
+
+- **A recital is not the session. Above 5 MiB it is the tail after the last compaction.**
+  Measured on a real 39.7 MB transcript: 17 of its 199 questions came back, everything
+  before its final compaction absent. That is `getSessionMessages` inside the Agent SDK
+  (`if (t > 5242880) return postBoundaryBuf`) — no flag, no error, nothing on the wire
+  saying so, since `compact_boundary` is a `system` message and the adapter asks for none.
+  The sessions worth importing are exactly the ones this hits.
+
+  The one signal is that the SDK opens the recital with **its own summary**, so
+  `CONTINUATION_PREFIX` is what the import matches on, and that decides two things.
+  `ImportOutcome::truncated` carries it back to the picker, which says it on the row — the
+  only place the user will ever be told. And the summary is written `role = "context"`, not
+  `user`: filed as a question it would be a model-written wall of text in the one trust
+  layer `auto_review`'s projection lets authorise anything, while its contents came out of
+  the tool output of the conversation it summarises. Not `is_compact_summary` either, whose
+  invariant wants an anchor and no turn — this row has both.
+
+- **What else an import rests on.** **The row boundary comes off the wire where it can and
+  off the rhythm where it cannot.** `messageId` is documented as "a change indicates a new
+  message has started", and for an assistant message that is exactly one API response —
+  prose plus the calls it issued, the shape a live turn writes a round as. It is not enough
+  alone, twice over: a row opened by a `tool_call` carries no id to compare against, and
+  the retired `@zed-industries/claude-code-acp` stamps none at all. So a landed result
+  closes a row here too, the way `open_round_if_settled` closes one live. Measured without
+  it: 82 turns in 2064 ended on a tool result with their closing sentence sitting *before*
+  the call, which `lib/turns.ts` draws as `interrupted` — the exact failure the
+  row-per-round shape exists to avoid — and with ids stripped entirely every turn collapsed
+  into a single row.
+
+  **A result belongs to its call, across turns.** Somebody typing while a tool runs closes
+  the turn between the call and its answer; scoped to the open turn, 40 results in 2064
+  turns were being dropped, each leaving a `tool_calls` entry with nothing answering it and
+  a card that never finishes.
+
+  **It is one transaction and writes its own rows**, not `begin_assistant` /
+  `complete_assistant`: those are a round trip each and the second files an audit copy of
+  every reply, a row with no tokens and no price that `db::ops::usage` counts into
+  `unpriced_messages`. An imported reply is spend on whatever `claude` is signed in as —
+  the `usage_update` rule again — so it is reported nowhere, and all-or-nothing falls out
+  for free. **And a recital that lost an update is refused rather than written**: `peer`
+  drops notifications on a full queue and counts them, and a transcript with an invisible
+  hole in it would be believed. Measured, that guard does not fire in practice — the
+  recital is capped by the context window at ~1100 frames and the notifier keeps up at 50×
+  that — so it is cheap insurance rather than a limit on long sessions.
+
+  The clock starts at the session's own `updatedAt` rather than at the import, because
+  `trg_messages_count_insert` drags `conversations.updated_at` to the last row's
+  `created_at` — stamped now, every session imported in one sitting piles up at the top of
+  the sidebar in the order it was clicked.
+
+- **What an import cannot bring across**, none of it recoverable at this layer, all of it
+  measured. An `Edit`/`Write` diff: ACP sends it as a `diff` block, only text is stored,
+  so 181 edits in one session became 181 empty tool cards — the same as a live hosted turn
+  after a reload, so not a regression, just concentrated. Images, which reach
+  `ContentBlock::as_text` as `None`. Slash commands with their output, which the adapter
+  strips whole, leaving the conversation looking as if it skipped. And per-message
+  timestamps, which exist in the JSONL and ACP does not forward — so every imported turn
+  reports a few milliseconds of elapsed time.
+
+  Two more that are about scale rather than fidelity. `session/load` on a large session
+  takes ~37 seconds inside the SDK, and it is paid *again* on the first message after every
+  app restart, because that is when the lazy reopen resumes it. And `session/list` returns
+  596 sessions on one working laptop, which is why the picker draws only the most recent
+  hundred and counts the rest.
+
+- **Attaching writes the id and nothing else, and never opens an adapter.** The other half
+  of importing, for a conversation from before `acp_sessions` existed: it has a directory
+  and no session id, so every reopen starts a blank agent under a transcript it cannot
+  see. Its rows came from that same session, so replaying them would double the
+  transcript — which is also why the list is enough evidence that the session exists and
+  nothing needs loading to prove it. Whatever adapter the conversation had is closed, and
+  the next message resumes against the new id down the path that already exists; the
+  memory-loss notice below then simply does not fire, with no second mechanism.
+
+- **When a session cannot be resumed, the agent is told — and it is the agent that tells
+  the user.** The notice rides `Owed`, beside the interrupted-turn report and the queue's
+  in-doubt items, under the same rule: reading it is not saying it, so it is cleared only
+  once a prompt carrying it came back. It goes first of the three, because the other two
+  describe things that happened inside a conversation the agent is assumed to be following
+  and this one says it is following none of it. There is no second UI for it: the agent's
+  own first sentence lands exactly where the confusion would have been.
+
+  Existing conversations from before migration 38 have no id to resume and never will.
+  They get the notice instead of silently pretending. `session/list` is how they could be
+  attached to a session found on disk, and that is the same call the sidebar of
+  terminal-started sessions needs — see the roadmap.
+- **`fs` and `terminal` capabilities are declared unsupported.** The agent does its own IO
+  and we only hear about it in `tool_call` notifications. Turning `fs` on means answering
+  `fs/read_text_file` and `fs/write_text_file`, after which every file it touches goes
+  through this app — which is what a changes panel and a `FileAccess` policy would need.
+
+## The prompt queue
+
+`queued_prompts` (migration 34) is what a person stacks up while an agent is working.
+Steering already existed for delegated runs and lives in a `Mutex<HashMap>`, which is right
+for what that is — a sub-agent's inbox only means anything while the run is going, and the
+run goes with the process. A queue is the opposite: typed minutes before it is needed, a
+record of what somebody meant to happen next, and losing it silently on a kill is losing
+work they did.
+
+- **Two modes, because one is not enough.** `follow_up` waits for the turn to reach an
+  ending and then starts a new one; `interject` goes in at the next point the agent accepts
+  input, between rounds of the turn already running. Claude Code offers only the second,
+  which makes every thought queued while something long runs an interruption — the opposite
+  of what queueing is usually for. Which mode a row carries only means something *while a
+  turn is running*: idle, the front of the queue goes whatever it says, because there is
+  nothing to wait for and an `interject` left over from a turn that has ended would
+  otherwise block the queue for ever.
+- **Nothing pumps at startup.** A queue found on disk says only that the app died before it
+  was finished; delivering it into an empty room, where the next thing that happens is a
+  tool call nobody approved, is the failure this must not have. Exactly three things move
+  it and all are somebody being there: an item added, an item switched to `interject`, and
+  a turn reaching its ending. A turn that did *not* reach one holds the whole queue —
+  "now rename that function" means nothing if the function was never created — and
+  `queue_release` is a person deciding otherwise.
+- **The two runners take it by opposite routes, and the asymmetry is the design.** A hosted
+  session is *asked*: `_session/steering` and `session/prompt` are requests and the reply is
+  the only evidence there is. A native turn is *offered* — `agent::queue::Interjections` is
+  the `Steering` port the loop drains between rounds, so the queue never pushes and never
+  has to know where the turn has got to.
+
+  That is the same split the ledger rests on. A native turn resends its whole history, so
+  the transcript row **is** the delivery and `db::ops::queue::take_next` makes the row and
+  the item's removal one transaction; there is no in-doubt state on that side to report. A
+  hosted turn's history lives in the adapter, so a row here proves nothing and the doubt is
+  real.
+
+  **Which of the two is read off `agent_kind`, never off the registry.** Asking whether an
+  adapter is alive answers a different question, and the two come apart exactly when it
+  matters: after a restart, or once an adapter has died, a hosted conversation has no live
+  session — and `native::pump` would then answer its queue with the user's own provider and
+  this app's tool set, appending a turn to a Claude Code transcript whose agent knows
+  nothing about it. Wrong agent, wrong bill, wrong conversation. A dormant hosted
+  conversation goes to `hosted::pump`, which does nothing, and the queue waits.
+
+- **A claim on a queued item is the affected-row count, and every caller has to look.**
+  `mark_dispatched` only matches a row that is still undelivered, so its count is what says
+  who won it — two pumps can read the same item (a turn ending as the user adds one, a
+  window and a phone) and both go on to deliver it otherwise. `write_prompt_row` and
+  `run_turn` roll back on zero; the steer path was discarding it, which is the one place
+  where losing meant sending "delete the old migration" twice.
+
+- **A crash holds the queue, and that is written where the crash is noticed.**
+  `ops::turn::reconcile_interrupted` marks the killed turns *and* `hold_all`s the
+  conversations they were on, in one transaction. The rule that only a turn reaching an
+  ending lets the next item go otherwise survived everything except the one event it exists
+  for — nobody is present at a crash, and the next enqueue would pump a follow-up whose
+  premise died with the process.
+
+  **A hold reaches a row that is merely claimed, and that is the other half of it.** A
+  claim is not a delivery: `hosted::steer` marks the row dispatched *before* asking the
+  adapter, the answer can be `promptRequired` — the agent saying it did not take the
+  message — and `undispatch` puts it back. `hold_all` used to skip dispatched rows, so a
+  hold landing inside that round trip missed the only row it was about: the turn failed,
+  the claimed item came back plainly `Queued`, and the instruction ran on a premise that
+  had died without anybody pressing release. Marking it costs nothing while the claim
+  stands, because `QueueState` reads `dispatched_at` before `held_at` and an in-doubt row
+  is already a barrier — the flag only starts meaning something at the moment the dispatch
+  is cleared, which is exactly when it should. `release_all` clears it there too, and
+  `dispatched_at` still outranks it, so releasing a held queue cannot resurrect an item
+  whose delivery is unresolved.
+
+  The pump's half is to **ask the queue again** after a `NotTaken` rather than deliver the
+  row it read before the claim. That row is stale by exactly the window the hold can land
+  in; reusing it leaves `mark_dispatched` to refuse the claim and roll the turn back —
+  correct, and reported as a failed turn rather than as the barrier it is.
+
+- **A barrier cannot be dragged past.** `reorder` moves only rows that are still queued,
+  and places them after the last `held` or `in_doubt` position — otherwise a drag puts a
+  later message in front of an unresolved one, `next_pending` reaches it first, and the
+  instructions run out of the order they were written in. The drag handle is withheld from
+  those rows too, so the affordance does not offer what the write refuses.
+- **`dispatched_at` without `settled_at` is never re-delivered.** Re-sending "delete the old
+  migration" because we are unsure whether it landed is how a queue becomes dangerous — and
+  what it guards is not the agent's memory, which died with the adapter, but the *effects*
+  of a command, which did not. So it is reported instead, on the same terms `interrupted.rs`
+  reports a cut-off turn: reading the record is not telling anyone, so `reported_at` is only
+  written once a reply has been read to the end. An in-doubt row also **stops** the queue
+  rather than being stepped over, because the instructions were written as a sequence.
+
+  Only one answer ever puts an item back: ACP's `promptRequired`, which is the agent saying
+  it did not consume the message. A timeout, a dead pipe, an unreadable reply are an
+  *absence* of evidence and stay in doubt.
+- **`Steering::drain` is async, and `Steered::row` may already be set.** The trait was
+  deliberately sync while every implementation was a queue behind a lock. A table is not:
+  taking an item off it is a transaction, it belongs on a blocking thread, and it has to
+  include the row write. A loop that wrote its own row anyway would put the same sentence in
+  the transcript twice and hang the rest of the turn off a row the queue has never heard of.
+- **A steered message's row is owed to the next round boundary**, not written when it is
+  sent. Written at the send it forks the transcript: the open assistant row's children are
+  its own tool results, and a user row landing beside them makes two branches out of one
+  round. So the front end keeps a settled row visible until `settled_message_id` is filled —
+  for a follow-up those are one transaction, for a steer they can be a whole tool call
+  apart, and in between the message would otherwise be nowhere anyone could see it.
+- **`StartTurn` on `Services` is the one thing core needs from the shell.** Running an
+  ordinary turn is `commands::chat`, and the queue lives below the line. A `OnceLock` the
+  shell fills at startup is a far smaller answer than moving `commands/` down for one call;
+  unset, a follow-up is simply never delivered and the item stays visible.
+- Known gap: a QQ turn started from the chat side drains its own inbox and not this table,
+  so an interjection queued during one waits for something else to pump.
+
 ## Remote access
 
 `src-tauri/src/remote/` serves this desktop to another device: the phone runs the same
@@ -276,6 +742,67 @@ rather than in core because what it dispatches to are the Tauri commands.
 - New call sites default to `debug!`. Only user-visible state changes and failures earn info and above, because only those reach the file.
 - `RUST_LOG` steers stdout only. The file level is the `logging.level` preference, so a debug session cannot evict the records it was meant to keep.
 
+## The schema canvas
+
+`#playground/schema` (`pnpm schema`) draws the database with React Flow: every table
+full-height with all its columns, edges anchored to the *column* rather than the table,
+and a panel with the whole of what a table means. `src/dev/schema-lab.tsx` only draws —
+whether an edge is a foreign key, whether a column is worth emphasis, all of it comes
+from `src/dev/schema-data.ts`, which is the single source both halves of this feed on.
+
+- **Half of that data is prose and only a person can write it.** Which table has which
+  column is recoverable from the migration; *why `parent_id` carries no foreign key*, why
+  `NULL` and `0` are different answers on the cache columns, why the price is copied onto
+  the audit row — none of it is. A new column is worth a line saying what it decides;
+  a new table is worth `note` / `rels` / `rules`.
+- **The other half is checked by a machine, against a real SQLite.**
+  `scripts/check-db-schema.mjs` runs every `migrations/*/up.sql` into an in-memory
+  `node:sqlite` — under `PRAGMA foreign_keys=OFF`, which is how `db/mod.rs:78` runs them —
+  and reads the result back through `PRAGMA table_info` / `foreign_key_list`. Structure
+  that drifts is worse than no diagram: it is wrong in a way that reads as authoritative.
+
+  It used to parse the SQL itself, and that version was wrong about the one thing worth
+  being right about. `ALTER TABLE … RENAME TO` does not just rename: since SQLite 3.25 it
+  **rewrites the `REFERENCES` clauses of other tables that point at it** — under both
+  `foreign_keys` settings, measured on 3.50.4. Migration 24 is exactly that shape, and a
+  checker that models a rename as a rename goes quiet precisely where it is needed.
+
+  What that turned up is a real defect, and how it is recorded is the point.
+  `REWRITTEN_REFERENCES` restores **only the target table name** on the SQL side and hands
+  the edge back for the ordinary comparison, so the column, the `ON DELETE` and the edge's
+  existence on the doc side are all still checked. The first version suppressed the whole
+  edge by key, which bought two holes: it could never notice it had become unnecessary, and
+  it waved through a changed `ON DELETE` on the one edge already known to be suspect. A rule
+  that stops matching is reported, so fixing the migration forces the rule to retire.
+- **A defect has to be visible in the drawing, not just next to it.** That edge is
+  `kind: 'broken'`, and what it *terminates on* is the part that matters: a tombstone node
+  for `mcp_servers_old`, derived from the edge itself and parked left of every layout
+  column. Ending it on the live `mcp_servers` would have the line assert the one thing that
+  is not true — colour and a label do not outrank where a line stops, and the diagram is
+  what gets believed. `to` stays the *intent* (which is what the checker compares against);
+  `actualTarget` is the reality, and it is the end the canvas draws.
+
+  The two halves hold each other up: an edge marked `broken` whose target is fine in the
+  database is an error, and so is a rewritten reference the data still calls an ordinary
+  `fk`. A tombstone is not a node type anyone adds by hand — it exists for exactly as long
+  as a broken edge names it.
+- **`--staged` is what `pre-commit` runs**, and the distinction is the point: a working-tree
+  check passes when the migration is staged and the matching edit to `schema-data.ts` is
+  not, and then the commit contains a version where the structure moved and the diagram
+  did not.
+- **Needs Node >= 22.18** (`engines`, and the script says so itself before failing):
+  it imports the `.ts` directly and relies on built-in type stripping, so nothing in
+  `schema-data.ts` may be non-erasable syntax — no `enum`, no `namespace`. `node:sqlite`
+  still needs a flag on Node 22, which the script re-executes itself to add, so callers
+  only ever say `node scripts/check-db-schema.mjs`.
+- **The layout is derived, not written down.** Nodes are as tall as their column count, so
+  a hand-placed `y` would need rewriting every time a column lands. `schema-data.ts`
+  declares only which canvas column a table sits in and in what order; the rest falls out
+  of the row counts, and a table missing from that list throws rather than silently
+  stacking at the origin.
+- React Flow is a real dependency, not a dev-only one — the canvas is where it earned its
+  place, but nothing about it is playground-specific.
+
 ## UI Conventions
 
 Built on HeroUI v3 (React Aria underneath). Read the component's own CSS before styling it — `node_modules/@heroui/styles/dist/components/*.css` says what it already does, and most "why won't this override" questions are answered there. The `heroui-react` skill fetches the official docs.
@@ -283,6 +810,7 @@ Built on HeroUI v3 (React Aria underneath). Read the component's own CSS before 
 Prefer HeroUI's answer over ours. Accepting a different radius or spacing is cheaper than a `className` that fights the library, and a wrapper that only re-exports a HeroUI component should not exist. What remains under `components/ui/` is what HeroUI has no equivalent for.
 
 - **Two tokens mean the opposite of what shadcn called them.** `--muted` is secondary *text*, not a pale background; `--accent` is the main action colour (Button primary, Switch and Slider fill, focus ring), not a neutral hover wash. The neutral hover wash is `--default`. Getting these backwards renders, so it survives review — check the token, not the look.
+- **A card in the transcript carries its own edge, because the transcript is itself `--surface`.** "A HeroUI card has no border — it is lighter than the page, plus `--surface-shadow`" is true of a card on the *page* and false of every card here, and both halves of it fail at once. `Sidebar.Main` under `variant="inset"` is painted `background-color: var(--surface)` (Pro's `sidebar.css`), so a `bg-surface` card is exactly its parent's colour rather than one step above the page; and HeroUI sets `--surface-shadow: 0 0 0 0 transparent inset` in dark mode on purpose ("No shadow on dark mode"). A dark-theme tool card was therefore invisible: no fill difference, no shadow, no border. `CHAT_TOOL_CARD` adds `ring-1 ring-border ring-inset` and the status variants recolour that same ring — a second edge beside the first is what a border would have cost.
 - **Colors: theme tokens only.** No raw Tailwind palette classes (`green-500`, `amber-500`, ...). Status colours use `--success` / `--warning` / `--info`; `--info` is a project extension with no HeroUI `color` variant behind it, so components that take one need their custom property set instead (`[--progress-circle-stroke:var(--info)]`). Sole whitelisted exception: `text-amber-500` on "default" star markers, for gold-star semantics.
 - **Font sizes: Tailwind scale only** (`text-xs/sm/base/lg`). No px arbitrary sizes (`text-[11px]`), no exceptions.
 - **Radius: ours nests inside theirs, never the reverse.** Our containers keep composer `rounded-2xl` → chat/tool cards `rounded-xl` → settings cards `rounded-lg`. HeroUI's own are much rounder (Button and Popover 24px, Tooltip up to 32px) and are not bound by that ladder. So when a HeroUI component sits inside one of our clipped containers, its radius must not exceed the container's — otherwise its hover fill is cut into at the corners. Overriding `h-*`/`px-*` on a Button without also overriding `rounded-*` is the usual way in.
@@ -293,7 +821,58 @@ Prefer HeroUI's answer over ours. Accepting a different radius or spacing is che
 - **The sidebar is a tree, so a row is not a button.** `Sidebar.Menu` is a React Aria `Tree`: rows are chosen with `onAction` (no `href` — see the header of `app-sidebar.tsx`), every row needs `id` and `textValue`, and nothing that is not a `MenuItem` may sit between the menu and its rows. A `TreeItem` forwards only a fixed set of props to the DOM — `data-*` survives, `onContextMenu` does not — which is why the right-click menu wraps the whole list once and reads the row back off the event. Pro hides the panel outright below 768px, so `Sidebar.Mobile` renders the same tree a second time; it returns `null` above that width, but anything stateful inside it exists twice.
 - **`mod` is Command *or* Control, not whichever the platform prefers.** `useHotkey` (`hooks/use-hotkey.ts`) accepts either, because Pro's `Sidebar.Provider` does the same for its `mod+b` and two shortcuts that disagree about `mod` would be worse than either answer alone. It is one hook, not a registry — a registry buys collision resolution for collisions that do not exist yet. Everything defaults to letting a focused text field have the key; the command palette is the one caller that passes `ignoreInInput: false`, and it should stay the one.
 - **A wait is drawn as the shape that is coming, not as the word "loading".** A panel fetching its data renders a skeleton the size of what will replace it — `SettingsSkeleton` for the header-over-a-list that every settings panel opens with, a hand-built one where the shape differs (`usage-settings.tsx`). A line of text leaves the page looking empty rather than busy, and then reflows everything when the rows land; matching the height means nothing moves. Match the width too: `SettingsPane` is `max-w-lg` and `MasterDetail` is `max-w-3xl`, and a skeleton narrower than its replacement reflows the page at the moment it is meant to be steadying it. Three rules around it: a skeleton needs `role="status"` + `aria-busy` + a label, because a column of grey boxes says nothing to a screen reader and the line of text it replaces at least did that; it is for the **first** load only, since replacing real figures with grey boxes to fetch slightly different ones is a step backwards — a refresh gets a small `Spinner` beside the control that triggered it; and never render a zeroed-out version of the real thing while waiting, because a zero that turns out to be wrong is worse than no number, being legible. Deliberately *not* skeletoned: the `Suspense` around the lazily-loaded settings chunk, which is on local disk and resolves within a frame or two, where any placeholder reads as jank.
+- **Width is asked of the box, not the window.** `useIsMobile` answers "is this a
+  phone-sized viewport" and nothing else. It is the wrong ruler wherever
+  something has already taken width away: settings is a layer over the chat, so its width
+  is the window minus the 240px sidebar, and a 769px window leaves it 519px — a
+  desktop by the viewport and a phone by the only measure that matters.
+  `MasterDetail`'s detail column came out at ~280px there, with four price fields
+  inside it at 130px each.
+
+  So layout decisions are keyed to the container. **Which of the two mechanisms
+  depends on what the width decides**: what gets *rendered* — a different
+  component tree, a drilldown with a back button — is JS (`useIsNarrow`, and
+  `TWO_COLUMN_MIN` is the one threshold both settings panels flip on); how the
+  same DOM is *arranged* — columns, wrapping, direction — is a container query.
+  `@container/pane` is declared on all five boxes an editor can land in, and it
+  is **named** because the same markup renders in a detail column, in a
+  `SettingsSubPage` and in a drilldown sheet that React Aria portals to `body`.
+  `skill-settings.tsx` had worked this out once already and the note there says
+  why. There are no viewport breakpoints left under `components/settings/`.
+
+  Two consequences worth knowing before adding one. `useIsNarrow` must measure a
+  box whose width does not depend on its own answer — never the column it decides
+  whether to render — which is why `MasterDetail` has one unconditional root.
+  And `container-type` brings `contain: layout`, making the container the
+  containing block for `position: fixed` descendants: Pro's `ActionBar` is one
+  and does not portal itself, so the two call sites do it for it.
+
 - **Dev playground:** `http://localhost:5173/#playground` in any dev build (tree-shaken from release). `#playground/scroll` is the scroll regression harness, `#playground/heroui` probes CSS support against the WebView. Add new component states there.
+- **`#playground/responsive` is where a breakpoint can be caught being wrong.**
+  Nothing else can see one: `tsc`, eslint and the whole test suite are blind to
+  layout, and `vitest` runs `css: false` in jsdom besides. It drives the app in a
+  same-origin iframe — the only thing that gives a real `innerWidth`, a real
+  media query and a real containing block for `fixed` — and runs detectors for
+  clipped overflow, escapes past the edge, touch targets, short viewports and
+  keyboard occlusion.
+
+  **What it cannot do is on the page, and belongs there.** Touch targets are
+  *computed*, not measured: `@media (any-pointer: coarse)` does not match on a
+  mouse-only desktop, so what `touch-hitbox` would expand to is derived and
+  intersected with whatever clips it — green is not a promise about a phone.
+
+  **That utility asks `any-pointer`, and the hook next to it asks `pointer`.**
+  Not an inconsistency: `pointer` describes the primary pointer alone, so on a
+  Windows touchscreen laptop it reports `fine` and every hitbox stayed at its
+  drawn size while a finger was reaching for it — which is why the CSS moved.
+  `isCoarsePointer` did not, because its one caller is `isSubmitKey`, and there
+  the question really is "is the keyboard a soft one": widened, a touchscreen
+  laptop with a real keyboard would lose Enter-to-send. The keyboard row
+  checks the mechanism, not Android's numbers. 360 and 400 do not exist on this
+  desktop at all (`minWidth: 640`) and only mean something on a device. The
+  geometry behind all of it is pure and unit-tested in
+  `responsive-detectors.test.ts`, which is the part that survives having no
+  coarse pointer to test against.
 
 ## Packaging
 
@@ -379,6 +958,15 @@ Incremental installs are unaffected. `ERR_PNPM_IGNORED_BUILDS` on every install
 is expected — those two build scripts are declined on purpose (see
 `pnpm-workspace.yaml`), and the exit code is 0.
 
+Two things that setup does which are not wanted. It appends an `allowBuilds`
+block to `pnpm-workspace.yaml` turning those same two build scripts back on —
+**revert that**, the refusal above is the deliberate half of this arrangement.
+And `pnpm add <anything>` can decide to rebuild rather than extend
+`node_modules`, which empties the package again; on Windows it will also fail
+outright with `ERR_PNPM_EPERM` if a `vite`/`tauri dev` is running, because the
+dev server holds `@rolldown/binding-win32-x64-msvc`'s `.node` open. Stop the dev
+servers first, then add, then re-run the setup and check the count.
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -419,23 +1007,52 @@ and, in `onebot`, a `PendingApprovals` that parks a request until an answer arri
 Everything in `hooks/` lets the action through when it is unsure, because the cost of a
 missed review is one missed review. A permission prompt is the opposite: one that
 proceeds on timeout is not a permission prompt at all, and what it guards is
-`run_command` and writes. On that path, "nobody answered" must mean **deny**. Claude
-Code's own default for a timed-out hook is to proceed — verify how that interacts before
-building anything on it, and do not ship if it cannot be made to fail closed.
+`run_command` and writes. On that path, "nobody answered" must mean **deny**.
+
+This paragraph used to end by warning that Claude Code proceeds on a timed-out hook and
+that the feature should not ship if it could not be made to fail closed. That is the rule
+for most events and not for this one: `PermissionRequest` has error handling of its own,
+and a hook that times out, crashes or prints something unparseable falls back to **`ask`**
+— the ordinary prompt in the terminal. Exit code 2 is ignored there; denying is done
+through the `decision` field. So the failure mode is "the user is asked normally", which
+is the safe one, and the blocker this named does not exist. (Not that it now matters for
+hosting, which went the ACP route — but it still decides how a `PermissionRequest` gate
+would behave for sessions started outside Meridian.)
 
 **Design the queue around "a pending request from some agent", not around Claude Code's
 payload.** Codex, OpenCode and the rest each need an adapter; the queue, the cards and
 the status derivation should be shared. Shaping the queue to one vendor's hook format
 means rewriting it for the second.
 
-**Order of work**, cheapest and most useful first:
+**Order of work.** This was written cheapest-first and step 3 was done first anyway,
+because ACP turned out to cost far less than the paragraph above assumed — the protocol
+carries the lifecycle, so there was nothing to reverse-engineer. What is left:
 
-1. Read-only session panel — tail the transcripts, list live sessions. No protocol, no
-   risk, and it solves half the thirty-windows problem on its own.
-2. Approval queue — forward `PermissionRequest` to Meridian, card beside the thread.
-   Settle the timeout semantics first.
-3. Hosting a session in-process — last, because it is the only step that asks the user to
-   move their daily coding into Meridian.
+1. ~~Session panel~~ — done, see `acp/import.rs`. Worth keeping the correction it turned
+   on: **not by tailing `~/.claude/projects/<project>/<session-id>.jsonl`**, which is what
+   this said before the adapter was read properly. It advertises
+   `sessionCapabilities: { list, resume, fork, delete, close }`, and `session/list` answers
+   with `{ sessionId, cwd, title, updatedAt }` per session, optionally scoped by directory.
+   So there was no format to reverse-engineer and no file to watch.
+
+   What that leaves is a session started anywhere becoming a conversation here, transcript
+   and all — and the rescue of a conversation from before migration 38, which has a
+   directory and no id, through the same list.
+
+   Two things it does *not* do, both deliberate. It **takes a session over rather than
+   copying it** (`session/fork` exists but does not replay, so a copy would cost a load and
+   a fork), which means importing one a terminal still has open leaves two processes
+   appending to one file — the list shows `updatedAt` and nothing enforces more. And it
+   **cannot exclude Meridian's own sessions from the list**: the SDK's `includeProgrammatic`
+   defaults to true and the adapter does not forward the parameter, so they are marked
+   against `acp_sessions` instead — which is the better answer anyway, since hiding them
+   makes "where did that session go" unanswerable.
+2. Approval queue for sessions Meridian is *not* hosting — forward `PermissionRequest` to
+   Meridian, card beside the thread. The timeout semantics are settled (see the correction
+   above: it falls back to `ask`), and the queue itself already exists — `attention` /
+   `attentionOrder`, which the ACP path reuses unchanged. Less pressing now that a terminal
+   session can simply be imported, which brings its approvals onto the ACP path with it.
+3. ~~Hosting a session in-process~~ — done, see the ACP section.
 
 **Deferred from remote access**, roughly in order of how much they are missed:
 
@@ -457,13 +1074,13 @@ means rewriting it for the second.
 - **A headless `meridian-server`.** `bootstrap` is already framework-free; what it needs is
   `commands/` moved into core, which is the one thing PR1 found it did not have to do.
 
-**On hosting, correct a common wrong turn.** VS Code and Zed do not GUI-ify the CLI. The
-*editor* drops a lockfile in `~/.claude/ide/` and acts as the server; Claude Code runs as
-its own process and connects to it for editor context and diff views. Copying that shape
-gives Meridian no session-lifecycle events. Hosting means driving `claude` headlessly
-(`--print --output-format=stream-json`) and owning the event stream — a documented
-interface, unlike the IDE socket. Meridian's tool surface already mirrors Claude Code's
-(plan mode, todos, sub-agents, patches), so the cost is an adapter rather than a second
-frontend. Two things to verify before committing: whether permission requests surface in
-a form an external UI can answer, and whether driving the CLI from another app fits the
-subscription's terms.
+**Hosting is built — see `src-tauri/crates/core/src/acp/`.** This paragraph used to say
+the shape to copy was `~/.claude/ide/`, where the *editor* drops a lockfile and acts as
+the server, and that copying it would give Meridian no session-lifecycle events. That is
+true of that mechanism and it is not what Zed uses: Claude Code is reached over **ACP**
+(the Agent Client Protocol), where the editor is the *client* and the agent —
+`@zed-industries/claude-code-acp`, a wrapper over the Claude Agent SDK — is a child
+process it speaks JSON-RPC to over stdio. The lifecycle is the protocol, so the objection
+does not apply. Driving `claude --print --output-format=stream-json` directly was the
+other candidate and lost on portability: ACP is one vendor-neutral shape, and the second
+agent to be hosted costs an adapter rather than a rewrite.

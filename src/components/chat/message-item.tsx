@@ -13,6 +13,7 @@ import {
   Xmark,
 } from '@gravity-ui/icons'
 import { ModelIcon } from '@/components/ui/model-icon'
+import { HostedAgentGlyph } from '@/components/ui/agent-icon'
 import { cn } from '@/lib/utils'
 import { ActionButton } from '@/components/ui/action-button'
 import { useConfirm } from '@/hooks/use-confirm'
@@ -78,16 +79,31 @@ export function MessageMeta({ modelId, createdAt }: { modelId?: string | null; c
  * `ModelIcon` matches on the model name and falls back to a generic mark of its
  * own, so a model nobody has a logo for still lands as something round rather
  * than a hole. Exported for the same reason as {@link MessageMeta}.
+ *
+ * **A hosted session is named by its agent, not by its model id.** Neither of
+ * the two values above is about it: `src` is this app's default assistant, and
+ * `model_id` is whatever the agent reported — Claude Code's default answers
+ * `"default"`, a real value that names no model and matches no logo, which is
+ * why the row wore an empty circle.
  */
-export function AssistantAvatar({ src, modelId }: { src?: string | null; modelId?: string | null }) {
+export function AssistantAvatar({
+  src,
+  modelId,
+  hosted,
+}: {
+  src?: string | null
+  modelId?: string | null
+  hosted?: boolean
+}) {
   return (
     <MessageAvatar className="size-8">
       <Avatar className="size-full">
-        <Avatar.Image src={src ?? undefined} />
-        {/* The icon brings its own background; `bg-default` underneath it would
-            only show through the rounding. */}
-        <Avatar.Fallback className="bg-transparent">
-          <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />
+        {!hosted && <Avatar.Image src={src ?? undefined} />}
+        {/* `ModelIcon` brings its own background, so `bg-default` underneath it
+            would only show through the rounding. A bare glyph does not, and
+            keeps the frame it is dropped into. */}
+        <Avatar.Fallback className={hosted ? undefined : 'bg-transparent'}>
+          {hosted ? <HostedAgentGlyph /> : <ModelIcon model={modelId ?? undefined} size={32} shape="circle" />}
         </Avatar.Fallback>
       </Avatar>
     </MessageAvatar>

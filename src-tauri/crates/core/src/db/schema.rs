@@ -1,6 +1,16 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    acp_sessions (conversation_id) {
+        conversation_id -> Text,
+        acp_session_id -> Nullable<Text>,
+        cwd -> Text,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
     assistant_emoji_packs (assistant_id, pack_id) {
         assistant_id -> Text,
         pack_id -> Text,
@@ -238,6 +248,8 @@ diesel::table! {
         cache_read_price -> Nullable<Double>,
         cache_write_price -> Nullable<Double>,
         self_id -> Nullable<BigInt>,
+        server_tool_calls -> Nullable<Integer>,
+        server_tool_price -> Nullable<Double>,
     }
 }
 
@@ -267,6 +279,7 @@ diesel::table! {
         tool_outcome -> Nullable<Text>,
         cache_read_tokens -> Nullable<Integer>,
         cache_write_tokens -> Nullable<Integer>,
+        server_tool_calls -> Nullable<Integer>,
         provider_name -> Nullable<Text>,
         provider_state -> Nullable<Text>,
         auto_review -> Nullable<Text>,
@@ -411,6 +424,26 @@ diesel::table! {
         updated_at -> BigInt,
         capability_overrides -> Nullable<Text>,
         cache_write_price -> Nullable<Double>,
+        price_tiers -> Nullable<Text>,
+        server_tools -> Nullable<Text>,
+        server_tool_price -> Nullable<Double>,
+    }
+}
+
+diesel::table! {
+    queued_prompts (id) {
+        id -> Text,
+        conversation_id -> Text,
+        content -> Text,
+        delivery -> Text,
+        position -> Integer,
+        created_at -> BigInt,
+        dispatched_at -> Nullable<BigInt>,
+        dispatched_turn_id -> Nullable<Text>,
+        settled_at -> Nullable<BigInt>,
+        settled_message_id -> Nullable<Text>,
+        held_at -> Nullable<BigInt>,
+        reported_at -> Nullable<BigInt>,
     }
 }
 
@@ -480,8 +513,10 @@ diesel::joinable!(mode_artifacts -> conversations (conversation_id));
 diesel::joinable!(todo_lists -> conversations (conversation_id));
 diesel::joinable!(todo_items -> todo_lists (list_id));
 diesel::joinable!(turns -> conversations (conversation_id));
+diesel::joinable!(acp_sessions -> conversations (conversation_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    acp_sessions,
     assistant_emoji_packs,
     assistants,
     cached_models,
@@ -501,6 +536,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     projects,
     prompt_templates,
     providers,
+    queued_prompts,
     skill_bindings_assistant,
     skill_bindings_global,
     skill_bindings_project,

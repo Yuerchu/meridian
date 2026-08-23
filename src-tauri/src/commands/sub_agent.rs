@@ -431,6 +431,7 @@ impl DesktopSubAgents {
                         // asked anything to produce it.
                         cache_read_tokens: None,
                         cache_write_tokens: None,
+                        server_tool_calls: None,
                         provider_name: None,
                     },
                     None,
@@ -558,6 +559,9 @@ impl DesktopSubAgents {
                     enabled: true,
                     breaker: Arc::new(meridian_core::agent::CompactCircuitBreaker::new()),
                 },
+                // A delegated run reports its tokens to the card that launched
+                // it; its spend reaches the bill through the audit log.
+                pricing: None,
             },
             engine::TurnPorts {
                 emit: Some(&emitter),
@@ -594,6 +598,7 @@ impl DesktopSubAgents {
         };
         let input = meridian_core::agent::turn_config::TurnConfigInput {
             assistant: Some(assistant.clone()),
+            server_tools: turn_params.params.server_tools.clone(),
             conversation_id: sub_conversation_id.to_string(),
             project_id: self.project_id.clone(),
             mode: meridian_core::agent::modes::Modes::Fixed,
@@ -604,7 +609,7 @@ impl DesktopSubAgents {
             mcp_defs,
             // The child model's answer, not the parent's. They can differ, and
             // handing a model tools it cannot call earns a 400.
-            include_tools: turn_params.caps.supports_tools,
+            exposure: meridian_core::agent::turn_config::ToolExposure::when(turn_params.caps.supports_tools),
             persona: assistant.system_prompt.clone(),
             context_blocks: Vec::new(),
         };
@@ -846,12 +851,13 @@ mod tests {
             &registry(),
             TurnConfigInput {
                 assistant: Some(child),
+                server_tools: Vec::new(),
                 conversation_id: "sub-1".into(),
                 project_id: None,
                 mode: Modes::Fixed,
                 sub_agents: None,
                 mcp_defs: Vec::new(),
-                include_tools: true,
+                exposure: meridian_core::agent::turn_config::ToolExposure::All,
                 persona: String::new(),
                 context_blocks: Vec::new(),
             },

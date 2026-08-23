@@ -137,6 +137,7 @@ macro_rules! with_all_commands {
                 provider_id: String,
                 model_id: String,
             ),
+            async commands::provider => get_provider_balance(provider_id: String),
 
             async commands::model_config => list_model_configs(provider_id: String),
             async commands::model_config => get_model_config(
@@ -291,6 +292,69 @@ macro_rules! with_all_commands {
             local commands::hooks => start_hooks(),
             #[cfg(not(target_os = "android"))]
             local commands::hooks => stop_hooks(),
+
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_open_session(cwd: String),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_send(conversation_id: String, message: String, turn_id: Option<String>),
+            // Not `local`, for the same reason `acp_open_session` is not: that
+            // row already lets a remote caller start an adapter in a directory
+            // it chose. Listing what sessions exist and taking one over are the
+            // same privilege, on a machine whose transcripts the caller can
+            // already read.
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_list_sessions(cwd: Option<String>),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_import_session(session: meridian_core::acp::import::ImportRequest),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_attach_session(
+                conversation_id: String,
+                session_id: String,
+                cwd: String,
+            ),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_conversation_session(conversation_id: String),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_cancel(conversation_id: String),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_close(conversation_id: String),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_live_sessions(),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_session_config(conversation_id: String),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_set_session_config(
+                conversation_id: String,
+                config_id: String,
+                value: serde_json::Value,
+            ),
+            #[cfg(not(target_os = "android"))]
+            async commands::acp => acp_get_config(),
+            // `local`: `acp.command` names a binary this app executes, so a
+            // remote writer of it has arbitrary code execution here. Not the
+            // self-lockout the other `local` rows are about.
+            #[cfg(not(target_os = "android"))]
+            local commands::acp => acp_save_config(config: meridian_core::acp::AcpConfig),
+            #[cfg(not(target_os = "android"))]
+            local commands::acp => acp_check_adapter(),
+
+            // Not `local`. The queue is a list of messages for a conversation
+            // the caller can already read and write; the phone stacking work up
+            // for the desktop to get through is the case this was built for.
+            async commands::queue => queue_list(conversation_id: String),
+            async commands::queue => queue_enqueue(
+                conversation_id: String,
+                content: String,
+                delivery: String,
+            ),
+            async commands::queue => queue_remove(conversation_id: String, id: String),
+            async commands::queue => queue_reorder(conversation_id: String, ids: Vec<String>),
+            async commands::queue => queue_set_delivery(
+                conversation_id: String,
+                id: String,
+                delivery: String,
+            ),
+            async commands::queue => queue_release(conversation_id: String),
 
             #[cfg(not(target_os = "android"))]
             async commands::remote => get_listen_status(),

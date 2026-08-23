@@ -287,7 +287,12 @@ export function ComposerMenu(props: ComposerMenuProps) {
           aria-label={t('composer.menu')}
           data-slot="composer-menu-trigger"
           variant="ghost"
-          className={cn('relative text-muted hover:text-foreground', open && 'bg-default text-foreground')}
+          // 40px at HeroUI's mobile size, which is four short of the 44 this
+          // project's own `touch-hitbox` targets — close enough to look fine and
+          // to have been missed by review, and caught by the harness at
+          // `#playground/responsive`. The toolbar's `py-1 -my-1` slack is
+          // exactly the 2px a side this needs, so nothing clips it.
+          className={cn('touch-hitbox relative text-muted hover:text-foreground', open && 'bg-default text-foreground')}
         >
           <Plus className="size-4" />
           {alert && (
@@ -303,7 +308,11 @@ export function ComposerMenu(props: ComposerMenuProps) {
         <Tooltip.Content placement="top">{t('composer.menu')}</Tooltip.Content>
       </Tooltip>
 
-      <Popover.Content placement="top start" className="w-auto overflow-hidden p-0">
+      {/* `max-w` against the viewport, matching `ToolbarSelect`. The two columns
+          come to 464px, and React Aria only ever *moves* a popover that will not
+          fit — on a 360px phone the model list was shifted clean off the screen
+          edge rather than narrowed. */}
+      <Popover.Content placement="top start" className="w-auto max-w-[calc(100vw-2rem)] overflow-hidden p-0">
         {/* Fixed height, each column scrolling on its own.
             The popup opens upwards, so its bottom edge is pinned to the trigger
             and any growth pushes the top up — a right column taller than the
@@ -313,7 +322,11 @@ export function ComposerMenu(props: ComposerMenuProps) {
             column to the left one only moves the problem: both columns grow as
             features are added. A constant is the one thing neither side can
             push around. */}
-        <div data-slot="composer-menu-panels" className="flex h-72">
+        {/* `max-h` rather than `h`: on a phone turned sideways the viewport is
+            around 360px tall and a fixed 288px panel left nothing above it, so
+            the popover's own limit clipped the bottom rows off a column that
+            could not shrink to meet it. */}
+        <div data-slot="composer-menu-panels" className="flex h-72 max-h-[min(18rem,60svh)]">
           <div data-slot="composer-menu-list" className="w-56 shrink-0 overflow-y-auto p-1">
             {entries.map((entry) => {
               const Icon = entry.icon
@@ -417,8 +430,16 @@ export function ComposerMenu(props: ComposerMenuProps) {
           </div>
 
           {showSubPanel && (
-            <div data-slot="composer-menu-detail" className="w-60 overflow-hidden border-l border-border">
-              <div className="w-60 h-full overflow-y-auto p-1">
+            // `min-w-0` and a basis rather than a hard `w-60`: with the panel
+            // capped to the viewport above, a fixed second column simply pushed
+            // itself past the clipped edge. It keeps its 240px wherever there is
+            // room, and gives ground first when there is not — the list on the
+            // left is the part you navigate by.
+            <div
+              data-slot="composer-menu-detail"
+              className="min-w-0 flex-1 basis-60 overflow-hidden border-l border-border"
+            >
+              <div className="h-full overflow-y-auto p-1">
                 {hoveredEntry?.loading ? (
                   <div className="flex items-center justify-center py-6">
                     <Spinner className="size-4" />

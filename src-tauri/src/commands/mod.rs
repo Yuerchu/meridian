@@ -1,3 +1,6 @@
+/// Hosted coding-agent sessions. Desktop only, like the core module behind it.
+#[cfg(not(target_os = "android"))]
+pub mod acp;
 pub mod app_info;
 pub mod approval;
 pub mod approval_adapter;
@@ -19,6 +22,7 @@ pub mod preference;
 pub mod project;
 pub mod prompt_template;
 pub mod provider;
+pub mod queue;
 #[cfg(not(target_os = "android"))]
 pub mod remote;
 pub mod secret;

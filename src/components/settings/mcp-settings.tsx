@@ -277,7 +277,11 @@ function McpServerEditor({
       {/* Two different things, deliberately side by side: connecting is
           something you do now, auto-connect is something you mean for next
           time. Disconnecting does not turn the switch off. */}
-      <div className="flex items-center gap-2">
+      {/* Wraps: two labelled buttons and a labelled switch come to about 370px
+          in English, against roughly 330px on a phone — and this panel is not
+          desktop-only, so that is a width it really gets. The switch keeps its
+          `ml-auto` and simply lands on the second line once there is one. */}
+      <div className="flex flex-wrap items-center gap-2">
         <Button onClick={handleSave}>{saved ? t('common.saved') : t('common.save')}</Button>
         {connected ? (
           <Button variant="outline" onClick={handleDisconnect}>

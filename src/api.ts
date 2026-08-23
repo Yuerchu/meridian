@@ -3,6 +3,12 @@
 // pointed at another machine. See `lib/transport.ts`.
 import { invoke } from '@/lib/transport'
 import type {
+  AcpCheck,
+  AcpConfig,
+  AcpConfigOption,
+  AcpConversationSession,
+  AcpDiscoveredSession,
+  AcpImportOutcome,
   AppInfo,
   Assistant,
   ChatMode,
@@ -33,7 +39,10 @@ import type {
   Project,
   PromptTemplate,
   Provider,
+  ProviderBalance,
   ProviderCapabilities,
+  QueueDelivery,
+  QueuedPrompt,
   SafRootEntry,
   Skill,
   SkillLayer,
@@ -181,6 +190,78 @@ export const api = {
       voice: opts.voice ?? null,
     }),
 
+  // A hosted Claude Code session, over ACP. `acpSend` is the `chat` of these
+  // conversations: it takes the same caller-minted `turnId`, for the same
+  // reason — the composer locks on it before the backend has been reached, and
+  // the stop event it waits for has to carry it back.
+  acpOpenSession: (cwd: string) => invoke<string>('acp_open_session', { cwd }),
+
+  // Sessions that already exist on this machine, including every one started
+  // from a terminal. Starts a short-lived adapter, so it takes a second or two.
+  // `cwd` narrows it to one directory; omitted means every project.
+  acpListSessions: (cwd?: string | null) => invoke<AcpDiscoveredSession[]>('acp_list_sessions', { cwd: cwd ?? null }),
+
+  // Take one over. The transcript comes with it — `session/load` recites the
+  // whole history and this is the one path that writes the recital down.
+  // Resolves to the new conversation's id.
+  acpImportSession: (session: Pick<AcpDiscoveredSession, 'sessionId' | 'cwd' | 'title' | 'updatedAt'>) =>
+    invoke<AcpImportOutcome>('acp_import_session', { session }),
+
+  // Point a conversation that already exists at a session on disk. Writes the
+  // id and nothing else: the rows are here already and came from that session,
+  // so replaying them would double the transcript.
+  acpAttachSession: (conversationId: string, sessionId: string, cwd: string) =>
+    invoke<void>('acp_attach_session', { conversationId, sessionId, cwd }),
+
+  acpConversationSession: (conversationId: string) =>
+    invoke<AcpConversationSession | null>('acp_conversation_session', { conversationId }),
+
+  acpSend: (conversationId: string, message: string, turnId?: string) =>
+    invoke<void>('acp_send', { conversationId, message, turnId: turnId ?? null }),
+
+  acpCancel: (conversationId: string) => invoke<void>('acp_cancel', { conversationId }),
+
+  acpClose: (conversationId: string) => invoke<void>('acp_close', { conversationId }),
+
+  acpLiveSessions: () => invoke<string[]>('acp_live_sessions'),
+
+  // The knobs the *agent* exposes for one session — model, mode, effort —
+  // as opposed to `acpGetConfig`, which is how this app launches the adapter.
+  // Empty when nothing is running there: the composer falls back to the model
+  // recorded on the transcript, because there is no session to change.
+  acpSessionConfig: (conversationId: string) => invoke<AcpConfigOption[]>('acp_session_config', { conversationId }),
+
+  // Hands back the whole set, not just the option that changed: picking a model
+  // re-derives which modes exist.
+  acpSetSessionConfig: (conversationId: string, configId: string, value: unknown) =>
+    invoke<AcpConfigOption[]>('acp_set_session_config', { conversationId, configId, value }),
+
+  acpGetConfig: () => invoke<AcpConfig>('acp_get_config'),
+
+  acpSaveConfig: (config: AcpConfig) => invoke<AcpConfig>('acp_save_config', { config }),
+
+  acpCheckAdapter: () => invoke<AcpCheck>('acp_check_adapter'),
+
+  // The prompt queue. Adding one is also what may deliver it: an item queued
+  // while a turn runs is a steer, and one queued with nothing running is a turn.
+  // Nothing else moves the queue except a turn ending — see `agent::queue`.
+  queueList: (conversationId: string) => invoke<QueuedPrompt[]>('queue_list', { conversationId }),
+
+  queueEnqueue: (conversationId: string, content: string, delivery: QueueDelivery) =>
+    invoke<QueuedPrompt>('queue_enqueue', { conversationId, content, delivery }),
+
+  /** Refuses an item that has already been sent, and says so. */
+  queueRemove: (conversationId: string, id: string) => invoke<void>('queue_remove', { conversationId, id }),
+
+  queueReorder: (conversationId: string, ids: string[]) => invoke<void>('queue_reorder', { conversationId, ids }),
+
+  queueSetDelivery: (conversationId: string, id: string, delivery: QueueDelivery) =>
+    invoke<void>('queue_set_delivery', { conversationId, id, delivery }),
+
+  /** Let a queue held by a failed turn go again. Pumps, because a person just
+   *  said to. */
+  queueRelease: (conversationId: string) => invoke<void>('queue_release', { conversationId }),
+
   setSecret: (key: string, value: string) => invoke<void>('set_secret', { key, value }),
 
   getSecret: (key: string) => invoke<string | null>('get_secret', { key }),
@@ -254,6 +335,15 @@ export const api = {
 
   getProviderCapabilities: (providerId: string, modelId: string) =>
     invoke<ProviderCapabilities>('get_provider_capabilities', { providerId, modelId }),
+
+  /**
+   * What is left on the account. Never cached anywhere — a stale balance is the
+   * number somebody decides not to top up on.
+   *
+   * `null` means this upstream publishes no balance, which is most of them and
+   * is not an error to show.
+   */
+  getProviderBalance: (providerId: string) => invoke<ProviderBalance | null>('get_provider_balance', { providerId }),
 
   // All three address an `approval_id` the backend minted, not the provider's
   // tool call id, and all three reject when nothing is waiting on it any more —
@@ -495,6 +585,7 @@ export const api = {
       assistant_id: string | null
       admin_users: number[]
       ack_emoji_id: string
+      balance_alert_threshold: number | null
     }>('get_onebot_config'),
 
   saveOneBotConfig: (config: {
@@ -505,6 +596,7 @@ export const api = {
     assistant_id: string | null
     admin_users: number[]
     ack_emoji_id: string
+    balance_alert_threshold: number | null
   }) => invoke<void>('save_onebot_config', { config }),
 
   startOneBot: () => invoke<void>('start_onebot'),

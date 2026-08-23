@@ -25,7 +25,8 @@ impl Tool for MoveFileTool {
                 "to": {
                     "type": "string",
                     "description": "Destination path (including the new name)"
-                }
+                },
+                "description": super::description_property(),
             },
             "required": ["from", "to"]
         })

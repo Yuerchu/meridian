@@ -420,6 +420,9 @@ impl GeminiUsage {
             total_tokens: self.total_token_count,
             cache_read_tokens: self.cached_content_token_count,
             cache_write_tokens: None,
+            // Chat-completions has no server-side tools; the Responses adapter is
+            // the only one with anything to report here.
+            billable_tool_calls: None,
         }
     }
 }

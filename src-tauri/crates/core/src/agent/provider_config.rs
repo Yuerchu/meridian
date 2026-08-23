@@ -166,15 +166,33 @@ pub fn resolve_with_overrides(
 }
 
 /// For the passes that only read a conversation and write prose about it —
-/// summarisation, extraction. Thinking comes off so an inherited budget cannot
-/// meet or exceed max_tokens (Anthropic 400s when budget_tokens >= max_tokens),
-/// and so a throwaway pass is not paid for in reasoning tokens. Everything else
-/// stays as the turn resolver left it.
+/// summarisation, extraction, titles, automatic review.
+///
+/// Thinking comes off so an inherited budget cannot meet or exceed max_tokens
+/// (Anthropic 400s when budget_tokens >= max_tokens), and so a throwaway pass is
+/// not paid for in reasoning tokens.
+///
+/// **The provider-side tools come off with it, and that is not merely thrift.**
+/// A summariser handed `web_search` is a background request that can go out to
+/// the open internet, on a query the model composed out of whatever it was
+/// summarising, billed per call and reported to nobody. For `auto_review` it is
+/// worse than that: it is shown a projection built from untrusted tool output,
+/// its verdict goes back into the chat, and it needs no approval to search — the
+/// same exfiltration path the `FileAccess` rule for that module exists to close,
+/// reopened through a different door. These passes write prose; none of them has
+/// any use for a tool.
+///
+/// The cache key goes too. It names the transcript's prefix, and none of these
+/// requests sends that prefix — pinning them to the server holding it buys
+/// nothing and makes the claim in the architecture notes ("only the two real
+/// loops set one") false.
 pub(crate) fn without_thinking(params: ChatParams) -> ChatParams {
     ChatParams {
         thinking_enabled: false,
         thinking_budget: None,
         thinking_effort: None,
+        server_tools: Vec::new(),
+        cache_key: None,
         ..params
     }
 }
@@ -206,6 +224,43 @@ pub struct TurnParamsInput<'a> {
     pub model: &'a str,
     pub thinking_level: Option<&'a str>,
     pub fast: bool,
+}
+
+/// Which provider-side tools this turn actually asks for.
+///
+/// The intersection of what the user switched on and what the model supports,
+/// and it has to be an intersection rather than a read: the stored list outlives
+/// the thing it names. Switching a model's provider from the Responses API to
+/// chat-completions leaves `["web_search"]` in the row while the endpoint that
+/// understood it is gone — and xAI answers an unknown tool type with a 422, so
+/// the un-narrowed version turns one stale setting into every request failing.
+///
+/// A list that will not parse is treated as empty, for the same reason
+/// `capability_overrides` is: the degraded behaviour has to be the one that
+/// changes nothing.
+fn enabled_server_tools(model_config: Option<&ModelConfig>, caps: &ProviderCapabilities) -> Vec<String> {
+    let Some(raw) = model_config.and_then(|mc| mc.server_tools.as_deref()) else {
+        return Vec::new();
+    };
+    let Ok(requested) = serde_json::from_str::<Vec<String>>(raw) else {
+        tracing::warn!(
+            raw_len = raw.len(),
+            "server_tools is not an array of names; no provider-side tools will be offered"
+        );
+        return Vec::new();
+    };
+    let (kept, dropped): (Vec<String>, Vec<String>) = requested
+        .into_iter()
+        .partition(|name| caps.server_tools.iter().any(|supported| supported == name));
+    if !dropped.is_empty() {
+        // Silence here would look exactly like the tool having been switched
+        // off, and the user would go on believing the model is searching.
+        tracing::info!(
+            dropped = dropped.join(","),
+            "these provider-side tools are configured but not supported by this model; they are not being offered"
+        );
+    }
+    kept
 }
 
 pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsInput<'_>) -> Result<TurnParams, String> {
@@ -255,6 +310,8 @@ pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsInput<'_>) -> Result<
             format!("No max output tokens known for '{model}'. Go to Settings → Provider → Model to set one.")
         })?;
 
+    let server_tools = enabled_server_tools(model_config.as_ref(), &caps);
+
     let (thinking_enabled, thinking_budget, thinking_effort) = provider::capabilities::resolve_thinking(
         assistant.map(|a| a.thinking_enabled != 0).unwrap_or(false),
         assistant.and_then(|a| a.thinking_budget),
@@ -270,6 +327,7 @@ pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsInput<'_>) -> Result<
         thinking_budget,
         thinking_effort,
         fast,
+        server_tools,
         // thinking_style and verbosity are derived from the catalog by
         // filter_params below, not supplied by the caller.
         ..Default::default()
@@ -405,6 +463,9 @@ mod tests {
                     created_at: 0,
                     updated_at: 0,
                     capability_overrides: Some(r#"{"supports_tools": false}"#),
+                    price_tiers: None,
+                    server_tools: None,
+                    server_tool_price: None,
                 },
             )
             .unwrap();
@@ -428,6 +489,158 @@ mod tests {
 
         // And it is the row that says so, not the catalog.
         assert!(resolve_for(&pool, "gpt-4o", &assistant).caps.supports_tools);
+    }
+
+    /// The stored list outlives what it names, so it is intersected rather than
+    /// read. Moving a model from the Responses API to chat-completions leaves
+    /// `["web_search"]` behind in the row, and xAI answers an unknown tool type
+    /// with a 422 — so the un-narrowed version turns one stale setting into
+    /// every request failing.
+    #[test]
+    fn a_server_tool_the_model_no_longer_supports_is_not_sent() {
+        let caps_responses = provider::capabilities::resolve("xai", Some("responses"), "grok-4.6");
+        let caps_chat = provider::capabilities::resolve("xai", Some("chat_completions"), "grok-4.6");
+
+        let mut config = configured_with(Some(r#"["web_search","x_search"]"#));
+        assert_eq!(
+            enabled_server_tools(Some(&config), &caps_responses),
+            vec!["web_search", "x_search"],
+        );
+        assert!(
+            enabled_server_tools(Some(&config), &caps_chat).is_empty(),
+            "this dialect has none of them",
+        );
+
+        // And one the user switched on that this model never had.
+        config.server_tools = Some(r#"["web_search","image_generation"]"#.into());
+        assert_eq!(enabled_server_tools(Some(&config), &caps_responses), vec!["web_search"]);
+    }
+
+    /// End to end, the way the desktop actually reaches it: a stored row, a
+    /// Responses-format provider, and a turn that comes out asking the upstream
+    /// to search.
+    ///
+    /// Worth its own test because the chain has two places it silently produces
+    /// nothing — the row is only read when a `provider_id` is passed, and the
+    /// list is then intersected with capabilities that depend on `api_format`.
+    /// Either one failing looks identical from the outside: the model quietly
+    /// goes on using the built-in `web_search`.
+    #[test]
+    fn a_configured_server_tool_reaches_the_turn() {
+        let pool = crate::db::test_db();
+        {
+            let mut conn = pool.get().unwrap();
+            db::ops::provider::create_provider(
+                &mut conn,
+                &db::models::provider::NewProvider {
+                    id: "p1",
+                    name: "xAI",
+                    provider_type: "xai",
+                    base_url: "https://api.x.ai/v1",
+                    is_enabled: 1,
+                    sort_order: 0,
+                    created_at: 0,
+                    updated_at: 0,
+                    api_format: "responses",
+                },
+            )
+            .unwrap();
+            db::ops::model_config::upsert(
+                &mut conn,
+                &db::models::model_config::NewModelConfig {
+                    id: "mc1",
+                    provider_id: "p1",
+                    model_id: "grok-4.6",
+                    display_name: None,
+                    context_window: 500_000,
+                    compact_threshold: 400_000,
+                    max_output_tokens: Some(64_000),
+                    input_price: 2.0,
+                    output_price: 6.0,
+                    cache_price: Some(0.5),
+                    cache_write_price: None,
+                    created_at: 0,
+                    updated_at: 0,
+                    capability_overrides: None,
+                    price_tiers: None,
+                    server_tools: Some(r#"["web_search"]"#),
+                    server_tool_price: None,
+                },
+            )
+            .unwrap();
+        }
+        let assistant = assistant_with(None);
+
+        let turn = resolve_turn_params(
+            &pool,
+            TurnParamsInput {
+                assistant: Some(&assistant),
+                provider_id: Some("p1"),
+                provider_type: "xai",
+                api_format: "responses",
+                model: "grok-4.6",
+                thinking_level: None,
+                fast: false,
+            },
+        )
+        .unwrap();
+        assert_eq!(turn.params.server_tools, vec!["web_search"]);
+
+        // The same row, reached over the dialect that has no such thing.
+        let over_chat = resolve_turn_params(
+            &pool,
+            TurnParamsInput {
+                assistant: Some(&assistant),
+                provider_id: Some("p1"),
+                provider_type: "xai",
+                api_format: "chat_completions",
+                model: "grok-4.6",
+                thinking_level: None,
+                fast: false,
+            },
+        )
+        .unwrap();
+        assert!(
+            over_chat.params.server_tools.is_empty(),
+            "an unknown tool type is a 422 on every request",
+        );
+    }
+
+    /// Nothing configured, nothing parseable, and nothing at all: each has to
+    /// mean "ask for none" rather than throw or invent.
+    #[test]
+    fn an_absent_or_broken_server_tool_list_asks_for_none() {
+        let caps = provider::capabilities::resolve("xai", Some("responses"), "grok-4.6");
+        for raw in [None, Some("not json"), Some("{}"), Some("[]"), Some(r#"[1,2]"#)] {
+            let config = configured_with(raw);
+            assert!(
+                enabled_server_tools(Some(&config), &caps).is_empty(),
+                "{raw:?} should have asked for none",
+            );
+        }
+        assert!(enabled_server_tools(None, &caps).is_empty());
+    }
+
+    fn configured_with(server_tools: Option<&str>) -> ModelConfig {
+        ModelConfig {
+            id: "mc".into(),
+            provider_id: "p".into(),
+            model_id: "grok-4.6".into(),
+            display_name: None,
+            context_window: 500_000,
+            compact_threshold: 400_000,
+            max_output_tokens: None,
+            input_price: 2.0,
+            output_price: 6.0,
+            cache_price: None,
+            cache_write_price: None,
+            created_at: 0,
+            updated_at: 0,
+            capability_overrides: None,
+            price_tiers: None,
+            server_tools: server_tools.map(str::to_string),
+            server_tool_price: None,
+        }
     }
 
     #[test]

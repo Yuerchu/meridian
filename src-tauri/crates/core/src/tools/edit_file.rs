@@ -32,7 +32,8 @@ impl Tool for EditFileTool {
                 "replace_all": {
                     "type": "boolean",
                     "description": "If true, replace all occurrences. Default: false (replace first only)."
-                }
+                },
+                "description": super::description_property(),
             },
             "required": ["file_path", "old_string", "new_string"]
         })

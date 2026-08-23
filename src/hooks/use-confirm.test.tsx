@@ -2,6 +2,8 @@ import { render, screen, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 import i18n from '@/i18n'
+import { useHistoryStore } from '@/stores/history-store'
+import { attachHistory } from '@/lib/history-bridge'
 import { useConfirm } from './use-confirm'
 
 /**
@@ -69,5 +71,56 @@ describe('useConfirm', () => {
 
     await click(i18n.t('common.confirm'))
     expect(second).toHaveBeenCalledWith(true)
+  })
+
+  /**
+   * The back gesture is the fourth way out, and it has to settle the promise
+   * like the other three. Escape and the scrim deliberately do not close this
+   * dialog, and back is not one of those: without a level of its own the gesture
+   * went straight past the question to whatever was behind it — closing the
+   * sidebar sheet under the scrim, and then leaving the app entirely with a
+   * destructive question still on screen.
+   */
+  it('answers no to the back gesture, and claims a level to catch it', async () => {
+    const entries: Array<{ __meridianDepth: number } | null> = [null]
+    let index = 0
+    vi.stubGlobal('history', {
+      get state() {
+        return entries[index]
+      },
+      pushState(state: { __meridianDepth: number }) {
+        entries.splice(index + 1)
+        entries.push(state)
+        index = entries.length - 1
+      },
+      go(delta: number) {
+        const next = Math.max(0, Math.min(entries.length - 1, index + delta))
+        if (next === index) return
+        index = next
+        window.dispatchEvent(new PopStateEvent('popstate', { state: entries[index] }))
+      },
+    })
+    useHistoryStore.setState({ enabled: true, levels: [] })
+    const detach = attachHistory()
+
+    try {
+      const answer = vi.fn()
+      render(<Harness onAnswer={answer} />)
+
+      await click('ask')
+      expect(screen.getByText('Sure?')).toBeInTheDocument()
+      expect(useHistoryStore.getState().levels).toHaveLength(1)
+
+      await act(async () => {
+        window.history.go(-1)
+      })
+
+      expect(answer).toHaveBeenCalledWith(false)
+      expect(useHistoryStore.getState().levels).toHaveLength(0)
+    } finally {
+      detach()
+      useHistoryStore.setState({ enabled: false, levels: [] })
+      vi.unstubAllGlobals()
+    }
   })
 })

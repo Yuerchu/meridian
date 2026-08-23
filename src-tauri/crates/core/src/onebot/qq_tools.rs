@@ -395,7 +395,7 @@ impl QqToolExecutor {
         crate::provider::ToolDefinition {
             name: name.into(),
             description,
-            parameters,
+            parameters: with_description(name, parameters),
         }
     }
 
@@ -827,6 +827,28 @@ pub(super) fn exposes_full_toolset(kind: &SessionKind, is_admin: bool) -> bool {
     is_admin && *kind == SessionKind::Private
 }
 
+/// Registry tools a QQ session may offer whoever is in it, `exposes_full_toolset`
+/// having said no to the rest.
+///
+/// That refusal is about what a *definition reveals*: an MCP tool carries the
+/// user's own server names and argument schemas, a file tool names paths on this
+/// machine, and a group cannot show one member any of it without showing
+/// everyone. `web_search` reveals none of that — its description is our own
+/// fixed prose, it reads nothing here, and a QQ session's file access is an
+/// empty root set regardless. On that test it belongs with the QQ tools rather
+/// than with the registry it happens to live in, and being swept up with them
+/// was the accident.
+///
+/// Fixed per session and not per speaker, like the rest of the tool array: it
+/// goes to everyone in a session or to nobody, so it cannot be the thing that
+/// makes an admin's turn and a member's turn two different cached prefixes.
+///
+/// Narrowing only. An assistant that has `web_search` switched off still does
+/// not get it — `ToolExposure::Only` filters what `enabled_tools` already
+/// allowed — and its `Permission::Ask` is unchanged, so a search still asks
+/// before it runs.
+pub(super) const OPEN_REGISTRY_TOOLS: &[&str] = &["web_search"];
+
 fn spec_available(spec: &ToolSpec, kind: &SessionKind, is_admin: bool) -> bool {
     if spec.admin_only && !is_admin {
         return false;
@@ -836,6 +858,33 @@ fn spec_available(spec: &ToolSpec, kind: &SessionKind, is_admin: bool) -> bool {
         Scope::GroupOnly => *kind == SessionKind::Group,
         Scope::PrivateOnly => *kind == SessionKind::Private,
     }
+}
+
+/// A call that changes something outside this app, and so takes a
+/// `description` — see [`crate::tools::description_property`].
+///
+/// Read off `needs_approval` rather than listed a second time, because the two
+/// are the same set: a call worth stopping a person for is a call worth one line
+/// saying what it is. `send_sticker` is the only addition — it stops for nobody
+/// and it still lands in somebody's chat window.
+fn has_effects(name: &str) -> bool {
+    name == "send_sticker" || SPECS.iter().any(|s| s.name == name && s.needs_approval)
+}
+
+/// Fold that property into a spec's parameters.
+///
+/// Done here rather than written into eighteen match arms, so it cannot drift
+/// from the set it is keyed on. It reaches further in QQ than it does on the
+/// desktop: `handler::make_approval_fn` prints the arguments verbatim into the
+/// approval message, so for a group admin being asked about a ten-minute mute
+/// this is the only part of that prompt written for a person.
+fn with_description(name: &str, mut parameters: serde_json::Value) -> serde_json::Value {
+    if has_effects(name)
+        && let Some(props) = parameters.get_mut("properties").and_then(|p| p.as_object_mut())
+    {
+        props.insert("description".into(), crate::tools::description_property());
+    }
+    parameters
 }
 
 fn echo() -> String {
@@ -1017,6 +1066,64 @@ mod tests {
         assert!(!approval_needed.contains(&"qq_get_group_member_list"));
         // Every approval-gated tool is also admin-only.
         assert!(SPECS.iter().filter(|s| s.needs_approval).all(|s| s.admin_only));
+    }
+
+    /// The `description` parameter goes on the calls that change something and
+    /// nowhere else. A read already says what it is in its path or its pattern,
+    /// and one on every query is output tokens spent restating an argument the
+    /// card is showing anyway.
+    #[test]
+    fn only_a_call_with_effects_is_asked_to_describe_itself() {
+        let takes_one = |name: &str| {
+            let params = with_description(name, serde_json::json!({ "type": "object", "properties": {} }));
+            params["properties"].get("description").is_some()
+        };
+
+        assert!(takes_one("qq_set_group_ban"));
+        assert!(takes_one("qq_send_group_notice"));
+        assert!(takes_one("qq_delete_msg"));
+        // Sends a message and never asks first, which is why it is named in
+        // `has_effects` rather than derived from `needs_approval`.
+        assert!(takes_one("send_sticker"));
+
+        assert!(!takes_one(QQ_HISTORY_TOOL));
+        assert!(!takes_one("qq_get_group_member_list"));
+        assert!(!takes_one("list_stickers"));
+
+        // The rule, not the list: anything that stops for a person describes
+        // itself, so adding a spec cannot quietly leave one out.
+        for spec in SPECS.iter().filter(|s| s.needs_approval) {
+            assert!(
+                takes_one(spec.name),
+                "{} stops for a person and says nothing",
+                spec.name
+            );
+        }
+    }
+
+    /// A tool with real parameters keeps them. The injection writes into the
+    /// existing `properties` object, and an early version that replaced it would
+    /// have passed every assertion above while dropping `user_id`.
+    #[test]
+    fn describing_a_call_does_not_cost_it_its_own_arguments() {
+        let params = with_description(
+            "qq_set_group_ban",
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "user_id": { "type": "integer" },
+                    "duration": { "type": "integer" },
+                },
+                "required": ["user_id"],
+            }),
+        );
+        let props = params["properties"].as_object().unwrap();
+        assert_eq!(props.len(), 3);
+        assert!(props.contains_key("user_id"));
+        assert!(props.contains_key("duration"));
+        // Never required: a model that forgets it should produce a card with a
+        // plainer summary, not a call that fails validation mid-turn.
+        assert_eq!(params["required"], serde_json::json!(["user_id"]));
     }
 
     #[test]

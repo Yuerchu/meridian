@@ -5,6 +5,7 @@ import { GeneralSettings } from './general-settings'
 import { McpSettings } from './mcp-settings'
 import { OneBotSettings } from './onebot-settings'
 import { HooksSettings } from './hooks-settings'
+import { AcpSettings } from './acp-settings'
 import { RemoteAccessSettings } from './remote-access-settings'
 import { EmojiSettings } from './emoji-settings'
 import { ToolMarketplace } from './tool-marketplace'
@@ -30,9 +31,14 @@ export default function SettingsPage({ activeTab }: { activeTab: SettingsTab }) 
   return (
     <div
       data-slot="settings-page"
-      className="h-full overflow-y-auto overscroll-contain pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]"
+      className="@container/settings h-full overflow-y-auto overscroll-contain pb-[var(--safe-bottom)] pl-[var(--safe-left)] pr-[var(--safe-right)]"
     >
-      <div className="p-4 md:p-6">
+      {/* Against the layer, not the window: this is the chat's width minus the
+          sidebar, so a 769px window leaves 519px here and the roomier padding
+          was taking 9% of it. The container is declared on the scroller above
+          rather than here — a query resolves against an ancestor container, so
+          an element carrying both would look past its own. */}
+      <div className="p-4 @2xl/settings:p-6">
         {activeTab === 'provider' && <ProviderSettings />}
         {activeTab === 'usage' && <UsageSettings />}
         {activeTab === 'assistants' && <AssistantSettings />}
@@ -45,6 +51,7 @@ export default function SettingsPage({ activeTab }: { activeTab: SettingsTab }) 
         {activeTab === 'voice' && <VoiceSettings />}
         {activeTab === 'onebot' && <OneBotSettings />}
         {activeTab === 'hooks' && <HooksSettings />}
+        {activeTab === 'acp' && <AcpSettings />}
         {activeTab === 'remote' && <RemoteAccessSettings />}
         {activeTab === 'general' && <GeneralSettings />}
         {activeTab === 'developer' && <DeveloperSettings />}

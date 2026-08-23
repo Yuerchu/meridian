@@ -1,7 +1,44 @@
+import { useCallback, useLayoutEffect, useRef } from 'react'
+
 import { cn } from '@/lib/utils'
 import { SettingsHeader } from './primitives'
 import { SettingsSubPage } from './settings-subpage'
 import type { MasterDetailNav } from './use-master-detail'
+
+/**
+ * Keeps the list where it was while a detail is open over it.
+ *
+ * Both layouts share the settings page's one scroller, so a drilldown does not
+ * get its own scroll position — it inherits whatever the list had. Open a
+ * provider from halfway down and the editor started halfway down too; come back
+ * and the list had been clamped to whatever height the shorter detail allowed,
+ * so the row that was just being edited was somewhere else entirely.
+ *
+ * Layout effect, not an effect: this runs against the tree that is replacing the
+ * other one, and a frame at the wrong offset is exactly the jump being removed.
+ */
+function useDrilldownScroll(root: HTMLElement | null, showsDetail: boolean) {
+  const savedRef = useRef(0)
+  const wasShowing = useRef(showsDetail)
+
+  useLayoutEffect(() => {
+    if (wasShowing.current === showsDetail) return
+    wasShowing.current = showsDetail
+    const scroller = root?.closest<HTMLElement>('[data-slot="settings-page"]')
+    if (!scroller) return
+
+    if (showsDetail) {
+      savedRef.current = scroller.scrollTop
+      scroller.scrollTop = 0
+      return
+    }
+    // The list is back but has not been measured yet, so the assignment would be
+    // clamped against the detail's height. One frame later it is the list's.
+    requestAnimationFrame(() => {
+      scroller.scrollTop = savedRef.current
+    })
+  }, [root, showsDetail])
+}
 
 /**
  * Renders {@link MasterDetailNav} as two columns or as two screens.
@@ -50,37 +87,56 @@ export function MasterDetail<Aux extends string = never>({
   emptyState?: React.ReactNode
   className?: string
 }) {
-  if (nav.isMobile) {
-    if (nav.showsDetail) {
-      const showingAux = nav.aux !== null
-      return (
-        <div data-slot="master-detail" className={cn('max-w-3xl', className)}>
-          <SettingsSubPage title={showingAux ? auxTitle : detailTitle} onBack={nav.back}>
-            {showingAux ? aux : detail}
-          </SettingsSubPage>
-        </div>
-      )
-    }
-    return (
-      <div data-slot="master-detail" className={cn('max-w-3xl space-y-3', className)}>
-        <SettingsHeader title={title} actions={actions} />
-        {emptyState ?? <div className="space-y-2">{list}</div>}
-      </div>
-    )
-  }
-
   const atTop = headerPlacement === 'top'
+
+  // The probe's node, kept so the scroller above it can be found. One callback
+  // feeding both: `nav.ref` decides the layout, this decides where it starts.
+  const rootRef = useRef<HTMLElement | null>(null)
+  const setRoot = useCallback(
+    (node: HTMLDivElement | null) => {
+      rootRef.current = node
+      nav.ref(node)
+    },
+    [nav],
+  )
+  useDrilldownScroll(rootRef.current, nav.showsDetail)
+
   return (
-    <div data-slot="master-detail" className={cn('max-w-3xl space-y-4', className)}>
-      {atTop && <SettingsHeader title={title} actions={actions} />}
-      {aux}
-      {emptyState ?? (
-        <div className={cn('flex', atTop ? 'gap-4' : 'gap-6')}>
-          <div className={cn('shrink-0 space-y-2', listWidth)}>
-            {!atTop && <SettingsHeader title={title} actions={actions} className="mb-3" />}
-            {list}
+    // One root, unconditionally — this is the box `nav.ref` measures, and a node
+    // that is torn down whenever the answer changes would start again from no
+    // measurement each time it flipped. Its width comes from the parent and
+    // never from what is rendered inside it, so the observer cannot be fed its
+    // own output. The three layouts differ below this line.
+    <div data-slot="master-detail" ref={setRoot} className={cn('max-w-3xl', className)}>
+      {nav.isNarrow ? (
+        nav.showsDetail ? (
+          <SettingsSubPage title={nav.aux !== null ? auxTitle : detailTitle} onBack={nav.back}>
+            {nav.aux !== null ? aux : detail}
+          </SettingsSubPage>
+        ) : (
+          <div className="space-y-3">
+            <SettingsHeader title={title} actions={actions} />
+            {emptyState ?? <div className="space-y-2">{list}</div>}
           </div>
-          <div className="min-w-0 flex-1">{detail ?? <div className="text-sm text-muted">{emptyDetail}</div>}</div>
+        )
+      ) : (
+        <div className="space-y-4">
+          {atTop && <SettingsHeader title={title} actions={actions} />}
+          {aux}
+          {emptyState ?? (
+            <div className={cn('flex', atTop ? 'gap-4' : 'gap-6')}>
+              <div className={cn('shrink-0 space-y-2', listWidth)}>
+                {!atTop && <SettingsHeader title={title} actions={actions} className="mb-3" />}
+                {list}
+              </div>
+              {/* The editor's queries resolve against this column, not against
+                  the settings layer: two columns at 560px leaves 352px here,
+                  and 208px of that width is one the editor never sees. */}
+              <div className="@container/pane min-w-0 flex-1">
+                {detail ?? <div className="text-sm text-muted">{emptyDetail}</div>}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

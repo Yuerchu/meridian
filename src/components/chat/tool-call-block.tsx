@@ -153,7 +153,12 @@ function QuestionBlock({
                 variant="ghost"
                 onClick={() => (isMulti ? toggleMulti(opt.label) : selectSingle(opt.label))}
                 className={cn(
-                  'w-full justify-start gap-2 h-auto rounded-lg px-2.5 py-1.5 text-left',
+                  // `whitespace-normal` overrides the Button base class, which is
+                  // `whitespace-nowrap`. These labels are written by a model and
+                  // are routinely whole sentences, so on a narrow card the option
+                  // ran under the clipped edge with no way to read the rest of
+                  // it — and an option you cannot read is one you cannot pick.
+                  'w-full justify-start gap-2 h-auto rounded-lg px-2.5 py-1.5 text-left whitespace-normal',
                   checked ? 'bg-default/80 text-default-foreground' : 'text-muted',
                 )}
               >
@@ -260,7 +265,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   const canSubmit = questions.some((q) => skippedSet.has(q.id) || hasContent(answers[q.id]))
 
   return (
-    <div className="my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface">
+    <div className="my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface ring-1 ring-border ring-inset">
       <div className="flex items-center gap-2 bg-default px-4 py-3">
         <CircleQuestion className="w-3.5 h-3.5 text-muted" />
         <span className="font-medium text-foreground">{t('chat.tool.askUser')}</span>
@@ -406,6 +411,20 @@ function pathExtension(path: string): string | undefined {
   return ext
 }
 
+/**
+ * The file's own name, without the path leading to it.
+ *
+ * Deliberately not the last two segments, which was tried: the card's argument
+ * summary already prints the full path above these headers, so qualifying them
+ * put the same string on screen twice — and the review note that asked for it
+ * ("the path is only in a `title`, which a touch screen cannot reach") was
+ * reading this header on its own rather than the card around it. The `title`
+ * stays for the move case, where it carries something the summary does not.
+ */
+function fileNameOf(path: string): string {
+  return path.split(/[/\\]/).pop() ?? path
+}
+
 function diffLinePrefix(kind: DiffLineKind): string {
   switch (kind) {
     case 'add':
@@ -430,7 +449,12 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
   const { t } = useTranslation()
   const added = diff.lines.filter((l) => l.kind === 'add').length
   const removed = diff.lines.filter((l) => l.kind === 'remove').length
-  const fileName = diff.path.split(/[/\\]/).pop() ?? diff.path
+  // The file plus the folder holding it, not the file alone. The full path was
+  // in a `title`, which is a hover — and a touch screen has none, so a card
+  // saying `index.ts` was one of several indistinguishable cards. One level of
+  // parent is what separates them in practice and still fits a narrow card;
+  // the `title` below keeps the whole path for a pointer.
+  const fileName = fileNameOf(diff.path)
   const shown = diff.lines.slice(0, MAX_DIFF_LINES)
   const hidden = diff.lines.length - shown.length
   // One grammar for the whole card, then every line colours from it. A diff is
@@ -494,7 +518,9 @@ function FileDiffCard({ diff }: { diff: FileDiff }) {
 }
 
 function ReadFileResult({ result, path }: { result: string; path: string }) {
-  const fileName = path.split(/[/\\]/).pop() ?? path
+  // Same reason as `FileDiffCard`: this header has no `title` at all, so the
+  // bare filename was the only thing identifying which file was read.
+  const fileName = fileNameOf(path)
   // Previously this only *claimed* to be highlighted: it put `language-x hljs`
   // on the element and never ran a highlighter, so the class bought a
   // background colour and nothing else.
@@ -907,18 +933,18 @@ function EnterPlanBlock({ data, reason }: { data: ToolCallDisplay; reason: strin
     [approvalId, markOrphaned],
   )
 
-  // Same status ring as `ChatTool`: a HeroUI card carries no edge, so an edge
-  // is left to mean "this one is waiting on you". Which is `pending` and only
-  // `pending` — keyed off "not denied" it was drawn around every other state
-  // too, so a call that had errored, been abandoned or already been approved
-  // all sat there asking for a decision that had been made or could not be.
+  // Same status ring as `ChatTool`: the card's own edge is recoloured to mean
+  // "this one is waiting on you". Which is `pending` and only `pending` — keyed
+  // off "not denied" it was drawn around every other state too, so a call that
+  // had errored, been abandoned or already been approved all sat there asking
+  // for a decision that had been made or could not be.
   return (
     <div
       data-slot="enter-plan"
       data-status={data.status}
       className={cn(
-        'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface',
-        data.status === 'pending' && 'ring-1 ring-info/40 ring-inset',
+        'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface ring-1 ring-border ring-inset',
+        data.status === 'pending' && 'ring-info/40',
       )}
     >
       <div data-slot="enter-plan-header" className="flex items-center gap-2 bg-default px-4 py-3">
@@ -1003,9 +1029,9 @@ function ExitPlanBlock({ data, plan }: { data: ToolCallDisplay; plan: string }) 
       data-slot="exit-plan"
       data-status={data.status}
       className={cn(
-        'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface',
+        'my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface ring-1 ring-border ring-inset',
         // Only while it is actually waiting on a decision — see `EnterPlanBlock`.
-        data.status === 'pending' && 'ring-1 ring-info/40 ring-inset',
+        data.status === 'pending' && 'ring-info/40',
       )}
     >
       <div data-slot="exit-plan-header" className="flex items-center gap-2 bg-default px-4 py-3">
@@ -1118,7 +1144,78 @@ export function toolLabel(t: TFunction, toolName: string): string {
 }
 
 /**
- * The one line that says which call this is: a path, a command, a pattern.
+ * A one-line summary a person wrote, when the call carries one.
+ *
+ * Every tool whose arguments are opaque takes a `description` — a shell command
+ * is the case that forces it, since `cd … && git log --reverse --diff-filter=A
+ * --format=…` says what will run and nothing about why. Claude Code's `Bash` and
+ * `Task` carry one; ours follow.
+ *
+ * **It is drawn beside the identifying argument, never instead of it.** Letting
+ * it win the one summary line read well and quietly took the path off a
+ * `write_file` card — and `toolFileDiffs` means the body then renders a diff
+ * rather than the raw arguments, with the file's own name in the header and the
+ * directory only in a `title`, which a touch screen cannot reach. Approving a
+ * write is exactly when the directory matters most. See `ChatToolTrigger`'s
+ * `subtitle` for where this goes instead.
+ */
+export function toolDescription(args: Record<string, unknown>): string | null {
+  const value = args.description
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim()
+  return trimmed === '' ? null : trimmed
+}
+
+/**
+ * The identifying argument, for the tools that have one: a path, a command, a
+ * pattern. `null` for everything else, including anything from MCP or the custom
+ * registry — a summary guessed off an unknown schema is worse than none.
+ *
+ * The capitalised names are Claude Code's, reaching us through
+ * `_meta.claudeCode.toolName` on a hosted session. Without them a hosted
+ * transcript is a column of cards saying `Read` and nothing else.
+ */
+function identifyingArg(toolName: string, args: Record<string, unknown>): string | null {
+  const str = (value: unknown) => (typeof value === 'string' && value.trim() !== '' ? value : null)
+  switch (toolName) {
+    case 'read_file':
+    case 'list_directory':
+    case 'write_file':
+      return str(args.path)
+    case 'edit_file':
+    case 'Read':
+    case 'Write':
+    case 'Edit':
+    case 'NotebookEdit':
+      return str(args.file_path) ?? str(args.notebook_path)
+    case 'run_command':
+    case 'Bash':
+    case 'SlashCommand':
+      return str(args.command)
+    case 'search_files':
+    case 'glob':
+    case 'Glob':
+    case 'Grep':
+      return str(args.pattern)
+    case 'WebFetch':
+      return str(args.url)
+    case 'Skill':
+      return str(args.skill)
+    case 'apply_patch': {
+      const patch = typeof args.patch === 'string' ? args.patch : ''
+      const m = patch.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/m) ?? patch.match(/^\+\+\+ (?:b\/)?(.+)$/m)
+      return m ? m[1].trim() : null
+    }
+    default:
+      return null
+  }
+}
+
+/**
+ * The one line that says *which* call this is: a path, a command, a pattern.
+ *
+ * Deliberately not the description, which answers a different question and gets
+ * its own line — see [`toolDescription`] for what happened when it did not.
  *
  * Exported because the approval queue draws the same question outside the
  * transcript, and two answers to "what is this call" would disagree in exactly
@@ -1126,32 +1223,12 @@ export function toolLabel(t: TFunction, toolName: string): string {
  * queue does not is a decision made on less than the card offered.
  */
 export function ToolArgsSummary({ toolName, args }: { toolName: string; args: Record<string, unknown> }) {
-  switch (toolName) {
-    case 'read_file':
-    case 'list_directory':
-      return args.path ? <span className="text-foreground font-mono text-xs truncate">{String(args.path)}</span> : null
-    case 'run_command':
-      return args.command ? (
-        <span className="text-foreground font-mono text-xs truncate">{String(args.command)}</span>
-      ) : null
-    case 'search_files':
-      return args.pattern ? (
-        <span className="text-foreground font-mono text-xs truncate">{String(args.pattern)}</span>
-      ) : null
-    case 'write_file':
-      return args.path ? <span className="text-foreground font-mono text-xs truncate">{String(args.path)}</span> : null
-    case 'edit_file':
-      return args.file_path ? (
-        <span className="text-foreground font-mono text-xs truncate">{String(args.file_path)}</span>
-      ) : null
-    case 'apply_patch': {
-      const patch = typeof args.patch === 'string' ? args.patch : ''
-      const m = patch.match(/^\*\*\* (?:Update|Add|Delete) File: (.+)$/m) ?? patch.match(/^\+\+\+ (?:b\/)?(.+)$/m)
-      return m ? <span className="text-foreground font-mono text-xs truncate">{m[1].trim()}</span> : null
-    }
-    default:
-      return null
-  }
+  const arg = identifyingArg(toolName, args)
+  return arg === null ? null : (
+    <span data-slot="tool-arg" className="text-foreground font-mono text-xs truncate">
+      {arg}
+    </span>
+  )
 }
 
 /**
@@ -1527,7 +1604,9 @@ export function ToolCallBlock({
 
   return (
     <ChatTool state={mapChatToolState(data.status)} defaultExpanded={!isCompleted} className={cn('my-3', className)}>
-      <ChatToolTrigger>
+      {/* Both, on two lines: what this call is, and what it is for. Neither
+          displaces the other — see `toolDescription`. */}
+      <ChatToolTrigger subtitle={toolDescription(parsedArgs)}>
         <ChatToolStatusIcon />
         <span className="font-medium text-foreground shrink-0">{label}</span>
         <ToolArgsSummary toolName={data.tool_name} args={parsedArgs} />

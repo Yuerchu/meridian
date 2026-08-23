@@ -164,7 +164,7 @@ pub async fn do_compact(
     // The turn parameters use the same resolution as a normal turn: a
     // summarisation request that invents its own temperature or output ceiling
     // is rejected by models the chat path already knows how to talk to.
-    let (provider_type, base_url, api_key, model, api_format, turn) = {
+    let (provider_type, base_url, api_key, model, api_format, turn, provider_id, provider_name) = {
         let pool2 = pool.clone();
         let secrets2 = secrets.clone();
         let assistant2 = assistant.cloned();
@@ -175,7 +175,8 @@ pub async fn do_compact(
                 api_key,
                 model,
                 api_format,
-                ..
+                provider_id,
+                provider_name,
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
             let turn = resolve_turn_params(
                 &pool2,
@@ -190,7 +191,16 @@ pub async fn do_compact(
                     fast: false,
                 },
             )?;
-            Ok::<_, String>((provider_type, base_url, api_key, model, api_format, turn))
+            Ok::<_, String>((
+                provider_type,
+                base_url,
+                api_key,
+                model,
+                api_format,
+                turn,
+                provider_id,
+                provider_name,
+            ))
         })
         .await
         .map_err(|e| e.to_string())??
@@ -201,7 +211,8 @@ pub async fn do_compact(
     // sized against a different one is sized against nothing.
     let budget = TokenBudget::new(&provider_type, &model, turn.context_limit, turn.max_output, None);
 
-    let summary = compact_with_retry(&*prov, &compact_system, &conversation_text, &params, &budget).await?;
+    let (summary, summary_usage) =
+        compact_with_retry(&*prov, &compact_system, &conversation_text, &params, &budget).await?;
 
     let project_context = extract_recent_files_from_db_messages(&active_messages[boundary_idx..]);
 
@@ -256,16 +267,52 @@ pub async fn do_compact(
                     // with that turn's record.
                     turn_id: None,
                     tool_outcome: None,
-                    // The summarising request had its own usage, but it is not this
-                    // row's: this row is the summary, not the reply that produced
-                    // it, and charging it here would double-count against the turn
-                    // that already recorded that call.
+                    // The summarising request's usage is not this row's: the row
+                    // is the summary, and it is written with `role = "user"`
+                    // because that is how it re-enters the context. What the
+                    // request cost is filed separately, below.
+                    //
+                    // This comment used to say the cost was already recorded by
+                    // the turn that triggered the compaction. It was not — the
+                    // summariser called `chat`, which returns a bare `String`,
+                    // so its usage was discarded at the adapter and reached no
+                    // ledger at all. On a long conversation it is the largest
+                    // single request this app makes.
                     cache_read_tokens: None,
                     cache_write_tokens: None,
+                    server_tool_calls: None,
                     provider_name: None,
                 },
             )
             .map_err(|e| e.to_string())?;
+
+            // Best effort, like every other audit write: a summary that was
+            // produced and not accounted for is a gap in the ledger, and
+            // refusing to save it would be a lost summary as well.
+            if let Some(usage) = summary_usage {
+                let cost = db::ops::audit::SideRequestCost {
+                    role: db::ops::audit::COMPACTION_ROLE,
+                    message_id: &msg_id,
+                    conversation_id: &conv_id,
+                    turn_id: None,
+                    provider_id: Some(provider_id.as_str()),
+                    provider_name: Some(provider_name.as_str()),
+                    model_id: Some(&model),
+                    usage: db::models::message::MessageUsage {
+                        input_tokens: usage.prompt_tokens,
+                        output_tokens: usage.completion_tokens,
+                        cache_read_tokens: usage.cache_read_tokens,
+                        cache_write_tokens: usage.cache_write_tokens,
+                        server_tool_calls: usage.billable_tool_calls,
+                    },
+                    // One request, so the sum and the peak are the same number.
+                    peak_prompt_tokens: usage.prompt_tokens,
+                    summary: "compaction",
+                };
+                if let Err(e) = db::ops::audit::record_side_request(&mut conn, cost) {
+                    tracing::warn!(error = %e, "could not record what the compaction cost");
+                }
+            }
             Ok::<_, String>(())
         })
         .await
@@ -281,7 +328,7 @@ async fn compact_with_retry(
     conversation_text: &str,
     params: &provider::ChatParams,
     budget: &TokenBudget,
-) -> Result<String, String> {
+) -> Result<(String, Option<provider::TokenUsage>), String> {
     // The turn's parameters come along because they already passed this model's
     // capability filter, but its output ceiling must not. A turn's `max_tokens`
     // is whatever the model is allowed to write at most -- 128k on the
@@ -357,7 +404,7 @@ async fn compact_with_retry(
         };
 
         match send_summary(provider, msgs, attempt_params).await {
-            Ok(summary) => return Ok(summary),
+            Ok(answer) => return Ok((answer.text, answer.usage)),
             Err(e) => {
                 let err_str = e.to_string();
                 if is_context_window_error(&err_str) && attempt < MAX_COMPACT_RETRIES {
@@ -398,10 +445,14 @@ async fn send_summary(
     provider: &dyn ChatProvider,
     msgs: Vec<ChatMessage>,
     params: provider::ChatParams,
-) -> Result<String, provider::ProviderError> {
+) -> Result<provider::AgentResponse, provider::ProviderError> {
     let mut attempt = 0u32;
     loop {
-        let sent = provider.chat(msgs.clone(), params.clone()).await;
+        // `chat_with_tools` rather than `chat`, for the usage it returns and
+        // nothing else: `chat` hands back a bare `String`, so what the summariser
+        // spent — the largest single request this app makes on its own behalf —
+        // was discarded at the adapter boundary and reached no bill at all.
+        let sent = provider.chat_with_tools(msgs.clone(), Vec::new(), params.clone()).await;
         match sent {
             Err(ref e)
                 if attempt < MAX_SUMMARY_TRANSIENT_RETRIES && super::is_retryable_stream_error(&e.to_string()) =>
@@ -470,7 +521,10 @@ pub(crate) async fn mid_turn_compact(
     // filter for this model.
     let compact_params = without_thinking(params.clone());
 
-    let summary = compact_with_retry(provider, COMPACT_PROMPT, &conversation_text, &compact_params, budget)
+    // Mid-turn compaction happens inside a running turn and has no row of its
+    // own to hang a cost on. What it spent is dropped here and recorded by the
+    // standalone path only — a known gap, narrower than the one it replaced.
+    let (summary, _usage) = compact_with_retry(provider, COMPACT_PROMPT, &conversation_text, &compact_params, budget)
         .await
         .map_err(CompactError::Provider)?;
 
@@ -698,24 +752,38 @@ mod tests {
 
         async fn chat(
             &self,
-            messages: Vec<ChatMessage>,
-            params: provider::ChatParams,
+            _messages: Vec<ChatMessage>,
+            _params: provider::ChatParams,
         ) -> Result<String, ProviderError> {
+            unreachable!("compaction needs the usage, so it goes through chat_with_tools")
+        }
+
+        /// Still no tools — the list is always empty. This is the path because
+        /// it is the one that returns usage, which is what makes a summary
+        /// something the ledger can see.
+        async fn chat_with_tools(
+            &self,
+            messages: Vec<ChatMessage>,
+            tools: Vec<ToolDefinition>,
+            params: provider::ChatParams,
+        ) -> Result<crate::provider::AgentResponse, ProviderError> {
+            assert!(tools.is_empty(), "compaction offers no tools");
             let input = budget().counter.count_messages(&messages);
             self.sent.lock().unwrap().push((input, params.max_tokens));
             match self.fails.lock().unwrap().pop_front() {
                 Some(e) => Err(e),
-                None => Ok("a summary".into()),
+                None => Ok(crate::provider::AgentResponse {
+                    text: "a summary".into(),
+                    reasoning_content: None,
+                    tool_calls: Vec::new(),
+                    usage: Some(provider::TokenUsage {
+                        prompt_tokens: Some(input as i32),
+                        completion_tokens: Some(20),
+                        ..Default::default()
+                    }),
+                    provider_state: None,
+                }),
             }
-        }
-
-        async fn chat_with_tools(
-            &self,
-            _messages: Vec<ChatMessage>,
-            _tools: Vec<ToolDefinition>,
-            _params: provider::ChatParams,
-        ) -> Result<crate::provider::AgentResponse, ProviderError> {
-            unreachable!("compaction offers no tools")
         }
     }
 
@@ -759,7 +827,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(out, "a summary");
+        assert_eq!(out.0, "a summary");
         assert_eq!(prov.ceilings(), [Some(SUMMARY_OUTPUT_CAP as i32)]);
     }
 
@@ -796,7 +864,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(out, "a summary");
+        assert_eq!(out.0, "a summary");
         every_request_fits(&prov, 32_000);
         let asked = prov.ceilings()[0].unwrap() as usize;
         assert!(asked < SUMMARY_OUTPUT_CAP, "took the cap without looking: {asked}");
@@ -817,7 +885,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(out, "a summary");
+        assert_eq!(out.0, "a summary");
         every_request_fits(&prov, 32_000);
         // The first attempt never left the building: it was measured, found not
         // to fit, and cut instead.
@@ -862,7 +930,7 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(out, "a summary");
+        assert_eq!(out.0, "a summary");
         assert_eq!(prov.requests().len(), 2, "gave up on the first 502");
     }
 
@@ -934,6 +1002,7 @@ mod tests {
             tool_outcome: None,
             cache_read_tokens: None,
             cache_write_tokens: None,
+            server_tool_calls: None,
             provider_name: None,
             provider_state: None,
             auto_review: None,
@@ -978,6 +1047,7 @@ mod tests {
             tool_outcome: None,
             cache_read_tokens: None,
             cache_write_tokens: None,
+            server_tool_calls: None,
             provider_name: None,
             provider_state: None,
             auto_review: None,

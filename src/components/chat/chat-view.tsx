@@ -6,14 +6,16 @@ import { CompactedRegion } from './compacted-region'
 import { TranscriptStatus } from './transcript-status'
 import { useTurns } from '@/hooks/use-turns'
 import { InputBar, type AttachedFile, type PendingSticker } from './input-bar'
+import { PromptQueue } from './prompt-queue'
 import { TodoBar } from './todo-bar'
+import { usePromptQueue } from '@/hooks/use-prompt-queue'
 import { useEmojiMap } from './emoji-renderer'
 import { useSenderNames } from '@/hooks/use-sender-names'
 import { useTurnSettings } from '@/hooks/use-turn-settings'
 import { useSendMessage } from '@/hooks/use-send-message'
 import { useContextInfo } from '@/hooks/use-context-info'
 import { useConversationStore } from '@/stores/conversation-store'
-import type { Message } from '@/types'
+import type { Message, QueueDelivery } from '@/types'
 
 // Stable identity for the empty case: `?? []` would hand useTurns a new array on
 // every render of a conversation whose session has not been created yet.
@@ -39,6 +41,9 @@ function ChatViewInner({
     const project = conv?.project_id ? s.projects.find((p) => p.id === conv.project_id) : undefined
     return project?.source_type.startsWith('onebot') ?? false
   })
+  const isHostedAgent = useConversationStore(
+    (s) => s.conversations.find((c) => c.id === conversationId)?.agent_kind === 'claude_code',
+  )
 
   const messages = session?.messages ?? NO_MESSAGES
   const streaming = session?.streaming ?? false
@@ -48,6 +53,10 @@ function ChatViewInner({
   const [input, setInput] = useState('')
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([])
   const [pendingSticker, setPendingSticker] = useState<PendingSticker | null>(null)
+  // What the *next* queued message will be, not a property of any row. Defaults
+  // to the mode that waits: an interjection cuts into work that is already
+  // going, which is not a thing to do by accident.
+  const [queueDelivery, setQueueDelivery] = useState<QueueDelivery>('follow_up')
   const settings = useTurnSettings(conversationId)
   const emojiMap = useEmojiMap(settings.selectedAssistantId)
   // Only a OneBot conversation has more than one speaker; a desktop row has no
@@ -83,10 +92,21 @@ function ChatViewInner({
   // Read at click time rather than closed over, so the button always aims at
   // whatever is running now. Null falls back to "stop this conversation's
   // current turn", which is all a reloaded window knows.
+  //
+  // A hosted session stops through its own command, though **not because
+  // `stop_chat` would miss it** — that used to be the reason given here and it
+  // is not true. A hosted turn holds an ordinary lease, so `stop_chat` reaches
+  // its cancellation token and `prompt_with` sends `session/cancel` off the
+  // back of it. `acp_cancel` is the same act named for what it is, and it does
+  // not need the turn id a reloaded window may not have.
   const handleStop = useCallback(() => {
+    if (isHostedAgent) {
+      api.acpCancel(conversationId)
+      return
+    }
     const turnId = useConversationStore.getState().sessions[conversationId]?.activeTurnId
     api.stopChat(conversationId, turnId)
-  }, [conversationId])
+  }, [conversationId, isHostedAgent])
 
   const handleDelete = useCallback(
     (id: string) => {
@@ -162,12 +182,38 @@ function ChatViewInner({
   // main conversation is unchanged: nothing can be submitted until the answer
   // is finished, because there is nowhere for it to go. Below `contextInfo`,
   // which is where the answer comes from.
-  const steerable = !!contextInfo.agentKind
+  //
+  // Named kinds rather than "has one at all". `steer_conversation` appends to
+  // `sub_agent_inboxes`, which only a delegated run drains, while `agent_kind`
+  // marks every conversation this app did not start on its own behalf — the
+  // hook gates' reviews and now hosted Claude Code sessions. Read as a boolean
+  // it lets the composer stay live during those and submit into an inbox that
+  // does not exist, which comes back as "this run has already finished" on a
+  // run that plainly has not.
+  const steerable = contextInfo.agentKind === 'agent' || contextInfo.agentKind === 'explore'
   const steering = steerable && streaming
+
+  // Everything with a runner behind it, which is a hosted session and an
+  // ordinary conversation — but not a delegated run, which has `steerable` and
+  // wants it: what is typed there goes straight into the run rather than being
+  // stacked up for after it.
+  const queueable = !steerable
+  const queue = usePromptQueue(conversationId, queueable)
+  const queueing = queueable && streaming
 
   const handleSubmit = useCallback(() => {
     const text = input.trim()
     if (!text && !pendingSticker) return
+
+    // Ahead of everything else, including the slash commands: while the agent
+    // is working there is no turn for any of them to reshape. The field is
+    // cleared only once the row exists, so a refusal is not the user paying
+    // for it by retyping.
+    if (queueing) {
+      if (!text) return
+      void queue.enqueue(text, queueDelivery).then(() => setInput(''))
+      return
+    }
 
     // Before the slash commands, which all ask for a turn to be started or
     // reshaped and so have nowhere to land mid-run. The field is cleared only
@@ -181,7 +227,16 @@ function ChatViewInner({
       return
     }
 
-    if (!pendingSticker && attachedFiles.length === 0 && text.startsWith('/compact')) {
+    // `!isHostedAgent` for the same reason the gauge hides its manual compact
+    // button: summarising a hosted transcript spends the user's own provider on
+    // a history the agent never reads — it compacts its own context on its own
+    // terms and a hosted prompt carries only the newest message — and then
+    // folds their transcript away behind a summary nothing will use. On an
+    // imported session, which is the longest kind there is, that is one of the
+    // most expensive requests this app can make. Left through, it reaches
+    // `commands::compact`, which has no `agent_kind` check and would price it
+    // against the default assistant's model.
+    if (!isHostedAgent && !pendingSticker && attachedFiles.length === 0 && text.startsWith('/compact')) {
       const instructions = text.slice('/compact'.length).trim() || undefined
       setInput('')
       handleCompact(instructions)
@@ -196,7 +251,19 @@ function ChatViewInner({
       : undefined
     setPendingSticker(null)
     sendMessage(text, true, files.length > 0 ? files : undefined, undefined, undefined, sticker)
-  }, [input, sendMessage, attachedFiles, pendingSticker, handleCompact, steering, steerMessage])
+  }, [
+    input,
+    sendMessage,
+    attachedFiles,
+    pendingSticker,
+    handleCompact,
+    isHostedAgent,
+    steering,
+    steerMessage,
+    queueing,
+    queue,
+    queueDelivery,
+  ])
 
   return (
     <div className="flex flex-col h-full">
@@ -205,10 +272,18 @@ function ChatViewInner({
         conversationId={conversationId}
         streaming={streaming}
         onDelete={handleDelete}
-        onRegenerate={handleRegenerate}
-        onEdit={handleEdit}
+        // Regenerate and edit are withheld on a hosted session. Both re-ask
+        // from a point in the history, and a hosted session's history lives in
+        // the adapter's process — `useSendMessage` refuses them for exactly
+        // that reason, so leaving the buttons up offers an action whose only
+        // outcome is an error message. The refusal stays as the backstop; this
+        // is the affordance agreeing with it. Delete is still offered: it does
+        // what it says, removing rows from *this* app's copy.
+        onRegenerate={isHostedAgent ? undefined : handleRegenerate}
+        onEdit={isHostedAgent ? undefined : handleEdit}
         onRate={handleRate}
         isOneBot={isOneBot}
+        isHosted={isHostedAgent}
         emojiMap={emojiMap}
         senderNames={senderNames}
         assistantAvatar={settings.selectedAssistant?.avatar}
@@ -237,6 +312,8 @@ function ChatViewInner({
       <TodoBar conversationId={conversationId} />
 
       <InputBar
+        conversationId={conversationId}
+        isHosted={isHostedAgent}
         value={input}
         onChange={setInput}
         onSubmit={handleSubmit}
@@ -245,6 +322,19 @@ function ChatViewInner({
         disabled={streaming}
         streaming={streaming}
         steerable={steerable}
+        queueing={queueing}
+        queueDelivery={queueDelivery}
+        onSelectQueueDelivery={setQueueDelivery}
+        queue={
+          <PromptQueue
+            items={queue.items}
+            held={queue.held}
+            onRemove={(id) => void queue.remove(id).catch((e) => storeSetError(conversationId, String(e)))}
+            onReorder={(next) => void queue.reorder(next)}
+            onSetDelivery={(id, delivery) => void queue.setDelivery(id, delivery)}
+            onRelease={() => void queue.release()}
+          />
+        }
         assistants={settings.assistants}
         providers={settings.providers}
         currentAssistantId={settings.selectedAssistantId}

@@ -34,7 +34,12 @@ export function RowActionsMenu({
   return (
     <Sidebar.MenuActions>
       <Dropdown>
-        <Sidebar.MenuAction aria-label={t('sidebar.moreActions', { name: label })}>
+        {/* Pro gives `.sidebar__menu-action` 4px of padding around a 16px icon,
+            so it is 24px square. In the mobile sheet it is always visible and is
+            the only way to a row's actions — right-click cannot be reached by
+            touch — and a miss lands on the row itself, which switches
+            conversation and closes the sheet. */}
+        <Sidebar.MenuAction className="touch-hitbox" aria-label={t('sidebar.moreActions', { name: label })}>
           <EllipsisVertical />
         </Sidebar.MenuAction>
         <Dropdown.Popover placement="bottom end">

@@ -59,6 +59,10 @@ pub struct Message {
     /// second reports every reply from a silent provider as a total miss.
     pub cache_read_tokens: Option<i32>,
     pub cache_write_tokens: Option<i32>,
+    /// Billable provider-side tool invocations this reply made. Charged per
+    /// call on top of the tokens, so it is a cost the four counts above cannot
+    /// express.
+    pub server_tool_calls: Option<i32>,
     /// What the provider was called when this row was written.
     ///
     /// Stored beside `provider_id` rather than joined to it, because that
@@ -104,6 +108,9 @@ pub struct MessageUsage {
     /// Prompt tokens the upstream wrote into its cache, charged at a premium so
     /// later reads are cheap. Also a subset of `input_tokens`.
     pub cache_write_tokens: Option<i32>,
+    /// Billable provider-side tool invocations — searches the upstream ran
+    /// itself. Not a token count: charged per call, on top of the tokens.
+    pub server_tool_calls: Option<i32>,
 }
 
 #[derive(Debug, Insertable)]
@@ -133,5 +140,6 @@ pub struct NewMessage<'a> {
     pub tool_outcome: Option<&'a str>,
     pub cache_read_tokens: Option<i32>,
     pub cache_write_tokens: Option<i32>,
+    pub server_tool_calls: Option<i32>,
     pub provider_name: Option<&'a str>,
 }

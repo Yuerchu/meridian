@@ -41,6 +41,9 @@ pub fn upsert(conn: &mut SqliteConnection, new: &NewModelConfig) -> QueryResult<
                 model_configs::cache_price.eq(new.cache_price),
                 model_configs::cache_write_price.eq(new.cache_write_price),
                 model_configs::capability_overrides.eq(new.capability_overrides),
+                model_configs::price_tiers.eq(new.price_tiers),
+                model_configs::server_tools.eq(new.server_tools),
+                model_configs::server_tool_price.eq(new.server_tool_price),
                 model_configs::updated_at.eq(new.updated_at),
             ))
             .execute(conn)?;
@@ -53,4 +56,141 @@ pub fn upsert(conn: &mut SqliteConnection, new: &NewModelConfig) -> QueryResult<
 
 pub fn delete(conn: &mut SqliteConnection, id: &str) -> QueryResult<usize> {
     diesel::delete(model_configs::table.find(id)).execute(conn)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::models::provider::NewProvider;
+    use crate::db::test_db;
+
+    fn seed_provider(conn: &mut SqliteConnection) {
+        diesel::insert_into(crate::db::schema::providers::table)
+            .values(&NewProvider {
+                id: "p1",
+                name: "Acme",
+                provider_type: "xai",
+                base_url: "https://example.invalid",
+                is_enabled: 1,
+                sort_order: 0,
+                created_at: 0,
+                updated_at: 0,
+                api_format: "responses",
+            })
+            .execute(conn)
+            .unwrap();
+    }
+
+    fn blank<'a>() -> NewModelConfig<'a> {
+        NewModelConfig {
+            id: "mc1",
+            provider_id: "p1",
+            model_id: "grok-4.6",
+            display_name: None,
+            context_window: 128_000,
+            compact_threshold: 100_000,
+            max_output_tokens: None,
+            input_price: 0.0,
+            output_price: 0.0,
+            cache_price: None,
+            cache_write_price: None,
+            created_at: 100,
+            updated_at: 100,
+            capability_overrides: None,
+            price_tiers: None,
+            server_tools: None,
+            server_tool_price: None,
+        }
+    }
+
+    /// Every column an edit was given has to actually land.
+    ///
+    /// A whole-struct comparison on purpose. The update is a hand-written column
+    /// list, and that list is exactly where a new column gets silently
+    /// forgotten: `price_tiers` and `server_tools` were both added to the table,
+    /// the model, the command and the form — and saved correctly the first time
+    /// a model was configured, because that path inserts the whole row. Every
+    /// edit after that dropped them, with no error anywhere. The switch simply
+    /// went back to off, which reads as the feature not working.
+    ///
+    /// Field-by-field assertions would have missed it the same way the omission
+    /// did. Comparing the row as a whole is what makes the next added column
+    /// fail here instead of in somebody's settings panel.
+    #[test]
+    fn an_edit_writes_every_column_it_was_given() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        seed_provider(&mut conn);
+        upsert(&mut conn, &blank()).unwrap();
+
+        let edited = NewModelConfig {
+            display_name: Some("Grok 4.6"),
+            context_window: 500_000,
+            compact_threshold: 400_000,
+            max_output_tokens: Some(64_000),
+            input_price: 2.0,
+            output_price: 6.0,
+            cache_price: Some(0.5),
+            cache_write_price: Some(1.5),
+            capability_overrides: Some(r#"{"supports_fast":true}"#),
+            price_tiers: Some(r#"[{"min_prompt_tokens":200000,"input":4.0,"output":12.0}]"#),
+            server_tools: Some(r#"["web_search"]"#),
+            server_tool_price: Some(5.0),
+            // The two an update must *not* move, whatever it is passed.
+            created_at: 999,
+            updated_at: 200,
+            ..blank()
+        };
+        let after = upsert(&mut conn, &edited).unwrap();
+
+        assert_eq!(
+            after,
+            ModelConfig {
+                id: "mc1".into(),
+                provider_id: "p1".into(),
+                model_id: "grok-4.6".into(),
+                display_name: Some("Grok 4.6".into()),
+                context_window: 500_000,
+                compact_threshold: 400_000,
+                max_output_tokens: Some(64_000),
+                input_price: 2.0,
+                output_price: 6.0,
+                cache_price: Some(0.5),
+                cache_write_price: Some(1.5),
+                capability_overrides: Some(r#"{"supports_fast":true}"#.into()),
+                price_tiers: Some(r#"[{"min_prompt_tokens":200000,"input":4.0,"output":12.0}]"#.into()),
+                server_tools: Some(r#"["web_search"]"#.into()),
+                server_tool_price: Some(5.0),
+                // When the row first appeared, not when it was last touched.
+                created_at: 100,
+                updated_at: 200,
+            },
+        );
+    }
+
+    /// Clearing a setting has to clear it. An update that only ever writes
+    /// `Some` leaves the old value behind, and the switch the user just turned
+    /// off goes on being sent.
+    #[test]
+    fn an_edit_can_empty_a_column_again() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        seed_provider(&mut conn);
+        upsert(
+            &mut conn,
+            &NewModelConfig {
+                server_tools: Some(r#"["web_search"]"#),
+                price_tiers: Some(r#"[{"min_prompt_tokens":200000,"input":4.0,"output":12.0}]"#),
+                cache_price: Some(0.5),
+                ..blank()
+            },
+        )
+        .unwrap();
+
+        let cleared = upsert(&mut conn, &blank()).unwrap();
+        assert_eq!(cleared.server_tools, None);
+        assert_eq!(cleared.server_tool_price, None);
+        assert_eq!(cleared.price_tiers, None);
+        assert_eq!(cleared.cache_price, None);
+    }
 }

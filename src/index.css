@@ -385,6 +385,25 @@ img.emoji-sticker {
   .toast-region--top-end {
     top: max(1rem, var(--safe-top));
   }
+  /* The sides matter in landscape and only there: the region is
+     `calc(100vw - 2rem)` wide and centred, so it leaves 16px each side — less
+     than a cutout takes once the phone is turned, and the cutout is on the long
+     edge. Zero in portrait, which is why this went unnoticed alongside the
+     `top` rule above. */
+  .toast-region--top,
+  .toast-region--top-start,
+  .toast-region--top-end,
+  .toast-region--bottom,
+  .toast-region--bottom-start,
+  .toast-region--bottom-end {
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+  .toast-region--bottom,
+  .toast-region--bottom-start,
+  .toast-region--bottom-end {
+    bottom: max(1rem, var(--safe-bottom));
+  }
 }
 
 /* HeroUI ships `scrollbar`, `scrollbar-thin`, `scrollbar-default` and
@@ -407,8 +426,19 @@ img.emoji-sticker {
   }
 }
 
+/* `any-pointer`, not `pointer`. `pointer` describes the *primary* pointer only,
+   and on the machines this most needs to work — a Windows touchscreen laptop, a
+   tablet in a keyboard case — the primary pointer is the trackpad, so it reports
+   `fine` and every one of these hitboxes stayed at its drawn size while a finger
+   was the thing reaching for it. `any-pointer: coarse` is true whenever *some*
+   pointer is coarse, which is the question being asked.
+
+   The cost is that a hybrid device expands them while the mouse is in use. That
+   is the right direction to be wrong in: the expansion is an invisible
+   `::after`, so a mouse user loses nothing but a little precision between
+   neighbours, and a touch user without it loses the control. */
 @utility touch-hitbox {
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     position: relative;
     &::after {
       content: '';

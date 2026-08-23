@@ -104,7 +104,7 @@ export function RemoteClientSettings() {
       <p className="block text-xs font-medium text-muted">{t('settings.client.title')}</p>
       <p className="text-xs text-muted">{t('settings.client.intro')}</p>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
         <TextField fullWidth>
           <Label>{t('settings.client.host')}</Label>
           <Input value={host} onChange={(e) => setHost(e.target.value)} placeholder="192.168.1.20" />
