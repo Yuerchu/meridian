@@ -4,6 +4,8 @@ import { ProviderSettings } from './provider-settings'
 import i18n from '@/i18n'
 import { api } from '@/api'
 import type { Provider } from '@/types'
+import { resizeViewportTo } from '@/test/viewport'
+import { setContainerWidth } from '@/test/resize'
 
 vi.mock('@/api', () => ({
   api: {
@@ -33,33 +35,16 @@ function makeProvider(id: string, name: string): Provider {
   }
 }
 
+/**
+ * jsdom lays nothing out, so the pane measures zero and `useIsNarrow` answers
+ * from the viewport — which is what makes the viewport-driven cases below still
+ * mean what they always did. The last one drives the pane itself.
+ */
 function mockViewport(mobile: boolean) {
-  const listeners: Array<() => void> = []
-  Object.defineProperty(window, 'innerWidth', {
-    writable: true,
-    configurable: true,
-    value: mobile ? 500 : 1024,
-  })
-  window.matchMedia = vi.fn().mockReturnValue({
-    matches: mobile,
-    addEventListener: vi.fn((_event: string, handler: () => void) => {
-      listeners.push(handler)
-    }),
-    removeEventListener: vi.fn(),
-  })
-  return {
-    resize(nowMobile: boolean) {
-      Object.defineProperty(window, 'innerWidth', {
-        writable: true,
-        configurable: true,
-        value: nowMobile ? 500 : 1024,
-      })
-      listeners.forEach((fn) => fn())
-    },
-  }
+  resizeViewportTo(mobile ? 500 : 1024)
 }
 
-describe('ProviderSettings mobile list/detail navigation', () => {
+describe('ProviderSettings list/detail navigation', () => {
   beforeAll(async () => {
     await i18n.changeLanguage('en')
   })
@@ -113,15 +98,23 @@ describe('ProviderSettings mobile list/detail navigation', () => {
     expect(screen.getByPlaceholderText('https://api.example.com')).toBeInTheDocument()
   })
 
-  it('desktop shrunk to mobile: back still returns to the list', async () => {
-    const viewport = mockViewport(false)
+  // The old name for this was "desktop shrunk to mobile", and after the move to
+  // a measured container that describes the wrong thing: the viewport does not
+  // move here at all. What narrows is the pane — the sidebar being opened, or a
+  // window drag that leaves the layer under two columns while the viewport is
+  // still comfortably a desktop. The invariant it pins is unchanged, and it is
+  // the one `useMasterDetail` calls load-bearing: the selection survives the
+  // switch, and back returns to the list rather than out of settings.
+  it('the pane narrowing below two columns: back still returns to the list', async () => {
+    mockViewport(false)
     const user = userEvent.setup()
     const { act } = await import('@testing-library/react')
     render(<ProviderSettings />)
 
-    // Auto-selected on desktop, then the window is narrowed below the breakpoint.
     expect(await screen.findByText(i18n.t('settings.provider.deleteProvider'))).toBeInTheDocument()
-    act(() => viewport.resize(true))
+
+    const pane = document.querySelector('[data-slot="master-detail"]')!
+    act(() => setContainerWidth(pane, 420))
 
     expect(await screen.findByText(i18n.t('common.back'))).toBeInTheDocument()
     await user.click(screen.getByText(i18n.t('common.back')))

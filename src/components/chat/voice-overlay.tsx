@@ -53,8 +53,16 @@ export function VoiceOverlay({ state, elapsed, peak }: VoiceOverlayProps) {
       // *white* on dark. Half a phone screen of it at 2am is a flashbang. The
       // danger red does not invert, being a hue rather than a lightness, which
       // is why cancelling was never the complaint.
+      // The bottom padding carries the keyboard. This is `fixed`, so it is
+      // outside the shell that `app-shell` pads with `--ime-bottom` — and a
+      // flat `pb-24` put the level meter and "release to send" underneath an
+      // open keyboard, which is exactly the case where the field was focused
+      // and someone then held the button. The variable is set on `<html>`
+      // (`use-android-insets`), so anything portalled can still read it, and it
+      // is undefined everywhere but Android — hence the fallback.
       className={cn(
-        'pointer-events-none fixed inset-x-0 bottom-0 z-50 flex h-1/2 flex-col items-center justify-end gap-6 pb-24',
+        'pointer-events-none fixed inset-x-0 bottom-0 z-50 flex h-1/2 flex-col items-center justify-end gap-6',
+        'pb-[calc(6rem+var(--ime-bottom,0px))]',
         'bg-gradient-to-t',
         cancelling
           ? 'from-danger via-danger/80 to-transparent text-white'

@@ -337,7 +337,10 @@ export function DeveloperSettings() {
             <Card.Title>{t('settings.developer.micProbeTitle')}</Card.Title>
             <Card.Description>{t('settings.developer.micProbeHint')}</Card.Description>
           </Card.Header>
-          <Card.Footer className="gap-2">
+          {/* `.card__footer` is a flex row that does not wrap, and the third
+              button here is the Android-only one — so the case with the most
+              buttons is also the narrowest screen they ever appear on. */}
+          <Card.Footer className="flex-wrap gap-2">
             <Button size="sm" onClick={() => record(true)} isDisabled={busy}>
               <Play className="w-4 h-4" />
               {t('settings.developer.probe.runWorklet')}

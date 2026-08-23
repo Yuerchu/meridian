@@ -219,9 +219,9 @@ export function UsageSettings() {
         </EmptyState>
       ) : (
         <>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3">
             <Kpi title={t('settings.usage.kpi.cost')}>
-              <span className="text-2xl font-semibold tracking-tight">{money.format(total.cost)}</span>
+              <span className="block truncate text-2xl font-semibold tracking-tight">{money.format(total.cost)}</span>
             </Kpi>
             {/* The count is formatted before it goes in, not by i18next: passing
                 the raw number leaves it ungrouped, and "13830144" sitting under
@@ -232,16 +232,20 @@ export function UsageSettings() {
                 value: compact.format(total.cache_read_tokens),
               })}
             >
-              <span className="text-2xl font-semibold tracking-tight">{compact.format(total.input_tokens)}</span>
+              <span className="block truncate text-2xl font-semibold tracking-tight">
+                {compact.format(total.input_tokens)}
+              </span>
             </Kpi>
             <Kpi title={t('settings.usage.kpi.output')}>
-              <span className="text-2xl font-semibold tracking-tight">{compact.format(total.output_tokens)}</span>
+              <span className="block truncate text-2xl font-semibold tracking-tight">
+                {compact.format(total.output_tokens)}
+              </span>
             </Kpi>
             <Kpi
               title={t('settings.usage.kpi.cacheRate')}
               note={t('settings.usage.kpi.replies', { count: total.messages })}
             >
-              <span className="text-2xl font-semibold tracking-tight">
+              <span className="block truncate text-2xl font-semibold tracking-tight">
                 {hitRate === null ? '—' : `${(hitRate * 100).toFixed(1)}%`}
               </span>
             </Kpi>
@@ -257,7 +261,7 @@ export function UsageSettings() {
             <TokenTrend days={report?.days ?? []} />
           </Section>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+          <div className="grid gap-6 @2xl/pane:grid-cols-2">
             <Section title={t('settings.usage.byProvider')}>
               <TokenBars buckets={report?.providers ?? []} />
             </Section>
@@ -366,13 +370,13 @@ function UsageSkeleton() {
   const { t } = useTranslation()
   return (
     <div role="status" aria-busy="true" aria-label={t('common.loading')} className="space-y-6">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 @2xl/pane:grid-cols-4 gap-3">
         {Array.from({ length: 4 }, (_, i) => (
           <Skeleton key={i} className="h-24 w-full rounded-lg" />
         ))}
       </div>
       <Skeleton className="h-[200px] w-full rounded-lg" />
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 @2xl/pane:grid-cols-2">
         <Skeleton className="h-40 w-full rounded-lg" />
         <Skeleton className="h-40 w-full rounded-lg" />
       </div>
@@ -395,6 +399,11 @@ function Kpi({ title, note, children }: { title: string; note?: string; children
         <KPI.Title>{title}</KPI.Title>
       </KPI.Header>
       <KPI.Content>
+        {/* `min-w-0` here and `block truncate` on each value: `.kpi__content` is
+            a `1fr auto` grid, so without the floor this column never narrows,
+            and `truncate` does nothing to an inline span. A cost carries up to
+            four decimals (see `money`), which is a long string at `text-2xl` —
+            it used to be drawn straight out through the side of the card. */}
         <div className="min-w-0">
           {children}
           {note && <p className="mt-0.5 truncate text-xs text-muted">{note}</p>}
@@ -478,7 +487,12 @@ function TokenBars({ buckets }: { buckets: UsageBucket[] }) {
       <Legend bands={bands} />
       <BarChart data={data} height={Math.max(120, data.length * 34)} layout="vertical">
         <BarChart.XAxis hide type="number" />
-        <BarChart.YAxis dataKey="name" tickMargin={4} type="category" width={110} />
+        {/* `auto` rather than a fixed 110px, which is a third of the chart on a
+            phone — recharts measures the labels and takes what they need. Model
+            ids are long and the axis is what names the bars, so neither a fixed
+            width that starves the bars nor one that truncates the names is the
+            answer. */}
+        <BarChart.YAxis dataKey="name" tickMargin={4} type="category" width="auto" />
         {bands.map((band, i) => (
           <BarChart.Bar
             key={band.key}

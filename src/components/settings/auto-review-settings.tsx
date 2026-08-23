@@ -111,7 +111,7 @@ function ModelPicker({
   ]
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
       <Select
         fullWidth
         aria-label={t('settings.assistant.provider')}

@@ -587,7 +587,58 @@ Prefer HeroUI's answer over ours. Accepting a different radius or spacing is che
 - **The sidebar is a tree, so a row is not a button.** `Sidebar.Menu` is a React Aria `Tree`: rows are chosen with `onAction` (no `href` — see the header of `app-sidebar.tsx`), every row needs `id` and `textValue`, and nothing that is not a `MenuItem` may sit between the menu and its rows. A `TreeItem` forwards only a fixed set of props to the DOM — `data-*` survives, `onContextMenu` does not — which is why the right-click menu wraps the whole list once and reads the row back off the event. Pro hides the panel outright below 768px, so `Sidebar.Mobile` renders the same tree a second time; it returns `null` above that width, but anything stateful inside it exists twice.
 - **`mod` is Command *or* Control, not whichever the platform prefers.** `useHotkey` (`hooks/use-hotkey.ts`) accepts either, because Pro's `Sidebar.Provider` does the same for its `mod+b` and two shortcuts that disagree about `mod` would be worse than either answer alone. It is one hook, not a registry — a registry buys collision resolution for collisions that do not exist yet. Everything defaults to letting a focused text field have the key; the command palette is the one caller that passes `ignoreInInput: false`, and it should stay the one.
 - **A wait is drawn as the shape that is coming, not as the word "loading".** A panel fetching its data renders a skeleton the size of what will replace it — `SettingsSkeleton` for the header-over-a-list that every settings panel opens with, a hand-built one where the shape differs (`usage-settings.tsx`). A line of text leaves the page looking empty rather than busy, and then reflows everything when the rows land; matching the height means nothing moves. Match the width too: `SettingsPane` is `max-w-lg` and `MasterDetail` is `max-w-3xl`, and a skeleton narrower than its replacement reflows the page at the moment it is meant to be steadying it. Three rules around it: a skeleton needs `role="status"` + `aria-busy` + a label, because a column of grey boxes says nothing to a screen reader and the line of text it replaces at least did that; it is for the **first** load only, since replacing real figures with grey boxes to fetch slightly different ones is a step backwards — a refresh gets a small `Spinner` beside the control that triggered it; and never render a zeroed-out version of the real thing while waiting, because a zero that turns out to be wrong is worse than no number, being legible. Deliberately *not* skeletoned: the `Suspense` around the lazily-loaded settings chunk, which is on local disk and resolves within a frame or two, where any placeholder reads as jank.
+- **Width is asked of the box, not the window.** `useIsMobile` answers "is this a
+  phone-sized viewport" and nothing else. It is the wrong ruler wherever
+  something has already taken width away: settings is a layer over the chat, so its width
+  is the window minus the 240px sidebar, and a 769px window leaves it 519px — a
+  desktop by the viewport and a phone by the only measure that matters.
+  `MasterDetail`'s detail column came out at ~280px there, with four price fields
+  inside it at 130px each.
+
+  So layout decisions are keyed to the container. **Which of the two mechanisms
+  depends on what the width decides**: what gets *rendered* — a different
+  component tree, a drilldown with a back button — is JS (`useIsNarrow`, and
+  `TWO_COLUMN_MIN` is the one threshold both settings panels flip on); how the
+  same DOM is *arranged* — columns, wrapping, direction — is a container query.
+  `@container/pane` is declared on all five boxes an editor can land in, and it
+  is **named** because the same markup renders in a detail column, in a
+  `SettingsSubPage` and in a drilldown sheet that React Aria portals to `body`.
+  `skill-settings.tsx` had worked this out once already and the note there says
+  why. There are no viewport breakpoints left under `components/settings/`.
+
+  Two consequences worth knowing before adding one. `useIsNarrow` must measure a
+  box whose width does not depend on its own answer — never the column it decides
+  whether to render — which is why `MasterDetail` has one unconditional root.
+  And `container-type` brings `contain: layout`, making the container the
+  containing block for `position: fixed` descendants: Pro's `ActionBar` is one
+  and does not portal itself, so the two call sites do it for it.
+
 - **Dev playground:** `http://localhost:5173/#playground` in any dev build (tree-shaken from release). `#playground/scroll` is the scroll regression harness, `#playground/heroui` probes CSS support against the WebView. Add new component states there.
+- **`#playground/responsive` is where a breakpoint can be caught being wrong.**
+  Nothing else can see one: `tsc`, eslint and the whole test suite are blind to
+  layout, and `vitest` runs `css: false` in jsdom besides. It drives the app in a
+  same-origin iframe — the only thing that gives a real `innerWidth`, a real
+  media query and a real containing block for `fixed` — and runs detectors for
+  clipped overflow, escapes past the edge, touch targets, short viewports and
+  keyboard occlusion.
+
+  **What it cannot do is on the page, and belongs there.** Touch targets are
+  *computed*, not measured: `@media (any-pointer: coarse)` does not match on a
+  mouse-only desktop, so what `touch-hitbox` would expand to is derived and
+  intersected with whatever clips it — green is not a promise about a phone.
+
+  **That utility asks `any-pointer`, and the hook next to it asks `pointer`.**
+  Not an inconsistency: `pointer` describes the primary pointer alone, so on a
+  Windows touchscreen laptop it reports `fine` and every hitbox stayed at its
+  drawn size while a finger was reaching for it — which is why the CSS moved.
+  `isCoarsePointer` did not, because its one caller is `isSubmitKey`, and there
+  the question really is "is the keyboard a soft one": widened, a touchscreen
+  laptop with a real keyboard would lose Enter-to-send. The keyboard row
+  checks the mechanism, not Android's numbers. 360 and 400 do not exist on this
+  desktop at all (`minWidth: 640`) and only mean something on a device. The
+  geometry behind all of it is pure and unit-tested in
+  `responsive-detectors.test.ts`, which is the part that survives having no
+  coarse pointer to test against.
 
 ## Packaging
 

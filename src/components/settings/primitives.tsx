@@ -19,8 +19,22 @@ import { cn } from '@/lib/utils'
  * the case for stopping.
  */
 
+/**
+ * A panel, and the box its contents ask about their width.
+ *
+ * The `pane` container is named rather than anonymous because the same editor
+ * markup appears in three boxes of different widths — this pane, a
+ * `SettingsSubPage` after a drilldown, and `SettingsDrilldown`'s sheet, which
+ * React Aria portals to `body` and so is not a descendant of this at all. A name
+ * lets a grid resolve against whichever one it actually landed in without
+ * knowing which that is.
+ *
+ * Note that `container-type` implies `contain: layout`, which makes this the
+ * containing block for any `position: fixed` descendant. Pro's `ActionBar` is
+ * one and does not portal itself — see the two call sites, which do it for it.
+ */
 export function SettingsPane({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div data-slot="settings-pane" className={cn('space-y-6 max-w-lg', className)} {...props} />
+  return <div data-slot="settings-pane" className={cn('@container/pane space-y-6 max-w-lg', className)} {...props} />
 }
 
 export function SettingsHeader({

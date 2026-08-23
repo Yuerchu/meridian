@@ -94,7 +94,11 @@ export function ScopeNav({ filter, onFilterChange, counts, projects, subjects, o
     // Full width until there is room for a column beside the list. Fixed at
     // 14rem, this left 88px for the memories on a 360px screen — the scope
     // picker was taking the whole screen and calling it a sidebar.
-    <div data-slot="memory-scope-nav" className="flex w-full shrink-0 flex-col gap-0.5 md:w-56">
+    //
+    // Same container and same stop as the `flex-row` rule in `memory-settings`,
+    // and they have to stay that way: on different stops there is a width where
+    // this is 224px wide inside a column layout, lying across the list.
+    <div data-slot="memory-scope-nav" className="flex w-full shrink-0 flex-col gap-0.5 @xl/pane:w-56">
       <div className="px-2 pb-1 text-xs font-medium text-muted">{t('settings.memory.nav.scope')}</div>
 
       {row({

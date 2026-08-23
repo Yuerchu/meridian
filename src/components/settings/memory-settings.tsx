@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Plus, TrashBin, Xmark, Check } from '@gravity-ui/icons'
 import { api } from '@/api'
@@ -56,7 +57,10 @@ export function MemorySettings() {
   }
 
   return (
-    <div data-slot="memory-settings" className="space-y-4">
+    // Its own `pane` container: this panel does not go through `SettingsPane`,
+    // so without one the two-column rule below would find no container at all
+    // and silently never match.
+    <div data-slot="memory-settings" className="@container/pane space-y-4">
       <SettingsHeader
         title={t('settings.memory.title')}
         subtitle={t('settings.memory.subtitle')}
@@ -74,8 +78,12 @@ export function MemorySettings() {
         }
       />
 
-      {/* Stacked until the viewport can hold two columns. */}
-      <div className="flex flex-col gap-4 md:flex-row">
+      {/* Stacked until this panel — not the window — can hold two columns.
+          224px of nav, 16px of gap and 320px for the list itself. Must stay on
+          the same stop as `ScopeNav`'s own width rule: keyed differently, one of
+          them flips first and the stacked layout gets a 224px column lying
+          across it. */}
+      <div className="flex flex-col gap-4 @xl/pane:flex-row">
         <ScopeNav
           filter={browser.filter}
           onFilterChange={browser.setFilter}
@@ -176,51 +184,61 @@ export function MemorySettings() {
 
           {/* Fixed to the bottom of the viewport rather than appended below the
               list, which is where it used to be — on a long list you had to
-              scroll to the end to reach the actions for rows at the top. */}
-          <ActionBar data-slot="memory-bulk-bar" isOpen={browser.selected.size > 0}>
-            <ActionBar.Prefix>
-              {/* The count is the only thing that says a selection exists, so
+              scroll to the end to reach the actions for rows at the top.
+
+              Through a portal, because Pro renders `.action-bar` in place and it
+              is `position: fixed`. This panel is a query container now, and
+              `container-type` brings `contain: layout` with it — which makes the
+              container the containing block for its fixed descendants. Left
+              here, the bar would drop out of the viewport and into the panel,
+              scrolling with the list it exists to stay clear of. */}
+          {createPortal(
+            <ActionBar data-slot="memory-bulk-bar" isOpen={browser.selected.size > 0}>
+              <ActionBar.Prefix>
+                {/* The count is the only thing that says a selection exists, so
                   it announces itself rather than only appearing. */}
-              <span aria-live="polite" className="text-sm text-muted">
-                {t('settings.memory.selectedCount', { count: browser.selected.size })}
-              </span>
-            </ActionBar.Prefix>
-            <ActionBar.Content>
-              <Button
-                variant="ghost"
-                onClick={browser.selectAllVisible}
-                isDisabled={browser.selected.size === browser.visible.length}
-              >
-                {t('settings.memory.selectAll')}
-              </Button>
-              <Button
-                variant="ghost"
-                onClick={async () => {
-                  const ok = await confirm({
-                    title: t('settings.memory.deleteConfirmTitle'),
-                    body: t('settings.memory.deleteConfirmBody'),
-                  })
-                  if (!ok) return
-                  await api.deleteMemories([...browser.selected])
-                  browser.clearSelection()
-                  browser.refresh()
-                }}
-              >
-                <TrashBin className="text-danger" />
-                {t('settings.memory.deleteSelected')}
-              </Button>
-            </ActionBar.Content>
-            <ActionBar.Suffix>
-              <Button
-                isIconOnly
-                variant="ghost"
-                aria-label={t('settings.memory.clearSelection')}
-                onClick={browser.clearSelection}
-              >
-                <Xmark />
-              </Button>
-            </ActionBar.Suffix>
-          </ActionBar>
+                <span aria-live="polite" className="text-sm text-muted">
+                  {t('settings.memory.selectedCount', { count: browser.selected.size })}
+                </span>
+              </ActionBar.Prefix>
+              <ActionBar.Content>
+                <Button
+                  variant="ghost"
+                  onClick={browser.selectAllVisible}
+                  isDisabled={browser.selected.size === browser.visible.length}
+                >
+                  {t('settings.memory.selectAll')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={async () => {
+                    const ok = await confirm({
+                      title: t('settings.memory.deleteConfirmTitle'),
+                      body: t('settings.memory.deleteConfirmBody'),
+                    })
+                    if (!ok) return
+                    await api.deleteMemories([...browser.selected])
+                    browser.clearSelection()
+                    browser.refresh()
+                  }}
+                >
+                  <TrashBin className="text-danger" />
+                  {t('settings.memory.deleteSelected')}
+                </Button>
+              </ActionBar.Content>
+              <ActionBar.Suffix>
+                <Button
+                  isIconOnly
+                  variant="ghost"
+                  aria-label={t('settings.memory.clearSelection')}
+                  onClick={browser.clearSelection}
+                >
+                  <Xmark />
+                </Button>
+              </ActionBar.Suffix>
+            </ActionBar>,
+            document.body,
+          )}
         </div>
       </div>
 

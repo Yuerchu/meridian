@@ -97,9 +97,16 @@ export function ContextGauge({
     // description, it closes when the pointer leaves on the way to what it
     // contains, and nothing in it is reachable from the keyboard.
     <Popover>
+      {/* The dial is 18px, and on a touch screen it is the only way to what the
+          turn is costing and to compacting by hand. The expanded hit area loses
+          a pixel at the bottom — the composer shell clips and the toolbar sits
+          12px off its edge, against the 13px each side needs to reach 44 — which
+          is worth saying because it is the reason this is not simply a larger
+          button: the toolbar row is 32px, and a control taller than that pushes
+          the shell open. */}
       <Popover.Trigger
         aria-label={figures}
-        className="inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="touch-hitbox inline-flex items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <ProgressCircle
           aria-hidden

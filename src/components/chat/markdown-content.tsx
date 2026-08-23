@@ -75,12 +75,39 @@ const CodeBlock: Components['code'] = ({ className, children, node, ...props }) 
       <div data-slot="markdown-code-header" className="code-block__header">
         {icon && <img src={icon} alt="" aria-hidden className="size-4 shrink-0" />}
         <span className="text-xs text-muted">{language}</span>
-        <CopyButton text={code} className="ms-auto size-6 rounded-md" />
+        {/* The only way to copy a single block — the long-press menu copies the
+            whole message. `size-7` rather than the 24px it was: `.code-block` is
+            `overflow: clip` for its corners, which cut the expanded hit area
+            back to 42px, and four more drawn pixels are what close that gap
+            without moving the button off the corner it belongs in. */}
+        <CopyButton text={code} className="touch-hitbox ms-auto size-7 rounded-md" />
       </div>
       <ShikiCode code={code} language={language} />
     </div>
   )
 }
+
+/**
+ * A table, with somewhere for it to go when it does not fit.
+ *
+ * Pro styles `.markdown table` at `width: 100%` and stops there, which is an
+ * answer only for a table narrower than its column. Past that the cells stop at
+ * their minimum content width and the table runs over the edge — and the bubble
+ * around it is `overflow-hidden`, so the columns on the end were not clipped
+ * with a scrollbar, they were gone. On a phone that is most tables of more than
+ * about three columns.
+ *
+ * The wrapper scrolls rather than the table wrapping, because a rate card
+ * squeezed to one word per cell is unreadable in a different way. `max-w-full`
+ * is what makes the scroller narrower than its content: a grid or flex child
+ * refuses to shrink past min-content without it, and the overflow simply moves
+ * up one level.
+ */
+const TableBlock: Components['table'] = ({ children, ...props }) => (
+  <div data-slot="markdown-table" className="my-3 max-w-full overflow-x-auto">
+    <table {...props}>{children}</table>
+  </div>
+)
 
 /**
  * Pro sets `list-inside`, which tucks a wrapped list item under its own marker,
@@ -130,6 +157,7 @@ export const MarkdownContent = React.memo(function MarkdownContent({
   const components = useMemo<Partial<Components>>(
     () => ({
       code: CodeBlock,
+      table: TableBlock,
       img: ({ alt, src, ...props }) => {
         if (alt?.startsWith('sticker:')) {
           return <img src={src} alt={alt.slice(8)} title={alt.slice(8)} className="emoji-sticker rounded" {...props} />

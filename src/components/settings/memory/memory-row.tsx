@@ -55,7 +55,10 @@ export function MemoryRow({ memory, checked, onToggleCheck, onChanged }: MemoryR
           <Disclosure.Trigger
             data-slot="memory-row-toggle"
             aria-label={memory.key}
-            className="inline-flex shrink-0 items-center rounded-lg p-2 text-muted transition-colors outline-none hover:bg-default hover:text-foreground focus-visible:bg-default"
+            // Shrink-wrapped for the reason above, which leaves it at about
+            // 32px — and since it is the only part of the row that opens it,
+            // the hit area is expanded rather than the button.
+            className="touch-hitbox inline-flex shrink-0 items-center rounded-lg p-2 text-muted transition-colors outline-none hover:bg-default hover:text-foreground focus-visible:bg-default"
           >
             <Disclosure.Indicator className="size-4" />
           </Disclosure.Trigger>

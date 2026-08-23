@@ -178,12 +178,26 @@ export function Composer({
                 one of those under a 32px toolbar is taller than the thing it is
                 scrolling — see the note in `index.css` on why the `scrollbar-*`
                 utilities other than this one do nothing here. */}
-            {/* `py-1 -my-1` is not spacing: `overflow-x: auto` forces
+            {/* `p-1 -m-1` is not spacing: `overflow-x: auto` forces
                 `overflow-y` to compute as auto too, so without a little slack a
                 focus ring on a control in here is clipped at the top and bottom
                 — and the negative margin gives the slack back, leaving the row
-                exactly where it was. */}
-            <PromptInput.ToolbarStart className="-my-1 min-w-0 overflow-x-auto py-1 scrollbar-none [&>*]:shrink-0">
+                exactly where it was.
+
+                The horizontal half was added later and for a second reason:
+                Pro leaves this slot no inline padding, so the first control sat
+                flush against a scroll container's edge and `touch-hitbox` had
+                nowhere to expand sideways. The `+` button came out 44px tall
+                and still 40px wide — which the harness at
+                `#playground/responsive` is what noticed. */}
+            {/* `shrink` as well as `min-w-0`, and it is the half that was
+                missing: Pro sets `flex-shrink: 0` on this slot, and a flex item
+                that may not shrink ignores `min-w-0` entirely — so the scroller
+                above was real but never narrower than its contents, and Send
+                still went over the clipped edge. Both halves of the toolbar
+                carry Pro's `shrink-0`; this is the one that gives way, because
+                the other one is Send. */}
+            <PromptInput.ToolbarStart className="-m-1 min-w-0 shrink overflow-x-auto p-1 scrollbar-none [&>*]:shrink-0">
               {toolbarStart}
             </PromptInput.ToolbarStart>
             <PromptInput.ToolbarEnd className="shrink-0">

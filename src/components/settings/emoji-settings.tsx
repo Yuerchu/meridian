@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { ArrowUpFromLine, Check, Plus, Sparkles, Sticker, TrashBin, Xmark } from '@gravity-ui/icons'
 import { Button, Chip, Disclosure, Input } from '@heroui/react'
@@ -304,6 +305,14 @@ function StickerGrid({
         header: t('settings.emoji.actionsColumn'),
         align: 'end',
         minWidth: 172,
+        // Pinned, because the table is 736px at its narrowest and a phone is
+        // not: these buttons sat at the far right of a sideways scroll about
+        // 340px long, so reviewing a sticker meant scrolling out to press
+        // Confirm and back again to read the next name. Editing a cell and
+        // scrolling the row are also the same gesture under a finger. `end`
+        // is logical, so it follows the writing direction, and the numeric
+        // `minWidth` above is what pinning requires.
+        pinned: 'end',
         cell: (emoji) => (
           <RowActions
             emoji={emoji}
@@ -631,31 +640,40 @@ export function EmojiSettings() {
         )}
       </div>
 
-      <ActionBar data-slot="emoji-bulk-bar" isOpen={selectedIds.length > 0}>
-        <ActionBar.Prefix>
-          {/* The count is the only thing that says a selection exists, so it
+      {/* Through a portal, because Pro renders `.action-bar` in place and it is
+          `position: fixed`. This pane is a query container now, and
+          `container-type` brings `contain: layout` with it — which makes the
+          container the containing block for its fixed descendants. Left here,
+          the bar would drop out of the viewport and into the pane, scrolling
+          away with the table it exists to stay clear of. */}
+      {createPortal(
+        <ActionBar data-slot="emoji-bulk-bar" isOpen={selectedIds.length > 0}>
+          <ActionBar.Prefix>
+            {/* The count is the only thing that says a selection exists, so it
               announces itself rather than only appearing. */}
-          <span aria-live="polite" className="text-sm text-muted">
-            {t('settings.emoji.selectedCount', { count: selectedIds.length })}
-          </span>
-        </ActionBar.Prefix>
-        <ActionBar.Content>
-          <Button variant="ghost" onClick={handleDeleteSelected}>
-            <TrashBin className="text-danger" />
-            {t('settings.emoji.deleteSelected')}
-          </Button>
-        </ActionBar.Content>
-        <ActionBar.Suffix>
-          <Button
-            isIconOnly
-            variant="ghost"
-            aria-label={t('settings.emoji.clearSelection')}
-            onClick={() => setSelection(null)}
-          >
-            <Xmark />
-          </Button>
-        </ActionBar.Suffix>
-      </ActionBar>
+            <span aria-live="polite" className="text-sm text-muted">
+              {t('settings.emoji.selectedCount', { count: selectedIds.length })}
+            </span>
+          </ActionBar.Prefix>
+          <ActionBar.Content>
+            <Button variant="ghost" onClick={handleDeleteSelected}>
+              <TrashBin className="text-danger" />
+              {t('settings.emoji.deleteSelected')}
+            </Button>
+          </ActionBar.Content>
+          <ActionBar.Suffix>
+            <Button
+              isIconOnly
+              variant="ghost"
+              aria-label={t('settings.emoji.clearSelection')}
+              onClick={() => setSelection(null)}
+            >
+              <Xmark />
+            </Button>
+          </ActionBar.Suffix>
+        </ActionBar>,
+        document.body,
+      )}
       {confirmDialog}
     </SettingsPane>
   )

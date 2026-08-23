@@ -90,7 +90,7 @@ function ModelPicker({
   ]
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
       <Select
         fullWidth
         aria-label={t('settings.assistant.provider')}
@@ -334,7 +334,7 @@ export function HooksSettings() {
         <p className="text-xs text-muted">{t('settings.hooks.assistantHint')}</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label htmlFor={hostId} className="block text-xs font-medium text-muted">
             {t('settings.hooks.host')}

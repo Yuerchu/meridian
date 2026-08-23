@@ -673,7 +673,7 @@ export function InputBar({
                           size="sm"
                           variant="primary"
                           aria-label={t('chat.removeSticker')}
-                          className="absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-sm"
+                          className="touch-hitbox absolute -right-2 -top-2 min-w-0 size-6 rounded-full shadow-sm"
                           onClick={onRemoveSticker}
                         >
                           <Xmark className="size-3.5" />
@@ -687,31 +687,58 @@ export function InputBar({
             hasPayload={!!pendingSticker}
             toolbarStart={
               steerable && streaming ? null : isAndroid ? (
-                // The phone keeps everything in the one sheet: there is no room
-                // beside the field for a picker, and a truncated model name is
-                // worse than one tap.
-                <MobileOptionsMenu
-                  assistants={assistants}
-                  providers={providers}
-                  currentAssistantId={currentAssistantId}
-                  currentModelId={currentModelId}
-                  currentProviderId={currentProviderId}
-                  onSelectAssistant={onSelectAssistant}
-                  onSelectModel={onSelectModel}
-                  thinkingLevel={thinkingLevel}
-                  onSelectThinkingLevel={onSelectThinkingLevel}
-                  fastMode={fastMode}
-                  onToggleFast={onToggleFast}
-                  mode={mode}
-                  onSelectMode={onSelectMode}
-                  acceptEdits={acceptEdits}
-                  onToggleAcceptEdits={onToggleAcceptEdits}
-                  capabilities={capabilities}
-                  onTakePhoto={handleTakePhoto}
-                  onPickGallery={handlePickGallery}
-                  onPickFile={handlePickFile}
-                  supportsImages={capabilities?.supports_images !== false}
-                />
+                // The phone keeps the pickers in the one sheet: there is no room
+                // beside the field for them, and a truncated model name is worse
+                // than one tap.
+                <>
+                  <MobileOptionsMenu
+                    assistants={assistants}
+                    providers={providers}
+                    currentAssistantId={currentAssistantId}
+                    currentModelId={currentModelId}
+                    currentProviderId={currentProviderId}
+                    onSelectAssistant={onSelectAssistant}
+                    onSelectModel={onSelectModel}
+                    thinkingLevel={thinkingLevel}
+                    onSelectThinkingLevel={onSelectThinkingLevel}
+                    fastMode={fastMode}
+                    onToggleFast={onToggleFast}
+                    mode={mode}
+                    onSelectMode={onSelectMode}
+                    acceptEdits={acceptEdits}
+                    onToggleAcceptEdits={onToggleAcceptEdits}
+                    capabilities={capabilities}
+                    // Same reason as the desktop branch below: a hosted prompt is
+                    // one text block, so a picture picked here would reach the
+                    // agent as JSON. Reachable from a phone in remote mode, where
+                    // the conversation is hosted on the machine at the other end.
+                    onTakePhoto={handleTakePhoto}
+                    onPickGallery={handlePickGallery}
+                    onPickFile={isHosted ? undefined : handlePickFile}
+                    supportsImages={!isHosted && capabilities?.supports_images !== false}
+                  />
+                  {/* These two are the agent's knobs and the queue's, not the
+                      sheet's, so they sit beside it here exactly as they do on a
+                      desktop. Left out of this branch, a phone attached to a
+                      hosted session — which is how remote mode reaches one — had
+                      no way to change its model, permission mode or effort at
+                      all, and no way to choose a delivery before sending. Both
+                      are already compact triggers rather than rows, so there is
+                      nothing to fold into the sheet. */}
+                  <HostedSessionKnobs options={acp.options} set={acp.set} busy={acp.busy} />
+                  {queueing && onSelectQueueDelivery && (
+                    <ToolbarSelect
+                      aria-label={t('chat.queue.mode')}
+                      placeholder={t('chat.queue.followUp')}
+                      value={queueDelivery}
+                      choices={[
+                        { value: 'follow_up', label: t('chat.queue.followUp'), hint: t('chat.queue.followUpHint') },
+                        { value: 'interject', label: t('chat.queue.interject'), hint: t('chat.queue.interjectHint') },
+                      ]}
+                      onSelect={(value) => onSelectQueueDelivery(value as QueueDelivery)}
+                    />
+                  )}
+                </>
               ) : (
                 <>
                   <ComposerMenu
