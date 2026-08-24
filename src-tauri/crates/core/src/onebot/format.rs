@@ -180,7 +180,12 @@ fn render_xml_card(data: Option<&serde_json::Value>) -> String {
     }
 }
 
-/// A media reference extracted from an image segment.
+/// Where a piece of media can be fetched from.
+///
+/// `file` is whatever the adapter called it, which is not always a name: some
+/// send `base64://…` in that field rather than a filename, and some send an
+/// http URL there instead of in `url`. Both spellings are the fetcher's problem,
+/// not the parser's — this type carries what arrived and nothing more.
 #[derive(Debug, Clone, Default)]
 pub struct MediaRef {
     pub url: Option<String>,
@@ -227,7 +232,14 @@ pub struct ParsedMessage {
     /// Merged-forward bubbles, in the same order as `FORWARD_SENTINEL` appears
     /// in `text`. Resolved by `quote::expand_forwards`, which is async.
     pub forwards: Vec<ForwardRef>,
-    pub has_record: bool,
+    /// Voice notes, in the same order as `RECORD_SENTINEL` appears in `text` —
+    /// the same rule `images` and `forwards` follow.
+    ///
+    /// This was a bare `bool` until the corpus work: the segment's `url` and
+    /// `file` were read by nobody, so every voice note that arrived had its
+    /// audio thrown away and only its transcript kept. A `bool` cannot say
+    /// where the audio is, and it cannot say that there were two of them.
+    pub records: Vec<MediaRef>,
 }
 
 impl ParsedMessage {
@@ -241,7 +253,7 @@ impl ParsedMessage {
     }
 
     pub fn has_media(&self) -> bool {
-        !self.images.is_empty() || !self.stickers.is_empty() || !self.forwards.is_empty() || self.has_record
+        !self.images.is_empty() || !self.stickers.is_empty() || !self.forwards.is_empty() || !self.records.is_empty()
     }
 }
 
@@ -401,7 +413,19 @@ pub fn parse_segments(message: &serde_json::Value, self_id: Option<i64>) -> Pars
             }
             "record" => {
                 text.push(RECORD_SENTINEL);
-                parsed.has_record = true;
+                // Read the same three fields the `image` branch reads. Until the
+                // corpus work this branch set a bool and dropped all of them,
+                // which is why a voice note's audio never survived arrival.
+                //
+                // Deliberately not reading `path`: NapCat often sends the
+                // adapter's own absolute path there, and that only means
+                // anything when the adapter shares a filesystem with this
+                // process — which `onebot.host` cannot tell us, being a listen
+                // address rather than a peer.
+                parsed.records.push(MediaRef {
+                    url: seg_str(data, "url"),
+                    file: seg_str(data, "file"),
+                });
             }
             "video" => match seg_str(data, "file").or_else(|| seg_str(data, "name")) {
                 Some(name) if !name.starts_with("http") => text.push_str(&format!("[视频: {name}]")),
@@ -1008,8 +1032,55 @@ mod tests {
         ]);
         let parsed = parse_segments(&msg, None);
         assert_eq!(parsed.text, RECORD_SENTINEL.to_string());
-        assert!(parsed.has_record);
+        assert_eq!(parsed.records.len(), 1);
         assert!(parsed.has_media());
+    }
+
+    /// The whole point of carrying `records` rather than a bool: a voice note
+    /// says where it can be fetched from, and that used to be dropped on the
+    /// floor — the transcript was kept and the audio was not.
+    #[test]
+    fn a_voice_note_keeps_where_it_can_be_fetched_from() {
+        let array = serde_json::json!([
+            {"type": "record", "data": {"file": "b.amr", "url": "https://example.com/b.amr"}}
+        ]);
+        let parsed = parse_segments(&array, None);
+        assert_eq!(parsed.records.len(), 1);
+        assert_eq!(parsed.records[0].file.as_deref(), Some("b.amr"));
+        assert_eq!(parsed.records[0].url.as_deref(), Some("https://example.com/b.amr"));
+
+        // The CQ-string wire format reaches the same branch through
+        // `cq_to_segments`, and `record` had never been tested that way.
+        let cq = serde_json::Value::String("[CQ:record,file=c.silk,url=https://example.com/c.silk]".into());
+        let parsed = parse_segments(&cq, None);
+        assert_eq!(parsed.records.len(), 1);
+        assert_eq!(parsed.records[0].file.as_deref(), Some("c.silk"));
+        assert_eq!(parsed.records[0].url.as_deref(), Some("https://example.com/c.silk"));
+    }
+
+    /// An inlined payload stays in `file` verbatim — recognising the
+    /// `base64://` prefix belongs to whoever fetches, not to the parser.
+    #[test]
+    fn an_inlined_voice_note_is_carried_verbatim() {
+        let msg = serde_json::json!([
+            {"type": "record", "data": {"file": "base64://AAAA"}}
+        ]);
+        let parsed = parse_segments(&msg, None);
+        assert_eq!(parsed.records[0].file.as_deref(), Some("base64://AAAA"));
+        assert!(parsed.records[0].url.is_none());
+    }
+
+    /// One message, two voice notes. The bool this replaced could not say so,
+    /// and a transcript covering both cannot be attributed to either.
+    #[test]
+    fn two_voice_notes_in_one_message_stay_two() {
+        let msg = serde_json::json!([
+            {"type": "record", "data": {"file": "a.amr"}},
+            {"type": "record", "data": {"file": "b.amr"}}
+        ]);
+        let parsed = parse_segments(&msg, None);
+        assert_eq!(parsed.records.len(), 2);
+        assert_eq!(parsed.text.chars().filter(|c| *c == RECORD_SENTINEL).count(), 2);
     }
 
     #[test]

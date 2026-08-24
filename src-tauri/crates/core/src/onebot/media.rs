@@ -66,7 +66,7 @@ pub async fn process_media(
 
     // Voice transcription runs concurrently with the image work below.
     let record_fut = async {
-        if parsed.has_record
+        if !parsed.records.is_empty()
             && let Some(mid) = record_message_id
         {
             return transcribe_record(state, mid).await;
