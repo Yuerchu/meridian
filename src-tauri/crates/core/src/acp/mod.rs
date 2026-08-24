@@ -13,6 +13,7 @@
 //! Desktop only. Every session is a child process, which Android does not have.
 
 pub mod approvals;
+pub mod elicitation;
 pub mod import;
 pub mod mapping;
 pub mod peer;

@@ -59,6 +59,8 @@
   "chat.tool.askUser": "提问",
   "chat.tool.askUserPlaceholder": "输入你的回答…",
   "chat.tool.askUserSubmit": "提交",
+  "chat.tool.askUserRequiredPending": "还有 {{count}} 题必须回答",
+  "chat.tool.requiredQuestion": "必填",
   "chat.tool.skip": "跳过",
   "chat.tool.skipQuestion": "跳过此题",
   "chat.tool.undo": "撤销",

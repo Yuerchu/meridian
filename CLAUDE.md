@@ -375,6 +375,96 @@ the machines that want this already have node and a signed-in `claude`.
   ACP exists. The cost: ACP offers four options and `ApprovalDecision` has two, so only the
   `_once` pair is offered — a card with two buttons must not produce a lasting decision the
   user was never shown.
+
+  That cost is visible on `ExitPlanMode`, whose four options are three *modes* plus "keep
+  planning". Only `default` — approve, and go on approving each edit by hand — is an
+  `allow_once`, so it is the one this card can offer; `acceptEdits` and `auto` are
+  `allow_always` and would be lasting decisions made on a two-button card. The plan itself
+  is `{"plan": "…"}`, which is `exit_plan`'s own shape, so `ExitPlanBlock` draws it.
+
+- **A question is not a permission, and asking one needs a capability we nearly did not
+  declare.** `AskUserQuestion` reaches an ACP client as `elicitation/create`, and the
+  adapter decides at `session/new` whether to offer the tool at all:
+  `disallowedTools = elicitationSupport.form ? [] : ["AskUserQuestion"]`. So a client that
+  says nothing about elicitation does not merely fail to draw a form — the tool is withdrawn
+  from the model, in subagents too, and the user is told that asking questions is disabled
+  in this session. `ClientCapabilities` therefore has one field set to true, and it is the
+  whole feature; `acp/elicitation.rs` is what has to exist behind it.
+
+  **Presence is the answer there, not a boolean**: each mode is typed object-or-null, so
+  `{}` means supported and `false` is not a legal value for either.
+
+  **The form is translated into `ask_user`'s shape rather than given a UI of its own**, down
+  to the "Other" box — upstream models that as a companion field beside each select, which
+  is what the card already draws beside each question. What the card sends back is keyed by
+  the *schema's* field names, which is why the approval carries the translated form and
+  `AskUserBlock` prefers it over the call's own input: answering under the announced input
+  keys every question as `undefined`.
+
+  Four things about the return trip, all of the same shape — a reply that is well formed,
+  wrong, and reported by nobody. **`const` is the answer and `title` is the drawing**: the
+  same string for `AskUserQuestion`, different for the refusal-fallback prompt, whose
+  `const`s are the CLI's wire values.
+
+  **A selection and the note beside it are one string by then, standing for two actions, and
+  the schema has a property for each.** Read as free text the pair goes only to the companion
+  — a *different* property — so a required question answered from its own list arrives
+  missing and the whole form is thrown away over an answer that was given. Both are filled:
+  the `const` in the property itself, and the whole joined string in the companion, because
+  upstream reads a companion answer as replacing the selection and the note alone would
+  report the annotation as the answer.
+
+  **And the separator joining them is a candidate boundary, not a landmark.** An option's
+  label is model-written and may contain one; cut at the first occurrence, that label picked
+  on its own is severed where no boundary was, and the prefix either names no option — the
+  required field missing again — or names a *different* one, submitting a choice nobody made.
+  Every occurrence is tried alongside the whole string and the answer is taken only where one
+  reading resolves. Which is the same rule as the multi-select below, and the same reason:
+  what separates is decided by the options, not by the punctuation.
+
+  **An accept is all or nothing, so `required` is enforced on the card.** Upstream validates
+  the whole `content` against the schema it sent, and the adapter's comment on its own guard
+  is that a malformed accept "yields empty content" — every field dropped, not the offending
+  one. So a form answered everywhere except in the one place the agent marked required loses
+  *all* of it. `required` therefore travels to the card, which withholds that question's skip
+  button and the form's submit button until it is answered. The backend's own check is a
+  backstop and could not be the mechanism: by the time it declines, the card has reported
+  success and retired the queue entry, so the other answers are gone with nothing said. A
+  required field this app cannot draw refuses the form up front, before anybody fills in the
+  rest for nothing.
+
+  **So "answered" is a question about the schema, not about whether anything was typed.** The
+  free-text box beside an enumerated question is a *different property* — the adapter's
+  companion field — so filling that in leaves the required one just as missing, and the card
+  holds a required enumerated question to a selection. Where there is no companion the box is
+  withheld entirely (`accepts_text`): the value has to be one of the `const`s, so text there
+  could only be an accept the asker rejects, and it would take a valid choice down with it,
+  since `formatAnswer` folds a note into the selection it sits beside and the pair resolves
+  to neither.
+
+  **And a joined multi-select is reversed only where it has one reading.** Naively splitting
+  is all-or-nothing, so a string it cannot take apart falls through on its own — the case
+  that does not is `"A, B"` against options `"A, B"`, `"A"` and `"B"`, where picking the two
+  produces the label of the one, confidently, as a selection nobody made. The ambiguity is a
+  property of the *answer*: refusing every field where some label contains `", "` also costs
+  `"C"`, and `"A, B, C"`, both of which have exactly one reading. So the readings are
+  enumerated and only a unique one is taken. Falling through costs `AskUserQuestion` nothing
+  — the companion answer is recorded verbatim, and it is the same string the tool's own path
+  would have joined.
+
+  **The uncertain cases decline rather than cancel, which is the inverse of the permission
+  path.** A permission that cannot be asked about must not be granted, so that one cancels.
+  A question that cannot be asked is one the agent should carry on without: `cancel` aborts
+  the tool call and takes the turn with it. That covers an elicitation with no `toolCallId` —
+  MCP-originated ones have none, and the card an answer is typed into is the tool call's own,
+  so registering it would light the attention dot for a form that exists nowhere. `cancel` is
+  kept for the one case that means it: the turn ended while the form was on screen.
+
+  **The card is registered as `ask_user` while the transcript keeps the agent's name.** Three
+  places key off the tool name — `kind: 'ask'` in the attention queue, `pendingAsks` rather
+  than `pendingApprovals`, and a toast that offers a way in instead of two buttons — and all
+  three are right for a form. The transcript says `AskUserQuestion`, because that is what ran;
+  the front end matches both names rather than translating either.
 - **`usage_update` is reported, never priced.** Those tokens are billed to whatever
   `claude` is signed in as, and this app has no rate for them. Running them through
   `agent::pricing` would produce an authoritative-looking number that is wrong; see the
@@ -410,6 +500,33 @@ the machines that want this already have node and a signed-in `claude`.
   is what lands in `messages.model_id`, so a hosted transcript names the model that
   actually answered. `claude-code` in that column is the fallback and means the adapter
   did not say — it is not a model id and nothing may treat it as one.
+- **Thinking has to be asked for, and the ask goes in `_meta`.** Recent models default
+  `thinking.display` to `omitted`, which still streams thinking blocks — signature only,
+  with empty text — and the adapter emits an `agent_thought_chunk` only for a block that
+  has text. So every one of them was dropped and a hosted turn showed no reasoning at all,
+  while a session imported from a terminal carried it on most of its rows: the CLI asks for
+  the display when a person is at the terminal, and nothing here was asking. Measured on
+  adapter 0.70.0, one prompt asked twice: zero thought chunks without, four with.
+
+  `SessionMeta` is that request, on `session/new` **and** `session/load` — a resumed
+  session builds its query through the same call, so leaving it off the load would mean
+  thinking is shown until the app is restarted and never afterwards. It travels as
+  `extraArgs`, not as the SDK's own `thinking` option, which is a tagged union: setting the
+  display through that means also declaring `adaptive` or a token budget, which decides
+  *whether* the model thinks rather than whether we are shown it. The value is `summarized`
+  because the flag takes exactly two, and the other one is what we already had.
+
+  **And because it lands as a command-line flag, it has to be droppable.** This app pins
+  neither end: `acp.command` may name any adapter, and the `claude` behind it is whatever
+  the user installed. A binary that has never heard of the flag does not ignore it — it
+  exits 1 with `error: unknown option '--…'` before running, which arrives as an ordinary
+  refusal, so insisting would mean *no hosted session at all* rather than one without
+  thinking. `ask_for_the_thinking` asks once with and once without, reports the second
+  attempt's error (the first can be blamed on a flag; an expired login cannot), and warns
+  only when dropping the options is what fixed it. Measured against the real adapter: the
+  refusal does not poison the process, and a plain `session/new` on the same one succeeds
+  immediately after. `--help` and `--version` prove nothing here — commander answers both
+  before it validates anything, which is exactly what made an unknown flag look harmless.
 - **`toolCallId` is unique per session here, and nowhere else in this app.** So the ACP
   layer is the only place that may dedupe by it — and must, because the adapter announces
   a call as soon as it knows one is coming and again once the input has streamed. The
