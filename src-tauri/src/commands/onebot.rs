@@ -37,7 +37,7 @@ pub async fn start_onebot(app: tauri::AppHandle) -> Result<(), String> {
     // Stop the previous instance before replacing it so its accept loop exits and
     // releases the listener, instead of hot-spinning on a closed shutdown channel
     // and keeping the old port/token alive. Brief pause lets the socket free up.
-    server_guard.stop();
+    server_guard.stop().await;
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
     // Recreate server with fresh config. The services are the desktop's own —
@@ -55,6 +55,6 @@ pub async fn start_onebot(app: tauri::AppHandle) -> Result<(), String> {
 pub async fn stop_onebot(app: tauri::AppHandle) -> Result<(), String> {
     let ob = app.state::<onebot::AppOneBot>();
     let server = ob.0.lock().await;
-    server.stop();
+    server.stop().await;
     Ok(())
 }

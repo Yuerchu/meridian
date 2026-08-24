@@ -37,7 +37,13 @@ pub struct SharedState {
     /// reason as `session_states`: a turn that dies has to be able to retire
     /// its waiters from `Drop`, which cannot await.
     pub pending_approvals: Arc<PendingApprovals>,
-    pub pending_api_responses: Mutex<HashMap<String, oneshot::Sender<OneBotResponse>>>,
+    /// API calls waiting on an adapter's reply, by echo.
+    ///
+    /// A `std::sync::Mutex` rather than tokio's, and that is what lets a
+    /// cancelled call clean up after itself: the waiter has to be removed from
+    /// a `Drop`, which cannot await. Every critical section here is one map
+    /// operation with nothing awaited inside.
+    pub pending_api_responses: std::sync::Mutex<HashMap<String, PendingCall>>,
     pub pending_requests: Mutex<HashMap<u32, PendingRequest>>,
     pub request_seq: AtomicU32,
     pub ws_sinks: Mutex<HashMap<u64, mpsc::Sender<String>>>,
@@ -716,6 +722,122 @@ pub enum RequestKind {
     GroupInvite,
 }
 
+/// One API call waiting on a reply.
+///
+/// `expected_conn` is what makes a call *directed*: only that connection's
+/// answer counts. `None` is the broadcast path, which has no predetermined
+/// target and takes whichever adapter answers first.
+pub struct PendingCall {
+    pub expected_conn: Option<u64>,
+    pub tx: oneshot::Sender<OneBotResponse>,
+}
+
+/// What became of a directed call.
+///
+/// Four states rather than `Result`, because "it timed out" and "it was
+/// refused" are different facts and the caller acts on them differently. In
+/// particular [`Self::DeliveryUnknown`] is **not** a failure: the frame is in
+/// the connection's queue and may well have been acted on. Reporting it as an
+/// error is how you get the same voice message sent twice.
+#[derive(Debug)]
+pub enum DirectedCallOutcome {
+    /// Never left this process. Retrying is safe.
+    NotDispatched(String),
+    /// The adapter answered and said no. Retrying will not help.
+    Refused { retcode: i32, message: String },
+    /// The adapter took it. Not a promise that anyone read it.
+    AdapterAccepted(serde_json::Value),
+    /// Queued, but no answer came back. **It may have happened.**
+    DeliveryUnknown,
+}
+
+/// Removes a waiter when its call goes away.
+///
+/// Not doable with cleanup on each return path: this future gets cancelled — a
+/// turn that was stopped, a connection that dropped — and then no return path
+/// runs at all. The keys are UUIDs, so a leaked entry is never overwritten by a
+/// later call; it just accumulates for as long as the server is up.
+struct WaiterGuard<'a> {
+    state: &'a Arc<SharedState>,
+    echo: String,
+}
+
+impl Drop for WaiterGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut pending) = self.state.pending_api_responses.lock() {
+            pending.remove(&self.echo);
+        }
+    }
+}
+
+/// Send one action to one connection and wait for that connection's answer.
+///
+/// The broadcast path below sends to *every* adapter, which is wrong for
+/// anything answering an event: two connected accounts means a second adapter
+/// that has never heard of this `message_id` answers first with an error, and
+/// the one waiter takes it. For an outbound message it is worse — both accounts
+/// send it.
+///
+/// The echo is generated here rather than taken from the caller, because it is
+/// what pairs the answer with this call and nothing else may share it.
+pub async fn call_api_to_conn(
+    state: &Arc<SharedState>,
+    conn_id: u64,
+    action: OneBotAction,
+    timeout: std::time::Duration,
+) -> DirectedCallOutcome {
+    let echo = uuid::Uuid::new_v4().to_string();
+    let json = match serde_json::to_string(&action.with_echo(echo.clone())) {
+        Ok(json) => json,
+        Err(e) => return DirectedCallOutcome::NotDispatched(e.to_string()),
+    };
+    let Some(sink) = state.ws_sinks.lock().await.get(&conn_id).cloned() else {
+        return DirectedCallOutcome::NotDispatched(format!("connection {conn_id} is gone"));
+    };
+
+    let (tx, rx) = oneshot::channel();
+    {
+        let Ok(mut pending) = state.pending_api_responses.lock() else {
+            return DirectedCallOutcome::NotDispatched("pending table poisoned".into());
+        };
+        pending.insert(
+            echo.clone(),
+            PendingCall {
+                expected_conn: Some(conn_id),
+                tx,
+            },
+        );
+    }
+    let _guard = WaiterGuard { state, echo };
+
+    // One deadline across both halves. Waiting for room in the queue is part of
+    // the call's cost, and a full queue that eventually drains must not get a
+    // fresh timeout to answer in.
+    let deadline = tokio::time::Instant::now() + timeout;
+    match tokio::time::timeout_at(deadline, sink.send(json)).await {
+        Err(_) => return DirectedCallOutcome::NotDispatched("the connection's queue stayed full".into()),
+        Ok(Err(_)) => return DirectedCallOutcome::NotDispatched("the connection closed".into()),
+        Ok(Ok(())) => {}
+    }
+
+    // Past this point the frame is queued, so nothing below may say it was not
+    // dispatched.
+    match tokio::time::timeout_at(deadline, rx).await {
+        Ok(Ok(resp)) => match resp.retcode {
+            Some(0) => DirectedCallOutcome::AdapterAccepted(resp.data.clone().unwrap_or(serde_json::Value::Null)),
+            Some(retcode) => DirectedCallOutcome::Refused {
+                retcode,
+                message: resp.complaint().unwrap_or("no reason given").to_string(),
+            },
+            // An answer with no retcode has told us nothing. It is not a
+            // refusal, and treating it as one would report a message that did
+            // go out as one that did not.
+            None => DirectedCallOutcome::DeliveryUnknown,
+        },
+        _ => DirectedCallOutcome::DeliveryUnknown,
+    }
+}
+
 /// Broadcast a pre-serialized frame to all connected clients. Senders are
 /// cloned out of the ws_sinks lock so a slow client only blocks this task
 /// (never other lock users), and a momentarily full queue backpressures rather
@@ -750,23 +872,38 @@ pub async fn call_api_with_timeout(
     let json = serde_json::to_string(&action).map_err(|e| e.to_string())?;
     let (tx, rx) = oneshot::channel();
     {
-        let mut pending = state.pending_api_responses.lock().await;
-        pending.insert(echo.clone(), tx);
+        let mut pending = state
+            .pending_api_responses
+            .lock()
+            .map_err(|_| "pending table poisoned")?;
+        pending.insert(
+            echo.clone(),
+            PendingCall {
+                // No particular adapter: this one goes to all of them and the
+                // first answer wins. See `call_api_to_conn` for why anything
+                // answering a specific event should not use this path.
+                expected_conn: None,
+                tx,
+            },
+        );
     }
+    let _guard = WaiterGuard {
+        state,
+        echo: echo.clone(),
+    };
     broadcast(state, json).await;
     match tokio::time::timeout(timeout, rx).await {
         Ok(Ok(resp)) => {
             if resp.retcode == Some(0) {
                 Ok(resp.data.unwrap_or(serde_json::Value::Null))
             } else {
-                Err(format!("API error: {:?}", resp.status))
+                Err(match resp.complaint() {
+                    Some(why) => format!("API error: {why}"),
+                    None => format!("API error: {:?}", resp.status),
+                })
             }
         }
-        _ => {
-            let mut pending = state.pending_api_responses.lock().await;
-            pending.remove(&echo);
-            Err("API call timed out".into())
-        }
+        _ => Err("API call timed out".into()),
     }
 }
 
@@ -897,7 +1034,7 @@ impl OneBotServer {
             state: Arc::new(SharedState {
                 sessions: Mutex::new(SessionManager::new(services.db.clone())),
                 pending_approvals: Arc::new(PendingApprovals::default()),
-                pending_api_responses: Mutex::new(HashMap::new()),
+                pending_api_responses: std::sync::Mutex::new(HashMap::new()),
                 pending_requests: Mutex::new(HashMap::new()),
                 // Time-seeded so ids don't restart at 1 after a relaunch, which
                 // would let a stale "同意 N" notification approve a new request.
@@ -1045,9 +1182,23 @@ impl OneBotServer {
         Ok(())
     }
 
-    pub fn stop(&self) {
+    /// Stop accepting, and close what is already connected.
+    ///
+    /// Dropping the sinks is the load-bearing half. Without it this only stopped
+    /// the accept loop: every live connection kept its reader task, kept
+    /// handling events, and kept whatever permissions it had been started with —
+    /// so a restart meant to apply new settings left the old generation running
+    /// beside the new one. For anything the user revokes, that is the difference
+    /// between a setting and a suggestion.
+    ///
+    /// Async because the sink table is behind a tokio mutex. Waiters are left to
+    /// their own timeouts rather than being cleared here: each connection's
+    /// reader retires its own on the way out.
+    pub async fn stop(&self) {
         let _ = self.shutdown_tx.send(true);
         self.running.store(false, Ordering::Relaxed);
+        let mut sinks = self.state.ws_sinks.lock().await;
+        sinks.clear();
     }
 }
 
@@ -1133,10 +1284,20 @@ async fn handle_connection(
 
         let event = match frame {
             OneBotFrame::Response(resp) => {
-                if let Some(echo) = resp.echo.as_deref() {
-                    let mut pending = state.pending_api_responses.lock().await;
-                    if let Some(tx) = pending.remove(echo) {
-                        let _ = tx.send(resp);
+                if let Some(echo) = resp.echo.as_deref()
+                    && let Ok(mut pending) = state.pending_api_responses.lock()
+                {
+                    // Compare the source connection *before* taking the waiter
+                    // out. A directed call wants one adapter's answer, and with
+                    // two accounts connected the other one answers first — with
+                    // an error, since it has never heard of the message being
+                    // asked about. Removing on the way past would leave the
+                    // real answer with nobody waiting for it.
+                    let ours = pending
+                        .get(echo)
+                        .is_some_and(|call| call.expected_conn.is_none_or(|want| want == conn_id));
+                    if ours && let Some(call) = pending.remove(echo) {
+                        let _ = call.tx.send(resp);
                     }
                 }
                 continue;
@@ -1182,6 +1343,15 @@ async fn handle_connection(
     {
         let mut sinks = state.ws_sinks.lock().await;
         sinks.remove(&conn_id);
+    }
+    // Retire what was waiting on *this* adapter. Their answers are never
+    // coming, and without this they sit until the timeout each — a call whose
+    // connection is already gone has nothing to wait for. Broadcast waiters
+    // (`expected_conn: None`) are left alone: another adapter may still answer.
+    {
+        if let Ok(mut pending) = state.pending_api_responses.lock() {
+            pending.retain(|_, call| call.expected_conn != Some(conn_id));
+        }
     }
     write_handle.abort();
 }
@@ -1872,6 +2042,30 @@ mod tests {
         assert_eq!(s.seen_message_ids.len(), SEEN_IDS_CAP);
         assert!(!s.seen_message_ids.contains(&5), "oldest ids evicted");
         assert!(s.seen_message_ids.contains(&(SEEN_IDS_CAP as i64 + 9)));
+    }
+
+    /// The dispatch rule for directed calls, as a pure decision.
+    ///
+    /// This mirrors the `ours` check in `handle_connection`: with two accounts
+    /// connected, the adapter that was *not* asked answers first — it has never
+    /// heard of the message in question, so it answers with an error. Taking the
+    /// waiter out for that answer leaves the real one with nobody waiting.
+    fn answers_us(expected_conn: Option<u64>, from_conn: u64) -> bool {
+        expected_conn.is_none_or(|want| want == from_conn)
+    }
+
+    #[test]
+    fn a_directed_call_only_takes_its_own_adapters_answer() {
+        assert!(answers_us(Some(1), 1));
+        assert!(!answers_us(Some(1), 2), "the other account must not be read as ours");
+    }
+
+    /// The broadcast path is unchanged: it has no predetermined target, so the
+    /// first answer from anywhere is the answer.
+    #[test]
+    fn a_broadcast_call_still_takes_whoever_answers() {
+        assert!(answers_us(None, 1));
+        assert!(answers_us(None, 7));
     }
 
     #[test]
