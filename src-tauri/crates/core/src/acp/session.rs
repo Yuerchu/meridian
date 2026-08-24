@@ -2503,6 +2503,7 @@ mod tests {
             compact_breakers: tokio::sync::Mutex::new(std::collections::HashMap::new()),
             voice: crate::state::VoiceState::new(),
             corpus: Arc::new(crate::voice_corpus::CorpusCoordinator::new(dir)),
+            voice_limiter: Arc::new(crate::tts::limiter::VoiceLimiter::default()),
             sleep: crate::sleep_inhibitor::AppSleepInhibitor::new(),
             events: crate::events::EventBus::new(),
             paths: crate::services::Paths {

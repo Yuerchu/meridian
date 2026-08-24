@@ -182,11 +182,34 @@ impl std::fmt::Display for CaptureScope {
 /// 它那一条"更糟——而后者恰恰是 permit 语义本来就承诺的。
 const DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
+/// 出站语音要凑齐的四项。
+///
+/// 缺任何一项，`send_voice` 就要从 `definitions()` / `ordinary_names()` /
+/// `execute()` **三处同时**消失——把一个必然失败的工具端上去，只会让模型反复
+/// 调用它。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SendReadiness {
+    pub model: String,
+    pub reference_id: String,
+    /// 不是 key 本身，是它的指纹。策略要能回答"key 换过没有"，而把密钥抄一份
+    /// 放进一个会被日志和 Debug 打印的结构里没有必要。
+    pub key_fingerprint: String,
+}
+
 #[derive(Default)]
 struct Grants {
     generation: u64,
     capture: HashSet<CaptureScope>,
     optouts: HashSet<String>,
+    /// 哪些群允许 bot 发语音。私聊默认允许，所以这里只列群。
+    ///
+    /// 与采集白名单**分开**：一个授权保存真人声纹，一个授权 bot 说话，两件事
+    /// 的风险和授权人都不一样。
+    send_groups: HashSet<CaptureScope>,
+    /// `None` = 四项没凑齐，或者总开关是关的。
+    readiness: Option<SendReadiness>,
+    /// 出站策略自己的代。与采集那一代分开：改了音色不该让采集的 permit 作废。
+    send_generation: u64,
     in_flight: HashMap<CaptureScope, usize>,
     /// 撤权/删除期间挡住新 permit。与"不在白名单里"分开，因为删除结束后白名单
     /// 可能仍然有效——屏障是临时的，撤权是永久的。
@@ -235,6 +258,40 @@ impl CorpusCoordinator {
     /// 这个进程能不能采集。
     pub fn writable(&self) -> bool {
         self.lock.is_some()
+    }
+
+    /// 换掉出站语音的策略。设置页保存和换 key 都走这里——**只监听 preference
+    /// 变化会漏掉换 key**，而 key 是四项之一。
+    pub fn apply_send_policy(&self, groups: HashSet<CaptureScope>, readiness: Option<SendReadiness>) {
+        if let Ok(mut grants) = self.grants.lock() {
+            grants.send_groups = groups;
+            grants.readiness = readiness;
+            grants.send_generation += 1;
+        }
+    }
+
+    /// 这个会话现在能不能发语音，能的话用什么配置。
+    ///
+    /// 一个函数回答，因为 `definitions()`、`ordinary_names()` 和 `execute()`
+    /// **必须用同一个判断**。只过滤第一个不构成权限边界：非 admin 的 `offered`
+    /// 来自 `ordinary_names()`，而 `execute` 只查 `Scope`——模型凭名字就能调到
+    /// 一个没被展示的工具。
+    pub fn send_policy(&self, bot_self_id: i64, session: &str) -> Option<SendReadiness> {
+        let grants = self.grants.lock().ok()?;
+        let readiness = grants.readiness.clone()?;
+        // 私聊默认允许：一个对手方，屋主就是听的人。群是一间屋子，发不发语音
+        // 是屋主的决定。
+        if session.starts_with("private:") {
+            return Some(readiness);
+        }
+        let scope = CaptureScope::new(bot_self_id, session);
+        grants.send_groups.contains(&scope).then_some(readiness)
+    }
+
+    /// 出站策略的代。请求前和派发前各读一次——**模型可能在看到 S1 的工具描述
+    /// 之后、配置已经切到 S2 时才调用**，而合成期间音色也可能被换掉。
+    pub fn send_generation(&self) -> u64 {
+        self.grants.lock().map(|g| g.send_generation).unwrap_or(0)
     }
 
     pub fn generation(&self) -> u64 {

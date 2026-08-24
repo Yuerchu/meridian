@@ -587,6 +587,10 @@ export const api = {
       ack_emoji_id: string
       balance_alert_threshold: number | null
       voice_capture_sessions: string[]
+      voice_send_enabled: boolean
+      voice_send_groups: string[]
+      voice_tts_model: string
+      voice_tts_reference_id: string
     }>('get_onebot_config'),
 
   saveOneBotConfig: (config: {
@@ -599,6 +603,10 @@ export const api = {
     ack_emoji_id: string
     balance_alert_threshold: number | null
     voice_capture_sessions: string[]
+    voice_send_enabled: boolean
+    voice_send_groups: string[]
+    voice_tts_model: string
+    voice_tts_reference_id: string
   }) => invoke<void>('save_onebot_config', { config }),
 
   // Voice corpus. Sessions are identified by a pseudonym rather than a group

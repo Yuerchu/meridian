@@ -65,6 +65,11 @@ pub struct ServicesInner {
     /// 语料目录的独占锁也挂在它上面，所以它的生命周期必须是进程，不是某一代
     /// OneBot 服务。
     pub corpus: Arc<crate::voice_corpus::CorpusCoordinator>,
+    /// 谁可以现在发一次语音。
+    ///
+    /// 在这里而不是 `QqToolExecutor` 上：那个每一轮重建，而"每轮最多一次"放在
+    /// 一个每轮重建的东西里根本约束不住任何事。
+    pub voice_limiter: Arc<crate::tts::limiter::VoiceLimiter>,
     pub sleep: AppSleepInhibitor,
     pub events: EventBus,
     pub paths: Paths,

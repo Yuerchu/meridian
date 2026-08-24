@@ -745,6 +745,15 @@ pub fn note_identity(state: &Arc<SharedState>, conn_id: u64, self_id: i64) {
     }
 }
 
+impl SharedState {
+    /// 哪条连接是这个账号的。发消息要走回它自己那条——广播会让两个号各发一遍。
+    pub fn conn_for_self_id(&self, self_id: Option<i64>) -> Option<u64> {
+        let want = self_id?;
+        let identities = self.conn_identities.lock().ok()?;
+        identities.iter().find_map(|(conn, id)| (*id == want).then_some(*conn))
+    }
+}
+
 /// 这个号是不是本地的某个 bot 账号。
 pub fn is_local_bot(state: &Arc<SharedState>, user_id: i64) -> bool {
     state
@@ -971,6 +980,26 @@ pub struct OneBotConfig {
     /// 同意。
     #[serde(default)]
     pub voice_capture_sessions: Vec<String>,
+    /// 模型可不可以用语音回复。
+    ///
+    /// **默认关**：它要一个 Fish Audio 的 key 和一个音色，没配齐就把工具端上去
+    /// 只会让模型反复调用一个必然失败的东西。
+    #[serde(default)]
+    pub voice_send_enabled: bool,
+    /// 允许 bot 发语音的群，写作 `<bot>@group:123`。
+    ///
+    /// 私聊默认就开（一个对手方，屋主就是听的人），所以这里只列群——群是一间
+    /// 屋子，发不发语音是屋主的决定。**与采集白名单是两份**：一个授权保存真人
+    /// 声纹，一个授权 bot 说话。
+    #[serde(default)]
+    pub voice_send_groups: Vec<String>,
+    /// Fish Audio 的型号。**默认空**——`s2.1-pro-free` 的官方免费期到
+    /// 2026-08-31，把它设成永久默认就是给一个到期日安排一次集体失效。
+    #[serde(default)]
+    pub voice_tts_model: String,
+    /// 固定音色。机器人的嗓音是身份，不是每次调用的选项。
+    #[serde(default)]
+    pub voice_tts_reference_id: String,
 }
 
 fn default_ack_emoji() -> String {
@@ -989,6 +1018,10 @@ impl Default for OneBotConfig {
             ack_emoji_id: default_ack_emoji(),
             balance_alert_threshold: None,
             voice_capture_sessions: vec![],
+            voice_send_enabled: false,
+            voice_send_groups: vec![],
+            voice_tts_model: String::new(),
+            voice_tts_reference_id: String::new(),
         }
     }
 }
@@ -1033,6 +1066,12 @@ pub fn load_config(pool: &DbPool) -> OneBotConfig {
         voice_capture_sessions: get("onebot.voice_capture_sessions")
             .and_then(|s| serde_json::from_str(&s).ok())
             .unwrap_or_default(),
+        voice_send_enabled: get("onebot.voice_send_enabled").as_deref() == Some("true"),
+        voice_send_groups: get("onebot.voice_send_groups")
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default(),
+        voice_tts_model: get("onebot.voice_tts_model").unwrap_or_default(),
+        voice_tts_reference_id: get("onebot.voice_tts_reference_id").unwrap_or_default(),
     }
 }
 
@@ -1072,6 +1111,16 @@ pub fn save_config(pool: &DbPool, config: &OneBotConfig) -> Result<(), String> {
             "onebot.voice_capture_sessions",
             &serde_json::to_string(&config.voice_capture_sessions).unwrap_or_default(),
         )?;
+        set(
+            "onebot.voice_send_enabled",
+            if config.voice_send_enabled { "true" } else { "false" },
+        )?;
+        set(
+            "onebot.voice_send_groups",
+            &serde_json::to_string(&config.voice_send_groups).unwrap_or_default(),
+        )?;
+        set("onebot.voice_tts_model", &config.voice_tts_model)?;
+        set("onebot.voice_tts_reference_id", &config.voice_tts_reference_id)?;
         Ok(())
     })
     .map_err(|e| e.to_string())
@@ -1103,16 +1152,61 @@ fn capture_scopes(config: &OneBotConfig) -> std::collections::HashSet<crate::voi
 pub async fn refresh_voice_policy(services: &Services, config: &OneBotConfig) {
     let scopes = capture_scopes(config);
     let pool = services.db.clone();
-    let optouts = tokio::task::spawn_blocking(move || {
-        let mut conn = get_conn(&pool).ok()?;
-        crate::db::ops::voice_corpus::optouts(&mut conn).ok()
+    let secrets = services.secrets.clone();
+    // keyring 是阻塞 IO，和 opt-out 的查询一起挪到 blocking 线程上。
+    let (optouts, key_fingerprint) = tokio::task::spawn_blocking(move || {
+        let optouts = get_conn(&pool)
+            .ok()
+            .and_then(|mut conn| crate::db::ops::voice_corpus::optouts(&mut conn).ok())
+            .unwrap_or_default();
+        (optouts, fish_key_fingerprint(&secrets))
     })
     .await
-    .ok()
-    .flatten()
     .unwrap_or_default();
+
     services.corpus.apply(scopes, optouts.into_iter().collect()).await;
+
+    // 四项凑齐才算就绪，缺一则工具从三处同时消失。key 也在其中——只监听
+    // preference 变化会漏掉换 key，而那正是让一个"配好了"的会话开始失败的
+    // 那种变更。
+    let readiness = key_fingerprint
+        .filter(|_| config.voice_send_enabled)
+        .filter(|_| !config.voice_tts_model.trim().is_empty())
+        .filter(|_| !config.voice_tts_reference_id.trim().is_empty())
+        .map(|key_fingerprint| crate::voice_corpus::SendReadiness {
+            model: config.voice_tts_model.trim().to_string(),
+            reference_id: config.voice_tts_reference_id.trim().to_string(),
+            key_fingerprint,
+        });
+    let groups = config
+        .voice_send_groups
+        .iter()
+        .filter_map(|raw| crate::voice_corpus::CaptureScope::parse(raw))
+        .collect();
+    services.corpus.apply_send_policy(groups, readiness);
 }
+
+/// key 的指纹，不是 key。策略要能回答"换过没有"，而把密钥抄进一个会被 Debug
+/// 打印的结构里没有必要。`None` = 没配。
+fn fish_key_fingerprint(secrets: &crate::secrets::SecretsManager) -> Option<String> {
+    use sha2::Digest;
+    let name = crate::secrets::SecretName::new(FISH_KEY_SECRET).ok()?;
+    let key = secrets
+        .get(&crate::secrets::SecretScope::Global, &name)
+        .ok()
+        .flatten()
+        .filter(|k| !k.trim().is_empty())?;
+    let digest = sha2::Sha256::digest(key.as_bytes());
+    Some(digest[..8].iter().fold(String::new(), |mut acc, b| {
+        use std::fmt::Write;
+        let _ = write!(acc, "{b:02x}");
+        acc
+    }))
+}
+
+/// Fish Audio 的 key 名。与 web_search 的那几个同一套命名
+/// （`SERVICE_{X}_KEY`），所以前端用现成的 `setServiceKey('FISH_AUDIO', …)`。
+pub const FISH_KEY_SECRET: &str = "SERVICE_FISH_AUDIO_KEY";
 
 /// Manages the OneBot WS server lifecycle.
 pub struct OneBotServer {

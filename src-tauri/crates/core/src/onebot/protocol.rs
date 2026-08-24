@@ -409,6 +409,14 @@ impl MessageSegment {
     pub fn image(file: &str) -> Self {
         Self::raw("image", serde_json::json!({ "file": file }))
     }
+
+    /// 一条语音消息。
+    ///
+    /// 适配器要把它转成 SILK，所以 `file` 里放什么它未必都收——`base64://` 是
+    /// 这里唯一用的形式，和贴纸的图片走同一条路。
+    pub fn record(file: &str) -> Self {
+        Self::raw("record", serde_json::json!({ "file": file }))
+    }
 }
 
 #[cfg(test)]

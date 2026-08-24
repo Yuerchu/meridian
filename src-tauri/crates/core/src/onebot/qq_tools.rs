@@ -47,6 +47,17 @@ const SPECS: &[ToolSpec] = &[
         scope: Scope::Any,
     },
     ToolSpec {
+        // 白名单已经是屋主做过的决定，再要求管理员身份等于开了功能而屋里没人
+        // 用得上。也不停下来问：每条语音都等一个 Y，这个功能就不存在了——它做
+        // 的事是往它已经在的那间屋子里发一条消息，和 send_sticker 同一类。
+        name: SEND_VOICE_TOOL,
+        admin_only: false,
+        needs_approval: false,
+        // 私聊/群的区别 `Scope` 表达不了：那是配置决定的，不是工具的性质。
+        // 由 `send_policy` 在运行时回答，三处共用同一个判断。
+        scope: Scope::Any,
+    },
+    ToolSpec {
         name: QQ_HISTORY_TOOL,
         admin_only: false,
         needs_approval: false,
@@ -150,6 +161,15 @@ pub struct QqToolExecutor {
     is_admin: bool,
     self_id: Option<i64>,
     turn_id: String,
+    /// 这个会话现在能不能发语音。在构造时算一次并存下来，而不是每处各查一次：
+    /// 三个用它的地方必须看到同一个答案，否则就会出现"工具数组里公告了、
+    /// dispatch 又拒绝"——模型会当着一屋子人反复调用它。
+    policy: SessionPolicy,
+    /// 发语音要用的配置。`None` 就是这个会话发不了。
+    send_readiness: Option<crate::voice_corpus::SendReadiness>,
+    /// 出站策略的代。合成前和派发前各比一次——模型可能在看到旧描述之后、
+    /// 配置已经换掉时才调用。
+    send_generation: u64,
 }
 
 impl QqToolExecutor {
@@ -160,17 +180,24 @@ impl QqToolExecutor {
         self_id: Option<i64>,
         turn_id: String,
     ) -> Self {
+        let send_readiness = self_id.and_then(|bot| state.services.corpus.send_policy(bot, &session.to_string()));
+        let send_generation = state.services.corpus.send_generation();
         Self {
             state,
             session,
             is_admin,
             self_id,
             turn_id,
+            policy: SessionPolicy {
+                voice_send: send_readiness.is_some(),
+            },
+            send_readiness,
+            send_generation,
         }
     }
 
     fn available(&self, spec: &ToolSpec) -> bool {
-        spec_available(spec, &self.session.kind, self.is_admin)
+        spec_available(spec, &self.session.kind, self.is_admin, self.policy)
     }
 
     pub fn owns(&self, name: &str) -> bool {
@@ -205,7 +232,7 @@ impl QqToolExecutor {
         let shown = shown_as_admin(&self.session.kind, self.is_admin);
         SPECS
             .iter()
-            .filter(|s| spec_available(s, &self.session.kind, shown))
+            .filter(|s| spec_available(s, &self.session.kind, shown, self.policy))
             .map(|s| self.definition_for(s.name))
             .collect()
     }
@@ -224,7 +251,7 @@ impl QqToolExecutor {
     pub fn ordinary_names(&self) -> Vec<String> {
         SPECS
             .iter()
-            .filter(|s| spec_available(s, &self.session.kind, false))
+            .filter(|s| spec_available(s, &self.session.kind, false, self.policy))
             .map(|s| s.name.to_string())
             .collect()
     }
@@ -243,6 +270,25 @@ impl QqToolExecutor {
                     "properties": {
                         "query": { "type": "string", "description": "可选的名称或标签筛选" }
                     }
+                }),
+            ),
+            SEND_VOICE_TOOL => (
+                format!(
+                    "把一段话合成为语音，作为独立消息发到当前 QQ 会话。每个助手回合最多尝试一次，可同时回复文字。\
+                     文本 {} 字以内；句首可用 [{}] 这类标记控制语气，只认这些词，其他会被拒绝。\
+                     链接、代码、表格不要放进来。",
+                    crate::tts::MAX_TTS_CHARS,
+                    crate::tts::CUES.join("]、[")
+                ),
+                serde_json::json!({
+                    "type": "object",
+                    "properties": {
+                        "text": {
+                            "type": "string",
+                            "description": format!("要念出来的话，{} 字以内", crate::tts::MAX_TTS_CHARS),
+                        }
+                    },
+                    "required": ["text"]
                 }),
             ),
             "send_sticker" => (
@@ -414,6 +460,7 @@ impl QqToolExecutor {
         match name {
             "list_stickers" => self.list_stickers(&args).await,
             "send_sticker" => self.send_sticker(&args).await,
+            SEND_VOICE_TOOL => self.send_voice(&args).await,
             QQ_HISTORY_TOOL => self.get_chat_history(&args).await,
             "qq_get_group_info" => self.get_group_info().await,
             "qq_get_group_member_list" => self.get_group_member_list().await,
@@ -554,6 +601,114 @@ impl QqToolExecutor {
         })
         .await
         .map_err(|e| e.to_string())?
+    }
+
+    /// 把一段话念出来，发到这个会话。
+    ///
+    /// 时序是三段串行，各有各的预算，**合成必须在 `call_api` 那 10 秒之外**：
+    /// 读 keyring（阻塞 IO，`spawn_blocking`）→ `tts::synthesize`（自己的超时）
+    /// → base64 + 发送（`call_api_to_conn` 的超时）。把合成塞进最后那一段，
+    /// 长文本上会随机超时。
+    ///
+    /// 失败一律 `Err`，模型照常用文字回答——那是已经有的路径，不花一分钱。
+    /// **工具内部绝不自己补发一条文字消息**：模型自己的回复本来就要来，补发就是
+    /// 两条。
+    async fn send_voice(&self, args: &serde_json::Value) -> Result<String, String> {
+        let text = args
+            .get("text")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or("missing required parameter: text")?;
+
+        let Some(readiness) = self.send_readiness.clone() else {
+            return Err("voice replies are not configured for this session".into());
+        };
+
+        // 额度在**尝试**时就占掉，不等结果——这一次要不要花钱，在请求发出去的
+        // 那一刻就定了。permit 一直持到消息成功入队为止。
+        let _permit = self.state.services.voice_limiter.try_acquire(
+            &self.session.to_string(),
+            &self.turn_id,
+            crate::util::now_ms(),
+        )?;
+
+        // 请求前校验一次：模型可能在看到旧描述之后、配置已经换掉时才调用。
+        self.check_send_generation()?;
+
+        let secrets = self.state.services.secrets.clone();
+        let api_key = tokio::task::spawn_blocking(move || {
+            let name = crate::secrets::SecretName::new(super::FISH_KEY_SECRET).ok()?;
+            secrets
+                .get(&crate::secrets::SecretScope::Global, &name)
+                .ok()
+                .flatten()
+                .filter(|k| !k.trim().is_empty())
+        })
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or("the Fish Audio API key is not set")?;
+
+        let speech = crate::tts::synthesize(
+            &api_key,
+            crate::tts::SpeechRequest {
+                text,
+                model: &readiness.model,
+                reference_id: &readiness.reference_id,
+            },
+        )
+        .await?;
+
+        // 派发前再校验一次：合成期间音色也可能被换掉，而那时念出来的已经不是
+        // 用户配置的那个嗓音了。
+        self.check_send_generation()?;
+
+        let encoded = {
+            use base64::Engine;
+            base64::engine::general_purpose::STANDARD.encode(&speech.bytes)
+        };
+        let segment = MessageSegment::record(&format!("base64://{encoded}"));
+        let action = match self.session.kind {
+            SessionKind::Group => OneBotAction::send_group_msg(self.session.id, vec![segment]),
+            SessionKind::Private => OneBotAction::send_private_msg(self.session.id, vec![segment]),
+        };
+
+        // 定向而不是广播：两个账号连着时，广播会让两个号各发一遍同一条语音。
+        let conn_id = self.state.conn_for_self_id(self.self_id);
+        let outcome = match conn_id {
+            Some(conn) => super::call_api_to_conn(&self.state, conn, action, std::time::Duration::from_secs(20)).await,
+            None => super::DirectedCallOutcome::NotDispatched("no adapter connection for this account".into()),
+        };
+
+        let chars = text.chars().count();
+        match outcome {
+            super::DirectedCallOutcome::AdapterAccepted(_) => {
+                tracing::info!(chars, "voice reply sent");
+                Ok(serde_json::json!({ "sent": true, "chars": chars }).to_string())
+            }
+            // **不是错误**：帧已经在连接队列里，很可能已经发出去了。报成错误
+            // 会让模型再发一遍同一句话。
+            super::DirectedCallOutcome::DeliveryUnknown => {
+                tracing::warn!(chars, "voice reply dispatched but unacknowledged");
+                Ok(serde_json::json!({
+                    "sent": "unknown",
+                    "note": "The voice message was dispatched but not acknowledged. It may well have arrived — do not send it again.",
+                })
+                .to_string())
+            }
+            super::DirectedCallOutcome::Refused { retcode, message } => {
+                Err(format!("the adapter refused the voice message ({retcode}): {message}"))
+            }
+            super::DirectedCallOutcome::NotDispatched(why) => Err(format!("could not send the voice message: {why}")),
+        }
+    }
+
+    /// 出站配置有没有在这一轮中间被换掉。
+    fn check_send_generation(&self) -> Result<(), String> {
+        if self.state.services.corpus.send_generation() == self.send_generation {
+            return Ok(());
+        }
+        Err("the voice settings changed while this was being prepared; try again".into())
     }
 
     async fn send_sticker(&self, args: &serde_json::Value) -> Result<String, String> {
@@ -849,8 +1004,28 @@ pub(super) fn exposes_full_toolset(kind: &SessionKind, is_admin: bool) -> bool {
 /// before it runs.
 pub(super) const OPEN_REGISTRY_TOOLS: &[&str] = &["web_search"];
 
-fn spec_available(spec: &ToolSpec, kind: &SessionKind, is_admin: bool) -> bool {
+pub(super) const SEND_VOICE_TOOL: &str = "send_voice";
+
+/// 超出 `Scope` 之外、由会话本身决定的可用性。
+///
+/// `Scope` 是工具的性质（`qq_set_group_ban` 在私聊里永远没意义）；"这间屋子准
+/// 不准发语音"是屋子的属性，而且还取决于四项配置有没有配齐。两者分开是因为
+/// 放进 const 数组就会有人顺手按发言人去算它，而那正是"一个群一套工具数组"
+/// 要挡的事。
+///
+/// **必须三处共用**：`definitions()`（模型看到什么）、`ordinary_names()`
+/// （非 admin 的 `offered`）、`available()`（`execute` 的前置检查）。只改第一处
+/// 不构成权限边界——`execute` 只查 `Scope`，模型凭名字就能调到。
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct SessionPolicy {
+    pub voice_send: bool,
+}
+
+fn spec_available(spec: &ToolSpec, kind: &SessionKind, is_admin: bool, policy: SessionPolicy) -> bool {
     if spec.admin_only && !is_admin {
+        return false;
+    }
+    if spec.name == SEND_VOICE_TOOL && !policy.voice_send {
         return false;
     }
     match spec.scope {
@@ -868,7 +1043,9 @@ fn spec_available(spec: &ToolSpec, kind: &SessionKind, is_admin: bool) -> bool {
 /// saying what it is. `send_sticker` is the only addition — it stops for nobody
 /// and it still lands in somebody's chat window.
 fn has_effects(name: &str) -> bool {
-    name == "send_sticker" || SPECS.iter().any(|s| s.name == name && s.needs_approval)
+    // `send_sticker` 与 `send_voice` 是仅有的两个加法——它们不为任何人停下，
+    // 而结果都落在别人的聊天窗口里。
+    name == "send_sticker" || name == SEND_VOICE_TOOL || SPECS.iter().any(|s| s.name == name && s.needs_approval)
 }
 
 /// Fold that property into a spec's parameters.
@@ -968,7 +1145,7 @@ mod tests {
     fn names(kind: SessionKind, is_admin: bool) -> Vec<&'static str> {
         SPECS
             .iter()
-            .filter(|s| spec_available(s, &kind, is_admin))
+            .filter(|s| spec_available(s, &kind, is_admin, SessionPolicy { voice_send: true }))
             .map(|s| s.name)
             .collect()
     }
@@ -1073,6 +1250,41 @@ mod tests {
     /// and one on every query is output tokens spent restating an argument the
     /// card is showing anyway.
     #[test]
+    /// 白名单关掉时，`send_voice` 从**两边同时**消失。
+    ///
+    /// 只从一边拿掉就是让模型拿着一个会被 dispatch 拒绝的工具，在一屋子人面前
+    /// 反复调用——`definitions()` 决定它看见什么，`ordinary_names()` 决定非
+    /// admin 的 `offered`，而 `execute` 只查 `Scope`。
+    #[test]
+    fn a_session_without_voice_neither_shows_nor_offers_it() {
+        let off = SessionPolicy { voice_send: false };
+        let on = SessionPolicy { voice_send: true };
+        let spec = SPECS.iter().find(|s| s.name == SEND_VOICE_TOOL).unwrap();
+
+        for kind in [SessionKind::Group, SessionKind::Private] {
+            for is_admin in [true, false] {
+                assert!(
+                    !spec_available(spec, &kind, is_admin, off),
+                    "关掉时对任何人、任何会话都不可用"
+                );
+                assert!(spec_available(spec, &kind, is_admin, on));
+            }
+        }
+    }
+
+    /// 而且策略是**屋子的属性，不是人的**：同一个群里两个不同身份的发言人
+    /// 看到的是同一套。否则工具数组会随说话人变，把 prompt cache 前缀甩掉。
+    #[test]
+    fn the_voice_policy_does_not_depend_on_who_spoke() {
+        let policy = SessionPolicy { voice_send: true };
+        let spec = SPECS.iter().find(|s| s.name == SEND_VOICE_TOOL).unwrap();
+        assert_eq!(
+            spec_available(spec, &SessionKind::Group, true, policy),
+            spec_available(spec, &SessionKind::Group, false, policy),
+        );
+    }
+
+    #[test]
     fn only_a_call_with_effects_is_asked_to_describe_itself() {
         let takes_one = |name: &str| {
             let params = with_description(name, serde_json::json!({ "type": "object", "properties": {} }));
@@ -1085,6 +1297,7 @@ mod tests {
         // Sends a message and never asks first, which is why it is named in
         // `has_effects` rather than derived from `needs_approval`.
         assert!(takes_one("send_sticker"));
+        assert!(takes_one(SEND_VOICE_TOOL), "同理：不问人，但落在别人的聊天窗口里");
 
         assert!(!takes_one(QQ_HISTORY_TOOL));
         assert!(!takes_one("qq_get_group_member_list"));
