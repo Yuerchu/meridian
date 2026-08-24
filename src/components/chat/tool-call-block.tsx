@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { diffLines } from 'diff'
@@ -60,6 +60,44 @@ interface AskQuestion {
   question: string
   options?: AskOption[]
   multi_select?: boolean
+  /** The asker will not take an answer without this one.
+   *
+   *  Only a hosted agent's elicitation sets it — this app's own `ask_user` has
+   *  no such notion, and every question there may be skipped. It is enforced
+   *  here because here is the only place it can be: the backend's own check is
+   *  a backstop that declines the *whole* form, by which point the card has
+   *  said the answers were sent. */
+  required?: boolean
+  /** Whether anything typed for this question can actually be sent.
+   *
+   *  False for a question whose answer must be one of its options and which has
+   *  no companion "Other" field behind it: there the schema takes a `const`,
+   *  and free text is an accept the asker rejects outright — which discards the
+   *  whole form rather than that one field. Absent means yes, which is what
+   *  every `ask_user` question is. */
+  accepts_text?: boolean
+}
+
+/** The questions, from whichever of the two sources has ids on it.
+ *
+ *  A hosted agent's question arrives twice: the ACP adapter announces the tool
+ *  call carrying `AskUserQuestion`'s own input, and the form to draw comes with
+ *  the approval, which is the one the backend has keyed to the fields it will
+ *  read the answers back out of. Falling back to the call's own input would
+ *  render the same questions under no ids at all — one `undefined` key shared
+ *  by every question, and an answer the agent cannot match to anything.
+ *
+ *  Index-derived ids are the last resort rather than the plan: they happen to
+ *  line up with what the adapter names its fields, and a silent reliance on
+ *  that is exactly the kind of coupling that breaks without saying so. */
+function askQuestionsFrom(json: string): AskQuestion[] {
+  try {
+    const parsed = JSON.parse(json)
+    const questions = Array.isArray(parsed?.questions) ? parsed.questions : []
+    return questions.map((q: AskQuestion, i: number) => (q?.id ? q : { ...q, id: `question_${i}` }))
+  } catch {
+    return []
+  }
 }
 
 interface QuestionAnswer {
@@ -71,11 +109,35 @@ function emptyAnswer(q: AskQuestion): QuestionAnswer {
   return { selected: q.multi_select ? [] : null, notes: '' }
 }
 
-function hasContent(a: QuestionAnswer | undefined): boolean {
+/** Whether a typed answer is offered for this question at all. */
+function acceptsText(q: AskQuestion): boolean {
+  return q.accepts_text !== false
+}
+
+function isSelected(a: QuestionAnswer | undefined): boolean {
   if (!a) return false
-  if (a.notes.trim()) return true
   if (Array.isArray(a.selected)) return a.selected.length > 0
   return a.selected !== null
+}
+
+/** Whether anything at all has been given for this question — which is what
+ *  decides that the form is worth submitting, not that it may be. */
+function hasContent(q: AskQuestion, a: QuestionAnswer | undefined): boolean {
+  if (!a) return false
+  return (acceptsText(q) && a.notes.trim() !== '') || isSelected(a)
+}
+
+/** Whether this question is answered in the way its asker will accept.
+ *
+ *  Only `required` questions are held to it, and for an enumerated one the bar
+ *  is a *selection*: the free-text box beside it is a different property in the
+ *  schema, so an accept that fills it in instead is still missing the required
+ *  one — and a required field missing is the whole form discarded. Typing into
+ *  it therefore reads as content (the form has been started) without reading as
+ *  an answer (it cannot be sent). */
+function hasRequiredAnswer(q: AskQuestion, a: QuestionAnswer | undefined): boolean {
+  if (q.options && q.options.length > 0) return isSelected(a)
+  return hasContent(q, a)
 }
 
 function formatAnswer(a: QuestionAnswer | undefined, skipped: boolean): string {
@@ -133,11 +195,23 @@ function QuestionBlock({
   return (
     <div className="space-y-1.5">
       <div className="flex items-start justify-between gap-2">
-        <div className="text-sm text-foreground font-medium">{q.question}</div>
-        <Button variant="ghost" onClick={() => onSkip(q.id)} className="text-xs text-muted shrink-0 mt-0.5">
-          <ForwardStep className="w-3.5 h-3.5" />
-          {t('chat.tool.skipQuestion')}
-        </Button>
+        <div className="text-sm text-foreground font-medium">
+          {q.question}
+          {/* The mark and the withheld skip button are one decision: an asker
+              that will not take an answer without this one leaves nothing to
+              skip to. */}
+          {q.required && (
+            <span aria-label={t('chat.tool.requiredQuestion')} className="ml-1 text-danger">
+              *
+            </span>
+          )}
+        </div>
+        {!q.required && (
+          <Button variant="ghost" onClick={() => onSkip(q.id)} className="text-xs text-muted shrink-0 mt-0.5">
+            <ForwardStep className="w-3.5 h-3.5" />
+            {t('chat.tool.skipQuestion')}
+          </Button>
+        )}
       </div>
 
       {hasOptions && (
@@ -185,15 +259,21 @@ function QuestionBlock({
         </div>
       )}
 
-      <Input
-        fullWidth
-        type="text"
-        value={value.notes}
-        onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
-        placeholder={hasOptions ? t('chat.tool.notesPlaceholder') : t('chat.tool.askUserPlaceholder')}
-        className="text-xs"
-        autoFocus={!hasOptions}
-      />
+      {/* Withheld where nothing could carry what was typed. A box that discards
+          what is put in it is worse than no box, and this one would take the
+          answer with it: `formatAnswer` folds a note into the selection, so a
+          note beside a valid choice is what makes the pair unplaceable. */}
+      {acceptsText(q) && (
+        <Input
+          fullWidth
+          type="text"
+          value={value.notes}
+          onChange={(e) => onChange(q.id, { ...value, notes: e.target.value })}
+          placeholder={hasOptions ? t('chat.tool.notesPlaceholder') : t('chat.tool.askUserPlaceholder')}
+          className="text-xs"
+          autoFocus={!hasOptions}
+        />
+      )}
     </div>
   )
 }
@@ -206,14 +286,17 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
   const markOrphaned = useConversationStore((s) => s.markApprovalOrphaned)
   const retireAnswered = useConversationStore((s) => s.retireAnsweredApproval)
 
-  const questions = useMemo<AskQuestion[]>(() => {
-    try {
-      const parsed = JSON.parse(data.arguments)
-      return parsed.questions || []
-    } catch {
-      return []
-    }
-  }, [data.arguments])
+  // Held rather than read live, because answering retires the queue entry this
+  // comes out of: without the ref the form would swap back to the call's own
+  // input the instant send succeeded, taking every selection with it.
+  const pending = useConversationStore((s) => (data.approval_id ? s.attention[data.approval_id]?.arguments : undefined))
+  const form = useRef<string | undefined>(undefined)
+  if (pending) form.current = pending
+
+  const questions = useMemo<AskQuestion[]>(
+    () => askQuestionsFrom(pending ?? form.current ?? data.arguments),
+    [pending, data.arguments],
+  )
 
   const getAnswer = (id: string, q: AskQuestion) => answers[id] ?? emptyAnswer(q)
 
@@ -262,7 +345,14 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
     )
   }, [answers, skippedSet, questions, data.approval_id, markOrphaned, retireAnswered])
 
-  const canSubmit = questions.some((q) => skippedSet.has(q.id) || hasContent(answers[q.id]))
+  // A question the asker will not do without has to be answered before this
+  // form can go, and the check belongs here rather than only on the way out:
+  // the backend declines the *whole* payload over one missing required answer,
+  // and by then the card has already reported success and retired the queue
+  // entry, so every other answer is lost without a word.
+  const unanswered = questions.filter((q) => q.required && !hasRequiredAnswer(q, answers[q.id]))
+  const canSubmit =
+    unanswered.length === 0 && questions.some((q) => skippedSet.has(q.id) || hasContent(q, answers[q.id]))
 
   return (
     <div className="my-3 overflow-hidden rounded-2xl bg-surface text-sm shadow-surface ring-1 ring-border ring-inset">
@@ -287,11 +377,19 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
               onUnskip={handleUnskip}
             />
           ))}
-          <div className="pt-1">
+          <div className="flex items-center gap-2 pt-1">
             <Button onClick={handleSubmit} isDisabled={!canSubmit || sending}>
               <PaperPlane className="w-3.5 h-3.5" />
               {t('chat.tool.askUserSubmit')}
             </Button>
+            {/* A disabled button with no reason beside it reads as broken. Only
+                once something has been filled in, so it is a correction rather
+                than a demand made before anyone has started. */}
+            {unanswered.length > 0 && questions.some((q) => hasContent(q, answers[q.id])) && (
+              <span role="status" className="text-xs text-muted">
+                {t('chat.tool.askUserRequiredPending', { count: unanswered.length })}
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -1549,7 +1647,11 @@ export function ToolCallBlock({
 
   const fileDiffs = useMemo(() => toolFileDiffs(data.tool_name, parsedArgs), [data.tool_name, parsedArgs])
 
-  if (data.tool_name === 'ask_user') {
+  // A hosted agent's questions and plans are the same two cards under different
+  // names. Matching the name rather than translating it upstream keeps the
+  // transcript honest about which tool actually ran — the card is a rendering
+  // decision, and `AskUserQuestion` is what the agent called.
+  if (data.tool_name === 'ask_user' || data.tool_name === 'AskUserQuestion') {
     return <AskUserBlock data={data} />
   }
 
@@ -1564,7 +1666,7 @@ export function ToolCallBlock({
     }
   }
 
-  if (data.tool_name === 'exit_plan') {
+  if (data.tool_name === 'exit_plan' || data.tool_name === 'ExitPlanMode') {
     const plan = typeof parsedArgs.plan === 'string' ? parsedArgs.plan.trim() : ''
     if (plan) {
       return <ExitPlanBlock data={data} plan={plan} />

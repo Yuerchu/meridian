@@ -4,6 +4,7 @@ import { ToolCallBlock } from './tool-call-block'
 import { expectCollapsed, expectExpanded } from '@/test/disclosure'
 import i18n from '@/i18n'
 import { api } from '@/api'
+import { useConversationStore } from '@/stores/conversation-store'
 import type { ToolCallDisplay } from '@/types'
 
 // The sources open in the user's browser, not in the WebView.
@@ -466,5 +467,209 @@ describe('the summary lines beside the tool name', () => {
     render(<ToolCallBlock data={toolCall('Bash', { command: 'ls' }, 'completed')} />)
     expect(screen.getByText(i18n.t('chat.tool.name.Bash'))).toBeInTheDocument()
     expect(screen.queryByText('Bash')).toBeNull()
+  })
+})
+
+/**
+ * The two interactive tools a hosted Claude Code session has, which are this
+ * app's own two under different names. Drawn as ordinary tool cards they are
+ * both unusable: the plan arrives as a wall of escaped JSON, and the questions
+ * as arguments with no way to answer them.
+ */
+describe('a hosted agent asks with the same cards', () => {
+  beforeAll(async () => {
+    await i18n.changeLanguage('en')
+  })
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useConversationStore.setState({ attention: {}, attentionOrder: [] })
+  })
+
+  function waiting(approvalId: string, args: unknown) {
+    useConversationStore.setState({
+      attention: {
+        [approvalId]: {
+          conversationId: 'conv-1',
+          approvalId,
+          providerCallId: 'call-1',
+          messageId: 'msg-1',
+          toolName: 'ask_user',
+          arguments: JSON.stringify(args),
+          kind: 'ask' as const,
+        },
+      },
+      attentionOrder: [approvalId],
+    })
+  }
+
+  it('draws ExitPlanMode as the plan card and not as its arguments', () => {
+    const { container } = render(<ToolCallBlock data={toolCall('ExitPlanMode', { plan: '# Do the thing' })} />)
+    expect(container.querySelector('[data-slot="exit-plan"]')).not.toBeNull()
+    // The heading is rendered markdown; the raw key never appears.
+    expect(screen.getByText('Do the thing')).toBeVisible()
+    expect(screen.queryByText(/"plan"/)).toBeNull()
+  })
+
+  it('draws AskUserQuestion as the ask form', () => {
+    waiting('appr-1', { questions: [{ id: 'question_0', question: 'Which one?', options: [{ label: 'A' }] }] })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [{ question: 'Which one?' }] })} />)
+    expect(screen.getByText('Which one?')).toBeVisible()
+    expect(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') })).toBeVisible()
+  })
+
+  /**
+   * The question arrives twice — once as the call the adapter announced, once
+   * as the form the approval carried — and only the second has the field ids
+   * the agent will read its answers back out of. Answering under the first
+   * sends `{"undefined": "A"}`, which parses, reaches the agent, and answers
+   * nothing: every question collapses onto one key that matches no field.
+   *
+   * The id here is deliberately not `question_0`. That is what the index
+   * fallback would have produced, so a fixture using it passes whether or not
+   * the approval's form is read at all — and an MCP server's schema names its
+   * fields whatever it likes.
+   */
+  it('answers under the ids the approval carried, not the ones the call announced', async () => {
+    waiting('appr-1', {
+      questions: [{ id: 'scope', question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }],
+    })
+    render(
+      <ToolCallBlock
+        data={toolCall('AskUserQuestion', {
+          questions: [{ question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }],
+        })}
+      />,
+    )
+
+    await userEvent.click(screen.getByRole('button', { name: /^A/ }))
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
+
+    expect(api.respondToAsk).toHaveBeenCalledWith('appr-1', JSON.stringify({ scope: 'A' }))
+  })
+
+  /**
+   * A question the asker will not do without cannot be skipped past, and the
+   * form will not go until it is answered.
+   *
+   * The card is the only place this can be enforced. The backend's own check
+   * declines the *whole* payload over one missing required answer — upstream
+   * validates `content` against the schema and a malformed accept yields empty
+   * content, so there is no partial delivery — and by then the card has
+   * reported success and retired the queue entry. Every other answer on the
+   * form would be gone with nothing said about it.
+   */
+  it('will not submit a form missing an answer the asker requires', async () => {
+    waiting('appr-1', {
+      questions: [
+        { id: 'branch', question: 'Which branch?', required: true },
+        { id: 'note', question: 'Anything else?' },
+      ],
+    })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
+
+    const submit = () => screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') })
+    // There is no way past it: the optional question can be skipped, the
+    // required one is not offered a skip at all.
+    expect(screen.getAllByRole('button', { name: i18n.t('chat.tool.skipQuestion') })).toHaveLength(1)
+
+    // The questions render in order, so the boxes do too.
+    const [branch, note] = screen.getAllByRole('textbox')
+    await userEvent.type(note, 'be careful')
+    expect(submit()).toBeDisabled()
+    expect(api.respondToAsk).not.toHaveBeenCalled()
+
+    // Answering it releases the form, and the optional answer goes with it
+    // rather than being lost to a decline.
+    await userEvent.type(branch, 'main')
+    await userEvent.click(submit())
+    expect(api.respondToAsk).toHaveBeenCalledWith('appr-1', JSON.stringify({ branch: 'main', note: 'be careful' }))
+  })
+
+  /**
+   * A required question with options has to be answered *from them*, and the
+   * box beside it does not count.
+   *
+   * That box is a separate property in the schema (the adapter's companion
+   * "Other" field), so an accept filling it in is still missing the required
+   * one — and a missing required field is not that answer dropped, it is the
+   * whole form dropped. Treating typed text as an answer here therefore lets
+   * the user past a check that then fails silently on the far side, after the
+   * card has said the form was sent.
+   */
+  it.each([
+    ['single-select', false],
+    ['multi-select', true],
+  ])('holds a required %s question to a selection, not to what was typed beside it', async (_kind, multi) => {
+    waiting('appr-1', {
+      questions: [
+        {
+          id: 'scope',
+          question: 'Which one?',
+          required: true,
+          multi_select: multi,
+          options: [{ label: 'A' }, { label: 'B' }],
+        },
+      ],
+    })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
+    const submit = () => screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') })
+
+    await userEvent.type(screen.getByRole('textbox'), 'something else entirely')
+    expect(submit()).toBeDisabled()
+    expect(api.respondToAsk).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByRole('button', { name: /^A/ }))
+    await userEvent.click(submit())
+    // One string for two actions, which is what `formatAnswer` sends. That it
+    // is *accepted* rather than declined is the other half of this and cannot
+    // be asserted here — `elicitation.rs` takes it apart into the two
+    // properties the schema has, under
+    // `a_required_question_answered_with_a_note_beside_it_is_still_accepted`.
+    expect(api.respondToAsk).toHaveBeenCalledWith(
+      'appr-1',
+      JSON.stringify({ scope: 'A\n\nNotes: something else entirely' }),
+    )
+  })
+
+  /**
+   * And where nothing could carry typed text, there is no box to type into. A
+   * question whose answer must be one of its `const`s and which has no
+   * companion field behind it cannot send free text at all — and the text would
+   * not merely go nowhere, since `formatAnswer` folds a note into the selection
+   * it sits beside, turning a valid choice into an unplaceable string.
+   */
+  it('offers no free-text box for a question that cannot carry one', () => {
+    waiting('appr-1', {
+      questions: [
+        { id: 'choice', question: 'Which one?', accepts_text: false, options: [{ label: 'A' }, { label: 'B' }] },
+      ],
+    })
+    render(<ToolCallBlock data={toolCall('AskUserQuestion', { questions: [] })} />)
+    expect(screen.getByRole('button', { name: /^A/ })).toBeVisible()
+    expect(screen.queryByRole('textbox')).toBeNull()
+  })
+
+  /**
+   * And the form does not swap back the moment it is answered. Sending retires
+   * the queue entry it was read from, so a component reading the store live
+   * would re-render from the call's own input — losing every selection while
+   * the card is still on screen waiting for the result.
+   */
+  it('keeps the form it was rendered from after the answer retires the queue entry', async () => {
+    waiting('appr-1', {
+      questions: [{ id: 'scope', question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }],
+    })
+    const data = toolCall('AskUserQuestion', {
+      questions: [{ question: 'Which one?', options: [{ label: 'A' }, { label: 'B' }] }],
+    })
+    const { rerender } = render(<ToolCallBlock data={data} />)
+
+    await userEvent.click(screen.getByRole('button', { name: /^A/ }))
+    await userEvent.click(screen.getByRole('button', { name: i18n.t('chat.tool.askUserSubmit') }))
+
+    useConversationStore.setState({ attention: {}, attentionOrder: [] })
+    rerender(<ToolCallBlock data={data} />)
+    expect(screen.getByText('Which one?')).toBeVisible()
   })
 })

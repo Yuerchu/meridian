@@ -275,8 +275,18 @@ type BlockUnit =
 
 // These render standalone blocks and never join a group: ask_user and
 // web_search are interactive, and a checklist folded into "3 tool calls" would
-// hide the very thing it exists to show.
-const UNGROUPABLE_TOOLS = new Set(['ask_user', 'web_search', 'update_todos', 'enter_plan', 'exit_plan'])
+// hide the very thing it exists to show. A hosted agent's two interactive tools
+// are the same cards under the names Claude Code gives them, and a form folded
+// into "3 tool calls" is a question nobody can answer.
+const UNGROUPABLE_TOOLS = new Set([
+  'ask_user',
+  'AskUserQuestion',
+  'web_search',
+  'update_todos',
+  'enter_plan',
+  'exit_plan',
+  'ExitPlanMode',
+])
 
 function isGroupableToolCall(block: ContentBlock): block is Extract<ContentBlock, { type: 'tool_call' }> {
   return block.type === 'tool_call' && !UNGROUPABLE_TOOLS.has(block.data.tool_name)

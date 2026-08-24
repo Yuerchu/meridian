@@ -1386,7 +1386,7 @@ mod tests {
                     serde_json::to_value(protocol::LoadSessionParams {
                         session_id: "sess-7".into(),
                         cwd: ".".into(),
-                        mcp_servers: Vec::new(),
+                        ..Default::default()
                     })
                     .unwrap(),
                 )
@@ -1413,7 +1413,7 @@ mod tests {
                     serde_json::to_value(protocol::LoadSessionParams {
                         session_id: "sess-gone".into(),
                         cwd: ".".into(),
-                        mcp_servers: Vec::new(),
+                        ..Default::default()
                     })
                     .unwrap(),
                 )
@@ -1435,7 +1435,7 @@ mod tests {
                     serde_json::to_value(protocol::LoadSessionParams {
                         session_id: "sess-terse".into(),
                         cwd: ".".into(),
-                        mcp_servers: Vec::new(),
+                        ..Default::default()
                     })
                     .unwrap(),
                 ),
@@ -1550,7 +1550,7 @@ mod tests {
                 serde_json::to_value(protocol::LoadSessionParams {
                     session_id: "sess-7".into(),
                     cwd: ".".into(),
-                    mcp_servers: Vec::new(),
+                    ..Default::default()
                 })
                 .unwrap(),
             )

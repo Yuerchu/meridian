@@ -194,20 +194,27 @@ pub struct InitializeParams {
 
 /// What this client can do for the agent.
 ///
-/// All false for now, and written out rather than omitted so the choice is
-/// visible: the spec says an omitted capability is unsupported, which makes an
-/// accidental omission and a deliberate refusal look identical in the source.
+/// Written out rather than omitted so the choice is visible: the spec says an
+/// omitted capability is unsupported, which makes an accidental omission and a
+/// deliberate refusal look identical in the source.
 ///
 /// Turning `fs` on means implementing `fs/read_text_file` and
 /// `fs/write_text_file` as inbound requests, after which every file the agent
 /// touches goes through this app — which is what a changes panel and a
 /// `FileAccess` policy would need. Until then the agent does its own IO and we
 /// only hear about it in `tool_call` notifications.
+///
+/// `elicitation.form` is the one that is on, and it is not optional polish: the
+/// adapter reads it at `session/new` and puts `AskUserQuestion` in
+/// `disallowedTools` when it is absent, so a client that stays silent here does
+/// not merely miss a form — it takes the agent's ability to ask a question away
+/// and tells it the tool is disabled. See [`super::elicitation`].
 #[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClientCapabilities {
     pub fs: FsCapabilities,
     pub terminal: bool,
+    pub elicitation: ElicitationCapabilities,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -216,6 +223,38 @@ pub struct FsCapabilities {
     pub read_text_file: bool,
     pub write_text_file: bool,
 }
+
+/// Which elicitation modes the agent may use on this client.
+///
+/// **Presence is the answer, not a boolean.** Each mode is typed
+/// object-or-null, so `{}` means supported and `null` means not; `false` is not
+/// a legal value for either and a validating agent would reject the whole
+/// `initialize`. That is why these are `Option<Supported>` rather than the
+/// `bool`s their neighbours above use.
+///
+/// `url` stays off: it hands the user a link to open and then waits for an
+/// `elicitation/complete` notification to say they are done, which is a second
+/// mechanism with a second failure mode for something no Claude Code flow
+/// currently asks for.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ElicitationCapabilities {
+    pub form: Option<Supported>,
+    pub url: Option<Supported>,
+}
+
+impl Default for ElicitationCapabilities {
+    fn default() -> Self {
+        Self {
+            form: Some(Supported {}),
+            url: None,
+        }
+    }
+}
+
+/// The empty object a supported capability is spelled as.
+#[derive(Debug, Serialize)]
+pub struct Supported {}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Implementation {
@@ -316,7 +355,7 @@ pub struct AuthMethod {
 
 // ----------------------------------------------------------------- session
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewSessionParams {
     pub cwd: String,
@@ -325,6 +364,57 @@ pub struct NewSessionParams {
     /// loop, and handing them to another agent would give it a second, unowned
     /// route to the same side effects.
     pub mcp_servers: Vec<serde_json::Value>,
+    /// `None` is the second attempt — see [`SessionMeta`] for why there is one.
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<SessionMeta>,
+}
+
+/// What a session-opening request asks the adapter to pass through to the SDK.
+///
+/// `_meta.claudeCode.options` is spread into the Claude Agent SDK's `query()`
+/// options, by `session/new` and by `session/load` alike — the load hands its
+/// own `_meta` on through `getOrCreateSession` — and it is the only route a
+/// client has to a knob ACP itself has no field for.
+///
+/// **Thinking is one of those, and without this a hosted turn shows none of
+/// it.** Recent models default `thinking.display` to `omitted`, which streams
+/// signature-only thinking blocks whose text is empty; the adapter emits an
+/// `agent_thought_chunk` only for a block that has text, so every one of them is
+/// dropped and nothing reaches `Effect::Reasoning`. Measured against adapter
+/// 0.70.0, one prompt asked twice: without this, zero thought chunks; with it,
+/// four. It is also why an imported transcript has reasoning on most of its rows
+/// while every row a live hosted turn wrote has none — the CLI asks for the
+/// display when a person is at the terminal, and nobody was asking here.
+///
+/// **Sent as `extraArgs` rather than as the SDK's own `thinking` option**, which
+/// is a tagged union: setting the display through it means also declaring
+/// `adaptive` or a fixed token budget, which decides *whether* the model thinks
+/// — a different question from whether we are shown it, and one the model and
+/// the user's own settings should keep. This adds `--thinking-display
+/// summarized` to the child's command line and nothing else (measured by
+/// capturing its argv through `CLAUDE_CODE_EXECUTABLE`).
+///
+/// **And that is exactly why the ask has to be droppable.** An `extraArgs` entry
+/// reaches the CLI as a flag verbatim, and a `claude` that has never heard of it
+/// does not shrug: measured, an unknown flag exits 1 with `error: unknown option
+/// '--…'` before the process does anything, which the SDK reports as `Claude
+/// Code process exited with code 1` and the adapter turns into an ordinary
+/// request error. The CLI is not this app's to pin — it is whatever the user
+/// installed, and `acp.command` may point at any adapter at all. So both
+/// openers try once with this and once without (see `Session::handshake` and
+/// `Session::load`), because a visible thought process is worth less than the
+/// session it would otherwise cost. `--help` and `--version` are no evidence
+/// here: commander answers both before it validates anything, which is what made
+/// an unknown flag look harmless.
+#[derive(Debug, Serialize)]
+pub struct SessionMeta(serde_json::Value);
+
+impl Default for SessionMeta {
+    fn default() -> Self {
+        Self(serde_json::json!({
+            "claudeCode": { "options": { "extraArgs": { "thinking-display": "summarized" } } }
+        }))
+    }
 }
 
 /// Pick a session up where it was left, instead of starting one.
@@ -338,13 +428,19 @@ pub struct NewSessionParams {
 /// SDK actually recovered is its answer, so the reply is what gets written down
 /// rather than the request. Ask with a stale id often enough and the stored one
 /// stops naming anything that exists.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LoadSessionParams {
     pub session_id: String,
     /// Must be absolute — the agent refuses a relative one outright.
     pub cwd: String,
     pub mcp_servers: Vec<serde_json::Value>,
+    /// The same options a new session carries, for the same reason: a resumed
+    /// session builds its query through the same call, so leaving it off here
+    /// would mean thinking is shown until the app is restarted and never after.
+    /// `None` is the second attempt, as above.
+    #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
+    pub meta: Option<SessionMeta>,
 }
 
 /// Everything the agent has on disk, optionally narrowed to one directory.
@@ -914,6 +1010,167 @@ pub fn permission_cancelled() -> serde_json::Value {
     serde_json::json!({ "outcome": { "outcome": "cancelled" } })
 }
 
+// ------------------------------------------------------------- elicitation
+
+/// An `elicitation/create` request: the agent asking for typed input.
+///
+/// Only `form` is handled here — see [`ElicitationCapabilities`] for why `url`
+/// is not — but `mode` is read rather than assumed, because the union has a
+/// third open-ended variant and a `url` request answered as if it were a form
+/// would return content for a question nobody was shown.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateElicitationParams {
+    #[serde(default)]
+    pub mode: Option<String>,
+    /// Absent for a request-scoped elicitation, which nothing in this client
+    /// currently produces.
+    #[serde(default)]
+    pub session_id: Option<String>,
+    /// Present when the question belongs to a tool call the transcript already
+    /// has a card for — `AskUserQuestion` sets it, an MCP server's own
+    /// elicitation does not.
+    #[serde(default)]
+    pub tool_call_id: Option<String>,
+    #[serde(default)]
+    pub message: Option<String>,
+    #[serde(default)]
+    pub requested_schema: Option<ElicitationSchema>,
+}
+
+/// The form to render, as a JSON Schema object.
+#[derive(Debug, Default, Deserialize)]
+pub struct ElicitationSchema {
+    #[serde(default)]
+    pub properties: Properties,
+    #[serde(default)]
+    pub required: Vec<String>,
+}
+
+/// The form's fields, in the order they arrived.
+///
+/// **Order is meaning here** — it is the order the questions are asked in — and
+/// neither obvious container keeps it. `serde_json::Map` is a `BTreeMap` unless
+/// `preserve_order` is on, which sorts `question_10` between `question_1` and
+/// `question_2`; turning that feature on is not a local change, since it
+/// re-keys every JSON value this crate produces, including the request bodies a
+/// provider caches on. `IndexMap` would do it and is a dependency for one field.
+/// So the order is simply kept, and lookups are a scan over a handful of
+/// entries.
+#[derive(Debug, Default)]
+pub struct Properties(pub Vec<(String, PropertySchema)>);
+
+impl<'de> Deserialize<'de> for Properties {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct InOrder;
+
+        impl<'de> serde::de::Visitor<'de> for InOrder {
+            type Value = Properties;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("an object of elicitation form fields")
+            }
+
+            fn visit_map<M: serde::de::MapAccess<'de>>(self, mut map: M) -> Result<Properties, M::Error> {
+                let mut fields = Vec::with_capacity(map.size_hint().unwrap_or(0));
+                while let Some(entry) = map.next_entry()? {
+                    fields.push(entry);
+                }
+                Ok(Properties(fields))
+            }
+        }
+
+        deserializer.deserialize_map(InOrder)
+    }
+}
+
+/// One field of the form.
+///
+/// Everything is optional because this shape is shared by three producers with
+/// nothing in common: the adapter's own `AskUserQuestion` bridge, its
+/// refusal-fallback consent prompt, and whatever JSON Schema an MCP server
+/// happened to send. A field this client cannot classify is skipped rather than
+/// guessed at.
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PropertySchema {
+    #[serde(default, rename = "type")]
+    pub ty: Option<String>,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    /// A single-select field's choices.
+    #[serde(default)]
+    pub one_of: Vec<EnumOption>,
+    /// A multi-select field's choices live one level down, under `items.anyOf`.
+    #[serde(default)]
+    pub items: Option<ItemsSchema>,
+    #[serde(default, rename = "_meta")]
+    pub meta: Option<PropertyMeta>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ItemsSchema {
+    #[serde(default)]
+    pub any_of: Vec<EnumOption>,
+}
+
+/// One choice. `const` is the value to send back; `title` is what to draw.
+///
+/// The two are the same string for `AskUserQuestion`, whose options *are* their
+/// labels, and different for the refusal-fallback prompt, whose `const`s are
+/// the CLI's own wire values. Sending a title back where a `const` was asked
+/// for is how a form silently answers something other than what was picked.
+#[derive(Debug, Deserialize)]
+pub struct EnumOption {
+    #[serde(rename = "const")]
+    pub value: serde_json::Value,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+/// The `_meta` extensions this client reads off a field.
+#[derive(Debug, Default, Deserialize)]
+pub struct PropertyMeta {
+    /// Marks a free-text field as the "Other" box belonging to a select field
+    /// rather than a question of its own. The key is deliberately un-namespaced
+    /// upstream so that Codex, Claude and any other `AskUserQuestion` bridge
+    /// can be recognised by one marker.
+    #[serde(default, rename = "_askUserQuestionCustomAnswer")]
+    pub custom_answer: Option<CustomAnswerMeta>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CustomAnswerMeta {
+    /// The field this box belongs to.
+    #[serde(default)]
+    pub question_id: Option<String>,
+}
+
+/// The reply to `elicitation/create` when the user filled the form in.
+pub fn elicitation_accepted(content: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({ "action": "accept", "content": content })
+}
+
+/// The user chose not to answer, and the agent should carry on without it.
+///
+/// Distinct from [`elicitation_cancelled`] on the agent's side: the adapter
+/// reads a decline as "the user skipped these questions" and lets the tool call
+/// complete with empty answers, while a cancel aborts the call outright.
+pub fn elicitation_declined() -> serde_json::Value {
+    serde_json::json!({ "action": "decline" })
+}
+
+/// Nobody could be asked, or the turn ended while the form was on screen.
+pub fn elicitation_cancelled() -> serde_json::Value {
+    serde_json::json!({ "action": "cancel" })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -995,6 +1252,65 @@ mod tests {
         .unwrap();
         assert_eq!(generous.session_id.as_deref(), Some("sess-7-resumed"));
         assert_eq!(generous.config_options.len(), 1);
+    }
+
+    /// **Both ways of opening a session ask to be shown the thinking**, and the
+    /// spelling is the whole of it: `_meta` with the underscore, `claudeCode`
+    /// in camel case, and an `extraArgs` key that becomes a command-line flag
+    /// verbatim. Every one of those is a place a rename would go unnoticed —
+    /// the adapter reads the path with optional chaining, so a wrong one is not
+    /// an error, it is a session that quietly shows no reasoning again.
+    ///
+    /// A load carries it for a reason of its own: a resumed session builds its
+    /// query through the same call, so leaving it off there would mean thinking
+    /// is shown until the app is restarted and never afterwards.
+    ///
+    /// **And the second attempt has to leave no trace of the first.** A `claude`
+    /// that does not know the flag exits before it runs, so the retry is the
+    /// only thing standing between an old binary and no hosted session at all —
+    /// which means `_meta` must be *absent* rather than `null`, since an
+    /// explicit null is a member the adapter would read.
+    #[test]
+    fn a_session_asks_for_the_thinking_to_be_displayed_and_can_stop_asking() {
+        let expected = serde_json::json!({
+            "claudeCode": { "options": { "extraArgs": { "thinking-display": "summarized" } } }
+        });
+
+        let new = serde_json::to_value(NewSessionParams {
+            cwd: "/work".into(),
+            mcp_servers: Vec::new(),
+            meta: Some(SessionMeta::default()),
+        })
+        .unwrap();
+        assert_eq!(new["_meta"], expected);
+
+        let load = serde_json::to_value(LoadSessionParams {
+            session_id: "sess-7".into(),
+            cwd: "/work".into(),
+            meta: Some(SessionMeta::default()),
+            ..Default::default()
+        })
+        .unwrap();
+        assert_eq!(load["_meta"], expected);
+
+        for retry in [
+            serde_json::to_value(NewSessionParams {
+                cwd: "/work".into(),
+                ..Default::default()
+            })
+            .unwrap(),
+            serde_json::to_value(LoadSessionParams {
+                session_id: "sess-7".into(),
+                cwd: "/work".into(),
+                ..Default::default()
+            })
+            .unwrap(),
+        ] {
+            assert!(
+                retry.get("_meta").is_none(),
+                "the retry must not send the member at all, not even as null: {retry}"
+            );
+        }
     }
 
     /// An error response is still a response: the pipe is fine, the agent said

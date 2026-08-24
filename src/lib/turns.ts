@@ -152,7 +152,7 @@ export interface BuildTurnsContext {
 /** Tools that block the turn while they wait for a response. `update_todos` is
  *  deliberately absent: the persistent TodoBar already shows that checklist, so
  *  surfacing it again outside the collapsed region is noise. */
-const INTERACTIVE_TOOLS = new Set(['ask_user', 'enter_plan', 'exit_plan'])
+const INTERACTIVE_TOOLS = new Set(['ask_user', 'AskUserQuestion', 'enter_plan', 'exit_plan', 'ExitPlanMode'])
 
 function blocksOf(message: Message): ContentBlock[] {
   if (message._blocks && message._blocks.length > 0) return message._blocks

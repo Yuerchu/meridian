@@ -38,7 +38,7 @@ use super::mapping::{self, Effect};
 use super::peer::{Handler, Peer, PeerError};
 use super::process::AdapterProcess;
 use super::protocol::{self, SessionNotification};
-use super::{AcpConfig, approvals};
+use super::{AcpConfig, approvals, elicitation};
 
 /// What this app calls itself when it introduces itself to the adapter.
 const CLIENT_NAME: &str = "meridian";
@@ -887,6 +887,21 @@ impl Shared {
             Err(e) => tracing::warn!(error = %e, "could not store the agent's plan (the write panicked)"),
         }
     }
+
+    /// Where an inbound question can draw its card, if a turn is running.
+    ///
+    /// Both things the agent can stop to ask about — a permission and an
+    /// elicitation — need the same three facts and neither may hold the lock
+    /// across the wait that follows, which is minutes long.
+    fn turn_context(&self) -> Option<approvals::TurnContext> {
+        self.turn.lock().ok().and_then(|t| {
+            t.as_ref().map(|t| approvals::TurnContext {
+                turn_id: t.turn_id.clone(),
+                assistant_message_id: t.row.message_id.clone(),
+                cancel: t.cancel.clone(),
+            })
+        })
+    }
 }
 
 #[async_trait::async_trait]
@@ -906,14 +921,7 @@ impl Handler for Shared {
         match method.as_str() {
             "session/request_permission" => {
                 let params = serde_json::from_value(params).map_err(|e| e.to_string())?;
-                let context = self.turn.lock().ok().and_then(|t| {
-                    t.as_ref().map(|t| approvals::TurnContext {
-                        turn_id: t.turn_id.clone(),
-                        assistant_message_id: t.row.message_id.clone(),
-                        cancel: t.cancel.clone(),
-                    })
-                });
-                match context {
+                match self.turn_context() {
                     Some(context) => Ok(approvals::ask(&self.services, &self.conversation_id, &context, params).await),
                     // A question with no turn behind it has nowhere to draw a
                     // card and nobody to answer it. Refusing beats hanging the
@@ -921,6 +929,26 @@ impl Handler for Shared {
                     None => {
                         tracing::warn!("an ACP permission request arrived with no turn running");
                         Ok(protocol::permission_cancelled())
+                    }
+                }
+            }
+            // The agent asking a question rather than for permission. Drawn as
+            // this app's own `ask_user` form — see `elicitation`, which also
+            // explains why declaring the capability behind this is what makes
+            // `AskUserQuestion` exist at all.
+            "elicitation/create" => {
+                let params = serde_json::from_value(params).map_err(|e| e.to_string())?;
+                match self.turn_context() {
+                    Some(context) => {
+                        Ok(elicitation::ask(&self.services, &self.conversation_id, &context, params).await)
+                    }
+                    // A question nobody can be shown is one the agent should
+                    // carry on without, rather than one it should abandon the
+                    // turn over — the opposite of the arm above, and
+                    // `elicitation` says why.
+                    None => {
+                        tracing::warn!("an ACP elicitation arrived with no turn running");
+                        Ok(protocol::elicitation_declined())
                     }
                 }
             }
@@ -1300,10 +1328,12 @@ impl AcpSession {
                 "initialize",
                 serde_json::to_value(protocol::InitializeParams {
                     protocol_version: protocol::PROTOCOL_VERSION,
-                    // Everything false. Turning `fs` on means answering
-                    // `fs/read_text_file` and `fs/write_text_file`, which is
-                    // the step that would put every file the agent touches
-                    // through this app.
+                    // `fs` and `terminal` off, form elicitation on. Turning `fs`
+                    // on means answering `fs/read_text_file` and
+                    // `fs/write_text_file`, which is the step that would put
+                    // every file the agent touches through this app. The
+                    // elicitation half is not a nicety: the adapter withdraws
+                    // `AskUserQuestion` from the model when it is missing.
                     client_capabilities: protocol::ClientCapabilities::default(),
                     client_info: protocol::Implementation {
                         name: CLIENT_NAME.into(),
@@ -1377,17 +1407,48 @@ impl AcpSession {
         // non-empty list as "not authenticated" would refuse every working
         // setup. If it really is unauthenticated, `session/new` says so and
         // that message reaches the user unchanged.
-        let session = peer
+        // Asked for once, given up on rather than insisted on. `_meta` carries
+        // the thinking display down to a CLI this app does not pin, and a
+        // `claude` that has never heard of the flag refuses it *before it runs*
+        // — so without this second attempt one old binary means no hosted
+        // session at all. See [`protocol::SessionMeta`] for the measurement.
+        //
+        // Inlined rather than calling `ask_for_the_thinking` because an
+        // `AsyncFn` closure that captures `&peer` and `&shared` produces a
+        // future whose `Send` bound Tauri's `#[tauri::command]` macro cannot
+        // satisfy for arbitrary lifetimes.
+        let new = |meta| protocol::NewSessionParams {
+            cwd: cwd.to_string(),
+            mcp_servers: Vec::new(),
+            meta,
+        };
+        let session = match peer
             .request(
                 "session/new",
-                serde_json::to_value(protocol::NewSessionParams {
-                    cwd: cwd.to_string(),
-                    mcp_servers: Vec::new(),
-                })
-                .map_err(|e| e.to_string())?,
+                serde_json::to_value(new(Some(protocol::SessionMeta::default()))).map_err(|e| e.to_string())?,
             )
             .await
-            .map_err(|e| describe(peer, e))?;
+            .map_err(|e| describe(peer, e))
+        {
+            Ok(s) => s,
+            Err(refused) => {
+                let plain = peer
+                    .request(
+                        "session/new",
+                        serde_json::to_value(new(None)).map_err(|e| e.to_string())?,
+                    )
+                    .await
+                    .map_err(|e| describe(peer, e));
+                if plain.is_ok() {
+                    tracing::warn!(
+                        error = %refused,
+                        conversation_id = %shared.conversation_id,
+                        "the agent refused the session options; opened without them, so no thinking will be shown"
+                    );
+                }
+                plain?
+            }
+        };
         let session: protocol::NewSessionResult = serde_json::from_value(session).map_err(|e| e.to_string())?;
         // Known from the moment the session exists, so the first row of the
         // first turn records the real model rather than the placeholder, and
@@ -1415,25 +1476,12 @@ impl AcpSession {
     /// what keeps an import from announcing knobs for a conversation whose row
     /// has not been written yet.
     async fn load(peer: &Arc<Peer>, shared: &Shared, cwd: &str, resume: &str, keep: bool) -> Result<String, String> {
-        let params = serde_json::to_value(protocol::LoadSessionParams {
-            session_id: resume.to_string(),
-            cwd: cwd.to_string(),
-            mcp_servers: Vec::new(),
-        })
-        .map_err(|e| e.to_string())?;
-
-        shared.set_replay(if keep {
-            Replay::Collect(Vec::new())
-        } else {
-            Replay::Discard
-        });
-        let answered = peer.request("session/load", params).await;
-        peer.drain_notifications().await;
-
-        // The gate has to come down on the failure path as well. A load that
-        // fails falls back to `session/new` on the same session, and one still
-        // set to discard would swallow that session's first turn — every chunk
-        // of it read as more recital.
+        // One attempt, gate and all. Raised *inside* rather than around the two,
+        // because a refused attempt can have recited before it failed and
+        // `Replay::Collect` starts each one with an empty recital — a retry
+        // appending to the first one's leavings would import the same rows
+        // twice.
+        //
         // `LoadSessionResult`, not `NewSessionResult`: the schema's load
         // response has no `sessionId` and no required field at all, so `{}` and
         // `null` are both conforming answers. Parsed as a new session they
@@ -1441,10 +1489,42 @@ impl AcpSession {
         // fallback and lose the agent's memory of the conversation silently.
         // `null` reaches here as `Value::Null`, which deserialises to the
         // default rather than an error.
-        let session = match answered
-            .map_err(|e| describe(peer, e))
-            .and_then(protocol::LoadSessionResult::read)
-        {
+        // Same retry shape as `handshake`, inlined for the same `Send` reason.
+        let load_params = |meta| protocol::LoadSessionParams {
+            session_id: resume.to_string(),
+            cwd: cwd.to_string(),
+            mcp_servers: Vec::new(),
+            meta,
+        };
+        let load_once = async |meta| {
+            let params = serde_json::to_value(load_params(meta)).map_err(|e| e.to_string())?;
+            shared.set_replay(if keep {
+                Replay::Collect(Vec::new())
+            } else {
+                Replay::Discard
+            });
+            let answered = peer.request("session/load", params).await;
+            peer.drain_notifications().await;
+            answered
+                .map_err(|e| describe(peer, e))
+                .and_then(protocol::LoadSessionResult::read)
+        };
+        let loaded = match load_once(Some(protocol::SessionMeta::default())).await {
+            Ok(session) => Ok(session),
+            Err(refused) => {
+                let plain = load_once(None).await;
+                if plain.is_ok() {
+                    tracing::warn!(
+                        error = %refused,
+                        conversation_id = %shared.conversation_id,
+                        "the agent refused the session options; resumed without them, so no thinking will be shown"
+                    );
+                }
+                plain
+            }
+        };
+
+        let session = match loaded {
             Ok(session) => session,
             // The gate has to come down on the failure path as well. A load
             // that fails falls back to `session/new` on the same session, and
@@ -2143,6 +2223,36 @@ mod tests {
     use super::*;
     use crate::acp::protocol::{ConfigOptionValue, SessionConfigOption};
 
+    /// The retry logic that `handshake` and `load` inline. Extracted here so
+    /// the contract — one attempt with, one without, the right error reported —
+    /// can be stated once and tested without a child process or a `Send` bound.
+    ///
+    /// **Not used outside `#[cfg(test)]`.** An `AsyncFn` closure that captures
+    /// references produces a future whose `Send` bound Tauri's macro cannot
+    /// satisfy for arbitrary lifetimes, so the two call sites inline this
+    /// shape instead. Moving it here keeps it testable without infecting the
+    /// shell crate's compilation.
+    async fn ask_for_the_thinking<T>(
+        conversation_id: &str,
+        what_happened: &str,
+        open: impl AsyncFn(Option<protocol::SessionMeta>) -> Result<T, String>,
+    ) -> Result<T, String> {
+        match open(Some(protocol::SessionMeta::default())).await {
+            Ok(session) => Ok(session),
+            Err(refused) => {
+                let plain = open(None).await;
+                if plain.is_ok() {
+                    tracing::warn!(
+                        error = %refused,
+                        conversation_id = %conversation_id,
+                        "the agent refused the session options; {what_happened} without them, so no thinking will be shown"
+                    );
+                }
+                plain
+            }
+        }
+    }
+
     fn select(id: &str, current: &str, values: &[&str]) -> SessionConfigOption {
         SessionConfigOption {
             id: id.into(),
@@ -2184,6 +2294,69 @@ mod tests {
             "and what it may be set to survives: {:?}",
             held[0].options
         );
+    }
+
+    /// **An agent that cannot take the options still gets a session.**
+    ///
+    /// The ask reaches the user's own `claude` as a command-line flag and this
+    /// app pins neither the CLI nor the adapter: an unknown option is not
+    /// ignored, it exits 1 before the process runs. Insisted on, that would be
+    /// no hosted session at all rather than a session without visible thinking —
+    /// on every conversation, for a setting nobody chose.
+    #[tokio::test]
+    async fn a_session_that_cannot_take_the_options_is_opened_without_them() {
+        let asked = std::sync::Mutex::new(Vec::new());
+        let record = |meta: &Option<protocol::SessionMeta>| asked.lock().unwrap().push(meta.is_some());
+
+        // The old binary: everything is fine except the flag.
+        let opened = ask_for_the_thinking("c1", "opened", async |meta| {
+            record(&meta);
+            match meta {
+                Some(_) => Err("unknown option '--thinking-display'".to_string()),
+                None => Ok("sess-1"),
+            }
+        })
+        .await;
+        assert_eq!(opened, Ok("sess-1"), "the session is worth more than the display");
+        assert_eq!(
+            &*asked.lock().unwrap(),
+            &[true, false],
+            "asked once with the options and once without, in that order"
+        );
+
+        // The ordinary one: asked once, and never asked again.
+        asked.lock().unwrap().clear();
+        let opened = ask_for_the_thinking("c1", "opened", async |meta| {
+            record(&meta);
+            Ok::<_, String>("sess-2")
+        })
+        .await;
+        assert_eq!(opened, Ok("sess-2"));
+        assert_eq!(
+            &*asked.lock().unwrap(),
+            &[true],
+            "a working agent must not pay for a second round trip"
+        );
+
+        // Not signed in, which has nothing to do with the options. The retry
+        // happens anyway — there is no way to tell the two apart from here —
+        // but what the user is shown is the failure of the attempt that asked
+        // for nothing extra, not one that can be blamed on a flag.
+        asked.lock().unwrap().clear();
+        let refused = ask_for_the_thinking("c1", "opened", async |meta| {
+            record(&meta);
+            Err::<&str, _>(match meta {
+                Some(_) => "unknown option '--thinking-display'".to_string(),
+                None => "not authenticated".to_string(),
+            })
+        })
+        .await;
+        assert_eq!(
+            refused,
+            Err("not authenticated".to_string()),
+            "the real reason survives, rather than being masked by the options"
+        );
+        assert_eq!(&*asked.lock().unwrap(), &[true, false], "and it stops at two");
     }
 
     /// When an update *does* restate them, it wins — an agent that re-derives
