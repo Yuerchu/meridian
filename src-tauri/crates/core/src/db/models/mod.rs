@@ -25,3 +25,4 @@ pub mod tool_category;
 pub mod tool_permission;
 pub mod tool_preset;
 pub mod turn;
+pub mod voice_corpus;
