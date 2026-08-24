@@ -696,6 +696,8 @@
   "settings.onebot.assistantHint": "Which assistant to use for bot conversations",
   "settings.onebot.adminUsers": "Admin QQ Numbers",
   "settings.onebot.adminUsersHint": "Comma-separated. Admins can approve tool calls via chat.",
+  "settings.onebot.voiceCapture": "Keep voice notes from",
+  "settings.onebot.voiceCaptureHint": "Off everywhere unless listed. Written <bot>@group:123 or <bot>@private:456, comma-separated. These are recordings of real people — tell the group. Removing an entry takes effect at once, but does not delete what was already kept.",
   "settings.onebot.ackEmoji": "Group Ack Emoji ID",
   "settings.onebot.ackEmojiHint": "QQ emoji ID used to react to group messages (76 = thumbs up). Empty or 0 disables.",
   "settings.onebot.balanceAlert": "Low balance alert",

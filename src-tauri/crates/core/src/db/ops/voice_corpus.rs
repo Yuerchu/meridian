@@ -388,6 +388,77 @@ pub fn tombstones(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>> {
         .load(conn)
 }
 
+/// 启动时还停在 `pending` 的行。
+///
+/// 只有拿到了语料目录独占锁才该调用这个：那时"还有 owner 活着"是不可能的，
+/// 剩下的必然是上一次进程死掉留下的。
+pub fn stale_pending(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>> {
+    voice_blobs::table
+        .filter(voice_blobs::status.eq(blob_status::PENDING))
+        .select(VoiceBlob::as_select())
+        .load(conn)
+}
+
+/// 已发布但没有任何 clip 指着它。
+///
+/// 采集在写完 blob 与写 clip 之间死掉就会留下一个。文件占着地方，而没有任何
+/// 一次采集会承认它。
+pub fn orphaned(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>> {
+    voice_blobs::table
+        .filter(voice_blobs::status.eq(blob_status::READY))
+        .filter(diesel::dsl::not(diesel::dsl::exists(
+            voice_clips::table.filter(voice_clips::blob_id.eq(voice_blobs::id)),
+        )))
+        .select(VoiceBlob::as_select())
+        .load(conn)
+}
+
+/// 所有已发布的行，用来对着磁盘核一遍。
+pub fn all_ready(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>> {
+    voice_blobs::table
+        .filter(voice_blobs::status.eq(blob_status::READY))
+        .select(VoiceBlob::as_select())
+        .load(conn)
+}
+
+/// 一个会话攒了多少语料。给设置页看的，所以**不含转写、不含发送者**——
+/// 它回答的是"占了多少地方、要不要清"，不是"里面说了什么"。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SessionTotal {
+    pub bot_self_id: i64,
+    pub source_type: String,
+    pub source_id: String,
+    pub clips: i64,
+    pub bytes: i64,
+    pub last_captured_at: i64,
+}
+
+/// 在 Rust 里聚合而不是写 `GROUP BY`：语料按会话最多几千行，一次读完比一段
+/// diesel 的聚合类型体操便宜得多，而这个函数只在设置页打开时调用一次。
+pub fn session_totals(conn: &mut SqliteConnection) -> QueryResult<Vec<SessionTotal>> {
+    use std::collections::HashMap;
+
+    let mut totals: HashMap<(i64, String, String), SessionTotal> = HashMap::new();
+    for blob in all_ready(conn)? {
+        let entry = totals
+            .entry((blob.bot_self_id, blob.source_type.clone(), blob.source_id.clone()))
+            .or_insert_with(|| SessionTotal {
+                bot_self_id: blob.bot_self_id,
+                source_type: blob.source_type.clone(),
+                source_id: blob.source_id.clone(),
+                clips: 0,
+                bytes: 0,
+                last_captured_at: 0,
+            });
+        entry.clips += 1;
+        entry.bytes += blob.file_size;
+        entry.last_captured_at = entry.last_captured_at.max(blob.created_at);
+    }
+    let mut out: Vec<SessionTotal> = totals.into_values().collect();
+    out.sort_by(|a, b| b.last_captured_at.cmp(&a.last_captured_at));
+    Ok(out)
+}
+
 // ---------------------------------------------------------------------------
 // opt-out
 // ---------------------------------------------------------------------------

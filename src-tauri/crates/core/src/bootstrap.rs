@@ -326,6 +326,9 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
         sub_agent_inboxes: AppSubAgentInboxes::default(),
         compact_breakers: Mutex::new(HashMap::new()),
         voice: VoiceState::new(),
+        // 语料目录的锁在这里被拿到，或者拿不到。拿不到不是启动失败——它只是
+        // 让采集整个停用，而应用的其余部分与语料无关。
+        corpus: Arc::new(crate::voice_corpus::CorpusCoordinator::new(&data_dir)),
         sleep: AppSleepInhibitor::new(),
         events,
         paths: Paths { data_dir, skills_root },

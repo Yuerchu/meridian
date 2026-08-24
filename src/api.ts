@@ -586,6 +586,7 @@ export const api = {
       admin_users: number[]
       ack_emoji_id: string
       balance_alert_threshold: number | null
+      voice_capture_sessions: string[]
     }>('get_onebot_config'),
 
   saveOneBotConfig: (config: {
@@ -597,6 +598,7 @@ export const api = {
     admin_users: number[]
     ack_emoji_id: string
     balance_alert_threshold: number | null
+    voice_capture_sessions: string[]
   }) => invoke<void>('save_onebot_config', { config }),
 
   startOneBot: () => invoke<void>('start_onebot'),

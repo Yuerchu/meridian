@@ -22,7 +22,19 @@ pub async fn get_onebot_config(app: tauri::AppHandle) -> Result<onebot::OneBotCo
 #[tauri::command]
 pub async fn save_onebot_config(app: tauri::AppHandle, config: onebot::OneBotConfig) -> Result<(), String> {
     let services = app.services();
-    onebot::save_config(&services.db, &config)
+    onebot::save_config(&services.db, &config)?;
+
+    // 语音策略立刻生效，不等重启。
+    //
+    // 这是这个功能的及格线，不是便利：把一个群从采集白名单里拿掉之后，跑着的
+    // 服务如果还在录，那这个开关就是个摆设。`apply` 会为被移除的范围立屏障、
+    // 等在途采集归还 permit，然后才返回——所以这个命令返回时，"不再新增"是
+    // 已经成立的事实。
+    //
+    // 只有语音策略是热的。同一页上的 host / token / admin 仍然是启动快照,
+    // UI 的成功提示不能暗示它们也生效了。
+    onebot::refresh_voice_policy(&services, &config).await;
+    Ok(())
 }
 
 #[cfg(not(target_os = "android"))]

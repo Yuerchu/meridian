@@ -1,5 +1,6 @@
 mod agent;
 mod balance_watch;
+mod capture;
 mod command;
 mod extract;
 mod format;
@@ -47,6 +48,16 @@ pub struct SharedState {
     pub pending_requests: Mutex<HashMap<u32, PendingRequest>>,
     pub request_seq: AtomicU32,
     pub ws_sinks: Mutex<HashMap<u64, mpsc::Sender<String>>>,
+    /// 每条连接背后是哪个 QQ 账号。
+    ///
+    /// 采集要用它排除 bot 自己发的 TTS，而**只看当前这条连接的 self_id 不够**：
+    /// bot A 发的语音会被同群的 bot B 当成真人语音收下来，合成音就这么从后门
+    /// 进了真人语料。所以问的是"这个号是不是我们的某一个"，不是"是不是这一条
+    /// 连接的"。
+    ///
+    /// 一条连接的身份认第一个报上来的，之后不再改：一条连接漂移到另一个账号
+    /// 是适配器出了问题，跟着它改只会把两个账号的语料混起来。
+    pub conn_identities: std::sync::Mutex<HashMap<u64, i64>>,
     pub connected_clients: AtomicU32,
     /// Session key → turn/inbox state. Behind its own `Arc` rather than inline:
     /// a running turn's guard has to hand the session back from `Drop`, and if
@@ -722,6 +733,27 @@ pub enum RequestKind {
     GroupInvite,
 }
 
+/// 记下一条连接是哪个账号，并回答"这个号是我们自己的吗"。
+///
+/// 认第一个报上来的，之后不改——见 `conn_identities` 的说明。
+pub fn note_identity(state: &Arc<SharedState>, conn_id: u64, self_id: i64) {
+    if self_id == 0 {
+        return;
+    }
+    if let Ok(mut identities) = state.conn_identities.lock() {
+        identities.entry(conn_id).or_insert(self_id);
+    }
+}
+
+/// 这个号是不是本地的某个 bot 账号。
+pub fn is_local_bot(state: &Arc<SharedState>, user_id: i64) -> bool {
+    state
+        .conn_identities
+        .lock()
+        .map(|identities| identities.values().any(|id| *id == user_id))
+        .unwrap_or(false)
+}
+
 /// One API call waiting on a reply.
 ///
 /// `expected_conn` is what makes a call *directed*: only that connection's
@@ -930,6 +962,15 @@ pub struct OneBotConfig {
     /// `ProviderBalance::is_low`.
     #[serde(default)]
     pub balance_alert_threshold: Option<f64>,
+    /// 要留存入站语音的 `(bot 账号, 会话)`，写作 `<bot>@group:123`。
+    ///
+    /// 空是默认，意思是一个都不留。存的是真人声纹，所以这是**许可名单而不是
+    /// 过滤器**：不在名单上的会话不产生任务、不落盘、不写行。
+    ///
+    /// 账号要写进去而不只是会话：两个 bot 各自被拉进同一个群，是两次独立的
+    /// 同意。
+    #[serde(default)]
+    pub voice_capture_sessions: Vec<String>,
 }
 
 fn default_ack_emoji() -> String {
@@ -947,6 +988,7 @@ impl Default for OneBotConfig {
             admin_users: vec![],
             ack_emoji_id: default_ack_emoji(),
             balance_alert_threshold: None,
+            voice_capture_sessions: vec![],
         }
     }
 }
@@ -988,36 +1030,88 @@ pub fn load_config(pool: &DbPool) -> OneBotConfig {
         balance_alert_threshold: get("onebot.balance_alert_threshold")
             .filter(|s| !s.trim().is_empty())
             .and_then(|s| s.trim().parse().ok()),
+        voice_capture_sessions: get("onebot.voice_capture_sessions")
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default(),
     }
 }
 
+/// 写下整份配置。
+///
+/// **一个事务**，不是逐条写。中途失败会留下一个没人能解释的状态：UI 报了失败，
+/// 内存里还是旧策略，而重启之后生效的却是写进去的那一半。对普通设置那是难看，
+/// 对 `voice_capture_sessions` 那是"用户以为关掉了而它还在录"。
 pub fn save_config(pool: &DbPool, config: &OneBotConfig) -> Result<(), String> {
+    use diesel::connection::Connection;
+
     let mut conn = get_conn(pool)?;
     let now = now_ms();
 
-    let mut set = |key: &str, val: &str| -> Result<(), String> {
-        crate::db::ops::preference::set_preference(&mut conn, key, val, now).map_err(|e| e.to_string())
-    };
+    conn.transaction::<_, diesel::result::Error, _>(|conn| {
+        let mut set =
+            |key: &str, val: &str| crate::db::ops::preference::set_preference(conn, key, val, now).map(|_| ());
 
-    set("onebot.enabled", if config.enabled { "true" } else { "false" })?;
-    set("onebot.host", &config.host)?;
-    set("onebot.port", &config.port.to_string())?;
-    set("onebot.access_token", config.access_token.as_deref().unwrap_or(""))?;
-    set("onebot.assistant_id", config.assistant_id.as_deref().unwrap_or(""))?;
-    set(
-        "onebot.admin_users",
-        &serde_json::to_string(&config.admin_users).unwrap_or_default(),
-    )?;
-    set("onebot.ack_emoji_id", &config.ack_emoji_id)?;
-    set(
-        "onebot.balance_alert_threshold",
-        &config
-            .balance_alert_threshold
-            .map(|v| v.to_string())
-            .unwrap_or_default(),
-    )?;
+        set("onebot.enabled", if config.enabled { "true" } else { "false" })?;
+        set("onebot.host", &config.host)?;
+        set("onebot.port", &config.port.to_string())?;
+        set("onebot.access_token", config.access_token.as_deref().unwrap_or(""))?;
+        set("onebot.assistant_id", config.assistant_id.as_deref().unwrap_or(""))?;
+        set(
+            "onebot.admin_users",
+            &serde_json::to_string(&config.admin_users).unwrap_or_default(),
+        )?;
+        set("onebot.ack_emoji_id", &config.ack_emoji_id)?;
+        set(
+            "onebot.balance_alert_threshold",
+            &config
+                .balance_alert_threshold
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+        )?;
+        set(
+            "onebot.voice_capture_sessions",
+            &serde_json::to_string(&config.voice_capture_sessions).unwrap_or_default(),
+        )?;
+        Ok(())
+    })
+    .map_err(|e| e.to_string())
+}
 
-    Ok(())
+/// 把配置里那一行行文本解析成授权范围。
+///
+/// 解析不了的条目**丢掉并记一条日志**，不是当成通配。这是许可名单，一个看不懂
+/// 的条目授权不了任何东西。
+fn capture_scopes(config: &OneBotConfig) -> std::collections::HashSet<crate::voice_corpus::CaptureScope> {
+    config
+        .voice_capture_sessions
+        .iter()
+        .filter_map(|raw| {
+            let scope = crate::voice_corpus::CaptureScope::parse(raw);
+            if scope.is_none() {
+                tracing::warn!(entry = %raw, "voice capture allowlist: unreadable entry, ignored");
+            }
+            scope
+        })
+        .collect()
+}
+
+/// 把配置里的语音策略推给协调器，等在途采集结束。
+///
+/// 返回时"不再新增"已经成立。已经拿到 permit 的那些允许跑完——那是 permit 的
+/// 正常语义，也是唯一能简单推理的：取消一个正在下载的任务，要么留下半个文件，
+/// 要么要一整套取消传播。
+pub async fn refresh_voice_policy(services: &Services, config: &OneBotConfig) {
+    let scopes = capture_scopes(config);
+    let pool = services.db.clone();
+    let optouts = tokio::task::spawn_blocking(move || {
+        let mut conn = get_conn(&pool).ok()?;
+        crate::db::ops::voice_corpus::optouts(&mut conn).ok()
+    })
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default();
+    services.corpus.apply(scopes, optouts.into_iter().collect()).await;
 }
 
 /// Manages the OneBot WS server lifecycle.
@@ -1040,6 +1134,7 @@ impl OneBotServer {
                 // would let a stale "同意 N" notification approve a new request.
                 request_seq: AtomicU32::new((now_ms() / 1000 % 1_000_000) as u32),
                 ws_sinks: Mutex::new(HashMap::new()),
+                conn_identities: std::sync::Mutex::new(HashMap::new()),
                 connected_clients: AtomicU32::new(0),
                 session_states: Arc::new(SessionStates::default()),
                 memory_listings: Mutex::new(HashMap::new()),
@@ -1077,6 +1172,33 @@ impl OneBotServer {
             self.state.config.access_token.as_deref(),
             "the OneBot access token",
         )?;
+
+        // 把这一代服务的采集白名单交给协调器。协调器活得比服务久（它在
+        // `Services` 上），所以这是"换掉"而不是"初始化"：上一代的授权连同
+        // 它的 generation 一起被这次调用作废。
+        {
+            let corpus = self.state.services.corpus.clone();
+            let scopes = capture_scopes(&self.state.config);
+            let pool = self.state.services.db.clone();
+            let data_dir = self.state.services.paths.data_dir.clone();
+            tokio::spawn(async move {
+                let writable = corpus.writable();
+                let optouts = tokio::task::spawn_blocking(move || {
+                    // 收拾上一次死掉留下的东西。放在这里而不是 bootstrap:
+                    // 它要扫目录,而没开 OneBot 的人不该为此等在启动上。
+                    if let Err(error) = crate::voice_corpus::recover::run(&pool, &data_dir, writable) {
+                        tracing::warn!(%error, "voice corpus recovery failed");
+                    }
+                    let mut conn = get_conn(&pool).ok()?;
+                    crate::db::ops::voice_corpus::optouts(&mut conn).ok()
+                })
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or_default();
+                corpus.apply(scopes, optouts.into_iter().collect()).await;
+            });
+        }
 
         let state = self.state.clone();
         let running = self.running.clone();
@@ -1305,6 +1427,11 @@ async fn handle_connection(
             OneBotFrame::Event(e) => e,
         };
 
+        // 每个事件都带 self_id，所以身份不需要单独的握手。
+        if let Some(self_id) = event.self_id {
+            note_identity(&state, conn_id, self_id);
+        }
+
         match event.post_type.as_str() {
             "meta_event" => {
                 // Heartbeat / lifecycle — just log
@@ -1351,6 +1478,9 @@ async fn handle_connection(
     {
         if let Ok(mut pending) = state.pending_api_responses.lock() {
             pending.retain(|_, call| call.expected_conn != Some(conn_id));
+        }
+        if let Ok(mut identities) = state.conn_identities.lock() {
+            identities.remove(&conn_id);
         }
     }
     write_handle.abort();

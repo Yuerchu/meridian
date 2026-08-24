@@ -22,6 +22,17 @@ interface OneBotConfig {
    * unusable.
    */
   balance_alert_threshold: number | null
+  /**
+   * Which `(bot account, session)` pairs keep the voice notes people send.
+   *
+   * Written `<bot>@group:123`. The account is part of it rather than a
+   * footnote: two bots each pulled into the same group are two independent
+   * consents, and one of them being allowed to keep audio says nothing about
+   * the other.
+   *
+   * Empty is the default and means nothing is kept anywhere.
+   */
+  voice_capture_sessions: string[]
 }
 
 interface OneBotStatus {
@@ -43,6 +54,7 @@ export function OneBotSettings() {
     admin_users: [],
     ack_emoji_id: '76',
     balance_alert_threshold: null,
+    voice_capture_sessions: [],
   })
   const [status, setStatus] = useState<OneBotStatus | null>(null)
   const [assistants, setAssistants] = useState<Assistant[]>([])
@@ -50,6 +62,9 @@ export function OneBotSettings() {
   // Held as text like the admin list, so a half-typed "1." is representable.
   // Empty is a real setting here — it switches the watcher off.
   const [balanceInput, setBalanceInput] = useState('')
+  // Same shape again. Rewritten from what was saved, so an entry the backend
+  // could not read disappears visibly instead of being silently ignored.
+  const [voiceCaptureInput, setVoiceCaptureInput] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, markSaved] = useTemporaryFlag()
   const [error, setError] = useState<string | null>(null)
@@ -62,6 +77,7 @@ export function OneBotSettings() {
       setAssistants(assts)
       setAdminInput(cfg.admin_users.join(', '))
       setBalanceInput(cfg.balance_alert_threshold?.toString() ?? '')
+      setVoiceCaptureInput((cfg.voice_capture_sessions ?? []).join(', '))
     } catch (err) {
       setError(String(err))
     }
@@ -98,10 +114,24 @@ export function OneBotSettings() {
       const typed = Number(balanceInput.trim())
       const threshold = balanceInput.trim() !== '' && Number.isFinite(typed) && typed >= 0 ? typed : null
 
-      const newConfig = { ...config, admin_users: adminUsers, balance_alert_threshold: threshold }
+      // `<bot>@<session>`, e.g. `10001@group:123`. Anything without both halves
+      // is dropped rather than guessed at — this is a permission list, and an
+      // entry nobody can read grants nothing.
+      const voiceCaptureSessions = voiceCaptureInput
+        .split(/[,，\s]+/)
+        .map((s) => s.trim())
+        .filter((s) => /^\d+@(group|private):\d+$/.test(s))
+
+      const newConfig = {
+        ...config,
+        admin_users: adminUsers,
+        balance_alert_threshold: threshold,
+        voice_capture_sessions: voiceCaptureSessions,
+      }
       await api.saveOneBotConfig(newConfig)
       setConfig(newConfig)
       setBalanceInput(threshold?.toString() ?? '')
+      setVoiceCaptureInput(voiceCaptureSessions.join(', '))
       markSaved()
       return true
     } catch (err) {
@@ -211,6 +241,16 @@ export function OneBotSettings() {
         <Label>{t('settings.onebot.adminUsers')}</Label>
         <Input value={adminInput} onChange={(e) => setAdminInput(e.target.value)} placeholder="12345, 67890" />
         <Description>{t('settings.onebot.adminUsersHint')}</Description>
+      </TextField>
+
+      <TextField fullWidth>
+        <Label>{t('settings.onebot.voiceCapture')}</Label>
+        <Input
+          value={voiceCaptureInput}
+          onChange={(e) => setVoiceCaptureInput(e.target.value)}
+          placeholder="10001@group:123, 10001@private:456"
+        />
+        <Description>{t('settings.onebot.voiceCaptureHint')}</Description>
       </TextField>
 
       <TextField fullWidth>

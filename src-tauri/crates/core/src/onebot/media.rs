@@ -246,7 +246,7 @@ static HTTP: OnceLock<reqwest::Client> = OnceLock::new();
 /// Lazily-built shared client. `reqwest::Client::new()` panics if the TLS
 /// backend fails to initialise; building explicitly lets that surface as an
 /// error so the caller degrades to OCR/placeholder instead of aborting.
-fn http_client() -> Result<&'static reqwest::Client, String> {
+pub(super) fn http_client() -> Result<&'static reqwest::Client, String> {
     match HTTP.get() {
         Some(c) => Ok(c),
         None => {

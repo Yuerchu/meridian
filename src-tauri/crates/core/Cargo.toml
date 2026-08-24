@@ -51,6 +51,7 @@ age = "0.11"
 anyhow = "1"
 base64 = "0.22"
 sha2 = "0.10"
+hmac = "0.12"
 image = { version = "0.25", default-features = false, features = ["png"] }
 rand = "0.9"
 regex = "1"

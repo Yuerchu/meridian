@@ -694,6 +694,8 @@
   "settings.onebot.assistantHint": "Bot 对话使用的助手",
   "settings.onebot.adminUsers": "管理员 QQ 号",
   "settings.onebot.adminUsersHint": "用逗号分隔。管理员可以通过聊天审批工具调用。",
+  "settings.onebot.voiceCapture": "留存语音的会话",
+  "settings.onebot.voiceCaptureHint": "默认全关，只留存列出的会话。写作 <bot>@group:123 或 <bot>@private:456，用逗号分隔。留下的是真人录音，请告知群成员。移除条目立即生效，但不会删除已经留存的内容。",
   "settings.onebot.ackEmoji": "群消息回应表情 ID",
   "settings.onebot.ackEmojiHint": "收到群消息时贴的 QQ 表情 ID(76 = 赞)。留空或填 0 关闭。",
   "settings.onebot.balanceAlert": "余额不足提醒",
