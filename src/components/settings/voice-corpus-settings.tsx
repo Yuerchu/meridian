@@ -7,10 +7,16 @@ import { api } from '@/api'
 import { can } from '@/lib/capabilities'
 import { SettingsHeader, SettingsPane } from './primitives'
 
+interface DeleteReport {
+  clips: number
+  files: number
+  bytes: number
+  failures: string[]
+}
+
 interface CorpusSession {
-  label: string
-  bot_self_id: number
-  session: string
+  handle: string
+  kind: 'group' | 'private'
   clips: number
   bytes: number
   untranscribed: number
@@ -68,31 +74,28 @@ export function VoiceCorpusSettings() {
     }
   }
 
+  // Failures are listed rather than folded into the count: the files and the
+  // rows can fail independently, and one number cannot say which half. Reading
+  // only `clips` reports a delete that left the audio on disk as a clean one.
+  const deleteMessage = (report: DeleteReport, key: 'deleted' | 'forgot') =>
+    report.failures.length > 0
+      ? t('settings.voiceCorpus.deletedWithFailures', { clips: report.clips, failures: report.failures.length })
+      : t(`settings.voiceCorpus.${key}`, { clips: report.clips })
+
   const deleteSession = (session: CorpusSession) =>
-    run(async () => {
-      const report = await api.deleteVoiceCorpus({
-        kind: 'bot_session',
-        bot_self_id: session.bot_self_id,
-        session: session.session,
-      })
-      // Failures are listed rather than folded into the count: the files and
-      // the rows can fail independently, and one number cannot say which half.
-      return report.failures.length > 0
-        ? t('settings.voiceCorpus.deletedWithFailures', { clips: report.clips, failures: report.failures.length })
-        : t('settings.voiceCorpus.deleted', { clips: report.clips })
-    })
+    run(async () => deleteMessage(await api.deleteVoiceCorpus({ kind: 'session', handle: session.handle }), 'deleted'))
 
   const forgetSender = () =>
     run(async () => {
       const id = senderInput.trim()
       if (!id) return null
-      const report = await api.deleteVoiceCorpus({ kind: 'sender', id })
-      // Deleting history and refusing the future are two actions. This button
-      // does both because that is what "delete my voice" almost always means —
-      // but they are two calls, and the wording says so.
-      await api.setVoiceOptout(id, true)
+      // One call. Deleting history and refusing the future are two actions, and
+      // this button means both — but sent as two calls the barrier comes down
+      // between them while the opt-out is not yet in force, so anything
+      // recorded in the gap is a recording nothing will go back for.
+      const report = await api.forgetVoiceSender(id)
       setSenderInput('')
-      return t('settings.voiceCorpus.forgot', { clips: report.clips })
+      return deleteMessage(report, 'forgot')
     })
 
   const exportBundle = () =>
@@ -115,9 +118,11 @@ export function VoiceCorpusSettings() {
       ) : (
         <div className="flex flex-col gap-2">
           {sessions.map((session) => (
-            <Card key={`${session.bot_self_id}-${session.session}`} className="flex-row items-center gap-3 p-3">
+            <Card key={session.handle} className="flex-row items-center gap-3 p-3">
               <div className="min-w-0 flex-1">
-                <p className="truncate font-mono text-sm">{session.label}</p>
+                <p className="truncate font-mono text-sm">
+                  {t(`settings.voiceCorpus.kind.${session.kind}`)} · {session.handle}
+                </p>
                 <p className="text-muted text-xs">
                   {t('settings.voiceCorpus.summary', {
                     clips: session.clips,
@@ -153,11 +158,24 @@ export function VoiceCorpusSettings() {
 
       {can.exportToDisk && (
         <div className="flex flex-col gap-2">
-          <Checkbox isSelected={includeUntranscribed} onChange={setIncludeUntranscribed}>
-            {t('settings.voiceCorpus.includeUntranscribed')}
+          {/* HeroUI's Checkbox draws nothing on its own — the box and its input
+              live in Control/Indicator, so a bare one is a label you cannot
+              press. */}
+          <Checkbox className="text-sm" isSelected={includeUntranscribed} onChange={setIncludeUntranscribed}>
+            <Checkbox.Content>
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+              {t('settings.voiceCorpus.includeUntranscribed')}
+            </Checkbox.Content>
           </Checkbox>
-          <Checkbox isSelected={includeSender} onChange={setIncludeSender}>
-            {t('settings.voiceCorpus.includeSender')}
+          <Checkbox className="text-sm" isSelected={includeSender} onChange={setIncludeSender}>
+            <Checkbox.Content>
+              <Checkbox.Control>
+                <Checkbox.Indicator />
+              </Checkbox.Control>
+              {t('settings.voiceCorpus.includeSender')}
+            </Checkbox.Content>
           </Checkbox>
           <Description>{t('settings.voiceCorpus.exportHint')}</Description>
           <Button variant="ghost" isDisabled={busy || sessions.length === 0} onPress={exportBundle}>

@@ -59,6 +59,17 @@ pub struct SharedState {
     /// 是适配器出了问题，跟着它改只会把两个账号的语料混起来。
     pub conn_identities: std::sync::Mutex<HashMap<u64, i64>>,
     pub connected_clients: AtomicU32,
+    /// 这一代服务的关停信号。
+    ///
+    /// **在 state 上而不是只在 `OneBotServer` 上**，因为读它的是每一条连接的
+    /// 读循环。清空 `ws_sinks` 只掐掉了写的那一半：`split()` 出来的两半共享底层
+    /// 流，丢掉写的一半不会关闭套接字，读的那一半照常收事件、照常处理、照常带着
+    /// 它启动时那套权限——重启一次是为了让新设置生效，结果是旧的那一代在新的
+    /// 旁边继续跑。
+    pub shutdown: watch::Sender<bool>,
+    /// 每有一条连接彻底退出就 +1。`stop()` 等它，而不是轮询——与语料 drain 同
+    /// 一个形状。
+    pub conn_closed: watch::Sender<u64>,
     /// Session key → turn/inbox state. Behind its own `Arc` rather than inline:
     /// a running turn's guard has to hand the session back from `Drop`, and if
     /// that meant holding the whole server state, the turn machinery could not
@@ -827,6 +838,27 @@ pub async fn call_api_to_conn(
     action: OneBotAction,
     timeout: std::time::Duration,
 ) -> DirectedCallOutcome {
+    call_api_to_conn_within(state, conn_id, action, timeout, timeout).await
+}
+
+/// Same, with its own ceiling on how long the frame may sit in the queue.
+///
+/// The two halves are not the same kind of wait. Waiting for an *answer* is
+/// waiting on the far end and there is nothing to decide; waiting for *room in
+/// the queue* is time during which the caller's reason for sending may expire,
+/// and it is time the caller could still take back. `send_voice` is why the
+/// distinction exists: a permission checked immediately before the send is
+/// worth nothing if the frame then sits behind a full queue for the whole
+/// twenty seconds, and a voice reply that lands that late is wrong anyway.
+///
+/// Callers with nothing to revoke pass the same value twice.
+pub async fn call_api_to_conn_within(
+    state: &Arc<SharedState>,
+    conn_id: u64,
+    action: OneBotAction,
+    enqueue_timeout: std::time::Duration,
+    timeout: std::time::Duration,
+) -> DirectedCallOutcome {
     let echo = uuid::Uuid::new_v4().to_string();
     let json = match serde_json::to_string(&action.with_echo(echo.clone())) {
         Ok(json) => json,
@@ -851,11 +883,12 @@ pub async fn call_api_to_conn(
     }
     let _guard = WaiterGuard { state, echo };
 
-    // One deadline across both halves. Waiting for room in the queue is part of
-    // the call's cost, and a full queue that eventually drains must not get a
-    // fresh timeout to answer in.
+    // One deadline across both halves, so a full queue that eventually drains
+    // does not get a fresh timeout to answer in. The enqueue may be given a
+    // tighter one of its own; whichever comes first wins.
     let deadline = tokio::time::Instant::now() + timeout;
-    match tokio::time::timeout_at(deadline, sink.send(json)).await {
+    let enqueue_by = (tokio::time::Instant::now() + enqueue_timeout).min(deadline);
+    match tokio::time::timeout_at(enqueue_by, sink.send(json)).await {
         Err(_) => return DirectedCallOutcome::NotDispatched("the connection's queue stayed full".into()),
         Ok(Err(_)) => return DirectedCallOutcome::NotDispatched("the connection closed".into()),
         Ok(Ok(())) => {}
@@ -1149,20 +1182,22 @@ fn capture_scopes(config: &OneBotConfig) -> std::collections::HashSet<crate::voi
 /// 返回时"不再新增"已经成立。已经拿到 permit 的那些允许跑完——那是 permit 的
 /// 正常语义，也是唯一能简单推理的：取消一个正在下载的任务，要么留下半个文件，
 /// 要么要一整套取消传播。
-pub async fn refresh_voice_policy(services: &Services, config: &OneBotConfig) {
+pub async fn refresh_voice_policy(services: &Services, config: &OneBotConfig) -> Result<(), String> {
     let scopes = capture_scopes(config);
     let pool = services.db.clone();
     let secrets = services.secrets.clone();
     // keyring 是阻塞 IO，和 opt-out 的查询一起挪到 blocking 线程上。
+    //
+    // **读不到就报错，不能当作空名单。** 这张表通常是空的，所以"查询失败"和
+    // "没人拒绝过"在结果上长得一模一样——而把失败读成后者，等于让一次瞬时的
+    // 数据库错误重新开始录一个已经明确说过不要的人。
     let (optouts, key_fingerprint) = tokio::task::spawn_blocking(move || {
-        let optouts = get_conn(&pool)
-            .ok()
-            .and_then(|mut conn| crate::db::ops::voice_corpus::optouts(&mut conn).ok())
-            .unwrap_or_default();
-        (optouts, fish_key_fingerprint(&secrets))
+        let mut conn = get_conn(&pool)?;
+        let optouts = crate::db::ops::voice_corpus::optouts(&mut conn).map_err(|e| e.to_string())?;
+        Ok::<_, String>((optouts, fish_key_fingerprint(&secrets)))
     })
     .await
-    .unwrap_or_default();
+    .map_err(|e| e.to_string())??;
 
     services.corpus.apply(scopes, optouts.into_iter().collect()).await;
 
@@ -1178,12 +1213,46 @@ pub async fn refresh_voice_policy(services: &Services, config: &OneBotConfig) {
             reference_id: config.voice_tts_reference_id.trim().to_string(),
             key_fingerprint,
         });
+    if config.voice_send_enabled && readiness.is_none() {
+        // 开关开着而工具不出现，是这个功能唯一一种"什么都不说"的失败：用户会
+        // 反复问助手为什么不会说话，而助手看不见这个工具，所以它自己也答不上来。
+        tracing::warn!(
+            has_model = !config.voice_tts_model.trim().is_empty(),
+            has_reference = !config.voice_tts_reference_id.trim().is_empty(),
+            "voice replies are switched on but one of the four is missing; send_voice stays hidden"
+        );
+    }
     let groups = config
         .voice_send_groups
         .iter()
         .filter_map(|raw| crate::voice_corpus::CaptureScope::parse(raw))
         .collect();
     services.corpus.apply_send_policy(groups, readiness);
+    Ok(())
+}
+
+/// 出站语音差哪一项。设置页照着它说话——四项之中缺哪个，只有这一层知道。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VoiceSendReadiness {
+    pub enabled: bool,
+    pub has_model: bool,
+    pub has_reference_id: bool,
+    pub has_api_key: bool,
+    /// 四项齐全，`send_voice` 现在真的在工具表里。
+    pub ready: bool,
+}
+
+pub fn voice_send_readiness(services: &Services, config: &OneBotConfig) -> VoiceSendReadiness {
+    let has_api_key = fish_key_fingerprint(&services.secrets).is_some();
+    let has_model = !config.voice_tts_model.trim().is_empty();
+    let has_reference_id = !config.voice_tts_reference_id.trim().is_empty();
+    VoiceSendReadiness {
+        enabled: config.voice_send_enabled,
+        has_model,
+        has_reference_id,
+        has_api_key,
+        ready: config.voice_send_enabled && has_model && has_reference_id && has_api_key,
+    }
 }
 
 /// key 的指纹，不是 key。策略要能回答"换过没有"，而把密钥抄进一个会被 Debug
@@ -1211,13 +1280,13 @@ pub const FISH_KEY_SECRET: &str = "SERVICE_FISH_AUDIO_KEY";
 /// Manages the OneBot WS server lifecycle.
 pub struct OneBotServer {
     state: Arc<SharedState>,
-    shutdown_tx: watch::Sender<bool>,
     running: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl OneBotServer {
     pub fn new(services: Services, config: OneBotConfig) -> Self {
         let (shutdown_tx, _) = watch::channel(false);
+        let (conn_closed, _) = watch::channel(0);
         Self {
             state: Arc::new(SharedState {
                 sessions: Mutex::new(SessionManager::new(services.db.clone())),
@@ -1230,12 +1299,13 @@ impl OneBotServer {
                 ws_sinks: Mutex::new(HashMap::new()),
                 conn_identities: std::sync::Mutex::new(HashMap::new()),
                 connected_clients: AtomicU32::new(0),
+                shutdown: shutdown_tx,
+                conn_closed,
                 session_states: Arc::new(SessionStates::default()),
                 memory_listings: Mutex::new(HashMap::new()),
                 config,
                 services,
             }),
-            shutdown_tx,
             running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
@@ -1267,41 +1337,47 @@ impl OneBotServer {
             "the OneBot access token",
         )?;
 
-        // 把这一代服务的采集白名单交给协调器。协调器活得比服务久（它在
-        // `Services` 上），所以这是"换掉"而不是"初始化"：上一代的授权连同
-        // 它的 generation 一起被这次调用作废。
+        // 把这一代服务的语音策略交给协调器。协调器活得比服务久（它在 `Services`
+        // 上），所以这是"换掉"而不是"初始化"：上一代的授权连同它的 generation
+        // 一起被这次调用作废。
+        //
+        // **两套策略都要**。这里一度只推了采集白名单，于是出站那一套在一个新
+        // 进程里永远是空的——四项填齐、保存过、重启一次，`send_voice` 就再也
+        // 不出现，直到有人重新点一次保存。而它不出现的时候，助手自己也看不见
+        // 它，所以问助手只会得到"我没有语音工具"。
         {
-            let corpus = self.state.services.corpus.clone();
-            let scopes = capture_scopes(&self.state.config);
-            let pool = self.state.services.db.clone();
-            let data_dir = self.state.services.paths.data_dir.clone();
+            let services = self.state.services.clone();
+            let config = self.state.config.clone();
+            let pool = services.db.clone();
+            let data_dir = services.paths.data_dir.clone();
+            let writable = services.corpus.writable();
             tokio::spawn(async move {
-                let writable = corpus.writable();
-                let optouts = tokio::task::spawn_blocking(move || {
-                    // 收拾上一次死掉留下的东西。放在这里而不是 bootstrap:
-                    // 它要扫目录,而没开 OneBot 的人不该为此等在启动上。
-                    if let Err(error) = crate::voice_corpus::recover::run(&pool, &data_dir, writable) {
-                        tracing::warn!(%error, "voice corpus recovery failed");
-                    }
-                    let mut conn = get_conn(&pool).ok()?;
-                    crate::db::ops::voice_corpus::optouts(&mut conn).ok()
-                })
-                .await
-                .ok()
-                .flatten()
-                .unwrap_or_default();
-                corpus.apply(scopes, optouts.into_iter().collect()).await;
+                // 收拾上一次死掉留下的东西。放在这里而不是 bootstrap：它要扫
+                // 目录，而没开 OneBot 的人不该为此等在启动上。`stop()` 已经
+                // quiesce 过，所以此刻没有 writer——恢复器无条件清空 `.staging`
+                // 和所有 `pending` 行，靠的正是这个前提。
+                let recovered =
+                    tokio::task::spawn_blocking(move || crate::voice_corpus::recover::run(&pool, &data_dir, writable))
+                        .await;
+                if let Ok(Err(error)) = recovered {
+                    tracing::warn!(%error, "voice corpus recovery failed");
+                }
+                if let Err(error) = refresh_voice_policy(&services, &config).await {
+                    // 采集与出站都没装上。说出来——静默的结果是一个开着的开关
+                    // 什么也不做。
+                    tracing::warn!(%error, "voice policy could not be applied; voice stays off this session");
+                }
             });
         }
 
         let state = self.state.clone();
         let running = self.running.clone();
-        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        let mut shutdown_rx = self.state.shutdown.subscribe();
 
         // Started below, once the port is actually bound. Spawning it here would
         // leave a watcher polling every six hours behind a server that never came
         // up — asking the provider for a balance it has nowhere to report.
-        let watcher = (self.state.clone(), self.shutdown_tx.subscribe());
+        let watcher = (self.state.clone(), self.state.shutdown.subscribe());
 
         running.store(true, Ordering::Relaxed);
 
@@ -1381,6 +1457,11 @@ impl OneBotServer {
                                     handle_connection(ws_stream, conn_id, state.clone()).await;
 
                                     state.connected_clients.fetch_sub(1, Ordering::Relaxed);
+                                    // Decrement first: `stop()` reads the count
+                                    // and then waits for this to move, so a bump
+                                    // ahead of the decrement would let it look
+                                    // once more and see the connection still up.
+                                    state.conn_closed.send_modify(|n| *n += 1);
                                     tracing::info!("OneBot client disconnected (id={conn_id})");
                                 });
                             }
@@ -1398,25 +1479,71 @@ impl OneBotServer {
         Ok(())
     }
 
-    /// Stop accepting, and close what is already connected.
+    /// Stop accepting, close what is already connected, and wait for it.
     ///
-    /// Dropping the sinks is the load-bearing half. Without it this only stopped
-    /// the accept loop: every live connection kept its reader task, kept
-    /// handling events, and kept whatever permissions it had been started with —
-    /// so a restart meant to apply new settings left the old generation running
-    /// beside the new one. For anything the user revokes, that is the difference
-    /// between a setting and a suggestion.
+    /// Three steps, and each one exists because the one before it is not enough.
     ///
-    /// Async because the sink table is behind a tokio mutex. Waiters are left to
-    /// their own timeouts rather than being cleared here: each connection's
-    /// reader retires its own on the way out.
+    /// **The signal**, because dropping the sinks only closes the writing half:
+    /// `split()` hands out two halves of one stream, so the reader keeps reading,
+    /// keeps handling events and keeps whatever permissions it started with. A
+    /// restart meant to apply new settings left the old generation running
+    /// beside the new one — for anything the user revokes, that is the
+    /// difference between a setting and a suggestion.
+    ///
+    /// **The wait**, because a signal nobody has acted on yet is not a stop. The
+    /// caller's next move is to build the next generation, whose first act is a
+    /// corpus recovery pass that clears every `.part` and every `pending` row
+    /// unconditionally — sound only when there is no writer, which is exactly
+    /// what this is waiting to become true.
+    ///
+    /// **The quiesce**, because a capture already under way holds a permit and
+    /// is not on any connection. `granted_scopes` is emptied here rather than by
+    /// the next `start()`: an adapter that reconnects in between would otherwise
+    /// be recording under the outgoing generation's allowlist.
+    ///
+    /// Bounded, because the other end of this is a person pressing a button. A
+    /// connection that will not close does not get to hold the settings page
+    /// open; what it can no longer do is receive anything, since its sink is
+    /// already gone.
     pub async fn stop(&self) {
-        let _ = self.shutdown_tx.send(true);
+        let _ = self.state.shutdown.send(true);
         self.running.store(false, Ordering::Relaxed);
-        let mut sinks = self.state.ws_sinks.lock().await;
-        sinks.clear();
+        {
+            let mut sinks = self.state.ws_sinks.lock().await;
+            sinks.clear();
+        }
+
+        // Subscribed before the first read, so a connection closing between the
+        // check and the wait cannot be missed.
+        let mut closed = self.state.conn_closed.subscribe();
+        let waited = tokio::time::timeout(CONNECTION_CLOSE_TIMEOUT, async {
+            loop {
+                if self.state.connected_clients.load(Ordering::Relaxed) == 0 {
+                    break;
+                }
+                if closed.changed().await.is_err() {
+                    break;
+                }
+            }
+        })
+        .await;
+        if waited.is_err() {
+            tracing::warn!(
+                live = self.state.connected_clients.load(Ordering::Relaxed),
+                "OneBot: a connection did not close in time; it can no longer send anything"
+            );
+        }
+
+        self.state.services.corpus.quiesce().await;
     }
 }
+
+/// How long `stop()` waits for the readers.
+///
+/// Generous next to a socket close and short next to a person's patience. The
+/// accept loop is already down and every sink is already gone, so what this
+/// bounds is only how long the outgoing generation may keep *reading*.
+const CONNECTION_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Check an access token against the Authorization header (`Bearer <t>`,
 /// `Token <t>`, or bare) or the `access_token` query parameter.
@@ -1482,7 +1609,20 @@ async fn handle_connection(
         }
     });
 
-    while let Some(msg) = read.next().await {
+    // Reading is what carries this connection's permissions, so it is what has
+    // to stop. `next()` is poll-based and keeps its state in the stream, so
+    // losing the race costs nothing.
+    let mut shutdown = state.shutdown.subscribe();
+    loop {
+        if *shutdown.borrow() {
+            break;
+        }
+        let next = tokio::select! {
+            biased;
+            _ = shutdown.changed() => break,
+            next = read.next() => next,
+        };
+        let Some(msg) = next else { break };
         let text = match msg {
             Ok(Message::Text(t)) => t.to_string(),
             Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => continue,

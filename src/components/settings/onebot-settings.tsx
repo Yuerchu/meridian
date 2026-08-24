@@ -74,6 +74,7 @@ export function OneBotSettings() {
   // could not read disappears visibly instead of being silently ignored.
   const [voiceCaptureInput, setVoiceCaptureInput] = useState('')
   const [voiceSendInput, setVoiceSendInput] = useState('')
+  const [voiceReady, setVoiceReady] = useState<Awaited<ReturnType<typeof api.getVoiceSendReadiness>> | null>(null)
   const [fishKey, setFishKey] = useState('')
   const [fishKeySet, setFishKeySet] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -91,6 +92,7 @@ export function OneBotSettings() {
       setVoiceCaptureInput((cfg.voice_capture_sessions ?? []).join(', '))
       setVoiceSendInput((cfg.voice_send_groups ?? []).join(', '))
       setFishKeySet(await api.getServiceKeyExists('FISH_AUDIO'))
+      setVoiceReady(await api.getVoiceSendReadiness())
     } catch (err) {
       setError(String(err))
     }
@@ -161,6 +163,10 @@ export function OneBotSettings() {
       setBalanceInput(threshold?.toString() ?? '')
       setVoiceCaptureInput(voiceCaptureSessions.join(', '))
       setVoiceSendInput(voiceSendGroups.join(', '))
+      // Re-asked rather than assumed: the save is also what applies the policy,
+      // so this is the moment the answer can change — and the moment somebody
+      // is looking for it.
+      setVoiceReady(await api.getVoiceSendReadiness())
       markSaved()
       return true
     } catch (err) {
@@ -345,6 +351,29 @@ export function OneBotSettings() {
             />
             <Description>{t('settings.onebot.fishKeyHint')}</Description>
           </TextField>
+
+          {/* The one failure this feature has that announces itself nowhere.
+              Four things have to be present or `send_voice` is withheld from
+              the model in all three places it could appear — and because the
+              model cannot see the tool either, asking it produces "I have no
+              voice tool" rather than anything about a setting. A placeholder
+              that reads like a value (`s2.1-pro-free` in the model box) is all
+              it takes. Reported from the backend rather than derived here,
+              because one of the four is a keychain entry this page never
+              sees. */}
+          {voiceReady && !voiceReady.ready && (
+            <p className="text-xs text-warning">
+              {t('settings.onebot.voiceNotReady', {
+                missing: [
+                  !voiceReady.has_model && t('settings.onebot.voiceTtsModel'),
+                  !voiceReady.has_reference_id && t('settings.onebot.voiceTtsVoice'),
+                  !voiceReady.has_api_key && t('settings.onebot.fishKey'),
+                ]
+                  .filter(Boolean)
+                  .join(t('common.listSeparator')),
+              })}
+            </p>
+          )}
         </>
       )}
 

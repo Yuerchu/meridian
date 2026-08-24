@@ -10,13 +10,17 @@ use meridian_core::voice_corpus::manage::{self, CorpusSelector, DeleteReport, Ex
 
 /// 一个会话的语料概况。
 ///
-/// 会话用**假名**而不是群号：这份列表会经远程接口送到另一台设备上，而它回答的
-/// 问题是"占了多少地方、要不要清"，不需要知道是哪个群。
+/// **只有假名出去。** 这份列表会经远程接口送到另一台设备上，而 `bot_self_id`
+/// 就是 bot 的 QQ 号，私聊那一档的 `source_id` 就是对方本人的号——把它们跟着
+/// 发出去，等于假名化只做了给人看的那一半。回删也用同一个假名（见
+/// `CorpusSelector::Session`），所以真实的号从不出这台机器。
 #[derive(serde::Serialize)]
 pub struct VoiceCorpusSession {
-    pub label: String,
-    pub bot_self_id: i64,
-    pub session: String,
+    /// 假名。既是显示的名字，也是回删时指认这个会话的句柄。
+    pub handle: String,
+    /// `group` / `private`。哪个群不说，是群还是私聊要说——一份私聊语料和一份
+    /// 群语料，该不该留下来是两个判断。
+    pub kind: &'static str,
     pub clips: i64,
     pub bytes: i64,
     pub untranscribed: i64,
@@ -35,9 +39,8 @@ pub async fn list_voice_corpus(app: tauri::AppHandle) -> Result<Vec<VoiceCorpusS
             .map(|total| {
                 let key = format!("{}|{}|{}", total.bot_self_id, total.source_type, total.source_id);
                 Ok(VoiceCorpusSession {
-                    label: manage::session_label(&pool, &total)?,
-                    bot_self_id: total.bot_self_id,
-                    session: session_string(&total),
+                    handle: manage::session_label(&pool, &total)?,
+                    kind: session_kind(&total),
                     clips: total.clips,
                     bytes: total.bytes,
                     untranscribed: untranscribed.get(&key).copied().unwrap_or(0),
@@ -50,13 +53,12 @@ pub async fn list_voice_corpus(app: tauri::AppHandle) -> Result<Vec<VoiceCorpusS
     .map_err(|e| e.to_string())?
 }
 
-fn session_string(total: &SessionTotal) -> String {
-    let kind = if total.source_type == "onebot_group" {
+fn session_kind(total: &SessionTotal) -> &'static str {
+    if total.source_type == "onebot_group" {
         "group"
     } else {
         "private"
-    };
-    format!("{kind}:{}", total.source_id)
+    }
 }
 
 /// 删除历史。selector 是显式的 tagged union，缺字段会反序列化失败——见
@@ -73,13 +75,30 @@ pub async fn delete_voice_corpus(app: tauri::AppHandle, selector: CorpusSelector
 pub async fn set_voice_optout(app: tauri::AppHandle, sender_id: String, enabled: bool) -> Result<(), String> {
     let services = app.services();
     let pool = services.db.clone();
+    let corpus = services.corpus.clone();
     let config = meridian_core::onebot::load_config(&services.db);
-    tokio::task::spawn_blocking(move || manage::set_optout(&pool, &sender_id, enabled))
+    tokio::task::spawn_blocking(move || manage::set_optout(&pool, &corpus, &sender_id, enabled))
         .await
         .map_err(|e| e.to_string())??;
     // 名单立刻生效，不等下一次重启——这是一个人刚刚说的"别录我"。
-    meridian_core::onebot::refresh_voice_policy(&services, &config).await;
-    Ok(())
+    meridian_core::onebot::refresh_voice_policy(&services, &config).await
+}
+
+/// "把我的声音删掉，以后也别再录。"
+///
+/// **一个命令，不是两个。** 前端连着调"删除"和"拒绝将来"时，中间那一段屏障
+/// 已经撤了而名单还没生效——这中间落盘的录音谁都不会再回头删，而按钮已经报告
+/// 成功了。这里顺序是反的：先让拒绝生效，再 drain 并删除。
+#[tauri::command]
+pub async fn forget_voice_sender(app: tauri::AppHandle, sender_id: String) -> Result<DeleteReport, String> {
+    let services = app.services();
+    let data_dir = services.paths.data_dir.clone();
+    let config = meridian_core::onebot::load_config(&services.db);
+    let refresh = || {
+        let services = services.clone();
+        async move { meridian_core::onebot::refresh_voice_policy(&services, &config).await }
+    };
+    manage::forget_sender(&services.db, &data_dir, &services.corpus, &sender_id, refresh).await
 }
 
 /// 导出成 bundle。`local`，见模块头。

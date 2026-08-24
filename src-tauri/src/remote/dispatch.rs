@@ -334,6 +334,16 @@ mod tests {
             "save_onebot_config",
             "start_onebot",
             "stop_onebot",
+            // These two are `local` for what they *return*, not for what they
+            // do — the only pair in this list that is. `OneBotConfig` carries
+            // `access_token`, which is another server's credential and the same
+            // key `guard_preference` refuses to let a remote caller write;
+            // reading it back undoes that guard from the other side. It also
+            // carries `admin_users` and the voice allowlists, whose private-chat
+            // entries are a person's own QQ number. The readiness beside it is
+            // derived from the same row.
+            "get_onebot_config",
+            "get_voice_send_readiness",
             // A step beyond the rest of this group. `acp.command` names a
             // binary this app will execute, so writing it from a socket is
             // arbitrary code execution here — not the self-lockout the others

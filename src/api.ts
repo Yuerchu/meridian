@@ -609,15 +609,32 @@ export const api = {
     voice_tts_reference_id: string
   }) => invoke<void>('save_onebot_config', { config }),
 
-  // Voice corpus. Sessions are identified by a pseudonym rather than a group
-  // number: this list travels to a phone, and what it answers is "how much is
-  // stored, do I want to clear it" — not which group.
+  /**
+   * Which of the four outbound-voice settings are filled in.
+   *
+   * Missing one hides `send_voice` from the model entirely, which is the one
+   * failure this feature has that announces itself nowhere: the switch is on,
+   * the tool is absent, and the assistant cannot say why because it cannot see
+   * the tool either. Asked, it answers that it has no voice tool.
+   */
+  getVoiceSendReadiness: () =>
+    invoke<{
+      enabled: boolean
+      has_model: boolean
+      has_reference_id: boolean
+      has_api_key: boolean
+      ready: boolean
+    }>('get_voice_send_readiness'),
+
+  // Voice corpus. A session is named by its pseudonym and by nothing else:
+  // this list travels to a phone, `bot_self_id` is the bot's own QQ number and
+  // a private chat's session id is the other person's. The same pseudonym is
+  // what goes back to delete it, so neither ever leaves the host.
   listVoiceCorpus: () =>
     invoke<
       {
-        label: string
-        bot_self_id: number
-        session: string
+        handle: string
+        kind: 'group' | 'private'
         clips: number
         bytes: number
         untranscribed: number
@@ -634,13 +651,22 @@ export const api = {
    */
   deleteVoiceCorpus: (
     selector:
-      | { kind: 'bot_session'; bot_self_id: number; session: string }
-      | { kind: 'sender'; id: string }
-      | { kind: 'all'; confirmation: string },
+      { kind: 'session'; handle: string } | { kind: 'sender'; id: string } | { kind: 'all'; confirmation: string },
   ) => invoke<{ clips: number; files: number; bytes: number; failures: string[] }>('delete_voice_corpus', { selector }),
 
   /** "Never record me again" — a different thing from deleting what exists. */
   setVoiceOptout: (senderId: string, enabled: boolean) => invoke<void>('set_voice_optout', { senderId, enabled }),
+
+  /**
+   * Delete someone's voice *and* refuse the future, in that order.
+   *
+   * One call rather than two: between a delete and a separate opt-out the
+   * barrier is already down and the list is not yet in force, so a recording
+   * landing in the gap is one nothing will ever go back for — while the button
+   * has already reported success.
+   */
+  forgetVoiceSender: (senderId: string) =>
+    invoke<{ clips: number; files: number; bytes: number; failures: string[] }>('forget_voice_sender', { senderId }),
 
   exportVoiceCorpus: (outputDir: string, includeSender: boolean, includeUntranscribed: boolean) =>
     invoke<{ clips: number; skipped: number; bytes: number; path: string }>('export_voice_corpus', {

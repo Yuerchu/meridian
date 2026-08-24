@@ -30,6 +30,13 @@ const MAX_RECORD_BYTES: u64 = 10 * 1024 * 1024;
 const CAPTURE_SLOTS: usize = 4;
 /// lease 长度。下载超过它就要续租，见 `ops::renew_lease`。
 const LEASE_MS: i64 = 60_000;
+/// 同一段音频被别人握着时重试几次、隔多久。
+///
+/// 覆盖的是正常那一档：两个人几乎同时转发同一条语音，先到的那个下载几秒就发布
+/// 了。乘起来远短于 [`LEASE_MS`]——超过 lease 的那种是 owner 死了，那时
+/// `Takeable` 会接管，不走这条路。
+const CLAIM_ATTEMPTS: usize = 5;
+const CLAIM_BACKOFF: std::time::Duration = std::time::Duration::from_millis(1500);
 const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
 const TRANSCRIBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
@@ -106,6 +113,11 @@ async fn transcribe(state: &Arc<SharedState>, source: &RecordSource) -> Option<S
 }
 
 /// 落盘的字节，以及它们的身份。
+///
+/// 临时文件的清理挂在 `Drop` 上，因为**放行的路径比放弃的路径多**：命中一份
+/// 已经存在的音频是最常见的结果（同一段语音被转发、被重发），而那条路只是把
+/// 既有的 blob 拿来挂一条 clip，谁也不会想起本次下载还留着一个 `.part`。留下
+/// 的是一段真人录音，在数据库之外，删除找不到它，导出也看不见它。
 struct Staged {
     path: std::path::PathBuf,
     sha256: String,
@@ -113,10 +125,10 @@ struct Staged {
     format: &'static str,
 }
 
-impl Staged {
+impl Drop for Staged {
     /// 只删自己写的那个临时文件。**绝不碰最终文件**——那可能正被另一个任务
-    /// 或既有行引用着。
-    fn discard(self) {
+    /// 或既有行引用着。发布过的话这里删的是一个已经改了名的路径，失败即无事。
+    fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.path);
     }
 }
@@ -133,9 +145,9 @@ async fn capture_one(
     let staged = fetch_to_staging(record, &data_dir).await?;
 
     // 一次采集可能跑几十秒，而这中间用户可能把这个会话从白名单里拿掉。permit
-    // 保证撤权会等我们结束，但不保证写下去的东西还是用户想要的。
+    // 保证撤权会等我们结束，但不保证写下去的东西还是用户想要的。这里问一次是
+    // 为了省掉后面的活；**决定性的那一次在写事务里面**，见 `commit`。
     if !permit.still_authorised() {
-        staged.discard();
         tracing::info!(session = %source.scope, "voice capture dropped: the grant moved while it was running");
         return Ok(());
     }
@@ -150,38 +162,153 @@ async fn capture_one(
     let dir = voice_corpus::session_dir(&data_dir, &pseudonym);
     let file_name = format!("{}.{}", staged.sha256, staged.format);
     let final_path = dir.join(&file_name);
+    tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
 
-    let pool = state.services.db.clone();
-    let source = source.clone();
-    let transcript = transcript.map(str::to_string);
-    let staged_path = staged.path.clone();
-    let sha = staged.sha256.clone();
-    let format = staged.format;
-    let size = staged.size;
+    // 同一段音频正被另一个任务写着时**等它写完**，而不是把这次出现丢掉：
+    // 两个人几乎同时转发同一条语音是常事，丢掉的那一条会让第二个人从这份语料
+    // 里消失。blob 会去重，clip 不该。
+    for attempt in 0..CLAIM_ATTEMPTS {
+        if attempt > 0 {
+            tokio::time::sleep(CLAIM_BACKOFF).await;
+        }
+        let pool = state.services.db.clone();
+        let auth = permit.authorisation();
+        let source = source.clone();
+        let transcript = transcript.map(str::to_string);
+        let staged_path = staged.path.clone();
+        let final_path = final_path.clone();
+        let file_name = file_name.clone();
+        let sha = staged.sha256.clone();
+        let format = staged.format;
+        let size = staged.size;
 
-    tokio::task::spawn_blocking(move || -> Result<(), String> {
-        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        let mut conn = crate::util::get_conn(&pool)?;
-        let now = crate::util::now_ms();
-        let key = ops::BlobKey {
-            bot_self_id: source.scope.bot_self_id,
-            source_type: source.source_type,
-            source_id: &source.source_id,
-            sha256: &sha,
-            file_format: format,
-        };
+        let settled = tokio::task::spawn_blocking(move || {
+            commit(CommitInput {
+                pool,
+                auth,
+                source,
+                transcript,
+                staged_path,
+                final_path,
+                file_name,
+                sha,
+                format,
+                size,
+                segment_index,
+            })
+        })
+        .await
+        .map_err(|e| e.to_string())??;
 
-        let blob = match settle_blob(&mut conn, &key, &file_name, size, &staged_path, &final_path, now)? {
-            Some(blob) => blob,
-            // 已经有人在写同一段音频，或者它正在被删除。两种情况下这次都不写。
-            None => {
-                let _ = std::fs::remove_file(&staged_path);
-                return Ok(());
-            }
+        if settled == Settled::Done {
+            return Ok(());
+        }
+    }
+    tracing::warn!(
+        session = %source.scope,
+        "voice capture gave up: another task held these bytes for the whole window"
+    );
+    Ok(())
+}
+
+/// [`commit`] 的参数。一个结构体而不是十一个位置参数——顺序相同类型相同的
+/// `String` 太多，写反了编译器不会说话。
+struct CommitInput {
+    pool: crate::db::DbPool,
+    auth: voice_corpus::Authorisation,
+    source: RecordSource,
+    transcript: Option<String>,
+    staged_path: std::path::PathBuf,
+    final_path: std::path::PathBuf,
+    file_name: String,
+    sha: String,
+    format: &'static str,
+    size: i64,
+    segment_index: i32,
+}
+
+#[derive(PartialEq, Eq)]
+enum Settled {
+    Done,
+    /// 有人正握着这段音频。退一步再来。
+    Retry,
+}
+
+/// 事务里的失败。
+///
+/// 要一个自己的类型，是因为 diesel 的 `immediate_transaction` 要求错误能从
+/// `diesel::result::Error` 转过来，而这段代码有一半的失败来自文件系统。全都
+/// 压成 `String` 就得让文件错误冒充数据库错误，回滚的原因在日志里会对不上号。
+#[derive(Debug)]
+enum CommitError {
+    Db(diesel::result::Error),
+    File(String),
+}
+
+impl From<diesel::result::Error> for CommitError {
+    fn from(error: diesel::result::Error) -> Self {
+        Self::Db(error)
+    }
+}
+
+impl std::fmt::Display for CommitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Db(error) => write!(f, "{error}"),
+            Self::File(message) => f.write_str(message),
+        }
+    }
+}
+
+/// 一个写事务：查授权、抢所有权、发布文件、记一次采集。
+///
+/// **整个在 `BEGIN IMMEDIATE` 里面**，而这两头各有一个理由。
+///
+/// 前头是授权：删除是"立屏障 → drain → 删 → 撤屏障"，而 drain 有上限、下载
+/// 没有。在事务外面问，答案在拿到写锁之前就可能过期；在里面问，一场同时开始的
+/// 删除只能堵在写锁上等这次提交完，然后把这条 clip 一起删掉——那正是它该赢的。
+///
+/// 后头是 clip 的幂等：`record_clip` 先查后插，两步之间同一个事件的重投会撞上
+/// 唯一索引，把一次本该无声的重复变成一个失败。
+fn commit(input: CommitInput) -> Result<Settled, String> {
+    let CommitInput {
+        pool,
+        auth,
+        source,
+        transcript,
+        staged_path,
+        final_path,
+        file_name,
+        sha,
+        format,
+        size,
+        segment_index,
+    } = input;
+    let mut conn = crate::util::get_conn(&pool)?;
+    let now = crate::util::now_ms();
+    let key = ops::BlobKey {
+        bot_self_id: source.scope.bot_self_id,
+        source_type: source.source_type,
+        source_id: &source.source_id,
+        sha256: &sha,
+        file_format: format,
+    };
+
+    conn.immediate_transaction(|conn| {
+        if !auth.still_authorised() {
+            tracing::info!(session = %source.scope, "voice capture dropped: the grant moved while it was running");
+            return Ok(Settled::Done);
+        }
+
+        let blob = match settle_blob(conn, &key, &file_name, size, &staged_path, &final_path, now)? {
+            Claimed::Blob(blob) => blob,
+            Claimed::Retry => return Ok(Settled::Retry),
+            // 它正在被删除，或者别人已经把它标坏了。两种情况下这次都不写。
+            Claimed::Skip => return Ok(Settled::Done),
         };
 
         ops::record_clip(
-            &mut conn,
+            conn,
             &blob,
             &uuid::Uuid::new_v4().to_string(),
             &source.sender_id.to_string(),
@@ -190,18 +317,23 @@ async fn capture_one(
             transcript.as_deref(),
             transcript.as_deref().map(|_| "llonebot.voice_msg_to_text"),
             now,
-        )
-        .map_err(|e| e.to_string())?;
-        Ok(())
+        )?;
+        Ok(Settled::Done)
     })
-    .await
-    .map_err(|e| e.to_string())?
+    .map_err(|error: CommitError| error.to_string())
+}
+
+/// [`settle_blob`] 的三种答案。
+enum Claimed {
+    /// 可以挂 clip 的那一行。
+    Blob(VoiceBlob),
+    /// 有人正握着它，退一步再来。
+    Retry,
+    /// 这次不写：墓碑，或者已经被标坏了。
+    Skip,
 }
 
 /// 抢所有权、发布文件，返回可以挂 clip 的那一行。
-///
-/// `None` 表示这次不写：有人正在写同一段音频，或者它是墓碑（用户刚要求删掉，
-/// 此时再存一份是违背意图），或者它已经被标坏了。
 #[allow(clippy::too_many_arguments)]
 fn settle_blob(
     conn: &mut diesel::SqliteConnection,
@@ -211,66 +343,59 @@ fn settle_blob(
     staged_path: &std::path::Path,
     final_path: &std::path::Path,
     now: i64,
-) -> Result<Option<VoiceBlob>, String> {
-    // 有界：每一轮都要么拿到所有权、要么认输，不会无限转。走到下一轮的唯一
-    // 路径是接管失败（别人抢先了），而那种情况下重读一次就会看到新状态。
-    for _ in 0..4 {
-        let id = uuid::Uuid::new_v4().to_string();
-        let token = uuid::Uuid::new_v4().to_string();
-        match ops::claim_blob(conn, key, &id, &token, file_name, size, now, LEASE_MS).map_err(|e| e.to_string())? {
-            ops::ClaimOutcome::Owned { id, token, epoch } => {
-                publish_file(staged_path, final_path)?;
-                // fencing:返回 false 就是所有权在下载期间被接管了。这个任务
-                // 既不发布也不写 clip——文件已经在位,让接管者去 publish。
-                if !ops::publish_blob(conn, &id, &token, epoch, now).map_err(|e| e.to_string())? {
-                    return Ok(None);
-                }
-                return read_blob(conn, key);
+) -> Result<Claimed, CommitError> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let token = uuid::Uuid::new_v4().to_string();
+    match ops::claim_blob(conn, key, &id, &token, file_name, size, now, LEASE_MS)? {
+        ops::ClaimOutcome::Owned { id, token, epoch } => {
+            publish_file(staged_path, final_path).map_err(CommitError::File)?;
+            // fencing:返回 false 就是所有权在下载期间被接管了。这个任务既不
+            // 发布也不写 clip——文件已经在位,让接管者去 publish。
+            if !ops::publish_blob(conn, &id, &token, epoch, now)? {
+                return Ok(Claimed::Retry);
             }
-            ops::ClaimOutcome::Ready(blob) => {
-                // 已经有一份。校验磁盘上那个确实对得上——大小不符就是它坏了,
-                // 标出来而不是把新 clip 挂到一个坏文件上。
-                let matches = std::fs::metadata(final_path).map(|m| m.len() as i64 == blob.file_size);
-                if matches.unwrap_or(false) {
-                    return Ok(Some(blob));
-                }
-                ops::mark_damaged(conn, &blob.id, now).map_err(|e| e.to_string())?;
-                return Ok(None);
+            read_blob(conn, key)
+        }
+        ops::ClaimOutcome::Ready(blob) => {
+            // 已经有一份。校验磁盘上那个确实对得上——对不上就是它坏了,
+            // 标出来而不是把新 clip 挂到一个坏文件上。
+            if voice_corpus::file_matches(final_path, blob.file_size, &blob.sha256) {
+                return Ok(Claimed::Blob(blob));
             }
-            ops::ClaimOutcome::Takeable(blob) => {
-                let token = uuid::Uuid::new_v4().to_string();
-                let taken = ops::takeover_blob(
-                    conn,
-                    &blob.id,
-                    blob.owner_token.as_deref(),
-                    blob.fence_epoch,
-                    &token,
-                    now,
-                    LEASE_MS,
-                )
-                .map_err(|e| e.to_string())?;
-                let Some(epoch) = taken else { continue };
-                publish_file(staged_path, final_path)?;
-                if !ops::publish_blob(conn, &blob.id, &token, epoch, now).map_err(|e| e.to_string())? {
-                    return Ok(None);
-                }
-                return read_blob(conn, key);
+            ops::mark_damaged(conn, &blob.id, now)?;
+            Ok(Claimed::Skip)
+        }
+        ops::ClaimOutcome::Takeable(blob) => {
+            let token = uuid::Uuid::new_v4().to_string();
+            let taken = ops::takeover_blob(
+                conn,
+                &blob.id,
+                blob.owner_token.as_deref(),
+                blob.fence_epoch,
+                &token,
+                now,
+                LEASE_MS,
+            )?;
+            let Some(epoch) = taken else { return Ok(Claimed::Retry) };
+            publish_file(staged_path, final_path).map_err(CommitError::File)?;
+            if !ops::publish_blob(conn, &blob.id, &token, epoch, now)? {
+                return Ok(Claimed::Retry);
             }
-            ops::ClaimOutcome::PendingElsewhere(_) => return Ok(None),
-            ops::ClaimOutcome::Damaged(_) => return Ok(None),
-            ops::ClaimOutcome::Deleting(_) => {
-                tracing::debug!("voice capture skipped: these bytes are being deleted");
-                return Ok(None);
-            }
+            read_blob(conn, key)
+        }
+        ops::ClaimOutcome::PendingElsewhere(_) => Ok(Claimed::Retry),
+        ops::ClaimOutcome::Damaged(_) => Ok(Claimed::Skip),
+        ops::ClaimOutcome::Deleting(_) => {
+            tracing::debug!("voice capture skipped: these bytes are being deleted");
+            Ok(Claimed::Skip)
         }
     }
-    Ok(None)
 }
 
-fn read_blob(conn: &mut diesel::SqliteConnection, key: &ops::BlobKey<'_>) -> Result<Option<VoiceBlob>, String> {
+fn read_blob(conn: &mut diesel::SqliteConnection, key: &ops::BlobKey<'_>) -> Result<Claimed, CommitError> {
     use crate::db::schema::voice_blobs;
     use diesel::prelude::*;
-    voice_blobs::table
+    let blob = voice_blobs::table
         .filter(voice_blobs::bot_self_id.eq(key.bot_self_id))
         .filter(voice_blobs::source_type.eq(key.source_type))
         .filter(voice_blobs::source_id.eq(key.source_id))
@@ -278,8 +403,9 @@ fn read_blob(conn: &mut diesel::SqliteConnection, key: &ops::BlobKey<'_>) -> Res
         .filter(voice_blobs::sha256.eq(key.sha256))
         .select(VoiceBlob::as_select())
         .first(conn)
-        .optional()
-        .map_err(|e| e.to_string())
+        .optional()?;
+    // 刚刚 publish 过，所以它必然在。真读不到就当作没抢到，让上面再转一圈。
+    Ok(blob.map_or(Claimed::Retry, Claimed::Blob))
 }
 
 /// 把临时文件挪到最终位置。

@@ -39,6 +39,33 @@ pub fn session_dir(app_data_dir: &Path, pseudonym: &str) -> PathBuf {
     corpus_dir(app_data_dir).join(pseudonym)
 }
 
+/// 磁盘上那个文件是不是这一行说的那个。
+///
+/// **大小对上不等于内容对上。** 大小只挡得住截断——一次写到一半的崩溃、一块
+/// 坏扇区、一次同名覆盖，长度可以分毫不差而字节已经不是原来的了。这份语料是
+/// 要拿去训练的，一条内容错了的样本比一条缺失的样本贵得多：缺的那条不见了，
+/// 错的那条会被当成真的用。
+///
+/// 值得为此读一遍整个文件：单条上限是 10 MiB，而这个判断只在两个地方问——
+/// 启动时核一遍，以及复用一份已有音频之前。
+pub fn file_matches(path: &Path, expected_size: i64, expected_sha256: &str) -> bool {
+    use sha2::Digest;
+
+    let Ok(bytes) = std::fs::read(path) else {
+        return false;
+    };
+    if bytes.len() as i64 != expected_size {
+        return false;
+    }
+    let digest = Sha256::digest(&bytes);
+    let actual = digest.iter().fold(String::new(), |mut acc, b| {
+        use std::fmt::Write;
+        let _ = write!(acc, "{b:02x}");
+        acc
+    });
+    actual == expected_sha256
+}
+
 /// 语料目录的独占锁。
 ///
 /// 拿不到就**整个采集功能停用**，而不是退化成"多个 writer 小心翼翼地协调"。
@@ -119,20 +146,27 @@ pub fn sender_pseudonym(storage_key: &[u8], sender_id: &str) -> String {
 /// 的显式操作，本次不提供。
 pub const STORAGE_KEY_PREF: &str = "onebot.voice_storage_key";
 
+/// **读与建必须在同一个写事务里。** 两个采集任务同时第一次跑，各自读到空、
+/// 各自生成一把、后写的覆盖先写的——而先写的那个任务已经拿着它自己的 key 算出
+/// 目录名开始落盘了。那个目录之后没有人解析得出来，还会被恢复器当野文件扫掉。
+/// `BEGIN IMMEDIATE` 让第二个调用者堵在事务开头，醒来时读到的是已经提交的那把。
 pub fn storage_key(pool: &DbPool) -> Result<Vec<u8>, String> {
     let mut conn = crate::util::get_conn(pool)?;
-    if let Some(existing) = crate::db::ops::preference::get_preference(&mut conn, STORAGE_KEY_PREF)
-        .map_err(|e| e.to_string())?
-        .filter(|v| !v.trim().is_empty())
-    {
-        return hex_decode(&existing);
-    }
-    // uuid 的随机性来自 getrandom,这里要的就是"没人能猜到"。两个 v4 拼起来
-    // 是 256 位。
-    let fresh = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
-    crate::db::ops::preference::set_preference(&mut conn, STORAGE_KEY_PREF, &fresh, crate::util::now_ms())
+    let existing = conn
+        .immediate_transaction(|conn| {
+            if let Some(existing) =
+                crate::db::ops::preference::get_preference(conn, STORAGE_KEY_PREF)?.filter(|v| !v.trim().is_empty())
+            {
+                return Ok(existing);
+            }
+            // uuid 的随机性来自 getrandom,这里要的就是"没人能猜到"。两个 v4
+            // 拼起来是 256 位。
+            let fresh = format!("{}{}", uuid::Uuid::new_v4().simple(), uuid::Uuid::new_v4().simple());
+            crate::db::ops::preference::set_preference(conn, STORAGE_KEY_PREF, &fresh, crate::util::now_ms())?;
+            Ok::<_, diesel::result::Error>(fresh)
+        })
         .map_err(|e| e.to_string())?;
-    hex_decode(&fresh)
+    hex_decode(&existing)
 }
 
 fn hex_decode(raw: &str) -> Result<Vec<u8>, String> {
@@ -214,6 +248,20 @@ struct Grants {
     /// 撤权/删除期间挡住新 permit。与"不在白名单里"分开，因为删除结束后白名单
     /// 可能仍然有效——屏障是临时的，撤权是永久的。
     barriers: HashSet<CaptureScope>,
+    /// 每个范围上"发生过一次屏障"的次数。
+    ///
+    /// **屏障立起来就 +1，而不是撤掉时才动。** 一次删除是"立屏障 → drain → 删
+    /// → 撤屏障"，drain 是有上限的（见 [`DRAIN_TIMEOUT`]），而一次采集可以比它
+    /// 久得多。超时之后删除照常走完，屏障也撤了——只看白名单和 `generation`
+    /// 的话，那个熬过整场删除的旧任务会发现自己"仍然被授权"，然后把用户刚要求
+    /// 删掉的那段音频重新写回去。
+    scope_epochs: HashMap<CaptureScope, u64>,
+}
+
+impl Grants {
+    fn epoch_of(&self, scope: &CaptureScope) -> u64 {
+        self.scope_epochs.get(scope).copied().unwrap_or(0)
+    }
 }
 
 /// 谁现在可以往语料里写。
@@ -348,7 +396,29 @@ impl CorpusCoordinator {
         if let Ok(mut grants) = self.grants.lock() {
             for scope in scopes {
                 grants.barriers.insert(scope.clone());
+                // 立起来的这一刻就作废这个范围上所有已经发出的 permit。撤掉屏障
+                // 不会把它们还回来，那正是要的：drain 超时之后跑完的那个任务，
+                // 写的是用户刚刚要求删掉的东西。
+                *grants.scope_epochs.entry(scope.clone()).or_insert(0) += 1;
             }
+        }
+    }
+
+    /// 这一代服务结束了：挡住全部、等在途归还、然后把授权整个清空。
+    ///
+    /// `stop()` 用它。少了这一步，恢复器会在下一次 `start()` 里跑起来，而上一代
+    /// 那些还握着 permit 的采集任务正在写——恢复器无条件清空 `.staging` 和所有
+    /// `pending` 行，靠的正是"能拿到锁就说明没有 writer"这个前提。
+    pub async fn quiesce(&self) {
+        let scopes = self.granted_scopes();
+        if !scopes.is_empty() {
+            self.raise_barriers(&scopes);
+            self.drain(&scopes).await;
+        }
+        if let Ok(mut grants) = self.grants.lock() {
+            grants.capture.clear();
+            grants.barriers.clear();
+            grants.generation += 1;
         }
     }
 
@@ -411,12 +481,47 @@ impl CorpusCoordinator {
             return None;
         }
         let generation = grants.generation;
+        let scope_epoch = grants.epoch_of(scope);
         *grants.in_flight.entry(scope.clone()).or_insert(0) += 1;
         Some(CapturePermit {
-            coordinator: Arc::clone(self),
-            scope: scope.clone(),
-            generation,
+            authorisation: Authorisation {
+                coordinator: Arc::clone(self),
+                scope: scope.clone(),
+                generation,
+                scope_epoch,
+            },
         })
+    }
+}
+
+/// permit 那一刻的授权，脱离 permit 单独带走。
+///
+/// 存在的理由是**最终提交发生在另一条线程上**：写库是 `spawn_blocking`，而
+/// permit 要留在异步这一侧继续挡住撤权。这个句柄是 `'static` 的，所以可以进到
+/// 那个事务里再问一次——**在提交之前**，而不是在下载之前。
+#[derive(Clone)]
+pub struct Authorisation {
+    coordinator: Arc<CorpusCoordinator>,
+    scope: CaptureScope,
+    generation: u64,
+    scope_epoch: u64,
+}
+
+impl Authorisation {
+    /// 授权自这个 permit 发出以来没有变过，这个 scope 现在仍在白名单里，
+    /// 而且这中间没有人对它立过屏障。
+    ///
+    /// 三个条件缺一不可。前两个漏掉的是删除：删除**不动白名单也不推进
+    /// generation**，它只立一个临时屏障；drain 有上限而下载没有，所以熬过整场
+    /// 删除的那个任务只看前两个条件会认为自己仍然被授权。
+    pub fn still_authorised(&self) -> bool {
+        let Ok(grants) = self.coordinator.grants.lock() else {
+            return false;
+        };
+        grants.generation == self.generation
+            && grants.epoch_of(&self.scope) == self.scope_epoch
+            && !grants.barriers.contains(&self.scope)
+            && grants.capture.contains(&self.scope)
     }
 }
 
@@ -426,39 +531,39 @@ impl CorpusCoordinator {
 /// 秒，而这中间用户可能把这个会话从白名单里拿掉。permit 保证撤权会等它结束，
 /// 但不保证它写下去的东西还是用户想要的。
 pub struct CapturePermit {
-    coordinator: Arc<CorpusCoordinator>,
-    scope: CaptureScope,
-    generation: u64,
+    authorisation: Authorisation,
 }
 
 impl CapturePermit {
     pub fn scope(&self) -> &CaptureScope {
-        &self.scope
+        &self.authorisation.scope
     }
 
-    /// 授权自这个 permit 发出以来没有变过，而且这个 scope 现在仍在白名单里。
+    /// 带进 `spawn_blocking` 的那一份。permit 本身留在异步侧继续挡住撤权。
+    pub fn authorisation(&self) -> Authorisation {
+        self.authorisation.clone()
+    }
+
     pub fn still_authorised(&self) -> bool {
-        let Ok(grants) = self.coordinator.grants.lock() else {
-            return false;
-        };
-        grants.generation == self.generation && grants.capture.contains(&self.scope)
+        self.authorisation.still_authorised()
     }
 }
 
 impl Drop for CapturePermit {
     fn drop(&mut self) {
-        let Ok(mut grants) = self.coordinator.grants.lock() else {
+        let auth = &self.authorisation;
+        let Ok(mut grants) = auth.coordinator.grants.lock() else {
             return;
         };
-        if let Some(count) = grants.in_flight.get_mut(&self.scope) {
+        if let Some(count) = grants.in_flight.get_mut(&auth.scope) {
             *count = count.saturating_sub(1);
             if *count == 0 {
-                grants.in_flight.remove(&self.scope);
+                grants.in_flight.remove(&auth.scope);
             }
         }
         drop(grants);
         // 唤醒 drain。send_modify 保证版本号一定前进，哪怕没有接收者。
-        self.coordinator.release_tx.send_modify(|n| *n += 1);
+        auth.coordinator.release_tx.send_modify(|n| *n += 1);
     }
 }
 
@@ -545,6 +650,29 @@ mod tests {
         assert!(!permit.still_authorised());
     }
 
+    /// 删除**不动白名单也不推进 generation**，所以它只能靠 scope 自己那一格。
+    ///
+    /// 这是 drain 超时之后那条路：删除照常走完并撤掉屏障，而那个熬过整场删除的
+    /// 采集任务醒来时，白名单和 generation 都和它出发时一模一样。少了这一格，
+    /// 它会把用户刚要求删掉的音频重新写回去，而删除已经报告成功了。
+    #[tokio::test]
+    async fn a_permit_that_outlived_a_deletion_may_not_commit() {
+        let (_dir, c) = coordinator();
+        c.apply(HashSet::from([scope()]), HashSet::new()).await;
+        let permit = c.acquire(&scope(), "alice").expect("granted");
+
+        // 删除那一套，但不等 drain——超时的那条路走的就是这个顺序。
+        c.raise_barriers(&[scope()]);
+        assert!(!permit.still_authorised(), "屏障立着的时候当然不行");
+        c.lift_barriers(&[scope()]);
+
+        assert!(c.acquire(&scope(), "bob").is_some(), "删完之后照常采集");
+        assert!(
+            !permit.still_authorised(),
+            "撤掉屏障不该把跨过这场删除的旧 permit 还回来"
+        );
+    }
+
     #[test]
     fn a_second_holder_of_the_directory_lock_gets_nothing() {
         let dir = tempfile::tempdir().unwrap();
@@ -557,6 +685,20 @@ mod tests {
             Arc::new(second).acquire(&scope(), "alice").is_none(),
             "拿不到锁就一律不采集"
         );
+    }
+
+    /// 建一次，之后每次都是同一把。
+    ///
+    /// 测试池只有一条连接，所以这里跑的是顺序那一路——真正的并发靠的是
+    /// `BEGIN IMMEDIATE`，第二个调用者堵在事务开头，醒来时读到的是已提交的值。
+    /// 不是同一把的话，先动手的那个任务已经用它自己的 key 算出目录名开始落盘了，
+    /// 而那个目录名之后没有人解析得出来——恢复器会把它当野文件扫掉。
+    #[test]
+    fn the_storage_key_is_created_once_and_then_read() {
+        let pool = crate::db::test_db();
+        let first = storage_key(&pool).unwrap();
+        assert_eq!(first.len(), 32);
+        assert_eq!(storage_key(&pool).unwrap(), first);
     }
 
     /// 假名化要把账号算进去，否则两个 bot 同群会共用一个目录；

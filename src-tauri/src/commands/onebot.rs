@@ -33,8 +33,21 @@ pub async fn save_onebot_config(app: tauri::AppHandle, config: onebot::OneBotCon
     //
     // 只有语音策略是热的。同一页上的 host / token / admin 仍然是启动快照,
     // UI 的成功提示不能暗示它们也生效了。
-    onebot::refresh_voice_policy(&services, &config).await;
-    Ok(())
+    //
+    // 失败要报出去。这一步读 opt-out 名单和钥匙串，两者都可能失败，而失败之后
+    // 配置已经写进库了——不说的话，用户看到的是一次成功的保存加上一个什么都
+    // 没变的会话。
+    onebot::refresh_voice_policy(&services, &config).await
+}
+
+/// 出站语音差哪一项。设置页照着它说话——四项之中缺哪个只有后端知道，而这个
+/// 功能唯一一种"什么都不说"的失败就是开关开着、工具不出现。
+#[cfg(not(target_os = "android"))]
+#[tauri::command]
+pub async fn get_voice_send_readiness(app: tauri::AppHandle) -> Result<onebot::VoiceSendReadiness, String> {
+    let services = app.services();
+    let config = onebot::load_config(&services.db);
+    Ok(onebot::voice_send_readiness(&services, &config))
 }
 
 #[cfg(not(target_os = "android"))]

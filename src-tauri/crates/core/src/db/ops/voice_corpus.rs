@@ -321,32 +321,48 @@ pub fn record_clip(
 // 删除
 // ---------------------------------------------------------------------------
 
-/// 把没有任何 clip 引用的 ready blob 标成墓碑，返回它们。
+/// 把没有任何 clip 引用的 blob 标成墓碑，返回它们。
 ///
 /// **这是共享 blob 的安全阀。** 多个发送者的 clip 可以指向同一个 blob，按发送者
 /// 删除时直接墓碑化会连带删掉别人的合法样本，所以只碰真正没人引用的那些。
 /// 调用方拿着返回的行去删文件，删成功了才 [`delete_blob_rows`]。
+///
+/// 三件事让它成立，而它们都是被同一个场景逼出来的——**另一个会话的采集正在同时
+/// 跑**：
+///
+/// - 整个在一个 `BEGIN IMMEDIATE` 里。查完再无条件按 id 更新，中间那一瞬别人
+///   插进来的 clip 会连同它刚落盘的 blob 一起被删掉（`ON DELETE CASCADE`）。
+/// - UPDATE 自己也带 `NOT EXISTS`，回读只认真的转成墓碑的那些。写事务本该让上
+///   一条足够，但一个只在注释里成立的前提，改天会被一次"顺手挪出事务"推翻。
+/// - `damaged` 一并处理。它是"文件对不上"，不是"这行不算数"——留在外面，一个
+///   没人引用的坏 blob 的文件永远不会被删掉。
 pub fn tombstone_unreferenced(conn: &mut SqliteConnection, now: i64) -> QueryResult<Vec<VoiceBlob>> {
-    let orphaned: Vec<String> = voice_blobs::table
-        .filter(voice_blobs::status.eq(blob_status::READY))
-        .filter(diesel::dsl::not(diesel::dsl::exists(
-            voice_clips::table.filter(voice_clips::blob_id.eq(voice_blobs::id)),
-        )))
-        .select(voice_blobs::id)
-        .load(conn)?;
-    if orphaned.is_empty() {
-        return Ok(Vec::new());
-    }
-    diesel::update(voice_blobs::table.filter(voice_blobs::id.eq_any(&orphaned)))
-        .set((
-            voice_blobs::status.eq(blob_status::DELETING),
-            voice_blobs::updated_at.eq(now),
-        ))
-        .execute(conn)?;
-    voice_blobs::table
-        .filter(voice_blobs::id.eq_any(&orphaned))
-        .select(VoiceBlob::as_select())
-        .load(conn)
+    let collectable = || {
+        voice_blobs::table
+            .filter(voice_blobs::status.eq_any([blob_status::READY, blob_status::DAMAGED]))
+            .filter(diesel::dsl::not(diesel::dsl::exists(
+                voice_clips::table.filter(voice_clips::blob_id.eq(voice_blobs::id)),
+            )))
+    };
+    conn.immediate_transaction(|conn| {
+        let doomed: Vec<String> = collectable().select(voice_blobs::id).load(conn)?;
+        if doomed.is_empty() {
+            return Ok(Vec::new());
+        }
+        diesel::update(collectable().filter(voice_blobs::id.eq_any(&doomed)))
+            .set((
+                voice_blobs::status.eq(blob_status::DELETING),
+                voice_blobs::owner_token.eq::<Option<String>>(None),
+                voice_blobs::lease_expires_at.eq::<Option<i64>>(None),
+                voice_blobs::updated_at.eq(now),
+            ))
+            .execute(conn)?;
+        voice_blobs::table
+            .filter(voice_blobs::id.eq_any(&doomed))
+            .filter(voice_blobs::status.eq(blob_status::DELETING))
+            .select(VoiceBlob::as_select())
+            .load(conn)
+    })
 }
 
 /// 文件已经删掉了，行才走。失败的留着 `deleting` 给恢复器重试。
@@ -399,13 +415,14 @@ pub fn stale_pending(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>>
         .load(conn)
 }
 
-/// 已发布但没有任何 clip 指着它。
+/// 落了盘但没有任何 clip 指着它。
 ///
 /// 采集在写完 blob 与写 clip 之间死掉就会留下一个。文件占着地方，而没有任何
-/// 一次采集会承认它。
+/// 一次采集会承认它。`damaged` 也算：那是"文件对不上"，一个连 clip 都没有的
+/// 坏 blob 没有任何东西还需要它。
 pub fn orphaned(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>> {
     voice_blobs::table
-        .filter(voice_blobs::status.eq(blob_status::READY))
+        .filter(voice_blobs::status.eq_any([blob_status::READY, blob_status::DAMAGED]))
         .filter(diesel::dsl::not(diesel::dsl::exists(
             voice_clips::table.filter(voice_clips::blob_id.eq(voice_blobs::id)),
         )))
@@ -465,24 +482,32 @@ pub struct SessionTotal {
 
 /// 在 Rust 里聚合而不是写 `GROUP BY`：语料按会话最多几千行，一次读完比一段
 /// diesel 的聚合类型体操便宜得多，而这个函数只在设置页打开时调用一次。
+///
+/// **数的是 clip，不是 blob**，两个数在同一段音频被两个人发过的时候就分家了：
+/// 按 blob 数，那个会话看起来少了一条，而"删掉这个会话"实际会带走两条。占用
+/// 的字节则相反——一份文件只占一次地方，所以每个 blob 只加一次。
+/// `last_captured_at` 也来自 clip：blob 的 `created_at` 是它**第一次**被存下来
+/// 的时刻，此后同一段音频再被发一百次，那个会话也永远显示着几个月前。
 pub fn session_totals(conn: &mut SqliteConnection) -> QueryResult<Vec<SessionTotal>> {
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
 
     let mut totals: HashMap<(i64, String, String), SessionTotal> = HashMap::new();
-    for blob in all_ready(conn)? {
-        let entry = totals
-            .entry((blob.bot_self_id, blob.source_type.clone(), blob.source_id.clone()))
-            .or_insert_with(|| SessionTotal {
-                bot_self_id: blob.bot_self_id,
-                source_type: blob.source_type.clone(),
-                source_id: blob.source_id.clone(),
-                clips: 0,
-                bytes: 0,
-                last_captured_at: 0,
-            });
+    let mut counted_blobs: HashSet<(i64, String, String, String)> = HashSet::new();
+    for (clip, blob) in export_rows(conn)? {
+        let key = (blob.bot_self_id, blob.source_type.clone(), blob.source_id.clone());
+        let entry = totals.entry(key.clone()).or_insert_with(|| SessionTotal {
+            bot_self_id: blob.bot_self_id,
+            source_type: blob.source_type.clone(),
+            source_id: blob.source_id.clone(),
+            clips: 0,
+            bytes: 0,
+            last_captured_at: 0,
+        });
         entry.clips += 1;
-        entry.bytes += blob.file_size;
-        entry.last_captured_at = entry.last_captured_at.max(blob.created_at);
+        if counted_blobs.insert((key.0, key.1, key.2, blob.id.clone())) {
+            entry.bytes += blob.file_size;
+        }
+        entry.last_captured_at = entry.last_captured_at.max(clip.created_at);
     }
     let mut out: Vec<SessionTotal> = totals.into_values().collect();
     out.sort_by(|a, b| b.last_captured_at.cmp(&a.last_captured_at));
@@ -700,6 +725,52 @@ mod tests {
         let doomed = tombstone_unreferenced(&mut conn, 3).unwrap();
         assert_eq!(doomed.len(), 1);
         assert_eq!(doomed[0].id, "b1");
+    }
+
+    /// 坏掉又没人引用的 blob 也要被收走。留在外面的话，它的文件永远删不掉——
+    /// 墓碑扫描只看 `ready`，而"坏"恰恰意味着这一行不会再变回 `ready`。
+    #[test]
+    fn a_damaged_recording_nobody_references_is_collected_too() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        let blob = ready_blob(&mut conn, "aa", "b1");
+        mark_damaged(&mut conn, &blob.id, 2).unwrap();
+
+        let doomed = tombstone_unreferenced(&mut conn, 3).unwrap();
+        assert_eq!(doomed.len(), 1);
+        assert_eq!(doomed[0].id, "b1");
+        assert_eq!(doomed[0].status, blob_status::DELETING);
+    }
+
+    /// 有 clip 指着的坏行**不动**：那份记录记着谁在什么时候说过话，
+    /// 而它不该因为文件坏了就消失。
+    #[test]
+    fn a_damaged_recording_someone_still_references_stays() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        let blob = ready_blob(&mut conn, "aa", "b1");
+        record_clip(&mut conn, &blob, "c1", "alice", Some(10), 0, None, None, 1).unwrap();
+        mark_damaged(&mut conn, &blob.id, 2).unwrap();
+
+        assert!(tombstone_unreferenced(&mut conn, 3).unwrap().is_empty());
+    }
+
+    /// 统计数的是 clip，不是 blob。两个人发过同一段音频时两个数就分家了：
+    /// 会话看起来少一条，而"删掉这个会话"实际会带走两条。字节反过来——
+    /// 一份文件只占一次地方。
+    #[test]
+    fn a_shared_recording_counts_twice_but_takes_up_room_once() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        let blob = ready_blob(&mut conn, "aa", "b1");
+        record_clip(&mut conn, &blob, "c1", "alice", Some(10), 0, None, None, 1).unwrap();
+        record_clip(&mut conn, &blob, "c2", "bob", Some(11), 0, None, None, 5).unwrap();
+
+        let totals = session_totals(&mut conn).unwrap();
+        assert_eq!(totals.len(), 1);
+        assert_eq!(totals[0].clips, 2, "两次出现是两条");
+        assert_eq!(totals[0].bytes, 10, "一份文件只占一次地方");
+        assert_eq!(totals[0].last_captured_at, 5, "最近一次来自 clip，不是 blob 建立的时刻");
     }
 
     #[test]

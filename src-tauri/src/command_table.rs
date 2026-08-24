@@ -269,12 +269,22 @@ macro_rules! with_all_commands {
 
             #[cfg(not(target_os = "android"))]
             async commands::onebot => get_onebot_status(),
+            // `local` for what it *returns*, not for what it does. `OneBotConfig`
+            // carries `access_token` — another server's credential, the same one
+            // `guard_preference` refuses to let a remote caller write — plus
+            // `admin_users`, and the voice lists, whose private-chat entries are
+            // a person's own QQ number. Reading them back over the remote
+            // transport undoes the write guard from the other side. Nothing
+            // legitimate asks: the panel is hidden whenever `can.manageServers`
+            // is false, which is exactly the remote case.
             #[cfg(not(target_os = "android"))]
-            async commands::onebot => get_onebot_config(),
+            local commands::onebot => get_onebot_config(),
             #[cfg(not(target_os = "android"))]
             local commands::onebot => save_onebot_config(
                 config: meridian_core::onebot::OneBotConfig,
             ),
+            #[cfg(not(target_os = "android"))]
+            local commands::onebot => get_voice_send_readiness(),
             #[cfg(not(target_os = "android"))]
             local commands::onebot => start_onebot(),
             #[cfg(not(target_os = "android"))]
@@ -401,6 +411,7 @@ macro_rules! with_all_commands {
                 selector: meridian_core::voice_corpus::manage::CorpusSelector
             ),
             async commands::voice_corpus => set_voice_optout(sender_id: String, enabled: bool),
+            async commands::voice_corpus => forget_voice_sender(sender_id: String),
             local commands::voice_corpus => export_voice_corpus(
                 output_dir: String,
                 include_sender: bool,

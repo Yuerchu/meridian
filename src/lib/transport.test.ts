@@ -309,11 +309,18 @@ describe('reconnection', () => {
 })
 
 describe('probeRemote', () => {
+  // Written against `CLIENT_API_REV` rather than a literal: a hard-coded band
+  // starts failing on the next bump, which reads as a regression in the check
+  // rather than as a test that named a number instead of the relationship.
   it('accepts a server inside the revision band', async () => {
-    const { probeRemote } = await import('./transport')
-    respondWith({ app: 'meridian', version: '0.2.0', apiRev: 1, minClientRev: 1 })
+    const { probeRemote, CLIENT_API_REV } = await import('./transport')
+    respondWith({ app: 'meridian', version: '0.2.0', apiRev: CLIENT_API_REV, minClientRev: CLIENT_API_REV })
 
-    await expect(probeRemote('10.0.0.7', 8787)).resolves.toEqual({ ok: true, version: '0.2.0', apiRev: 1 })
+    await expect(probeRemote('10.0.0.7', 8787)).resolves.toEqual({
+      ok: true,
+      version: '0.2.0',
+      apiRev: CLIENT_API_REV,
+    })
     expect(globalThis.fetch).toHaveBeenCalledWith('http://10.0.0.7:8787/healthz', { signal: undefined })
   })
 

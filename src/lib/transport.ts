@@ -102,7 +102,7 @@ export function writeRemoteConfig(config: RemoteConfig | null): void {
  * ignore. Kept here rather than in the settings panel because it is a fact
  * about this file's protocol.
  */
-export const CLIENT_API_REV = 1
+export const CLIENT_API_REV = 2
 
 /**
  * What `/healthz` said, reduced to the decision the user is waiting on.
@@ -272,8 +272,20 @@ class RemoteTransport implements Transport {
       if (!frame.channel) return
 
       if (frame.channel === 'remote-ready') {
-        const payload = frame.payload as { assetTicket?: string } | undefined
+        const payload = frame.payload as { assetTicket?: string; apiRev?: number } | undefined
         this.assetTicket = payload?.assetTicket ?? null
+        // The socket carries the revision too, and this is the only place it
+        // gets re-read. `probeRemote` checks it once, at the moment somebody
+        // types an address; a reconnect days later can land on a desktop that
+        // has since been downgraded, and then the first command this build
+        // added comes back as `unknown command` from a connection that
+        // reported itself healthy.
+        if (typeof payload?.apiRev === 'number' && payload.apiRev < CLIENT_API_REV) {
+          console.warn(
+            `remote: this desktop speaks api rev ${payload.apiRev}, this client expects ${CLIENT_API_REV}; ` +
+              'newer features will fail until it is updated',
+          )
+        }
         const reconnected = this.attempt > 0
         this.attempt = 0
         this.setState('connected')

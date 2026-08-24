@@ -674,9 +674,23 @@ impl QqToolExecutor {
         };
 
         // 定向而不是广播：两个账号连着时，广播会让两个号各发一遍同一条语音。
+        //
+        // 入队单独有一个短得多的上限。上面那次校验只在帧真的发出去之前才算数,
+        // 而队列满着的时候它可以在里面躺满整个 20 秒——那期间撤权、换音色、
+        // 关掉开关全都可能发生,而这条语音照发。何况一条迟到 20 秒的语音回复
+        // 落在群里本来就是错的。
         let conn_id = self.state.conn_for_self_id(self.self_id);
         let outcome = match conn_id {
-            Some(conn) => super::call_api_to_conn(&self.state, conn, action, std::time::Duration::from_secs(20)).await,
+            Some(conn) => {
+                super::call_api_to_conn_within(
+                    &self.state,
+                    conn,
+                    action,
+                    std::time::Duration::from_secs(2),
+                    std::time::Duration::from_secs(20),
+                )
+                .await
+            }
             None => super::DirectedCallOutcome::NotDispatched("no adapter connection for this account".into()),
         };
 
@@ -1245,11 +1259,6 @@ mod tests {
         assert!(SPECS.iter().filter(|s| s.needs_approval).all(|s| s.admin_only));
     }
 
-    /// The `description` parameter goes on the calls that change something and
-    /// nowhere else. A read already says what it is in its path or its pattern,
-    /// and one on every query is output tokens spent restating an argument the
-    /// card is showing anyway.
-    #[test]
     /// 白名单关掉时，`send_voice` 从**两边同时**消失。
     ///
     /// 只从一边拿掉就是让模型拿着一个会被 dispatch 拒绝的工具，在一屋子人面前
@@ -1284,6 +1293,10 @@ mod tests {
         );
     }
 
+    /// The `description` parameter goes on the calls that change something and
+    /// nowhere else. A read already says what it is in its path or its pattern,
+    /// and one on every query is output tokens spent restating an argument the
+    /// card is showing anyway.
     #[test]
     fn only_a_call_with_effects_is_asked_to_describe_itself() {
         let takes_one = |name: &str| {

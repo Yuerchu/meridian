@@ -59,21 +59,25 @@ pub fn run(pool: &DbPool, app_data_dir: &Path, writable: bool) -> Result<Recover
     let pending_ids: Vec<String> = pending.iter().map(|b| b.id.clone()).collect();
     out.pending_dropped = ops::delete_blob_rows(&mut conn, &pending_ids).map_err(|e| e.to_string())?;
 
-    // 3. 已发布但没有任何 clip 指着它——写完 blob、还没写 clip 就死了。
-    for blob in ops::orphaned(&mut conn).map_err(|e| e.to_string())? {
-        let _ = std::fs::remove_file(blob_path(app_data_dir, &key, &blob));
-        out.orphans_removed += ops::delete_blob_rows(&mut conn, &[blob.id]).map_err(|e| e.to_string())?;
-    }
-
-    // 4. 说自己 ready、磁盘上却对不上的。**标出来而不是删掉**：那一行背后有真实
+    // 3. 说自己 ready、磁盘上却对不上的。**标出来而不是删掉**：那一行背后有真实
     //    的 clip，它们记着谁在什么时候说过话，而那份记录不该因为文件坏了就消失。
+    //
+    //    核的是 sha 而不只是大小，理由在 `file_matches` 上：这份语料要拿去训练，
+    //    一条内容错了的样本会被当成真的用。
     for blob in ops::all_ready(&mut conn).map_err(|e| e.to_string())? {
         let path = blob_path(app_data_dir, &key, &blob);
-        let intact = std::fs::metadata(&path).map(|m| m.len() as i64 == blob.file_size);
-        if !intact.unwrap_or(false) {
+        if !super::file_matches(&path, blob.file_size, &blob.sha256) {
             ops::mark_damaged(&mut conn, &blob.id, now).map_err(|e| e.to_string())?;
             out.marked_damaged += 1;
         }
+    }
+
+    // 4. 没有任何 clip 指着的行——写完 blob、还没写 clip 就死了。**排在标坏
+    //    之后**：一个刚被标坏又没人引用的行，排在前面就要再等一次启动才走得掉，
+    //    而它的文件在那之前一直占着地方。
+    for blob in ops::orphaned(&mut conn).map_err(|e| e.to_string())? {
+        let _ = std::fs::remove_file(blob_path(app_data_dir, &key, &blob));
+        out.orphans_removed += ops::delete_blob_rows(&mut conn, &[blob.id]).map_err(|e| e.to_string())?;
     }
 
     // 5. 墓碑：接着删。删成功了行才走。
@@ -143,7 +147,9 @@ mod tests {
     use crate::db::models::voice_corpus::blob_status;
     use crate::db::test_db;
 
-    fn blob(conn: &mut diesel::SqliteConnection, id: &str, status: &str, size: i64) -> VoiceBlob {
+    /// 行**照着字节来**：sha 和大小都从 `bytes` 算，所以 fixture 本身是自洽的,
+    /// 一条测试要制造"对不上"就得明确地去改磁盘。
+    fn blob(conn: &mut diesel::SqliteConnection, id: &str, status: &str, bytes: &[u8]) -> VoiceBlob {
         use crate::db::models::voice_corpus::NewVoiceBlob;
         use crate::db::schema::voice_blobs;
         use diesel::prelude::*;
@@ -154,10 +160,10 @@ mod tests {
                 bot_self_id: 1,
                 source_type: "onebot_group",
                 source_id: "123",
-                sha256: id,
+                sha256: &sha_of(bytes),
                 file_format: "amr",
                 file_name: &format!("{id}.amr"),
-                file_size: size,
+                file_size: bytes.len() as i64,
                 status,
                 owner_token: pending.then_some("t"),
                 fence_epoch: 0,
@@ -174,6 +180,15 @@ mod tests {
             .unwrap()
     }
 
+    fn sha_of(bytes: &[u8]) -> String {
+        use sha2::Digest;
+        sha2::Sha256::digest(bytes).iter().fold(String::new(), |mut acc, b| {
+            use std::fmt::Write;
+            let _ = write!(acc, "{b:02x}");
+            acc
+        })
+    }
+
     fn write_blob_file(dir: &Path, pool: &DbPool, b: &VoiceBlob, bytes: &[u8]) {
         let key = super::super::storage_key(pool).unwrap();
         let path = blob_path(dir, &key, b);
@@ -188,7 +203,7 @@ mod tests {
         let pool = test_db();
         {
             let mut conn = pool.get().unwrap();
-            blob(&mut conn, "a", blob_status::PENDING, 3);
+            blob(&mut conn, "a", blob_status::PENDING, b"abc");
         }
         assert_eq!(run(&pool, dir.path(), false).unwrap(), Recovered::default());
     }
@@ -200,7 +215,7 @@ mod tests {
         let pool = test_db();
         {
             let mut conn = pool.get().unwrap();
-            blob(&mut conn, "a", blob_status::PENDING, 3);
+            blob(&mut conn, "a", blob_status::PENDING, b"abc");
         }
         let staging = super::super::staging_dir(dir.path());
         std::fs::create_dir_all(&staging).unwrap();
@@ -219,11 +234,10 @@ mod tests {
         let pool = test_db();
         let b = {
             let mut conn = pool.get().unwrap();
-            let b = blob(&mut conn, "a", blob_status::READY, 999);
+            let b = blob(&mut conn, "a", blob_status::READY, b"the real bytes");
             crate::db::ops::voice_corpus::record_clip(&mut conn, &b, "c1", "alice", Some(7), 0, None, None, 1).unwrap();
             b
         };
-        // 大小和行里写的对不上。
         write_blob_file(dir.path(), &pool, &b, b"short");
 
         let out = run(&pool, dir.path(), true).unwrap();
@@ -240,6 +254,26 @@ mod tests {
         assert_eq!(status, blob_status::DAMAGED, "行还在，只是被标坏了");
     }
 
+    /// **同样长、内容不同**也要被认出来。
+    ///
+    /// 只比大小的那一版对这条一无所知：一次写到一半的崩溃、一块坏扇区、一次
+    /// 同名覆盖，长度可以分毫不差。而这份语料是要拿去训练的——一条内容错了的
+    /// 样本会被当成真的用，比一条缺失的贵得多。
+    #[test]
+    fn a_file_of_the_right_length_but_the_wrong_bytes_is_still_wrong() {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = test_db();
+        let b = {
+            let mut conn = pool.get().unwrap();
+            let b = blob(&mut conn, "a", blob_status::READY, b"aaaaa");
+            crate::db::ops::voice_corpus::record_clip(&mut conn, &b, "c1", "alice", Some(7), 0, None, None, 1).unwrap();
+            b
+        };
+        write_blob_file(dir.path(), &pool, &b, b"bbbbb");
+
+        assert_eq!(run(&pool, dir.path(), true).unwrap().marked_damaged, 1);
+    }
+
     /// 没有任何 clip 指着的已发布行，连同它的文件一起走。
     #[test]
     fn an_orphan_takes_its_file_with_it() {
@@ -247,7 +281,7 @@ mod tests {
         let pool = test_db();
         let b = {
             let mut conn = pool.get().unwrap();
-            blob(&mut conn, "a", blob_status::READY, 5)
+            blob(&mut conn, "a", blob_status::READY, b"hello")
         };
         write_blob_file(dir.path(), &pool, &b, b"hello");
         let key = super::super::storage_key(&pool).unwrap();
@@ -255,6 +289,7 @@ mod tests {
         assert!(path.exists());
 
         let out = run(&pool, dir.path(), true).unwrap();
+        assert_eq!(out.marked_damaged, 0, "文件是对的");
         assert_eq!(out.orphans_removed, 1);
         assert!(!path.exists(), "孤儿的文件不该留着占地方");
     }

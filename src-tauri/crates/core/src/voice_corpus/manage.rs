@@ -20,22 +20,55 @@ use crate::db::ops::voice_corpus as ops;
 #[derive(Debug, Clone, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CorpusSelector {
-    BotSession {
-        bot_self_id: i64,
-        session: String,
-    },
+    /// 一个会话，用它的**假名**指认。
+    ///
+    /// 不是 `(bot_self_id, session)`：那一对就是 bot 的 QQ 号加群号，而私聊那一
+    /// 档的"群号"是对方本人的号。列表和删除都要经远程接口送到另一台设备上，
+    /// 所以两边说的都是这个不可逆的名字，真实的号从不出这台机器。
+    Session { handle: String },
     /// 跨会话按人。这就是"把我的声音删掉"，也是 `idx_voice_clips_sender` 存在
-    /// 的理由。
-    Sender {
-        id: String,
-    },
+    /// 的理由。这一档的 id 是**用户自己打进来的**，不是我们发出去的。
+    Sender { id: String },
     /// 确认短语必须一字不差，和 `/forget all` 同一条纪律。
-    All {
-        confirmation: String,
-    },
+    All { confirmation: String },
 }
 
 pub const DELETE_ALL_CONFIRMATION: &str = "DELETE ALL VOICE";
+
+/// 假名换回真身。
+///
+/// 没有反查表：假名是 HMAC，所以把还在库里的每个会话算一遍再比对就够了。
+/// 认不出来是错误而不是"什么都不删"——一个说了删却什么都没删的按钮，比一个
+/// 报错的按钮糟。
+fn resolve_handle(pool: &DbPool, handle: &str) -> Result<(i64, &'static str, String), String> {
+    let key = crate::voice_corpus::storage_key(pool)?;
+    let mut conn = crate::util::get_conn(pool)?;
+    for total in ops::session_totals(&mut conn).map_err(|e| e.to_string())? {
+        let pseudonym =
+            crate::voice_corpus::session_pseudonym(&key, total.bot_self_id, &total.source_type, &total.source_id);
+        if pseudonym == handle {
+            let source_type = if total.source_type == "onebot_group" {
+                "onebot_group"
+            } else {
+                "onebot_private"
+            };
+            return Ok((total.bot_self_id, source_type, total.source_id));
+        }
+    }
+    Err("no stored voice matches that session".into())
+}
+
+/// 这个进程能不能写语料。
+///
+/// 拿不到语料目录的独占锁就一律拒绝——**删除也一样**。第二个实例的内存屏障对
+/// 持锁的那个实例毫无约束力，所以它一边删库删文件、另一边还在往同一个目录里
+/// 录，删除会报告成功而磁盘上并没有干净。
+fn require_writer(coordinator: &crate::voice_corpus::CorpusCoordinator) -> Result<(), String> {
+    if coordinator.writable() {
+        return Ok(());
+    }
+    Err("another Meridian instance holds the voice corpus; close it and try again".into())
+}
 
 /// 一个会话攒了多少，给设置页看。
 pub type SessionTotal = ops::SessionTotal;
@@ -70,25 +103,44 @@ pub async fn delete(
     coordinator: &crate::voice_corpus::CorpusCoordinator,
     selector: CorpusSelector,
 ) -> Result<DeleteReport, String> {
+    require_writer(coordinator)?;
     if let CorpusSelector::All { confirmation } = &selector
         && confirmation != DELETE_ALL_CONFIRMATION
     {
         return Err(format!("confirmation must be exactly `{DELETE_ALL_CONFIRMATION}`"));
     }
 
+    // 假名在立屏障之前就要换回真身：屏障要挂在真实的会话上，而且认不出来的
+    // 句柄该在什么都没动之前就报错。
+    let resolved = match &selector {
+        CorpusSelector::Session { handle } => {
+            let pool = pool.clone();
+            let handle = handle.clone();
+            Some(
+                tokio::task::spawn_blocking(move || resolve_handle(&pool, &handle))
+                    .await
+                    .map_err(|e| e.to_string())??,
+            )
+        }
+        _ => None,
+    };
+
     // 屏障覆盖到哪，取决于删的是什么。按人删跨会话，所以那一档挡住全部——
     // 删除期间少采几秒，比删完发现刚又录进来一条好。
-    let scopes = match &selector {
-        CorpusSelector::BotSession { bot_self_id, session } => {
-            vec![crate::voice_corpus::CaptureScope::new(*bot_self_id, session.clone())]
+    let scopes = match &resolved {
+        Some((bot_self_id, source_type, source_id)) => {
+            vec![crate::voice_corpus::CaptureScope::new(
+                *bot_self_id,
+                session_key(source_type, source_id),
+            )]
         }
-        _ => coordinator.granted_scopes(),
+        None => coordinator.granted_scopes(),
     };
     coordinator.revoke_and_drain_temporarily(&scopes).await;
 
     let pool2 = pool.clone();
     let data_dir = app_data_dir.to_path_buf();
-    let out = tokio::task::spawn_blocking(move || delete_blocking(&pool2, &data_dir, selector))
+    let out = tokio::task::spawn_blocking(move || delete_blocking(&pool2, &data_dir, selector, resolved))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -96,15 +148,20 @@ pub async fn delete(
     out
 }
 
-fn delete_blocking(pool: &DbPool, app_data_dir: &Path, selector: CorpusSelector) -> Result<DeleteReport, String> {
+fn delete_blocking(
+    pool: &DbPool,
+    app_data_dir: &Path,
+    selector: CorpusSelector,
+    resolved: Option<(i64, &'static str, String)>,
+) -> Result<DeleteReport, String> {
     let key = crate::voice_corpus::storage_key(pool)?;
     let mut conn = crate::util::get_conn(pool)?;
     let now = crate::util::now_ms();
 
     let clips = match &selector {
-        CorpusSelector::BotSession { bot_self_id, session } => {
-            let (source_type, source_id) = split_session(session)?;
-            ops::delete_clips_by_session(&mut conn, *bot_self_id, source_type, &source_id)
+        CorpusSelector::Session { .. } => {
+            let (bot_self_id, source_type, source_id) = resolved.ok_or("the session was never resolved")?;
+            ops::delete_clips_by_session(&mut conn, bot_self_id, source_type, &source_id)
         }
         CorpusSelector::Sender { id } => ops::delete_clips_by_sender(&mut conn, id),
         CorpusSelector::All { .. } => ops::delete_all_clips(&mut conn),
@@ -138,7 +195,13 @@ fn delete_blocking(pool: &DbPool, app_data_dir: &Path, selector: CorpusSelector)
 }
 
 /// "以后别再录我"。与删除历史分开，见 [`delete`]。
-pub fn set_optout(pool: &DbPool, sender_id: &str, on: bool) -> Result<(), String> {
+pub fn set_optout(
+    pool: &DbPool,
+    coordinator: &crate::voice_corpus::CorpusCoordinator,
+    sender_id: &str,
+    on: bool,
+) -> Result<(), String> {
+    require_writer(coordinator)?;
     let mut conn = crate::util::get_conn(pool)?;
     let now = crate::util::now_ms();
     if on {
@@ -147,6 +210,49 @@ pub fn set_optout(pool: &DbPool, sender_id: &str, on: bool) -> Result<(), String
         ops::clear_optout(&mut conn, sender_id).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// "把我的声音删掉，以后也别再录。"
+///
+/// **一个操作，不是两个。** 拆成"删除"加"拒绝将来"两次调用时，中间那一段
+/// 屏障已经撤了、名单还没生效——这中间落盘的录音谁都不会再回头删。所以顺序
+/// 是反的：**先让拒绝生效**（写库、热刷新，此后 `acquire` 一律不发 permit），
+/// 再 drain 并删除。这样删除跑的时候，能产生新录音的路已经堵死了。
+///
+/// `refresh` 是调用方给的"让名单立刻生效"，因为热刷新要读 OneBot 的配置，
+/// 而那是上一层的事。
+pub async fn forget_sender<F, Fut>(
+    pool: &DbPool,
+    app_data_dir: &Path,
+    coordinator: &crate::voice_corpus::CorpusCoordinator,
+    sender_id: &str,
+    refresh: F,
+) -> Result<DeleteReport, String>
+where
+    F: FnOnce() -> Fut,
+    Fut: std::future::Future<Output = Result<(), String>>,
+{
+    require_writer(coordinator)?;
+    {
+        let pool = pool.clone();
+        let sender_id = sender_id.to_string();
+        tokio::task::spawn_blocking(move || {
+            let mut conn = crate::util::get_conn(&pool)?;
+            ops::set_optout(&mut conn, &sender_id, crate::util::now_ms()).map_err(|e| e.to_string())
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+    }
+    refresh().await?;
+    delete(
+        pool,
+        app_data_dir,
+        coordinator,
+        CorpusSelector::Sender {
+            id: sender_id.to_string(),
+        },
+    )
+    .await
 }
 
 #[derive(Debug, Serialize)]
@@ -239,17 +345,14 @@ fn blob_path(app_data_dir: &Path, key: &[u8], blob: &VoiceBlob) -> PathBuf {
     crate::voice_corpus::session_dir(app_data_dir, &pseudonym).join(&blob.file_name)
 }
 
-/// `group:123` -> `("onebot_group", "123")`。
-fn split_session(session: &str) -> Result<(&'static str, String), String> {
-    let (kind, id) = session
-        .split_once(':')
-        .ok_or_else(|| format!("unreadable session `{session}`"))?;
-    let source_type = match kind {
-        "group" => "onebot_group",
-        "private" => "onebot_private",
-        other => return Err(format!("unknown session kind `{other}`")),
+/// `("onebot_group", "123")` -> `group:123`，白名单里写的那个形式。
+fn session_key(source_type: &str, source_id: &str) -> String {
+    let kind = if source_type == "onebot_group" {
+        "group"
+    } else {
+        "private"
     };
-    Ok((source_type, id.to_string()))
+    format!("{kind}:{source_id}")
 }
 
 /// 一次安装内稳定的假名，跨安装不可关联。给设置页显示用。

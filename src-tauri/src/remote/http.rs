@@ -29,10 +29,19 @@ use super::SharedState;
 
 /// The wire protocol's version. Bumped when a client that predates a change
 /// would misread what this sends -- not for additions a client can ignore.
-pub(crate) const API_REV: u32 = 1;
+///
+/// 2: the voice corpus commands. An addition from the *server's* side, and the
+/// reason it still counts is that the direction that breaks is the other one --
+/// a client carrying the corpus panel against a server that predates it reaches
+/// `unknown command` on a page the user already opened, with nothing to say
+/// which half is old. The client compares `apiRev` against its own and calls it
+/// `server-too-old` before it gets there.
+pub(crate) const API_REV: u32 = 2;
 
-/// The oldest client this server will talk to. Kept equal to `API_REV` until
-/// there is a released client worth staying compatible with.
+/// The oldest client this server will talk to.
+///
+/// Not raised with `API_REV`: an older client has simply never heard of the new
+/// commands, and everything it does ask for answers exactly as it did before.
 pub(crate) const MIN_CLIENT_REV: u32 = 1;
 
 pub(crate) fn router(state: Arc<SharedState>) -> Router {
