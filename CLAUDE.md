@@ -129,6 +129,103 @@ src-tauri/
   left as placeholders — there is no turn for those sentinels to be aligned
   against.
 
+- **Voice is kept where it is allowed to be kept, and the allowlist is a
+  permission rather than a filter.** `format.rs`'s `record` arm used to set a
+  bool and drop the segment's `url`/`file`, so every voice note was transcribed
+  and its audio thrown away. `capture.rs` keeps it — but only for a
+  `(bot account, session)` on `onebot.voice_capture_sessions`, because what is
+  stored is a recording of a real person.
+
+  **The capture point is between `parse_segments` and the group gate**, and that
+  is the whole of it: inside the gate covers only un-@'d group messages, on
+  `process_media` only @'d ones, and either way the collection is a badly skewed
+  subset of exactly the data that is meant to train something. It creates no
+  conversation and reuses no media pipeline, so an @'d note is transcribed twice
+  — one API call for a boundary that does not leak.
+
+  **Two tables, because the same audio sent by two people is two captures.**
+  `voice_blobs` dedupes bytes per `(account, session, format, sha)`;
+  `voice_clips` records each occurrence with its own sender. One table keyed on
+  the hash keeps only whoever arrived first, which makes "delete everything from
+  this person" quietly incomplete and mislabels the training data. The account
+  is a dimension of the key rather than a footnote — two bots pulled into one
+  group are two independent consents.
+
+  **Ownership is fenced per task.** `owner_token` is unique per claim and
+  `fence_epoch` is monotonic, both in the WHERE clause of the publish. Recording
+  a process id looks equivalent and is not: two tasks *inside one process*
+  running `CAS WHERE owner = <old>` both write back the same value and both
+  believe they won. `publish_blob` returning false means the task may neither
+  publish nor write a clip.
+
+  **One writer, enforced by an OS lock on the corpus directory** (`File::try_lock`,
+  stable since 1.89, so no dependency). Holding it means "is this `.part` someone
+  else's work or last crash's debris" — unanswerable with several writers — does
+  not arise, and recovery can clear stale rows unconditionally. Losing it
+  disables capture rather than degrading into cross-process coordination.
+
+  **Revocation waits, and it is hot.** A `CapturePermit` is held from before the
+  fetch until the row is written, so `revoke_and_drain` waits for work in flight;
+  and since a fetch is slow, `still_authorised` is asked again before the commit.
+  Both are needed — the permit makes revocation *wait*, the recheck stops a
+  capture whose grant moved from being written anyway. `save_config` is one
+  transaction and the refresh runs on save, because for a setting whose purpose
+  is revocation, "I turned it off and it kept recording" is the only failure that
+  matters. The drain has a ceiling: the barrier stops new captures either way,
+  and the person who pressed Save should not wait on a stuck download.
+
+  **The corpus outlives the conversation.** Not `files/<conversation_id>/` —
+  deleting a conversation `remove_dir_all`s that, `/new` scatters a group across
+  several, and it is the trust root for `resolve_attachment_uri`. Deleting is a
+  selector with no defaultable shape (`Option<String>` would make a lost field
+  mean "all"), and it tombstones only blobs that `NOT EXISTS` any clip, since two
+  senders can share one recording. Export pseudonymises **sessions as well as
+  senders**: a private chat's `source_id` *is* the other person's QQ number, and
+  it appears in both the manifest and the directory path.
+
+- **A tool that speaks needs four things present, and missing one removes it from
+  three places.** `send_voice` needs the switch, a model, a voice id and the Fish
+  Audio key; `SessionPolicy` is resolved once and read by `definitions()`,
+  `ordinary_names()` and `execute()` alike. Filtering only the first is not a
+  boundary — `execute` checks `Scope` and nothing else, so the model reaches the
+  tool by naming it. The key is part of readiness, which is why the refresh reads
+  the keychain rather than watching preferences: rotating a key is precisely the
+  change that turns a working session into a failing one.
+
+  Two generation checks, not one: the model may call this having read a
+  description written under the old settings, and the voice can change again
+  during synthesis. The limiter counts **attempts** and lives on `Services` —
+  counting successes lets a failing model exhaust a paid quota at zero, and
+  living on the per-round executor would make "once per turn" constrain nothing.
+
+  **Cues are enforced in the backend.** Fish's S2 reads bracketed text as
+  free-form natural language, so a closed list written only into the description
+  constrains nothing and an invented tag is read aloud.
+
+  `s2.1-pro-free` is announced as free only until 2026-08-31, so there is no
+  default model. mp3 rather than wav: sixty seconds of wav is 5.3 MB and 7.1 MB
+  base64'd, travelling whole inside one websocket frame.
+
+- **An answer goes back to the adapter that asked.** `broadcast` reaches every
+  connection, which with two accounts means a question is answered first by the
+  adapter that never heard of the `message_id` — with an error, which the single
+  echo-keyed waiter takes — and an outbound message is sent by both. `PendingCall`
+  adds `expected_conn` to the *value*, since the broadcast path has no connection
+  to key on, and the dispatch check compares the source **before** removing the
+  waiter.
+
+  `DirectedCallOutcome` has four states because the fourth is the point:
+  `DeliveryUnknown` means the frame is queued and may well have been acted on, so
+  reporting it as an error is how the same voice message gets sent twice. An
+  answer carrying no `retcode` maps there too. The pending table is a
+  `std::sync::Mutex` so `WaiterGuard` can retire an entry from `Drop` — the call
+  gets cancelled, and then no return path runs at all.
+
+  `stop()` now closes what it stopped accepting. It used to drop the listener and
+  leave every connection reading, handling events and holding its original
+  permissions — so restarting to apply a setting ran the old generation beside
+  the new one. Existing tools still broadcast; that is a separate debt.
+
   The other half of that split is that **authority follows the speaker, and a
   turn has more than one.** A round can open with several people's queued
   messages, a `TurnEnd::Continue` round is whoever spoke next, and steering adds
