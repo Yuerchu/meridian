@@ -40,6 +40,7 @@ export type SettingsTab =
   | 'mcp'
   | 'memories'
   | 'voice'
+  | 'voiceCorpus'
   | 'onebot'
   | 'hooks'
   | 'acp'
@@ -71,6 +72,7 @@ const settingsTabs: SettingsTabDef[] = [
   { id: 'mcp', labelKey: 'settings.mcp', icon: LogoMcp },
   { id: 'memories', labelKey: 'settings.memories', icon: Bulb },
   { id: 'voice', labelKey: 'settings.voice', icon: Microphone },
+  { id: 'voiceCorpus', labelKey: 'settings.voiceCorpus', icon: Microphone },
   { id: 'onebot', labelKey: 'settings.onebot', icon: BroadcastSignal },
   { id: 'hooks', labelKey: 'settings.hooks', icon: Link },
   // Next to the hook gates because both are about another coding agent, and
@@ -117,7 +119,21 @@ const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks', 'acp', 'remote']
  * nobody has looked at yet. `can` carries no such delay: it is decided at
  * startup, so it filters from the first frame.
  */
+/**
+ * Hidden on Android and nowhere else.
+ *
+ * The voice corpus only exists where a OneBot connection does, and that is not
+ * Android. But unlike the panels above it stays visible to a *remote* client on
+ * purpose: what it offers is listing and deleting, and deleting is precisely
+ * the thing somebody asks for while holding their phone. Export is withheld
+ * separately, by `can.exportToDisk` inside the panel — it writes a bundle to a
+ * path on whichever machine is answering.
+ */
+const ANDROID_ONLY_HIDDEN: SettingsTab[] = ['voiceCorpus']
+
 export function visibleSettingsTabs(platform: string | null): SettingsTabDef[] {
-  if (platform !== 'android' && can.manageServers) return settingsTabs
-  return settingsTabs.filter((tab) => !DESKTOP_ONLY.includes(tab.id))
+  const hidden = new Set<SettingsTab>()
+  if (platform === 'android' || !can.manageServers) DESKTOP_ONLY.forEach((id) => hidden.add(id))
+  if (platform === 'android') ANDROID_ONLY_HIDDEN.forEach((id) => hidden.add(id))
+  return hidden.size === 0 ? settingsTabs : settingsTabs.filter((tab) => !hidden.has(tab.id))
 }

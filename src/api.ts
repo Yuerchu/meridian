@@ -601,6 +601,46 @@ export const api = {
     voice_capture_sessions: string[]
   }) => invoke<void>('save_onebot_config', { config }),
 
+  // Voice corpus. Sessions are identified by a pseudonym rather than a group
+  // number: this list travels to a phone, and what it answers is "how much is
+  // stored, do I want to clear it" — not which group.
+  listVoiceCorpus: () =>
+    invoke<
+      {
+        label: string
+        bot_self_id: number
+        session: string
+        clips: number
+        bytes: number
+        untranscribed: number
+        last_captured_at: number
+      }[]
+    >('list_voice_corpus'),
+
+  /**
+   * Delete stored voice.
+   *
+   * The selector is a tagged union with no defaultable shape — a call that
+   * loses a field fails to deserialize rather than falling through to "all",
+   * which is how one mistyped remote request would erase every recording.
+   */
+  deleteVoiceCorpus: (
+    selector:
+      | { kind: 'bot_session'; bot_self_id: number; session: string }
+      | { kind: 'sender'; id: string }
+      | { kind: 'all'; confirmation: string },
+  ) => invoke<{ clips: number; files: number; bytes: number; failures: string[] }>('delete_voice_corpus', { selector }),
+
+  /** "Never record me again" — a different thing from deleting what exists. */
+  setVoiceOptout: (senderId: string, enabled: boolean) => invoke<void>('set_voice_optout', { senderId, enabled }),
+
+  exportVoiceCorpus: (outputDir: string, includeSender: boolean, includeUntranscribed: boolean) =>
+    invoke<{ clips: number; skipped: number; bytes: number; path: string }>('export_voice_corpus', {
+      outputDir,
+      includeSender,
+      includeUntranscribed,
+    }),
+
   startOneBot: () => invoke<void>('start_onebot'),
 
   stopOneBot: () => invoke<void>('stop_onebot'),

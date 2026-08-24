@@ -1,0 +1,388 @@
+//! 看一眼、导出、删掉。
+//!
+//! 三件事共用一个前提：**语料是给人管的**，所以每一个都要能回答"这动了什么、
+//! 哪半边没成功"。返回一个数字的删除说不出文件删了而行没删。
+
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+use serde::{Deserialize, Serialize};
+
+use crate::db::DbPool;
+use crate::db::models::voice_corpus::VoiceBlob;
+use crate::db::ops::voice_corpus as ops;
+
+/// 要动哪些语料。
+///
+/// **显式的 tagged union，没有"缺省即全部"。** `Option<String>` 那种写法经
+/// dispatcher 反序列化时，漏传一个参数就是 `None`，而 `None` 是"全部"——一次
+/// 远程调用的手滑会抹掉所有声纹语料。这里少了字段就是反序列化失败。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CorpusSelector {
+    BotSession {
+        bot_self_id: i64,
+        session: String,
+    },
+    /// 跨会话按人。这就是"把我的声音删掉"，也是 `idx_voice_clips_sender` 存在
+    /// 的理由。
+    Sender {
+        id: String,
+    },
+    /// 确认短语必须一字不差，和 `/forget all` 同一条纪律。
+    All {
+        confirmation: String,
+    },
+}
+
+pub const DELETE_ALL_CONFIRMATION: &str = "DELETE ALL VOICE";
+
+/// 一个会话攒了多少，给设置页看。
+pub type SessionTotal = ops::SessionTotal;
+
+pub fn list_sessions(pool: &DbPool) -> Result<Vec<SessionTotal>, String> {
+    let mut conn = crate::util::get_conn(pool)?;
+    ops::session_totals(&mut conn).map_err(|e| e.to_string())
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct DeleteReport {
+    pub clips: usize,
+    pub files: usize,
+    pub bytes: i64,
+    /// 哪半边没成功。**不是一个数字**：文件与数据库可能部分失败，而一个总数
+    /// 说不出是哪一半。
+    pub failures: Vec<String>,
+}
+
+/// 删除历史。
+///
+/// 顺序是设计的一部分：**先撤权并等在途采集结束**（否则刚删完就有一条新的落
+/// 盘），**再删 clips**，**然后只把没有任何 clip 指着的 blob 标成墓碑**——多个
+/// 发送者的 clip 可以指向同一份音频，按发送者直接删会连带抹掉别人的合法样本。
+/// 最后才删文件，删成功了行才走。
+///
+/// 这个函数**只处理已有数据**。"以后别再录我"是 [`set_optout`]，两件事分开是
+/// 因为合并意味着一次手滑要么删掉几个月的数据，要么把一次删除变成永久停录。
+pub async fn delete(
+    pool: &DbPool,
+    app_data_dir: &Path,
+    coordinator: &crate::voice_corpus::CorpusCoordinator,
+    selector: CorpusSelector,
+) -> Result<DeleteReport, String> {
+    if let CorpusSelector::All { confirmation } = &selector
+        && confirmation != DELETE_ALL_CONFIRMATION
+    {
+        return Err(format!("confirmation must be exactly `{DELETE_ALL_CONFIRMATION}`"));
+    }
+
+    // 屏障覆盖到哪，取决于删的是什么。按人删跨会话，所以那一档挡住全部——
+    // 删除期间少采几秒，比删完发现刚又录进来一条好。
+    let scopes = match &selector {
+        CorpusSelector::BotSession { bot_self_id, session } => {
+            vec![crate::voice_corpus::CaptureScope::new(*bot_self_id, session.clone())]
+        }
+        _ => coordinator.granted_scopes(),
+    };
+    coordinator.revoke_and_drain_temporarily(&scopes).await;
+
+    let pool2 = pool.clone();
+    let data_dir = app_data_dir.to_path_buf();
+    let out = tokio::task::spawn_blocking(move || delete_blocking(&pool2, &data_dir, selector))
+        .await
+        .map_err(|e| e.to_string())?;
+
+    coordinator.lift_barriers(&scopes);
+    out
+}
+
+fn delete_blocking(pool: &DbPool, app_data_dir: &Path, selector: CorpusSelector) -> Result<DeleteReport, String> {
+    let key = crate::voice_corpus::storage_key(pool)?;
+    let mut conn = crate::util::get_conn(pool)?;
+    let now = crate::util::now_ms();
+
+    let clips = match &selector {
+        CorpusSelector::BotSession { bot_self_id, session } => {
+            let (source_type, source_id) = split_session(session)?;
+            ops::delete_clips_by_session(&mut conn, *bot_self_id, source_type, &source_id)
+        }
+        CorpusSelector::Sender { id } => ops::delete_clips_by_sender(&mut conn, id),
+        CorpusSelector::All { .. } => ops::delete_all_clips(&mut conn),
+    }
+    .map_err(|e| e.to_string())?;
+    let mut report = DeleteReport {
+        clips,
+        ..Default::default()
+    };
+
+    for blob in ops::tombstone_unreferenced(&mut conn, now).map_err(|e| e.to_string())? {
+        let path = blob_path(app_data_dir, &key, &blob);
+        match std::fs::remove_file(&path) {
+            Ok(()) => {
+                report.files += 1;
+                report.bytes += blob.file_size;
+                ops::delete_blob_rows(&mut conn, &[blob.id]).map_err(|e| e.to_string())?;
+            }
+            // 文件不在了也算成功——目标是它不存在。
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                ops::delete_blob_rows(&mut conn, &[blob.id]).map_err(|e| e.to_string())?;
+            }
+            Err(e) => {
+                // 行留着 `deleting`，恢复器下次接着删。**不含绝对路径**：
+                // 这条消息会经远程接口送到另一台设备上。
+                report.failures.push(format!("could not delete one file: {}", e.kind()));
+            }
+        }
+    }
+    Ok(report)
+}
+
+/// "以后别再录我"。与删除历史分开，见 [`delete`]。
+pub fn set_optout(pool: &DbPool, sender_id: &str, on: bool) -> Result<(), String> {
+    let mut conn = crate::util::get_conn(pool)?;
+    let now = crate::util::now_ms();
+    if on {
+        ops::set_optout(&mut conn, sender_id, now).map_err(|e| e.to_string())?;
+    } else {
+        ops::clear_optout(&mut conn, sender_id).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportReport {
+    pub clips: usize,
+    /// 没有转写而被跳过的条数。**要露出来**：默认不导出它们是一个决定，
+    /// 而一个看不见的决定读起来像是数据本来就只有这些。
+    pub skipped: usize,
+    pub bytes: i64,
+    pub path: String,
+}
+
+/// 导出成 `manifest.jsonl` + `audio/` 的 bundle。
+///
+/// 固定这个形状，不给"音频拷到哪"之类的参数：那些参数没有 UI，语义也没定义过，
+/// 而 recipe 那边要的就是一个自洽的目录。
+pub fn export(
+    pool: &DbPool,
+    app_data_dir: &Path,
+    output_dir: &Path,
+    include_sender: bool,
+    include_untranscribed: bool,
+) -> Result<ExportReport, String> {
+    use std::io::Write;
+
+    let key = crate::voice_corpus::storage_key(pool)?;
+    let mut conn = crate::util::get_conn(pool)?;
+    let clips = ops::export_rows(&mut conn).map_err(|e| e.to_string())?;
+
+    let audio_dir = output_dir.join("audio");
+    std::fs::create_dir_all(&audio_dir).map_err(|e| e.to_string())?;
+    let mut manifest = std::fs::File::create(output_dir.join("manifest.jsonl")).map_err(|e| e.to_string())?;
+
+    let mut report = ExportReport {
+        clips: 0,
+        skipped: 0,
+        bytes: 0,
+        path: output_dir.display().to_string(),
+    };
+
+    for (clip, blob) in clips {
+        if clip.transcript.is_none() && !include_untranscribed {
+            // 当初同意留下的是"音频 + 转写"这一对，不是一段没有配对文本的录音。
+            report.skipped += 1;
+            continue;
+        }
+        let session =
+            crate::voice_corpus::session_pseudonym(&key, blob.bot_self_id, &blob.source_type, &blob.source_id);
+        let relative = format!("audio/{session}/{}", blob.file_name);
+        let dest = output_dir.join(&relative);
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        if std::fs::copy(blob_path(app_data_dir, &key, &blob), &dest).is_err() {
+            report.skipped += 1;
+            continue;
+        }
+
+        // 每一行都是**手写的字段清单**，不是把行序列化出去。`exportable()` 那条
+        // 教训的一般化:一个 catch-all 分支曾把注入的记忆块写成了训练样本。
+        // 这里没有会话文本、没有消息体、没有昵称、没有群名。
+        let line = serde_json::json!({
+            "audio_filepath": relative,
+            "text": clip.transcript,
+            "session": session,
+            "speaker": if include_sender {
+                serde_json::Value::String(clip.sender_id.clone())
+            } else {
+                serde_json::Value::String(crate::voice_corpus::sender_pseudonym(&key, &clip.sender_id))
+            },
+            "format": blob.file_format,
+            "bytes": blob.file_size,
+            "transcript_source": clip.transcript_source,
+            "captured_at": clip.created_at,
+        });
+        writeln!(manifest, "{line}").map_err(|e| e.to_string())?;
+        report.clips += 1;
+        report.bytes += blob.file_size;
+    }
+
+    if include_sender {
+        // 留一条可审计的记录。假名化是默认，真实号是另一条路。
+        tracing::info!(clips = report.clips, "voice corpus exported with raw sender ids");
+    }
+    Ok(report)
+}
+
+fn blob_path(app_data_dir: &Path, key: &[u8], blob: &VoiceBlob) -> PathBuf {
+    let pseudonym = crate::voice_corpus::session_pseudonym(key, blob.bot_self_id, &blob.source_type, &blob.source_id);
+    crate::voice_corpus::session_dir(app_data_dir, &pseudonym).join(&blob.file_name)
+}
+
+/// `group:123` -> `("onebot_group", "123")`。
+fn split_session(session: &str) -> Result<(&'static str, String), String> {
+    let (kind, id) = session
+        .split_once(':')
+        .ok_or_else(|| format!("unreadable session `{session}`"))?;
+    let source_type = match kind {
+        "group" => "onebot_group",
+        "private" => "onebot_private",
+        other => return Err(format!("unknown session kind `{other}`")),
+    };
+    Ok((source_type, id.to_string()))
+}
+
+/// 一次安装内稳定的假名，跨安装不可关联。给设置页显示用。
+pub fn session_label(pool: &DbPool, total: &SessionTotal) -> Result<String, String> {
+    let key = crate::voice_corpus::storage_key(pool)?;
+    Ok(crate::voice_corpus::session_pseudonym(
+        &key,
+        total.bot_self_id,
+        &total.source_type,
+        &total.source_id,
+    ))
+}
+
+/// 每个会话有多少条没有转写——设置页要能说明"导出会跳过多少"。
+pub fn untranscribed_counts(pool: &DbPool) -> Result<HashMap<String, i64>, String> {
+    let mut conn = crate::util::get_conn(pool)?;
+    ops::untranscribed_by_session(&mut conn).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::models::voice_corpus::{NewVoiceBlob, blob_status};
+    use crate::db::test_db;
+    use diesel::prelude::*;
+
+    fn ready(conn: &mut diesel::SqliteConnection, id: &str, session: &str) -> VoiceBlob {
+        use crate::db::schema::voice_blobs;
+        diesel::insert_into(voice_blobs::table)
+            .values(&NewVoiceBlob {
+                id,
+                bot_self_id: 1,
+                source_type: "onebot_group",
+                source_id: session,
+                sha256: id,
+                file_format: "amr",
+                file_name: &format!("{id}.amr"),
+                file_size: 4,
+                status: blob_status::READY,
+                owner_token: None,
+                fence_epoch: 0,
+                lease_expires_at: None,
+                created_at: 1,
+                updated_at: 1,
+            })
+            .execute(conn)
+            .unwrap();
+        voice_blobs::table
+            .find(id)
+            .select(VoiceBlob::as_select())
+            .first(conn)
+            .unwrap()
+    }
+
+    /// 缺字段必须是**反序列化失败**，不能落到 `All`——那是一次手滑抹掉全部
+    /// 语料的路径。
+    #[test]
+    fn a_selector_missing_its_fields_does_not_become_delete_everything() {
+        assert!(serde_json::from_value::<CorpusSelector>(serde_json::json!({})).is_err());
+        assert!(serde_json::from_value::<CorpusSelector>(serde_json::json!({ "kind": "all" })).is_err());
+        assert!(
+            serde_json::from_value::<CorpusSelector>(serde_json::json!({ "kind": "bot_session" })).is_err(),
+            "半个 selector 也不行"
+        );
+
+        let ok: CorpusSelector =
+            serde_json::from_value(serde_json::json!({ "kind": "sender", "id": "alice" })).unwrap();
+        assert!(matches!(ok, CorpusSelector::Sender { .. }));
+    }
+
+    /// 导出默认跳过没有转写的，而且**把跳过的条数说出来**。
+    #[test]
+    fn an_export_says_how_much_it_left_out() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let pool = test_db();
+        {
+            let mut conn = pool.get().unwrap();
+            let a = ready(&mut conn, "a", "123");
+            let b = ready(&mut conn, "b", "123");
+            ops::record_clip(&mut conn, &a, "c1", "alice", Some(1), 0, Some("你好"), Some("s"), 1).unwrap();
+            ops::record_clip(&mut conn, &b, "c2", "bob", Some(2), 0, None, None, 1).unwrap();
+        }
+        let key = crate::voice_corpus::storage_key(&pool).unwrap();
+        for id in ["a", "b"] {
+            let mut conn = pool.get().unwrap();
+            use crate::db::schema::voice_blobs;
+            let blob: VoiceBlob = voice_blobs::table
+                .find(id)
+                .select(VoiceBlob::as_select())
+                .first(&mut conn)
+                .unwrap();
+            let path = blob_path(dir.path(), &key, &blob);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, b"abcd").unwrap();
+        }
+
+        let report = export(&pool, dir.path(), out.path(), false, false).unwrap();
+        assert_eq!(report.clips, 1);
+        assert_eq!(report.skipped, 1, "没有转写的那条被跳过，并且说了出来");
+
+        let manifest = std::fs::read_to_string(out.path().join("manifest.jsonl")).unwrap();
+        assert!(manifest.contains("你好"));
+        assert!(!manifest.contains("alice"), "默认写假名，不是 QQ 号");
+        assert!(manifest.contains("audio/"));
+    }
+
+    /// 带上真实发送者是另一条路，要显式要求。
+    #[test]
+    fn asking_for_real_sender_ids_is_a_separate_decision() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = tempfile::tempdir().unwrap();
+        let pool = test_db();
+        {
+            let mut conn = pool.get().unwrap();
+            let a = ready(&mut conn, "a", "123");
+            ops::record_clip(&mut conn, &a, "c1", "alice", Some(1), 0, Some("你好"), Some("s"), 1).unwrap();
+        }
+        let key = crate::voice_corpus::storage_key(&pool).unwrap();
+        let mut conn = pool.get().unwrap();
+        use crate::db::schema::voice_blobs;
+        let blob: VoiceBlob = voice_blobs::table
+            .find("a")
+            .select(VoiceBlob::as_select())
+            .first(&mut conn)
+            .unwrap();
+        drop(conn);
+        let path = blob_path(dir.path(), &key, &blob);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, b"abcd").unwrap();
+
+        export(&pool, dir.path(), out.path(), true, false).unwrap();
+        let manifest = std::fs::read_to_string(out.path().join("manifest.jsonl")).unwrap();
+        assert!(manifest.contains("alice"));
+    }
+}

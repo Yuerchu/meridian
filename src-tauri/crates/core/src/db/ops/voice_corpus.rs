@@ -421,6 +421,36 @@ pub fn all_ready(conn: &mut SqliteConnection) -> QueryResult<Vec<VoiceBlob>> {
         .load(conn)
 }
 
+/// 导出要读的行：每个 clip 连同它的 blob。
+///
+/// manifest 的每一行两边都要——转写和发送者在 clip 上，文件名和格式在 blob 上。
+/// 只读 `ready` 的：`damaged` 的文件对不上，`deleting` 的正在消失。
+pub fn export_rows(conn: &mut SqliteConnection) -> QueryResult<Vec<(VoiceClip, VoiceBlob)>> {
+    voice_clips::table
+        .inner_join(voice_blobs::table.on(voice_blobs::id.eq(voice_clips::blob_id)))
+        .filter(voice_blobs::status.eq(blob_status::READY))
+        .order(voice_clips::created_at.asc())
+        .select((VoiceClip::as_select(), VoiceBlob::as_select()))
+        .load(conn)
+}
+
+/// 每个会话有多少条还没有转写。设置页要能说"导出会跳过多少"。
+pub fn untranscribed_by_session(conn: &mut SqliteConnection) -> QueryResult<std::collections::HashMap<String, i64>> {
+    let rows: Vec<(i64, String, String)> = voice_clips::table
+        .filter(voice_clips::transcript.is_null())
+        .select((
+            voice_clips::bot_self_id,
+            voice_clips::source_type,
+            voice_clips::source_id,
+        ))
+        .load(conn)?;
+    let mut out = std::collections::HashMap::new();
+    for (bot, kind, id) in rows {
+        *out.entry(format!("{bot}|{kind}|{id}")).or_insert(0) += 1;
+    }
+    Ok(out)
+}
+
 /// 一个会话攒了多少语料。给设置页看的，所以**不含转写、不含发送者**——
 /// 它回答的是"占了多少地方、要不要清"，不是"里面说了什么"。
 #[derive(Debug, Clone, serde::Serialize)]

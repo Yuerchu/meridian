@@ -317,6 +317,10 @@ mod tests {
             "export_logs",
             "import_emojis",
             "voice_import_model",
+            // Writes a bundle to an arbitrary local path, and what it writes is
+            // the voice corpus itself. Listing and deleting stay reachable:
+            // deleting is *the* action someone asks for from their phone.
+            "export_voice_corpus",
             // Reconfiguring the server that is answering the request. A remote
             // caller turning off remote access cuts the branch it is sitting on.
             "save_listen_config",

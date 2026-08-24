@@ -7,6 +7,7 @@
 //! 也就是用户在设置里打出来的那个形式。白名单是用户写的，所以用户写的形式
 //! 就是这里的键。
 
+pub mod manage;
 pub mod recover;
 
 use std::collections::{HashMap, HashSet};
@@ -259,18 +260,60 @@ impl CorpusCoordinator {
         }
     }
 
+    /// 现在被授权的全部范围。删除要用它——按人删跨会话，屏障得覆盖所有地方。
+    pub fn granted_scopes(&self) -> Vec<CaptureScope> {
+        self.grants
+            .lock()
+            .map(|grants| grants.capture.iter().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// 只立屏障并等 drain，**不动白名单**。
+    ///
+    /// 删除历史用这个：删掉已有数据不等于撤销以后的授权，那是两件事（一个处理
+    /// 已经存在的，一个拒绝将来的）。合并它们意味着一次删除会顺手把这个群永久
+    /// 停录，而没人要求过那个。
+    pub async fn revoke_and_drain_temporarily(&self, scopes: &[CaptureScope]) {
+        self.raise_barriers(scopes);
+        self.drain(scopes).await;
+    }
+
+    /// 撤掉屏障。删除结束时调用——授权本身从没被动过。
+    pub fn lift_barriers(&self, scopes: &[CaptureScope]) {
+        if let Ok(mut grants) = self.grants.lock() {
+            for scope in scopes {
+                grants.barriers.remove(scope);
+            }
+        }
+    }
+
+    fn raise_barriers(&self, scopes: &[CaptureScope]) {
+        if let Ok(mut grants) = self.grants.lock() {
+            for scope in scopes {
+                grants.barriers.insert(scope.clone());
+            }
+        }
+    }
+
     /// 立屏障、等在途采集结束、然后真正撤销。
     ///
     /// 已经拿到 permit 的任务**允许跑完**——那是 permit 的正常语义，也是唯一
     /// 能简单推理的。所以这个函数返回之后的保证是"不再新增"，不是"磁盘上没有
     /// 刚写的东西"。
     pub async fn revoke_and_drain(&self, scopes: &[CaptureScope]) {
-        {
-            let Ok(mut grants) = self.grants.lock() else { return };
+        self.raise_barriers(scopes);
+        self.drain(scopes).await;
+        if let Ok(mut grants) = self.grants.lock() {
             for scope in scopes {
-                grants.barriers.insert(scope.clone());
+                grants.capture.remove(scope);
+                grants.barriers.remove(scope);
             }
+            grants.generation += 1;
         }
+    }
+
+    /// 等这些范围上的在途采集全部归还 permit。
+    async fn drain(&self, scopes: &[CaptureScope]) {
         // receiver 在循环外 clone：它记着自己见过的版本，所以两次检查之间的
         // 释放不会被漏掉。
         let mut release = self.release_rx.clone();
@@ -299,13 +342,6 @@ impl CorpusCoordinator {
                 scopes = scopes.len(),
                 "voice capture drain timed out; the revocation stands and one capture may still be finishing"
             );
-        }
-        if let Ok(mut grants) = self.grants.lock() {
-            for scope in scopes {
-                grants.capture.remove(scope);
-                grants.barriers.remove(scope);
-            }
-            grants.generation += 1;
         }
     }
 
