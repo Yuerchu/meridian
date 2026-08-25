@@ -652,6 +652,7 @@ impl DesktopSubAgents {
             &resolved.base_url,
             &resolved.credential,
             Some(&resolved.api_format),
+            Some(&resolved.transport_profile),
         );
         // The whole resolution travels back, not just the type: the rows this run
         // writes record which upstream answered, and a sub-agent can be pointed

@@ -810,6 +810,11 @@ fn parse_openai_sse_events_for(
 
 #[async_trait]
 impl ChatProvider for OpenAICompatProvider {
+    #[cfg(test)]
+    fn adapter_name(&self) -> &'static str {
+        "OpenAICompatProvider"
+    }
+
     async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,

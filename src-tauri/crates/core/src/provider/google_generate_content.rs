@@ -547,6 +547,11 @@ fn parse_agent_response(chunk: GenerateContentChunk, model: &str) -> Result<Agen
 
 #[async_trait]
 impl ChatProvider for GoogleGenerateContentProvider {
+    #[cfg(test)]
+    fn adapter_name(&self) -> &'static str {
+        "GoogleGenerateContentProvider"
+    }
+
     async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,

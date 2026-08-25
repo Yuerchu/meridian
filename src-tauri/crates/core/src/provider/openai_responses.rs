@@ -163,7 +163,7 @@ fn serialize_responses_input(messages: &[ChatMessage]) -> (Option<String>, Vec<s
 }
 
 #[derive(Default)]
-struct StreamState {
+pub(super) struct StreamState {
     call_id_to_index: HashMap<String, usize>,
     next_index: usize,
 }
@@ -342,7 +342,7 @@ fn server_tool_call(item: &serde_json::Value, completed: bool) -> Option<super::
     })
 }
 
-fn parse_responses_event(
+pub(super) fn parse_responses_event(
     event_type: &str,
     data: &str,
     state: &mut StreamState,
@@ -546,6 +546,11 @@ fn parse_responses_event(
 
 #[async_trait]
 impl ChatProvider for OpenAIResponsesProvider {
+    #[cfg(test)]
+    fn adapter_name(&self) -> &'static str {
+        "OpenAIResponsesProvider"
+    }
+
     async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,

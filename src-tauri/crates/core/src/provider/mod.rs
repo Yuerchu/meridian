@@ -2,6 +2,7 @@ pub mod anthropic;
 pub mod balance;
 pub mod capabilities;
 pub mod catalog;
+pub mod codex;
 pub mod deepseek;
 mod dto;
 pub mod gemma_tool;
@@ -224,10 +225,12 @@ const INJECTED_CLOSE: &str = "</injected_context>";
 pub enum Credential {
     /// A key the user pasted in, held in the secrets store.
     ApiKey(String),
-    /// A ChatGPT session, refreshed on demand. Reserved for the Codex
-    /// transport; nothing constructs it yet.
-    #[allow(dead_code)]
-    ChatGpt,
+    /// A ChatGPT session, refreshed on demand.
+    ///
+    /// The manager knows which store the session came from — the CLI's, or one
+    /// this app owns — so both logins arrive here as the same variant. That is
+    /// the point: they produce the same token against the same endpoint.
+    ChatGpt(std::sync::Arc<crate::codex_auth::Manager>),
 }
 
 impl Credential {
@@ -240,7 +243,7 @@ impl Credential {
     pub fn api_key(&self) -> &str {
         match self {
             Self::ApiKey(key) => key,
-            Self::ChatGpt => "",
+            Self::ChatGpt(_) => "",
         }
     }
 }
@@ -251,8 +254,63 @@ impl std::fmt::Debug for Credential {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::ApiKey(_) => f.write_str("Credential::ApiKey(<redacted>)"),
-            Self::ChatGpt => f.write_str("Credential::ChatGpt"),
+            Self::ChatGpt(_) => f.write_str("Credential::ChatGpt"),
         }
+    }
+}
+
+/// A provider whose configuration cannot produce a working request.
+///
+/// `create_provider` is infallible by design — it is called on paths that have
+/// no good way to surface a setup error, and returning a `Result` would push
+/// that decision onto every one of them. So an impossible combination becomes an
+/// adapter that fails on use, carrying the sentence that explains it. The user
+/// sees the reason where they were already looking, instead of a 401 from an
+/// endpoint that was never going to accept what we sent.
+pub struct Misconfigured {
+    reason: &'static str,
+}
+
+impl Misconfigured {
+    pub fn new(reason: &'static str) -> Self {
+        Self { reason }
+    }
+
+    fn error(&self) -> ProviderError {
+        ProviderError::Api {
+            status: 400,
+            body: self.reason.to_string(),
+        }
+    }
+}
+
+#[async_trait]
+impl ChatProvider for Misconfigured {
+    #[cfg(test)]
+    fn adapter_name(&self) -> &'static str {
+        "Misconfigured"
+    }
+
+    async fn stream_chat_with_tools(
+        &self,
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<ToolDefinition>,
+        _params: ChatParams,
+    ) -> Result<ChatStream, ProviderError> {
+        Err(self.error())
+    }
+
+    async fn chat(&self, _messages: Vec<ChatMessage>, _params: ChatParams) -> Result<String, ProviderError> {
+        Err(self.error())
+    }
+
+    async fn chat_with_tools(
+        &self,
+        _messages: Vec<ChatMessage>,
+        _tools: Vec<ToolDefinition>,
+        _params: ChatParams,
+    ) -> Result<AgentResponse, ProviderError> {
+        Err(self.error())
     }
 }
 
@@ -692,6 +750,16 @@ pub type ChatStream = Pin<Box<dyn futures::Stream<Item = Result<StreamEvent, Pro
 
 #[async_trait]
 pub trait ChatProvider: Send + Sync {
+    /// Which adapter this is, for tests that need to assert on the choice.
+    ///
+    /// A trait object cannot be asked its concrete type — `type_name_of_val`
+    /// answers with the trait — and `registry::create_provider` returning a
+    /// `Box<dyn ChatProvider>` is exactly the case that needs checking: the
+    /// selection rules are the thing under test, not the request each adapter
+    /// then builds.
+    #[cfg(test)]
+    fn adapter_name(&self) -> &'static str;
+
     /// Unqueried today: turn parameters come from `resolve_turn_params`, not
     /// from asking the provider. Part of the multi-provider surface.
     #[allow(dead_code)]

@@ -381,6 +381,7 @@ impl Active {
             &resolved.base_url,
             &resolved.credential,
             Some(&resolved.api_format),
+            Some(&resolved.transport_profile),
         );
 
         let scene = self.scene_text(call, retry_reason).await;

@@ -117,6 +117,11 @@ impl DeepSeekProvider {
 
 #[async_trait]
 impl ChatProvider for DeepSeekProvider {
+    #[cfg(test)]
+    fn adapter_name(&self) -> &'static str {
+        "DeepSeekProvider"
+    }
+
     async fn stream_chat_with_tools(
         &self,
         messages: Vec<ChatMessage>,

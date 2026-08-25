@@ -71,6 +71,7 @@ pub fn resolve_provider_config(
             credential,
             model,
             api_format: provider.api_format,
+            transport_profile: provider.transport_profile,
         });
     }
 
@@ -97,6 +98,7 @@ pub fn resolve_provider_config(
             credential,
             model,
             api_format: p.api_format,
+            transport_profile: p.transport_profile,
         });
     }
 
@@ -124,6 +126,10 @@ pub struct ResolvedProvider {
     pub credential: provider::Credential,
     pub model: String,
     pub api_format: String,
+    /// Which wire this row speaks. Travels beside `api_format` because the two
+    /// together pick the adapter — the format alone cannot separate OpenAI's
+    /// Responses API from ChatGPT's Codex backend, which are both `responses`.
+    pub transport_profile: String,
 }
 
 /// The credential for a provider row, by whatever route its login uses.
@@ -137,10 +143,27 @@ fn resolve_credential(
     provider: &db::models::provider::Provider,
 ) -> Result<provider::Credential, String> {
     match provider.credential_kind.as_str() {
-        // Reserved: no row can hold these until the Codex transport lands, and
-        // the arm is written now so that adding one is not also the moment this
-        // function is first thought about.
-        "codex_cli" | "chatgpt_oauth" => Ok(provider::Credential::ChatGpt),
+        "codex_cli" => {
+            let home = crate::codex_auth::storage::find_codex_home()
+                .ok_or("Could not work out where the Codex CLI keeps its login (no home directory).")?;
+            // Resolved, not validated: whether the login is present, usable, or
+            // needs renewing is decided when a request actually needs a token.
+            // Reading the file here would put a disk hit on every turn setup and
+            // would report "not logged in" for a session that a refresh could
+            // have saved.
+            Ok(provider::Credential::ChatGpt(
+                crate::codex_auth::registry().get(crate::codex_auth::StoreId::CodexCli { home }),
+            ))
+        }
+        // Reserved: the in-app login writes to a store this app owns. Nothing
+        // creates such a row yet, and the manager refuses it with a message
+        // rather than pretending.
+        "chatgpt_oauth" => Ok(provider::Credential::ChatGpt(crate::codex_auth::registry().get(
+            crate::codex_auth::StoreId::MeridianOwned {
+                provider_id: provider.id.clone(),
+                slot: "default".into(),
+            },
+        ))),
         _ => get_provider_api_key(secrets, &provider.id)
             .map(provider::Credential::ApiKey)
             .ok_or_else(|| format!("API Key not set for provider '{}'", provider.name)),
@@ -210,6 +233,7 @@ fn resolve_named(
         credential,
         model,
         api_format: p.api_format,
+        transport_profile: p.transport_profile,
     })
 }
 

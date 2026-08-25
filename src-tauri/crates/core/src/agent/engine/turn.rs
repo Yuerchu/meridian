@@ -1225,6 +1225,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl ChatProvider for Scripted {
+        fn adapter_name(&self) -> &'static str {
+            "Scripted"
+        }
+
         async fn stream_chat_with_tools(
             &self,
             messages: Vec<ChatMessage>,

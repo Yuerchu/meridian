@@ -775,6 +775,7 @@ async fn build_provider(
         &resolved.base_url,
         &resolved.credential,
         Some(&resolved.api_format),
+        Some(&resolved.transport_profile),
     );
     Ok((provider, resolved))
 }

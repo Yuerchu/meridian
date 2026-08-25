@@ -564,6 +564,7 @@ async fn chat_inner(
         &resolved.base_url,
         &resolved.credential,
         Some(&resolved.api_format),
+        Some(&resolved.transport_profile),
     );
 
     // Needed before the tool set is assembled, unlike the other two prefs which

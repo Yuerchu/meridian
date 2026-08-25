@@ -198,6 +198,7 @@ pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Res
         &resolved.base_url,
         &resolved.credential,
         Some(&resolved.api_format),
+        Some(&resolved.transport_profile),
     );
     let response = provider
         .chat(
