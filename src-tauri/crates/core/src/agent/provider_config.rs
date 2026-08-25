@@ -293,6 +293,9 @@ pub struct TurnParamsInput<'a> {
     pub provider_id: Option<&'a str>,
     pub provider_type: &'a str,
     pub api_format: &'a str,
+    /// Which wire this turn will really go out on, so the capabilities reflect
+    /// what can actually be sent rather than what the family supports in general.
+    pub transport_profile: &'a str,
     pub model: &'a str,
     pub thinking_level: Option<&'a str>,
     pub fast: bool,
@@ -341,6 +344,7 @@ pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsInput<'_>) -> Result<
         provider_id,
         provider_type,
         api_format,
+        transport_profile,
         model,
         thinking_level,
         fast,
@@ -360,7 +364,7 @@ pub fn resolve_turn_params(pool: &DbPool, input: TurnParamsInput<'_>) -> Result<
         None => None,
     };
 
-    let mut caps = provider::capabilities::resolve(provider_type, Some(api_format), model);
+    let mut caps = provider::capabilities::resolve_on(provider_type, Some(api_format), Some(transport_profile), model);
     provider::capabilities::apply_overrides(
         &mut caps,
         model_config.as_ref().and_then(|mc| mc.capability_overrides.as_deref()),
@@ -459,6 +463,7 @@ mod tests {
                 provider_id: None,
                 provider_type: "openai",
                 api_format: "responses",
+                transport_profile: "standard",
                 model,
                 thinking_level: None,
                 fast: false,
@@ -554,6 +559,7 @@ mod tests {
                 provider_id: Some("p1"),
                 provider_type: "openai",
                 api_format: "chat",
+                transport_profile: "standard",
                 model: "gpt-4o",
                 thinking_level: None,
                 fast: false,
@@ -656,6 +662,7 @@ mod tests {
                 provider_id: Some("p1"),
                 provider_type: "xai",
                 api_format: "responses",
+                transport_profile: "standard",
                 model: "grok-4.6",
                 thinking_level: None,
                 fast: false,
@@ -672,6 +679,7 @@ mod tests {
                 provider_id: Some("p1"),
                 provider_type: "xai",
                 api_format: "chat_completions",
+                transport_profile: "standard",
                 model: "grok-4.6",
                 thinking_level: None,
                 fast: false,
@@ -810,6 +818,7 @@ mod tests {
                 provider_id: None,
                 provider_type: "openai",
                 api_format: "chat",
+                transport_profile: "standard",
                 model: "some-model-nobody-catalogued",
                 thinking_level: None,
                 fast: false,

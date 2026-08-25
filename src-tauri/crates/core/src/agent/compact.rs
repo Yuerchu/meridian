@@ -186,6 +186,8 @@ pub async fn do_compact(
                     provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
                     provider_type: &provider_type,
                     api_format: &api_format,
+
+                    transport_profile: &transport_profile,
                     model: &model,
                     thinking_level: None,
                     // Summarising is background work; it does not take the priority tier.

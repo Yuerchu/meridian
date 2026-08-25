@@ -50,6 +50,15 @@
             "chat_completions": "https://api.openai.com/v1",
             "responses": "https://api.openai.com/v1"
           }
+        },
+        {
+          "id": "codex_cli",
+          "credential_kind": "codex_cli",
+          "transport_profile": "chatgpt_codex",
+          "api_formats": ["responses"],
+          "default_base_url": {
+            "responses": "https://chatgpt.com/backend-api/codex"
+          }
         }
       ]
     },

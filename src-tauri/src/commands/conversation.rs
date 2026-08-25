@@ -513,6 +513,7 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
                 provider_type,
                 model,
                 api_format,
+                transport_profile,
                 ..
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
             let turn = resolve_turn_params(
@@ -522,6 +523,8 @@ pub async fn get_context_info(app: tauri::AppHandle, conversation_id: String) ->
                     provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
                     provider_type: &provider_type,
                     api_format: &api_format,
+
+                    transport_profile: &transport_profile,
                     model: &model,
                     thinking_level: None,
                     fast: false,

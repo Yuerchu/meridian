@@ -692,6 +692,7 @@ async fn chat_inner(
         let pid = effective_provider_id.clone();
         let pt = resolved.provider_type.clone();
         let af = resolved.api_format.clone();
+        let tp = resolved.transport_profile.clone();
         let mid = model.clone();
         let level = effective_level.map(|s| s.to_string());
         let fast = fast.unwrap_or(conv_fast_mode);
@@ -703,6 +704,8 @@ async fn chat_inner(
                     provider_id: pid.as_deref(),
                     provider_type: &pt,
                     api_format: &af,
+
+                    transport_profile: &tp,
                     model: &mid,
                     thinking_level: level.as_deref(),
                     fast,

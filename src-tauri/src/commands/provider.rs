@@ -211,23 +211,37 @@ pub async fn fetch_provider_models(
         }
     }
 
-    let (provider_type, base_url, api_format) = {
+    let (provider_type, base_url, api_format, transport_profile) = {
         let pool2 = pool.clone();
         let pid = provider_id.clone();
         tokio::task::spawn_blocking(move || {
             let mut conn = pool2.get().map_err(|e| e.to_string())?;
             let p = db::ops::provider::get_provider(&mut conn, &pid).map_err(|e| e.to_string())?;
-            Ok::<_, String>((p.provider_type, p.base_url, p.api_format))
+            Ok::<_, String>((p.provider_type, p.base_url, p.api_format, p.transport_profile))
         })
         .await
         .map_err(|e| e.to_string())??
     };
 
-    let api_key = get_provider_api_key(&secrets, &provider_id).ok_or("API Key not set for this provider")?;
+    // A transport that lists its models from local knowledge needs no key, and
+    // demanding one would make the picker unusable for a login that never has
+    // one. Everything else still fails here rather than sending an anonymous
+    // request that comes back as an unexplained 401.
+    let api_key = match get_provider_api_key(&secrets, &provider_id) {
+        Some(key) => key,
+        None if transport_profile == "chatgpt_codex" => String::new(),
+        None => return Err("API Key not set for this provider".into()),
+    };
 
-    let models = meridian_core::provider::models::fetch_models(&provider_type, Some(&api_format), &base_url, &api_key)
-        .await
-        .map_err(|e| e.to_string())?;
+    let models = meridian_core::provider::models::fetch_models_on(
+        &provider_type,
+        Some(&api_format),
+        Some(&transport_profile),
+        &base_url,
+        &api_key,
+    )
+    .await
+    .map_err(|e| e.to_string())?;
 
     {
         let pool2 = pool.clone();

@@ -345,13 +345,14 @@ impl Active {
         .map_err(|e| e.to_string())??;
 
         let pool = self.context.services.db.clone();
-        // `ResolvedProvider` is not `Clone`, and the four strings the resolver
-        // needs are all it wants from it.
+        // `ResolvedProvider` is not `Clone`, and these strings are all the
+        // resolver wants from it.
         let r = (
             resolved.provider_id.clone(),
             resolved.provider_type.clone(),
             resolved.api_format.clone(),
             resolved.model.clone(),
+            resolved.transport_profile.clone(),
         );
         let params = tokio::task::spawn_blocking(move || {
             crate::agent::resolve_turn_params(
@@ -361,6 +362,8 @@ impl Active {
                     provider_id: Some(&r.0),
                     provider_type: &r.1,
                     api_format: &r.2,
+
+                    transport_profile: &r.4,
                     model: &r.3,
                     thinking_level: None,
                     fast: false,

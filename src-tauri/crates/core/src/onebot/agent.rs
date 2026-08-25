@@ -311,6 +311,8 @@ pub(super) async fn oneshot_completion(
                     provider_id: assistant2.as_ref().and_then(|a| a.provider_id.as_deref()),
                     provider_type: &provider_type,
                     api_format: &api_format,
+
+                    transport_profile: &transport_profile,
                     model: &effective_model,
                     thinking_level: None,
                     fast: false,
@@ -615,6 +617,7 @@ async fn headless_chat_inner(
         let assistant2 = assistant.clone();
         let pt = provider_type.clone();
         let af = api_format.clone();
+        let tp = transport_profile.clone();
         let em = effective_model.clone();
         // The provider this turn actually resolved to, not the assistant's
         // stored field. They differ whenever the assistant names none and the
@@ -632,6 +635,8 @@ async fn headless_chat_inner(
                     provider_id: Some(pid.as_str()),
                     provider_type: &pt,
                     api_format: &af,
+
+                    transport_profile: &tp,
                     model: &em,
                     thinking_level: None,
                     fast: false,
