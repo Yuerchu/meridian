@@ -1,6 +1,7 @@
 pub mod anthropic;
 pub mod balance;
 pub mod capabilities;
+pub mod catalog;
 pub mod deepseek;
 mod dto;
 pub mod gemma_tool;

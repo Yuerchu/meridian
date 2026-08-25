@@ -18,6 +18,8 @@
     "schema": "vite --open /#playground/schema",
     "schema:check": "node scripts/check-db-schema.mjs",
     "schema:check:staged": "node scripts/check-db-schema.mjs --staged",
+    "catalog:check": "node scripts/check-provider-catalog.mjs",
+    "catalog:check:staged": "node scripts/check-provider-catalog.mjs --staged",
     "prepare": "husky"
   },
   "lint-staged": {

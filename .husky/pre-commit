@@ -14,3 +14,10 @@ fi
 if git diff --cached --name-only | grep -qE '^src-tauri/crates/core/migrations/|^src/dev/schema-data\.ts$'; then
   node scripts/check-db-schema.mjs --staged
 fi
+
+# 厂商目录同理:它只描述展示与预填,却会以很有把握的样子出错——写着某家走
+# responses,而 adapter 根本不认那个 provider_type,建出来的行发不出请求。
+# registry / capabilities 那两侧改了也要核,因为对不上可能是它们动了而目录没跟。
+if git diff --cached --name-only | grep -qE '^src-tauri/crates/core/src/provider/(provider_catalog\.json|registry\.rs|capabilities\.rs|model_catalog\.json)$'; then
+  node scripts/check-provider-catalog.mjs --staged
+fi
