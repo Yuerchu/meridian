@@ -9,6 +9,6 @@ mod sse;
 mod transport;
 
 pub use error::TransportError;
-pub use request::{Request, RequestBody};
+pub use request::{Request, RequestBody, Response};
 pub use retry::backoff;
-pub use transport::{HttpTransport, ReqwestTransport};
+pub use transport::{HttpTransport, ReqwestTransport, StreamResponse};

@@ -10,6 +10,7 @@ pub mod agent;
 pub mod android_bridge;
 pub mod bootstrap;
 pub mod client;
+pub mod codex_auth;
 pub mod db;
 pub mod emoji;
 pub mod events;
