@@ -12,6 +12,7 @@ import type {
   AppInfo,
   Assistant,
   ChatMode,
+  CodexAuthStatus,
   ContextInfo,
   Conversation,
   ConversationSnapshot,
@@ -39,9 +40,9 @@ import type {
   Project,
   PromptTemplate,
   Provider,
-  ProviderCatalogEntry,
   ProviderBalance,
   ProviderCapabilities,
+  ProviderCatalogEntry,
   QueueDelivery,
   QueuedPrompt,
   SafRootEntry,
@@ -306,6 +307,10 @@ export const api = {
   /** The shipped vendor catalog. Compiled into the binary, so it never changes
    *  within a run — callers may cache it for the lifetime of the process. */
   listProviderCatalog: () => invoke<ProviderCatalogEntry[]>('list_provider_catalog'),
+
+  /** Which ChatGPT account a Codex-backed provider is signed in as. Never
+   *  refreshes the session: opening a settings page must not spend a token. */
+  codexAuthStatus: () => invoke<CodexAuthStatus>('codex_auth_status'),
 
   createProvider: (name: string, providerType: string, baseUrl: string, apiFormat?: string, catalogId?: string) =>
     invoke<Provider>('create_provider', {

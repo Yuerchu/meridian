@@ -11,6 +11,7 @@ vi.mock('@/api', () => ({
   api: {
     listProviders: vi.fn(),
     listProviderCatalog: vi.fn(),
+    codexAuthStatus: vi.fn(),
     getProviderKeyExists: vi.fn(),
     createProvider: vi.fn(),
     deleteProvider: vi.fn(),
@@ -174,6 +175,40 @@ describe('ProviderSettings list/detail navigation', () => {
     render(<ProviderSettings />)
     await screen.findByText(i18n.t('settings.provider.deleteProvider'))
     expect(screen.queryByText(i18n.t('settings.provider.apiFormat'))).not.toBeInTheDocument()
+  })
+
+  // A sign-in with no key must not be shown a key field: there is nothing to
+  // type, and an empty one reads as a step left undone. What replaces it is the
+  // account the session belongs to.
+  it('a ChatGPT login is shown its account instead of a key field', async () => {
+    mockViewport(false)
+    mockApi.listProviders.mockResolvedValue([
+      { ...makeProvider('codex-1', 'Codex'), credential_kind: 'codex_cli', transport_profile: 'chatgpt_codex' },
+    ])
+    mockApi.codexAuthStatus.mockResolvedValue({
+      logged_in: true,
+      email: 'someone@example.com',
+      plan: 'pro',
+      storage: 'file',
+      codex_home: '/home/someone/.codex',
+      problem: null,
+    })
+    render(<ProviderSettings />)
+
+    expect(await screen.findByText('someone@example.com')).toBeInTheDocument()
+    expect(screen.getByText('pro')).toBeInTheDocument()
+    // Where we looked, which is the only way to explain "logged in at the
+    // terminal but not here" when a GUI process has a different environment.
+    expect(screen.getByText(/\.codex/)).toBeInTheDocument()
+    expect(screen.queryByText(i18n.t('settings.provider.apiKey'))).not.toBeInTheDocument()
+  })
+
+  /** An API-key provider keeps the field it has always had. */
+  it('an API-key provider still gets a key field', async () => {
+    mockViewport(false)
+    render(<ProviderSettings />)
+    expect(await screen.findByText(i18n.t('settings.provider.apiKey'))).toBeInTheDocument()
+    expect(screen.queryByText(i18n.t('settings.provider.codexAccount'))).not.toBeInTheDocument()
   })
 
   it('shows the native GenerateContent protocol for Google connections', async () => {

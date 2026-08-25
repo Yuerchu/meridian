@@ -19,6 +19,27 @@ pub fn list_provider_catalog(
     Ok(meridian_core::provider::catalog::entries())
 }
 
+/// Which ChatGPT account a Codex-backed provider is signed in as.
+///
+/// Reads the credential and decodes what it says about itself; it never
+/// refreshes, because opening a settings page must not spend a refresh token.
+/// The reply carries no token material — an email, a plan name, where the login
+/// was found, and a sentence about what is wrong if anything is.
+///
+/// Blocking: reads a file, and on some installs the OS credential store.
+#[tauri::command]
+pub async fn codex_auth_status(_app: tauri::AppHandle) -> Result<meridian_core::codex_auth::AuthStatus, String> {
+    tokio::task::spawn_blocking(|| {
+        let home = meridian_core::codex_auth::storage::find_codex_home()
+            .ok_or("Could not work out where the Codex CLI keeps its login (no home directory).")?;
+        Ok(meridian_core::codex_auth::registry()
+            .get(meridian_core::codex_auth::StoreId::CodexCli { home })
+            .status())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn list_providers(app: tauri::AppHandle) -> Result<Vec<Provider>, String> {
     let services = app.services();

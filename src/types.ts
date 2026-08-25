@@ -605,6 +605,24 @@ export interface ProviderCatalogEntry {
  * OpenAI's API and ChatGPT's Codex backend are both `responses` and differ in
  * base URL, so one address per dialect cannot describe both.
  */
+/**
+ * Which ChatGPT account a Codex-backed provider is signed in as.
+ *
+ * Carries no token material. `codex_home` is shown because a GUI process need
+ * not inherit a terminal's environment, which is the usual reason for "I am
+ * logged in but the app says I am not".
+ */
+export interface CodexAuthStatus {
+  logged_in: boolean
+  email: string | null
+  plan: string | null
+  /** `file` or `keyring` — where the login actually lives. */
+  storage: string | null
+  codex_home: string | null
+  /** Present when something is wrong, phrased as what to do about it. */
+  problem: string | null
+}
+
 export interface ProviderAuthOption {
   id: string
   credential_kind: string

@@ -114,6 +114,9 @@ macro_rules! with_all_commands {
             // Compiled-in data, no lock and no disk — hence sync. Not `local`:
             // a phone building the same "add a provider" list needs it too.
             sync commands::provider => list_provider_catalog(),
+            // Not `local`: a phone showing provider settings needs the same
+            // answer, and the reply carries no credential material.
+            async commands::provider => codex_auth_status(),
             async commands::provider => list_providers(),
             async commands::provider => create_provider(
                 name: String,

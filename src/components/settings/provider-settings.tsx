@@ -12,6 +12,7 @@ import { SavedHint, SettingsRow, SettingsSelect, SettingsSkeleton } from './prim
 import { useMasterDetail } from './use-master-detail'
 import { EFFORT_LADDER } from '@/lib/thinking'
 import type {
+  CodexAuthStatus,
   ModelConfig,
   ModelConfigInput,
   PriceTier,
@@ -105,6 +106,92 @@ function defaultUrlFor(entry: ProviderCatalogEntry | undefined, apiFormat: strin
 const URL_PLACEHOLDERS: Record<string, string> = {
   gemini_generate_content: 'https://api.example.com',
   chat_completions: 'https://api.example.com/v1',
+}
+
+/** Whether this row signs in with a ChatGPT session rather than a key. */
+function usesChatGptLogin(provider: Provider): boolean {
+  return provider.credential_kind === 'codex_cli' || provider.credential_kind === 'chatgpt_oauth'
+}
+
+/**
+ * Which ChatGPT account this provider is signed in as.
+ *
+ * Read-only: signing in happens in a terminal, and this reports what is there.
+ * It never triggers a refresh — opening a settings page must not spend a
+ * refresh token, and a session that has lapsed is something to be told about
+ * rather than quietly repaired from a screen nobody is watching.
+ */
+function CodexAccount() {
+  const { t } = useTranslation()
+  const [status, setStatus] = useState<CodexAuthStatus | null>(null)
+  const [checking, setChecking] = useState(true)
+
+  const check = useCallback(async () => {
+    setChecking(true)
+    try {
+      setStatus(await api.codexAuthStatus())
+    } catch (err) {
+      console.error('Failed to read the Codex login:', err)
+      setStatus({
+        logged_in: false,
+        email: null,
+        plan: null,
+        storage: null,
+        codex_home: null,
+        problem: String(err),
+      })
+    } finally {
+      setChecking(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void check()
+  }, [check])
+
+  return (
+    <div data-slot="codex-account" className="border-t border-border pt-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted">{t('settings.provider.codexAccount')}</p>
+        <Button variant="outline" onClick={() => void check()} isDisabled={checking}>
+          <ArrowsRotateRight className={cn('w-3.5 h-3.5', checking && 'animate-spin')} />
+          {t('settings.provider.codexRecheck')}
+        </Button>
+      </div>
+
+      {checking && !status ? (
+        <div
+          className="h-16 rounded-lg bg-default animate-pulse"
+          role="status"
+          aria-busy="true"
+          aria-label={t('settings.provider.codexAccount')}
+        />
+      ) : (
+        status && (
+          <div className="rounded-lg border border-border p-3 space-y-1.5">
+            {status.logged_in ? (
+              <>
+                <p className="text-sm">{status.email ?? t('settings.provider.codexSignedIn')}</p>
+                {status.plan && <p className="text-xs text-muted">{status.plan}</p>}
+              </>
+            ) : (
+              <p className="text-sm text-warning-soft-foreground">{t('settings.provider.codexSignedOut')}</p>
+            )}
+            {status.problem && <p className="text-xs text-danger break-words">{status.problem}</p>}
+            {/* Where we looked. A GUI process need not inherit a terminal's
+                environment, so "logged in over there, not here" is otherwise
+                impossible for anyone to diagnose. */}
+            {status.codex_home && (
+              <p className="text-xs text-muted break-all">
+                {status.codex_home}
+                {status.storage === 'keyring' && ` · ${t('settings.provider.codexInKeyring')}`}
+              </p>
+            )}
+          </div>
+        )
+      )}
+    </div>
+  )
 }
 
 function triFrom(value: unknown): Tri {
@@ -930,46 +1017,53 @@ function ProviderEditor({
         {saved && <SavedHint />}
       </div>
 
-      <div className="border-t border-border pt-4 space-y-3">
-        <TextField fullWidth type="password">
-          <Label>{t('settings.provider.apiKey')}</Label>
-          <div className="flex gap-2">
-            <Input
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
-              disabled={keyStatus === 'loading' || savingKey}
-              placeholder={
-                keyStatus === 'loading'
-                  ? t('settings.provider.apiKeyChecking')
-                  : keyStatus === 'set'
-                    ? t('settings.provider.apiKeyPlaceholderSet')
-                    : t('settings.provider.apiKeyPlaceholder')
-              }
-              className="flex-1"
-            />
-            <Button
-              variant="outline"
-              onClick={handleSaveKey}
-              isDisabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
-            >
-              {savingKey ? <Spinner className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
-              {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
-            </Button>
-          </div>
-        </TextField>
-        {keyStatus === 'loading' && (
-          <p className="flex items-center gap-1.5 text-xs text-muted">
-            <Spinner className="w-3.5 h-3.5" />
-            {t('settings.provider.apiKeyChecking')}
-          </p>
-        )}
-        {keyStatus === 'set' && (
-          <p className="text-xs text-success-soft-foreground">{t('settings.provider.keySaved')}</p>
-        )}
-        {keyStatus === 'error' && (
-          <p className="text-xs text-warning-soft-foreground">{t('settings.provider.apiKeyCheckFailed')}</p>
-        )}
-      </div>
+      {/* A sign-in that has no key must not be shown a key field: there is
+          nothing to type, and an empty one reads as a step left undone. What
+          replaces it is the account the session belongs to. */}
+      {usesChatGptLogin(provider) ? (
+        <CodexAccount />
+      ) : (
+        <div className="border-t border-border pt-4 space-y-3">
+          <TextField fullWidth type="password">
+            <Label>{t('settings.provider.apiKey')}</Label>
+            <div className="flex gap-2">
+              <Input
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                disabled={keyStatus === 'loading' || savingKey}
+                placeholder={
+                  keyStatus === 'loading'
+                    ? t('settings.provider.apiKeyChecking')
+                    : keyStatus === 'set'
+                      ? t('settings.provider.apiKeyPlaceholderSet')
+                      : t('settings.provider.apiKeyPlaceholder')
+                }
+                className="flex-1"
+              />
+              <Button
+                variant="outline"
+                onClick={handleSaveKey}
+                isDisabled={!apiKey.trim() || savingKey || keyStatus === 'loading'}
+              >
+                {savingKey ? <Spinner className="w-3.5 h-3.5" /> : <Key className="w-3.5 h-3.5" />}
+                {keySaved ? t('common.saved') : t('settings.provider.saveKey')}
+              </Button>
+            </div>
+          </TextField>
+          {keyStatus === 'loading' && (
+            <p className="flex items-center gap-1.5 text-xs text-muted">
+              <Spinner className="w-3.5 h-3.5" />
+              {t('settings.provider.apiKeyChecking')}
+            </p>
+          )}
+          {keyStatus === 'set' && (
+            <p className="text-xs text-success-soft-foreground">{t('settings.provider.keySaved')}</p>
+          )}
+          {keyStatus === 'error' && (
+            <p className="text-xs text-warning-soft-foreground">{t('settings.provider.apiKeyCheckFailed')}</p>
+          )}
+        </div>
+      )}
 
       {/* `provider::balance::supports_balance` remains the authority: asking a
           vendor that publishes nothing returns null and this form says so, so a
