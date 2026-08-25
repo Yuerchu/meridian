@@ -930,6 +930,46 @@ describe('stops are scoped to a turn', () => {
   /// Stopping is what strands an approval: the turn is gone, so nothing is
   /// left to answer the card. It must not do that to a turn that is still
   /// running.
+  it('orphans a card hydrated from a snapshot, with no live approval event', async () => {
+    vi.mocked(api.conversationSnapshot).mockResolvedValue(
+      snapshotOf(
+        {
+          messages: [
+            msg('a1', {
+              turn_id: 'turn-1',
+              tool_calls: JSON.stringify([
+                { id: 'c1', type: 'function', function: { name: 'run_command', arguments: '{}' } },
+              ]),
+            }),
+          ],
+          head_message_id: 'a1',
+          branches: [],
+        },
+        {
+          pending_approvals: [
+            {
+              approval_id: 'appr-1',
+              conversation_id: CONV,
+              assistant_message_id: 'a1',
+              provider_call_id: 'c1',
+              tool_name: 'run_command',
+              arguments: '{}',
+              bubbled: false,
+            },
+          ],
+          turns: [turnRecord('turn-1', 'running')],
+        },
+      ),
+    )
+    await store().loadMessages(CONV)
+    expect(session().pendingApprovals['appr-1']).toBeDefined()
+
+    store().handleStop(CONV, 'turn-1')
+    const row = session().messages.find((m) => m.id === 'a1')
+    const card = (row?._blocks ?? []).find((b) => b.type === 'tool_call')
+    expect(card?.type === 'tool_call' && card.data.status).toBe('orphaned')
+  })
+
   it("leaves another run's approvals alone", () => {
     store().handleMessageStart(CONV, 'a1', 'turn-2')
     store().handleToolCall(CONV, 'a1', 'c1', 'read_file', '{}')
@@ -1290,6 +1330,17 @@ describe('delegated runs', () => {
     })
 
     // The run is not what failed — only its question was lost.
+    it('clears a nested question when the sub-agent stops', () => {
+      store().handleToolApproval(CONV, 'a1', 'appr-1', 'child-call', 'run_command', '{}', undefined, undefined, {
+        parentCallId: '0',
+        subConversationId: 'sub-1',
+      })
+      expect(card().nested_approval?.approval_id).toBe('appr-1')
+      store().handleStop('sub-1')
+      expect(store().attentionOrder).toEqual([])
+      expect(card().nested_approval).toBeUndefined()
+    })
+
     it('drops a lost question without writing off the run', () => {
       store().handleToolApproval(CONV, 'a1', 'appr-1', 'child-call', 'run_command', '{}', undefined, undefined, {
         parentCallId: '0',
@@ -1367,6 +1418,8 @@ describe('the waiting-on-you queue', () => {
   it('tells a question apart from a permission', () => {
     store().handleToolApproval(CONV, 'a1', 'appr-1', 'c1', 'ask_user', '{}')
     expect(store().attention['appr-1']!.kind).toBe('ask')
+    store().handleToolApproval(CONV, 'a1', 'appr-2', 'c2', 'AskUserQuestion', '{}')
+    expect(store().attention['appr-2']!.kind).toBe('ask')
   })
 
   it('does not queue the same approval twice', () => {
@@ -1489,10 +1542,9 @@ describe('the waiting-on-you queue', () => {
    * so neither can ever match, and the entry would outlive the turn: a
    * permanent dot on the parent and a dead row at the back of the queue.
    */
-  it('retires a delegated question that no result will ever name', () => {
+  it("retires a delegated question when the sub-agent's turn ends", () => {
     const PARENT = 'parent-conv'
     const SUB = 'sub-conv'
-    // Filed under the parent, which is where it was asked and can be answered.
     store().handleToolApproval(
       PARENT,
       'parent-row',
@@ -1509,14 +1561,28 @@ describe('the waiting-on-you queue', () => {
     )
     expect(store().attentionOrder).toEqual(['appr-1'])
 
-    // What the sub-agent's turn actually emits. Neither of these mentions the
-    // parent, so neither retires anything.
     store().handleToolResult(SUB, 'child-row', 'child-call', 'ok')
-    store().handleStop(SUB)
-    expect(store().attentionOrder).toEqual(['appr-1'])
+    expect(store().attentionOrder).toEqual([])
+  })
 
-    // Which is why answering has to say so itself.
-    store().retireAnsweredApproval('appr-1')
+  it('retires a delegated question when the sub-agent is stopped', () => {
+    const PARENT = 'parent-conv'
+    const SUB = 'sub-conv'
+    store().handleToolApproval(
+      PARENT,
+      'parent-row',
+      'appr-1',
+      'child-call',
+      'run_command',
+      '{}',
+      undefined,
+      undefined,
+      {
+        parentCallId: 'run-agent-call',
+        subConversationId: SUB,
+      },
+    )
+    store().handleStop(SUB)
     expect(store().attentionOrder).toEqual([])
   })
 

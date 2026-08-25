@@ -78,7 +78,16 @@ fn to_camel_case(snake: &str) -> String {
 /// appending one line to `autoreview.allow_rules`, converts write access to a
 /// settings key into permission to run anything on the host. It is the only
 /// prefix whose *values* grant capability rather than configure a listener.
-const SERVER_OWNED_PREFIXES: &[&str] = &["remote.", "hooks.", "onebot.", "autoreview.", "acp."];
+const SERVER_OWNED_PREFIXES: &[&str] = &[
+    "remote.",
+    "hooks.",
+    "onebot.",
+    "autoreview.",
+    "acp.",
+    // Whether commands run inside the OS sandbox. Turning it off is permission
+    // to write outside the project, same class as `autoreview.allow_rules`.
+    "sandbox.",
+];
 
 /// Refuse the generic key-value commands when the key is a server's own.
 ///
@@ -96,6 +105,66 @@ fn guard_preference(cmd: &str, args: &serde_json::Value) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// Re-pointing a provider at a new URL is how a stored API key leaves the
+/// machine: `get_secret` is local, but `update_provider` + a later request
+/// sends that key to whatever `base_url` now names.
+///
+/// `None` / JSON null is "do not change", which is what the frontend sends
+/// for every field it is not editing — so presence of the key is not enough.
+fn guard_provider_update(cmd: &str, args: &serde_json::Value) -> Result<(), String> {
+    if cmd != "update_provider" {
+        return Ok(());
+    }
+    for name in ["base_url", "provider_type", "api_format"] {
+        if field_is_set(args, name) {
+            return Err(format!(
+                "`{name}` configures where this machine sends its API keys; change it there"
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn field_is_set(args: &serde_json::Value, name: &str) -> bool {
+    let camel = to_camel_case(name);
+    match args.get(&camel).or_else(|| args.get(name)) {
+        None | Some(serde_json::Value::Null) => false,
+        Some(_) => true,
+    }
+}
+
+/// Strip other servers' credentials from a response the remote client is
+/// allowed to make. The dedicated GET commands do not go through
+/// `guard_preference`, so without this they hand back what that guard exists
+/// to keep off the wire.
+fn sanitize_remote_output(cmd: &str, mut value: serde_json::Value) -> serde_json::Value {
+    match cmd {
+        "get_hooks_config" => {
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("token".into(), serde_json::Value::Null);
+            }
+        }
+        "get_onebot_config" => {
+            if let Some(obj) = value.as_object_mut() {
+                obj.insert("access_token".into(), serde_json::Value::Null);
+                obj.insert("admin_users".into(), serde_json::Value::Array(Vec::new()));
+            }
+        }
+        "list_mcp_servers" => {
+            if let Some(arr) = value.as_array_mut() {
+                for row in arr {
+                    if let Some(obj) = row.as_object_mut() {
+                        obj.insert("env".into(), serde_json::Value::Null);
+                        obj.insert("headers".into(), serde_json::Value::Null);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    value
 }
 
 /// One row of the table, as a call.
@@ -138,10 +207,12 @@ macro_rules! make_dispatch {
             // Before the table, not inside it: what this refuses is an argument
             // to a command that is otherwise perfectly reachable.
             guard_preference(cmd, args)?;
+            guard_provider_update(cmd, args)?;
             $(
                 $(#[$attr])*
                 if cmd == stringify!($name) {
-                    return dispatch_call!($kind, app, args, ($($module)::+), $name, ($($arg : $ty),*));
+                    return dispatch_call!($kind, app, args, ($($module)::+), $name, ($($arg : $ty),*))
+                        .map(|value| sanitize_remote_output(cmd, value));
                 }
             )*
             Err(format!("unknown command `{cmd}`"))
@@ -249,6 +320,7 @@ mod tests {
             "autoreview.model",
             "autoreview.allow_rules",
             "autoreview.enabled",
+            "sandbox.enabled",
         ] {
             let args = serde_json::json!({ "key": key });
             assert!(
@@ -267,7 +339,7 @@ mod tests {
     /// this command is for, and a remote client is the owner's own device.
     #[test]
     fn ordinary_preferences_are_untouched() {
-        for key in ["ui.theme", "logging.level", "voice.filter_level", "sandbox.enabled"] {
+        for key in ["ui.theme", "logging.level", "voice.filter_level"] {
             let args = serde_json::json!({ "key": key });
             assert!(guard_preference("set_preference", &args).is_ok(), "`{key}` should pass");
             assert!(guard_preference("get_preference", &args).is_ok(), "`{key}` should pass");
@@ -281,6 +353,54 @@ mod tests {
         let args = serde_json::json!({ "key": "remote.token" });
         assert!(guard_preference("set_provider_key", &args).is_ok());
         assert!(guard_preference("chat", &args).is_ok());
+    }
+
+    #[test]
+    fn a_remote_caller_cannot_repoint_a_provider() {
+        for (field, value) in [
+            ("baseUrl", serde_json::json!("https://evil.example")),
+            ("base_url", serde_json::json!("https://evil.example")),
+            ("providerType", serde_json::json!("openai")),
+            ("apiFormat", serde_json::json!("responses")),
+        ] {
+            let args = serde_json::json!({ field: value });
+            assert!(
+                guard_provider_update("update_provider", &args).is_err(),
+                "{field} should be refused"
+            );
+        }
+        let rename = serde_json::json!({ "name": "Work", "baseUrl": null, "providerType": null });
+        assert!(guard_provider_update("update_provider", &rename).is_ok());
+        assert!(guard_provider_update("chat", &serde_json::json!({ "baseUrl": "https://x" })).is_ok());
+    }
+
+    #[test]
+    fn other_servers_credentials_are_stripped_from_remote_reads() {
+        let hooks = sanitize_remote_output(
+            "get_hooks_config",
+            serde_json::json!({ "enabled": true, "host": "127.0.0.1", "token": "sekrit" }),
+        );
+        assert_eq!(hooks["token"], serde_json::Value::Null);
+        assert_eq!(hooks["host"], "127.0.0.1");
+
+        let onebot = sanitize_remote_output(
+            "get_onebot_config",
+            serde_json::json!({
+                "enabled": true,
+                "access_token": "sekrit",
+                "admin_users": [123]
+            }),
+        );
+        assert_eq!(onebot["access_token"], serde_json::Value::Null);
+        assert_eq!(onebot["admin_users"], serde_json::json!([]));
+
+        let mcp = sanitize_remote_output(
+            "list_mcp_servers",
+            serde_json::json!([{ "name": "fs", "env": "{\"TOKEN\":\"x\"}", "headers": "a: b" }]),
+        );
+        assert_eq!(mcp[0]["env"], serde_json::Value::Null);
+        assert_eq!(mcp[0]["headers"], serde_json::Value::Null);
+        assert_eq!(mcp[0]["name"], "fs");
     }
 
     #[test]
@@ -336,6 +456,16 @@ mod tests {
             // guard against. The check runs that same binary.
             "acp_save_config",
             "acp_check_adapter",
+            // Same ACE as `acp.command`: a stdio MCP server is a binary this
+            // app spawns, and a custom tool with `permission: always` is a
+            // shell command that never asks.
+            "create_mcp_server",
+            "update_mcp_server",
+            "connect_mcp_server",
+            "create_custom_tool",
+            "update_custom_tool",
+            // Arbitrary URL, up to 1 GB written to disk.
+            "voice_download_model",
             // Hardware attached to this machine.
             "voice_start_recording",
             "voice_stop_and_transcribe",

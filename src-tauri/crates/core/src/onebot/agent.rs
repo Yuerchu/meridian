@@ -288,18 +288,19 @@ pub(super) async fn oneshot_completion(
     // The turn parameters are resolved like any other turn: an extraction
     // request that invents its own temperature is rejected by models the chat
     // path already talks to.
-    let (provider_type, base_url, api_key, api_format, turn) = {
+    let (provider_type, base_url, api_key, api_format, turn, provider_id, provider_name, model) = {
         let pool2 = state.services.db.clone();
         let secrets2 = state.services.secrets.clone();
         let assistant2 = assistant.clone();
         tokio::task::spawn_blocking(move || {
             let crate::agent::ResolvedProvider {
+                provider_id,
+                provider_name,
                 provider_type,
                 base_url,
                 api_key,
                 model,
                 api_format,
-                ..
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
             let effective_model = assistant2.as_ref().and_then(|a| a.model_id.clone()).unwrap_or(model);
             let turn = crate::agent::resolve_turn_params(
@@ -314,7 +315,16 @@ pub(super) async fn oneshot_completion(
                     fast: false,
                 },
             )?;
-            Ok::<_, String>((provider_type, base_url, api_key, api_format, turn))
+            Ok::<_, String>((
+                provider_type,
+                base_url,
+                api_key,
+                api_format,
+                turn,
+                provider_id,
+                provider_name,
+                effective_model,
+            ))
         })
         .await
         .map_err(|e| e.to_string())??
@@ -336,10 +346,52 @@ pub(super) async fn oneshot_completion(
         ChatMessage::system_context(user_prompt),
     ];
 
-    provider
-        .chat(messages, crate::agent::without_thinking(turn.params))
+    // `chat_with_tools` with an empty list, for the usage `chat` throws away.
+    // Extraction runs after every QQ turn and used to appear on no bill at all.
+    let answer = provider
+        .chat_with_tools(messages, Vec::new(), crate::agent::without_thinking(turn.params))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    if let Some(usage) = answer.usage {
+        let pool = state.services.db.clone();
+        let conv_id = conversation_id.to_string();
+        let _ = tokio::task::spawn_blocking(move || {
+            let mut conn = get_conn(&pool)?;
+            let Some(message_id) = crate::db::ops::conversation::get_conversation(&mut conn, &conv_id)
+                .ok()
+                .and_then(|c| c.head_message_id)
+            else {
+                tracing::warn!("could not record what the extraction cost: no message to file it against");
+                return Ok(());
+            };
+            let cost = crate::db::ops::audit::SideRequestCost {
+                role: crate::db::ops::audit::EXTRACTION_ROLE,
+                message_id: &message_id,
+                conversation_id: &conv_id,
+                turn_id: None,
+                provider_id: Some(&provider_id),
+                provider_name: Some(&provider_name),
+                model_id: Some(&model),
+                usage: crate::db::models::message::MessageUsage {
+                    input_tokens: usage.prompt_tokens,
+                    output_tokens: usage.completion_tokens,
+                    cache_read_tokens: usage.cache_read_tokens,
+                    cache_write_tokens: usage.cache_write_tokens,
+                    server_tool_calls: usage.billable_tool_calls,
+                },
+                peak_prompt_tokens: usage.prompt_tokens,
+                summary: "extraction",
+            };
+            if let Err(e) = crate::db::ops::audit::record_side_request(&mut conn, cost) {
+                tracing::warn!(error = %e, "could not record what the extraction cost");
+            }
+            Ok::<_, String>(())
+        })
+        .await;
+    }
+
+    Ok(answer.text)
 }
 
 /// Run a headless chat session with optional Tauri event streaming.
@@ -772,16 +824,8 @@ async fn headless_chat_inner(
     } else {
         qq_tools
             .filter(|_| supports_tools)
-            .map(|q| q.ordinary_names())
+            .map(|q| super::qq_tools::ordinary_offered(q.ordinary_names(), &tool_defs))
             .unwrap_or_default()
-            .into_iter()
-            .chain(
-                tool_defs
-                    .iter()
-                    .map(|t| t.name.clone())
-                    .filter(|name| super::qq_tools::OPEN_REGISTRY_TOOLS.contains(&name.as_str())),
-            )
-            .collect()
     };
 
     // Persist this turn's inbound messages, one row each so every speaker keeps
@@ -963,10 +1007,8 @@ async fn headless_chat_inner(
         inbox,
         ordinary: qq_tools
             .filter(|_| supports_tools)
-            .map(|q| q.ordinary_names())
-            .unwrap_or_default()
-            .into_iter()
-            .collect(),
+            .map(|q| super::qq_tools::ordinary_offered(q.ordinary_names(), &tool_defs))
+            .unwrap_or_default(),
         demoted: std::sync::atomic::AtomicBool::new(false),
     });
 

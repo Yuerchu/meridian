@@ -8,12 +8,33 @@ pub fn conversation_files_dir(app_data_dir: &Path, conversation_id: &str) -> Pat
     files_dir(app_data_dir).join(conversation_id)
 }
 
+fn is_conversation_id(id: &str) -> bool {
+    !id.is_empty() && id.len() <= 128 && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+fn is_extension(ext: &str) -> bool {
+    !ext.is_empty() && ext.len() <= 10 && ext.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
 pub fn alloc_dest(app_data_dir: &Path, conversation_id: &str, ext: &str) -> Result<(PathBuf, String), String> {
-    let dest_dir = conversation_files_dir(app_data_dir, conversation_id);
+    if !is_conversation_id(conversation_id) {
+        return Err("invalid conversation id".into());
+    }
+    if !is_extension(ext) {
+        return Err("invalid file extension".into());
+    }
+    let root = files_dir(app_data_dir);
+    std::fs::create_dir_all(&root).map_err(|e| e.to_string())?;
+    let dest_dir = root.join(conversation_id);
     std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
+    let root_real = std::fs::canonicalize(&root).map_err(|e| e.to_string())?;
+    let dest_real = std::fs::canonicalize(&dest_dir).map_err(|e| e.to_string())?;
+    if !dest_real.starts_with(&root_real) {
+        return Err("invalid conversation id".into());
+    }
     let file_id = uuid::Uuid::new_v4().to_string();
     let dest_name = format!("{file_id}.{ext}");
-    let dest_path = dest_dir.join(&dest_name);
+    let dest_path = dest_real.join(&dest_name);
     let uri = format!("file:///{}", dest_path.to_string_lossy().replace('\\', "/"));
     Ok((dest_path, uri))
 }
@@ -86,5 +107,34 @@ mod tests {
         assert!(resolve_attachment_uri(&to_uri(&outside), &root).is_none());
         assert!(resolve_attachment_uri("file:///definitely/not/here.bin", &root).is_none());
         assert!(resolve_attachment_uri("https://example.com/a.txt", &root).is_none());
+    }
+
+    #[test]
+    fn alloc_dest_stays_under_the_files_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let (path, _) = alloc_dest(dir.path(), "conv-1", "png").unwrap();
+        let root = std::fs::canonicalize(files_dir(dir.path())).unwrap();
+        assert!(path.starts_with(&root));
+        assert!(path.extension().is_some_and(|e| e == "png"));
+    }
+
+    #[test]
+    fn alloc_dest_refuses_a_path_in_the_conversation_id() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(alloc_dest(dir.path(), "..", "png").is_err());
+        assert!(alloc_dest(dir.path(), "../secret", "png").is_err());
+        assert!(alloc_dest(dir.path(), "conv/../x", "png").is_err());
+        assert!(alloc_dest(dir.path(), r"C:\Windows", "png").is_err());
+        assert!(alloc_dest(dir.path(), r"..\..\Users", "png").is_err());
+        assert!(alloc_dest(dir.path(), "", "png").is_err());
+    }
+
+    #[test]
+    fn alloc_dest_refuses_a_path_in_the_extension() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(alloc_dest(dir.path(), "conv-1", "png/../x").is_err());
+        assert!(alloc_dest(dir.path(), "conv-1", r"png\x").is_err());
+        assert!(alloc_dest(dir.path(), "conv-1", "").is_err());
+        assert!(alloc_dest(dir.path(), "conv-1", "thisistoolong").is_err());
     }
 }

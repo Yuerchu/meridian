@@ -227,7 +227,11 @@ macro_rules! with_all_commands {
             async commands::preference => set_preference(key: String, value: String),
 
             async commands::mcp => list_mcp_servers(),
-            async commands::mcp => create_mcp_server(
+            // `local`: `command` is a binary this app will spawn, so a remote
+            // writer of it has arbitrary code execution here — the same reason
+            // `acp_save_config` is local. Listing stays reachable; env/headers
+            // are stripped in `sanitize_remote_output`.
+            local commands::mcp => create_mcp_server(
                 name: String,
                 transport_type: String,
                 command: Option<String>,
@@ -236,12 +240,12 @@ macro_rules! with_all_commands {
                 url: Option<String>,
                 headers: Option<String>,
             ),
-            async commands::mcp => update_mcp_server(
+            local commands::mcp => update_mcp_server(
                 id: String,
                 updates: $crate::commands::mcp::McpServerPatch,
             ),
             async commands::mcp => delete_mcp_server(id: String),
-            async commands::mcp => connect_mcp_server(id: String),
+            local commands::mcp => connect_mcp_server(id: String),
             async commands::mcp => disconnect_mcp_server(id: String),
             async commands::mcp => list_mcp_tools(server_id: Option<String>),
             async commands::mcp => list_mcp_connection_statuses(),
@@ -375,7 +379,7 @@ macro_rules! with_all_commands {
 
             async commands::voice => voice_prewarm(),
             async commands::voice => voice_model_status(),
-            async commands::voice => voice_download_model(url: Option<String>),
+            local commands::voice => voice_download_model(url: Option<String>),
             async commands::voice => voice_cancel_download(),
             local commands::voice => voice_import_model(archive_path: String),
             async commands::voice => voice_delete_model(),
@@ -460,7 +464,10 @@ macro_rules! with_all_commands {
 
             sync commands::tool_system => list_tool_categories(),
             sync commands::tool_system => list_custom_tools(),
-            sync commands::tool_system => create_custom_tool(
+            // `local`: `command` plus `permission: always` is a shell tool that
+            // never asks, and custom tools skip the OS sandbox. Same ACE
+            // reason as `acp.command`.
+            local commands::tool_system => create_custom_tool(
                 name: String,
                 description: String,
                 command: String,
@@ -471,7 +478,7 @@ macro_rules! with_all_commands {
                 timeout_ms: Option<i32>,
                 permission: Option<String>,
             ),
-            sync commands::tool_system => update_custom_tool(
+            local commands::tool_system => update_custom_tool(
                 id: String,
                 updates: $crate::commands::tool_system::CustomToolPatch,
             ),
