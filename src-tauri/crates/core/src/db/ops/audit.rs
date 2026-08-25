@@ -65,13 +65,24 @@ pub const COMPACTION_ROLE: &str = "compaction";
 /// invisible before this.
 pub const TITLE_ROLE: &str = "title";
 
+/// Pulling durable facts out of a finished QQ turn. Another request nobody
+/// typed, and the same hole titles used to fall through: `chat()` throws the
+/// usage away at the adapter boundary.
+pub const EXTRACTION_ROLE: &str = "extraction";
+
 /// Every role that carries spend.
 ///
 /// The list `db::ops::usage` filters on. A role missing from here is traffic
 /// that was paid for and reported as nothing — which is how compaction and
 /// titles went unrecorded for as long as they did, so adding a role means adding
 /// it here in the same change.
-pub const BILLED_ROLES: &[&str] = &["assistant", AUTO_REVIEW_ROLE, COMPACTION_ROLE, TITLE_ROLE];
+pub const BILLED_ROLES: &[&str] = &[
+    "assistant",
+    AUTO_REVIEW_ROLE,
+    COMPACTION_ROLE,
+    TITLE_ROLE,
+    EXTRACTION_ROLE,
+];
 
 /// The rates this reply was charged, with any tiered pricing already resolved.
 ///

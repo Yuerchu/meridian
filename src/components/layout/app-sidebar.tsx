@@ -629,7 +629,7 @@ export function AppSidebar({
           {/* Pinned rows were sorted to the top and said nothing about why they
               were there. */}
           {conv.is_pinned === 1 && <Pin aria-label={t('contextMenu.pin')} className="size-3 text-muted" />}
-          <ConversationIndicator conversationId={conv.id} activeId={activeId} />
+          <ConversationIndicator conversationId={conv.id} activeId={activeId} transcriptInert={page === 'settings'} />
         </Sidebar.MenuChip>
         <RowActionsMenu label={title} actions={conversationActions(conv)} />
       </Sidebar.MenuItem>

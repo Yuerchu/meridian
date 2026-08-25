@@ -270,7 +270,7 @@ export function AppShell(props: ShellProps) {
           what it draws is about no particular pane. It sits above the settings
           layer by z-index, which is right — a conversation stopping on a
           permission prompt is not something being in settings should hide. */}
-      <ApprovalToastRegion onSelect={onSelect} />
+      <ApprovalToastRegion onSelect={onSelect} transcriptInert={page === 'settings'} />
 
       <CommandPalette
         isOpen={paletteOpen}

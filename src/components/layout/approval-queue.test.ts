@@ -65,4 +65,11 @@ describe('which questions the queue offers', () => {
     const { attention } = queue(item('b', 'c2'))
     expect(visible(attention, ['a', 'b'], null).map((i) => i.approvalId)).toEqual(['b'])
   })
+
+  /** Settings covers the transcript with `inert`, so the card on the active
+   *  conversation cannot be clicked. The toast is then the only way in. */
+  it('still offers the conversation being read when its transcript is inert', () => {
+    const { attention, order } = queue(item('a', 'being-read'), item('b', 'elsewhere'))
+    expect(visible(attention, order, 'being-read', true).map((i) => i.approvalId)).toEqual(['a', 'b'])
+  })
 })

@@ -16,15 +16,17 @@ import { useConversationStore } from '@/stores/conversation-store'
 export function ConversationIndicator({
   conversationId,
   activeId,
+  transcriptInert = false,
 }: {
   conversationId: string
   activeId: string | null
+  transcriptInert?: boolean
 }) {
   const waiting = useConversationStore((s) =>
     Object.values(s.attention).some((a) => a.conversationId === conversationId),
   )
   const session = useConversationStore((s) => s.sessions[conversationId])
-  if (conversationId === activeId) return null
+  if (conversationId === activeId && !transcriptInert) return null
 
   if (waiting) {
     return <span className="size-2 shrink-0 rounded-full bg-warning animate-pulse" />

@@ -23,6 +23,7 @@ export function visible(
   attention: Record<string, AttentionItem>,
   order: string[],
   activeId: string | null,
+  transcriptInert = false,
 ): AttentionItem[] {
   const out: AttentionItem[] = []
   for (const id of order) {
@@ -32,7 +33,9 @@ export function visible(
     if (!item) continue
     // Already in the transcript being read, at the live edge the scroller
     // follows. Two places to click for one decision is worse than one.
-    if (item.conversationId === activeId) continue
+    // Settings covers that transcript with `inert`, so the card is not
+    // reachable and this exclusion would hide the only remaining way in.
+    if (item.conversationId === activeId && !transcriptInert) continue
     out.push(item)
     if (out.length === MAX_VISIBLE) break
   }

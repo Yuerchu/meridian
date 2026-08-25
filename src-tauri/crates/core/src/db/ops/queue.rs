@@ -312,13 +312,23 @@ pub fn mark_dispatched(
 }
 
 /// And the other half: the send came back, so the doubt is resolved.
+///
+/// `None` for the row means "not yet" — a steered message is settled the
+/// moment the agent takes it, and the transcript row arrives at the next
+/// round boundary. Writing NULL over an id that `attach_message` already
+/// filled in is how a concurrent `session/prompt` finish erases the link.
 pub fn mark_settled(conn: &mut SqliteConnection, id: &str, message_id: Option<&str>, now: i64) -> QueryResult<usize> {
-    diesel::update(queued_prompts::table.find(id))
-        .set((
-            queued_prompts::settled_at.eq(Some(now)),
-            queued_prompts::settled_message_id.eq(message_id),
-        ))
-        .execute(conn)
+    match message_id {
+        Some(message_id) => diesel::update(queued_prompts::table.find(id))
+            .set((
+                queued_prompts::settled_at.eq(Some(now)),
+                queued_prompts::settled_message_id.eq(Some(message_id)),
+            ))
+            .execute(conn),
+        None => diesel::update(queued_prompts::table.find(id))
+            .set(queued_prompts::settled_at.eq(Some(now)))
+            .execute(conn),
+    }
 }
 
 /// Name the transcript row a settled item became, once it has one.
@@ -947,6 +957,22 @@ mod tests {
         let first = list(&mut conn, "c1").unwrap().remove(0);
         assert_eq!(first.settled_message_id.as_deref(), Some("m1"));
         assert_eq!(first.state(), QueueState::Settled);
+    }
+
+    /// Steer settles without a row; the prompt path may already have written
+    /// one. A second settle with `None` must not wipe that id.
+    #[test]
+    fn settling_without_a_row_does_not_erase_one_already_attached() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        conversation(&mut conn, "c1");
+        let first = add(&mut conn, "c1", "one", Delivery::Interject);
+        mark_dispatched(&mut conn, "c1", &first.id, None, "t1", 1).unwrap();
+        attach_message(&mut conn, &first.id, "m1").unwrap();
+        mark_settled(&mut conn, &first.id, None, 2).unwrap();
+        let first = list(&mut conn, "c1").unwrap().remove(0);
+        assert_eq!(first.settled_message_id.as_deref(), Some("m1"));
+        assert!(first.settled_at.is_some());
     }
 
     /// A mode this build does not know reads as the one that waits. A row
