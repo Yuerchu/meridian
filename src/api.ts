@@ -39,6 +39,7 @@ import type {
   Project,
   PromptTemplate,
   Provider,
+  ProviderCatalogEntry,
   ProviderBalance,
   ProviderCapabilities,
   QueueDelivery,
@@ -302,8 +303,21 @@ export const api = {
   // Providers
   listProviders: () => invoke<Provider[]>('list_providers'),
 
-  createProvider: (name: string, providerType: string, baseUrl: string, apiFormat?: string) =>
-    invoke<Provider>('create_provider', { name, providerType, baseUrl, apiFormat: apiFormat ?? null }),
+  /** The shipped vendor catalog. Compiled into the binary, so it never changes
+   *  within a run — callers may cache it for the lifetime of the process. */
+  listProviderCatalog: () => invoke<ProviderCatalogEntry[]>('list_provider_catalog'),
+
+  createProvider: (name: string, providerType: string, baseUrl: string, apiFormat?: string, catalogId?: string) =>
+    invoke<Provider>('create_provider', {
+      name,
+      providerType,
+      baseUrl,
+      apiFormat: apiFormat ?? null,
+      // Which vendor the user picked, when they picked one. It outranks
+      // anything the backend could infer from the address: choosing OpenAI and
+      // then pointing it at a relay is still OpenAI.
+      catalogId: catalogId ?? null,
+    }),
 
   updateProvider: (
     id: string,

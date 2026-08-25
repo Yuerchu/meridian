@@ -111,12 +111,16 @@ macro_rules! with_all_commands {
             ),
             async commands::assistant => delete_assistant(id: String),
 
+            // Compiled-in data, no lock and no disk — hence sync. Not `local`:
+            // a phone building the same "add a provider" list needs it too.
+            sync commands::provider => list_provider_catalog(),
             async commands::provider => list_providers(),
             async commands::provider => create_provider(
                 name: String,
                 provider_type: String,
                 base_url: String,
                 api_format: Option<String>,
+                catalog_id: Option<String>,
             ),
             async commands::provider => update_provider(
                 id: String,

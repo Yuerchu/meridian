@@ -552,6 +552,53 @@ export interface Provider {
   created_at: number
   updated_at: number
   api_format: string
+  /**
+   * Which entry in the shipped vendor catalog this row is an instance of, or
+   * null for one the catalog does not describe.
+   *
+   * Display and prefill only — it never decides how a request is sent, which is
+   * `provider_type` plus `api_format`. Null is ordinary: hand-made providers and
+   * anything pointing at a relay have it.
+   */
+  catalog_id: string | null
+}
+
+/**
+ * One vendor in the shipped catalog — the data behind "which service is this?".
+ *
+ * Mirrors `provider::catalog::CatalogEntry`. It describes and prefills; nothing
+ * here decides how a request is sent.
+ */
+export interface ProviderCatalogEntry {
+  id: string
+  provider_type: string
+  name: string
+  icon: string
+  balance: boolean
+  websites: {
+    official?: string | null
+    api_key?: string | null
+    docs?: string | null
+    models?: string | null
+  }
+  auth: ProviderAuthOption[]
+  models: { family: string; ids: string[] }[]
+}
+
+/**
+ * A way of signing in, carrying the endpoint and dialect that come with it.
+ *
+ * Those live here rather than on the entry because they belong to the login:
+ * OpenAI's API and ChatGPT's Codex backend are both `responses` and differ in
+ * base URL, so one address per dialect cannot describe both.
+ */
+export interface ProviderAuthOption {
+  id: string
+  credential_kind: string
+  transport_profile: string
+  /** A single entry means the dialect is not a choice, so no selector is drawn. */
+  api_formats: string[]
+  default_base_url: Record<string, string>
 }
 
 export interface ModelInfo {

@@ -15,6 +15,14 @@ pub struct Provider {
     pub created_at: i64,
     pub updated_at: i64,
     pub api_format: String,
+    /// Which entry in `provider_catalog.json` this row is an instance of, or
+    /// `None` for one the catalog does not describe.
+    ///
+    /// Display and prefill only — it never reaches `create_provider`, which
+    /// picks an adapter from `provider_type` and `api_format`. `None` is
+    /// ordinary: hand-made providers and anything pointing at a relay have it,
+    /// and both behave exactly as they did before the column existed.
+    pub catalog_id: Option<String>,
 }
 
 #[derive(Debug, Insertable)]
@@ -29,8 +37,16 @@ pub struct NewProvider<'a> {
     pub created_at: i64,
     pub updated_at: i64,
     pub api_format: &'a str,
+    pub catalog_id: Option<&'a str>,
 }
 
+/// Deliberately without `catalog_id`: identity is settled when the row is made
+/// and an ordinary edit does not restate it.
+///
+/// Pointing a row at a relay does not stop it being the vendor the user picked
+/// — they are reaching OpenAI through a proxy, and the panel should keep saying
+/// OpenAI. The id is a claim about *whose service this is*, not an assertion
+/// about the address, so editing the address must not silently retract it.
 #[derive(Debug, Default, AsChangeset)]
 #[diesel(table_name = providers)]
 pub struct ProviderUpdate {

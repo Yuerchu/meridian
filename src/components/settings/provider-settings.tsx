@@ -17,6 +17,7 @@ import type {
   PriceTier,
   Provider,
   ProviderBalance,
+  ProviderCatalogEntry,
   ModelInfo,
   ProviderCapabilities,
   ThinkingEffort,
@@ -29,52 +30,79 @@ import type {
  */
 type Tri = 'auto' | 'on' | 'off'
 
-const PROVIDER_DEFAULT_URLS: Record<string, string> = {
-  openai: 'https://api.openai.com/v1',
-  anthropic: 'https://api.anthropic.com',
-  deepseek: 'https://api.deepseek.com',
-  xai: 'https://api.x.ai/v1',
-  google: 'https://generativelanguage.googleapis.com',
+/**
+ * The vendor catalog.
+ *
+ * Deliberately not cached across mounts. It answers from a `LazyLock` over data
+ * compiled into the binary — no lock, no disk, no network — so a round trip
+ * costs microseconds and a cache would buy nothing while making the value
+ * impossible to vary between tests.
+ *
+ * A failure degrades to an empty catalog rather than throwing: every reader
+ * below falls back to what the row already holds, so the panel keeps working
+ * without prefills instead of refusing to render.
+ */
+function loadProviderCatalog(): Promise<ProviderCatalogEntry[]> {
+  return api.listProviderCatalog().catch((err) => {
+    console.error('Failed to load the provider catalog:', err)
+    return []
+  })
+}
+
+function useProviderCatalog(): ProviderCatalogEntry[] {
+  const [catalog, setCatalog] = useState<ProviderCatalogEntry[]>([])
+  useEffect(() => {
+    let cancelled = false
+    void loadProviderCatalog().then((entries) => {
+      if (!cancelled) setCatalog(entries)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  return catalog
 }
 
 /**
- * Provider types whose adapter is decided by the type alone, so the wire format
- * is not a choice.
+ * The catalog entry a form is currently describing.
  *
- * Deliberately a denylist — a type nobody has thought about yet keeps the
- * control rather than silently losing it.
+ * Keyed by `provider_type` rather than by the row's `catalog_id` because the
+ * type is what the user is editing — the select changes it, and the prefills
+ * have to follow that immediately rather than the identity the row was saved
+ * with. Once several vendors share one type this needs the id as well, and the
+ * select needs to offer entries rather than types; that is the same change.
  */
-const SINGLE_FORMAT_TYPES = ['anthropic']
-
-/**
- * Types that speak both dialects but not the `gemma_tool` simulation.
- *
- * The choice is not cosmetic for these two: the server-side tools — Grok's own
- * web search, DeepSeek's — exist only on the Responses API. xAI's
- * chat-completions endpoint rejects `{"type":"web_search"}` outright with
- * "expected `function` or `live_search`". Chat-completions is still the better
- * default for xAI on everything else, since that is where `x-grok-conv-id`
- * routes the prompt cache.
- */
-const DUAL_FORMAT_TYPES = ['xai', 'deepseek']
-
-/**
- * Provider types that publish an account balance.
- *
- * Mirrors `provider::balance::supports_balance`, which is the authority — asking
- * one that does not returns null and this form says so, so a drift here is
- * visible rather than silent. It exists only to keep a "check balance" button
- * off the panels where it could never do anything: Anthropic and xAI publish
- * nothing, and OpenAI withdrew the endpoint that used to.
- */
-const BALANCE_TYPES = ['deepseek']
-
-const GOOGLE_FORMAT_DEFAULT_URLS: Record<string, string> = {
-  gemini_generate_content: 'https://generativelanguage.googleapis.com',
-  chat_completions: 'https://generativelanguage.googleapis.com/v1beta/openai',
+function entryByType(catalog: ProviderCatalogEntry[], providerType: string): ProviderCatalogEntry | undefined {
+  return catalog.find((e) => e.provider_type === providerType)
 }
 
-const GOOGLE_FORMAT_PLACEHOLDERS: Record<string, string> = {
+/**
+ * The dialects a vendor offers, from its first login method.
+ *
+ * One element means the dialect is not a choice and the selector is omitted —
+ * which is what the old `SINGLE_FORMAT_TYPES` said about Anthropic, and what
+ * `DUAL_FORMAT_TYPES` said about xAI and DeepSeek. Stating it as data means the
+ * next vendor does not need a third list.
+ */
+function formatsFor(entry: ProviderCatalogEntry | undefined): string[] {
+  return entry?.auth[0]?.api_formats ?? []
+}
+
+/**
+ * The address to prefill for a vendor speaking a given dialect.
+ *
+ * Google used to need its own table because its address changes with the
+ * dialect. Here that is just what its data says, and every other vendor happens
+ * to map both dialects to one address — so the special case disappears rather
+ * than being handled.
+ */
+function defaultUrlFor(entry: ProviderCatalogEntry | undefined, apiFormat: string): string | undefined {
+  const urls = entry?.auth[0]?.default_base_url
+  if (!urls) return undefined
+  return urls[apiFormat] ?? Object.values(urls)[0]
+}
+
+const URL_PLACEHOLDERS: Record<string, string> = {
   gemini_generate_content: 'https://api.example.com',
   chat_completions: 'https://api.example.com/v1',
 }
@@ -635,6 +663,7 @@ function ProviderEditor({
   onDelete: (id: string) => Promise<void>
 }) {
   const { t } = useTranslation()
+  const catalog = useProviderCatalog()
   const [name, setName] = useState(provider.name)
   const [providerType, setProviderType] = useState(provider.provider_type)
   const [baseUrl, setBaseUrl] = useState(provider.base_url)
@@ -698,30 +727,38 @@ function ProviderEditor({
 
   const handleProviderTypeChange = useCallback(
     (next: string) => {
-      const nextFormat =
-        next === 'google' ? 'gemini_generate_content' : next === 'openai' ? 'responses' : 'chat_completions'
+      const nextEntry = entryByType(catalog, next)
+      // The dialect a vendor is best reached on. Catalog order is editorial, so
+      // the first one listed is the recommendation.
+      const nextFormat = formatsFor(nextEntry)[0] ?? 'chat_completions'
       setProviderType(next)
       setBaseUrl((current) => {
-        const oldDefault =
-          providerType === 'google' ? GOOGLE_FORMAT_DEFAULT_URLS[apiFormat] : PROVIDER_DEFAULT_URLS[providerType]
-        return !current || current === oldDefault ? (PROVIDER_DEFAULT_URLS[next] ?? current) : current
+        // Only replace an address the user never touched. Anything they typed —
+        // a relay, a self-hosted endpoint — survives a change of vendor, which
+        // is the same rule the catalog follows for existing rows.
+        const oldDefault = defaultUrlFor(entryByType(catalog, providerType), apiFormat)
+        const replacement = defaultUrlFor(nextEntry, nextFormat)
+        return !current || current === oldDefault ? (replacement ?? current) : current
       })
       setApiFormat(nextFormat)
     },
-    [providerType, apiFormat],
+    [catalog, providerType, apiFormat],
   )
 
   const handleApiFormatChange = useCallback(
     (next: string) => {
-      if (providerType === 'google') {
-        setBaseUrl((current) => {
-          const oldDefault = GOOGLE_FORMAT_DEFAULT_URLS[apiFormat]
-          return !current || current === oldDefault ? (GOOGLE_FORMAT_DEFAULT_URLS[next] ?? current) : current
-        })
-      }
+      // Used to be a Google-only branch. It is general now because the address
+      // living per-dialect is just what the data says — for every other vendor
+      // both dialects map to one address, so this is a no-op there.
+      setBaseUrl((current) => {
+        const entry = entryByType(catalog, providerType)
+        const oldDefault = defaultUrlFor(entry, apiFormat)
+        const replacement = defaultUrlFor(entry, next)
+        return !current || current === oldDefault ? (replacement ?? current) : current
+      })
       setApiFormat(next)
     },
-    [providerType, apiFormat],
+    [catalog, providerType, apiFormat],
   )
 
   const handleSaveKey = useCallback(async () => {
@@ -813,15 +850,18 @@ function ProviderEditor({
     [confirm, t, loadModelConfigs],
   )
 
-  const typeOptions = [
-    { value: 'openai', label: t('settings.provider.typeOpenAI') },
-    { value: 'anthropic', label: t('settings.provider.typeAnthropic') },
-    // Previously unreachable from the UI, which silently sent every DeepSeek
-    // provider down the generic path with reasoning support switched off.
-    { value: 'deepseek', label: t('settings.provider.typeDeepSeek') },
-    { value: 'xai', label: t('settings.provider.typeXAI') },
-    { value: 'google', label: t('settings.provider.typeGoogle') },
-  ]
+  // Straight from the catalog, and not translated: these are brand names. The
+  // i18n keys they replaced held the same strings in every locale, and a vendor
+  // added to the catalog would have had no key at all — which is precisely the
+  // per-vendor busywork this list is meant to stop needing.
+  //
+  // Until the catalog is loaded this is empty, so the current value is carried
+  // as a lone option; without it the select would show blank and a save would
+  // write it back.
+  const typeOptions =
+    catalog.length > 0
+      ? catalog.map((e) => ({ value: e.provider_type, label: e.name }))
+      : [{ value: providerType, label: providerType }]
   const formatOptions = [
     { value: 'responses', label: t('settings.provider.apiFormatResponses') },
     { value: 'chat_completions', label: t('settings.provider.apiFormatChatCompletions') },
@@ -831,9 +871,6 @@ function ProviderEditor({
     { value: 'gemini_generate_content', label: t('settings.provider.apiFormatGeminiGenerateContent') },
     { value: 'chat_completions', label: t('settings.provider.apiFormatOpenAICompatible') },
   ]
-  // `gemma_tool` simulates function calling through prompt injection on a plain
-  // chat endpoint. It is meaningless against either of these.
-  const dualFormatOptions = formatOptions.filter((option) => option.value !== 'gemma_tool')
   const formatDescription =
     providerType === 'google'
       ? apiFormat === 'gemini_generate_content'
@@ -862,23 +899,25 @@ function ProviderEditor({
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder={
-            providerType === 'google'
-              ? (GOOGLE_FORMAT_PLACEHOLDERS[apiFormat] ?? GOOGLE_FORMAT_PLACEHOLDERS.gemini_generate_content)
-              : (PROVIDER_DEFAULT_URLS[providerType] ?? PROVIDER_DEFAULT_URLS.openai)
+            defaultUrlFor(entryByType(catalog, providerType), apiFormat) ??
+            URL_PLACEHOLDERS[apiFormat] ??
+            URL_PLACEHOLDERS.chat_completions
           }
         />
       </TextField>
 
-      {!SINGLE_FORMAT_TYPES.includes(providerType) && (
+      {/* One dialect means there is nothing to choose — which is what the old
+          `SINGLE_FORMAT_TYPES` denylist said about Anthropic, now read off the
+          data. While the catalog is loading nothing is known, so the selector
+          stays hidden rather than offering a set that may be wrong. */}
+      {formatsFor(entryByType(catalog, providerType)).length > 1 && (
         <SettingsSelect
           label={t('settings.provider.apiFormat')}
           value={apiFormat}
           options={
             providerType === 'google'
               ? googleFormatOptions
-              : DUAL_FORMAT_TYPES.includes(providerType)
-                ? dualFormatOptions
-                : formatOptions
+              : formatOptions.filter((option) => formatsFor(entryByType(catalog, providerType)).includes(option.value))
           }
           onChange={handleApiFormatChange}
           description={formatDescription}
@@ -932,7 +971,11 @@ function ProviderEditor({
         )}
       </div>
 
-      {BALANCE_TYPES.includes(providerType) && (
+      {/* `provider::balance::supports_balance` remains the authority: asking a
+          vendor that publishes nothing returns null and this form says so, so a
+          drift shows up rather than hiding. This only keeps the button off the
+          panels where it could never do anything. */}
+      {entryByType(catalog, providerType)?.balance === true && (
         <div data-slot="provider-balance" className="border-t border-border pt-4 space-y-3">
           <div className="flex items-center justify-between">
             <p className="text-xs text-muted">{t('settings.provider.balance')}</p>
@@ -1092,8 +1135,23 @@ export function ProviderSettings() {
     nav.select(providers[0].id)
   }, [loading, isNarrow, selectedId, providers, nav])
 
+  // A new row starts as the first vendor in the catalog, prefilled from it and
+  // stamped with which vendor it is. The hardcoded OpenAI defaults that used to
+  // be here are now just what the catalog's first entry says.
+  //
+  // `catalogId` is passed even though the backend could infer it from the URL:
+  // the user picking a vendor is a statement, and it must survive them editing
+  // the address afterwards — which inference cannot do.
   const handleCreate = useCallback(async () => {
-    const p = await api.createProvider('New Provider', 'openai', 'https://api.openai.com/v1', 'responses')
+    const entry = (await loadProviderCatalog())[0]
+    const format = entry?.auth[0]?.api_formats[0] ?? 'chat_completions'
+    const p = await api.createProvider(
+      entry?.name ?? 'New Provider',
+      entry?.provider_type ?? 'openai',
+      defaultUrlFor(entry, format) ?? '',
+      format,
+      entry?.id,
+    )
     await refresh()
     nav.openItem(p.id)
   }, [refresh, nav])

@@ -6,6 +6,19 @@ use meridian_core::provider::models::ModelInfo;
 use meridian_core::secrets::{SecretName, SecretScope};
 use meridian_core::util::now_ms;
 
+/// The shipped vendor catalog, for the panel that offers a list to create from.
+///
+/// Reads a `LazyLock` over data compiled into the binary, so it takes no lock
+/// and touches no disk — hence sync rather than `spawn_blocking`. It is also why
+/// it cannot fail: a malformed catalog would have panicked at first use, and the
+/// checker keeps one from being committed.
+#[tauri::command]
+pub fn list_provider_catalog(
+    _app: tauri::AppHandle,
+) -> Result<&'static [meridian_core::provider::catalog::CatalogEntry], String> {
+    Ok(meridian_core::provider::catalog::entries())
+}
+
 #[tauri::command]
 pub async fn list_providers(app: tauri::AppHandle) -> Result<Vec<Provider>, String> {
     let services = app.services();
@@ -25,6 +38,7 @@ pub async fn create_provider(
     provider_type: String,
     base_url: String,
     api_format: Option<String>,
+    catalog_id: Option<String>,
 ) -> Result<Provider, String> {
     let services = app.services();
     let pool = services.db.clone();
@@ -33,6 +47,14 @@ pub async fn create_provider(
         let id = uuid::Uuid::new_v4().to_string();
         let now = now_ms();
         let format = api_format.as_deref().unwrap_or("chat_completions");
+        // What the caller picked out of the catalog wins over anything inferred
+        // from the address: choosing "OpenAI" and then pointing it at a relay is
+        // still OpenAI, and `identify` would refuse that URL. Inference is only
+        // the fallback for callers that name no vendor at all.
+        let catalog = catalog_id
+            .as_deref()
+            .filter(|id| meridian_core::provider::catalog::find(id).is_some())
+            .or_else(|| meridian_core::provider::catalog::identify(&provider_type, &base_url));
         db::ops::provider::create_provider(
             &mut conn,
             &NewProvider {
@@ -45,6 +67,7 @@ pub async fn create_provider(
                 created_at: now,
                 updated_at: now,
                 api_format: format,
+                catalog_id: catalog,
             },
         )
         .map_err(|e| e.to_string())

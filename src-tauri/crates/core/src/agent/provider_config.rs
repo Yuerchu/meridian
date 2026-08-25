@@ -467,6 +467,7 @@ mod tests {
                     created_at: 0,
                     updated_at: 0,
                     api_format: "chat",
+                    catalog_id: None,
                 },
             )
             .unwrap();
@@ -566,6 +567,7 @@ mod tests {
                     created_at: 0,
                     updated_at: 0,
                     api_format: "responses",
+                    catalog_id: None,
                 },
             )
             .unwrap();

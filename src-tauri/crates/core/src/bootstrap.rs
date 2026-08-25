@@ -125,6 +125,10 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
                     created_at: now,
                     updated_at: now,
                     api_format: "chat_completions",
+                    // Both of these came out of environment variables, so this
+                    // is as likely to be a relay as the vendor itself.
+                    // `identify` answers only when it is certain.
+                    catalog_id: crate::provider::catalog::identify(&provider_type, &base_url),
                 },
             ) {
                 let key_name = provider_secret_name(&provider.id);

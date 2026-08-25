@@ -19,7 +19,7 @@
 //! row exists: a relay URL the user typed is theirs to keep, and a catalog
 //! update must never turn an existing configuration into an illegal one.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
@@ -29,7 +29,7 @@ struct Catalog {
 }
 
 /// One vendor.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CatalogEntry {
     /// Stable identity, and what a provider row's `catalog_id` points at.
     ///
@@ -57,7 +57,7 @@ pub struct CatalogEntry {
     pub models: Vec<ModelGroup>,
 }
 
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Serialize)]
 pub struct Websites {
     pub official: Option<String>,
     /// Where the user goes to obtain a key — the one link a settings panel
@@ -75,7 +75,7 @@ pub struct Websites {
 /// flat `default_base_url` keyed by format cannot hold both, and the fallback —
 /// hardcoding "when Codex is chosen, switch the URL" into the settings panel —
 /// is exactly the vendor-specific branching this catalog exists to delete.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct AuthOption {
     pub id: String,
     /// Where the credential comes from. Deliberately *not* an input to adapter
@@ -99,7 +99,7 @@ pub struct AuthOption {
 /// Written down rather than derived from the id. Splitting ids on punctuation
 /// is how `gpt-5` and `gpt-5.1` end up in two groups while `gpt-5-mini` joins
 /// the first — an artefact of the separator, not a statement about the models.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct ModelGroup {
     pub family: String,
     pub ids: Vec<String>,
@@ -125,6 +125,51 @@ pub fn entries() -> &'static [CatalogEntry] {
 /// is the common case for anything hand-made.
 pub fn find(id: &str) -> Option<&'static CatalogEntry> {
     CATALOG.providers.iter().find(|entry| entry.id == id)
+}
+
+/// A trailing slash and a capital letter are the same address. Nothing beyond
+/// that is normalised, because anything further starts being a guess.
+fn normalize_url(url: &str) -> String {
+    url.trim().trim_end_matches('/').to_ascii_lowercase()
+}
+
+/// Which vendor a provider row belongs to, judged only from what it holds.
+///
+/// Used when a row is created, so a fresh provider carries the identity that
+/// gives it a logo and a key-issuing link. Deliberately conservative: it answers
+/// only when a vendor's *own* base URL is present verbatim, and returns `None`
+/// the moment two entries would both fit. `provider_type` cannot decide this on
+/// its own — `openai` covers the official API, a self-hosted proxy and every
+/// compatible reseller — and a wrong id is worse than none: it shows the wrong
+/// logo and offers a key page for a service the user is not talking to.
+///
+/// Migration 39 backfills existing rows with the same rule spelled out in SQL.
+/// The duplication is intended and the two are allowed to drift apart over
+/// time: a migration has to replay to the same result years from now, so it is
+/// pinned to the URLs rows *actually hold*, while this function follows the
+/// catalog as it is edited. They agree on the day the migration ships, which is
+/// the only day they both run on the same data.
+pub fn identify(provider_type: &str, base_url: &str) -> Option<&'static str> {
+    let wanted = normalize_url(base_url);
+    let mut found: Option<&'static str> = None;
+    for entry in entries() {
+        if entry.provider_type != provider_type {
+            continue;
+        }
+        let fits = entry
+            .auth
+            .iter()
+            .any(|option| option.default_base_url.values().any(|url| normalize_url(url) == wanted));
+        if fits {
+            if found.is_some() {
+                // Two vendors claim this address. Nothing here can break the
+                // tie, so refuse rather than pick.
+                return None;
+            }
+            found = Some(entry.id.as_str());
+        }
+    }
+    found
 }
 
 impl CatalogEntry {
@@ -210,6 +255,51 @@ mod tests {
         assert!(!choice("anthropic"), "Anthropic's adapter ignores the format");
         assert!(choice("xai"), "xAI speaks both dialects");
         assert!(choice("deepseek"), "DeepSeek speaks both dialects");
+    }
+
+    /// A vendor's own address identifies it, in the forms it is really written
+    /// in — the frontend's old `PROVIDER_DEFAULT_URLS` is what put these into
+    /// existing rows, and a trailing slash or a capital letter must not change
+    /// the answer.
+    #[test]
+    fn a_vendors_own_url_identifies_it() {
+        assert_eq!(identify("openai", "https://api.openai.com/v1"), Some("openai"));
+        assert_eq!(identify("openai", "https://api.openai.com/v1/"), Some("openai"));
+        assert_eq!(identify("openai", "HTTPS://API.OPENAI.COM/v1"), Some("openai"));
+        assert_eq!(identify("anthropic", "https://api.anthropic.com"), Some("anthropic"));
+        assert_eq!(identify("deepseek", "https://api.deepseek.com"), Some("deepseek"));
+        assert_eq!(identify("xai", "https://api.x.ai/v1"), Some("xai"));
+    }
+
+    /// Google reaches the same vendor down either dialect's address.
+    #[test]
+    fn both_google_addresses_identify_google() {
+        assert_eq!(
+            identify("google", "https://generativelanguage.googleapis.com"),
+            Some("google")
+        );
+        assert_eq!(
+            identify("google", "https://generativelanguage.googleapis.com/v1beta/openai"),
+            Some("google")
+        );
+    }
+
+    /// A relay is the case this must not guess at. `openai` says nothing about
+    /// whose service is behind the address, and a wrong id shows the wrong logo
+    /// and a key page for a service the user is not talking to.
+    #[test]
+    fn a_relay_stays_unidentified() {
+        assert_eq!(identify("openai", "https://codex-api.foxline.cn"), None);
+        assert_eq!(identify("openai", "https://api.openai.com/v1/proxy"), None);
+        assert_eq!(identify("openai", ""), None);
+    }
+
+    /// The type has to agree too: the right address under the wrong family is
+    /// not that vendor.
+    #[test]
+    fn the_address_alone_is_not_enough() {
+        assert_eq!(identify("anthropic", "https://api.openai.com/v1"), None);
+        assert_eq!(identify("nonesuch", "https://api.openai.com/v1"), None);
     }
 
     /// Prefills are addressable by the dialect they belong to — the property

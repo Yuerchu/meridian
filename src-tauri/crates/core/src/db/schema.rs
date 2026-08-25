@@ -369,6 +369,7 @@ diesel::table! {
         created_at -> BigInt,
         updated_at -> BigInt,
         api_format -> Text,
+        catalog_id -> Nullable<Text>,
     }
 }
 

@@ -76,6 +76,7 @@ mod tests {
                 created_at: 0,
                 updated_at: 0,
                 api_format: "responses",
+                catalog_id: None,
             })
             .execute(conn)
             .unwrap();

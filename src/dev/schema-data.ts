@@ -511,14 +511,20 @@ const RAW_TABLES: RawTable[] = [
       ['created_at', 'BIGINT', ['NN'], '—', ''],
       ['updated_at', 'BIGINT', ['NN'], '—', ''],
       ['api_format', 'TEXT', ['NN'], "'chat_completions'", '线上协议形状，决定走哪套解析（迁移 10）'],
+      ['catalog_id', 'TEXT', ['NULL'], 'NULL', '是内置目录里的哪一家；只管展示与预填（迁移 39）'],
     ],
     rels: [
       '<code>assistants.provider_id</code>、<code>messages.provider_id</code> → <b>SET NULL</b>。',
       '<code>model_configs.provider_id</code>、<code>cached_models.provider_id</code> → <b>CASCADE</b>。',
+      '<code>catalog_id</code> 指向 <code>provider_catalog.json</code>，<b>不是外键</b>——目标是随二进制发布的数据文件，不是表。',
     ],
     rules: [
       '<b>API key 不在这张表、不在任何表里</b>。',
       '因为删除是 SET NULL，历史归属必须靠快照列保住：<code>messages.provider_name</code>、<code>audit_messages.provider_name</code>。两者与本表不一致是<b>预期</b>——改名之后旧行留旧名。',
+      '<code>catalog_id</code> 与 <code>provider_type</code> 分工不同，混用会重新制造它要消灭的耦合：<b>provider_type 决定怎么发请求</b>（<code>create_provider</code> 据它选适配器），<b>catalog_id 决定长什么样</b>（图标、显示名、取密钥链接、新建时预填的地址）。几十家 OpenAI 兼容厂商共用一个适配器却各有身份，正是靠这个分开。',
+      '<code>NULL</code> 是常态不是待填的坑：手工建的、指向中转的、以及迁移 39 无法确定身份的行都是 NULL，且行为与没有这列时完全一致。',
+      '迁移 39 的回填<b>刻意只认厂商自己的地址原样</b>。<code>provider_type</code> 单独识别不了厂商——<code>openai</code> 同时涵盖官方 API、自建代理和各家兼容中转——猜错会静默贴上错身份，比留空更糟：面板会显示错误的图标，并给出一个用户根本没在用的服务的取密钥链接。',
+      '那串 URL 写死在迁移里而不是从目录读：<b>迁移必须在五年后重放出同样结果</b>，而目录是会被编辑的数据。<code>catalog::identify()</code> 则跟随目录。两者只在迁移发布当天跑在同一批数据上，之后各自演化是预期的。',
     ],
   },
   {
