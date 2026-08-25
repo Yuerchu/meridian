@@ -164,7 +164,7 @@ pub async fn do_compact(
     // The turn parameters use the same resolution as a normal turn: a
     // summarisation request that invents its own temperature or output ceiling
     // is rejected by models the chat path already knows how to talk to.
-    let (provider_type, base_url, api_key, model, api_format, turn, provider_id, provider_name) = {
+    let (provider_type, base_url, credential, model, api_format, turn, provider_id, provider_name) = {
         let pool2 = pool.clone();
         let secrets2 = secrets.clone();
         let assistant2 = assistant.cloned();
@@ -172,7 +172,7 @@ pub async fn do_compact(
             let crate::agent::ResolvedProvider {
                 provider_type,
                 base_url,
-                api_key,
+                credential,
                 model,
                 api_format,
                 provider_id,
@@ -194,7 +194,7 @@ pub async fn do_compact(
             Ok::<_, String>((
                 provider_type,
                 base_url,
-                api_key,
+                credential,
                 model,
                 api_format,
                 turn,
@@ -205,7 +205,7 @@ pub async fn do_compact(
         .await
         .map_err(|e| e.to_string())??
     };
-    let prov = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
+    let prov = provider::registry::create_provider(&provider_type, &base_url, &credential, Some(&api_format));
     let params = without_thinking(turn.params);
     // The same window and the same tokenizer the turn would use. A summariser
     // sized against a different one is sized against nothing.

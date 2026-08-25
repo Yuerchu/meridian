@@ -1,6 +1,92 @@
 use crate::db::models::model_config::ModelConfig;
 use crate::provider::TokenUsage;
 
+/// Whether a request owes a per-request price at all.
+///
+/// It lives here, beside `compute_cost`, because it is a pricing rule and not a
+/// reporting preference: it decides whether a rate is *owed*, which has to be
+/// settled before anything goes looking for one. `db::ops::usage::resolve` falls
+/// back to today's `model_configs` when a row carries no snapshotted rate, so a
+/// subscription request under a provider that happens to have a price on file
+/// would otherwise be billed at it — "no rate stored" and "no rate exists" are
+/// indistinguishable without this.
+///
+/// Snapshotted onto the audit row rather than joined from the provider, for the
+/// reason migration 30 gives about rates: this is a fact about the past.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum BillingMode {
+    /// A price is owed. A missing rate is a misconfiguration and still counts
+    /// into `unpriced_messages`.
+    #[default]
+    Metered,
+    /// Tokens are ours to count, but no per-request rate exists — the request
+    /// draws on a plan bought elsewhere. Not unpriced; there is nothing to find.
+    Subscription,
+    /// The cost lands in someone else's ledger and never enters our totals.
+    ///
+    /// Reserved: nothing writes it yet. ACP's `usage_update` is reported but
+    /// produces no audit row, and giving it one is a separate feature.
+    External,
+}
+
+impl BillingMode {
+    /// Whether a cost may be computed for this request.
+    ///
+    /// The one question every reporting path must ask before resolving rates.
+    pub fn is_priced(self) -> bool {
+        matches!(self, Self::Metered)
+    }
+
+    /// Whether a missing rate is worth telling the user about.
+    ///
+    /// False for the two modes where no rate was ever expected — counting those
+    /// into `unpriced_messages` produces a warning nobody can act on.
+    pub fn expects_a_price(self) -> bool {
+        matches!(self, Self::Metered)
+    }
+
+    /// How a provider's transport is paid for.
+    ///
+    /// Keyed on `transport_profile` rather than on the credential: what decides
+    /// this is *which service the request reaches*, not how we authenticated to
+    /// it. Both ChatGPT logins — the CLI's session and one made in this app —
+    /// draw on the same plan, and an API key reaching the same backend would
+    /// too.
+    ///
+    /// Today only `standard` exists, so every row is `Metered` and this mapping
+    /// is inert; `chatgpt_codex` arrives with the Codex transport.
+    pub fn for_transport(transport_profile: &str) -> Self {
+        match transport_profile {
+            "chatgpt_codex" => Self::Subscription,
+            _ => Self::Metered,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Metered => "metered",
+            Self::Subscription => "subscription",
+            Self::External => "external",
+        }
+    }
+}
+
+impl std::str::FromStr for BillingMode {
+    type Err = ();
+
+    /// Anything unrecognised reads as `Metered`, which is what every row held
+    /// before the column existed and the only answer that cannot silently drop
+    /// a cost: it keeps the request in the ledger and, if a rate is missing,
+    /// visible in `unpriced_messages`.
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "subscription" => Self::Subscription,
+            "external" => Self::External,
+            _ => Self::Metered,
+        })
+    }
+}
+
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct RequestCost {
     pub input_cost: f64,
@@ -731,5 +817,56 @@ mod tests {
             assert_eq!(prices.input, 2.0, "{raw} should not have applied");
             assert_eq!(prices.output, 6.0);
         }
+    }
+}
+
+#[cfg(test)]
+mod billing_mode_tests {
+    use super::BillingMode;
+
+    /// The round trip has to hold: `as_str` is what lands in the column and
+    /// `from_str` is what reads it back, so a mismatch between them would make
+    /// every subscription row read as metered from the moment it was written.
+    #[test]
+    fn every_mode_survives_the_column() {
+        for mode in [BillingMode::Metered, BillingMode::Subscription, BillingMode::External] {
+            assert_eq!(mode.as_str().parse::<BillingMode>(), Ok(mode));
+        }
+    }
+
+    /// Junk reads as metered, which keeps the request in the ledger and, if it
+    /// has no rate, visible as unpriced. Reading it as unbillable would make
+    /// real spend disappear with nothing to say so.
+    #[test]
+    fn an_unknown_mode_is_metered() {
+        assert_eq!("".parse(), Ok(BillingMode::Metered));
+        assert_eq!("Subscription".parse(), Ok(BillingMode::Metered), "match is exact");
+        assert_eq!("whatever".parse(), Ok(BillingMode::Metered));
+        assert_eq!(BillingMode::default(), BillingMode::Metered);
+    }
+
+    /// Only metered traffic owes a price, and only metered traffic can be
+    /// reported as missing one. These two travel together on purpose: a mode
+    /// that is priced but not expected to have a rate, or the reverse, would
+    /// either bill a plan twice or hide a real gap.
+    #[test]
+    fn only_metered_traffic_owes_a_price() {
+        assert!(BillingMode::Metered.is_priced());
+        assert!(BillingMode::Metered.expects_a_price());
+        for mode in [BillingMode::Subscription, BillingMode::External] {
+            assert!(!mode.is_priced(), "{mode:?} must not be priced");
+            assert!(!mode.expects_a_price(), "{mode:?} has no rate to be missing");
+        }
+    }
+
+    /// The mapping is keyed on the transport, not on the credential: what
+    /// decides how a request is paid for is which service it reaches. Today only
+    /// `standard` exists, so this is inert until the Codex transport lands.
+    #[test]
+    fn the_transport_decides_how_a_request_is_paid_for() {
+        assert_eq!(BillingMode::for_transport("standard"), BillingMode::Metered);
+        assert_eq!(BillingMode::for_transport("chatgpt_codex"), BillingMode::Subscription);
+        // An unrecognised transport bills normally rather than silently free.
+        assert_eq!(BillingMode::for_transport("something_new"), BillingMode::Metered);
     }
 }

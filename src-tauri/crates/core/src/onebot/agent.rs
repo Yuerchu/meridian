@@ -288,7 +288,7 @@ pub(super) async fn oneshot_completion(
     // The turn parameters are resolved like any other turn: an extraction
     // request that invents its own temperature is rejected by models the chat
     // path already talks to.
-    let (provider_type, base_url, api_key, api_format, turn, provider_id, provider_name, model) = {
+    let (provider_type, base_url, credential, api_format, turn, provider_id, provider_name, model) = {
         let pool2 = state.services.db.clone();
         let secrets2 = state.services.secrets.clone();
         let assistant2 = assistant.clone();
@@ -298,7 +298,7 @@ pub(super) async fn oneshot_completion(
                 provider_name,
                 provider_type,
                 base_url,
-                api_key,
+                credential,
                 model,
                 api_format,
             } = resolve_provider_config(&secrets2, &pool2, assistant2.as_ref())?;
@@ -318,7 +318,7 @@ pub(super) async fn oneshot_completion(
             Ok::<_, String>((
                 provider_type,
                 base_url,
-                api_key,
+                credential,
                 api_format,
                 turn,
                 provider_id,
@@ -329,7 +329,7 @@ pub(super) async fn oneshot_completion(
         .await
         .map_err(|e| e.to_string())??
     };
-    let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
+    let provider = provider::registry::create_provider(&provider_type, &base_url, &credential, Some(&api_format));
 
     let messages = vec![
         ChatMessage {
@@ -535,7 +535,7 @@ async fn headless_chat_inner(
     let crate::agent::ResolvedProvider {
         provider_type,
         base_url,
-        api_key,
+        credential,
         model,
         api_format,
         provider_id,
@@ -548,7 +548,7 @@ async fn headless_chat_inner(
             .await
             .map_err(|e| e.to_string())??
     };
-    let provider = provider::registry::create_provider(&provider_type, &base_url, &api_key, Some(&api_format));
+    let provider = provider::registry::create_provider(&provider_type, &base_url, &credential, Some(&api_format));
 
     // The same resolver the desktop loop uses. Sharing it is what keeps a QQ
     // assistant's tool set honest: this path used to read `enabled_tools` only,

@@ -27,7 +27,7 @@ use diesel::sql_types::{BigInt, Double, Nullable, Text};
 use diesel::sqlite::SqliteConnection;
 use serde::{Deserialize, Serialize};
 
-use crate::agent::pricing::{BilledTokens, Prices, cost_of};
+use crate::agent::pricing::{BilledTokens, BillingMode, Prices, cost_of};
 use crate::db::schema::{conversations, model_configs, projects};
 
 /// Which window, and whose traffic.
@@ -158,6 +158,12 @@ struct GroupRow {
     cache_write_price: Option<f64>,
     #[diesel(sql_type = Nullable<Double>)]
     server_tool_price: Option<f64>,
+    /// Grouped on, not just carried: the same model under the same rates can be
+    /// billed two ways over its life — an API key today, a subscription
+    /// tomorrow — and merging those into one group would price the subscription
+    /// half at the metered half's rates.
+    #[diesel(sql_type = Text)]
+    billing_mode: String,
     #[diesel(sql_type = BigInt)]
     messages: i64,
     #[diesel(sql_type = BigInt)]
@@ -206,7 +212,11 @@ pub fn report(
                 );
                 entry.cost += cost_of(&tokens, &prices).total_cost;
             }
-            None => entry.unpriced_messages += group.messages,
+            // Only the modes that expect a rate can be missing one. Counting a
+            // subscription's requests here would report a shortfall that can
+            // never be closed — there is no price to go and fill in.
+            None if billing_mode_of(&group).expects_a_price() => entry.unpriced_messages += group.messages,
+            None => {}
         }
     }
 
@@ -234,7 +244,16 @@ pub fn report(
 /// only applies to rows written before it. Reporting those at today's rate is
 /// wrong in a way that cannot be fixed — there is no other number — but it beats
 /// reporting them as free.
+///
+/// **The mode is checked before any of that**, and it has to be: the fallback
+/// looks the request's model up in today's `model_configs`, so a subscription
+/// request through a provider that happens to have rates on file would be priced
+/// at them. "No rate was stored" and "no rate exists" are the same shape in the
+/// row and opposite in meaning, and only `billing_mode` tells them apart.
 fn resolve(group: &GroupRow, current: &HashMap<(String, String), Prices>) -> Option<Prices> {
+    if !billing_mode_of(group).is_priced() {
+        return None;
+    }
     let snapshot = match (group.input_price, group.output_price) {
         (Some(input), Some(output)) => Some(Prices {
             input,
@@ -251,6 +270,13 @@ fn resolve(group: &GroupRow, current: &HashMap<(String, String), Prices>) -> Opt
         current.get(&(provider.clone(), model.clone())).copied()
     })?;
     prices.known().then_some(prices)
+}
+
+/// An unreadable mode reads as `Metered`, which keeps the request in the ledger
+/// and, if it has no rate, visible as unpriced. The alternative — treating junk
+/// as "not billable" — would make spend disappear silently.
+fn billing_mode_of(group: &GroupRow) -> BillingMode {
+    group.billing_mode.parse().unwrap_or_default()
 }
 
 fn current_prices(conn: &mut SqliteConnection) -> QueryResult<HashMap<(String, String), Prices>> {
@@ -301,7 +327,7 @@ fn grouped(conn: &mut SqliteConnection, dimension: UsageDimension, filter: &Usag
         "SELECT {key} AS bucket_key,
                 provider_id, model_id,
                 input_price, output_price, cache_read_price, cache_write_price,
-                server_tool_price,
+                server_tool_price, billing_mode,
                 COUNT(*) AS messages,
                 COALESCE(SUM(input_tokens), 0) AS input_tokens,
                 COALESCE(SUM(output_tokens), 0) AS output_tokens,
@@ -315,7 +341,7 @@ fn grouped(conn: &mut SqliteConnection, dimension: UsageDimension, filter: &Usag
             AND (? IS NULL OR turn_origin = ?)
        GROUP BY bucket_key, provider_id, model_id,
                 input_price, output_price, cache_read_price, cache_write_price,
-                server_tool_price",
+                server_tool_price, billing_mode",
         key = dimension.key_expr(),
         // A `&'static str` built from a constant, never a caller's string — the
         // same rule the key expression follows.
@@ -422,10 +448,170 @@ mod tests {
                 cache_write_price: None,
                 server_tool_calls: None,
                 server_tool_price: None,
+                billing_mode: "metered",
                 self_id: Some(10001),
             })
             .execute(conn)
             .unwrap();
+    }
+
+    /// A provider and a priced model, so the fallback in `resolve` has something
+    /// to find. Without this the tests below could not tell "refused to price"
+    /// from "had no price to use".
+    fn seed_model(conn: &mut SqliteConnection, model: &str, input: f64, output: f64) {
+        use crate::db::models::model_config::NewModelConfig;
+        use crate::db::models::provider::NewProvider;
+
+        diesel::insert_into(crate::db::schema::providers::table)
+            .values(&NewProvider {
+                id: "p1",
+                name: "Acme",
+                provider_type: "openai",
+                base_url: "https://example.invalid",
+                is_enabled: 1,
+                sort_order: 0,
+                created_at: 0,
+                updated_at: 0,
+                api_format: "chat",
+                catalog_id: None,
+                credential_kind: "api_key",
+                transport_profile: "standard",
+            })
+            .execute(conn)
+            .unwrap();
+        crate::db::ops::model_config::upsert(
+            conn,
+            &NewModelConfig {
+                id: "mc1",
+                provider_id: "p1",
+                model_id: model,
+                display_name: None,
+                context_window: 1,
+                compact_threshold: 1,
+                max_output_tokens: None,
+                input_price: input,
+                output_price: output,
+                cache_price: None,
+                cache_write_price: None,
+                created_at: 0,
+                updated_at: 0,
+                capability_overrides: None,
+                price_tiers: None,
+                server_tools: None,
+                server_tool_price: None,
+            },
+        )
+        .unwrap();
+    }
+
+    /// A reply under a given billing mode, with no snapshotted rates — the shape
+    /// that makes the price fallback reachable.
+    fn reply_billed(conn: &mut SqliteConnection, id: &str, model: &str, mode: &str, tokens: (i32, i32)) {
+        diesel::insert_into(audit_messages::table)
+            .values(&NewAuditMessage {
+                id,
+                recorded_at: 1,
+                message_id: id,
+                conversation_id: "c1",
+                turn_id: None,
+                source_type: None,
+                source_id: None,
+                turn_origin: Some("desktop"),
+                role: "assistant",
+                content: "",
+                sender_id: None,
+                sender_name: None,
+                provider_id: Some("p1"),
+                provider_name: Some("Acme"),
+                model_id: Some(model),
+                input_tokens: Some(tokens.0),
+                output_tokens: Some(tokens.1),
+                cache_read_tokens: Some(0),
+                cache_write_tokens: Some(0),
+                created_at: 1,
+                input_price: None,
+                output_price: None,
+                cache_read_price: None,
+                cache_write_price: None,
+                server_tool_calls: None,
+                server_tool_price: None,
+                billing_mode: mode,
+                self_id: None,
+            })
+            .execute(conn)
+            .unwrap();
+    }
+
+    /// The one that would have been silently wrong: a subscription request must
+    /// not be priced off today's `model_configs`.
+    ///
+    /// Both rows here carry no snapshotted rate, so both reach the fallback —
+    /// and the fixture's model *is* priced in `model_configs`. Told apart only
+    /// by `billing_mode`, the metered one bills and the subscription one does
+    /// not. Without the mode check they would bill identically, which is how a
+    /// plan the user already paid for would appear a second time on this bill.
+    #[test]
+    fn a_subscription_is_not_priced_from_todays_configuration() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        seed_model(&mut conn, "m1", 1.0, 2.0);
+
+        reply_billed(&mut conn, "a1", "m1", "metered", (1_000_000, 1_000_000));
+        let metered = report(&mut conn, UsageDimension::Total, &UsageFilter::default()).unwrap();
+        assert_eq!(metered[0].cost, 3.0, "a metered row still falls back to today's rates");
+
+        let pool2 = test_db();
+        let mut conn2 = pool2.get().unwrap();
+        seed_model(&mut conn2, "m1", 1.0, 2.0);
+        reply_billed(&mut conn2, "b1", "m1", "subscription", (1_000_000, 1_000_000));
+        let sub = report(&mut conn2, UsageDimension::Total, &UsageFilter::default()).unwrap();
+        assert_eq!(sub[0].cost, 0.0, "a subscription must not be priced");
+        assert_eq!(sub[0].input_tokens, 1_000_000, "its tokens are still counted");
+    }
+
+    /// A subscription has no rate to go and find, so reporting it as a shortfall
+    /// produces a warning nobody can clear.
+    #[test]
+    fn only_metered_traffic_can_be_unpriced() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        // No `seed_model`, so nothing is priced anywhere.
+        reply_billed(&mut conn, "a1", "unpriced", "metered", (10, 10));
+        reply_billed(&mut conn, "b1", "unpriced", "subscription", (10, 10));
+        reply_billed(&mut conn, "c1", "unpriced", "external", (10, 10));
+
+        let out = report(&mut conn, UsageDimension::Total, &UsageFilter::default()).unwrap();
+        assert_eq!(out[0].messages, 3, "all three are still counted as replies");
+        assert_eq!(out[0].unpriced_messages, 1, "only the metered one is a missing price");
+    }
+
+    /// Junk in the column reads as `metered`, which keeps the request in the
+    /// ledger. Treating it as unbillable would make spend disappear silently.
+    #[test]
+    fn an_unreadable_billing_mode_is_treated_as_metered() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        seed_model(&mut conn, "m1", 1.0, 2.0);
+        reply_billed(&mut conn, "a1", "m1", "who knows", (1_000_000, 0));
+
+        let out = report(&mut conn, UsageDimension::Total, &UsageFilter::default()).unwrap();
+        assert_eq!(out[0].cost, 1.0);
+    }
+
+    /// The same model billed two ways over its life must not be merged into one
+    /// group — the subscription half would be priced at the metered half's rates.
+    #[test]
+    fn the_two_modes_are_grouped_apart() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        seed_model(&mut conn, "m1", 1.0, 2.0);
+        reply_billed(&mut conn, "a1", "m1", "metered", (1_000_000, 0));
+        reply_billed(&mut conn, "b1", "m1", "subscription", (1_000_000, 0));
+
+        let out = report(&mut conn, UsageDimension::Total, &UsageFilter::default()).unwrap();
+        assert_eq!(out[0].messages, 2);
+        assert_eq!(out[0].input_tokens, 2_000_000, "both rows' tokens are reported");
+        assert_eq!(out[0].cost, 1.0, "but only the metered million is charged for");
     }
 
     /// The same, filed as an automatic review rather than as an answer.
@@ -458,6 +644,7 @@ mod tests {
                 cache_write_price: None,
                 server_tool_calls: None,
                 server_tool_price: None,
+                billing_mode: "metered",
                 self_id: None,
             })
             .execute(conn)
@@ -663,6 +850,8 @@ mod tests {
                 updated_at: 0,
                 api_format: "chat",
                 catalog_id: None,
+                credential_kind: "api_key",
+                transport_profile: "standard",
             })
             .execute(&mut conn)
             .unwrap();

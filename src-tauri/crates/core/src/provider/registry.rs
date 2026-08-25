@@ -7,12 +7,20 @@ use super::google_generate_content::GoogleGenerateContentProvider;
 use super::openai_compat::OpenAICompatProvider;
 use super::openai_responses::OpenAIResponsesProvider;
 
+/// Pick the adapter for a provider row.
+///
+/// Keyed on `provider_type` and `api_format` — and, once the Codex transport
+/// lands, on `transport_profile` as the third input. Deliberately *not* on the
+/// credential: how we authenticated says nothing about how the request is
+/// shaped, and two ChatGPT logins reaching one endpoint must not produce two
+/// adapters.
 pub fn create_provider(
     provider_type: &str,
     base_url: &str,
-    api_key: &str,
+    credential: &super::Credential,
     api_format: Option<&str>,
 ) -> Box<dyn ChatProvider> {
+    let api_key = credential.api_key();
     match provider_type {
         "anthropic" => Box::new(AnthropicProvider::new(base_url, api_key)),
         // Both of these speak two dialects, and the choice is not cosmetic: the

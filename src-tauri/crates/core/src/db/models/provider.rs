@@ -23,6 +23,18 @@ pub struct Provider {
     /// ordinary: hand-made providers and anything pointing at a relay have it,
     /// and both behave exactly as they did before the column existed.
     pub catalog_id: Option<String>,
+    /// Where the credential comes from: `api_key`, or one of the ChatGPT logins.
+    ///
+    /// Not an input to adapter selection — two ways of signing in to ChatGPT
+    /// produce the same token on the same wire, so they must not produce two
+    /// adapters. See `agent::provider_config::resolve_credential`.
+    pub credential_kind: String,
+    /// How requests are shaped and what the model can be asked to do.
+    ///
+    /// The third input to picking an adapter, beside `provider_type` and
+    /// `api_format`. It exists because the format cannot carry the distinction
+    /// alone: OpenAI's API and ChatGPT's Codex backend are both `responses`.
+    pub transport_profile: String,
 }
 
 #[derive(Debug, Insertable)]
@@ -38,6 +50,8 @@ pub struct NewProvider<'a> {
     pub updated_at: i64,
     pub api_format: &'a str,
     pub catalog_id: Option<&'a str>,
+    pub credential_kind: &'a str,
+    pub transport_profile: &'a str,
 }
 
 /// Deliberately without `catalog_id`: identity is settled when the row is made
@@ -57,4 +71,9 @@ pub struct ProviderUpdate {
     pub sort_order: Option<i32>,
     pub updated_at: Option<i64>,
     pub api_format: Option<String>,
+    /// Editable, unlike `catalog_id`: which login a provider uses is a setting,
+    /// not an identity. Changing it is how a row moves between an API key and a
+    /// ChatGPT session.
+    pub credential_kind: Option<String>,
+    pub transport_profile: Option<String>,
 }

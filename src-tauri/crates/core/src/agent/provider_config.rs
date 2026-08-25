@@ -58,8 +58,7 @@ pub fn resolve_provider_config(
         let mut conn = get_conn(pool)?;
         let provider =
             db::ops::provider::get_provider(&mut conn, provider_id).map_err(|e| format!("Provider not found: {e}"))?;
-        let api_key = get_provider_api_key(secrets, provider_id)
-            .ok_or_else(|| format!("API Key not set for provider '{}'", provider.name))?;
+        let credential = resolve_credential(secrets, &provider)?;
         let model = assistant
             .and_then(|a| a.model_id.clone())
             .ok_or("No model configured. Go to Settings → Assistant to set a model.")?;
@@ -69,7 +68,7 @@ pub fn resolve_provider_config(
             provider_name: provider.name,
             provider_type: provider.provider_type,
             base_url,
-            api_key,
+            credential,
             model,
             api_format: provider.api_format,
         });
@@ -77,9 +76,14 @@ pub fn resolve_provider_config(
 
     // Fallback: first enabled provider
     let mut conn = get_conn(pool)?;
+    // Still only the first enabled provider, and still all-or-nothing on it: if
+    // its credential cannot be resolved this falls through to "no provider
+    // configured" rather than moving on to the next row. A login that needs no
+    // key resolves here on its own terms instead of being rejected for lacking
+    // something it never had.
     if let Ok(providers) = db::ops::provider::list_providers(&mut conn)
         && let Some(p) = providers.into_iter().find(|p| p.is_enabled != 0)
-        && let Some(api_key) = get_provider_api_key(secrets, &p.id)
+        && let Ok(credential) = resolve_credential(secrets, &p)
     {
         let model = assistant
             .and_then(|a| a.model_id.clone())
@@ -90,7 +94,7 @@ pub fn resolve_provider_config(
             provider_name: p.name,
             provider_type: p.provider_type,
             base_url,
-            api_key,
+            credential,
             model,
             api_format: p.api_format,
         });
@@ -117,9 +121,30 @@ pub struct ResolvedProvider {
     pub provider_name: String,
     pub provider_type: String,
     pub base_url: String,
-    pub api_key: String,
+    pub credential: provider::Credential,
     pub model: String,
     pub api_format: String,
+}
+
+/// The credential for a provider row, by whatever route its login uses.
+///
+/// One place rather than three, because the "API Key not set" message it can
+/// produce has to keep appearing for every provider that does need one. Folding
+/// the bypass into each call site is how a login that needs no key ends up
+/// letting a misconfigured API-key provider through as an anonymous request.
+fn resolve_credential(
+    secrets: &SecretsManager,
+    provider: &db::models::provider::Provider,
+) -> Result<provider::Credential, String> {
+    match provider.credential_kind.as_str() {
+        // Reserved: no row can hold these until the Codex transport lands, and
+        // the arm is written now so that adding one is not also the moment this
+        // function is first thought about.
+        "codex_cli" | "chatgpt_oauth" => Ok(provider::Credential::ChatGpt),
+        _ => get_provider_api_key(secrets, &provider.id)
+            .map(provider::Credential::ApiKey)
+            .ok_or_else(|| format!("API Key not set for provider '{}'", provider.name)),
+    }
 }
 
 /// The assistant's provider and model, with a caller's choices layered on top.
@@ -176,14 +201,13 @@ fn resolve_named(
 ) -> Result<ResolvedProvider, String> {
     let mut conn = get_conn(pool)?;
     let p = db::ops::provider::get_provider(&mut conn, provider_id).map_err(|e| e.to_string())?;
-    let api_key = get_provider_api_key(secrets, provider_id)
-        .ok_or_else(|| format!("API Key not set for provider '{}'", p.name))?;
+    let credential = resolve_credential(secrets, &p)?;
     Ok(ResolvedProvider {
         provider_id: p.id,
         provider_name: p.name,
         provider_type: p.provider_type,
         base_url: p.base_url.trim_end_matches('/').to_string(),
-        api_key,
+        credential,
         model,
         api_format: p.api_format,
     })
@@ -468,6 +492,8 @@ mod tests {
                     updated_at: 0,
                     api_format: "chat",
                     catalog_id: None,
+                    credential_kind: "api_key",
+                    transport_profile: "standard",
                 },
             )
             .unwrap();
@@ -568,6 +594,8 @@ mod tests {
                     updated_at: 0,
                     api_format: "responses",
                     catalog_id: None,
+                    credential_kind: "api_key",
+                    transport_profile: "standard",
                 },
             )
             .unwrap();

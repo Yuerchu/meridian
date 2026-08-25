@@ -1,9 +1,10 @@
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
+use crate::agent::pricing::BillingMode;
 use crate::db::models::audit::NewAuditMessage;
 use crate::db::models::message::Message;
-use crate::db::schema::{audit_messages, conversations, memory_subjects, model_configs, projects, turns};
+use crate::db::schema::{audit_messages, conversations, memory_subjects, model_configs, projects, providers, turns};
 use crate::util::now_ms;
 
 /// What a row needs beside itself to be readable once everything it points at is
@@ -22,6 +23,10 @@ struct Snapshot {
     self_id: Option<i64>,
     sender_name: Option<String>,
     prices: Prices,
+    /// Whether a price is owed at all, snapshotted for the same reason the rates
+    /// beside it are: switching a provider from an API key to a subscription
+    /// must not retroactively decide how last month's requests were paid for.
+    billing_mode: BillingMode,
 }
 
 /// What this reply was priced at, taken now rather than looked up later.
@@ -208,7 +213,26 @@ fn snapshot_of(conn: &mut SqliteConnection, subject: Subject<'_>) -> Snapshot {
         self_id,
         sender_name,
         prices: prices_for(conn, subject.provider_id, subject.model_id, subject.prompt_tokens),
+        billing_mode: billing_mode_for(conn, subject.provider_id),
     }
+}
+
+/// How the provider behind this message is paid for.
+///
+/// A provider that has since been deleted answers `Metered`, which keeps the
+/// request in the ledger — the same choice the price snapshot makes when it
+/// cannot find a rate. Guessing `Subscription` instead would drop real spend out
+/// of the totals with nothing to show it had gone.
+fn billing_mode_for(conn: &mut SqliteConnection, provider_id: Option<&str>) -> BillingMode {
+    let Some(provider_id) = provider_id else {
+        return BillingMode::Metered;
+    };
+    providers::table
+        .filter(providers::id.eq(provider_id))
+        .select(providers::transport_profile)
+        .first::<String>(conn)
+        .map(|profile| BillingMode::for_transport(&profile))
+        .unwrap_or_default()
 }
 
 /// Copy a message into the audit log.
@@ -255,6 +279,7 @@ pub fn record(conn: &mut SqliteConnection, msg: &Message) -> QueryResult<()> {
             cache_write_price: snap.prices.cache_write,
             server_tool_price: snap.prices.server_tool,
             self_id: snap.self_id,
+            billing_mode: snap.billing_mode.as_str(),
         })
         .execute(conn)?;
     Ok(())
@@ -355,6 +380,7 @@ pub fn record_side_request(conn: &mut SqliteConnection, cost: SideRequestCost<'_
             cache_write_price: snap.prices.cache_write,
             server_tool_price: snap.prices.server_tool,
             self_id: snap.self_id,
+            billing_mode: snap.billing_mode.as_str(),
         })
         .execute(conn)?;
     Ok(())
@@ -464,6 +490,8 @@ mod tests {
                 updated_at: 0,
                 api_format: "chat",
                 catalog_id: None,
+                credential_kind: "api_key",
+                transport_profile: "standard",
             })
             .execute(&mut conn)
             .unwrap();
@@ -558,6 +586,8 @@ mod tests {
                 updated_at: 0,
                 api_format: "chat",
                 catalog_id: None,
+                credential_kind: "api_key",
+                transport_profile: "standard",
             })
             .execute(&mut conn)
             .unwrap();
@@ -654,6 +684,8 @@ mod tests {
                 updated_at: 0,
                 api_format: "chat",
                 catalog_id: None,
+                credential_kind: "api_key",
+                transport_profile: "standard",
             })
             .execute(&mut conn)
             .unwrap();

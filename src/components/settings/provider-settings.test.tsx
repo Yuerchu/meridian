@@ -34,6 +34,8 @@ function makeProvider(id: string, name: string): Provider {
     updated_at: 0,
     api_format: 'chat_completions',
     catalog_id: 'openai',
+    credential_kind: 'api_key',
+    transport_profile: 'standard',
   }
 }
 

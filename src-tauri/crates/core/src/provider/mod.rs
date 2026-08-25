@@ -209,6 +209,53 @@ const INJECTED_CLOSE: &str = "</injected_context>";
 /// appeared to do nothing at all — harder to diagnose than any HTTP error.
 /// Trimming covers the common case; anything still unrepresentable becomes a
 /// placeholder that fails as an ordinary 401.
+/// How an adapter gets the credential to put on a request.
+///
+/// Split by *how the secret is obtained*, not by which login the user picked:
+/// the two ways of signing in to ChatGPT — reading the Codex CLI's session, and
+/// logging in inside this app — yield the same kind of token against the same
+/// endpoint, so they must arrive as the same variant. What tells them apart is
+/// which store the manager was built over, which is the manager's own business.
+///
+/// Naming a variant after a login (`ChatGptOAuth`) would leave the other login
+/// with nowhere to go, and would push the distinction into adapter selection
+/// where it does not belong.
+#[derive(Clone)]
+pub enum Credential {
+    /// A key the user pasted in, held in the secrets store.
+    ApiKey(String),
+    /// A ChatGPT session, refreshed on demand. Reserved for the Codex
+    /// transport; nothing constructs it yet.
+    #[allow(dead_code)]
+    ChatGpt,
+}
+
+impl Credential {
+    /// The bearer string for adapters that take a static key.
+    ///
+    /// A dynamic credential answers with the empty string here rather than
+    /// panicking: `auth_header_value` turns that into a placeholder and the
+    /// request fails as an ordinary 401, which is a far better outcome than a
+    /// crash for a combination that should be unreachable anyway.
+    pub fn api_key(&self) -> &str {
+        match self {
+            Self::ApiKey(key) => key,
+            Self::ChatGpt => "",
+        }
+    }
+}
+
+/// Never derives `Debug`: a key that reaches a log or a panic message is a key
+/// that has to be rotated.
+impl std::fmt::Debug for Credential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ApiKey(_) => f.write_str("Credential::ApiKey(<redacted>)"),
+            Self::ChatGpt => f.write_str("Credential::ChatGpt"),
+        }
+    }
+}
+
 pub fn auth_header_value(value: &str) -> http::HeaderValue {
     match http::HeaderValue::from_str(value.trim()) {
         Ok(header) => header,

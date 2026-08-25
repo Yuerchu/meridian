@@ -250,6 +250,7 @@ diesel::table! {
         self_id -> Nullable<BigInt>,
         server_tool_calls -> Nullable<Integer>,
         server_tool_price -> Nullable<Double>,
+        billing_mode -> Text,
     }
 }
 
@@ -370,6 +371,8 @@ diesel::table! {
         updated_at -> BigInt,
         api_format -> Text,
         catalog_id -> Nullable<Text>,
+        credential_kind -> Text,
+        transport_profile -> Text,
     }
 }
 

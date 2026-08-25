@@ -561,6 +561,19 @@ export interface Provider {
    * anything pointing at a relay have it.
    */
   catalog_id: string | null
+  /**
+   * Where the credential comes from: `api_key`, or one of the ChatGPT logins.
+   *
+   * Not an input to which adapter runs — two ways of signing in to ChatGPT
+   * produce the same token on the same wire.
+   */
+  credential_kind: string
+  /**
+   * How requests are shaped, and the third input to picking an adapter beside
+   * `provider_type` and `api_format`. It exists because the format alone cannot
+   * separate OpenAI's API from ChatGPT's Codex backend — both are `responses`.
+   */
+  transport_profile: string
 }
 
 /**

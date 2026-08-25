@@ -562,7 +562,7 @@ async fn chat_inner(
     let provider = provider::registry::create_provider(
         &resolved.provider_type,
         &resolved.base_url,
-        &resolved.api_key,
+        &resolved.credential,
         Some(&resolved.api_format),
     );
 

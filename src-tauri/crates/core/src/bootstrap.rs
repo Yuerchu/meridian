@@ -129,6 +129,10 @@ pub fn bootstrap(data_dir: PathBuf, events: EventBus) -> Services {
                     // is as likely to be a relay as the vendor itself.
                     // `identify` answers only when it is certain.
                     catalog_id: crate::provider::catalog::identify(&provider_type, &base_url),
+                    // The variables this row is migrated from only ever carried
+                    // an API key against an ordinary endpoint.
+                    credential_kind: "api_key",
+                    transport_profile: "standard",
                 },
             ) {
                 let key_name = provider_secret_name(&provider.id);

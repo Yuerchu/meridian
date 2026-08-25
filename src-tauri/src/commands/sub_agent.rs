@@ -650,7 +650,7 @@ impl DesktopSubAgents {
         let provider = meridian_core::provider::registry::create_provider(
             &resolved.provider_type,
             &resolved.base_url,
-            &resolved.api_key,
+            &resolved.credential,
             Some(&resolved.api_format),
         );
         // The whole resolution travels back, not just the type: the rows this run

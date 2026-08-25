@@ -55,6 +55,16 @@ pub async fn create_provider(
             .as_deref()
             .filter(|id| meridian_core::provider::catalog::find(id).is_some())
             .or_else(|| meridian_core::provider::catalog::identify(&provider_type, &base_url));
+        // Which login this row uses, and therefore which endpoint it reaches,
+        // comes from the vendor's own entry rather than from a default here.
+        // Every entry offers `api_key`/`standard` today, so this is the same
+        // answer either way; it stops being so the moment a vendor lists a
+        // second way in.
+        let login = catalog
+            .and_then(meridian_core::provider::catalog::find)
+            .and_then(|entry| entry.default_auth());
+        let credential_kind = login.map_or("api_key", |auth| auth.credential_kind.as_str());
+        let transport_profile = login.map_or("standard", |auth| auth.transport_profile.as_str());
         db::ops::provider::create_provider(
             &mut conn,
             &NewProvider {
@@ -68,6 +78,8 @@ pub async fn create_provider(
                 updated_at: now,
                 api_format: format,
                 catalog_id: catalog,
+                credential_kind,
+                transport_profile,
             },
         )
         .map_err(|e| e.to_string())

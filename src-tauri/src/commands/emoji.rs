@@ -196,7 +196,7 @@ pub async fn suggest_sticker_semantics(app: tauri::AppHandle, id: String) -> Res
     let provider = provider::registry::create_provider(
         &resolved.provider_type,
         &resolved.base_url,
-        &resolved.api_key,
+        &resolved.credential,
         Some(&resolved.api_format),
     );
     let response = provider
