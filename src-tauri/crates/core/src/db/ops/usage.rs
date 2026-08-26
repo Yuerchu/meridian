@@ -32,14 +32,32 @@ use crate::db::schema::{conversations, model_configs, projects};
 
 /// Which window, and whose traffic.
 ///
-/// All three are optional and all three mean "no restriction" when absent, so
+/// Every field is optional and every one means "no restriction" when absent, so
 /// the default value is the whole log.
+///
+/// **`conversation_id` is a scope, not a convenience.** Without it the only way
+/// to look at one conversation was `UsageDimension::Conversation`, which
+/// *groups* by conversation and still reads every row — so a caller that must
+/// see one conversation and no other had no way to say so, and "wrap
+/// [`report`]" meant handing over the whole ledger. That is exactly the caller
+/// the ACP bridge is: `tools::usage` fills this in from the turn it is running
+/// under and ignores anything the model asks for. Being a filter rather than a
+/// grouping is what makes it hold across every dimension, including
+/// `Conversation` itself — otherwise changing the dimension would be the way
+/// out of the scope.
+///
+/// There is deliberately no `project_id` beside it. `audit_messages` has no such
+/// column, so it would mean joining `conversations` — and a conversation that
+/// has since moved projects, or been deleted, would answer differently from the
+/// row it is about. The one caller that needs a scope needs this one.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct UsageFilter {
     pub since_ms: Option<i64>,
     pub until_ms: Option<i64>,
     /// `desktop` or `onebot`, matched against the snapshotted `turn_origin`.
     pub origin: Option<String>,
+    /// One conversation and nothing else. See the note above.
+    pub conversation_id: Option<String>,
 }
 
 /// What the rows are grouped by.
@@ -339,6 +357,7 @@ fn grouped(conn: &mut SqliteConnection, dimension: UsageDimension, filter: &Usag
             AND (? IS NULL OR created_at >= ?)
             AND (? IS NULL OR created_at < ?)
             AND (? IS NULL OR turn_origin = ?)
+            AND (? IS NULL OR conversation_id = ?)
        GROUP BY bucket_key, provider_id, model_id,
                 input_price, output_price, cache_read_price, cache_write_price,
                 server_tool_price, billing_mode",
@@ -359,6 +378,8 @@ fn grouped(conn: &mut SqliteConnection, dimension: UsageDimension, filter: &Usag
         .bind::<Nullable<BigInt>, _>(filter.until_ms)
         .bind::<Nullable<Text>, _>(filter.origin.clone())
         .bind::<Nullable<Text>, _>(filter.origin.clone())
+        .bind::<Nullable<Text>, _>(filter.conversation_id.clone())
+        .bind::<Nullable<Text>, _>(filter.conversation_id.clone())
         .load::<GroupRow>(conn)
 }
 
@@ -540,6 +561,111 @@ mod tests {
             })
             .execute(conn)
             .unwrap();
+    }
+
+    /// The same shape as [`reply_billed`], in a conversation of its own.
+    ///
+    /// Separate because every other fixture here writes `c1`, and a scope test
+    /// needs at least two conversations to mean anything.
+    fn reply_in(conn: &mut SqliteConnection, id: &str, conversation: &str, tokens: (i32, i32)) {
+        diesel::insert_into(audit_messages::table)
+            .values(&NewAuditMessage {
+                id,
+                recorded_at: 1,
+                message_id: id,
+                conversation_id: conversation,
+                turn_id: None,
+                source_type: None,
+                source_id: None,
+                turn_origin: Some("desktop"),
+                role: "assistant",
+                content: "",
+                sender_id: None,
+                sender_name: None,
+                provider_id: Some("p1"),
+                provider_name: Some("Acme"),
+                model_id: Some("m1"),
+                input_tokens: Some(tokens.0),
+                output_tokens: Some(tokens.1),
+                cache_read_tokens: Some(0),
+                cache_write_tokens: Some(0),
+                created_at: 1,
+                input_price: None,
+                output_price: None,
+                cache_read_price: None,
+                cache_write_price: None,
+                server_tool_calls: None,
+                server_tool_price: None,
+                billing_mode: "metered",
+                self_id: None,
+            })
+            .execute(conn)
+            .unwrap();
+    }
+
+    /// The scope the ACP bridge rests on: one conversation, nothing else.
+    #[test]
+    fn a_conversation_filter_excludes_every_other_conversation() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        seed_model(&mut conn, "m1", 1.0, 2.0);
+        reply_in(&mut conn, "a1", "mine", (10, 10));
+        reply_in(&mut conn, "b1", "theirs", (500, 500));
+        reply_in(&mut conn, "b2", "theirs", (500, 500));
+
+        let scoped = report(
+            &mut conn,
+            UsageDimension::Total,
+            &UsageFilter {
+                conversation_id: Some("mine".into()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(scoped[0].messages, 1, "somebody else's replies were counted");
+        assert_eq!(scoped[0].input_tokens, 10);
+
+        let unscoped = report(&mut conn, UsageDimension::Total, &UsageFilter::default()).unwrap();
+        assert_eq!(unscoped[0].messages, 3, "an absent filter still means the whole log");
+    }
+
+    /// Changing the grouping must not be the way out of the scope.
+    ///
+    /// `Conversation` is the dimension that would do it if the scope were a
+    /// grouping rather than a filter: asked to break the ledger down by
+    /// conversation, a scoped report may answer with exactly one row and no
+    /// other conversation may appear in it — not even as a key.
+    #[test]
+    fn no_dimension_widens_a_scoped_report() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        seed_model(&mut conn, "m1", 1.0, 2.0);
+        reply_in(&mut conn, "a1", "mine", (10, 10));
+        reply_in(&mut conn, "b1", "theirs", (10, 10));
+
+        let filter = UsageFilter {
+            conversation_id: Some("mine".into()),
+            ..Default::default()
+        };
+        for dimension in [
+            UsageDimension::Total,
+            UsageDimension::Provider,
+            UsageDimension::Model,
+            UsageDimension::Bot,
+            UsageDimension::Source,
+            UsageDimension::Conversation,
+            UsageDimension::Day,
+            UsageDimension::Hour,
+            UsageDimension::Kind,
+        ] {
+            let out = report(&mut conn, dimension, &filter).unwrap();
+            let messages: i64 = out.iter().map(|b| b.messages).sum();
+            assert_eq!(messages, 1, "{dimension:?} let another conversation's rows in");
+            assert!(
+                !out.iter().any(|b| b.key == "theirs"),
+                "{dimension:?} named a conversation outside the scope"
+            );
+        }
     }
 
     /// The one that would have been silently wrong: a subscription request must
@@ -915,14 +1041,12 @@ mod tests {
         reply(&mut conn, "b", "m", 2_000, (10, 0, 0, 0), Some((1.0, 1.0)), "desktop");
 
         let first = UsageFilter {
-            since_ms: None,
             until_ms: Some(2_000),
-            origin: None,
+            ..Default::default()
         };
         let second = UsageFilter {
             since_ms: Some(2_000),
-            until_ms: None,
-            origin: None,
+            ..Default::default()
         };
         assert_eq!(total(&mut conn, &first).messages, 1);
         assert_eq!(total(&mut conn, &second).messages, 1);
