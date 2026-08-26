@@ -273,12 +273,22 @@ macro_rules! with_all_commands {
 
             #[cfg(not(target_os = "android"))]
             async commands::onebot => get_onebot_status(),
+            // `local` for what it *returns*, not for what it does. `OneBotConfig`
+            // carries `access_token` — another server's credential, the same one
+            // `guard_preference` refuses to let a remote caller write — plus
+            // `admin_users`, and the voice lists, whose private-chat entries are
+            // a person's own QQ number. Reading them back over the remote
+            // transport undoes the write guard from the other side. Nothing
+            // legitimate asks: the panel is hidden whenever `can.manageServers`
+            // is false, which is exactly the remote case.
             #[cfg(not(target_os = "android"))]
-            async commands::onebot => get_onebot_config(),
+            local commands::onebot => get_onebot_config(),
             #[cfg(not(target_os = "android"))]
             local commands::onebot => save_onebot_config(
                 config: meridian_core::onebot::OneBotConfig,
             ),
+            #[cfg(not(target_os = "android"))]
+            local commands::onebot => get_voice_send_readiness(),
             #[cfg(not(target_os = "android"))]
             local commands::onebot => start_onebot(),
             #[cfg(not(target_os = "android"))]
@@ -393,6 +403,24 @@ macro_rules! with_all_commands {
             local commands::voice => voice_cancel_recording(),
             #[cfg(target_os = "android")]
             async commands::voice => voice_transcribe_pcm(sample_rate: u32, pcm: String),
+
+            // 语料管理。三个命令的远程可见性是分开决定的:
+            //
+            // 导出是 `local`——它写本机任意路径,而写出去的内容就是声纹语料
+            // 本身。列表和删除保持可远程,因为删除**正是那个需要在手机上做的**
+            // 隐私动作:有人说"把我的声音删掉"时,你手上多半不是那台电脑。
+            // 列表只回答"占了多少地方",会话用的还是假名。
+            async commands::voice_corpus => list_voice_corpus(),
+            async commands::voice_corpus => delete_voice_corpus(
+                selector: meridian_core::voice_corpus::manage::CorpusSelector
+            ),
+            async commands::voice_corpus => set_voice_optout(sender_id: String, enabled: bool),
+            async commands::voice_corpus => forget_voice_sender(sender_id: String),
+            local commands::voice_corpus => export_voice_corpus(
+                output_dir: String,
+                include_sender: bool,
+                include_untranscribed: bool
+            ),
 
             sync commands::prompt_template => list_prompt_templates(),
             sync commands::prompt_template => create_prompt_template(

@@ -6,6 +6,24 @@ pub struct OneBotResponse {
     pub retcode: Option<i32>,
     pub data: Option<serde_json::Value>,
     pub echo: Option<String>,
+    /// Why it was refused, when it was. `status` is one of a handful of fixed
+    /// words (`ok` / `failed` / `async`) and says nothing a person can act on;
+    /// these two carry the actual complaint. Adapters disagree about which to
+    /// use — NapCat and LLOneBot send both, go-cqhttp sent `wording` alone —
+    /// so a caller reads whichever arrived.
+    pub message: Option<String>,
+    pub wording: Option<String>,
+}
+
+impl OneBotResponse {
+    /// The refusal in words, for a log line or a tool result.
+    pub fn complaint(&self) -> Option<&str> {
+        self.message
+            .as_deref()
+            .or(self.wording.as_deref())
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+    }
 }
 
 pub enum OneBotFrame {
@@ -390,6 +408,14 @@ impl MessageSegment {
 
     pub fn image(file: &str) -> Self {
         Self::raw("image", serde_json::json!({ "file": file }))
+    }
+
+    /// 一条语音消息。
+    ///
+    /// 适配器要把它转成 SILK，所以 `file` 里放什么它未必都收——`base64://` 是
+    /// 这里唯一用的形式，和贴纸的图片走同一条路。
+    pub fn record(file: &str) -> Self {
+        Self::raw("record", serde_json::json!({ "file": file }))
     }
 }
 

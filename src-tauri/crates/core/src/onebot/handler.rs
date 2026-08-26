@@ -43,6 +43,15 @@ pub async fn handle_message(event: &OneBotEvent, state: &Arc<SharedState>, conn_
     let reply_message_id = format::extract_reply_message_id(message);
     let mut parsed = format::parse_segments(message, Some(self_id));
 
+    // 语料采集在群门禁**之前**，而且是唯一的调用点。
+    //
+    // 挂进下面那个 if 里只覆盖没 @ 过 bot 的群消息（漏掉私聊和 @ 过的），挂在
+    // `process_media` 上只覆盖 @ 过的（漏掉群里绝大多数语音）。两边都漏，采到的
+    // 就是一个被扭曲的子集——而这批数据的用途正是训练。
+    if !parsed.records.is_empty() {
+        capture_voice(event, state, user_id, self_id, is_group, &parsed.records, conn_id);
+    }
+
     if is_group && !format::is_at_bot(message, self_id) {
         if user_id != self_id && !parsed.stickers.is_empty() {
             super::stickers::capture_in_background(state.clone(), self_id, parsed.stickers.clone());
@@ -2036,6 +2045,51 @@ async fn dispatch_status(
 
 fn pool_clone(pool: &crate::db::DbPool) -> crate::db::DbPool {
     pool.clone()
+}
+
+/// 把这条消息里的语音交给采集通道，或者认出它不该被采集。
+///
+/// 三个排除，每一个单独都够让这次不发生：
+///
+/// - 发送者是**任何**本地 bot 账号。只查这条连接的 self_id 不够——bot A 发的
+///   TTS 会被同群的 bot B 当成真人语音，合成音就这么从后门进了真人语料。
+/// - `self_id` 是 0。那是"适配器没说"，用 0 兜底会把所有未知账号的语料混成
+///   一堆，而账号是授权和去重的一维。
+/// - 引用消息里的语音：**不做回溯采集**。它来自另一条消息、可能另一个时间，
+///   拿当前这条回复的白名单去给它授权，是错的授权。
+fn capture_voice(
+    event: &OneBotEvent,
+    state: &Arc<SharedState>,
+    user_id: i64,
+    self_id: i64,
+    is_group: bool,
+    records: &[format::MediaRef],
+    conn_id: u64,
+) {
+    if self_id == 0 || super::is_local_bot(state, user_id) {
+        return;
+    }
+    let (session_key, source_type, source_id) = if is_group {
+        let group_id = event.group_id.unwrap_or(0);
+        if group_id == 0 {
+            return;
+        }
+        (SessionKey::group(group_id), "onebot_group", group_id.to_string())
+    } else {
+        (SessionKey::private(user_id), "onebot_private", user_id.to_string())
+    };
+    super::capture::capture_in_background(
+        state.clone(),
+        super::capture::RecordSource {
+            scope: crate::voice_corpus::CaptureScope::new(self_id, session_key.to_string()),
+            source_type,
+            source_id,
+            sender_id: user_id,
+            message_id: event.message_id,
+            conn_id,
+        },
+        records.to_vec(),
+    );
 }
 
 /// One id slot per sticker, padded with `None` rather than left short.

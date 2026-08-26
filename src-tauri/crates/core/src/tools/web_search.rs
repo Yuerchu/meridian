@@ -25,17 +25,7 @@ impl WebSearchTool {
 /// Read a response body with a hard size cap so a misbehaving endpoint can't
 /// buffer unbounded data into memory.
 async fn read_body_capped(resp: reqwest::Response) -> Result<Vec<u8>, String> {
-    use futures::StreamExt;
-    let mut stream = resp.bytes_stream();
-    let mut buf = Vec::new();
-    while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| format!("failed to read response: {e}"))?;
-        if buf.len() + chunk.len() > MAX_RESPONSE_BYTES {
-            return Err("search response exceeded size limit".into());
-        }
-        buf.extend_from_slice(&chunk);
-    }
-    Ok(buf)
+    crate::util::read_body_capped(resp, MAX_RESPONSE_BYTES, "the search response").await
 }
 
 #[derive(Debug, Serialize, Deserialize)]

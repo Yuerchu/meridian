@@ -221,6 +221,31 @@ describe('the event socket', () => {
     expect(remoteConnection?.getState()).toBe('connected')
   })
 
+  // The same test the probe applies, applied again where a reconnect can land
+  // on a downgraded desktop: below the band is a refusal, not a `connected`
+  // that then fails one command at a time.
+  it('refuses a server below the revision band instead of reporting connected', async () => {
+    vi.useFakeTimers()
+    const { remoteConnection, CLIENT_API_REV } = await loadRemote()
+
+    sockets[0].onopen?.()
+    sockets[0].onmessage?.({
+      data: JSON.stringify({
+        channel: 'remote-ready',
+        payload: { assetTicket: 'ticket-1', apiRev: CLIENT_API_REV - 1 },
+      }),
+    })
+
+    expect(remoteConnection?.getState()).toBe('offline')
+    expect(remoteConnection?.assetUrl('file:///tmp/a.png')).toBeUndefined()
+
+    // And it keeps dialling on the ordinary backoff, because the one thing
+    // that fixes this — upgrading the desktop — looks exactly like a
+    // reconnect from here.
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(sockets).toHaveLength(2)
+  })
+
   it('delivers a frame to whoever is listening on its channel', async () => {
     const { listen, remoteConnection } = await loadRemote()
     const seen: unknown[] = []
@@ -309,11 +334,18 @@ describe('reconnection', () => {
 })
 
 describe('probeRemote', () => {
+  // Written against `CLIENT_API_REV` rather than a literal: a hard-coded band
+  // starts failing on the next bump, which reads as a regression in the check
+  // rather than as a test that named a number instead of the relationship.
   it('accepts a server inside the revision band', async () => {
-    const { probeRemote } = await import('./transport')
-    respondWith({ app: 'meridian', version: '0.2.0', apiRev: 1, minClientRev: 1 })
+    const { probeRemote, CLIENT_API_REV } = await import('./transport')
+    respondWith({ app: 'meridian', version: '0.2.0', apiRev: CLIENT_API_REV, minClientRev: CLIENT_API_REV })
 
-    await expect(probeRemote('10.0.0.7', 8787)).resolves.toEqual({ ok: true, version: '0.2.0', apiRev: 1 })
+    await expect(probeRemote('10.0.0.7', 8787)).resolves.toEqual({
+      ok: true,
+      version: '0.2.0',
+      apiRev: CLIENT_API_REV,
+    })
     expect(globalThis.fetch).toHaveBeenCalledWith('http://10.0.0.7:8787/healthz', { signal: undefined })
   })
 

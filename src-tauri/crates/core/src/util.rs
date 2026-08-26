@@ -88,6 +88,27 @@ where
     serde::Deserialize::deserialize(de).map(Some)
 }
 
+/// Read a response body, refusing to buffer more than `max` bytes.
+///
+/// Streamed rather than `bytes()` because `Content-Length` is a claim by the
+/// far end: a server that lies about it, or omits it, would otherwise decide
+/// how much memory this process spends. Shared by every caller that fetches
+/// something from outside — a limit implemented twice is a limit that will
+/// eventually be two different numbers.
+pub async fn read_body_capped(resp: reqwest::Response, max: usize, what: &str) -> Result<Vec<u8>, String> {
+    use futures::StreamExt;
+    let mut stream = resp.bytes_stream();
+    let mut buf = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| format!("failed to read {what}: {e}"))?;
+        if buf.len() + chunk.len() > max {
+            return Err(format!("{what} exceeded its size limit"));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    Ok(buf)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

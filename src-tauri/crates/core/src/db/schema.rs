@@ -488,6 +488,49 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    voice_blobs (id) {
+        id -> Text,
+        bot_self_id -> BigInt,
+        source_type -> Text,
+        source_id -> Text,
+        sha256 -> Text,
+        file_format -> Text,
+        file_name -> Text,
+        file_size -> BigInt,
+        status -> Text,
+        owner_token -> Nullable<Text>,
+        fence_epoch -> BigInt,
+        lease_expires_at -> Nullable<BigInt>,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    voice_clips (id) {
+        id -> Text,
+        blob_id -> Text,
+        bot_self_id -> BigInt,
+        source_type -> Text,
+        source_id -> Text,
+        sender_id -> Text,
+        platform_message_id -> Nullable<BigInt>,
+        segment_index -> Integer,
+        transcript -> Nullable<Text>,
+        transcript_source -> Nullable<Text>,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    voice_sender_optouts (sender_id) {
+        sender_id -> Text,
+        created_at -> BigInt,
+    }
+}
+
 diesel::joinable!(assistant_emoji_packs -> assistants (assistant_id));
 diesel::joinable!(assistant_emoji_packs -> emoji_packs (pack_id));
 diesel::joinable!(assistants -> providers (provider_id));
@@ -514,6 +557,7 @@ diesel::joinable!(todo_lists -> conversations (conversation_id));
 diesel::joinable!(todo_items -> todo_lists (list_id));
 diesel::joinable!(turns -> conversations (conversation_id));
 diesel::joinable!(acp_sessions -> conversations (conversation_id));
+diesel::joinable!(voice_clips -> voice_blobs (blob_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     acp_sessions,
@@ -547,4 +591,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     tool_permissions,
     tool_presets,
     turns,
+    voice_blobs,
+    voice_clips,
+    voice_sender_optouts,
 );

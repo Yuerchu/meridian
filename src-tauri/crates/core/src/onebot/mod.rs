@@ -1,5 +1,6 @@
 mod agent;
 mod balance_watch;
+mod capture;
 mod command;
 mod extract;
 mod format;
@@ -37,11 +38,38 @@ pub struct SharedState {
     /// reason as `session_states`: a turn that dies has to be able to retire
     /// its waiters from `Drop`, which cannot await.
     pub pending_approvals: Arc<PendingApprovals>,
-    pub pending_api_responses: Mutex<HashMap<String, oneshot::Sender<OneBotResponse>>>,
+    /// API calls waiting on an adapter's reply, by echo.
+    ///
+    /// A `std::sync::Mutex` rather than tokio's, and that is what lets a
+    /// cancelled call clean up after itself: the waiter has to be removed from
+    /// a `Drop`, which cannot await. Every critical section here is one map
+    /// operation with nothing awaited inside.
+    pub pending_api_responses: std::sync::Mutex<HashMap<String, PendingCall>>,
     pub pending_requests: Mutex<HashMap<u32, PendingRequest>>,
     pub request_seq: AtomicU32,
     pub ws_sinks: Mutex<HashMap<u64, mpsc::Sender<String>>>,
+    /// 每条连接背后是哪个 QQ 账号。
+    ///
+    /// 采集要用它排除 bot 自己发的 TTS，而**只看当前这条连接的 self_id 不够**：
+    /// bot A 发的语音会被同群的 bot B 当成真人语音收下来，合成音就这么从后门
+    /// 进了真人语料。所以问的是"这个号是不是我们的某一个"，不是"是不是这一条
+    /// 连接的"。
+    ///
+    /// 一条连接的身份认第一个报上来的，之后不再改：一条连接漂移到另一个账号
+    /// 是适配器出了问题，跟着它改只会把两个账号的语料混起来。
+    pub conn_identities: std::sync::Mutex<HashMap<u64, i64>>,
     pub connected_clients: AtomicU32,
+    /// 这一代服务的关停信号。
+    ///
+    /// **在 state 上而不是只在 `OneBotServer` 上**，因为读它的是每一条连接的
+    /// 读循环。清空 `ws_sinks` 只掐掉了写的那一半：`split()` 出来的两半共享底层
+    /// 流，丢掉写的一半不会关闭套接字，读的那一半照常收事件、照常处理、照常带着
+    /// 它启动时那套权限——重启一次是为了让新设置生效，结果是旧的那一代在新的
+    /// 旁边继续跑。
+    pub shutdown: watch::Sender<bool>,
+    /// 每有一条连接彻底退出就 +1。`stop()` 等它，而不是轮询——与语料 drain 同
+    /// 一个形状。
+    pub conn_closed: watch::Sender<u64>,
     /// Session key → turn/inbox state. Behind its own `Arc` rather than inline:
     /// a running turn's guard has to hand the session back from `Drop`, and if
     /// that meant holding the whole server state, the turn machinery could not
@@ -716,6 +744,174 @@ pub enum RequestKind {
     GroupInvite,
 }
 
+/// 记下一条连接是哪个账号，并回答"这个号是我们自己的吗"。
+///
+/// 认第一个报上来的，之后不改——见 `conn_identities` 的说明。
+pub fn note_identity(state: &Arc<SharedState>, conn_id: u64, self_id: i64) {
+    if self_id == 0 {
+        return;
+    }
+    if let Ok(mut identities) = state.conn_identities.lock() {
+        identities.entry(conn_id).or_insert(self_id);
+    }
+}
+
+impl SharedState {
+    /// 哪条连接是这个账号的。发消息要走回它自己那条——广播会让两个号各发一遍。
+    pub fn conn_for_self_id(&self, self_id: Option<i64>) -> Option<u64> {
+        let want = self_id?;
+        let identities = self.conn_identities.lock().ok()?;
+        identities.iter().find_map(|(conn, id)| (*id == want).then_some(*conn))
+    }
+}
+
+/// 这个号是不是本地的某个 bot 账号。
+pub fn is_local_bot(state: &Arc<SharedState>, user_id: i64) -> bool {
+    state
+        .conn_identities
+        .lock()
+        .map(|identities| identities.values().any(|id| *id == user_id))
+        .unwrap_or(false)
+}
+
+/// One API call waiting on a reply.
+///
+/// `expected_conn` is what makes a call *directed*: only that connection's
+/// answer counts. `None` is the broadcast path, which has no predetermined
+/// target and takes whichever adapter answers first.
+pub struct PendingCall {
+    pub expected_conn: Option<u64>,
+    pub tx: oneshot::Sender<OneBotResponse>,
+}
+
+/// What became of a directed call.
+///
+/// Four states rather than `Result`, because "it timed out" and "it was
+/// refused" are different facts and the caller acts on them differently. In
+/// particular [`Self::DeliveryUnknown`] is **not** a failure: the frame is in
+/// the connection's queue and may well have been acted on. Reporting it as an
+/// error is how you get the same voice message sent twice.
+#[derive(Debug)]
+pub enum DirectedCallOutcome {
+    /// Never left this process. Retrying is safe.
+    NotDispatched(String),
+    /// The adapter answered and said no. Retrying will not help.
+    Refused { retcode: i32, message: String },
+    /// The adapter took it. Not a promise that anyone read it.
+    AdapterAccepted(serde_json::Value),
+    /// Queued, but no answer came back. **It may have happened.**
+    DeliveryUnknown,
+}
+
+/// Removes a waiter when its call goes away.
+///
+/// Not doable with cleanup on each return path: this future gets cancelled — a
+/// turn that was stopped, a connection that dropped — and then no return path
+/// runs at all. The keys are UUIDs, so a leaked entry is never overwritten by a
+/// later call; it just accumulates for as long as the server is up.
+struct WaiterGuard<'a> {
+    state: &'a Arc<SharedState>,
+    echo: String,
+}
+
+impl Drop for WaiterGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut pending) = self.state.pending_api_responses.lock() {
+            pending.remove(&self.echo);
+        }
+    }
+}
+
+/// Send one action to one connection and wait for that connection's answer.
+///
+/// The broadcast path below sends to *every* adapter, which is wrong for
+/// anything answering an event: two connected accounts means a second adapter
+/// that has never heard of this `message_id` answers first with an error, and
+/// the one waiter takes it. For an outbound message it is worse — both accounts
+/// send it.
+///
+/// The echo is generated here rather than taken from the caller, because it is
+/// what pairs the answer with this call and nothing else may share it.
+pub async fn call_api_to_conn(
+    state: &Arc<SharedState>,
+    conn_id: u64,
+    action: OneBotAction,
+    timeout: std::time::Duration,
+) -> DirectedCallOutcome {
+    call_api_to_conn_within(state, conn_id, action, timeout, timeout).await
+}
+
+/// Same, with its own ceiling on how long the frame may sit in the queue.
+///
+/// The two halves are not the same kind of wait. Waiting for an *answer* is
+/// waiting on the far end and there is nothing to decide; waiting for *room in
+/// the queue* is time during which the caller's reason for sending may expire,
+/// and it is time the caller could still take back. `send_voice` is why the
+/// distinction exists: a permission checked immediately before the send is
+/// worth nothing if the frame then sits behind a full queue for the whole
+/// twenty seconds, and a voice reply that lands that late is wrong anyway.
+///
+/// Callers with nothing to revoke pass the same value twice.
+pub async fn call_api_to_conn_within(
+    state: &Arc<SharedState>,
+    conn_id: u64,
+    action: OneBotAction,
+    enqueue_timeout: std::time::Duration,
+    timeout: std::time::Duration,
+) -> DirectedCallOutcome {
+    let echo = uuid::Uuid::new_v4().to_string();
+    let json = match serde_json::to_string(&action.with_echo(echo.clone())) {
+        Ok(json) => json,
+        Err(e) => return DirectedCallOutcome::NotDispatched(e.to_string()),
+    };
+    let Some(sink) = state.ws_sinks.lock().await.get(&conn_id).cloned() else {
+        return DirectedCallOutcome::NotDispatched(format!("connection {conn_id} is gone"));
+    };
+
+    let (tx, rx) = oneshot::channel();
+    {
+        let Ok(mut pending) = state.pending_api_responses.lock() else {
+            return DirectedCallOutcome::NotDispatched("pending table poisoned".into());
+        };
+        pending.insert(
+            echo.clone(),
+            PendingCall {
+                expected_conn: Some(conn_id),
+                tx,
+            },
+        );
+    }
+    let _guard = WaiterGuard { state, echo };
+
+    // One deadline across both halves, so a full queue that eventually drains
+    // does not get a fresh timeout to answer in. The enqueue may be given a
+    // tighter one of its own; whichever comes first wins.
+    let deadline = tokio::time::Instant::now() + timeout;
+    let enqueue_by = (tokio::time::Instant::now() + enqueue_timeout).min(deadline);
+    match tokio::time::timeout_at(enqueue_by, sink.send(json)).await {
+        Err(_) => return DirectedCallOutcome::NotDispatched("the connection's queue stayed full".into()),
+        Ok(Err(_)) => return DirectedCallOutcome::NotDispatched("the connection closed".into()),
+        Ok(Ok(())) => {}
+    }
+
+    // Past this point the frame is queued, so nothing below may say it was not
+    // dispatched.
+    match tokio::time::timeout_at(deadline, rx).await {
+        Ok(Ok(resp)) => match resp.retcode {
+            Some(0) => DirectedCallOutcome::AdapterAccepted(resp.data.clone().unwrap_or(serde_json::Value::Null)),
+            Some(retcode) => DirectedCallOutcome::Refused {
+                retcode,
+                message: resp.complaint().unwrap_or("no reason given").to_string(),
+            },
+            // An answer with no retcode has told us nothing. It is not a
+            // refusal, and treating it as one would report a message that did
+            // go out as one that did not.
+            None => DirectedCallOutcome::DeliveryUnknown,
+        },
+        _ => DirectedCallOutcome::DeliveryUnknown,
+    }
+}
+
 /// Broadcast a pre-serialized frame to all connected clients. Senders are
 /// cloned out of the ws_sinks lock so a slow client only blocks this task
 /// (never other lock users), and a momentarily full queue backpressures rather
@@ -750,23 +946,38 @@ pub async fn call_api_with_timeout(
     let json = serde_json::to_string(&action).map_err(|e| e.to_string())?;
     let (tx, rx) = oneshot::channel();
     {
-        let mut pending = state.pending_api_responses.lock().await;
-        pending.insert(echo.clone(), tx);
+        let mut pending = state
+            .pending_api_responses
+            .lock()
+            .map_err(|_| "pending table poisoned")?;
+        pending.insert(
+            echo.clone(),
+            PendingCall {
+                // No particular adapter: this one goes to all of them and the
+                // first answer wins. See `call_api_to_conn` for why anything
+                // answering a specific event should not use this path.
+                expected_conn: None,
+                tx,
+            },
+        );
     }
+    let _guard = WaiterGuard {
+        state,
+        echo: echo.clone(),
+    };
     broadcast(state, json).await;
     match tokio::time::timeout(timeout, rx).await {
         Ok(Ok(resp)) => {
             if resp.retcode == Some(0) {
                 Ok(resp.data.unwrap_or(serde_json::Value::Null))
             } else {
-                Err(format!("API error: {:?}", resp.status))
+                Err(match resp.complaint() {
+                    Some(why) => format!("API error: {why}"),
+                    None => format!("API error: {:?}", resp.status),
+                })
             }
         }
-        _ => {
-            let mut pending = state.pending_api_responses.lock().await;
-            pending.remove(&echo);
-            Err("API call timed out".into())
-        }
+        _ => Err("API call timed out".into()),
     }
 }
 
@@ -793,6 +1004,35 @@ pub struct OneBotConfig {
     /// `ProviderBalance::is_low`.
     #[serde(default)]
     pub balance_alert_threshold: Option<f64>,
+    /// 要留存入站语音的 `(bot 账号, 会话)`，写作 `<bot>@group:123`。
+    ///
+    /// 空是默认，意思是一个都不留。存的是真人声纹，所以这是**许可名单而不是
+    /// 过滤器**：不在名单上的会话不产生任务、不落盘、不写行。
+    ///
+    /// 账号要写进去而不只是会话：两个 bot 各自被拉进同一个群，是两次独立的
+    /// 同意。
+    #[serde(default)]
+    pub voice_capture_sessions: Vec<String>,
+    /// 模型可不可以用语音回复。
+    ///
+    /// **默认关**：它要一个 Fish Audio 的 key 和一个音色，没配齐就把工具端上去
+    /// 只会让模型反复调用一个必然失败的东西。
+    #[serde(default)]
+    pub voice_send_enabled: bool,
+    /// 允许 bot 发语音的群，写作 `<bot>@group:123`。
+    ///
+    /// 私聊默认就开（一个对手方，屋主就是听的人），所以这里只列群——群是一间
+    /// 屋子，发不发语音是屋主的决定。**与采集白名单是两份**：一个授权保存真人
+    /// 声纹，一个授权 bot 说话。
+    #[serde(default)]
+    pub voice_send_groups: Vec<String>,
+    /// Fish Audio 的型号。**默认空**——`s2.1-pro-free` 的官方免费期到
+    /// 2026-08-31，把它设成永久默认就是给一个到期日安排一次集体失效。
+    #[serde(default)]
+    pub voice_tts_model: String,
+    /// 固定音色。机器人的嗓音是身份，不是每次调用的选项。
+    #[serde(default)]
+    pub voice_tts_reference_id: String,
 }
 
 fn default_ack_emoji() -> String {
@@ -810,6 +1050,11 @@ impl Default for OneBotConfig {
             admin_users: vec![],
             ack_emoji_id: default_ack_emoji(),
             balance_alert_threshold: None,
+            voice_capture_sessions: vec![],
+            voice_send_enabled: false,
+            voice_send_groups: vec![],
+            voice_tts_model: String::new(),
+            voice_tts_reference_id: String::new(),
         }
     }
 }
@@ -851,65 +1096,216 @@ pub fn load_config(pool: &DbPool) -> OneBotConfig {
         balance_alert_threshold: get("onebot.balance_alert_threshold")
             .filter(|s| !s.trim().is_empty())
             .and_then(|s| s.trim().parse().ok()),
+        voice_capture_sessions: get("onebot.voice_capture_sessions")
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default(),
+        voice_send_enabled: get("onebot.voice_send_enabled").as_deref() == Some("true"),
+        voice_send_groups: get("onebot.voice_send_groups")
+            .and_then(|s| serde_json::from_str(&s).ok())
+            .unwrap_or_default(),
+        voice_tts_model: get("onebot.voice_tts_model").unwrap_or_default(),
+        voice_tts_reference_id: get("onebot.voice_tts_reference_id").unwrap_or_default(),
     }
 }
 
+/// 写下整份配置。
+///
+/// **一个事务**，不是逐条写。中途失败会留下一个没人能解释的状态：UI 报了失败，
+/// 内存里还是旧策略，而重启之后生效的却是写进去的那一半。对普通设置那是难看，
+/// 对 `voice_capture_sessions` 那是"用户以为关掉了而它还在录"。
 pub fn save_config(pool: &DbPool, config: &OneBotConfig) -> Result<(), String> {
+    use diesel::connection::Connection;
+
     let mut conn = get_conn(pool)?;
     let now = now_ms();
 
-    let mut set = |key: &str, val: &str| -> Result<(), String> {
-        crate::db::ops::preference::set_preference(&mut conn, key, val, now).map_err(|e| e.to_string())
-    };
+    conn.transaction::<_, diesel::result::Error, _>(|conn| {
+        let mut set =
+            |key: &str, val: &str| crate::db::ops::preference::set_preference(conn, key, val, now).map(|_| ());
 
-    set("onebot.enabled", if config.enabled { "true" } else { "false" })?;
-    set("onebot.host", &config.host)?;
-    set("onebot.port", &config.port.to_string())?;
-    set("onebot.access_token", config.access_token.as_deref().unwrap_or(""))?;
-    set("onebot.assistant_id", config.assistant_id.as_deref().unwrap_or(""))?;
-    set(
-        "onebot.admin_users",
-        &serde_json::to_string(&config.admin_users).unwrap_or_default(),
-    )?;
-    set("onebot.ack_emoji_id", &config.ack_emoji_id)?;
-    set(
-        "onebot.balance_alert_threshold",
-        &config
-            .balance_alert_threshold
-            .map(|v| v.to_string())
-            .unwrap_or_default(),
-    )?;
+        set("onebot.enabled", if config.enabled { "true" } else { "false" })?;
+        set("onebot.host", &config.host)?;
+        set("onebot.port", &config.port.to_string())?;
+        set("onebot.access_token", config.access_token.as_deref().unwrap_or(""))?;
+        set("onebot.assistant_id", config.assistant_id.as_deref().unwrap_or(""))?;
+        set(
+            "onebot.admin_users",
+            &serde_json::to_string(&config.admin_users).unwrap_or_default(),
+        )?;
+        set("onebot.ack_emoji_id", &config.ack_emoji_id)?;
+        set(
+            "onebot.balance_alert_threshold",
+            &config
+                .balance_alert_threshold
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
+        )?;
+        set(
+            "onebot.voice_capture_sessions",
+            &serde_json::to_string(&config.voice_capture_sessions).unwrap_or_default(),
+        )?;
+        set(
+            "onebot.voice_send_enabled",
+            if config.voice_send_enabled { "true" } else { "false" },
+        )?;
+        set(
+            "onebot.voice_send_groups",
+            &serde_json::to_string(&config.voice_send_groups).unwrap_or_default(),
+        )?;
+        set("onebot.voice_tts_model", &config.voice_tts_model)?;
+        set("onebot.voice_tts_reference_id", &config.voice_tts_reference_id)?;
+        Ok(())
+    })
+    .map_err(|e| e.to_string())
+}
 
+/// 把配置里那一行行文本解析成授权范围。
+///
+/// 解析不了的条目**丢掉并记一条日志**，不是当成通配。这是许可名单，一个看不懂
+/// 的条目授权不了任何东西。
+fn capture_scopes(config: &OneBotConfig) -> std::collections::HashSet<crate::voice_corpus::CaptureScope> {
+    config
+        .voice_capture_sessions
+        .iter()
+        .filter_map(|raw| {
+            let scope = crate::voice_corpus::CaptureScope::parse(raw);
+            if scope.is_none() {
+                tracing::warn!(entry = %raw, "voice capture allowlist: unreadable entry, ignored");
+            }
+            scope
+        })
+        .collect()
+}
+
+/// 把配置里的语音策略推给协调器，等在途采集结束。
+///
+/// 返回时"不再新增"已经成立。已经拿到 permit 的那些允许跑完——那是 permit 的
+/// 正常语义，也是唯一能简单推理的：取消一个正在下载的任务，要么留下半个文件，
+/// 要么要一整套取消传播。
+pub async fn refresh_voice_policy(services: &Services, config: &OneBotConfig) -> Result<(), String> {
+    let scopes = capture_scopes(config);
+    let pool = services.db.clone();
+    let secrets = services.secrets.clone();
+    // keyring 是阻塞 IO，和 opt-out 的查询一起挪到 blocking 线程上。
+    //
+    // **读不到就报错，不能当作空名单。** 这张表通常是空的，所以"查询失败"和
+    // "没人拒绝过"在结果上长得一模一样——而把失败读成后者，等于让一次瞬时的
+    // 数据库错误重新开始录一个已经明确说过不要的人。
+    let (optouts, key_fingerprint) = tokio::task::spawn_blocking(move || {
+        let mut conn = get_conn(&pool)?;
+        let optouts = crate::db::ops::voice_corpus::optouts(&mut conn).map_err(|e| e.to_string())?;
+        Ok::<_, String>((optouts, fish_key_fingerprint(&secrets)))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    services.corpus.apply(scopes, optouts.into_iter().collect()).await;
+
+    // 四项凑齐才算就绪，缺一则工具从三处同时消失。key 也在其中——只监听
+    // preference 变化会漏掉换 key，而那正是让一个"配好了"的会话开始失败的
+    // 那种变更。
+    let readiness = key_fingerprint
+        .filter(|_| config.voice_send_enabled)
+        .filter(|_| !config.voice_tts_model.trim().is_empty())
+        .filter(|_| !config.voice_tts_reference_id.trim().is_empty())
+        .map(|key_fingerprint| crate::voice_corpus::SendReadiness {
+            model: config.voice_tts_model.trim().to_string(),
+            reference_id: config.voice_tts_reference_id.trim().to_string(),
+            key_fingerprint,
+        });
+    if config.voice_send_enabled && readiness.is_none() {
+        // 开关开着而工具不出现，是这个功能唯一一种"什么都不说"的失败：用户会
+        // 反复问助手为什么不会说话，而助手看不见这个工具，所以它自己也答不上来。
+        tracing::warn!(
+            has_model = !config.voice_tts_model.trim().is_empty(),
+            has_reference = !config.voice_tts_reference_id.trim().is_empty(),
+            "voice replies are switched on but one of the four is missing; send_voice stays hidden"
+        );
+    }
+    let groups = config
+        .voice_send_groups
+        .iter()
+        .filter_map(|raw| crate::voice_corpus::CaptureScope::parse(raw))
+        .collect();
+    services.corpus.apply_send_policy(groups, readiness);
     Ok(())
 }
+
+/// 出站语音差哪一项。设置页照着它说话——四项之中缺哪个，只有这一层知道。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VoiceSendReadiness {
+    pub enabled: bool,
+    pub has_model: bool,
+    pub has_reference_id: bool,
+    pub has_api_key: bool,
+    /// 四项齐全，`send_voice` 现在真的在工具表里。
+    pub ready: bool,
+}
+
+pub fn voice_send_readiness(services: &Services, config: &OneBotConfig) -> VoiceSendReadiness {
+    let has_api_key = fish_key_fingerprint(&services.secrets).is_some();
+    let has_model = !config.voice_tts_model.trim().is_empty();
+    let has_reference_id = !config.voice_tts_reference_id.trim().is_empty();
+    VoiceSendReadiness {
+        enabled: config.voice_send_enabled,
+        has_model,
+        has_reference_id,
+        has_api_key,
+        ready: config.voice_send_enabled && has_model && has_reference_id && has_api_key,
+    }
+}
+
+/// key 的指纹，不是 key。策略要能回答"换过没有"，而把密钥抄进一个会被 Debug
+/// 打印的结构里没有必要。`None` = 没配。
+fn fish_key_fingerprint(secrets: &crate::secrets::SecretsManager) -> Option<String> {
+    use sha2::Digest;
+    let name = crate::secrets::SecretName::new(FISH_KEY_SECRET).ok()?;
+    let key = secrets
+        .get(&crate::secrets::SecretScope::Global, &name)
+        .ok()
+        .flatten()
+        .filter(|k| !k.trim().is_empty())?;
+    let digest = sha2::Sha256::digest(key.as_bytes());
+    Some(digest[..8].iter().fold(String::new(), |mut acc, b| {
+        use std::fmt::Write;
+        let _ = write!(acc, "{b:02x}");
+        acc
+    }))
+}
+
+/// Fish Audio 的 key 名。与 web_search 的那几个同一套命名
+/// （`SERVICE_{X}_KEY`），所以前端用现成的 `setServiceKey('FISH_AUDIO', …)`。
+pub const FISH_KEY_SECRET: &str = "SERVICE_FISH_AUDIO_KEY";
 
 /// Manages the OneBot WS server lifecycle.
 pub struct OneBotServer {
     state: Arc<SharedState>,
-    shutdown_tx: watch::Sender<bool>,
     running: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl OneBotServer {
     pub fn new(services: Services, config: OneBotConfig) -> Self {
         let (shutdown_tx, _) = watch::channel(false);
+        let (conn_closed, _) = watch::channel(0);
         Self {
             state: Arc::new(SharedState {
                 sessions: Mutex::new(SessionManager::new(services.db.clone())),
                 pending_approvals: Arc::new(PendingApprovals::default()),
-                pending_api_responses: Mutex::new(HashMap::new()),
+                pending_api_responses: std::sync::Mutex::new(HashMap::new()),
                 pending_requests: Mutex::new(HashMap::new()),
                 // Time-seeded so ids don't restart at 1 after a relaunch, which
                 // would let a stale "同意 N" notification approve a new request.
                 request_seq: AtomicU32::new((now_ms() / 1000 % 1_000_000) as u32),
                 ws_sinks: Mutex::new(HashMap::new()),
+                conn_identities: std::sync::Mutex::new(HashMap::new()),
                 connected_clients: AtomicU32::new(0),
+                shutdown: shutdown_tx,
+                conn_closed,
                 session_states: Arc::new(SessionStates::default()),
                 memory_listings: Mutex::new(HashMap::new()),
                 config,
                 services,
             }),
-            shutdown_tx,
             running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
@@ -943,16 +1339,60 @@ impl OneBotServer {
 
         let state = self.state.clone();
         let running = self.running.clone();
-        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        let mut shutdown_rx = self.state.shutdown.subscribe();
 
         // Started below, once the port is actually bound. Spawning it here would
         // leave a watcher polling every six hours behind a server that never came
         // up — asking the provider for a balance it has nowhere to report.
-        let watcher = (self.state.clone(), self.shutdown_tx.subscribe());
+        let watcher = (self.state.clone(), self.state.shutdown.subscribe());
 
         running.store(true, Ordering::Relaxed);
 
         tokio::spawn(async move {
+            // 把这一代服务的语音策略交给协调器，**开门之前**。协调器活得比服务
+            // 久（它在 `Services` 上），所以这是"换掉"而不是"初始化"：上一代的
+            // 授权连同它的 generation 一起被这次调用作废。
+            //
+            // 顺序有两条约束，都不是偏好。恢复器在策略之前：它无条件清空
+            // `.staging` 和所有 `pending` 行，靠的是"此刻没有 writer"——策略先
+            // 装上，一个抢跑的采集就会跟清扫赛跑。bind 在两者之后：绑定在前的
+            // 话，从开门到策略装好之间到达的语音事件对着一个空白名单被静默丢弃，
+            // 而恢复器要哈希整个语料目录，这个窗口不是几毫秒。适配器是反向 WS，
+            // 晚几秒开门只是让它多重试一次。
+            //
+            // 放在这里而不是 bootstrap：恢复要扫目录，没开 OneBot 的人不该为此
+            // 等在应用启动上。
+            //
+            // **两套策略都要**。这里一度只推了采集白名单，于是出站那一套在一个
+            // 新进程里永远是空的——四项填齐、保存过、重启一次，`send_voice` 就
+            // 再也不出现，直到有人重新点一次保存。而它不出现的时候，助手自己也
+            // 看不见它，所以问助手只会得到"我没有语音工具"。
+            {
+                let services = state.services.clone();
+                let config = state.config.clone();
+                let pool = services.db.clone();
+                let data_dir = services.paths.data_dir.clone();
+                let writable = services.corpus.writable();
+                let recovered =
+                    tokio::task::spawn_blocking(move || crate::voice_corpus::recover::run(&pool, &data_dir, writable))
+                        .await;
+                if let Ok(Err(error)) = recovered {
+                    tracing::warn!(%error, "voice corpus recovery failed");
+                }
+                if let Err(error) = refresh_voice_policy(&services, &config).await {
+                    // 采集与出站都没装上。说出来——静默的结果是一个开着的开关
+                    // 什么也不做。
+                    tracing::warn!(%error, "voice policy could not be applied; voice stays off this session");
+                }
+            }
+
+            // 这一代在恢复期间就被 stop() 掉了。现在 bind 只会跟下一代抢端口——
+            // 它自己的恢复也要几秒，两边谁先谁后没有保证。
+            if *shutdown_rx.borrow() {
+                running.store(false, Ordering::Relaxed);
+                return;
+            }
+
             let addr = format!("{}:{}", state.config.host, state.config.port);
             let listener = match TcpListener::bind(&addr).await {
                 Ok(l) => {
@@ -1028,6 +1468,11 @@ impl OneBotServer {
                                     handle_connection(ws_stream, conn_id, state.clone()).await;
 
                                     state.connected_clients.fetch_sub(1, Ordering::Relaxed);
+                                    // Decrement first: `stop()` reads the count
+                                    // and then waits for this to move, so a bump
+                                    // ahead of the decrement would let it look
+                                    // once more and see the connection still up.
+                                    state.conn_closed.send_modify(|n| *n += 1);
                                     tracing::info!("OneBot client disconnected (id={conn_id})");
                                 });
                             }
@@ -1045,11 +1490,71 @@ impl OneBotServer {
         Ok(())
     }
 
-    pub fn stop(&self) {
-        let _ = self.shutdown_tx.send(true);
+    /// Stop accepting, close what is already connected, and wait for it.
+    ///
+    /// Three steps, and each one exists because the one before it is not enough.
+    ///
+    /// **The signal**, because dropping the sinks only closes the writing half:
+    /// `split()` hands out two halves of one stream, so the reader keeps reading,
+    /// keeps handling events and keeps whatever permissions it started with. A
+    /// restart meant to apply new settings left the old generation running
+    /// beside the new one — for anything the user revokes, that is the
+    /// difference between a setting and a suggestion.
+    ///
+    /// **The wait**, because a signal nobody has acted on yet is not a stop. The
+    /// caller's next move is to build the next generation, whose first act is a
+    /// corpus recovery pass that clears every `.part` and every `pending` row
+    /// unconditionally — sound only when there is no writer, which is exactly
+    /// what this is waiting to become true.
+    ///
+    /// **The quiesce**, because a capture already under way holds a permit and
+    /// is not on any connection. `granted_scopes` is emptied here rather than by
+    /// the next `start()`: an adapter that reconnects in between would otherwise
+    /// be recording under the outgoing generation's allowlist.
+    ///
+    /// Bounded, because the other end of this is a person pressing a button. A
+    /// connection that will not close does not get to hold the settings page
+    /// open; what it can no longer do is receive anything, since its sink is
+    /// already gone.
+    pub async fn stop(&self) {
+        let _ = self.state.shutdown.send(true);
         self.running.store(false, Ordering::Relaxed);
+        {
+            let mut sinks = self.state.ws_sinks.lock().await;
+            sinks.clear();
+        }
+
+        // Subscribed before the first read, so a connection closing between the
+        // check and the wait cannot be missed.
+        let mut closed = self.state.conn_closed.subscribe();
+        let waited = tokio::time::timeout(CONNECTION_CLOSE_TIMEOUT, async {
+            loop {
+                if self.state.connected_clients.load(Ordering::Relaxed) == 0 {
+                    break;
+                }
+                if closed.changed().await.is_err() {
+                    break;
+                }
+            }
+        })
+        .await;
+        if waited.is_err() {
+            tracing::warn!(
+                live = self.state.connected_clients.load(Ordering::Relaxed),
+                "OneBot: a connection did not close in time; it can no longer send anything"
+            );
+        }
+
+        self.state.services.corpus.quiesce().await;
     }
 }
+
+/// How long `stop()` waits for the readers.
+///
+/// Generous next to a socket close and short next to a person's patience. The
+/// accept loop is already down and every sink is already gone, so what this
+/// bounds is only how long the outgoing generation may keep *reading*.
+const CONNECTION_CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Check an access token against the Authorization header (`Bearer <t>`,
 /// `Token <t>`, or bare) or the `access_token` query parameter.
@@ -1115,7 +1620,20 @@ async fn handle_connection(
         }
     });
 
-    while let Some(msg) = read.next().await {
+    // Reading is what carries this connection's permissions, so it is what has
+    // to stop. `next()` is poll-based and keeps its state in the stream, so
+    // losing the race costs nothing.
+    let mut shutdown = state.shutdown.subscribe();
+    loop {
+        if *shutdown.borrow() {
+            break;
+        }
+        let next = tokio::select! {
+            biased;
+            _ = shutdown.changed() => break,
+            next = read.next() => next,
+        };
+        let Some(msg) = next else { break };
         let text = match msg {
             Ok(Message::Text(t)) => t.to_string(),
             Ok(Message::Ping(_)) | Ok(Message::Pong(_)) => continue,
@@ -1133,16 +1651,31 @@ async fn handle_connection(
 
         let event = match frame {
             OneBotFrame::Response(resp) => {
-                if let Some(echo) = resp.echo.as_deref() {
-                    let mut pending = state.pending_api_responses.lock().await;
-                    if let Some(tx) = pending.remove(echo) {
-                        let _ = tx.send(resp);
+                if let Some(echo) = resp.echo.as_deref()
+                    && let Ok(mut pending) = state.pending_api_responses.lock()
+                {
+                    // Compare the source connection *before* taking the waiter
+                    // out. A directed call wants one adapter's answer, and with
+                    // two accounts connected the other one answers first — with
+                    // an error, since it has never heard of the message being
+                    // asked about. Removing on the way past would leave the
+                    // real answer with nobody waiting for it.
+                    let ours = pending
+                        .get(echo)
+                        .is_some_and(|call| call.expected_conn.is_none_or(|want| want == conn_id));
+                    if ours && let Some(call) = pending.remove(echo) {
+                        let _ = call.tx.send(resp);
                     }
                 }
                 continue;
             }
             OneBotFrame::Event(e) => e,
         };
+
+        // 每个事件都带 self_id，所以身份不需要单独的握手。
+        if let Some(self_id) = event.self_id {
+            note_identity(&state, conn_id, self_id);
+        }
 
         match event.post_type.as_str() {
             "meta_event" => {
@@ -1182,6 +1715,18 @@ async fn handle_connection(
     {
         let mut sinks = state.ws_sinks.lock().await;
         sinks.remove(&conn_id);
+    }
+    // Retire what was waiting on *this* adapter. Their answers are never
+    // coming, and without this they sit until the timeout each — a call whose
+    // connection is already gone has nothing to wait for. Broadcast waiters
+    // (`expected_conn: None`) are left alone: another adapter may still answer.
+    {
+        if let Ok(mut pending) = state.pending_api_responses.lock() {
+            pending.retain(|_, call| call.expected_conn != Some(conn_id));
+        }
+        if let Ok(mut identities) = state.conn_identities.lock() {
+            identities.remove(&conn_id);
+        }
     }
     write_handle.abort();
 }
@@ -1872,6 +2417,30 @@ mod tests {
         assert_eq!(s.seen_message_ids.len(), SEEN_IDS_CAP);
         assert!(!s.seen_message_ids.contains(&5), "oldest ids evicted");
         assert!(s.seen_message_ids.contains(&(SEEN_IDS_CAP as i64 + 9)));
+    }
+
+    /// The dispatch rule for directed calls, as a pure decision.
+    ///
+    /// This mirrors the `ours` check in `handle_connection`: with two accounts
+    /// connected, the adapter that was *not* asked answers first — it has never
+    /// heard of the message in question, so it answers with an error. Taking the
+    /// waiter out for that answer leaves the real one with nobody waiting.
+    fn answers_us(expected_conn: Option<u64>, from_conn: u64) -> bool {
+        expected_conn.is_none_or(|want| want == from_conn)
+    }
+
+    #[test]
+    fn a_directed_call_only_takes_its_own_adapters_answer() {
+        assert!(answers_us(Some(1), 1));
+        assert!(!answers_us(Some(1), 2), "the other account must not be read as ours");
+    }
+
+    /// The broadcast path is unchanged: it has no predetermined target, so the
+    /// first answer from anywhere is the answer.
+    #[test]
+    fn a_broadcast_call_still_takes_whoever_answers() {
+        assert!(answers_us(None, 1));
+        assert!(answers_us(None, 7));
     }
 
     #[test]

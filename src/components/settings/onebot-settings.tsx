@@ -22,6 +22,21 @@ interface OneBotConfig {
    * unusable.
    */
   balance_alert_threshold: number | null
+  /**
+   * Which `(bot account, session)` pairs keep the voice notes people send.
+   *
+   * Written `<bot>@group:123`. The account is part of it rather than a
+   * footnote: two bots each pulled into the same group are two independent
+   * consents, and one of them being allowed to keep audio says nothing about
+   * the other.
+   *
+   * Empty is the default and means nothing is kept anywhere.
+   */
+  voice_capture_sessions: string[]
+  voice_send_enabled: boolean
+  voice_send_groups: string[]
+  voice_tts_model: string
+  voice_tts_reference_id: string
 }
 
 interface OneBotStatus {
@@ -43,6 +58,11 @@ export function OneBotSettings() {
     admin_users: [],
     ack_emoji_id: '76',
     balance_alert_threshold: null,
+    voice_capture_sessions: [],
+    voice_send_enabled: false,
+    voice_send_groups: [],
+    voice_tts_model: '',
+    voice_tts_reference_id: '',
   })
   const [status, setStatus] = useState<OneBotStatus | null>(null)
   const [assistants, setAssistants] = useState<Assistant[]>([])
@@ -50,6 +70,13 @@ export function OneBotSettings() {
   // Held as text like the admin list, so a half-typed "1." is representable.
   // Empty is a real setting here — it switches the watcher off.
   const [balanceInput, setBalanceInput] = useState('')
+  // Same shape again. Rewritten from what was saved, so an entry the backend
+  // could not read disappears visibly instead of being silently ignored.
+  const [voiceCaptureInput, setVoiceCaptureInput] = useState('')
+  const [voiceSendInput, setVoiceSendInput] = useState('')
+  const [voiceReady, setVoiceReady] = useState<Awaited<ReturnType<typeof api.getVoiceSendReadiness>> | null>(null)
+  const [fishKey, setFishKey] = useState('')
+  const [fishKeySet, setFishKeySet] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, markSaved] = useTemporaryFlag()
   const [error, setError] = useState<string | null>(null)
@@ -62,6 +89,10 @@ export function OneBotSettings() {
       setAssistants(assts)
       setAdminInput(cfg.admin_users.join(', '))
       setBalanceInput(cfg.balance_alert_threshold?.toString() ?? '')
+      setVoiceCaptureInput((cfg.voice_capture_sessions ?? []).join(', '))
+      setVoiceSendInput((cfg.voice_send_groups ?? []).join(', '))
+      setFishKeySet(await api.getServiceKeyExists('FISH_AUDIO'))
+      setVoiceReady(await api.getVoiceSendReadiness())
     } catch (err) {
       setError(String(err))
     }
@@ -98,10 +129,44 @@ export function OneBotSettings() {
       const typed = Number(balanceInput.trim())
       const threshold = balanceInput.trim() !== '' && Number.isFinite(typed) && typed >= 0 ? typed : null
 
-      const newConfig = { ...config, admin_users: adminUsers, balance_alert_threshold: threshold }
+      // `<bot>@<session>`, e.g. `10001@group:123`. Anything without both halves
+      // is dropped rather than guessed at — this is a permission list, and an
+      // entry nobody can read grants nothing.
+      const voiceCaptureSessions = voiceCaptureInput
+        .split(/[,，\s]+/)
+        .map((s) => s.trim())
+        .filter((s) => /^\d+@(group|private):\d+$/.test(s))
+
+      const voiceSendGroups = voiceSendInput
+        .split(/[,，\s]+/)
+        .map((s) => s.trim())
+        .filter((s) => /^\d+@group:\d+$/.test(s))
+
+      // The key goes to the keychain, not into the config row. Saved first so
+      // that the policy refresh below sees it — readiness counts the key as one
+      // of its four parts, and watching preferences alone would miss it.
+      if (fishKey.trim()) {
+        await api.setServiceKey('FISH_AUDIO', fishKey.trim())
+        setFishKey('')
+        setFishKeySet(true)
+      }
+
+      const newConfig = {
+        ...config,
+        admin_users: adminUsers,
+        balance_alert_threshold: threshold,
+        voice_capture_sessions: voiceCaptureSessions,
+        voice_send_groups: voiceSendGroups,
+      }
       await api.saveOneBotConfig(newConfig)
       setConfig(newConfig)
       setBalanceInput(threshold?.toString() ?? '')
+      setVoiceCaptureInput(voiceCaptureSessions.join(', '))
+      setVoiceSendInput(voiceSendGroups.join(', '))
+      // Re-asked rather than assumed: the save is also what applies the policy,
+      // so this is the moment the answer can change — and the moment somebody
+      // is looking for it.
+      setVoiceReady(await api.getVoiceSendReadiness())
       markSaved()
       return true
     } catch (err) {
@@ -212,6 +277,105 @@ export function OneBotSettings() {
         <Input value={adminInput} onChange={(e) => setAdminInput(e.target.value)} placeholder="12345, 67890" />
         <Description>{t('settings.onebot.adminUsersHint')}</Description>
       </TextField>
+
+      <TextField fullWidth>
+        <Label>{t('settings.onebot.voiceCapture')}</Label>
+        <Input
+          value={voiceCaptureInput}
+          onChange={(e) => setVoiceCaptureInput(e.target.value)}
+          placeholder="10001@group:123, 10001@private:456"
+        />
+        <Description>{t('settings.onebot.voiceCaptureHint')}</Description>
+      </TextField>
+
+      <div className="flex items-start gap-2">
+        <Checkbox
+          id="onebot-voice-send"
+          isSelected={config.voice_send_enabled}
+          onChange={(selected) => setConfig({ ...config, voice_send_enabled: selected })}
+        >
+          <Checkbox.Content>
+            <Checkbox.Control>
+              <Checkbox.Indicator />
+            </Checkbox.Control>
+          </Checkbox.Content>
+        </Checkbox>
+        <div className="space-y-0.5">
+          <label htmlFor="onebot-voice-send" className="text-sm font-medium cursor-pointer">
+            {t('settings.onebot.voiceSend')}
+          </label>
+          <p className="text-xs text-muted">{t('settings.onebot.voiceSendHint')}</p>
+        </div>
+      </div>
+
+      {config.voice_send_enabled && (
+        <>
+          <TextField fullWidth>
+            <Label>{t('settings.onebot.voiceSendGroups')}</Label>
+            <Input
+              value={voiceSendInput}
+              onChange={(e) => setVoiceSendInput(e.target.value)}
+              placeholder="10001@group:123"
+            />
+            <Description>{t('settings.onebot.voiceSendGroupsHint')}</Description>
+          </TextField>
+
+          <div className="grid grid-cols-1 @sm/pane:grid-cols-2 gap-3">
+            <TextField fullWidth>
+              <Label>{t('settings.onebot.voiceTtsModel')}</Label>
+              <Input
+                value={config.voice_tts_model}
+                onChange={(e) => setConfig({ ...config, voice_tts_model: e.target.value })}
+                placeholder="s2.1-pro-free"
+              />
+              <Description>{t('settings.onebot.voiceTtsModelHint')}</Description>
+            </TextField>
+            <TextField fullWidth>
+              <Label>{t('settings.onebot.voiceTtsVoice')}</Label>
+              <Input
+                value={config.voice_tts_reference_id}
+                onChange={(e) => setConfig({ ...config, voice_tts_reference_id: e.target.value })}
+                placeholder="9a9cf477…"
+              />
+              <Description>{t('settings.onebot.voiceTtsVoiceHint')}</Description>
+            </TextField>
+          </div>
+
+          <TextField fullWidth>
+            <Label>{t('settings.onebot.fishKey')}</Label>
+            <Input
+              type="password"
+              value={fishKey}
+              onChange={(e) => setFishKey(e.target.value)}
+              placeholder={fishKeySet ? '••••••••' : ''}
+            />
+            <Description>{t('settings.onebot.fishKeyHint')}</Description>
+          </TextField>
+
+          {/* The one failure this feature has that announces itself nowhere.
+              Four things have to be present or `send_voice` is withheld from
+              the model in all three places it could appear — and because the
+              model cannot see the tool either, asking it produces "I have no
+              voice tool" rather than anything about a setting. A placeholder
+              that reads like a value (`s2.1-pro-free` in the model box) is all
+              it takes. Reported from the backend rather than derived here,
+              because one of the four is a keychain entry this page never
+              sees. */}
+          {voiceReady && !voiceReady.ready && (
+            <p className="text-xs text-warning">
+              {t('settings.onebot.voiceNotReady', {
+                missing: [
+                  !voiceReady.has_model && t('settings.onebot.voiceTtsModel'),
+                  !voiceReady.has_reference_id && t('settings.onebot.voiceTtsVoice'),
+                  !voiceReady.has_api_key && t('settings.onebot.fishKey'),
+                ]
+                  .filter(Boolean)
+                  .join(t('common.listSeparator')),
+              })}
+            </p>
+          )}
+        </>
+      )}
 
       <TextField fullWidth>
         <Label>{t('settings.onebot.ackEmoji')}</Label>

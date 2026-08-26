@@ -13,6 +13,7 @@ import { AutoReviewSettings } from './auto-review-settings'
 import { SkillSettings } from './skill-settings'
 import { MemorySettings } from './memory-settings'
 import { VoiceSettings } from './voice-settings'
+import { VoiceCorpusSettings } from './voice-corpus-settings'
 import { DeveloperSettings } from './developer-settings'
 import { About } from './about'
 
@@ -49,6 +50,7 @@ export default function SettingsPage({ activeTab }: { activeTab: SettingsTab }) 
         {activeTab === 'mcp' && <McpSettings />}
         {activeTab === 'memories' && <MemorySettings />}
         {activeTab === 'voice' && <VoiceSettings />}
+        {activeTab === 'voiceCorpus' && <VoiceCorpusSettings />}
         {activeTab === 'onebot' && <OneBotSettings />}
         {activeTab === 'hooks' && <HooksSettings />}
         {activeTab === 'acp' && <AcpSettings />}

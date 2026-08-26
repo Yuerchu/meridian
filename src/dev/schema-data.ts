@@ -2,7 +2,7 @@
  * Meridian 数据库模型 —— 画布与文档的唯一数据源。
  *
  * 由 src-tauri/crates/core/migrations/00000000000001_initial …
- * 00000000000033_auto_review 与 src-tauri/crates/core/src/db/ 归纳而成。
+ * 00000000000039_voice_corpus 与 src-tauri/crates/core/src/db/ 归纳而成。
  *
  * 一半是散文，只有人能写：为什么 parent_id 不建外键、为什么两个 cache 列上 NULL 和 0
  * 是不同的答案、为什么价格要抄到审计行上。另一半是纯结构，由
@@ -111,7 +111,7 @@ export const GROUPS: SchemaGroup[] = [
     id: 'conv',
     title: '会话与消息',
     color: '#6ea8fe',
-    desc: '主干：一个会话挂一棵消息树，每次运行写一条 turn。删会话级联带走 messages / turns / mode_artifacts / todo_lists，唯独带不走 audit_messages。',
+    desc: '主干：一个会话挂一棵消息树，每次运行写一条 turn。删会话级联带走 messages / turns / mode_artifacts / todo_lists，带不走的是 audit_messages 与 voice_blobs / voice_clips——账单和语料都比会话活得久。',
   },
   {
     id: 'provider',
@@ -137,6 +137,12 @@ export const GROUPS: SchemaGroup[] = [
     title: '表情与贴纸',
     color: '#f0a3c0',
     desc: '本地表情包，加上 OneBot 自动收集的原生表情——后者要先确认语义才允许助手发。',
+  },
+  {
+    id: 'corpus',
+    title: '语音语料',
+    color: '#b8c98a',
+    desc: '按 <code>(bot 账号, 会话)</code> 白名单留存的入站语音与转写。存的是真人声纹，所以默认全关，而且生命周期与会话解耦：删会话不删它，撤销同意是一个显式的、有确认的动作。物理文件与采集事件分成两张表——同一段音频被两个人发出来是两次采集。',
   },
   {
     id: 'audit',
@@ -1367,6 +1373,144 @@ const RAW_TABLES: RawTable[] = [
     ],
   },
 
+  // ── 语音语料 ──────────────────────────────────────────────────
+  {
+    name: 'voice_blobs',
+    group: 'corpus',
+    title: '语音文件',
+    mig: 39,
+    tags: ['nofk'],
+    show: ['id', 'bot_self_id', 'source_id', 'sha256', 'status', 'owner_token'],
+    note: '一段音频在磁盘上的那一份。<b>文件先于行存在</b>——要落盘的字节必须先下载完才知道 sha 和大小，而去重键就建在 sha 上，所以流程是「先写临时文件算出 sha，再拿 sha 抢所有权，最后发布」。',
+    cols: [
+      ['id', 'TEXT', ['PK', 'NN'], '—', ''],
+      [
+        'bot_self_id',
+        'BIGINT',
+        ['NN', 'UQ'],
+        '—',
+        '哪个 bot 账号收到的。<b>是去重键的一维而不是附注</b>：两个 bot 各自被拉进同一个群是两次独立的同意，共用一份文件会让删掉其中一个牵连另一个',
+      ],
+      ['source_type', 'TEXT', ['NN', 'UQ'], '—', '<code>onebot_group</code> | <code>onebot_private</code>'],
+      ['source_id', 'TEXT', ['NN', 'UQ'], '—', '群号 / QQ 号'],
+      ['sha256', 'TEXT', ['NN', 'UQ'], '—', '内容哈希，同时是磁盘文件名'],
+      [
+        'file_format',
+        'TEXT',
+        ['NN', 'UQ'],
+        '—',
+        '由<b>字节 magic</b> 判定的受限枚举。不信 URL、文件名或 Content-Type——三者都由对端控制，而这个值决定文件落进哪个去重桶',
+      ],
+      ['file_name', 'TEXT', ['NN'], '—', '<code>&lt;sha256&gt;.&lt;ext&gt;</code>，内容寻址'],
+      ['file_size', 'BIGINT', ['NN'], '—', ''],
+      [
+        'status',
+        'TEXT',
+        ['NN', 'IDX'],
+        "'pending'",
+        '<code>pending</code>（有 owner 在发布，或它已经死了）| <code>ready</code>（可列可导）| <code>damaged</code>（文件缺失或校验不过，<b>必须是独立状态</b>：留在 ready 会被导出，退回 pending 又没有 owner）| <code>deleting</code>（墓碑，文件删成功才删行）',
+      ],
+      [
+        'owner_token',
+        'TEXT',
+        ['NULL'],
+        'NULL',
+        '<b>每次 claim 唯一</b>。只记进程 id 不够：同一进程内两个任务的 <code>CAS WHERE owner=旧值</code> 会写回相同的值并双双成功',
+      ],
+      [
+        'fence_epoch',
+        'BIGINT',
+        ['NN'],
+        '0',
+        '单调递增，让接管可排序——旧 owner 醒来带的是旧 epoch，publish 的条件不成立',
+      ],
+      ['lease_expires_at', 'BIGINT', ['NULL', 'IDX'], 'NULL', '过期才允许接管；长下载期间要续租'],
+      ['created_at', 'BIGINT', ['NN'], '—', ''],
+      ['updated_at', 'BIGINT', ['NN'], '—', ''],
+    ],
+    rels: [
+      '被 <code>voice_clips</code>（CASCADE）引用。<b>自己一个外键都没有</b>：语料比会话活得久，指向 conversations 会让删会话连带删掉它。',
+    ],
+    rules: [
+      '<code>UNIQUE(bot_self_id, source_type, source_id, file_format, sha256)</code>——去重<b>按会话不按全局</b>：同一段音频出现在两个群里是两次独立的同意，全局唯一会让第一个群的删除抹掉第二个群的语料。代价是多一份拷贝，而那正是「删一个不影响另一个」的实现方式。',
+      'CHECK 钉死 status 与 owner 的合法组合：<b>只有 pending 有 owner</b>。别的状态带着 owner 会让恢复器误判成「有人正在写」。',
+      "publish 与最终事务都必须带 <code>WHERE status='pending' AND owner_token=? AND fence_epoch=?</code>；affected 为 0 就是丢了所有权，那个任务不能发布也不能写 clip。",
+    ],
+  },
+  {
+    name: 'voice_clips',
+    group: 'corpus',
+    title: '一次采集',
+    mig: 39,
+    show: ['id', 'blob_id', 'sender_id', 'platform_message_id', 'segment_index', 'transcript'],
+    note: '同一段音频被两个人发出来（转发、复读）是<b>两次采集</b>——两个发送者、两条消息、两个时间。单表按 sha 唯一会把它们合并成一行只留第一个人，于是「按人删除」失灵，训练标签也是错的。',
+    cols: [
+      ['id', 'TEXT', ['PK', 'NN'], '—', ''],
+      ['blob_id', 'TEXT', ['FK', 'NN', 'IDX'], '—', '→ <code>voice_blobs(id)</code> ON DELETE CASCADE'],
+      [
+        'bot_self_id',
+        'BIGINT',
+        ['NN', 'UQ'],
+        '—',
+        '与 blob 冗余，<b>写入时从 blob 行读</b>而不是从参数传，否则两边可能不一致',
+      ],
+      ['source_type', 'TEXT', ['NN', 'UQ'], '—', '同上'],
+      ['source_id', 'TEXT', ['NN', 'UQ'], '—', '同上'],
+      [
+        'sender_id',
+        'TEXT',
+        ['NN', 'IDX'],
+        '—',
+        '消息的<b>发送者</b>，不是声学意义上的说话人——转发别人的语音时两者不同。名字如实写，否则 UI 会声称「删除此人的全部声音」，而那不是它能兑现的',
+      ],
+      ['platform_message_id', 'BIGINT', ['NULL', 'UQ'], 'NULL', 'QQ 的 message_id'],
+      ['segment_index', 'INTEGER', ['NN', 'UQ'], '0', '一条消息可以带多个 record 段；少了这一维第二段会静默消失'],
+      [
+        'transcript',
+        'TEXT',
+        ['NULL'],
+        'NULL',
+        'NULL 表示没拿到，<b>或者这条消息有多个 record 段</b>——<code>voice_msg_to_text</code> 按消息作答，一段覆盖两条的转写不能归给其中任何一条',
+      ],
+      [
+        'transcript_source',
+        'TEXT',
+        ['NULL'],
+        'NULL',
+        '与 transcript <b>同生同灭</b>（CHECK）：有文本没来源的行没法判断能不能用来训练',
+      ],
+      ['created_at', 'BIGINT', ['NN'], '—', ''],
+      ['updated_at', 'BIGINT', ['NN'], '—', ''],
+    ],
+    rels: [
+      '唯一的外键指向 <code>voice_blobs</code>。不指 messages / conversations：门禁前采集，那时会话还不存在，而且也不为采集去创建一个。',
+    ],
+    rules: [
+      '<code>UNIQUE(bot_self_id, source_type, source_id, platform_message_id, segment_index) WHERE platform_message_id IS NOT NULL</code>——键里<b>带账号和会话</b>：OneBot 只把 message_id 定义为整数消息 ID，没有跨会话或跨账号唯一的承诺。同一事件重投靠它保持幂等。',
+      '按发送者删除时<b>只能墓碑化没有任何 clip 引用的 blob</b>：多个发送者的 clip 可以指向同一个 blob，直接按 sender 删会连带抹掉别人的合法样本。',
+    ],
+  },
+  {
+    name: 'voice_sender_optouts',
+    group: 'corpus',
+    title: '拒绝留存',
+    mig: 39,
+    tags: ['nofk'],
+    show: ['sender_id'],
+    note: '「以后别再录我」。与删除历史是<b>两件不同的事</b>：删除处理已有数据，这个拒绝的是未来。借 session 白名单表达会把整个群停掉，而那不是这个人要求的。',
+    cols: [
+      [
+        'sender_id',
+        'TEXT',
+        ['PK', 'NN'],
+        '—',
+        'scope 是<b>全局</b>：一个人说了不录，不该要求他对每个群、每个 bot 账号再分别说一次',
+      ],
+      ['created_at', 'BIGINT', ['NN'], '—', ''],
+    ],
+    rules: ['采集路径每次都查这张表。它只有拒绝过的人，通常是空的。'],
+  },
+
   // ── 审计与计费 ────────────────────────────────────────────────
   {
     name: 'audit_messages',
@@ -1488,6 +1632,7 @@ const RAW_TABLES: RawTable[] = [
 
 export const EDGES: SchemaEdge[] = [
   // 真外键
+  { from: 'voice_clips', col: 'blob_id', to: 'voice_blobs', toCol: 'id', kind: 'fk', act: 'CASCADE' },
   { from: 'assistants', col: 'provider_id', to: 'providers', toCol: 'id', kind: 'fk', act: 'SET NULL' },
   { from: 'assistants', col: 'tool_preset_id', to: 'tool_presets', toCol: 'id', kind: 'fk', act: 'SET NULL' },
   { from: 'projects', col: 'assistant_id', to: 'assistants', toCol: 'id', kind: 'fk', act: 'SET NULL' },
@@ -1613,6 +1758,7 @@ const LAYOUT: { x: number; tables: string[] }[] = [
     ],
   },
   { x: 1700, tables: ['emoji_packs', 'emojis', 'assistant_emoji_packs'] },
+  { x: 2040, tables: ['voice_blobs', 'voice_clips', 'voice_sender_optouts'] },
 ]
 
 /** 节点宽度。画布上是定值，边的方向判断也用它。 */

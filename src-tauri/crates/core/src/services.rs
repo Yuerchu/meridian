@@ -58,6 +58,18 @@ pub struct ServicesInner {
     pub sub_agent_inboxes: AppSubAgentInboxes,
     pub compact_breakers: Mutex<HashMap<String, Arc<CompactCircuitBreaker>>>,
     pub voice: VoiceState,
+    /// 谁现在可以往语音语料里写。
+    ///
+    /// 在这里而不是 OneBot 的 `SharedState` 里，因为 `start_onebot` 会整个重建
+    /// 那份 state：跟着重建的协调器会把正在进行的采集和刚刚做出的撤权一起忘掉。
+    /// 语料目录的独占锁也挂在它上面，所以它的生命周期必须是进程，不是某一代
+    /// OneBot 服务。
+    pub corpus: Arc<crate::voice_corpus::CorpusCoordinator>,
+    /// 谁可以现在发一次语音。
+    ///
+    /// 在这里而不是 `QqToolExecutor` 上：那个每一轮重建，而"每轮最多一次"放在
+    /// 一个每轮重建的东西里根本约束不住任何事。
+    pub voice_limiter: Arc<crate::tts::limiter::VoiceLimiter>,
     pub sleep: AppSleepInhibitor,
     pub events: EventBus,
     pub paths: Paths,
