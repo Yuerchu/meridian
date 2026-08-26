@@ -1185,19 +1185,19 @@ rather than in core because what it dispatches to are the Tauri commands.
 
 ## Running commands in a container
 
-**Not built.** This is the design a container backend for `run_command` has to
-satisfy, written down because the expensive parts of it are decided by facts about
-Docker that are easy to assume wrongly. Every claim below was measured —
+`crate::container` places a conversation's commands in a Docker container instead of
+on this machine. Turned on per install with `sandbox.enabled = container`; `auto` is
+the old behaviour (a Windows restricted token, nothing elsewhere) and remains the
+default. Every claim below was measured —
 `src-tauri/crates/core/tests/docker_probe.rs` is the measurement, it is `#[ignore]`d,
-and it should be re-run before any of this is relied on.
+and it should be re-run before any of it is relied on, against Docker Desktop 28.4.0
+with linux containers on Windows.
 
-Measured against Docker Desktop 28.4.0, linux containers on Windows.
-
-- **`docker exec` needs a container that already exists, and nothing decides who
-  creates it.** That is the gap in "wrap the argv in `docker exec`": the granularity
-  is one container per *conversation*, so the filesystem is continuous — something
-  `pip install`ed is still there next command — which means a lifecycle owner, an
-  ownership label, and reclaim of what a crash left behind.
+- **One container per *conversation*, entered per command.** That is what makes the
+  filesystem continuous — something `pip install`ed is still there next command,
+  measured — and it is why there is a lifecycle owner, an ownership label, and
+  reclaim of what a crash left behind. `docker exec` needs a container that already
+  exists, which is the gap in "just wrap the argv".
 - **Killing the exec client does not kill the process inside.** Measured: it was
   still running afterwards. So a container backend owes its own cancellation and
   cannot reuse `execute_unsandboxed`'s process-tree kill — otherwise "cancelled"
@@ -1215,28 +1215,45 @@ Measured against Docker Desktop 28.4.0, linux containers on Windows.
   per call — and a logical cwd maintained by parsing `cd` out of shell commands is an
   approximation that can never be made to agree with what the shell did. If a
   persistent cwd is wanted it has to be an explicit operation.
-- **`ExecResult.sandboxed: bool` has to become an enum, and `without_sandbox()` is
-  the danger.** The existing escalation path removes the whole policy and runs on the
-  host. For a container that turns "the container refused this" into a card offering
-  a retry that actually means "run it on your machine instead" — the worst kind of
-  mis-authorisation. Only a Windows restricted-token denial may generate the existing
-  host-retry card. `is_sandbox_denied`'s keywords are Windows'; a container's refusals
-  look different and have to be classified per backend.
-- **`default_policy_if_enabled` must go.** It returns `None` on every non-Windows
-  platform, so a Linux or macOS conversation configured for Docker would be stripped
-  of its policy before `ToolContext` is built and run on the host — silently, which is
-  the exact failure the feature exists to prevent. Its replacement is platform-neutral
-  and returns an error where it cannot honour the configuration; a missing connector is
-  `Infrastructure`, never `None`.
+- **`ran_under` is an enum and `without_sandbox()` was the danger.** The escalation
+  path removes the whole policy and runs on the host. For a container that turns "the
+  container refused this" into a card offering a retry that actually means "run it on
+  your machine instead" — the worst kind of mis-authorisation, because the wording
+  hides the size of it. `SandboxBackend::may_retry_on_host` answers for exactly one
+  backend, and `run_command` checks it *as well as* the denial heuristic: the
+  heuristic's keywords are a restricted token's own words, so asking the backend too
+  is what stops a new backend inheriting the card by being added to the list.
+- **Nothing falls back to the host, at either of two gates.** `resolve_sandbox_policy`
+  refuses to *build* a container policy it cannot satisfy — a missing connector is
+  `Infrastructure`, a conversation with no project to mount is `Unsupported` — and
+  `execute` refuses to *honour* one that arrives without a connector anyway. The old
+  `default_policy_if_enabled` could only answer `None`, and `None` runs on the host
+  without anybody being told, which is the failure the whole feature exists to
+  prevent. It survives for `ExecutionMode::Auto`, where `None` is honest.
+- **The mode has three values, not two, and `Auto` is why.** The preference was
+  on/off and had to mean "the best this platform has". Read as a request for a
+  *particular* backend it would fail on Linux for everybody, so "whatever you have"
+  stays its own value. One key, more values: a second key would be one that could
+  disagree, and there is no reading of "enabled=false, mode=container" that is not a
+  bug. An unparseable value is `Auto`, never `Off`.
 - **Secrets do not travel in `-e`.** Measured: an environment variable is in
   `docker inspect` for the life of the container, readable by anything that can reach
-  the daemon.
+  the daemon. Nothing is passed yet, which is correct and incomplete.
 - **A label is enough to find every container this app owns**, which is what reclaim
   after a crash needs, and `docker stop` returns with `.State.Running` already false —
   the same invariant `acp::peer` holds for the adapter.
-- **`custom.rs` has to come too.** It passes `None` for the policy today and so always
-  runs on the host; covering only `run_command` would leave a user's own command tools
-  executing outside the sandbox in the same turn, which is not a session sandbox.
+- **`custom.rs` goes in too.** It used to pass `None` and always run on the host,
+  which was defensible while the only sandbox narrowed a command on this machine
+  anyway. `run_command` inside a container and a user's own command tool outside it,
+  in the same turn, is not a session sandbox — it is a sandbox with a documented way
+  round it. The cost is real and belongs to the user: a custom tool written against
+  the host's toolchain will not find it inside, and the setting says so.
+- **OneBot stays on the platform default, and that is a boundary rather than an
+  oversight.** A container mounts the conversation's project and a QQ session has
+  none, so routing it through the resolver would fail every QQ turn the moment
+  somebody set container mode for their desktop work. What confines a headless
+  session is already stricter where it matters — its `FileAccess` is an empty root
+  set, so paths fail validation before a command is reached.
 - **The bridge conflict is real but not where it was expected.** `acp::bridge` binds
   `127.0.0.1`, and loopback inside a container is the container. Measured on Docker
   Desktop, a host server on `127.0.0.1` *is* reachable through

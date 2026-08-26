@@ -967,6 +967,18 @@ async fn headless_chat_inner(
         turn_id: Some(turn_id.to_string()),
         assistant_id: assistant_id.map(|s| s.to_string()),
         db_pool: Some(pool.clone()),
+        // **Still the platform default, and deliberately not the container
+        // resolver.** A container mounts the conversation's project, and a QQ
+        // session has none — so `ExecutionMode::Container` has nothing to
+        // mount, and routing this through the resolver would fail every QQ turn
+        // the moment somebody set that mode for their desktop work.
+        //
+        // Saying so rather than letting it read as an oversight: what confines
+        // a headless session is already stricter in the direction that matters,
+        // since its `FileAccess` is an empty root set and every path fails
+        // validation before a command is reached. Giving QQ its own execution
+        // environment is a separate feature, and it starts by deciding what a
+        // session with no project would even mount.
         #[cfg(not(target_os = "android"))]
         sandbox_policy: crate::sandbox::default_policy_if_enabled(sandbox_enabled, None),
         tool_secrets: {

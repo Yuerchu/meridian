@@ -117,11 +117,27 @@ impl Tool for CustomToolExecutor {
             vec!["sh".into(), "-c".into(), shell_cmd]
         };
 
-        // Custom tools don't run inside the sandbox (policy None) but share the
-        // hardened spawn path: process-tree kill, bounded capture, cancellation.
-        let res = crate::sandbox::execute(&argv, &wd, None, self.timeout, &context.cancel)
-            .await
-            .map_err(|e| e.to_string())?;
+        // **The turn's own policy, not `None`.** These used to be handed
+        // nothing and so always ran on the host, which was a defensible
+        // position while the only sandbox narrowed a command on this machine
+        // anyway. It stops being one the moment a conversation can place its
+        // commands somewhere else: `run_command` inside a container and a
+        // user's own command tool outside it, in the same turn, is not a
+        // session sandbox — it is a sandbox with a documented way round it.
+        //
+        // The cost is real and belongs to the user rather than to this code: a
+        // custom tool written against the host's toolchain will not find it
+        // inside a container. That is a thing to say in the settings, not a
+        // reason to leave the hole open.
+        let res = crate::sandbox::execute(
+            &argv,
+            &wd,
+            context.sandbox_policy.as_ref(),
+            self.timeout,
+            &context.cancel,
+        )
+        .await
+        .map_err(|e| e.to_string())?;
 
         if res.timed_out {
             return Err(format!("Command timed out after {}s", self.timeout.as_secs()));

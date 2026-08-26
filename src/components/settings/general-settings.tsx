@@ -29,7 +29,7 @@ export function GeneralSettings() {
   const platform = usePlatform()
   const { theme, setTheme } = useAppTheme()
   const [shell, setShell] = useState('bash')
-  const [sandboxEnabled, setSandboxEnabled] = useState(true)
+  const [sandboxMode, setSandboxMode] = useState('auto')
   const [searchProvider, setSearchProvider] = useState('tavily')
   const [searchApiKey, setSearchApiKey] = useState('')
   const [searchKeyExists, setSearchKeyExists] = useState(false)
@@ -39,9 +39,14 @@ export function GeneralSettings() {
     api.getPreference('shell').then((v) => {
       if (v) setShell(v)
     })
-    // Missing preference means enabled (sandbox-by-default on Windows)
+    // One key, more values. `auto` is what an unset or unreadable preference has
+    // always meant: whatever this platform confines commands with, and nothing
+    // where it has none.
     api.getPreference('sandbox.enabled').then((v) => {
-      setSandboxEnabled(v !== 'false')
+      const raw = (v ?? '').trim()
+      if (raw === 'false' || raw === 'off') setSandboxMode('off')
+      else if (raw === 'container' || raw === 'docker') setSandboxMode('container')
+      else setSandboxMode('auto')
     })
     api.getPreference('search_provider').then((v) => {
       if (v) setSearchProvider(v)
@@ -72,13 +77,17 @@ export function GeneralSettings() {
   ]
 
   const sandboxOptions = [
-    { value: 'on', label: t('settings.general.sandboxOn') },
+    { value: 'auto', label: t('settings.general.sandboxOn') },
+    { value: 'container', label: t('settings.general.sandboxContainer') },
     { value: 'off', label: t('settings.general.sandboxOff') },
   ]
 
+  // Written verbatim rather than mapped back to a boolean: the backend parses
+  // the same three words, and a mapping here would be a second place for them
+  // to be decided.
   const handleSandboxChange = (value: string) => {
-    setSandboxEnabled(value === 'on')
-    api.setPreference('sandbox.enabled', value === 'on' ? 'true' : 'false')
+    setSandboxMode(value)
+    api.setPreference('sandbox.enabled', value)
   }
 
   const handleSearchProviderChange = (value: string) => {
@@ -136,13 +145,16 @@ export function GeneralSettings() {
         />
       )}
 
-      {platform === 'windows' && (
+      {/* No longer Windows-only: the restricted token is, a container is not. */}
+      {platform !== null && platform !== 'android' && (
         <SettingsSelect
           label={t('settings.general.sandbox')}
-          value={sandboxEnabled ? 'on' : 'off'}
+          value={sandboxMode}
           options={sandboxOptions}
           onChange={handleSandboxChange}
-          description={t('settings.general.sandboxHint')}
+          description={
+            sandboxMode === 'container' ? t('settings.general.sandboxContainerHint') : t('settings.general.sandboxHint')
+          }
           fullWidth
           triggerClassName="max-w-xs"
         />

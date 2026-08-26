@@ -1082,8 +1082,10 @@ async fn chat_inner(
             Some((shell, sandbox, sleep))
         }).await.ok().flatten().unwrap_or((None, None, None))
         };
-    // Missing preference means enabled: sandbox-by-default on Windows.
-    let sandbox_enabled = sandbox_pref.as_deref() != Some("false");
+    // The same preference key, with more values in it. A second key would be
+    // one that could disagree with the first, and there is no reading of
+    // "enabled = false, mode = container" that is not a bug.
+    // Missing still means enabled: sandbox-by-default on Windows.
     // Keep the machine awake for the rest of the turn (RAII; missing pref = enabled).
     let _sleep_guard = (sleep_pref.as_deref() != Some("false")).then(|| services.sleep.begin_turn());
     let tool_secrets = {
@@ -1093,10 +1095,21 @@ async fn chat_inner(
             .await
             .map_err(|e| e.to_string())?
     };
+    // **The error is returned rather than swallowed into `None`.** A
+    // conversation set to run commands in a container and handed no policy
+    // would run them on the host, silently — which is the failure the setting
+    // exists to prevent, and the user would never learn of it. Failing the turn
+    // costs them a message and tells them what is wrong.
     #[cfg(not(target_os = "android"))]
-    let sandbox_policy = meridian_core::sandbox::default_policy_if_enabled(sandbox_enabled, project_path.as_deref());
+    let sandbox_policy = meridian_core::sandbox::resolve_sandbox_policy(
+        meridian_core::sandbox::ExecutionMode::parse(sandbox_pref.as_deref()),
+        project_path.as_deref(),
+        &conversation_id,
+        Some(services.containers.clone()),
+    )
+    .map_err(|e| e.to_string())?;
     #[cfg(target_os = "android")]
-    let _ = sandbox_enabled;
+    let _ = sandbox_pref;
     let tool_context = tools::ToolContext {
         working_directory: project_path,
         shell: shell_type

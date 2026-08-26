@@ -77,6 +77,16 @@ pub struct ServicesInner {
     /// child process — cannot exist.
     #[cfg(not(target_os = "android"))]
     pub acp: Arc<crate::acp::AcpRegistry>,
+    /// Where a conversation's commands run, when that is not this machine.
+    ///
+    /// Held here because a container outlives every command that enters it and
+    /// has to be findable again — `sandbox::execute` is a function taking
+    /// parameters and has nowhere to keep one. Built at startup whether or not
+    /// anybody has turned it on: constructing it costs nothing and reaches no
+    /// daemon, and having it absent until first use would make "is Docker
+    /// available" a question asked in the middle of a turn.
+    #[cfg(not(target_os = "android"))]
+    pub containers: Arc<crate::container::DockerConnector>,
     /// How to start an ordinary turn, once the shell has said.
     ///
     /// The one direction that has to cross the line the other way. Running a
@@ -157,6 +167,8 @@ pub fn bare_services(dir: &std::path::Path) -> Services {
         },
         #[cfg(not(target_os = "android"))]
         acp: crate::acp::AcpRegistry::new(),
+        #[cfg(not(target_os = "android"))]
+        containers: crate::container::DockerConnector::new(Default::default()),
         turn_starter: std::sync::OnceLock::new(),
     })
 }

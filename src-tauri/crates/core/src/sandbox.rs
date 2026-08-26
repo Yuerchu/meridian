@@ -126,6 +126,111 @@ pub fn default_policy_if_enabled(enabled: bool, project_dir: Option<&str>) -> Op
     }
 }
 
+/// What the user asked for, before it is known whether they can have it.
+///
+/// **Three values rather than a boolean, and `Auto` is why.** The old
+/// preference was on/off, which had to mean "the best confinement this platform
+/// has" — nothing on Linux and a restricted token on Windows. Read as an
+/// explicit request for a *particular* backend it would fail on Linux for
+/// everybody, so the "whatever you have" answer stays its own value and the
+/// named ones mean what they say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecutionMode {
+    /// Nothing confines commands. An explicit choice, not a fallback.
+    Off,
+    /// Whatever this platform offers, and nothing if it offers none.
+    Auto,
+    /// A container. Refused rather than downgraded where there is not one.
+    Container,
+}
+
+impl ExecutionMode {
+    /// Reads the stored preference. Anything unrecognised is [`Self::Auto`] —
+    /// the value the app has always behaved as — because a typo must not
+    /// silently switch confinement off, and must not fail every turn either.
+    pub fn parse(raw: Option<&str>) -> Self {
+        match raw.map(str::trim) {
+            Some("off") | Some("false") => ExecutionMode::Off,
+            Some("container") | Some("docker") => ExecutionMode::Container,
+            _ => ExecutionMode::Auto,
+        }
+    }
+}
+
+/// A configuration that cannot be honoured.
+///
+/// **Distinct from `Ok(None)`, which is the whole point of this type.** `None`
+/// means nothing is confining commands *and that is what was asked for*. These
+/// two mean the user asked for something and did not get it, and the only safe
+/// answer is to say so — running the command unconfined instead is the silent
+/// fallback a sandbox exists to prevent, and the user would never learn of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SandboxConfigError {
+    /// This platform or build cannot provide it at all.
+    Unsupported(String),
+    /// It could be provided, and the machinery is not there — a connector that
+    /// was never built, a daemon that is not running.
+    Infrastructure(String),
+}
+
+impl std::fmt::Display for SandboxConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unsupported(m) | Self::Infrastructure(m) => write!(f, "{m}"),
+        }
+    }
+}
+
+/// What a turn's commands run under.
+///
+/// Replaces the platform-gated `default_policy_if_enabled` for callers that can
+/// offer a container. The difference that matters is the return type: that one
+/// could only answer "nothing", so a conversation configured for a backend it
+/// could not get ran on the host without anybody being told.
+#[cfg(not(target_os = "android"))]
+pub fn resolve_sandbox_policy(
+    mode: ExecutionMode,
+    project_dir: Option<&str>,
+    conversation_id: &str,
+    connector: Option<std::sync::Arc<dyn crate::container::CommandConnector>>,
+) -> Result<Option<SandboxPolicy>, SandboxConfigError> {
+    match mode {
+        ExecutionMode::Off => Ok(None),
+        // Unchanged from what the app has always done, including the `None` on
+        // platforms with no implementation — which is honest, because nothing
+        // else was asked for.
+        ExecutionMode::Auto => Ok(default_policy_if_enabled(true, project_dir)),
+        ExecutionMode::Container => {
+            let Some(connector) = connector else {
+                return Err(SandboxConfigError::Infrastructure(
+                    "this conversation is set to run commands in a container, but no container \
+                     backend is available. Check Docker is installed and running, or change the \
+                     execution setting."
+                        .into(),
+                ));
+            };
+            // A container needs a directory to mount, and the one it mounts is
+            // the project. Without one there is nothing for a command to
+            // operate on and nothing to isolate it from — and picking a
+            // directory here would be choosing what the sandbox contains.
+            let Some(project_dir) = project_dir else {
+                return Err(SandboxConfigError::Unsupported(
+                    "running commands in a container needs the conversation to belong to a \
+                     project, because the project directory is what gets mounted."
+                        .into(),
+                ));
+            };
+            Ok(Some(SandboxPolicy {
+                project_dir: Some(PathBuf::from(project_dir)),
+                backend: SandboxBackend::Container,
+                connector: Some(connector),
+                conversation_id: Some(conversation_id.to_string()),
+                ..Default::default()
+            }))
+        }
+    }
+}
+
 /// Largest amount of stdout/stderr retained per stream. Reads continue to EOF
 /// past this cap (dropping data) so the child never blocks on a full pipe.
 pub const MAX_CAPTURE_BYTES: usize = 256 * 1024;
@@ -638,6 +743,131 @@ async fn execute_windows_sandboxed(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The one that has to hold: an unreadable setting must not switch
+    /// confinement off, and must not fail every turn either. `Auto` is what the
+    /// app has always behaved as.
+    #[test]
+    fn an_unreadable_execution_mode_is_the_one_the_app_already_had() {
+        assert_eq!(ExecutionMode::parse(None), ExecutionMode::Auto);
+        assert_eq!(ExecutionMode::parse(Some("")), ExecutionMode::Auto);
+        assert_eq!(ExecutionMode::parse(Some("true")), ExecutionMode::Auto);
+        assert_eq!(ExecutionMode::parse(Some("banana")), ExecutionMode::Auto);
+        // The two the preference has always carried, and the new one.
+        assert_eq!(ExecutionMode::parse(Some("false")), ExecutionMode::Off);
+        assert_eq!(ExecutionMode::parse(Some("off")), ExecutionMode::Off);
+        assert_eq!(ExecutionMode::parse(Some("container")), ExecutionMode::Container);
+        assert_eq!(ExecutionMode::parse(Some(" docker ")), ExecutionMode::Container);
+    }
+
+    #[cfg(not(target_os = "android"))]
+    mod resolving {
+        use super::*;
+        use std::sync::Arc;
+
+        #[derive(Debug)]
+        struct Nowhere;
+
+        #[async_trait::async_trait]
+        impl crate::container::CommandConnector for Nowhere {
+            fn backend(&self) -> SandboxBackend {
+                SandboxBackend::Container
+            }
+            async fn execute(
+                &self,
+                _: &[String],
+                _: &Path,
+                _: &str,
+                _: Duration,
+                _: &CancellationToken,
+            ) -> Result<ExecResult, ExecError> {
+                unreachable!("this connector exists to be resolved, never to run anything")
+            }
+        }
+
+        fn connector() -> Option<Arc<dyn crate::container::CommandConnector>> {
+            Some(Arc::new(Nowhere))
+        }
+
+        /// Turning it off is an answer, so `None` here is honest.
+        #[test]
+        fn off_means_nothing_is_confining_commands() {
+            let got = resolve_sandbox_policy(ExecutionMode::Off, Some("/p"), "c-1", connector()).unwrap();
+            assert!(got.is_none());
+        }
+
+        /// And `Auto` keeps behaving exactly as the app always has, including
+        /// the `None` on platforms with no implementation — which is also
+        /// honest, because nothing else was asked for.
+        #[test]
+        fn auto_is_whatever_this_platform_has() {
+            let got = resolve_sandbox_policy(ExecutionMode::Auto, Some("/p"), "c-1", connector()).unwrap();
+            assert_eq!(got.is_some(), cfg!(target_os = "windows"));
+            if let Some(policy) = got {
+                assert_eq!(policy.backend, SandboxBackend::WindowsRestrictedToken);
+                assert!(policy.connector.is_none(), "auto must not pick up a container");
+            }
+        }
+
+        /// **The failure this function exists for.** Asked for a container and
+        /// unable to give one, the old signature could only answer `None` — and
+        /// `None` runs the command on the host, silently, which is precisely
+        /// what the setting was turned on to prevent.
+        #[test]
+        fn a_container_that_cannot_be_given_is_an_error_and_never_none() {
+            let missing = resolve_sandbox_policy(ExecutionMode::Container, Some("/p"), "c-1", None).unwrap_err();
+            assert!(matches!(missing, SandboxConfigError::Infrastructure(_)), "{missing:?}");
+            assert!(missing.to_string().contains("no container backend"), "{missing}");
+
+            // A conversation with no project has nothing to mount, which is a
+            // different reason and gets a different answer.
+            let no_project = resolve_sandbox_policy(ExecutionMode::Container, None, "c-1", connector()).unwrap_err();
+            assert!(
+                matches!(no_project, SandboxConfigError::Unsupported(_)),
+                "{no_project:?}"
+            );
+            assert!(no_project.to_string().contains("project"), "{no_project}");
+        }
+
+        /// And when it can be given, everything the connector needs travels
+        /// with it — a policy naming a container but not saying which
+        /// conversation would be one `execute` has to refuse at the last moment.
+        #[test]
+        fn a_resolved_container_policy_carries_what_it_needs() {
+            let policy = resolve_sandbox_policy(ExecutionMode::Container, Some("/p"), "c-1", connector())
+                .unwrap()
+                .expect("a container was available");
+            assert_eq!(policy.backend, SandboxBackend::Container);
+            assert!(policy.connector.is_some());
+            assert_eq!(policy.conversation_id.as_deref(), Some("c-1"));
+            assert_eq!(policy.project_dir.as_deref(), Some(Path::new("/p")));
+            // Not escalatable, which is the rule the previous commit put in.
+            assert!(!policy.backend.may_retry_on_host());
+        }
+
+        /// A misconfiguration that reached `execute` anyway must not run the
+        /// command. This is the second of the two gates: the resolver refuses
+        /// to *build* such a policy, and `execute` refuses to *honour* one.
+        #[tokio::test]
+        async fn execute_refuses_a_container_policy_with_no_connector() {
+            let policy = SandboxPolicy {
+                backend: SandboxBackend::Container,
+                connector: None,
+                conversation_id: Some("c-1".into()),
+                ..Default::default()
+            };
+            let err = execute(
+                &["echo".into(), "should-not-run".into()],
+                Path::new("."),
+                Some(&policy),
+                Duration::from_secs(5),
+                &CancellationToken::new(),
+            )
+            .await
+            .expect_err("a command ran outside the container it was supposed to be in");
+            assert!(err.to_string().contains("Nothing was run"), "{err}");
+        }
+    }
 
     fn policy_for(project_dir: &std::path::Path) -> SandboxPolicy {
         SandboxPolicy {

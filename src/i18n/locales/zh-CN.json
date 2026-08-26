@@ -446,6 +446,8 @@
   "settings.general.shellHint": "执行命令工具使用的终端。推荐 Bash (Git Bash)，对中文等字符支持更好。",
   "settings.general.sandbox": "命令沙箱",
   "settings.general.sandboxOn": "开启(推荐)",
+  "settings.general.sandboxContainer": "在容器中",
+  "settings.general.sandboxContainerHint": "命令在属于本会话的 Docker 容器里执行——装过的东西下一条命令还在，改动也出不了项目目录。需要 Docker 正在运行，且会话必须属于某个项目。自定义命令工具也一并进容器，因此依赖本机工具链的那些会失效。",
   "settings.general.sandboxOff": "关闭",
   "settings.general.sandboxHint": "仅 Windows 生效。run_command 在受限令牌沙箱中运行,只能写入项目目录与 TEMP;命令被拦截时会询问是否不带沙箱重试。不限制网络访问。注意:Git Bash 无法在沙箱中启动(每条命令都会请求提权),开启沙箱时建议将终端切换为 PowerShell 或 CMD。",
   "settings.general.webSearch": "网络搜索",
