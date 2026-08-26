@@ -1018,6 +1018,28 @@ pub(super) fn exposes_full_toolset(kind: &SessionKind, is_admin: bool) -> bool {
 /// before it runs.
 pub(super) const OPEN_REGISTRY_TOOLS: &[&str] = &["web_search"];
 
+/// What an ordinary member may run: the session-locked QQ reads, plus any
+/// open registry tool that is actually in this turn's array.
+///
+/// Shared by the opening `offered` and by `InboxSteering` after a demotion, so
+/// a member joining an admin's turn does not lose a tool the array still
+/// advertises — which is how the model ends up calling `web_search` in front
+/// of the group and being refused.
+pub(super) fn ordinary_offered(
+    names: impl IntoIterator<Item = String>,
+    tool_defs: &[crate::provider::ToolDefinition],
+) -> std::collections::HashSet<String> {
+    names
+        .into_iter()
+        .chain(
+            tool_defs
+                .iter()
+                .map(|t| t.name.clone())
+                .filter(|name| OPEN_REGISTRY_TOOLS.contains(&name.as_str())),
+        )
+        .collect()
+}
+
 pub(super) const SEND_VOICE_TOOL: &str = "send_voice";
 
 /// 超出 `Scope` 之外、由会话本身决定的可用性。
@@ -1207,6 +1229,23 @@ mod tests {
             "a group cannot show these to one member alone",
         );
         assert!(!exposes_full_toolset(&SessionKind::Group, false));
+    }
+
+    #[test]
+    fn demoting_keeps_open_registry_tools_still_in_the_array() {
+        let names = ["list_stickers".to_string()];
+        let with_search = vec![crate::provider::ToolDefinition {
+            name: "web_search".into(),
+            description: String::new(),
+            parameters: serde_json::json!({}),
+        }];
+        let offered = ordinary_offered(names.clone(), &with_search);
+        assert!(offered.contains("list_stickers"));
+        assert!(offered.contains("web_search"));
+
+        let offered = ordinary_offered(names, &[]);
+        assert!(offered.contains("list_stickers"));
+        assert!(!offered.contains("web_search"));
     }
 
     #[test]

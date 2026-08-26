@@ -278,7 +278,7 @@ function QuestionBlock({
   )
 }
 
-function AskUserBlock({ data }: { data: ToolCallDisplay }) {
+function AskUserBlock({ data, onAnswered }: { data: ToolCallDisplay; onAnswered?: () => void }) {
   const { t } = useTranslation()
   const [answers, setAnswers] = useState<Record<string, QuestionAnswer>>({})
   const [skippedSet, setSkippedSet] = useState<Set<string>>(new Set())
@@ -335,7 +335,10 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
       // learns nothing from an answer given here. A question answered on this
       // form and left in it is offered again as a toast — "go and answer this"
       // for something already answered — the moment the reader moves on.
-      () => retireAnswered(approvalId),
+      () => {
+        retireAnswered(approvalId)
+        onAnswered?.()
+      },
       // Nobody is listening any more: say so instead of leaving a form that
       // silently discards what the user typed.
       () => {
@@ -343,7 +346,7 @@ function AskUserBlock({ data }: { data: ToolCallDisplay }) {
         markOrphaned(approvalId)
       },
     )
-  }, [answers, skippedSet, questions, data.approval_id, markOrphaned, retireAnswered])
+  }, [answers, skippedSet, questions, data.approval_id, markOrphaned, retireAnswered, onAnswered])
 
   // A question the asker will not do without has to be answered before this
   // form can go, and the check belongs here rather than only on the way out:
@@ -1394,12 +1397,26 @@ function SubAgentBlock({
               <span>{t('chat.subAgent.asksFor', { tool: nested.tool_name })}</span>
             </div>
             <ChatToolArgs text={nested.arguments} />
-            <PendingApproval
-              key={nested.approval_id}
-              approvalId={nested.approval_id}
-              retryReason={nested.retry_reason}
-              onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
-            />
+            {nested.tool_name === 'ask_user' || nested.tool_name === 'AskUserQuestion' ? (
+              <AskUserBlock
+                data={{
+                  call_id: nested.call_id,
+                  tool_name: nested.tool_name,
+                  arguments: nested.arguments,
+                  status: 'pending',
+                  approval_id: nested.approval_id,
+                  retry_reason: nested.retry_reason,
+                }}
+                onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
+              />
+            ) : (
+              <PendingApproval
+                key={nested.approval_id}
+                approvalId={nested.approval_id}
+                retryReason={nested.retry_reason}
+                onAnswered={() => activeId && resolveNested(activeId, nested.approval_id)}
+              />
+            )}
           </div>
         )}
 

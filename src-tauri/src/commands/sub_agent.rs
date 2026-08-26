@@ -516,6 +516,11 @@ impl DesktopSubAgents {
             ..self.tool_context.clone()
         };
 
+        // Same as the desktop and OneBot loops: the sub-agent resends its own
+        // prefix every round, and without a key xAI treats each as cold.
+        let mut params = turn_params.params.clone();
+        params.cache_key = Some(sub_conversation_id.to_string());
+
         engine::run_turn(
             &engine::TurnServices {
                 pool: &self.pool,
@@ -524,7 +529,7 @@ impl DesktopSubAgents {
             },
             engine::TurnSetup {
                 provider: &*provider.0,
-                params: turn_params.params.clone(),
+                params,
                 chat_messages,
                 tool_defs: config.tool_defs,
                 offered: config.offered,

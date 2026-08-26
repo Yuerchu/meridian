@@ -74,7 +74,9 @@ struct OpenRow {
     tool_calls: Vec<provider::ToolCall>,
     /// `(call_id, output, outcome)`, in the order the calls finished.
     results: Vec<(String, String, &'static str)>,
-    /// A result has landed on this row, so the next prose opens a new one.
+    /// Every call on this row has a result, so the next prose or a new call
+    /// opens the next one. Not the first result: Claude Code runs calls in
+    /// parallel, and thought can land between them.
     settled: bool,
     /// This row is already in the database and must not be written again.
     /// Only set when opening the next round failed part way — see
@@ -493,15 +495,13 @@ impl Shared {
             } => {
                 let Some((message_id, quiet)) = self.with_turn(|t| {
                     t.row.results.push((call_id.clone(), result.clone(), outcome));
-                    // This round is over. Whatever the agent says next is the
-                    // next one talking, and gets a row of its own.
-                    t.row.settled = true;
-                    // Claude Code runs calls in parallel, and the phase is one
-                    // value. Only the last result outstanding puts the turn back
-                    // to streaming — otherwise the first one to land would say
-                    // no tool is running while three still are, which is exactly
-                    // the claim the warning must not make wrongly.
-                    (t.row.message_id.clone(), t.row.results.len() >= t.row.tool_calls.len())
+                    // Round is over only when every call on it has a result.
+                    // Settling on the first one closed the row under a parallel
+                    // sibling still outstanding, so a thought between A and B
+                    // parked B's result on a new round that never asked for it.
+                    let quiet = t.row.results.len() >= t.row.tool_calls.len();
+                    t.row.settled = quiet;
+                    (t.row.message_id.clone(), quiet)
                 }) else {
                     return;
                 };
@@ -2643,6 +2643,92 @@ mod tests {
             .with_turn(|t| (t.row.results.len(), t.row.tool_calls.len()))
             .unwrap();
         assert!(results >= calls, "{results} result(s) for {calls} call(s)");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Parallel calls share a round. Settling on the first result used to
+    /// rotate as soon as any prose arrived, so B's result landed on a new row
+    /// that had never asked for it.
+    #[tokio::test]
+    async fn a_thought_between_parallel_results_stays_on_the_same_round() {
+        let dir = std::env::temp_dir().join(format!("meridian-acp-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let services = bare_services(&dir);
+
+        {
+            let mut conn = services.db.get().unwrap();
+            crate::db::ops::conversation::create_conversation(&mut conn, "c1", Some("t"), None, None, 0).unwrap();
+            crate::db::ops::turn::begin(&mut conn, "t1", "c1", TurnOrigin::ClaudeCode, None, 1000).unwrap();
+        }
+        let first = begin_assistant(
+            &services.db,
+            "c1",
+            "t1",
+            (None, Some(PROVIDER_LABEL)),
+            "claude-code",
+            None,
+        )
+        .await
+        .unwrap();
+
+        let shared = Shared {
+            services: services.clone(),
+            conversation_id: "c1".into(),
+            turn: Mutex::new(Some(TurnState {
+                turn_id: "t1".into(),
+                cancel: CancellationToken::new(),
+                row: OpenRow::new(first.clone()),
+                parent: first.clone(),
+                interjected: Vec::new(),
+            })),
+            model: Mutex::new(None),
+            config: Mutex::new(Vec::new()),
+            replay: Mutex::new(Replay::No),
+            announced: Mutex::new(HashSet::new()),
+            unwritten_rows: std::sync::atomic::AtomicUsize::new(0),
+            memory_lost: Mutex::new(false),
+        };
+
+        shared.absorb(update(call("A", "Bash", serde_json::json!({})))).await;
+        shared.absorb(update(call("B", "Read", serde_json::json!({})))).await;
+        shared
+            .absorb(update(serde_json::json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "A",
+                "status": "completed",
+                "content": [{ "type": "content", "content": { "type": "text", "text": "a" } }],
+            })))
+            .await;
+        shared
+            .absorb(update(serde_json::json!({
+                "sessionUpdate": "agent_thought_chunk",
+                "content": { "type": "text", "text": "hmm" },
+            })))
+            .await;
+        shared
+            .absorb(update(serde_json::json!({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "B",
+                "status": "completed",
+                "content": [{ "type": "content", "content": { "type": "text", "text": "b" } }],
+            })))
+            .await;
+
+        let (calls, results, reasoning, settled) = shared
+            .with_turn(|t| {
+                (
+                    t.row.tool_calls.iter().map(|c| c.id.clone()).collect::<Vec<_>>(),
+                    t.row.results.iter().map(|(id, _, _)| id.clone()).collect::<Vec<_>>(),
+                    t.row.reasoning.clone(),
+                    t.row.settled,
+                )
+            })
+            .unwrap();
+        assert_eq!(calls, vec!["A".to_string(), "B".to_string()]);
+        assert_eq!(results, vec!["A".to_string(), "B".to_string()]);
+        assert!(reasoning.contains("hmm"), "{reasoning}");
+        assert!(settled);
 
         let _ = std::fs::remove_dir_all(&dir);
     }

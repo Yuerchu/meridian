@@ -445,6 +445,13 @@ export interface AttentionItem {
    *  it offers a way in instead. Split here rather than by comparing the tool
    *  name at each call site. */
   kind: 'approval' | 'ask'
+  /** Set when a delegated run is asking. The question is filed under the
+   *  parent, but the call's result and stop land on this conversation. */
+  subConversationId?: string
+}
+
+export function isAskTool(name: string): boolean {
+  return name === 'ask_user' || name === 'AskUserQuestion'
 }
 
 export interface PendingApprovalEntry {
@@ -556,6 +563,35 @@ function retireAttention(state: ConversationStore, approvalId: string) {
   if (!state.attention[approvalId]) return
   delete state.attention[approvalId]
   state.attentionOrder = state.attentionOrder.filter((id) => id !== approvalId)
+}
+
+function applyPendingApprovals(session: ConversationSession, pending: PendingApprovalInfo[]) {
+  session.pendingApprovals = {}
+  session.pendingAsks = {}
+  for (const row of pending) {
+    if (row.bubbled) continue
+    const entry: PendingApprovalEntry = {
+      providerCallId: row.provider_call_id,
+      messageId: row.assistant_message_id,
+      originCallId: row.origin_call_id,
+      toolName: row.tool_name,
+      retryReason: row.retry_reason,
+    }
+    if (isAskTool(row.tool_name)) session.pendingAsks[row.approval_id] = entry
+    else session.pendingApprovals[row.approval_id] = entry
+  }
+}
+
+function dropNested(state: ConversationStore, approvalId: string) {
+  for (const session of Object.values(state.sessions)) {
+    for (const m of session.messages) {
+      for (const b of m._blocks ?? []) {
+        if (b.type === 'tool_call' && b.data.nested_approval?.approval_id === approvalId) {
+          b.data.nested_approval = undefined
+        }
+      }
+    }
+  }
 }
 
 function indexBranches(points: BranchPoint[]): Record<string, BranchPoint> {
@@ -958,6 +994,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         session.branches = indexBranches(snap.tree.branches)
         session.turns = snap.turns
         adoptLiveTurn(session, snap.turns)
+        applyPendingApprovals(session, snap.pending_approvals)
       }),
     )
   },
@@ -1003,6 +1040,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           session.branches = indexBranches(snap.tree.branches)
           session.turns = snap.turns
           adoptLiveTurn(session, snap.turns)
+          applyPendingApprovals(session, snap.pending_approvals)
           session.expandedTurns = {}
         }),
       )
@@ -1296,7 +1334,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             toolName,
             arguments: args,
             retryReason,
-            kind: toolName === 'ask_user' ? 'ask' : 'approval',
+            kind: isAskTool(toolName) ? 'ask' : 'approval',
+            subConversationId: bubble?.subConversationId,
           }
           state.attentionOrder.push(approvalId)
         }
@@ -1310,7 +1349,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           toolName,
           retryReason,
         }
-        if (toolName === 'ask_user') {
+        if (isAskTool(toolName)) {
           session.pendingAsks[approvalId] = entry
         } else {
           session.pendingApprovals[approvalId] = entry
@@ -1423,8 +1462,15 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // question here, and a result is the only thing that will ever retire
         // it. Matched on the pair, not the call id — provider call ids repeat.
         for (const [id, item] of Object.entries(state.attention)) {
-          if (item.conversationId === convId && item.messageId === messageId && item.providerCallId === callId) {
+          if (item.providerCallId !== callId) continue
+          if (item.conversationId === convId && item.messageId === messageId) {
             retireAttention(state, id)
+            continue
+          }
+          // Delegated: asked on the parent, result emitted on the sub-agent.
+          if (item.subConversationId === convId) {
+            retireAttention(state, id)
+            dropNested(state, id)
           }
         }
         const session = state.sessions[convId]
@@ -1444,6 +1490,12 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           if (card.data.approval_id) {
             delete session.pendingApprovals[card.data.approval_id]
             delete session.pendingAsks[card.data.approval_id]
+          }
+          if (card.data.nested_approval) {
+            retireAttention(state, card.data.nested_approval.approval_id)
+            delete session.pendingApprovals[card.data.nested_approval.approval_id]
+            delete session.pendingAsks[card.data.nested_approval.approval_id]
+            card.data.nested_approval = undefined
           }
           card.data.status = status
           card.data.result = result
@@ -1535,29 +1587,11 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
     set(
       produce((state: ConversationStore) => {
         retireAttention(state, approvalId)
-        // The nested question's buttons, which is all `resolveNestedApproval`
-        // does when the answer came from the card. Every session rather than
-        // one: a delegated question is drawn on the parent's `run_agent` card
-        // while the call it names lives in the sub-agent's conversation, and
-        // both may be open.
-        for (const session of Object.values(state.sessions)) {
-          for (const m of session.messages) {
-            for (const b of m._blocks ?? []) {
-              if (b.type === 'tool_call' && b.data.nested_approval?.approval_id === approvalId) {
-                b.data.nested_approval = undefined
-              }
-            }
-          }
-        }
-        // An ordinary card is deliberately untouched. Clearing its
-        // `approval_id` would leave it at `status: 'pending'`, which
-        // `mapChatToolState` draws as `requires-action` — a card demanding an
-        // answer with no way to give one. And `session.pendingApprovals` is
-        // what `handleStop` reads to write off a call whose turn died before
-        // its result arrived, so emptying it early loses that. The card's own
-        // ledger is retired by the result, which for an ordinary call always
-        // comes; the queue's is retired here, because for a delegated one it
-        // never does.
+        // Nested buttons on every session that drew them. Ordinary cards are
+        // left holding `approval_id`: clearing it would leave `pending` with
+        // no way to answer. `handleStop` now also scans those cards, so the
+        // pending-table copy of a nested id can go.
+        dropNested(state, approvalId)
       }),
     )
   },
@@ -1593,7 +1627,8 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
             toolName: row.tool_name,
             arguments: row.arguments,
             retryReason: row.retry_reason,
-            kind: row.tool_name === 'ask_user' ? 'ask' : 'approval',
+            kind: isAskTool(row.tool_name) ? 'ask' : 'approval',
+            subConversationId: row.sub_conversation_id,
           }
           state.attentionOrder.push(row.approval_id)
         }
@@ -1679,7 +1714,10 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         // belong to somebody else than.
         if (mine) {
           for (const [id, item] of Object.entries(state.attention)) {
-            if (item.conversationId === convId) retireAttention(state, id)
+            if (item.conversationId === convId || item.subConversationId === convId) {
+              retireAttention(state, id)
+              dropNested(state, id)
+            }
           }
         }
         const session = state.sessions[convId]
@@ -1711,9 +1749,27 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
         ]) {
           const target = session.messages.find((m) => m.id === entry.messageId)
           for (const block of target?._blocks ?? []) {
-            if (block.type === 'tool_call' && block.data.approval_id === id) {
+            if (block.type !== 'tool_call') continue
+            if (block.data.approval_id === id) {
               block.data.status = 'orphaned'
               block.data.approval_id = undefined
+            }
+            if (block.data.nested_approval?.approval_id === id) {
+              block.data.nested_approval = undefined
+            }
+          }
+        }
+        for (const m of session.messages) {
+          for (const block of m._blocks ?? []) {
+            if (block.type !== 'tool_call') continue
+            if (block.data.approval_id) {
+              block.data.status = 'orphaned'
+              block.data.approval_id = undefined
+            }
+            if (block.data.nested_approval) {
+              dropNested(state, block.data.nested_approval.approval_id)
+              retireAttention(state, block.data.nested_approval.approval_id)
+              block.data.nested_approval = undefined
             }
           }
         }
@@ -1745,6 +1801,7 @@ export const useConversationStore = create<ConversationStore>((set, get) => ({
           session.messages = mergeSnapshot(session, snapshot)
           session.branches = indexBranches(snap.tree.branches)
           session.turns = snap.turns
+          applyPendingApprovals(session, snap.pending_approvals)
         }),
       )
     })

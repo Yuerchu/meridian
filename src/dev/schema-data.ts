@@ -1622,8 +1622,8 @@ const RAW_TABLES: RawTable[] = [
       '孤立表。但 <code>acp.cwd.&lt;conversation_id&gt;</code> 这类键<b>逻辑上</b>挂在会话上——ACP 还没有自己的 session 表，这是明说的权宜之计。',
     ],
     rules: [
-      '<b><code>SERVER_OWNED_PREFIXES</code>（远程调用者一律拒绝）：<code>remote.</code> / <code>hooks.</code> / <code>onebot.</code> / <code>autoreview.</code> / <code>acp.</code></b>',
-      '拒绝的理由各不相同：<code>remote.*</code>、<code>hooks.port</code> 之类是自锁；<code>hooks.token</code> 与 <code>onebot.access_token</code> 是<b>别人服务的凭据</b>；<code>onebot.admin_users</code> 决定 QQ 里谁是管理员——写它是<b>对第三方的提权</b>；<code>autoreview.model</code> / <code>autoreview.allow_rules</code> 按<b>取值</b>授予能力，把设置写入变成了「允许运行任何东西」；<code>acp.command</code> <b>直接命名本机要执行的二进制</b>，能写它就是主机上的任意代码执行。',
+      '<b><code>SERVER_OWNED_PREFIXES</code>（远程调用者一律拒绝）：<code>remote.</code> / <code>hooks.</code> / <code>onebot.</code> / <code>autoreview.</code> / <code>acp.</code> / <code>sandbox.</code></b>',
+      '拒绝的理由各不相同：<code>remote.*</code>、<code>hooks.port</code> 之类是自锁；<code>hooks.token</code> 与 <code>onebot.access_token</code> 是<b>别人服务的凭据</b>；<code>onebot.admin_users</code> 决定 QQ 里谁是管理员——写它是<b>对第三方的提权</b>；<code>autoreview.model</code> / <code>autoreview.allow_rules</code> 按<b>取值</b>授予能力，把设置写入变成了「允许运行任何东西」；<code>acp.command</code> <b>直接命名本机要执行的二进制</b>，能写它就是主机上的任意代码执行；<code>sandbox.enabled</code> 关掉就是命令可以写到项目外。',
       '常见键：<code>ui.theme</code>、<code>logging.level</code>（文件日志级别，故意不受 RUST_LOG 影响）、<code>voice.filter_level</code>、<code>sandbox.enabled</code>、<code>android.manage_storage_enabled</code>、<code>android.saf_roots</code>、<code>hooks.plan_review.{model,assistant_id,max_rounds,timeout_secs}</code>、<code>autoreview.{enabled,model,escalate,environment,allow_rules,deny_rules}</code>、<code>acp.{command,args}</code> 与 <code>acp.cwd.&lt;conversation_id&gt;</code>。',
       '密钥（API key）<b>不</b>存这里，走 keyring（service「meridian」）/ secrets 后端。',
     ],
