@@ -488,12 +488,26 @@ pub struct SessionTotal {
 /// 的字节则相反——一份文件只占一次地方，所以每个 blob 只加一次。
 /// `last_captured_at` 也来自 clip：blob 的 `created_at` 是它**第一次**被存下来
 /// 的时刻，此后同一段音频再被发一百次，那个会话也永远显示着几个月前。
+///
+/// **不借用 `export_rows`，因为两个调用者对 `damaged` 的答案相反。**导出跳过
+/// 它是对的——文件对不上；但这里是删除的入口：`resolve_handle` 在这份列表上
+/// 重算 HMAC，不在列表上的会话就没有句柄，clips 连同发送者和转写却都还在库
+/// 里。恢复器把一个会话的文件全标成 `damaged` 之后，按 `ready` 过滤正好把
+/// 最该被删的那批数据变成删不掉的。`deleting` 不用排——墓碑只立在没有任何
+/// clip 引用的 blob 上，join 过 clips 之后它本来就贡献不了行。
 pub fn session_totals(conn: &mut SqliteConnection) -> QueryResult<Vec<SessionTotal>> {
     use std::collections::{HashMap, HashSet};
 
+    let rows: Vec<(VoiceClip, VoiceBlob)> = voice_clips::table
+        .inner_join(voice_blobs::table.on(voice_blobs::id.eq(voice_clips::blob_id)))
+        .filter(voice_blobs::status.eq_any([blob_status::READY, blob_status::DAMAGED]))
+        .order(voice_clips::created_at.asc())
+        .select((VoiceClip::as_select(), VoiceBlob::as_select()))
+        .load(conn)?;
+
     let mut totals: HashMap<(i64, String, String), SessionTotal> = HashMap::new();
     let mut counted_blobs: HashSet<(i64, String, String, String)> = HashSet::new();
-    for (clip, blob) in export_rows(conn)? {
+    for (clip, blob) in rows {
         let key = (blob.bot_self_id, blob.source_type.clone(), blob.source_id.clone());
         let entry = totals.entry(key.clone()).or_insert_with(|| SessionTotal {
             bot_self_id: blob.bot_self_id,
@@ -771,6 +785,26 @@ mod tests {
         assert_eq!(totals[0].clips, 2, "两次出现是两条");
         assert_eq!(totals[0].bytes, 10, "一份文件只占一次地方");
         assert_eq!(totals[0].last_captured_at, 5, "最近一次来自 clip，不是 blob 建立的时刻");
+    }
+
+    /// 文件坏了，会话不能从管理列表上消失：`resolve_handle` 在这份统计上重算
+    /// HMAC，不在列表上的会话就没有句柄，clips 连同发送者和转写却都还在库里。
+    /// 按 `ready` 过滤正好把最该被删的那批数据变成删不掉的。
+    #[test]
+    fn a_session_whose_files_all_went_bad_is_still_listed_for_deletion() {
+        let pool = test_db();
+        let mut conn = pool.get().unwrap();
+        let blob = ready_blob(&mut conn, "aa", "b1");
+        record_clip(&mut conn, &blob, "c1", "alice", Some(10), 0, None, None, 1).unwrap();
+        mark_damaged(&mut conn, &blob.id, 2).unwrap();
+
+        let totals = session_totals(&mut conn).unwrap();
+        assert_eq!(totals.len(), 1, "damaged 只挡导出，不挡删除");
+        assert_eq!(totals[0].clips, 1);
+
+        // 导出这边照旧跳过它——两个调用者对 damaged 的答案相反，
+        // 这正是统计不借用 export_rows 的原因。
+        assert!(export_rows(&mut conn).unwrap().is_empty());
     }
 
     #[test]

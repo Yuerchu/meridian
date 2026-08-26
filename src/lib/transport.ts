@@ -273,19 +273,24 @@ class RemoteTransport implements Transport {
 
       if (frame.channel === 'remote-ready') {
         const payload = frame.payload as { assetTicket?: string; apiRev?: number } | undefined
-        this.assetTicket = payload?.assetTicket ?? null
         // The socket carries the revision too, and this is the only place it
         // gets re-read. `probeRemote` checks it once, at the moment somebody
         // types an address; a reconnect days later can land on a desktop that
-        // has since been downgraded, and then the first command this build
-        // added comes back as `unknown command` from a connection that
-        // reported itself healthy.
+        // has since been downgraded — and it gets the same answer here that the
+        // probe would give: below the band is a refusal, not a `connected` that
+        // then fails one command at a time with nothing naming which half is
+        // old. The retry loop keeps running on its ordinary backoff, because
+        // the thing that fixes this — upgrading the desktop — looks exactly
+        // like a reconnect from here.
         if (typeof payload?.apiRev === 'number' && payload.apiRev < CLIENT_API_REV) {
           console.warn(
             `remote: this desktop speaks api rev ${payload.apiRev}, this client expects ${CLIENT_API_REV}; ` +
-              'newer features will fail until it is updated',
+              'staying offline until it is updated',
           )
+          socket.close()
+          return
         }
+        this.assetTicket = payload?.assetTicket ?? null
         const reconnected = this.attempt > 0
         this.attempt = 0
         this.setState('connected')

@@ -19,6 +19,7 @@ import {
 } from '@gravity-ui/icons'
 
 import { can } from '@/lib/capabilities'
+import { isRemote } from '@/lib/transport'
 
 /**
  * The settings sections, and which of them a given platform can reach.
@@ -120,7 +121,7 @@ const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks', 'acp', 'remote']
  * startup, so it filters from the first frame.
  */
 /**
- * Hidden on Android and nowhere else.
+ * Hidden on a standalone Android app and nowhere else.
  *
  * The voice corpus only exists where a OneBot connection does, and that is not
  * Android. But unlike the panels above it stays visible to a *remote* client on
@@ -128,12 +129,17 @@ const DESKTOP_ONLY: SettingsTab[] = ['onebot', 'hooks', 'acp', 'remote']
  * the thing somebody asks for while holding their phone. Export is withheld
  * separately, by `can.exportToDisk` inside the panel — it writes a bundle to a
  * path on whichever machine is answering.
+ *
+ * So the test is where the *backend* runs, not what is in the hand: an Android
+ * phone in remote mode is a window onto a desktop that does have a corpus, and
+ * `platform` alone — which still says `android` there — hides the one panel
+ * that workflow is for.
  */
 const ANDROID_ONLY_HIDDEN: SettingsTab[] = ['voiceCorpus']
 
 export function visibleSettingsTabs(platform: string | null): SettingsTabDef[] {
   const hidden = new Set<SettingsTab>()
   if (platform === 'android' || !can.manageServers) DESKTOP_ONLY.forEach((id) => hidden.add(id))
-  if (platform === 'android') ANDROID_ONLY_HIDDEN.forEach((id) => hidden.add(id))
+  if (platform === 'android' && !isRemote) ANDROID_ONLY_HIDDEN.forEach((id) => hidden.add(id))
   return hidden.size === 0 ? settingsTabs : settingsTabs.filter((tab) => !hidden.has(tab.id))
 }

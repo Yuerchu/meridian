@@ -59,6 +59,9 @@ impl VoiceLimiter {
 
         state.turns.retain(|_, at| now - *at < WINDOW_MS);
         state.window.retain(|at| now - *at < WINDOW_MS);
+        // 冷却过了的条目和不存在的条目答案一样，但只有清掉它，长期运行的进程
+        // 才不会为每个见过一面的会话永久留一行。
+        state.last_attempt.retain(|_, at| now - *at < COOLDOWN_MS);
 
         if state.turns.contains_key(turn_id) {
             return Err("a voice message has already been attempted in this turn".into());
@@ -129,6 +132,19 @@ mod tests {
             drop(ok);
         }
         assert!(limiter.try_acquire("group:new", "t-new", 100).is_err());
+    }
+
+    /// 冷却过了的条目不能永久留着：一个长期运行、见过很多会话的进程，
+    /// `last_attempt` 会一直涨——每小时的总量挡得住速度，挡不住总数。
+    #[test]
+    fn expired_cooldowns_do_not_pile_up() {
+        let limiter = VoiceLimiter::default();
+        for i in 0..10 {
+            drop(limiter.try_acquire(&format!("group:{i}"), &format!("t{i}"), 0));
+        }
+        drop(limiter.try_acquire("group:new", "t-new", COOLDOWN_MS + 1));
+        let state = limiter.state.lock().unwrap();
+        assert_eq!(state.last_attempt.len(), 1, "只剩下还在冷却里的那一个");
     }
 
     #[test]

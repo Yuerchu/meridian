@@ -278,6 +278,20 @@ pub fn export(
 ) -> Result<ExportReport, String> {
     use std::io::Write;
 
+    // 目标必须是空的（或者还不存在）。上一次导出的 `audio/` 里可能躺着这次已经
+    // 删掉的录音，只重写 manifest 就是让"已被要求删除的音频"以旧文件的身份继续
+    // 存在，而 manifest 还声称这个 bundle 是自洽的。也不替用户清场：这是一个
+    // 用户随手指定的目录，在里面递归删除的代价比拒绝高得多。
+    match std::fs::read_dir(output_dir) {
+        Ok(mut entries) => {
+            if entries.next().is_some() {
+                return Err("export destination is not empty; pick an empty or new directory".into());
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.to_string()),
+    }
+
     let key = crate::voice_corpus::storage_key(pool)?;
     let mut conn = crate::util::get_conn(pool)?;
     let clips = ops::export_rows(&mut conn).map_err(|e| e.to_string())?;
@@ -458,6 +472,22 @@ mod tests {
         assert!(manifest.contains("你好"));
         assert!(!manifest.contains("alice"), "默认写假名，不是 QQ 号");
         assert!(manifest.contains("audio/"));
+    }
+
+    /// 非空目录拒绝导出。上一次 bundle 的 `audio/` 里可能躺着这次已经删掉的
+    /// 录音，只重写 manifest 会让它们以旧文件的身份继续存在；也不替用户清场，
+    /// 这是一个用户随手指定的目录。
+    #[test]
+    fn an_export_refuses_a_directory_that_already_has_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = tempfile::tempdir().unwrap();
+        std::fs::write(out.path().join("leftover.txt"), b"old").unwrap();
+        let pool = test_db();
+
+        let err = export(&pool, dir.path(), out.path(), false, false).unwrap_err();
+        assert!(err.contains("not empty"), "{err}");
+        // 而一个还不存在的目录是可以的——由导出自己创建。
+        assert!(export(&pool, dir.path(), &out.path().join("fresh"), false, false).is_ok());
     }
 
     /// 带上真实发送者是另一条路，要显式要求。

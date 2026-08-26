@@ -1337,39 +1337,6 @@ impl OneBotServer {
             "the OneBot access token",
         )?;
 
-        // 把这一代服务的语音策略交给协调器。协调器活得比服务久（它在 `Services`
-        // 上），所以这是"换掉"而不是"初始化"：上一代的授权连同它的 generation
-        // 一起被这次调用作废。
-        //
-        // **两套策略都要**。这里一度只推了采集白名单，于是出站那一套在一个新
-        // 进程里永远是空的——四项填齐、保存过、重启一次，`send_voice` 就再也
-        // 不出现，直到有人重新点一次保存。而它不出现的时候，助手自己也看不见
-        // 它，所以问助手只会得到"我没有语音工具"。
-        {
-            let services = self.state.services.clone();
-            let config = self.state.config.clone();
-            let pool = services.db.clone();
-            let data_dir = services.paths.data_dir.clone();
-            let writable = services.corpus.writable();
-            tokio::spawn(async move {
-                // 收拾上一次死掉留下的东西。放在这里而不是 bootstrap：它要扫
-                // 目录，而没开 OneBot 的人不该为此等在启动上。`stop()` 已经
-                // quiesce 过，所以此刻没有 writer——恢复器无条件清空 `.staging`
-                // 和所有 `pending` 行，靠的正是这个前提。
-                let recovered =
-                    tokio::task::spawn_blocking(move || crate::voice_corpus::recover::run(&pool, &data_dir, writable))
-                        .await;
-                if let Ok(Err(error)) = recovered {
-                    tracing::warn!(%error, "voice corpus recovery failed");
-                }
-                if let Err(error) = refresh_voice_policy(&services, &config).await {
-                    // 采集与出站都没装上。说出来——静默的结果是一个开着的开关
-                    // 什么也不做。
-                    tracing::warn!(%error, "voice policy could not be applied; voice stays off this session");
-                }
-            });
-        }
-
         let state = self.state.clone();
         let running = self.running.clone();
         let mut shutdown_rx = self.state.shutdown.subscribe();
@@ -1382,6 +1349,50 @@ impl OneBotServer {
         running.store(true, Ordering::Relaxed);
 
         tokio::spawn(async move {
+            // 把这一代服务的语音策略交给协调器，**开门之前**。协调器活得比服务
+            // 久（它在 `Services` 上），所以这是"换掉"而不是"初始化"：上一代的
+            // 授权连同它的 generation 一起被这次调用作废。
+            //
+            // 顺序有两条约束，都不是偏好。恢复器在策略之前：它无条件清空
+            // `.staging` 和所有 `pending` 行，靠的是"此刻没有 writer"——策略先
+            // 装上，一个抢跑的采集就会跟清扫赛跑。bind 在两者之后：绑定在前的
+            // 话，从开门到策略装好之间到达的语音事件对着一个空白名单被静默丢弃，
+            // 而恢复器要哈希整个语料目录，这个窗口不是几毫秒。适配器是反向 WS，
+            // 晚几秒开门只是让它多重试一次。
+            //
+            // 放在这里而不是 bootstrap：恢复要扫目录，没开 OneBot 的人不该为此
+            // 等在应用启动上。
+            //
+            // **两套策略都要**。这里一度只推了采集白名单，于是出站那一套在一个
+            // 新进程里永远是空的——四项填齐、保存过、重启一次，`send_voice` 就
+            // 再也不出现，直到有人重新点一次保存。而它不出现的时候，助手自己也
+            // 看不见它，所以问助手只会得到"我没有语音工具"。
+            {
+                let services = state.services.clone();
+                let config = state.config.clone();
+                let pool = services.db.clone();
+                let data_dir = services.paths.data_dir.clone();
+                let writable = services.corpus.writable();
+                let recovered =
+                    tokio::task::spawn_blocking(move || crate::voice_corpus::recover::run(&pool, &data_dir, writable))
+                        .await;
+                if let Ok(Err(error)) = recovered {
+                    tracing::warn!(%error, "voice corpus recovery failed");
+                }
+                if let Err(error) = refresh_voice_policy(&services, &config).await {
+                    // 采集与出站都没装上。说出来——静默的结果是一个开着的开关
+                    // 什么也不做。
+                    tracing::warn!(%error, "voice policy could not be applied; voice stays off this session");
+                }
+            }
+
+            // 这一代在恢复期间就被 stop() 掉了。现在 bind 只会跟下一代抢端口——
+            // 它自己的恢复也要几秒，两边谁先谁后没有保证。
+            if *shutdown_rx.borrow() {
+                running.store(false, Ordering::Relaxed);
+                return;
+            }
+
             let addr = format!("{}:{}", state.config.host, state.config.port);
             let listener = match TcpListener::bind(&addr).await {
                 Ok(l) => {
