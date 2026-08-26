@@ -2483,38 +2483,7 @@ mod tests {
         assert!(!PromptDelivery::NeverSent.read_by(&died()));
     }
 
-    /// A `Services` with nothing running behind it.
-    ///
-    /// Every part of it is lazy — the secrets manager does not reach the
-    /// keyring until asked, the MCP registry has no servers, the sleep
-    /// inhibitor nothing to inhibit — so this costs an in-memory database and a
-    /// temp directory. Local to this module because it is the only one that
-    /// drives [`Shared`] directly; the second caller should move it to
-    /// `services.rs`.
-    fn bare_services(dir: &std::path::Path) -> Services {
-        crate::services::Services::new(crate::services::ServicesInner {
-            db: crate::db::test_db(),
-            secrets: Arc::new(crate::secrets::SecretsManager::new(dir.to_path_buf())),
-            tools: Arc::new(crate::tools::ToolRegistry::new(dir.join("skills"), dir.join("logs"))),
-            mcp: crate::mcp::McpRegistry::new(),
-            turns: Arc::new(crate::turn::TurnCoordinator::new()),
-            approvals: crate::state::ApprovalWaiters::new(),
-            sub_agent_inboxes: crate::state::AppSubAgentInboxes::default(),
-            compact_breakers: tokio::sync::Mutex::new(std::collections::HashMap::new()),
-            voice: crate::state::VoiceState::new(),
-            corpus: Arc::new(crate::voice_corpus::CorpusCoordinator::new(dir)),
-            voice_limiter: Arc::new(crate::tts::limiter::VoiceLimiter::default()),
-            sleep: crate::sleep_inhibitor::AppSleepInhibitor::new(),
-            events: crate::events::EventBus::new(),
-            paths: crate::services::Paths {
-                data_dir: dir.to_path_buf(),
-                skills_root: dir.join("skills"),
-            },
-            #[cfg(not(target_os = "android"))]
-            acp: crate::acp::AcpRegistry::new(),
-            turn_starter: std::sync::OnceLock::new(),
-        })
-    }
+    use crate::services::bare_services;
 
     fn update(json: serde_json::Value) -> SessionNotification {
         serde_json::from_value(serde_json::json!({ "sessionId": "s", "update": json })).expect("a session update")
