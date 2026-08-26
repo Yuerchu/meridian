@@ -78,7 +78,7 @@
 //! what read-only, scoped and idempotent buys. A writing tool waits for the
 //! bridge to ask on its own behalf.
 
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -124,12 +124,16 @@ const FALLBACK_PROTOCOL_VERSION: &str = "2025-06-18";
 /// [`Bridge`]; only these change from turn to turn.
 #[derive(Clone)]
 struct TurnSnapshot {
-    /// Monotonic, and the only thing `end_turn` compares.
+    /// Which turn this window belongs to, and the whole of its identity.
     ///
-    /// Guards the ABA: a turn ending late must not clear the snapshot of the
-    /// turn that started after it. The turn id would serve as well; a counter
-    /// is simply the smaller thing to be sure about.
-    generation: u64,
+    /// Guards the ABA: a turn ending late must not shut the window of the turn
+    /// that started after it, so `end_turn` compares rather than clearing.
+    ///
+    /// A monotonic counter handed back by `begin_turn` would serve equally well
+    /// as an identity and worse as an API — it is a token the caller has to
+    /// carry to wherever the turn ends, and `AcpSession::finish` has a path
+    /// where the turn's own state is already gone. The id is known to both
+    /// sides everywhere, so there is nothing to carry and nowhere to drop it.
     turn_id: String,
     assistant_id: Option<String>,
     cancel: CancellationToken,
@@ -300,7 +304,6 @@ pub struct Bridge {
     tools: Vec<Arc<dyn Tool>>,
     /// `None` between turns. See the module note on the two lifetimes.
     turn: RwLock<Option<TurnSnapshot>>,
-    generation: Mutex<u64>,
     url: String,
     token: String,
     path: String,
@@ -338,7 +341,6 @@ impl Bridge {
             conversation_id: conversation_id.to_string(),
             tools: tools_for(conversation_id, project_id, logs_dir),
             turn: RwLock::new(None),
-            generation: Mutex::new(0),
             url: format!("http://127.0.0.1:{port}{path}"),
             token,
             path,
@@ -391,35 +393,25 @@ impl Bridge {
         })
     }
 
-    /// Open the window a call may execute in. Returns the generation to close
-    /// it with.
-    pub fn begin_turn(&self, turn_id: &str, assistant_id: Option<&str>, cancel: CancellationToken) -> u64 {
-        let generation = {
-            let Ok(mut counter) = self.generation.lock() else {
-                return 0;
-            };
-            *counter += 1;
-            *counter
-        };
+    /// Open the window a call may execute in.
+    pub fn begin_turn(&self, turn_id: &str, assistant_id: Option<&str>, cancel: CancellationToken) {
         if let Ok(mut slot) = self.turn.write() {
             *slot = Some(TurnSnapshot {
-                generation,
                 turn_id: turn_id.to_string(),
                 assistant_id: assistant_id.map(str::to_string),
                 cancel,
             });
         }
-        generation
     }
 
-    /// Close it, but only if it is still ours.
+    /// Close it, but only if it is still this turn's.
     ///
-    /// A turn that ends after the next one has started must not take the new
-    /// one's window with it — which is the whole reason `begin_turn` hands back
-    /// a generation instead of this being a bare `clear()`.
-    pub fn end_turn(&self, generation: u64) {
+    /// A turn ending after the next one has started must not take the new one's
+    /// window with it, which is why this compares rather than being a bare
+    /// `clear()`. Cheap to call for a turn that never opened one.
+    pub fn end_turn(&self, turn_id: &str) {
         if let Ok(mut slot) = self.turn.write()
-            && slot.as_ref().is_some_and(|t| t.generation == generation)
+            && slot.as_ref().is_some_and(|t| t.turn_id == turn_id)
         {
             *slot = None;
         }
@@ -509,10 +501,10 @@ impl Bridge {
     /// check that drifted from its siblings would be the kind of hole that
     /// still passes every test aimed at the other two.
     ///
-    /// The generation is what makes "still the same turn" answerable. A
-    /// non-empty snapshot is not the same question: the *next* turn's snapshot
-    /// is non-empty too, and admitting on that basis is how a call issued under
-    /// one turn executes under another.
+    /// The turn id is what makes "still the same turn" answerable. A non-empty
+    /// snapshot is not the same question: the *next* turn's snapshot is
+    /// non-empty too, and admitting on that basis is how a call issued under
+    /// one turn comes to execute under another.
     fn window_closed(&self, turn: &TurnSnapshot) -> Option<Value> {
         if turn.cancel.is_cancelled() {
             return Some(tool_error(
@@ -523,9 +515,9 @@ impl Bridge {
             .turn
             .read()
             .ok()
-            .and_then(|slot| slot.as_ref().map(|t| t.generation))
-            .unwrap_or(0);
-        (current != turn.generation).then(|| tool_error("The turn ended, so this tool call was not completed."))
+            .and_then(|slot| slot.as_ref().map(|t| t.turn_id.clone()));
+        (current.as_deref() != Some(turn.turn_id.as_str()))
+            .then(|| tool_error("The turn ended, so this tool call was not completed."))
     }
 
     /// The same no-window construction `hooks::review` makes, with every field
@@ -751,6 +743,8 @@ fn guard(parts: &Parts, token: &str) -> Result<(), (StatusCode, &'static str)> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use super::*;
 
     fn parts(headers: &[(&str, &str)]) -> Parts {
@@ -1070,7 +1064,6 @@ mod tests {
             conversation_id: "c-1".into(),
             tools: vec![tool],
             turn: RwLock::new(None),
-            generation: Mutex::new(0),
             // A token that looks like a real one, because a one-letter stand-in
             // occurs by accident in "http" and would make "the token is not in
             // the URL" impossible to assert.
@@ -1192,14 +1185,14 @@ mod tests {
             cancelled_when_called: Arc::new(Mutex::new(None)),
             during: Some(Box::new(move || {
                 if let Some(bridge) = handle.lock().unwrap().as_ref() {
-                    bridge.end_turn(1);
+                    bridge.end_turn("t-1");
                 }
             })),
         });
         let bridge = bridge_with(tool, dir.path());
         *ended.lock().unwrap() = Some(bridge.clone());
 
-        assert_eq!(bridge.begin_turn("t-1", None, CancellationToken::new()), 1);
+        bridge.begin_turn("t-1", None, CancellationToken::new());
         let reply = bridge.call(&json!({ "name": "conversation_usage" })).await;
 
         assert_eq!(*ran.lock().unwrap(), 1, "the tool should have run");
@@ -1217,17 +1210,16 @@ mod tests {
         let Watched { ran, tool, .. } = spy();
         let bridge = bridge_with(tool, dir.path());
 
-        let first = bridge.begin_turn("t-1", None, CancellationToken::new());
-        let second = bridge.begin_turn("t-2", None, CancellationToken::new());
-        assert_ne!(first, second);
+        bridge.begin_turn("t-1", None, CancellationToken::new());
+        bridge.begin_turn("t-2", None, CancellationToken::new());
 
-        bridge.end_turn(first);
+        bridge.end_turn("t-1");
 
         let reply = bridge.call(&json!({ "name": "conversation_usage" })).await;
         assert!(!is_error(&reply), "the second turn lost its window: {reply}");
         assert_eq!(*ran.lock().unwrap(), 1);
 
-        bridge.end_turn(second);
+        bridge.end_turn("t-2");
         assert!(is_error(&bridge.call(&json!({ "name": "conversation_usage" })).await));
     }
 
@@ -1264,11 +1256,11 @@ mod tests {
         let Watched { ran, tool, .. } = spy();
         let bridge = bridge_with(tool, dir.path());
 
-        let first = bridge.begin_turn("t-1", None, CancellationToken::new());
+        bridge.begin_turn("t-1", None, CancellationToken::new());
         // The whole of what turn A's caller sent. There is nothing else in it.
         let issued_during_a = json!({ "name": "conversation_usage" });
 
-        bridge.end_turn(first);
+        bridge.end_turn("t-1");
         bridge.begin_turn("t-2", None, CancellationToken::new());
 
         let reply = bridge.call(&issued_during_a).await;

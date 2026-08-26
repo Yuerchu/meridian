@@ -359,10 +359,17 @@ pub struct AuthMethod {
 #[serde(rename_all = "camelCase")]
 pub struct NewSessionParams {
     pub cwd: String,
-    /// Required by the spec even when empty. Meridian's own MCP servers are
-    /// deliberately not forwarded: they are configured against this app's tool
-    /// loop, and handing them to another agent would give it a second, unowned
-    /// route to the same side effects.
+    /// Required by the spec even when empty.
+    ///
+    /// This carries exactly one server and it is Meridian's own
+    /// [`crate::acp::bridge`] — a loopback endpoint this app owns, offering a
+    /// short list of read-only tools each pinned to this conversation.
+    ///
+    /// **The user's configured MCP servers are still not forwarded, and that is
+    /// a different question.** Those are wired to this app's tool loop and its
+    /// approvals; handing them to another agent would give it a second, unowned
+    /// route to the same side effects. The distinction is ownership rather than
+    /// the field: one of these is ours to answer for.
     pub mcp_servers: Vec<serde_json::Value>,
     /// `None` is the second attempt — see [`SessionMeta`] for why there is one.
     #[serde(rename = "_meta", skip_serializing_if = "Option::is_none")]
