@@ -1183,6 +1183,76 @@ rather than in core because what it dispatches to are the Tauri commands.
   boundary is the token, which `listen_guard` refuses to let be shorter than 16 characters
   off loopback. Tailscale is the answer for anyone wanting the transport encrypted.
 
+## Running commands in a container
+
+**Not built.** This is the design a container backend for `run_command` has to
+satisfy, written down because the expensive parts of it are decided by facts about
+Docker that are easy to assume wrongly. Every claim below was measured —
+`src-tauri/crates/core/tests/docker_probe.rs` is the measurement, it is `#[ignore]`d,
+and it should be re-run before any of this is relied on.
+
+Measured against Docker Desktop 28.4.0, linux containers on Windows.
+
+- **`docker exec` needs a container that already exists, and nothing decides who
+  creates it.** That is the gap in "wrap the argv in `docker exec`": the granularity
+  is one container per *conversation*, so the filesystem is continuous — something
+  `pip install`ed is still there next command — which means a lifecycle owner, an
+  ownership label, and reclaim of what a crash left behind.
+- **Killing the exec client does not kill the process inside.** Measured: it was
+  still running afterwards. So a container backend owes its own cancellation and
+  cannot reuse `execute_unsandboxed`'s process-tree kill — otherwise "cancelled"
+  means "we stopped watching", with the command still writing to the workspace and
+  the next command entering a container with a predecessor loose in it.
+- **And the obvious way to reach it is wrong.** `pkill -f <pattern>` from a second
+  exec exits 143: its own argv contains the pattern, so it kills its own shell, and
+  whether the target died first is a race. What works is a marker the target
+  *carries* and the killer only *names* — `docker exec -e MERIDIAN_EXEC_ID=…`, found
+  through `/proc/*/environ`. A pid is not available; the client is never told one.
+  So every command needs an id, and cancelling is a second exec.
+- **The writable layer carries between execs; the working directory does not.**
+  `cd /tmp` in one exec leaves the next at `/`. So each exec starts at the
+  conversation's project root, exactly as `working_dir_or_current()` already resolves
+  per call — and a logical cwd maintained by parsing `cd` out of shell commands is an
+  approximation that can never be made to agree with what the shell did. If a
+  persistent cwd is wanted it has to be an explicit operation.
+- **`ExecResult.sandboxed: bool` has to become an enum, and `without_sandbox()` is
+  the danger.** The existing escalation path removes the whole policy and runs on the
+  host. For a container that turns "the container refused this" into a card offering
+  a retry that actually means "run it on your machine instead" — the worst kind of
+  mis-authorisation. Only a Windows restricted-token denial may generate the existing
+  host-retry card. `is_sandbox_denied`'s keywords are Windows'; a container's refusals
+  look different and have to be classified per backend.
+- **`default_policy_if_enabled` must go.** It returns `None` on every non-Windows
+  platform, so a Linux or macOS conversation configured for Docker would be stripped
+  of its policy before `ToolContext` is built and run on the host — silently, which is
+  the exact failure the feature exists to prevent. Its replacement is platform-neutral
+  and returns an error where it cannot honour the configuration; a missing connector is
+  `Infrastructure`, never `None`.
+- **Secrets do not travel in `-e`.** Measured: an environment variable is in
+  `docker inspect` for the life of the container, readable by anything that can reach
+  the daemon.
+- **A label is enough to find every container this app owns**, which is what reclaim
+  after a crash needs, and `docker stop` returns with `.State.Running` already false —
+  the same invariant `acp::peer` holds for the adapter.
+- **`custom.rs` has to come too.** It passes `None` for the policy today and so always
+  runs on the host; covering only `run_command` would leave a user's own command tools
+  executing outside the sandbox in the same turn, which is not a session sandbox.
+- **The bridge conflict is real but not where it was expected.** `acp::bridge` binds
+  `127.0.0.1`, and loopback inside a container is the container. Measured on Docker
+  Desktop, a host server on `127.0.0.1` *is* reachable through
+  `--add-host=host.docker.internal:host-gateway`, because that name resolves to a proxy
+  (`192.168.65.254`) which connects from the host side. **This does not generalise**: a
+  native Linux daemon resolves it to the bridge address, the connection arrives on a
+  real interface, and a loopback-only server is not listening there. So a containerised
+  agent works on the desktop platforms this targets and silently fails on Linux, and the
+  implementation has to detect which it is on and say so rather than binding wider by
+  default — widening makes the bearer token the only boundary instead of the second one.
+- **Two containers per conversation is the thing to rule out.** A hosted ACP agent runs
+  its own tools and never goes through `run_command`, so giving it both an agent
+  container and a command container produces two independent writable views of one
+  workspace. Native conversations use the command container; `agent_kind =
+  'claude_code'` uses the agent container as its only execution environment.
+
 ## Logging
 
 `tracing` events at info and above go to `{app_data_dir}/logs/meridian.log` as JSONL, rotated by size (5 MB × 5). The user reads them in Settings → About → View logs; the assistant reads them through the `read_app_logs` tool, which the `meridian-diagnostics` skill drives. All three share `logging::reader::query`.
