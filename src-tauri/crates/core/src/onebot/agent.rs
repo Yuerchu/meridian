@@ -1021,6 +1021,10 @@ async fn headless_chat_inner(
         ),
         None => crate::agent::auto_review::AutoReviewed::inert(&asker),
     };
+    // Outermost, so it sees the reviewer's own refusals as well as the ones a
+    // person gave. Underneath it, the denials cheapest to repeat — the ones
+    // nothing stopped to ask about — would be exactly the ones it missed.
+    let approvals = crate::agent::denied::DeniedMemory::wrap(&approvals);
     let commentary = interim_text_fn.map(ChatCommentary);
     let surface = qq_tools.map(QqSurface);
     let steering = session_inbox.map(|inbox| InboxSteering {

@@ -1,7 +1,18 @@
 //! Detects a model stuck repeating the same tool call with identical
 //! arguments, warns it, and aborts the turn if it keeps going.
+//!
+//! **A run, not a set.** One fingerprint is held, so a repeat with anything in
+//! between resets the count — which is right for "is the model stuck" and
+//! useless for "has this already been refused". [`super::denied`] is the other
+//! question and keeps its own memory.
+//!
+//! What the two share is [`super::call_identity`], which replaced a private
+//! `DefaultHasher` into a `u64`. Nothing here needed the width or the
+//! stability; what it needed was to agree with the denial memory about what
+//! "the same call" means, because two answers to that would be visible as one
+//! guard firing on a call the other considered different.
 
-use std::hash::{DefaultHasher, Hash, Hasher};
+use super::call_identity::{Aspect, CallIdentity, identify};
 
 /// Consecutive identical calls before a warning is injected instead of executing.
 pub(crate) const LOOP_WARN_AFTER: u32 = 3;
@@ -17,14 +28,19 @@ pub(crate) enum LoopVerdict {
 
 #[derive(Debug, Default)]
 pub(crate) struct ToolLoopGuard {
-    last: Option<u64>,
+    last: Option<CallIdentity>,
     consecutive: u32,
 }
 
 impl ToolLoopGuard {
     /// Record one tool call and judge whether the model is looping.
+    ///
+    /// Always [`Aspect::Ordinary`]: this counts what the *model* issued, and a
+    /// sandbox escalation is the app asking again about a call the model made
+    /// once. Counting it as a second identical call would have the retry push
+    /// the model towards the abort threshold for something it did not repeat.
     pub(crate) fn observe(&mut self, name: &str, arguments: &str) -> LoopVerdict {
-        let fingerprint = fingerprint(name, arguments);
+        let fingerprint = identify(name, arguments, Aspect::Ordinary);
         if self.last == Some(fingerprint) {
             self.consecutive += 1;
         } else {
@@ -40,19 +56,6 @@ impl ToolLoopGuard {
             LoopVerdict::Proceed
         }
     }
-}
-
-/// Hash name + canonicalized arguments so formatting differences (whitespace,
-/// key order) don't defeat detection. serde_json::Value maps are BTreeMap-backed,
-/// so re-serializing yields a canonical form.
-fn fingerprint(name: &str, arguments: &str) -> u64 {
-    let mut hasher = DefaultHasher::new();
-    name.hash(&mut hasher);
-    match serde_json::from_str::<serde_json::Value>(arguments) {
-        Ok(value) => value.to_string().hash(&mut hasher),
-        Err(_) => arguments.hash(&mut hasher),
-    }
-    hasher.finish()
 }
 
 /// Synthetic tool result injected instead of executing a looping call.

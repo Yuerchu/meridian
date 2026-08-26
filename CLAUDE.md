@@ -490,6 +490,65 @@ that from answering the user, because a total nobody can decompose is one nobody
   by its *value* — pointing `autoreview.model` at something permissive, or appending a line
   to `autoreview.allow_rules`, turns a settings write into permission to run anything.
 
+## How long a question stands, and who may end it
+
+`crate::approval` owns the wait every asker does — the desktop's cards, ACP permissions,
+ACP elicitation forms. All three had written the same `select!` by hand; a deadline arm
+added to two of three copies is a card that expires in some conversations and hangs in
+others, with nothing in the code saying which.
+
+- **Removing an entry is what ends a wait**, because dropping the sender wakes the
+  receiver. So "who removes it" and "who ends it" are one question, and approve, deny,
+  cancel and expiry all race for it. `ApprovalWaiters::claim` is the answer: an atomic
+  take whose `Some` is the *right to act*. The name carries that — `remove` invited
+  `let _ = …`, which is the call that produces two accounts of one question.
+- **There is no sweeper.** A timer, a filter over the list and a background pass would be
+  three competing removers for one entry, and the removal already wakes the waiter. The
+  waiter is by definition present, so it owns its own deadline; the filter in
+  `views_for` / `all_pending_approvals` survives as belt and braces and hides rather
+  than removes.
+- **Only expiry is announced.** Cancel and turn-gone happen as a turn ends, and its own
+  `stop` already tells every client its questions are over. Expiry has nothing else — the
+  turn is still running — so `tool_approval_expired` exists, and its handler settles the
+  *card* as well as the queue. That is the opposite of `retireAnsweredApproval`, which
+  deliberately leaves an ordinary card holding its `approval_id` because the question is
+  still owed; here it is not, and a card left `pending` with no id draws as
+  `requires-action` — a demand with nowhere to send an answer.
+- **Timing out is `Ok(None)`, never a denial.** The tool does not run and the turn says
+  so, rather than the model being told the user refused, which nobody did.
+- **OneBot is not on this**, and that is a fact about its register rather than an
+  omission: its approvals are keyed by chat session, answered with typed text, and its
+  sixty-second timeout is already the sole owner of that wait. Moving it here is a rewrite
+  of that model, not a timeout.
+
+`agent::denied` is the other half — a turn-scoped set of what has already been refused, so
+a model that retries an identical call is answered from memory instead of putting a second
+card in front of somebody who has already said no.
+
+- **Different arguments ask again**, which is the line between this and
+  `agent::loop_guard`. That one watches for a model *stuck* and holds a single
+  fingerprint, so anything in between resets it. This holds a set and never forgets — but
+  a model that reads a refusal and proposes something narrower is doing what was asked,
+  and must reach the user.
+- **A `None` is not remembered.** Nobody answering is not a refusal, and remembering it
+  would let a deadline quietly become a policy.
+- **The wrapping order is `DeniedMemory(AutoReviewed(asker))`.** The reviewer answers some
+  calls without the asker underneath it being reached; those are the denials cheapest to
+  repeat — nothing stopped to ask a person — and a memory placed *inside* would be exactly
+  the one that never saw them. Demonstrated by a test that wraps it both ways.
+- **A hosted ACP session is not covered.** `session/request_permission` is answered
+  directly and never touches a `dyn Approvals`, so there is no decorator position; giving
+  it the same memory means lifting the set somewhere both paths reach.
+- **`agent::call_identity` is what "the same call" means**, shared by both guards so they
+  cannot disagree. It replaced a `DefaultHasher` into a `u64`, neither half of which
+  survives being a protocol. `1` and `1.0`, `0` and `-0.0`, and the two spellings of `é`
+  are all deliberately *different* calls: being too fine costs one extra question, being
+  too coarse costs an unasked one. Object keys sort, array order does not. **An escalation
+  is its own `Aspect`** — refusing to run something outside the sandbox is not refusing to
+  run it, and the sandboxed attempt afterwards is the safer of the two. The golden vector
+  is what detects a change to any of it; the field framing is unambiguous by construction
+  and, measured, no single prefix in it is individually load-bearing today.
+
 ## Hosting Claude Code (ACP)
 
 `src-tauri/crates/core/src/acp/` runs another coding agent *inside* Meridian. This app is

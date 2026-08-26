@@ -1182,6 +1182,10 @@ async fn chat_inner(
             unattended: false,
         },
     );
+    // Outermost, so it sees the reviewer's own refusals as well as the ones the
+    // user gave. Underneath it, the denials cheapest to repeat — the ones
+    // nothing stopped to ask about — would be exactly the ones it missed.
+    let approvals = meridian_core::agent::denied::DeniedMemory::wrap(&approvals);
     // Per turn, because a row it writes belongs to the turn it interrupted —
     // which is where the model reads it.
     let interjections =
