@@ -721,6 +721,9 @@ mod tests {
                 created_at: 0,
                 updated_at: 0,
                 api_format: "chat",
+                catalog_id: None,
+                credential_kind: "api_key",
+                transport_profile: "standard",
             },
         )
         .unwrap();
@@ -762,7 +765,7 @@ mod tests {
             resolved.base_url, "https://api.deepseek.com/v1",
             "trailing slash trimmed"
         );
-        assert_eq!(resolved.api_key, "sk-test");
+        assert_eq!(resolved.credential.api_key(), "sk-test");
         assert_eq!(resolved.api_format, "chat");
     }
 

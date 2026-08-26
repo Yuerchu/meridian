@@ -524,7 +524,7 @@ pub fn session_totals(conn: &mut SqliteConnection) -> QueryResult<Vec<SessionTot
         entry.last_captured_at = entry.last_captured_at.max(clip.created_at);
     }
     let mut out: Vec<SessionTotal> = totals.into_values().collect();
-    out.sort_by(|a, b| b.last_captured_at.cmp(&a.last_captured_at));
+    out.sort_by_key(|b| std::cmp::Reverse(b.last_captured_at));
     Ok(out)
 }
 

@@ -143,7 +143,7 @@ fn normalize_url(url: &str) -> String {
 /// compatible reseller — and a wrong id is worse than none: it shows the wrong
 /// logo and offers a key page for a service the user is not talking to.
 ///
-/// Migration 39 backfills existing rows with the same rule spelled out in SQL.
+/// Migration 40 backfills existing rows with the same rule spelled out in SQL.
 /// The duplication is intended and the two are allowed to drift apart over
 /// time: a migration has to replay to the same result years from now, so it is
 /// pinned to the URLs rows *actually hold*, while this function follows the
