@@ -1,5 +1,5 @@
 use super::{Permission, ShellType, Tool, ToolContext};
-use crate::sandbox::ExecResult;
+use crate::sandbox::{ExecResult, SandboxBackend};
 use async_trait::async_trait;
 use std::time::Duration;
 
@@ -84,7 +84,12 @@ impl Tool for RunCommandTool {
             e.to_string()
         })?;
 
-        if is_sandbox_denied(&res) {
+        // Two conditions, and the second is not redundant. The heuristic
+        // already only fires for the one backend whose escalation is safe;
+        // asking the backend as well means a new backend cannot be added to
+        // that heuristic and silently inherit the host-retry card. See
+        // `SandboxBackend::may_retry_on_host`.
+        if is_sandbox_denied(&res) && res.ran_under.may_retry_on_host() {
             // The user is about to get an "allow this without the sandbox?"
             // prompt. Without this line there is nothing recording what was
             // blocked or why they were asked.
@@ -124,8 +129,15 @@ impl Tool for RunCommandTool {
 /// Heuristic ported from codex-rs/sandboxing/src/denial.rs, adjusted for
 /// Windows: a non-zero exit alone is not a denial — the output must show an
 /// access failure the restricted token would produce.
+///
+/// **Matched against the backend that ran the command, not against "a sandbox
+/// ran it".** These strings are what a Windows restricted token produces;
+/// another confinement refuses in its own words, and running its output past
+/// this list would either miss every refusal or, worse, match one of these by
+/// coincidence and offer to rerun the command outside a sandbox it was never
+/// in.
 fn is_sandbox_denied(res: &ExecResult) -> bool {
-    if !res.sandboxed || res.timed_out || res.exit_code == 0 {
+    if res.ran_under != SandboxBackend::WindowsRestrictedToken || res.timed_out || res.exit_code == 0 {
         return false;
     }
     let hay = format!(
@@ -220,7 +232,11 @@ mod tests {
             stderr: stderr.as_bytes().to_vec(),
             timed_out,
             truncated: false,
-            sandboxed,
+            ran_under: if sandboxed {
+                SandboxBackend::WindowsRestrictedToken
+            } else {
+                SandboxBackend::Host
+            },
         }
     }
 
@@ -255,6 +271,47 @@ mod tests {
         assert!(!is_sandbox_denied(&exec_res(1, "Access is denied.", false, false)));
         assert!(!is_sandbox_denied(&exec_res(1, "Access is denied.", true, true)));
         assert!(!is_sandbox_denied(&exec_res(1, "some other failure", true, false)));
+    }
+
+    /// **The escalation gate.** The card this produces says "retry without the
+    /// sandbox", and what that means is decided entirely by which backend
+    /// refused: for a restricted token it is the same command on the same
+    /// machine with the token removed, and for anything that confines a command
+    /// *elsewhere* it is a different and much larger action than the one the
+    /// user is being asked about.
+    ///
+    /// Two things stand between a backend and that card and both are asserted
+    /// here, because either alone is one edit away from being bypassed: the
+    /// denial heuristic only recognises the backend whose words these are, and
+    /// `may_retry_on_host` only answers for the backend whose escalation is
+    /// safe.
+    #[test]
+    fn only_the_restricted_token_can_reach_the_host_retry_card() {
+        // The words of a Windows refusal, produced by something else. Both
+        // gates say no, so no card is offered.
+        let elsewhere = ExecResult {
+            exit_code: 1,
+            stdout: Vec::new(),
+            stderr: b"mkdir: cannot create directory: Permission denied".to_vec(),
+            timed_out: false,
+            truncated: false,
+            ran_under: SandboxBackend::Host,
+        };
+        assert!(!is_sandbox_denied(&elsewhere));
+        assert!(!elsewhere.ran_under.may_retry_on_host());
+
+        // And the one that may.
+        assert!(SandboxBackend::WindowsRestrictedToken.may_retry_on_host());
+        assert!(is_sandbox_denied(&exec_res(1, "Access is denied.", true, false)));
+    }
+
+    /// `ran_under` is what happened, not what was asked for. A caller reading
+    /// the *request* would call an unconfined command sandboxed on any platform
+    /// where the backend it named does not exist.
+    #[test]
+    fn a_result_reports_what_confined_it() {
+        assert!(!exec_res(0, "", false, false).was_sandboxed());
+        assert!(exec_res(0, "", true, false).was_sandboxed());
     }
 
     #[test]

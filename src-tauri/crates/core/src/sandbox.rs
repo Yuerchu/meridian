@@ -7,6 +7,46 @@ use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
 
+/// What is actually confining a command.
+///
+/// **Written down rather than derived**, which it used to be: `execute`
+/// decided by asking `cfg!(windows)` and then reading
+/// `allow_fs_write_outside_project`, so "which sandbox is this" had no answer
+/// anywhere and every caller re-derived its own. The two that matter are
+/// [`ExecResult::ran_under`] — a refusal is only recognisable against the
+/// backend that produced it — and whether a refusal may be escalated, which is
+/// the difference between a safe retry and a very unsafe one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SandboxBackend {
+    /// Nothing is confining it. The policy may still exist, for its timeout and
+    /// its project directory.
+    Host,
+    /// The ported restricted-token sandbox. Windows only.
+    WindowsRestrictedToken,
+}
+
+impl SandboxBackend {
+    /// Whether a refusal from this backend may be offered to the user as
+    /// "run it again without the sandbox".
+    ///
+    /// **True for exactly one backend, and that is the point.** The escalation
+    /// path removes the whole policy and runs on the host, which is the right
+    /// answer for a restricted token — the command was going to run on this
+    /// machine either way and the token merely narrowed it. It is the wrong
+    /// answer for anything that confines a command *somewhere else*: a card
+    /// saying "retry without the sandbox" would then mean "run this on your
+    /// machine instead of in the container", which is a different action from
+    /// the one that was refused and a far larger one than the wording admits.
+    ///
+    /// A backend that answers `false` reports its refusal to the model as an
+    /// ordinary failure. Somebody who wants it on the host changes the setting,
+    /// which is a decision made deliberately rather than a button pressed
+    /// during a turn.
+    pub fn may_retry_on_host(self) -> bool {
+        matches!(self, SandboxBackend::WindowsRestrictedToken)
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SandboxPolicy {
     /// Currently a no-op: the ported restricted-token sandbox has no network
@@ -16,6 +56,8 @@ pub struct SandboxPolicy {
     pub allow_fs_write_outside_project: bool,
     pub timeout: Duration,
     pub project_dir: Option<PathBuf>,
+    /// Which confinement this policy asks for. See [`SandboxBackend`].
+    pub backend: SandboxBackend,
 }
 
 impl Default for SandboxPolicy {
@@ -25,18 +67,33 @@ impl Default for SandboxPolicy {
             allow_fs_write_outside_project: false,
             timeout: Duration::from_secs(120),
             project_dir: None,
+            // The conservative default: a policy that has not said which
+            // confinement it wants is not claiming any.
+            backend: SandboxBackend::Host,
         }
     }
 }
 
 /// Default sandbox policy for a chat turn, honoring the `sandbox.enabled`
-/// preference (missing = enabled). Only Windows has a sandbox implementation;
-/// elsewhere this returns None so commands never hit the denied heuristic.
+/// preference (missing = enabled).
+///
+/// **`None` here means "nothing is confining commands", and it is only ever
+/// the honest answer when that is true.** Only Windows has an implementation
+/// today, so every other platform gets `None` — which is what it has always
+/// done and is correct while `WindowsRestrictedToken` is the only backend.
+///
+/// It stops being correct the moment a backend exists that those platforms
+/// *can* run: a conversation configured for one and handed `None` runs on the
+/// host, silently, which is the exact failure such a feature exists to prevent.
+/// Whatever replaces this has to be able to say "you asked for something I
+/// cannot give you" rather than returning `None`, and the platform check has to
+/// be per backend rather than a blanket `cfg`.
 pub fn default_policy_if_enabled(enabled: bool, project_dir: Option<&str>) -> Option<SandboxPolicy> {
     #[cfg(target_os = "windows")]
     {
         enabled.then(|| SandboxPolicy {
             project_dir: project_dir.map(PathBuf::from),
+            backend: SandboxBackend::WindowsRestrictedToken,
             ..Default::default()
         })
     }
@@ -70,8 +127,24 @@ pub struct ExecResult {
     pub timed_out: bool,
     /// At least one stream exceeded `MAX_CAPTURE_BYTES` and was truncated.
     pub truncated: bool,
-    /// The command actually ran under the Windows restricted-token sandbox.
-    pub sandboxed: bool,
+    /// What actually confined this command, which is not always what the policy
+    /// asked for — a policy naming a backend this platform cannot run falls
+    /// back to [`SandboxBackend::Host`] rather than failing.
+    ///
+    /// **Was a `bool`, and the two questions it collapsed are answered
+    /// differently.** "Did something confine this" is what decides whether a
+    /// non-zero exit is worth reading as a refusal; "which thing" is what
+    /// decides what the refusal looks like and whether it may be escalated.
+    /// With one bit, every backend has to share Windows' denial keywords and
+    /// Windows' escalation.
+    pub ran_under: SandboxBackend,
+}
+
+impl ExecResult {
+    /// Whether anything at all confined this command.
+    pub fn was_sandboxed(&self) -> bool {
+        self.ran_under != SandboxBackend::Host
+    }
 }
 
 #[derive(Debug)]
@@ -120,15 +193,31 @@ pub async fn execute(
     if command.is_empty() {
         return Err(ExecError::Spawn("empty command".into()));
     }
-    #[cfg(target_os = "windows")]
-    if let Some(policy) = policy
-        && !policy.allow_fs_write_outside_project
-    {
-        return execute_windows_sandboxed(command, cwd, policy, timeout, cancel).await;
+    // The backend the policy names, rather than a condition re-derived here.
+    // `allow_fs_write_outside_project` still gates the restricted token,
+    // because a policy that permits writing anywhere is asking for nothing the
+    // token could enforce — but it is now one arm of a decision that is
+    // written down instead of the whole of it.
+    match policy.map(|p| p.backend) {
+        #[cfg(target_os = "windows")]
+        Some(SandboxBackend::WindowsRestrictedToken) => {
+            let policy = policy.expect("matched on its own backend");
+            if policy.allow_fs_write_outside_project {
+                execute_unsandboxed(command, cwd, timeout, cancel).await
+            } else {
+                execute_windows_sandboxed(command, cwd, policy, timeout, cancel).await
+            }
+        }
+        // A policy asking for a backend this platform has no implementation
+        // for. It runs, unconfined, and `ran_under` says so — which is what
+        // keeps a caller from reading the *request* as the outcome.
+        #[cfg(not(target_os = "windows"))]
+        Some(SandboxBackend::WindowsRestrictedToken) => {
+            tracing::warn!("a command asked for the Windows sandbox on a platform without one; running unconfined");
+            execute_unsandboxed(command, cwd, timeout, cancel).await
+        }
+        Some(SandboxBackend::Host) | None => execute_unsandboxed(command, cwd, timeout, cancel).await,
     }
-    #[cfg(not(target_os = "windows"))]
-    let _ = policy;
-    execute_unsandboxed(command, cwd, timeout, cancel).await
 }
 
 #[cfg(unix)]
@@ -280,7 +369,7 @@ async fn execute_unsandboxed(
         stderr,
         timed_out: exit_status.is_none(),
         truncated: out_trunc || err_trunc,
-        sandboxed: false,
+        ran_under: SandboxBackend::Host,
     })
 }
 
@@ -471,7 +560,7 @@ async fn execute_windows_sandboxed(
                     stderr,
                     timed_out: true,
                     truncated: truncated.load(Ordering::Relaxed),
-                    sandboxed: true,
+                    ran_under: SandboxBackend::WindowsRestrictedToken,
                 }),
                 WaitOutcome::Exited => Ok(ExecResult {
                     exit_code: code as i32,
@@ -479,7 +568,7 @@ async fn execute_windows_sandboxed(
                     stderr,
                     timed_out: false,
                     truncated: truncated.load(Ordering::Relaxed),
-                    sandboxed: true,
+                    ran_under: SandboxBackend::WindowsRestrictedToken,
                 }),
             }
         }
@@ -498,6 +587,7 @@ mod tests {
             allow_fs_write_outside_project: false,
             timeout: Duration::from_secs(30),
             project_dir: Some(project_dir.to_path_buf()),
+            backend: SandboxBackend::WindowsRestrictedToken,
         }
     }
 
@@ -530,7 +620,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(res.exit_code, 0);
-        assert!(!res.sandboxed);
+        assert_eq!(res.ran_under, SandboxBackend::Host);
         assert!(stdout_str(&res).contains("hello"));
     }
 
@@ -626,7 +716,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(res.exit_code, 0);
-        assert!(res.sandboxed);
+        assert_eq!(res.ran_under, SandboxBackend::WindowsRestrictedToken);
         assert!(stdout_str(&res).contains("SANDBOX-OK"));
     }
 
