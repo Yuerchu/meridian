@@ -23,6 +23,8 @@ pub enum SandboxBackend {
     Host,
     /// The ported restricted-token sandbox. Windows only.
     WindowsRestrictedToken,
+    /// A container, entered per command. See [`crate::container`].
+    Container,
 }
 
 impl SandboxBackend {
@@ -58,6 +60,24 @@ pub struct SandboxPolicy {
     pub project_dir: Option<PathBuf>,
     /// Which confinement this policy asks for. See [`SandboxBackend`].
     pub backend: SandboxBackend,
+    /// Where commands go when [`Self::backend`] is
+    /// [`SandboxBackend::Container`].
+    ///
+    /// **Beside the discriminant rather than inside it**, which is the shape
+    /// that first suggested itself. A `Container(Arc<dyn …>)` variant costs
+    /// `SandboxBackend` its `Copy` and its `Eq` — and those are what let
+    /// [`ExecResult::ran_under`] *report* a backend and let a caller compare
+    /// against one. A result would then be carrying a live handle to the thing
+    /// that produced it, which is not a fact about the past.
+    ///
+    /// `None` while the backend asks for a container is not a fallback to the
+    /// host. It is a configuration error, and `execute` says so rather than
+    /// running the command unconfined — which is the failure the whole feature
+    /// exists to prevent.
+    pub connector: Option<std::sync::Arc<dyn crate::container::CommandConnector>>,
+    /// Which conversation's container to enter. Meaningless for every other
+    /// backend, because they confine a command rather than placing it.
+    pub conversation_id: Option<String>,
 }
 
 impl Default for SandboxPolicy {
@@ -70,6 +90,8 @@ impl Default for SandboxPolicy {
             // The conservative default: a policy that has not said which
             // confinement it wants is not claiming any.
             backend: SandboxBackend::Host,
+            connector: None,
+            conversation_id: None,
         }
     }
 }
@@ -216,8 +238,44 @@ pub async fn execute(
             tracing::warn!("a command asked for the Windows sandbox on a platform without one; running unconfined");
             execute_unsandboxed(command, cwd, timeout, cancel).await
         }
+        Some(SandboxBackend::Container) => {
+            let policy = policy.expect("matched on its own backend");
+            // **Fails closed.** A policy that asks for a container and has no
+            // connector, or no conversation to place the command in, is
+            // misconfigured — and running it on the host instead is exactly the
+            // silent fallback this backend exists to prevent. The turn sees an
+            // error it can report; nobody gets an unconfined command they
+            // believe was contained.
+            let (Some(connector), Some(conversation_id)) = (&policy.connector, &policy.conversation_id) else {
+                return Err(ExecError::Spawn(
+                    "this conversation is configured to run commands in a container, but no container \
+                     backend is available. Nothing was run — check Docker is installed and running."
+                        .into(),
+                ));
+            };
+            connector.execute(command, cwd, conversation_id, timeout, cancel).await
+        }
         Some(SandboxBackend::Host) | None => execute_unsandboxed(command, cwd, timeout, cancel).await,
     }
+}
+
+/// Run a client process with the bounded capture, timeout and cancellation the
+/// host path already has.
+///
+/// Exists for [`crate::container`], whose `docker` invocation is an ordinary
+/// child process and wants all of that — while everything those mechanisms do
+/// applies to the *client* and not to the command inside, which is the whole
+/// reason that module needs a cancellation of its own.
+pub(crate) async fn run_client(
+    program: &str,
+    args: &[String],
+    timeout: Duration,
+    cancel: &CancellationToken,
+) -> Result<ExecResult, ExecError> {
+    let mut argv = Vec::with_capacity(args.len() + 1);
+    argv.push(program.to_string());
+    argv.extend_from_slice(args);
+    execute_unsandboxed(&argv, Path::new("."), timeout, cancel).await
 }
 
 #[cfg(unix)]
@@ -588,6 +646,8 @@ mod tests {
             timeout: Duration::from_secs(30),
             project_dir: Some(project_dir.to_path_buf()),
             backend: SandboxBackend::WindowsRestrictedToken,
+            connector: None,
+            conversation_id: None,
         }
     }
 
