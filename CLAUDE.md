@@ -878,6 +878,97 @@ the machines that want this already have node and a signed-in `claude`.
   `fs/read_text_file` and `fs/write_text_file`, after which every file it touches goes
   through this app — which is what a changes panel and a `FileAccess` policy would need.
 
+## The tool bridge
+
+`acp/bridge.rs` is a loopback MCP server, one per hosted session, lending the agent
+inside the things only Meridian knows — this conversation's memories, the app's own log,
+what the conversation has cost. Not what it already has: duplicating Claude Code's files
+and shell would be two routes to one effect with only one of them going through this
+app's approvals. The endpoint is a port the OS picked, a path nobody can guess and a
+bearer token, all three travelling together in `mcpServers` and none of them written to
+disk. `tests/mcp_bridge_probe.rs` is where the protocol facts below were measured; it is
+`#[ignore]`d, spends quota, and should be re-run before any of them is trusted again,
+since the adapter is deliberately unpinned.
+
+- **The server may be as small as the spec permits, and that is measured rather than
+  assumed.** POST only, one route, pure JSON: no SSE, no `Mcp-Session-Id`, no GET stream,
+  no DELETE. The client asks for the notification stream once, takes `405`, and carries
+  on. Two details a server written from the guess alone gets wrong — every request
+  *except the opening `initialize`* carries `MCP-Protocol-Version`, so requiring it
+  unconditionally rejects the handshake; and `tools/call` arrives with `_meta` carrying
+  `claudecode/toolUseId` and a `progressToken`, so refusing unknown members refuses every
+  call. `mcp/protocol.rs` grew `Incoming`/`Outgoing` for this direction rather than
+  widening `JsonRpcRequest`, which would let what a peer might send decide the type of an
+  id we choose ourselves.
+- **The server lives as long as the session; what it may *do* lives as long as the turn.**
+  A session outlives many turns and sits idle between them with no turn id, and a
+  `ToolContext` with `turn_id: None` breaks four things at once — per-turn limits stop
+  counting, the cancel token belongs to no prompt, a call arriving after its turn ended
+  still runs, and rows are filed under nothing. So a turn installs a snapshot, taken
+  **once** per call rather than read field by field, and re-checked at each of the three
+  points an await can end a turn underneath it. `tools/list` answers regardless: it
+  describes capability and executes nothing, and an idle session reporting no tools would
+  teach the model they do not exist.
+
+  The window is keyed on the **turn id**, not on a generation `begin_turn` hands back. A
+  counter works as an identity and fails as an API: it is a token the caller carries to
+  wherever the turn ends, and `finish` has a path where the turn's own state is already
+  gone — which would leave a window open with nothing able to name it. The id is known
+  everywhere, so `end_turn` sits above that early return.
+
+  **What it cannot do is reject a delayed call from an earlier turn**, and that is the
+  protocol rather than a gap. Nothing on the wire carries the issuing turn, so "issued in
+  A, arrived in B" and "issued in B, arrived in B" are the same bytes. Telling them apart
+  needs a per-turn URL; measured, a `session/load` *can* replace the descriptor, so the
+  price is a full reload per turn, which recites the whole history. Not worth it — and it
+  is the other reason the first tools here are read-only, bounded and idempotent. A test
+  pins the limitation so nobody later reads it as a guarantee.
+- **Scope is the wrapper's job, not the whitelist's.** A list of names says which tools
+  and nothing about how much each sees, and all three defaulted outward: memory falls back
+  to the *client-global* scope when a conversation has no project, `read_app_logs` has
+  `this_conversation` defaulting to **false**, and usage had no scope field at all until
+  `tools::usage` was written for this. So the bridge *builds* its tools rather than
+  filtering names, each already carrying the scope it may not leave, and `tools/call`
+  resolves against the same list `tools/list` renders — the "check what was actually
+  offered, not what a constant says" rule with the two made structurally identical.
+
+  The wrappers **overwrite** the scope on the context rather than asserting on it, so a
+  mistake in how the context is built cannot widen them. The log one closes two holes and
+  either alone leaves the other open: the argument, and the context — the tool resolves
+  "this conversation" from `context.conversation_id`, and `None` there means no filter at
+  all, which is the same unrestricted read reached from the other side. Memory is hidden
+  entirely when there is no project rather than offered and refused: project membership
+  cannot change under a session, so the list is stable, and a model that cannot see a tool
+  will not keep trying it or tell the user about a capability it lacks. None of this
+  changes what these tools do on the desktop.
+- **Permission is not the boundary, even though the adapter does ask.** Measured: a
+  `session/request_permission` arrives before an MCP tool call, offering
+  `reject_once`/`allow_once`/`allow_always`, and lands on `acp::approvals::ask` with no
+  code in the bridge at all. That is a bonus. The same probe found the session's `mode`
+  option offers `bypassPermissions`, `dontAsk` and `auto` — the user's to set, invisible
+  from here, and the first removes the ask entirely. So every tool on this bridge has to
+  be one that needs no permission. A writing tool waits for the bridge to ask on its own
+  behalf, which is also the point at which `auto_review` not covering hosted sessions
+  stops being a known trade-off and becomes a blocker.
+- **A missing bridge degrades visibly, which is the inverse of the `hooks/` rule.** That
+  gate fails open because a missed review costs one missed review. This is a set of
+  capabilities already promised to an agent: absent silently, it works around them or says
+  it saved a memory using a tool that was never there. The notice rides `Owed` under the
+  same "reading it is not saying it" rule, and goes *behind* the memory-loss one, which
+  says the agent cannot see the conversation at all. A session that asked for no tools is
+  not missing any — an import opens a session only to read its recital — so the flag is
+  the conjunction, never `bridge.is_none()`.
+- **Both openers advertise it.** `session/new` and `session/load` alike, because a resumed
+  session builds its query through the second: advertised at only the first, a conversation
+  has tools until the app is next restarted and none afterwards. They go through
+  `new_session_params` / `load_session_params` rather than being built inline, and that is
+  a test seam rather than tidiness — a version asserting on `advertised()` alone stayed
+  green while `session/load` was mutated back to `Vec::new()`.
+- **The user's own MCP servers are still not forwarded**, and `NewSessionParams`'s comment
+  now says which of the two it means. Those are wired to this app's tool loop and its
+  approvals; handing them over gives another agent a second, unowned route to the same
+  side effects. The distinction is ownership, not the field.
+
 ## The prompt queue
 
 `queued_prompts` (migration 34) is what a person stacks up while an agent is working.
