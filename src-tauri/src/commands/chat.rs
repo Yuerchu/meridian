@@ -149,10 +149,15 @@ impl Drop for TurnGuard<'_> {
         // Nobody is left to answer these. Left behind, they would show the user
         // a card whose buttons reach a receiver that has already gone, and the
         // registry would grow one entry per abandoned turn.
-        self.services
-            .approvals
-            .lock()
-            .retain(|_, pending| pending.turn_id != self.turn_id);
+        //
+        // Through `approval::retire_turn` rather than a bare `retain`: a card
+        // expiring as its turn dies is claimed by whichever of the two gets
+        // there first, and the loser does nothing.
+        meridian_core::approval::retire_turn(
+            self.services,
+            &self.turn_id,
+            meridian_core::approval::RetireCause::TurnGone,
+        );
         // Before the event, not after: a user who sends again the instant the
         // stream ends must not be told the conversation is busy.
         self.lease.take();

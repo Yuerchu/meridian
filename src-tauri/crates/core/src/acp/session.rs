@@ -2287,10 +2287,10 @@ impl AcpSession {
     /// conversation may already have questions of its own outstanding, and
     /// clearing those would strand *it* instead.
     fn retire_approvals(&self, services: &Services, turn_id: &str) {
-        let mut register = services.approvals.lock();
-        let before = register.len();
-        register.retain(|_, pending| pending.turn_id != turn_id);
-        let retired = before - register.len();
+        // Through `approval::retire_turn` rather than a bare `retain`, so a
+        // question already claimed by its own deadline is not accounted for a
+        // second time here.
+        let retired = crate::approval::retire_turn(services, turn_id, crate::approval::RetireCause::TurnGone);
         if retired > 0 {
             tracing::debug!(
                 retired,

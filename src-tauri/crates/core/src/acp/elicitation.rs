@@ -593,6 +593,10 @@ pub async fn ask(
     let (tx, rx) = oneshot::channel();
     let arguments = form.questions_json().to_string();
 
+    // Worked out once, here, rather than by the waiter — see the note in
+    // `acp::approvals::ask`.
+    let ttl = crate::approval::ttl(services);
+
     // Registered before the event goes out, so an answer cannot arrive before
     // there is somewhere to put it.
     services.approvals.lock().insert(
@@ -607,6 +611,7 @@ pub async fn ask(
             arguments: arguments.clone(),
             retry_reason: None,
             bubble: None,
+            expires_at: ttl.map(|ttl| std::time::Instant::now() + ttl),
             sender: tx,
         },
     );
@@ -621,7 +626,7 @@ pub async fn ask(
         "conversation_id": conversation_id,
     });
     if let Err(e) = services.events.emit("chat-stream", payload) {
-        services.approvals.lock().remove(&approval_id);
+        services.approvals.claim(&approval_id);
         tracing::warn!(error = %e, "could not draw an ACP elicitation form");
         return protocol::elicitation_declined();
     }
@@ -632,16 +637,7 @@ pub async fn ask(
         &turn.turn_id,
         TurnPhase::AwaitingApproval,
         Some(ASK_TOOL),
-        async {
-            let decision = tokio::select! {
-                _ = turn.cancel.cancelled() => None,
-                r = rx => r.ok(),
-            };
-            if decision.is_none() {
-                services.approvals.lock().remove(&approval_id);
-            }
-            decision
-        },
+        crate::approval::wait(services, &approval_id, rx, &turn.cancel, ttl),
     )
     .await;
 

@@ -1155,7 +1155,8 @@ export interface StreamChunk {
   outcome?: string
   /** Only on `server_tool`: a tool the provider ran on its own side. */
   call?: ServerToolCall
-  /** Only on `tool_approval_req`. What the answer must be addressed to. */
+  /** On `tool_approval_req`, what the answer must be addressed to. On
+   *  `tool_approval_expired`, which question stopped standing. */
   approval_id?: string
   /** Set only when this approval is a sandbox-blocked call asking to run
    *  again without the sandbox. Its presence is what marks the escalation. */

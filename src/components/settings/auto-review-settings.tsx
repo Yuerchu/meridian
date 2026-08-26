@@ -22,6 +22,11 @@ const KEYS = {
   allow: 'autoreview.allow_rules',
   deny: 'autoreview.deny_rules',
   environment: 'autoreview.environment',
+  // Not an `autoreview.` key, and deliberately not in that prefix: this one
+  // decides how long a person is waited *for*, which is the opposite question
+  // and grants nothing. It lives on this panel because this is where approval
+  // behaviour is, and there is no second panel to put it on.
+  ttl: 'approvals.ttl_minutes',
 } as const
 
 interface Settings {
@@ -31,6 +36,7 @@ interface Settings {
   allow: string
   deny: string
   environment: string
+  ttl: string
 }
 
 const DEFAULTS: Settings = {
@@ -43,6 +49,24 @@ const DEFAULTS: Settings = {
   allow: '',
   deny: '',
   environment: '',
+  ttl: '30',
+}
+
+/** A week. Past this the deadline is doing nothing a person would notice. */
+const MAX_TTL_MINUTES = 7 * 24 * 60
+
+/**
+ * What to store for whatever was typed.
+ *
+ * Zero is kept, because "never expire" is a real answer and not a mistake.
+ * Anything unreadable becomes the default instead: read as zero by the backend
+ * it would turn a typo into questions that stand for ever, which is the one
+ * outcome nobody would be choosing on purpose.
+ */
+function normaliseTtl(raw: string): number {
+  const n = Number.parseInt(raw.trim(), 10)
+  if (!Number.isFinite(n) || n < 0) return Number(DEFAULTS.ttl)
+  return Math.min(n, MAX_TTL_MINUTES)
 }
 
 /**
@@ -224,13 +248,14 @@ export function AutoReviewSettings() {
 
   const load = useCallback(async () => {
     try {
-      const [enabled, model, escalate, allow, deny, environment, provs] = await Promise.all([
+      const [enabled, model, escalate, allow, deny, environment, ttl, provs] = await Promise.all([
         api.getPreference(KEYS.enabled),
         api.getPreference(KEYS.model),
         api.getPreference(KEYS.escalate),
         api.getPreference(KEYS.allow),
         api.getPreference(KEYS.deny),
         api.getPreference(KEYS.environment),
+        api.getPreference(KEYS.ttl),
         api.listProviders(),
       ])
       setSettings({
@@ -240,6 +265,11 @@ export function AutoReviewSettings() {
         allow: allow ?? '',
         deny: deny ?? '',
         environment: environment ?? '',
+        // Unset reads as the default rather than as blank, so the field always
+        // shows the number that is actually in force. The backend applies the
+        // same default; agreeing on it here means the box is not a lie the
+        // first time it is opened.
+        ttl: ttl ?? DEFAULTS.ttl,
       })
       setProviders(provs)
     } catch (err) {
@@ -264,6 +294,11 @@ export function AutoReviewSettings() {
         api.setPreference(KEYS.allow, settings.allow),
         api.setPreference(KEYS.deny, settings.deny),
         api.setPreference(KEYS.environment, settings.environment),
+        // Normalised on the way out, so the backend's parse never has to guess:
+        // anything that is not a number becomes the default rather than
+        // silently disabling the deadline, which is what an unparseable value
+        // would otherwise do if the backend read it as zero.
+        api.setPreference(KEYS.ttl, String(normaliseTtl(settings.ttl))),
       ])
       setSaved(true)
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
@@ -284,6 +319,28 @@ export function AutoReviewSettings() {
   return (
     <SettingsPane>
       <SettingsHeader title={t('settings.autoReview.title')} subtitle={t('settings.autoReview.description')} />
+
+      {/* Above the reviewer, because it applies whether or not there is one:
+          this is how long a person is waited for, and the reviewer is who
+          answers when nobody does. */}
+      <div className="space-y-1.5">
+        <label htmlFor="approvals-ttl" className="text-sm font-medium">
+          {t('settings.approvals.ttl')}
+        </label>
+        <p className="text-xs text-muted">{t('settings.approvals.ttlHint')}</p>
+        <Input
+          id="approvals-ttl"
+          type="number"
+          min={0}
+          max={MAX_TTL_MINUTES}
+          className="max-w-32"
+          value={settings.ttl}
+          onChange={(e) => setSettings({ ...settings, ttl: e.target.value })}
+        />
+        {normaliseTtl(settings.ttl) === 0 && (
+          <p className="text-xs text-warning-soft-foreground">{t('settings.approvals.ttlNever')}</p>
+        )}
+      </div>
 
       <div className="flex items-start gap-2">
         <Checkbox

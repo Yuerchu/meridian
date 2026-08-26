@@ -70,6 +70,10 @@ impl DesktopApprovals {
         // tool call id used to cost.
         let approval_id = uuid::Uuid::new_v4().to_string();
         let (tx, rx) = oneshot::channel();
+        // Worked out once, here, rather than by the waiter. Both would produce
+        // the same number, but only one of them can be *the* answer to "when
+        // does this stop standing" — and the listing paths read the stored one.
+        let ttl = meridian_core::approval::ttl(services);
         // Registered before the event goes out, so a decision can never arrive
         // before there is somewhere to put it.
         {
@@ -86,6 +90,7 @@ impl DesktopApprovals {
                     arguments: tc.arguments.clone(),
                     retry_reason: retry_reason.map(str::to_string),
                     bubble: self.bubble.clone(),
+                    expires_at: ttl.map(|ttl| std::time::Instant::now() + ttl),
                     sender: tx,
                 },
             );
@@ -119,7 +124,7 @@ impl DesktopApprovals {
         if let Err(e) = services.events.emit("chat-stream", payload) {
             // Nobody will ever answer a card that was never drawn; don't leave
             // the entry behind for the turn guard to find.
-            services.approvals.lock().remove(&approval_id);
+            services.approvals.claim(&approval_id);
             return Err(e);
         }
         // After the card is on screen, so the recorded phase is never ahead of
@@ -133,19 +138,7 @@ impl DesktopApprovals {
             &self.turn_id,
             TurnPhase::AwaitingApproval,
             Some(&tc.name),
-            async {
-                let decision = tokio::select! {
-                    _ = self.cancel.cancelled() => None,
-                    r = rx => r.ok(),
-                };
-                if decision.is_none() {
-                    // Cancelled, or the sender was dropped. Take the entry out
-                    // so a late answer cannot land on a turn that has already
-                    // moved on.
-                    services.approvals.lock().remove(&approval_id);
-                }
-                decision
-            },
+            meridian_core::approval::wait(services, &approval_id, rx, &self.cancel, ttl),
         )
         .await;
         Ok(decision)

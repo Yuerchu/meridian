@@ -8,6 +8,7 @@ pub mod agent;
 /// declares them.
 #[cfg(target_os = "android")]
 pub mod android_bridge;
+pub mod approval;
 pub mod bootstrap;
 pub mod client;
 pub mod codex_auth;
