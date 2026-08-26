@@ -141,28 +141,52 @@ pub fn resolve_with_overrides(
     model_override: Option<String>,
     provider_override: Option<&str>,
 ) -> Result<ResolvedProvider, String> {
+    if let Some(pid) = provider_override {
+        // Both overrides together name a complete destination, so the
+        // assistant is not consulted at all. Resolving it first anyway is not
+        // just wasted work — its gaps still fail the call. The auto reviewer
+        // passes no assistant on purpose, and used to be answered "No model
+        // configured" on every review while the pair the user had picked sat
+        // unread in the overrides.
+        if let Some(model) = model_override {
+            return resolve_named(secrets, pool, pid, model);
+        }
+        // The identity moves with the endpoint. A row attributed to the
+        // assistant's standing choice while the request went somewhere else
+        // would be worse than no attribution at all — it would look measured.
+        let resolved = resolve_provider_config(secrets, pool, assistant)?;
+        return resolve_named(secrets, pool, pid, resolved.model);
+    }
+
     let mut resolved = resolve_provider_config(secrets, pool, assistant)?;
     if let Some(m) = model_override {
         resolved.model = m;
     }
-
-    if let Some(pid) = provider_override {
-        let mut conn = get_conn(pool)?;
-        let p = db::ops::provider::get_provider(&mut conn, pid).map_err(|e| e.to_string())?;
-        let api_key =
-            get_provider_api_key(secrets, pid).ok_or_else(|| format!("API Key not set for provider '{}'", p.name))?;
-        // The identity moves with the endpoint. A row attributed to the
-        // assistant's standing choice while the request went somewhere else
-        // would be worse than no attribution at all — it would look measured.
-        resolved.provider_id = p.id;
-        resolved.provider_name = p.name;
-        resolved.provider_type = p.provider_type;
-        resolved.base_url = p.base_url.trim_end_matches('/').to_string();
-        resolved.api_key = api_key;
-        resolved.api_format = p.api_format;
-    }
-
     Ok(resolved)
+}
+
+/// A provider row plus a model name — everything a request needs, with no
+/// assistant in the picture. This being total is what lets the pair of
+/// overrides above skip the assistant resolution entirely.
+fn resolve_named(
+    secrets: &SecretsManager,
+    pool: &DbPool,
+    provider_id: &str,
+    model: String,
+) -> Result<ResolvedProvider, String> {
+    let mut conn = get_conn(pool)?;
+    let p = db::ops::provider::get_provider(&mut conn, provider_id).map_err(|e| e.to_string())?;
+    let api_key = get_provider_api_key(secrets, provider_id)
+        .ok_or_else(|| format!("API Key not set for provider '{}'", p.name))?;
+    Ok(ResolvedProvider {
+        provider_id: p.id,
+        provider_name: p.name,
+        provider_type: p.provider_type,
+        base_url: p.base_url.trim_end_matches('/').to_string(),
+        api_key,
+        model,
+        api_format: p.api_format,
+    })
 }
 
 /// For the passes that only read a conversation and write prose about it —
@@ -619,6 +643,83 @@ mod tests {
             );
         }
         assert!(enabled_server_tools(None, &caps).is_empty());
+    }
+
+    fn seed_provider(pool: &DbPool) {
+        let mut conn = pool.get().unwrap();
+        db::ops::provider::create_provider(
+            &mut conn,
+            &db::models::provider::NewProvider {
+                id: "p1",
+                name: "Deepseek",
+                provider_type: "deepseek",
+                base_url: "https://api.deepseek.com/v1/",
+                is_enabled: 1,
+                sort_order: 0,
+                created_at: 0,
+                updated_at: 0,
+                api_format: "chat",
+            },
+        )
+        .unwrap();
+    }
+
+    fn mock_secrets(dir: &std::path::Path) -> SecretsManager {
+        SecretsManager::new_with_keyring_store(
+            dir.to_path_buf(),
+            std::sync::Arc::new(crate::keyring::test_support::MockKeyringStore::new()),
+        )
+    }
+
+    /// How the auto reviewer resolves its model: a bare `provider:model` pair
+    /// and no assistant at all. The base resolution used to run first anyway
+    /// and fail on the assistant it did not have — so every review, however
+    /// the feature was configured, came back "No model configured" while the
+    /// pair the user had saved sat unread in the overrides.
+    #[test]
+    fn a_full_override_pair_needs_no_assistant() {
+        let pool = crate::db::test_db();
+        seed_provider(&pool);
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = mock_secrets(dir.path());
+        secrets
+            .set(
+                &SecretScope::Global,
+                &SecretName::new("PROVIDER_P1_KEY").unwrap(),
+                "sk-test",
+            )
+            .unwrap();
+
+        let resolved = resolve_with_overrides(&secrets, &pool, None, Some("deepseek-v4-flash".into()), Some("p1"))
+            .expect("a complete pair of overrides is a complete destination");
+
+        assert_eq!(resolved.provider_id, "p1");
+        assert_eq!(resolved.provider_name, "Deepseek");
+        assert_eq!(resolved.model, "deepseek-v4-flash");
+        assert_eq!(
+            resolved.base_url, "https://api.deepseek.com/v1",
+            "trailing slash trimmed"
+        );
+        assert_eq!(resolved.api_key, "sk-test");
+        assert_eq!(resolved.api_format, "chat");
+    }
+
+    /// And when the pair cannot resolve, the error is about the pair — the
+    /// named provider's missing key — never about the assistant nobody passed.
+    #[test]
+    fn a_full_override_pair_fails_about_itself() {
+        let pool = crate::db::test_db();
+        seed_provider(&pool);
+        let dir = tempfile::tempdir().unwrap();
+        let secrets = mock_secrets(dir.path());
+
+        let Err(err) = resolve_with_overrides(&secrets, &pool, None, Some("deepseek-v4-flash".into()), Some("p1"))
+        else {
+            panic!("no key was stored, so this cannot resolve");
+        };
+
+        assert!(err.contains("API Key not set"), "{err}");
+        assert!(!err.contains("No model configured"), "{err}");
     }
 
     fn configured_with(server_tools: Option<&str>) -> ModelConfig {
