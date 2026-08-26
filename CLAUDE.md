@@ -1254,6 +1254,35 @@ with linux containers on Windows.
   somebody set container mode for their desktop work. What confines a headless
   session is already stricter where it matters — its `FileAccess` is an empty root
   set, so paths fail validation before a command is reached.
+
+### Putting the hosted agent in one
+
+`acp.command` has always been free-form, so `docker run -i --rm … claude-agent-acp`
+already launches a hosted session inside a container without any support from this
+app. That is not the same as the feature being built, and one part of it was
+silently broken.
+
+- **`MERIDIAN_ACP_HOSTED` did not survive.** `AdapterProcess::spawn` sets it with
+  `.env`, which reaches the child — and measured, `docker run` does not forward the
+  client's environment past itself. So the agent inside could not see it, the
+  `meridian-plan-gate` plugin did not stand down, and every hosted turn ended by
+  asking this app to review a transcript it already had: a second model for minutes
+  and another conversation in the sidebar. Nothing failed. It just cost twice.
+  `forward_marker_into_container` injects `-e MERIDIAN_ACP_HOSTED` — the bare form,
+  so the value stays decided in one place — immediately after the `run`, because
+  anywhere past the image name it is an argument to the agent instead.
+
+  Rewriting somebody's configured command is intrusive, and it is done only where
+  the meaning is unambiguous: a known launcher, a `run`, nothing forwarding it
+  already. Everything else is left exactly as written.
+
+- **The rest of containerising the agent is not built**, and the reasons are worth
+  keeping. Host↔container path translation is the bulk of it: `session/new` sends a
+  host `cwd` and every path in a `session/update` comes back in the container's
+  terms. `kill_on_drop` kills the `docker` client and not the container, the same
+  finding `crate::container` is built around. `~/.claude` would need mounting
+  read-only to reuse the login. And the tool bridge only reaches the host on Docker
+  Desktop — measured — so a Linux daemon needs it to bind wider or not at all.
 - **The bridge conflict is real but not where it was expected.** `acp::bridge` binds
   `127.0.0.1`, and loopback inside a container is the container. Measured on Docker
   Desktop, a host server on `127.0.0.1` *is* reachable through

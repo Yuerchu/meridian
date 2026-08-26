@@ -40,7 +40,73 @@ const STDERR_LINE_CHARS: usize = 400;
 /// The plugin reads this and stands down. It lives in another repository
 /// (`~/.claude/plugins/local/meridian-plan-gate`), so the name is a contract
 /// between the two and changing it needs both.
+///
+/// **Setting it on the child is not enough once the child is a container
+/// launcher.** Measured: `docker run` does not forward the client's
+/// environment, so an adapter configured as `docker run … claude-agent-acp` —
+/// which `acp.command` has always permitted, and which is how somebody
+/// containerises a hosted session today — gets an agent that cannot see this.
+/// The plugin then does not stand down, and every hosted turn ends by asking
+/// this app to review a transcript it already has: a second model for minutes,
+/// and another conversation in the sidebar. Nothing fails; it just quietly
+/// costs twice. [`forward_marker_into_container`] is what closes that.
 pub const HOSTED_MARKER: &str = "MERIDIAN_ACP_HOSTED";
+
+/// Container launchers whose `run` takes `-e` the way Docker's does.
+///
+/// A short list rather than a guess at any command that might start a
+/// container: what this does is *rewrite somebody's configured command*, and
+/// the bar for that is knowing exactly what the flag means to the thing being
+/// rewritten. Anything not on it is left alone.
+const CONTAINER_LAUNCHERS: &[&str] = &["docker", "podman", "nerdctl"];
+
+/// Add `-e MERIDIAN_ACP_HOSTED` to a `run`, so the marker reaches the agent.
+///
+/// **Rewriting a user's command is intrusive, and the alternative is worse.**
+/// The marker is a contract with another repository; breaking it silently
+/// produces no error, only a second model running for minutes at the end of
+/// every hosted turn. So the one case that is unambiguous — a known launcher,
+/// a `run` subcommand, no forwarding already present — is repaired, and
+/// everything else is left exactly as written.
+///
+/// The bare `-e NAME` form is used rather than `-e NAME=1`: it forwards
+/// whatever this process has, which is the value `spawn` just set, so there is
+/// one place the value is decided.
+///
+/// The flag goes immediately after the subcommand. Anywhere later risks landing
+/// after the image name, where it would be an argument to the *agent* rather
+/// than to the launcher.
+fn forward_marker_into_container(command: &str, args: &[String]) -> Vec<String> {
+    let program = std::path::Path::new(command)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(command)
+        .to_ascii_lowercase();
+    if !CONTAINER_LAUNCHERS.contains(&program.as_str()) {
+        return args.to_vec();
+    }
+    // Already forwarded, in either spelling. Adding a second is not harmful and
+    // does read as this app not knowing what is in the command it is editing.
+    if args
+        .iter()
+        .any(|a| a == HOSTED_MARKER || a.starts_with(&format!("{HOSTED_MARKER}=")))
+    {
+        return args.to_vec();
+    }
+    let Some(run_at) = args.iter().position(|a| a == "run") else {
+        // `exec`, `start`, or something else. `-e` is not universally accepted
+        // there and the container it would enter is not one this app made.
+        return args.to_vec();
+    };
+
+    let mut out = args.to_vec();
+    out.splice(run_at + 1..run_at + 1, ["-e".to_string(), HOSTED_MARKER.to_string()]);
+    tracing::debug!(
+        program = %program,
+        "forwarded the hosted marker into the adapter's container"
+    );
+    out
+}
 
 /// What `command` actually names on this system, when the OS will not work it
 /// out for itself.
@@ -126,8 +192,12 @@ impl AdapterProcess {
     /// carry several sessions in different repositories. Launching it inside one
     /// of them would make the first session's directory silently special.
     pub async fn spawn(command: &str, args: &[String]) -> Result<Self, String> {
+        // Set on the child, and — when the child is a container launcher —
+        // forwarded past it. `.env` alone stops at the launcher; see
+        // [`HOSTED_MARKER`].
+        let args = forward_marker_into_container(command, args);
         let mut cmd = tokio::process::Command::new(program_for(command));
-        cmd.args(args)
+        cmd.args(&args)
             .env(HOSTED_MARKER, "1")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -227,6 +297,93 @@ impl StderrTail {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn argv(args: &[&str]) -> Vec<String> {
+        args.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// The case the whole thing exists for. Measured: `docker run` does not
+    /// forward the client's environment, so `.env()` alone leaves the agent
+    /// unable to see the marker — and the failure is silent, costing a second
+    /// model at the end of every hosted turn rather than an error.
+    #[test]
+    fn the_marker_is_forwarded_past_a_container_launcher() {
+        let out = forward_marker_into_container(
+            "docker",
+            &argv(&["run", "-i", "--rm", "node:22", "npx", "claude-agent-acp"]),
+        );
+        assert_eq!(
+            out,
+            argv(&[
+                "run",
+                "-e",
+                "MERIDIAN_ACP_HOSTED",
+                "-i",
+                "--rm",
+                "node:22",
+                "npx",
+                "claude-agent-acp"
+            ])
+        );
+    }
+
+    /// Immediately after the subcommand, never appended. Anywhere after the
+    /// image name it stops being a flag to the launcher and becomes an argument
+    /// to the agent.
+    #[test]
+    fn the_flag_lands_before_the_image_and_not_after_it() {
+        let out = forward_marker_into_container("docker", &argv(&["run", "alpine", "sh"]));
+        let image = out.iter().position(|a| a == "alpine").unwrap();
+        let flag = out.iter().position(|a| a == "-e").unwrap();
+        assert!(flag < image, "{out:?}");
+    }
+
+    /// Everything not unambiguously a container `run` is left exactly as
+    /// written — the bar for rewriting somebody's configured command is knowing
+    /// what the flag means to the thing being rewritten.
+    #[test]
+    fn anything_else_is_left_alone() {
+        // The ordinary default.
+        let npx = argv(&["-y", "@agentclientprotocol/claude-agent-acp"]);
+        assert_eq!(forward_marker_into_container("npx", &npx), npx);
+        // A launcher, but not a `run`: `-e` is not universally accepted there,
+        // and the container it enters is not one this app made.
+        let exec = argv(&["exec", "-i", "some-container", "claude-agent-acp"]);
+        assert_eq!(forward_marker_into_container("docker", &exec), exec);
+        // A command that merely mentions one.
+        let mentions = argv(&["run", "--docker-ish"]);
+        assert_eq!(forward_marker_into_container("my-wrapper", &mentions), mentions);
+    }
+
+    /// A path, and a `.exe`, are the same launcher. The configured command is
+    /// whatever made `docker` reachable on this machine.
+    #[test]
+    fn a_launcher_is_recognised_however_it_was_written() {
+        for command in [
+            "docker",
+            "docker.exe",
+            "/usr/bin/docker",
+            "C:\\Program Files\\Docker\\docker.exe",
+            "PODMAN",
+        ] {
+            let out = forward_marker_into_container(command, &argv(&["run", "alpine"]));
+            assert!(out.contains(&"-e".to_string()), "{command} was not recognised: {out:?}");
+        }
+    }
+
+    /// Somebody who forwarded it themselves gets no second copy — harmless, and
+    /// it reads as this app not knowing what is in the command it just edited.
+    #[test]
+    fn a_marker_already_forwarded_is_not_forwarded_twice() {
+        for existing in [
+            argv(&["run", "-e", "MERIDIAN_ACP_HOSTED", "alpine"]),
+            argv(&["run", "-e", "MERIDIAN_ACP_HOSTED=1", "alpine"]),
+        ] {
+            let out = forward_marker_into_container("docker", &existing);
+            assert_eq!(out, existing);
+            assert_eq!(out.iter().filter(|a| *a == "-e").count(), 1, "{out:?}");
+        }
+    }
 
     #[tokio::test]
     async fn a_command_that_does_not_exist_names_itself_in_the_error() {
