@@ -58,7 +58,7 @@ pub const HOSTED_MARKER: &str = "MERIDIAN_ACP_HOSTED";
 /// container: what this does is *rewrite somebody's configured command*, and
 /// the bar for that is knowing exactly what the flag means to the thing being
 /// rewritten. Anything not on it is left alone.
-const CONTAINER_LAUNCHERS: &[&str] = &["docker", "podman", "nerdctl"];
+pub(super) const CONTAINER_LAUNCHERS: &[&str] = &["docker", "podman", "nerdctl"];
 
 /// Add `-e MERIDIAN_ACP_HOSTED` to a `run`, so the marker reaches the agent.
 ///

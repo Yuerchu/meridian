@@ -17,6 +17,7 @@ pub mod bridge;
 pub mod elicitation;
 pub mod import;
 pub mod mapping;
+pub mod mounts;
 pub mod peer;
 pub mod process;
 pub mod protocol;

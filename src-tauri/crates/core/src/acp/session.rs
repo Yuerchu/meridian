@@ -1222,6 +1222,11 @@ impl AcpSession {
         // conjunction rather than `bridge.is_none()`.
         let tools_lost = opening.wants_tools && bridge.is_none();
 
+        // From the command the user configured, which is the only place the
+        // mapping exists — see `cwd_for_agent`. Empty for every adapter that
+        // is not containerised, which makes the translation the identity.
+        let mounts = super::mounts::MountMap::from_command(&config.command, &config.args);
+
         let process = match AdapterProcess::spawn(&config.command, &config.args).await {
             Ok(process) => process,
             Err(e) => {
@@ -1255,7 +1260,7 @@ impl AcpSession {
         // live child nobody has a handle to any more — an orphaned node process
         // per failed attempt, and the usual reason to fail (not signed in) is
         // one the user retries.
-        match Self::handshake(&peer, &shared, &opening, bridge.as_ref()).await {
+        match Self::handshake(&peer, &shared, &opening, bridge.as_ref(), &mounts).await {
             Ok(Handshook {
                 acp_session_id,
                 steering,
@@ -1452,6 +1457,7 @@ impl AcpSession {
         shared: &Shared,
         opening: &Opening<'_>,
         bridge: Option<&Arc<bridge::Bridge>>,
+        mounts: &super::mounts::MountMap,
     ) -> Result<Handshook, String> {
         let cwd = opening.cwd;
         let init = peer
@@ -1507,7 +1513,7 @@ impl AcpSession {
                 .then(|| "this adapter cannot load existing sessions".to_string());
             let outcome = match refused {
                 Some(why) => Err(why),
-                None => Self::load(peer, shared, cwd, resume, opening.keep_recital, bridge).await,
+                None => Self::load(peer, shared, cwd, resume, opening.keep_recital, bridge, mounts).await,
             };
             match outcome {
                 Ok(session) => {
@@ -1548,7 +1554,7 @@ impl AcpSession {
         // `AsyncFn` closure that captures `&peer` and `&shared` produces a
         // future whose `Send` bound Tauri's `#[tauri::command]` macro cannot
         // satisfy for arbitrary lifetimes.
-        let new = |meta| new_session_params(cwd, bridge, meta);
+        let new = |meta| new_session_params(cwd, bridge, meta, mounts);
         let session = match peer
             .request(
                 "session/new",
@@ -1609,6 +1615,7 @@ impl AcpSession {
         resume: &str,
         keep: bool,
         bridge: Option<&Arc<bridge::Bridge>>,
+        mounts: &super::mounts::MountMap,
     ) -> Result<String, String> {
         // One attempt, gate and all. Raised *inside* rather than around the two,
         // because a refused attempt can have recited before it failed and
@@ -1624,7 +1631,7 @@ impl AcpSession {
         // `null` reaches here as `Value::Null`, which deserialises to the
         // default rather than an error.
         // Same retry shape as `handshake`, inlined for the same `Send` reason.
-        let load_params = |meta| load_session_params(resume, cwd, bridge, meta);
+        let load_params = |meta| load_session_params(resume, cwd, bridge, meta, mounts);
         let load_once = async |meta| {
             let params = serde_json::to_value(load_params(meta)).map_err(|e| e.to_string())?;
             shared.set_replay(if keep {
@@ -2339,6 +2346,44 @@ fn advertised(bridge: Option<&Arc<bridge::Bridge>>) -> Vec<serde_json::Value> {
     bridge.map(|b| vec![b.descriptor()]).unwrap_or_default()
 }
 
+/// The directory to tell the agent about, which is not always the one this app
+/// holds.
+///
+/// An adapter launched with `docker run -v C:\work\repo:/repo …` is on the far
+/// side of a wall: `C:\work\repo` names nothing it can reach. Sending it
+/// anyway is not a subtle failure — `session/new` refuses a directory that does
+/// not exist, so a containerised adapter simply never opens a session, and the
+/// message says the path is wrong rather than that it is in the wrong
+/// coordinate system.
+///
+/// **The mounts come from the command the user already wrote.** A mount list
+/// configured beside it is one that can disagree with it, and the disagreement
+/// looks exactly like this failure. See [`bridge::mounts`].
+///
+/// A path that maps nowhere is left alone rather than guessed at: the adapter's
+/// own error about a directory it cannot find is more use than one this app
+/// invented, and an empty map — every non-container adapter — is the identity.
+///
+/// [`bridge::mounts`]: super::mounts
+fn cwd_for_agent(cwd: &str, mounts: &super::mounts::MountMap) -> String {
+    if mounts.is_empty() {
+        return cwd.to_string();
+    }
+    match mounts.to_container(std::path::Path::new(cwd)) {
+        Some(inside) => {
+            tracing::debug!(inside = %inside, "translated the working directory for a containerised adapter");
+            inside
+        }
+        None => {
+            tracing::warn!(
+                "this conversation's directory is not inside any of the adapter's mounts; \
+                 sending it unchanged, which the agent will probably refuse"
+            );
+            cwd.to_string()
+        }
+    }
+}
+
 /// The two openers' parameters, built where a test can reach them.
 ///
 /// **There are two ways into a session and they are easy to get out of step.**
@@ -2355,9 +2400,10 @@ fn new_session_params(
     cwd: &str,
     bridge: Option<&Arc<bridge::Bridge>>,
     meta: Option<protocol::SessionMeta>,
+    mounts: &super::mounts::MountMap,
 ) -> protocol::NewSessionParams {
     protocol::NewSessionParams {
-        cwd: cwd.to_string(),
+        cwd: cwd_for_agent(cwd, mounts),
         mcp_servers: advertised(bridge),
         meta,
     }
@@ -2368,10 +2414,11 @@ fn load_session_params(
     cwd: &str,
     bridge: Option<&Arc<bridge::Bridge>>,
     meta: Option<protocol::SessionMeta>,
+    mounts: &super::mounts::MountMap,
 ) -> protocol::LoadSessionParams {
     protocol::LoadSessionParams {
         session_id: resume.to_string(),
-        cwd: cwd.to_string(),
+        cwd: cwd_for_agent(cwd, mounts),
         mcp_servers: advertised(bridge),
         meta,
     }
@@ -2700,8 +2747,8 @@ mod tests {
         // Through the constructors the openers actually use. Asserting on
         // `advertised` instead left this green while `session/load` was mutated
         // back to `Vec::new()` — the assertion was beside the defect.
-        let opened = new_session_params("/repo", Some(&bridge), None);
-        let resumed = load_session_params("s-1", "/repo", Some(&bridge), None);
+        let opened = new_session_params("/repo", Some(&bridge), None, &mounts::MountMap::default());
+        let resumed = load_session_params("s-1", "/repo", Some(&bridge), None, &mounts::MountMap::default());
 
         assert_eq!(opened.mcp_servers.len(), 1, "a new session was given no tools");
         assert_eq!(
@@ -2715,11 +2762,82 @@ mod tests {
 
     /// And a session opened without one advertises nothing rather than a
     /// half-filled descriptor. The field is mandatory even when empty.
+    /// **What a containerised adapter is told the directory is.**
+    ///
+    /// Not a display nicety: `session/new` refuses a directory that does not
+    /// exist, and `C:\work\repo` does not exist inside the container. Sent
+    /// unchanged, the session never opens and the message says the path is
+    /// wrong rather than that it is in the wrong coordinate system.
+    ///
+    /// Through the constructors both openers use, for the reason the bridge
+    /// test above records: asserting on the translation helper alone stayed
+    /// green while one of the two call sites was mutated away.
+    #[test]
+    fn a_containerised_adapter_is_told_the_path_it_can_reach() {
+        let mounts = mounts::MountMap::from_command(
+            "docker",
+            &["run", "-v", "C:\\work\\repo:/repo", "img"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+
+        let opened = new_session_params("C:\\work\\repo", None, None, &mounts);
+        assert_eq!(opened.cwd, "/repo");
+        let resumed = load_session_params("s-1", "C:\\work\\repo", None, None, &mounts);
+        assert_eq!(
+            resumed.cwd, "/repo",
+            "a resumed session was sent a path the container cannot reach"
+        );
+    }
+
+    /// The ordinary adapter shares this filesystem, so the translation is the
+    /// identity and the host path goes through untouched.
+    #[test]
+    fn an_ordinary_adapter_is_told_the_host_path() {
+        let none = mounts::MountMap::default();
+        assert_eq!(
+            new_session_params("C:\\work\\repo", None, None, &none).cwd,
+            "C:\\work\\repo"
+        );
+        assert_eq!(
+            load_session_params("s-1", "/home/me/repo", None, None, &none).cwd,
+            "/home/me/repo"
+        );
+    }
+
+    /// A directory outside every mount is sent as it stands rather than
+    /// guessed at. The adapter's own "no such directory" names the path it
+    /// actually looked for, which is more use than one this app invented.
+    #[test]
+    fn a_directory_outside_the_mounts_is_not_invented() {
+        let mounts = mounts::MountMap::from_command(
+            "docker",
+            &["run", "-v", "/home/me/repo:/repo", "img"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<Vec<_>>(),
+        );
+        assert_eq!(
+            new_session_params("/somewhere/else", None, None, &mounts).cwd,
+            "/somewhere/else"
+        );
+    }
+
     #[test]
     fn a_session_with_no_bridge_advertises_an_empty_list() {
-        assert!(new_session_params("/repo", None, None).mcp_servers.is_empty());
-        assert!(load_session_params("s-1", "/repo", None, None).mcp_servers.is_empty());
-        let encoded = serde_json::to_value(new_session_params("/repo", None, None)).unwrap();
+        assert!(
+            new_session_params("/repo", None, None, &mounts::MountMap::default())
+                .mcp_servers
+                .is_empty()
+        );
+        assert!(
+            load_session_params("s-1", "/repo", None, None, &mounts::MountMap::default())
+                .mcp_servers
+                .is_empty()
+        );
+        let encoded =
+            serde_json::to_value(new_session_params("/repo", None, None, &mounts::MountMap::default())).unwrap();
         assert_eq!(encoded["mcpServers"], serde_json::json!([]), "{encoded}");
     }
 
@@ -2768,6 +2886,7 @@ mod tests {
         assert!(!PromptDelivery::NeverSent.read_by(&died()));
     }
 
+    use super::super::mounts;
     use crate::services::bare_services;
 
     fn update(json: serde_json::Value) -> SessionNotification {

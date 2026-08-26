@@ -1276,11 +1276,30 @@ silently broken.
   the meaning is unambiguous: a known launcher, a `run`, nothing forwarding it
   already. Everything else is left exactly as written.
 
+- **The working directory is translated, and the mount table is the command the user
+  already wrote.** `session/new` refuses a directory that does not exist, and
+  `C:\work\repo` does not exist inside the container — so an adapter launched that
+  way never opened a session at all, with an error saying the path was wrong rather
+  than that it was in the wrong coordinate system. `acp::mounts` reads the `-v`,
+  `--volume` and `--mount` flags off `acp.command` and translates both ways. A second
+  setting listing the mounts would be a second thing that can disagree with the
+  command, and the disagreement looks exactly like this failure.
+
+  **The colon is the part that fails silently.** `-v C:\work\repo:/repo` has three
+  colons and only the second separates. Split on the first and the host path becomes
+  `C`, which Docker does not refuse — it creates a named volume — so the agent gets an
+  empty directory instead of the project and nothing anywhere says why. The container
+  half is always absolute and POSIX, so the split is decidable from the right; the
+  tests exist because the failure is invisible.
+
+  A path that maps nowhere is passed through unchanged rather than guessed at: the
+  adapter's own "no such directory" names the path it really looked for.
+
 - **The rest of containerising the agent is not built**, and the reasons are worth
-  keeping. Host↔container path translation is the bulk of it: `session/new` sends a
-  host `cwd` and every path in a `session/update` comes back in the container's
-  terms. `kill_on_drop` kills the `docker` client and not the container, the same
-  finding `crate::container` is built around. `~/.claude` would need mounting
+  keeping. Paths coming *back* — the ones in `session/update` — are still shown in the
+  container's terms, so a tool card names `/repo/src/lib.rs` rather than something the
+  reader can open. `kill_on_drop` kills the `docker` client and not the container, the
+  same finding `crate::container` is built around. `~/.claude` would need mounting
   read-only to reuse the login. And the tool bridge only reaches the host on Docker
   Desktop — measured — so a Linux daemon needs it to bind wider or not at all.
 - **The bridge conflict is real but not where it was expected.** `acp::bridge` binds
