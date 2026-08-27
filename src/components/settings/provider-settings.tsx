@@ -1205,7 +1205,17 @@ function ProviderEditor({
       <div className="border-t border-border pt-4 space-y-3">
         <div className="flex items-center justify-between">
           <p className="text-xs text-muted">{t('settings.provider.models')}</p>
-          <Button variant="outline" onClick={handleFetchModels} isDisabled={fetchingModels || keyStatus !== 'set'}>
+          {/* `keyStatus` is a proxy for "a request can be made", and it is only
+              a valid one for rows whose credential lives in the secrets store.
+              A ChatGPT login never has a stored key — the backend exempts it
+              from needing one for exactly this call — so gating on the key
+              here kept the button permanently grey on the rows the exemption
+              was written for. */}
+          <Button
+            variant="outline"
+            onClick={handleFetchModels}
+            isDisabled={fetchingModels || (!usesChatGptLogin(provider) && keyStatus !== 'set')}
+          >
             <ArrowsRotateRight className={cn('w-3.5 h-3.5', fetchingModels && 'animate-spin')} />
             {t('settings.provider.fetchModels')}
           </Button>
