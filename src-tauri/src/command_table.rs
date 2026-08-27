@@ -78,6 +78,14 @@ macro_rules! with_all_commands {
                 fast_mode: bool,
             ),
             async commands::conversation => toggle_pin_conversation(id: String),
+            async commands::conversation => set_conversation_project(
+                id: String,
+                project_id: Option<String>,
+            ),
+            async commands::conversation => search_conversations(
+                query: String,
+                limit: Option<u32>,
+            ),
             async commands::conversation => delete_conversation(id: String),
             async commands::conversation => compact(
                 conversation_id: String,
@@ -176,6 +184,22 @@ macro_rules! with_all_commands {
                 description: Option<String>,
             ),
             async commands::project => delete_project(id: String),
+
+            // The file panel. Read-only and deliberately not `local`: in remote
+            // mode the phone is asking about the *host's* project files, which
+            // is the whole point of looking at them from a phone.
+            async commands::workspace => workspace_root(conversation_id: String),
+            async commands::workspace => workspace_tree(conversation_id: String, dir: Option<String>),
+            async commands::workspace => workspace_read_file(conversation_id: String, rel_path: String),
+            async commands::workspace => workspace_git_status(conversation_id: String),
+            async commands::workspace => workspace_git_diff(conversation_id: String, rel_path: Option<String>),
+            // Runs the user's configured editor command — a program launch, so
+            // a remote caller is refused outright.
+            local commands::workspace => open_in_editor(
+                conversation_id: String,
+                rel_path: String,
+                line: Option<u32>,
+            ),
 
             async commands::conversation => list_conversations_by_project(
                 project_id: String,

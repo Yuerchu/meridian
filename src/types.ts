@@ -10,6 +10,46 @@ export interface Project {
   updated_at: number
 }
 
+/** Where a conversation's files live, or which of the three reasons there is
+ *  nowhere to look. The empty states are distinct because they ask the user
+ *  for three different actions. */
+export type WorkspaceRoot =
+  | { state: 'ok'; root: string; git_available: boolean; is_repo: boolean }
+  | { state: 'no_project' }
+  | { state: 'no_path' }
+  | { state: 'missing_dir'; path: string }
+
+export interface WorkspaceTreeEntry {
+  name: string
+  /** Relative to the workspace root, `/`-separated on every platform. */
+  rel_path: string
+  is_dir: boolean
+}
+
+export interface WorkspaceFileContent {
+  content: string
+  truncated: boolean
+  total_lines: number
+  size_bytes: number
+  binary: boolean
+}
+
+export type GitFileStatus = 'modified' | 'added' | 'deleted' | 'renamed' | 'untracked' | 'conflicted'
+
+export interface GitStatusEntry {
+  path: string
+  status: GitFileStatus
+  renamed_from: string | null
+}
+
+export type GitStatusResult =
+  { state: 'ok'; branch: string | null; files: GitStatusEntry[] } | { state: 'no_git' } | { state: 'not_repo' }
+
+export interface GitDiffResult {
+  diff_text: string
+  truncated: boolean
+}
+
 /** Scope/origin/visibility values come from the `memory_enums` command rather
  *  than literal unions here, so the front end cannot drift from the Rust enums. */
 export interface Memory {
@@ -103,6 +143,17 @@ export interface Conversation {
    * reads to decide which backend command a message goes to.
    */
   agent_kind?: string | null
+}
+
+/** One conversation whose transcript says the search query, with a snippet
+ *  around the newest mention. What `search_conversations` returns. */
+export interface TranscriptHit {
+  conversation_id: string
+  title: string | null
+  /** Who said the matched line — `user` or `assistant`. */
+  role: string
+  snippet: string
+  created_at: number
 }
 
 /** How to start the ACP adapter. `command` names a binary this app executes. */

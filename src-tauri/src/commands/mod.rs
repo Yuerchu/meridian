@@ -33,3 +33,4 @@ pub mod tool_system;
 pub mod usage;
 pub mod voice;
 pub mod voice_corpus;
+pub mod workspace;
