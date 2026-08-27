@@ -76,8 +76,18 @@ pub fn create_provider(
     }
 }
 
-pub fn get_capabilities(provider_type: &str, api_format: Option<&str>, model: &str) -> ProviderCapabilities {
-    super::capabilities::resolve(provider_type, api_format, model)
+/// The transport is a parameter rather than an overload, because leaving it
+/// off is how the settings panel came to offer a temperature slider on a
+/// `chatgpt_codex` row — `resolve_on` disables it, the adapter ignores it, and
+/// a three-argument shortcut here answered the UI's question from a wire the
+/// row does not speak.
+pub fn get_capabilities(
+    provider_type: &str,
+    api_format: Option<&str>,
+    transport_profile: Option<&str>,
+    model: &str,
+) -> ProviderCapabilities {
+    super::capabilities::resolve_on(provider_type, api_format, transport_profile, model)
 }
 
 #[cfg(test)]

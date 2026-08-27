@@ -222,12 +222,18 @@ async fn resolve_supports_images(
             provider_type,
             model: resolved_model,
             api_format,
+            transport_profile,
             ..
         } = crate::agent::resolve_provider_config(&secrets, &pool, assistant.as_ref()).ok()?;
         let model = override_model
             .or_else(|| assistant.as_ref().and_then(|a| a.model_id.clone()))
             .unwrap_or(resolved_model);
-        let caps = crate::provider::registry::get_capabilities(&provider_type, Some(&api_format), &model);
+        let caps = crate::provider::registry::get_capabilities(
+            &provider_type,
+            Some(&api_format),
+            Some(&transport_profile),
+            &model,
+        );
         Some(caps.supports_images)
     })
     .await

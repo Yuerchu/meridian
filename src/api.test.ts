@@ -216,6 +216,7 @@ describe('api', () => {
         baseUrl: 'https://api.openai.com',
         apiFormat: null,
         catalogId: null,
+        authOption: null,
       })
     })
 
@@ -231,6 +232,7 @@ describe('api', () => {
         baseUrl: 'https://relay.example',
         apiFormat: 'responses',
         catalogId: 'openai',
+        authOption: null,
       })
     })
 
@@ -244,6 +246,8 @@ describe('api', () => {
         baseUrl: null,
         isEnabled: null,
         apiFormat: null,
+        credentialKind: null,
+        transportProfile: null,
       })
     })
 

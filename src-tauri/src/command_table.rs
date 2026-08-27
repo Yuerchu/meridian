@@ -124,6 +124,7 @@ macro_rules! with_all_commands {
                 base_url: String,
                 api_format: Option<String>,
                 catalog_id: Option<String>,
+                auth_option: Option<String>,
             ),
             async commands::provider => update_provider(
                 id: String,
@@ -132,6 +133,8 @@ macro_rules! with_all_commands {
                 base_url: Option<String>,
                 is_enabled: Option<i32>,
                 api_format: Option<String>,
+                credential_kind: Option<String>,
+                transport_profile: Option<String>,
             ),
             async commands::provider => delete_provider(id: String),
             async commands::provider => set_provider_key(provider_id: String, api_key: String),

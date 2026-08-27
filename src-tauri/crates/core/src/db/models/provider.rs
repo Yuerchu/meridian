@@ -54,9 +54,6 @@ pub struct NewProvider<'a> {
     pub transport_profile: &'a str,
 }
 
-/// Deliberately without `catalog_id`: identity is settled when the row is made
-/// and an ordinary edit does not restate it.
-///
 /// Pointing a row at a relay does not stop it being the vendor the user picked
 /// — they are reaching OpenAI through a proxy, and the panel should keep saying
 /// OpenAI. The id is a claim about *whose service this is*, not an assertion
@@ -71,9 +68,17 @@ pub struct ProviderUpdate {
     pub sort_order: Option<i32>,
     pub updated_at: Option<i64>,
     pub api_format: Option<String>,
-    /// Editable, unlike `catalog_id`: which login a provider uses is a setting,
-    /// not an identity. Changing it is how a row moves between an API key and a
-    /// ChatGPT session.
+    /// Editable, unlike `catalog_id` below: which login a provider uses is a
+    /// setting, not an identity. Changing it is how a row moves between an API
+    /// key and a ChatGPT session.
     pub credential_kind: Option<String>,
     pub transport_profile: Option<String>,
+    /// Never a user input — the command layer recomputes it when, and only
+    /// when, `provider_type` changes. A new address can still be the same
+    /// vendor behind a relay; a new *type* cannot, and a row created as the
+    /// catalog's default and then re-typed used to keep the old vendor's
+    /// identity forever: OpenAI's logo and key page on an Anthropic row.
+    /// Two layers because the honest recomputed answer is often "no identity"
+    /// (`Some(None)`), which one layer cannot say without meaning "leave it".
+    pub catalog_id: Option<Option<String>>,
 }

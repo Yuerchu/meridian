@@ -17,6 +17,7 @@ import type {
   ModelConfigInput,
   PriceTier,
   Provider,
+  ProviderAuthOption,
   ProviderBalance,
   ProviderCatalogEntry,
   ModelInfo,
@@ -78,27 +79,40 @@ function entryByType(catalog: ProviderCatalogEntry[], providerType: string): Pro
 }
 
 /**
- * The dialects a vendor offers, from its first login method.
+ * The sign-in option a row is currently under, or the entry's default.
+ *
+ * Keyed by `credential_kind` because that is what the row stores; a kind the
+ * entry does not list (the type was just changed) falls back to the default,
+ * which is also what the backend writes for a fresh row.
+ */
+function authFor(entry: ProviderCatalogEntry | undefined, credentialKind: string): ProviderAuthOption | undefined {
+  return entry?.auth.find((a) => a.credential_kind === credentialKind) ?? entry?.auth[0]
+}
+
+/**
+ * The dialects available under one sign-in option.
  *
  * One element means the dialect is not a choice and the selector is omitted —
  * which is what the old `SINGLE_FORMAT_TYPES` said about Anthropic, and what
  * `DUAL_FORMAT_TYPES` said about xAI and DeepSeek. Stating it as data means the
- * next vendor does not need a third list.
+ * next vendor does not need a third list. Per option rather than per entry,
+ * because the Codex login speaks `responses` alone while the key next to it
+ * speaks both.
  */
-function formatsFor(entry: ProviderCatalogEntry | undefined): string[] {
-  return entry?.auth[0]?.api_formats ?? []
+function formatsFor(auth: ProviderAuthOption | undefined): string[] {
+  return auth?.api_formats ?? []
 }
 
 /**
- * The address to prefill for a vendor speaking a given dialect.
+ * The address to prefill for one sign-in option speaking a given dialect.
  *
  * Google used to need its own table because its address changes with the
  * dialect. Here that is just what its data says, and every other vendor happens
  * to map both dialects to one address — so the special case disappears rather
  * than being handled.
  */
-function defaultUrlFor(entry: ProviderCatalogEntry | undefined, apiFormat: string): string | undefined {
-  const urls = entry?.auth[0]?.default_base_url
+function defaultUrlFor(auth: ProviderAuthOption | undefined, apiFormat: string): string | undefined {
+  const urls = auth?.default_base_url
   if (!urls) return undefined
   return urls[apiFormat] ?? Object.values(urls)[0]
 }
@@ -111,6 +125,19 @@ const URL_PLACEHOLDERS: Record<string, string> = {
 /** Whether this row signs in with a ChatGPT session rather than a key. */
 function usesChatGptLogin(provider: Provider): boolean {
   return provider.credential_kind === 'codex_cli' || provider.credential_kind === 'chatgpt_oauth'
+}
+
+/**
+ * Display names for the sign-in kinds. A map rather than a template key so the
+ * locale test can see every key statically; the kinds are already a closed set
+ * — each one exists only once `resolve_credential` has a match arm for it — so
+ * a line here is part of the same addition, and an unknown kind falls back to
+ * the option's own id rather than a missing-key marker.
+ */
+const AUTH_METHOD_LABELS: Record<string, string> = {
+  api_key: 'settings.provider.authMethodApiKey',
+  codex_cli: 'settings.provider.authMethodCodexCli',
+  chatgpt_oauth: 'settings.provider.authMethodChatGptOauth',
 }
 
 /**
@@ -806,30 +833,48 @@ function ProviderEditor({
     }
   }, [provider.id])
 
+  // The sign-in option the form is under right now: the row's stored kind
+  // resolved against the entry the (possibly just-changed) type names. A type
+  // whose entry does not list the stored kind falls back to that entry's
+  // default, which is what saving will also write.
+  const activeAuth = authFor(entryByType(catalog, providerType), provider.credential_kind)
+
   const handleSave = useCallback(async () => {
-    await api.updateProvider(provider.id, { name, providerType, baseUrl, apiFormat })
+    // A changed type can leave the row under a sign-in its new vendor does not
+    // offer — a Codex login on an Anthropic row answers to no adapter. The
+    // save restates the resolved option's credentials so the row cannot hold
+    // that combination; when nothing changed this writes back what is there.
+    await api.updateProvider(provider.id, {
+      name,
+      providerType,
+      baseUrl,
+      apiFormat,
+      credentialKind: activeAuth?.credential_kind,
+      transportProfile: activeAuth?.transport_profile,
+    })
     markSaved()
     onUpdate()
-  }, [provider.id, name, providerType, baseUrl, apiFormat, onUpdate, markSaved])
+  }, [provider.id, name, providerType, baseUrl, apiFormat, activeAuth, onUpdate, markSaved])
 
   const handleProviderTypeChange = useCallback(
     (next: string) => {
       const nextEntry = entryByType(catalog, next)
+      const nextAuth = authFor(nextEntry, provider.credential_kind)
       // The dialect a vendor is best reached on. Catalog order is editorial, so
       // the first one listed is the recommendation.
-      const nextFormat = formatsFor(nextEntry)[0] ?? 'chat_completions'
+      const nextFormat = formatsFor(nextAuth)[0] ?? 'chat_completions'
       setProviderType(next)
       setBaseUrl((current) => {
         // Only replace an address the user never touched. Anything they typed —
         // a relay, a self-hosted endpoint — survives a change of vendor, which
         // is the same rule the catalog follows for existing rows.
-        const oldDefault = defaultUrlFor(entryByType(catalog, providerType), apiFormat)
-        const replacement = defaultUrlFor(nextEntry, nextFormat)
+        const oldDefault = defaultUrlFor(activeAuth, apiFormat)
+        const replacement = defaultUrlFor(nextAuth, nextFormat)
         return !current || current === oldDefault ? (replacement ?? current) : current
       })
       setApiFormat(nextFormat)
     },
-    [catalog, providerType, apiFormat],
+    [catalog, provider.credential_kind, activeAuth, apiFormat],
   )
 
   const handleApiFormatChange = useCallback(
@@ -838,14 +883,46 @@ function ProviderEditor({
       // living per-dialect is just what the data says — for every other vendor
       // both dialects map to one address, so this is a no-op there.
       setBaseUrl((current) => {
-        const entry = entryByType(catalog, providerType)
-        const oldDefault = defaultUrlFor(entry, apiFormat)
-        const replacement = defaultUrlFor(entry, next)
+        const oldDefault = defaultUrlFor(activeAuth, apiFormat)
+        const replacement = defaultUrlFor(activeAuth, next)
         return !current || current === oldDefault ? (replacement ?? current) : current
       })
       setApiFormat(next)
     },
-    [catalog, providerType, apiFormat],
+    [activeAuth, apiFormat],
+  )
+
+  // Switching the sign-in is written immediately rather than staged for Save:
+  // what replaces the key field — the ChatGPT account card — reads the *row*,
+  // so a staged switch would show a key box for a login that has none until
+  // the user remembered to press Save.
+  const handleAuthOptionChange = useCallback(
+    async (nextId: string) => {
+      const entry = entryByType(catalog, providerType)
+      const next = entry?.auth.find((a) => a.id === nextId)
+      if (!next || next.credential_kind === activeAuth?.credential_kind) return
+      const nextFormat = next.api_formats.includes(apiFormat) ? apiFormat : (next.api_formats[0] ?? 'chat_completions')
+      // Same replace-only-untouched rule as a change of vendor: the endpoint
+      // belongs to the login, so an untouched address follows it.
+      const oldDefault = defaultUrlFor(activeAuth, apiFormat)
+      const nextUrl = !baseUrl || baseUrl === oldDefault ? (defaultUrlFor(next, nextFormat) ?? baseUrl) : baseUrl
+      setApiFormat(nextFormat)
+      setBaseUrl(nextUrl)
+      try {
+        await api.updateProvider(provider.id, {
+          credentialKind: next.credential_kind,
+          transportProfile: next.transport_profile,
+          apiFormat: nextFormat,
+          baseUrl: nextUrl,
+        })
+        markSaved()
+        onUpdate()
+      } catch (err) {
+        console.error('Failed to switch the sign-in method:', err)
+        alert(String(err))
+      }
+    },
+    [catalog, providerType, activeAuth, apiFormat, baseUrl, provider.id, markSaved, onUpdate],
   )
 
   const handleSaveKey = useCallback(async () => {
@@ -980,15 +1057,31 @@ function ProviderEditor({
         fullWidth
       />
 
+      {/* Only where the vendor lists more than one way in — which is OpenAI
+          today. This is the one control that writes `credential_kind`, and
+          without it a ChatGPT-login row could only be made by editing the
+          database by hand. */}
+      {(entryByType(catalog, providerType)?.auth.length ?? 0) > 1 && (
+        <SettingsSelect
+          label={t('settings.provider.authMethod')}
+          value={activeAuth?.id ?? ''}
+          options={(entryByType(catalog, providerType)?.auth ?? []).map((a) => ({
+            value: a.id,
+            label: AUTH_METHOD_LABELS[a.credential_kind] ? t(AUTH_METHOD_LABELS[a.credential_kind]) : a.id,
+          }))}
+          onChange={handleAuthOptionChange}
+          description={usesChatGptLogin(provider) ? t('settings.provider.authMethodCodexHint') : undefined}
+          fullWidth
+        />
+      )}
+
       <TextField fullWidth>
         <Label>{t('settings.provider.baseUrl')}</Label>
         <Input
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
           placeholder={
-            defaultUrlFor(entryByType(catalog, providerType), apiFormat) ??
-            URL_PLACEHOLDERS[apiFormat] ??
-            URL_PLACEHOLDERS.chat_completions
+            defaultUrlFor(activeAuth, apiFormat) ?? URL_PLACEHOLDERS[apiFormat] ?? URL_PLACEHOLDERS.chat_completions
           }
         />
       </TextField>
@@ -997,14 +1090,14 @@ function ProviderEditor({
           `SINGLE_FORMAT_TYPES` denylist said about Anthropic, now read off the
           data. While the catalog is loading nothing is known, so the selector
           stays hidden rather than offering a set that may be wrong. */}
-      {formatsFor(entryByType(catalog, providerType)).length > 1 && (
+      {formatsFor(activeAuth).length > 1 && (
         <SettingsSelect
           label={t('settings.provider.apiFormat')}
           value={apiFormat}
           options={
             providerType === 'google'
               ? googleFormatOptions
-              : formatOptions.filter((option) => formatsFor(entryByType(catalog, providerType)).includes(option.value))
+              : formatOptions.filter((option) => formatsFor(activeAuth).includes(option.value))
           }
           onChange={handleApiFormatChange}
           description={formatDescription}
@@ -1238,13 +1331,15 @@ export function ProviderSettings() {
   // the address afterwards — which inference cannot do.
   const handleCreate = useCallback(async () => {
     const entry = (await loadProviderCatalog())[0]
-    const format = entry?.auth[0]?.api_formats[0] ?? 'chat_completions'
+    const auth = entry?.auth[0]
+    const format = auth?.api_formats[0] ?? 'chat_completions'
     const p = await api.createProvider(
       entry?.name ?? 'New Provider',
       entry?.provider_type ?? 'openai',
-      defaultUrlFor(entry, format) ?? '',
+      defaultUrlFor(auth, format) ?? '',
       format,
       entry?.id,
+      auth?.id,
     )
     await refresh()
     nav.openItem(p.id)

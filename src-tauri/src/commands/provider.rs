@@ -60,6 +60,7 @@ pub async fn create_provider(
     base_url: String,
     api_format: Option<String>,
     catalog_id: Option<String>,
+    auth_option: Option<String>,
 ) -> Result<Provider, String> {
     let services = app.services();
     let pool = services.db.clone();
@@ -78,12 +79,17 @@ pub async fn create_provider(
             .or_else(|| meridian_core::provider::catalog::identify(&provider_type, &base_url));
         // Which login this row uses, and therefore which endpoint it reaches,
         // comes from the vendor's own entry rather than from a default here.
-        // Every entry offers `api_key`/`standard` today, so this is the same
-        // answer either way; it stops being so the moment a vendor lists a
-        // second way in.
+        // The caller may name one of the entry's other logins (`auth_option`);
+        // a name the entry does not list falls back to the default rather than
+        // inventing a credential kind no adapter answers to.
         let login = catalog
             .and_then(meridian_core::provider::catalog::find)
-            .and_then(|entry| entry.default_auth());
+            .and_then(|entry| {
+                auth_option
+                    .as_deref()
+                    .and_then(|wanted| entry.auth_option(wanted))
+                    .or_else(|| entry.default_auth())
+            });
         let credential_kind = login.map_or("api_key", |auth| auth.credential_kind.as_str());
         let transport_profile = login.map_or("standard", |auth| auth.transport_profile.as_str());
         db::ops::provider::create_provider(
@@ -118,15 +124,36 @@ pub async fn update_provider(
     base_url: Option<String>,
     is_enabled: Option<i32>,
     api_format: Option<String>,
+    credential_kind: Option<String>,
+    transport_profile: Option<String>,
 ) -> Result<Provider, String> {
     let services = app.services();
     let pool = services.db.clone();
-    let should_clear_cache = base_url.is_some() || provider_type.is_some() || api_format.is_some();
+    // The transport decides which adapter answers and what the model may be
+    // asked, so a change of login invalidates the cached model list the same
+    // way a change of address does.
+    let should_clear_cache =
+        base_url.is_some() || provider_type.is_some() || api_format.is_some() || transport_profile.is_some();
     tokio::task::spawn_blocking(move || {
         let mut conn = pool.get().map_err(|e| e.to_string())?;
         if should_clear_cache {
             let _ = db::ops::cached_model::delete_by_provider(&mut conn, &id);
         }
+        // A changed *type* re-decides the catalog identity; a changed address
+        // alone never does (a relay is still the vendor the user picked). The
+        // row starts as the catalog's default entry and is often re-typed into
+        // the vendor actually wanted — without this, that row kept the default
+        // vendor's logo and key page forever. Same conservative rule as
+        // creation and the migration backfill: exactly one entry fits or the
+        // answer is no identity, and `Some(None)` is how the changeset says so.
+        let catalog_id = match &provider_type {
+            Some(next_type) => {
+                let current = db::ops::provider::get_provider(&mut conn, &id).map_err(|e| e.to_string())?;
+                let final_url = base_url.as_deref().unwrap_or(&current.base_url);
+                Some(meridian_core::provider::catalog::identify(next_type, final_url).map(str::to_string))
+            }
+            None => None,
+        };
         let changeset = ProviderUpdate {
             name,
             provider_type,
@@ -134,6 +161,9 @@ pub async fn update_provider(
             is_enabled,
             api_format,
             updated_at: Some(now_ms()),
+            credential_kind,
+            transport_profile,
+            catalog_id,
             ..Default::default()
         };
         db::ops::provider::update_provider(&mut conn, &id, &changeset).map_err(|e| e.to_string())
@@ -333,7 +363,7 @@ pub async fn get_provider_capabilities(
 ) -> Result<meridian_core::provider::ProviderCapabilities, String> {
     let services = app.services();
     let pool = services.db.clone();
-    let (provider_type, api_format, overrides) = {
+    let (provider_type, api_format, transport_profile, overrides) = {
         let pid = provider_id.clone();
         let mid = model_id.clone();
         tokio::task::spawn_blocking(move || {
@@ -343,12 +373,17 @@ pub async fn get_provider_capabilities(
                 .ok()
                 .flatten()
                 .and_then(|mc| mc.capability_overrides);
-            Ok::<_, String>((p.provider_type, p.api_format, overrides))
+            Ok::<_, String>((p.provider_type, p.api_format, p.transport_profile, overrides))
         })
         .await
         .map_err(|e| e.to_string())??
     };
-    let mut caps = meridian_core::provider::registry::get_capabilities(&provider_type, Some(&api_format), &model_id);
+    let mut caps = meridian_core::provider::registry::get_capabilities(
+        &provider_type,
+        Some(&api_format),
+        Some(&transport_profile),
+        &model_id,
+    );
     meridian_core::provider::capabilities::apply_overrides(&mut caps, overrides.as_deref());
     Ok(caps)
 }

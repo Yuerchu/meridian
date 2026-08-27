@@ -312,7 +312,14 @@ export const api = {
    *  refreshes the session: opening a settings page must not spend a token. */
   codexAuthStatus: () => invoke<CodexAuthStatus>('codex_auth_status'),
 
-  createProvider: (name: string, providerType: string, baseUrl: string, apiFormat?: string, catalogId?: string) =>
+  createProvider: (
+    name: string,
+    providerType: string,
+    baseUrl: string,
+    apiFormat?: string,
+    catalogId?: string,
+    authOption?: string,
+  ) =>
     invoke<Provider>('create_provider', {
       name,
       providerType,
@@ -322,6 +329,9 @@ export const api = {
       // anything the backend could infer from the address: choosing OpenAI and
       // then pointing it at a relay is still OpenAI.
       catalogId: catalogId ?? null,
+      // Which of that vendor's sign-in options the row starts under. Absent
+      // means the entry's default, which is the API key everywhere today.
+      authOption: authOption ?? null,
     }),
 
   updateProvider: (
@@ -332,6 +342,8 @@ export const api = {
       baseUrl?: string
       isEnabled?: number
       apiFormat?: string
+      credentialKind?: string
+      transportProfile?: string
     },
   ) =>
     invoke<Provider>('update_provider', {
@@ -341,6 +353,8 @@ export const api = {
       baseUrl: updates.baseUrl ?? null,
       isEnabled: updates.isEnabled ?? null,
       apiFormat: updates.apiFormat ?? null,
+      credentialKind: updates.credentialKind ?? null,
+      transportProfile: updates.transportProfile ?? null,
     }),
 
   deleteProvider: (id: string) => invoke<void>('delete_provider', { id }),

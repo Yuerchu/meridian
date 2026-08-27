@@ -156,6 +156,7 @@ describe('ProviderSettings list/detail navigation', () => {
       'https://api.openai.com/v1',
       'chat_completions',
       'openai',
+      'api_key',
     )
   })
 
@@ -209,6 +210,48 @@ describe('ProviderSettings list/detail navigation', () => {
     render(<ProviderSettings />)
     expect(await screen.findByText(i18n.t('settings.provider.apiKey'))).toBeInTheDocument()
     expect(screen.queryByText(i18n.t('settings.provider.codexAccount'))).not.toBeInTheDocument()
+  })
+
+  // The one control that writes `credential_kind`. Without it the catalog's
+  // second sign-in option — the whole ChatGPT-login feature — was reachable
+  // only by editing the database by hand: `create_provider` always took the
+  // entry's default, and nothing on the panel could change it afterwards.
+  it('a vendor with two sign-ins gets a selector, and choosing one writes the row', async () => {
+    mockViewport(false)
+    const user = userEvent.setup()
+    mockApi.listProviderCatalog.mockResolvedValue([
+      {
+        ...CATALOG[0],
+        auth: [
+          CATALOG[0].auth[0],
+          {
+            id: 'codex_cli',
+            credential_kind: 'codex_cli',
+            transport_profile: 'chatgpt_codex',
+            api_formats: ['responses'],
+            default_base_url: { responses: 'https://chatgpt.com/backend-api/codex' },
+          },
+        ],
+      },
+    ])
+    mockApi.updateProvider.mockResolvedValue(makeProvider('p1', 'Provider One'))
+    render(<ProviderSettings />)
+    await screen.findByText(i18n.t('settings.provider.deleteProvider'))
+
+    // A vendor with one way in never shows this — asserted by the tests above
+    // never finding it. Here it exists and carries both options.
+    await user.click(screen.getByRole('button', { name: new RegExp(i18n.t('settings.provider.authMethod')) }))
+    await user.click(await screen.findByRole('option', { name: i18n.t('settings.provider.authMethodCodexCli') }))
+
+    expect(mockApi.updateProvider).toHaveBeenCalledWith(
+      'p1',
+      expect.objectContaining({
+        credentialKind: 'codex_cli',
+        transportProfile: 'chatgpt_codex',
+        apiFormat: 'responses',
+        baseUrl: 'https://chatgpt.com/backend-api/codex',
+      }),
+    )
   })
 
   it('shows the native GenerateContent protocol for Google connections', async () => {
