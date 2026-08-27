@@ -1241,7 +1241,13 @@ with linux containers on Windows.
   the daemon. Nothing is passed yet, which is correct and incomplete.
 - **A label is enough to find every container this app owns**, which is what reclaim
   after a crash needs, and `docker stop` returns with `.State.Running` already false —
-  the same invariant `acp::peer` holds for the adapter.
+  the same invariant `acp::peer` holds for the adapter. Reclaim is `reconcile`, judged
+  against `conversation::all_ids` — the *unfiltered* list, since an orphan judged
+  against the sidebar's filtered one is an archived conversation's container. A live
+  conversation's container is stopped, never removed: its writable layer is the
+  continuity `ensure`'s restart branch resumes, and the old remove-everything reclaim
+  contradicted that branch. Wired at startup (which is what covers a crash), at exit
+  (`stop_owned`, bounded), and into `delete_conversation` beside the ACP close.
 - **`custom.rs` goes in too.** It used to pass `None` and always run on the host,
   which was defensible while the only sandbox narrowed a command on this machine
   anyway. `run_command` inside a container and a user's own command tool outside it,
@@ -1308,10 +1314,15 @@ silently broken.
   `--add-host=host.docker.internal:host-gateway`, because that name resolves to a proxy
   (`192.168.65.254`) which connects from the host side. **This does not generalise**: a
   native Linux daemon resolves it to the bridge address, the connection arrives on a
-  real interface, and a loopback-only server is not listening there. So a containerised
-  agent works on the desktop platforms this targets and silently fails on Linux, and the
-  implementation has to detect which it is on and say so rather than binding wider by
-  default — widening makes the bearer token the only boundary instead of the second one.
+  real interface, and a loopback-only server is not listening there. So until a
+  boundary-crossing endpoint is built, a containerised launch (a `run` on a known
+  launcher — `process::launches_in_container`, the same reading the marker rewrite and
+  the mount map use) is not offered the bridge at all: the descriptor would advertise
+  tools every call to which dials the container's own loopback, and the model would
+  keep trying them or claim to have used them. Withholding rides the existing
+  `tools_lost` conjunction, so the agent is told by the `NO_TOOLS` notice instead of
+  discovering it one dead call at a time. Binding wider stays refused by default —
+  widening makes the bearer token the only boundary instead of the second one.
 - **Two containers per conversation is the thing to rule out.** A hosted ACP agent runs
   its own tools and never goes through `run_command`, so giving it both an agent
   container and a command container produces two independent writable views of one
