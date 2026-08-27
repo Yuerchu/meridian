@@ -210,11 +210,18 @@ fn serialize_codex_input(messages: &[ChatMessage], model: &str) -> (Option<Strin
                 }));
             }
             "assistant" => {
-                // The reasoning that produced this reply goes back first and in
-                // its original order, so the model sees the same sequence it
-                // emitted. Items whose stored JSON no longer parses are skipped
-                // rather than failing the turn: losing the reasoning costs
-                // continuity, sending malformed input costs the whole request.
+                // The reasoning goes back interleaved where it originally
+                // stood, not merely sorted among itself. `position` is the
+                // item's index in the original output, and the sequence the
+                // model emitted was reasoning *adjacent to the item it
+                // produced* — `[reasoning, call, reasoning, call]`, routinely.
+                // Replaying all reasoning first, which this used to do, kept
+                // the reasoning items ordered and moved every one of them away
+                // from its call: exactly the reordering the position field was
+                // stored to prevent. Items whose stored JSON no longer parses
+                // are skipped rather than failing the turn: losing the
+                // reasoning costs continuity, sending malformed input costs
+                // the whole request.
                 let mut replayed: Vec<_> = m
                     .provider_state
                     .as_ref()
@@ -228,10 +235,16 @@ fn serialize_codex_input(messages: &[ChatMessage], model: &str) -> (Option<Strin
                     })
                     .collect();
                 replayed.sort_by_key(|(position, _)| *position);
-                input.extend(replayed.into_iter().map(|(_, value)| value));
 
+                // The non-reasoning items, in the order the turn stored them —
+                // which is the order they streamed. Their own indices were not
+                // stored, so the merge places each reasoning item at its
+                // recorded index and lets these fill the gaps in between; a
+                // position beyond the sequence (older rows, a dropped item)
+                // degrades to appending, never to losing anything.
+                let mut others = std::collections::VecDeque::new();
                 if !m.content.is_empty() {
-                    input.push(serde_json::json!({
+                    others.push_back(serde_json::json!({
                         "type": "message",
                         "role": "assistant",
                         "content": [{"type": "output_text", "text": m.content}],
@@ -239,12 +252,25 @@ fn serialize_codex_input(messages: &[ChatMessage], model: &str) -> (Option<Strin
                 }
                 if let Some(ref tool_calls) = m.tool_calls {
                     for tc in tool_calls {
-                        input.push(serde_json::json!({
+                        others.push_back(serde_json::json!({
                             "type": "function_call",
                             "name": tc.name,
                             "arguments": tc.arguments,
                             "call_id": tc.id,
                         }));
+                    }
+                }
+
+                let total = replayed.len() + others.len();
+                let mut reasoning = replayed.into_iter().peekable();
+                for index in 0..total {
+                    let its_turn = reasoning.peek().is_some_and(|(position, _)| *position <= index);
+                    if its_turn || others.is_empty() {
+                        if let Some((_, value)) = reasoning.next() {
+                            input.push(value);
+                        }
+                    } else if let Some(other) = others.pop_front() {
+                        input.push(other);
                     }
                 }
             }
@@ -423,10 +449,11 @@ mod tests {
         }
     }
 
-    /// Reasoning goes back ahead of the reply it produced, and in the order it
-    /// came out — the model has to see the sequence it actually emitted.
+    /// Reasoning goes back at the index it originally held, not merely ahead
+    /// of everything — the model has to see the sequence it actually emitted.
+    /// Positions 0 and 2 around one message means the message stood at 1.
     #[test]
-    fn reasoning_is_replayed_before_the_reply_in_its_original_order() {
+    fn reasoning_is_replayed_at_its_original_index() {
         let messages = vec![assistant(
             "done",
             Some(reasoning_state("gpt-5.6", vec![(2, "second"), (0, "first")])),
@@ -434,9 +461,49 @@ mod tests {
         let (_, input) = serialize_codex_input(&messages, "gpt-5.6");
 
         let kinds: Vec<_> = input.iter().map(|i| i["type"].as_str().unwrap()).collect();
-        assert_eq!(kinds, vec!["reasoning", "reasoning", "message"]);
+        assert_eq!(kinds, vec!["reasoning", "message", "reasoning"]);
         assert_eq!(input[0]["id"], "first", "sorted by position, not arrival");
-        assert_eq!(input[1]["id"], "second");
+        assert_eq!(input[2]["id"], "second");
+    }
+
+    /// **The interleaving the position field was stored for.** A tool round
+    /// comes out as `[reasoning, call, reasoning, call]` — each reasoning item
+    /// adjacent to the call it produced. Replaying all reasoning first keeps
+    /// the reasoning sorted and moves every item away from its call, which is
+    /// the reordering a `store:false` backend can reject outright.
+    #[test]
+    fn reasoning_is_interleaved_with_the_calls_it_produced() {
+        let mut msg = assistant("", Some(reasoning_state("gpt-5.6", vec![(0, "for-a"), (2, "for-b")])));
+        msg.tool_calls = Some(vec![
+            crate::provider::ToolCall {
+                id: "call-a".into(),
+                name: "read_file".into(),
+                arguments: "{}".into(),
+            },
+            crate::provider::ToolCall {
+                id: "call-b".into(),
+                name: "run_command".into(),
+                arguments: "{}".into(),
+            },
+        ]);
+        let (_, input) = serialize_codex_input(&[msg], "gpt-5.6");
+
+        let kinds: Vec<_> = input.iter().map(|i| i["type"].as_str().unwrap()).collect();
+        assert_eq!(kinds, vec!["reasoning", "function_call", "reasoning", "function_call"]);
+        assert_eq!(input[0]["id"], "for-a");
+        assert_eq!(input[1]["call_id"], "call-a");
+        assert_eq!(input[2]["id"], "for-b");
+        assert_eq!(input[3]["call_id"], "call-b");
+    }
+
+    /// A position beyond the rebuilt sequence — an older row, a dropped item —
+    /// degrades to appending. Nothing is lost and nothing panics.
+    #[test]
+    fn a_position_past_the_sequence_appends_rather_than_losing_the_item() {
+        let messages = vec![assistant("done", Some(reasoning_state("gpt-5.6", vec![(7, "stray")])))];
+        let (_, input) = serialize_codex_input(&messages, "gpt-5.6");
+        let kinds: Vec<_> = input.iter().map(|i| i["type"].as_str().unwrap()).collect();
+        assert_eq!(kinds, vec!["message", "reasoning"]);
     }
 
     /// Another model's reasoning is not replayed: the upstream would reject it,
