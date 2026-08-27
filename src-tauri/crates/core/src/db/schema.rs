@@ -535,6 +535,44 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    journal_files (id) {
+        id -> Text,
+        norm_path -> Text,
+        display_path -> Text,
+        created_at -> BigInt,
+        updated_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    journal_blobs (sha256) {
+        sha256 -> Text,
+        byte_len -> BigInt,
+        line_count -> Integer,
+        created_at -> BigInt,
+    }
+}
+
+diesel::table! {
+    journal_versions (id) {
+        id -> Text,
+        file_id -> Text,
+        seq -> BigInt,
+        op -> Text,
+        observed_old_sha -> Nullable<Text>,
+        new_sha -> Nullable<Text>,
+        source -> Text,
+        conversation_id -> Nullable<Text>,
+        turn_id -> Nullable<Text>,
+        origin -> Nullable<Text>,
+        model_id -> Nullable<Text>,
+        tool_name -> Nullable<Text>,
+        moved_from_file_id -> Nullable<Text>,
+        created_at -> BigInt,
+    }
+}
+
 diesel::joinable!(assistant_emoji_packs -> assistants (assistant_id));
 diesel::joinable!(assistant_emoji_packs -> emoji_packs (pack_id));
 diesel::joinable!(assistants -> providers (provider_id));
@@ -562,6 +600,7 @@ diesel::joinable!(todo_items -> todo_lists (list_id));
 diesel::joinable!(turns -> conversations (conversation_id));
 diesel::joinable!(acp_sessions -> conversations (conversation_id));
 diesel::joinable!(voice_clips -> voice_blobs (blob_id));
+diesel::joinable!(journal_versions -> journal_files (file_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     acp_sessions,
@@ -572,6 +611,9 @@ diesel::allow_tables_to_appear_in_same_query!(
     custom_tools,
     emoji_packs,
     emojis,
+    journal_blobs,
+    journal_files,
+    journal_versions,
     mcp_servers,
     memories,
     memory_proposals,

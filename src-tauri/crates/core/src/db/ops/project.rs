@@ -48,7 +48,11 @@ pub fn find_project_by_path(conn: &mut SqliteConnection, path: &str) -> QueryRes
 /// Deliberately textual: `canonicalize` would be stricter but touches the disk
 /// and fails outright on a directory that has been moved or unmounted, which
 /// would turn "cannot check right now" into "not this project".
-fn normalize_path(path: &str) -> String {
+///
+/// `pub(crate)` because the file journal keys `journal_files.norm_path` on the
+/// same rules — two definitions of "the same path" would disagree exactly when
+/// it matters.
+pub(crate) fn normalize_path(path: &str) -> String {
     let unified = path.trim().replace('\\', "/");
     let trimmed = unified.trim_end_matches('/');
     if cfg!(windows) {

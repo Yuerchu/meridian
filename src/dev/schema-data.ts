@@ -145,6 +145,12 @@ export const GROUPS: SchemaGroup[] = [
     desc: '按 <code>(bot 账号, 会话)</code> 白名单留存的入站语音与转写。存的是真人声纹，所以默认全关，而且生命周期与会话解耦：删会话不删它，撤销同意是一个显式的、有确认的动作。物理文件与采集事件分成两张表——同一段音频被两个人发出来是两次采集。',
   },
   {
+    id: 'journal',
+    title: '文件 journal',
+    color: '#d0b48a',
+    desc: '影子文件历史：每个文件一条版本链，游离在 git 之外，记录「哪个会话的哪个 turn 把它从什么改成了什么」。行级归属（blame）与 rewind 都建在它上面。仓库零污染是硬要求——没有 trailer、没有 notes，另一台机器 <code>git log</code> 看不出任何工具痕迹。快照是整文件、内容寻址；相邻版本的 old/new 高度重复，同 sha 即零成本。',
+  },
+  {
     id: 'audit',
     title: '审计与计费',
     color: '#e3c76a',
@@ -1527,6 +1533,103 @@ const RAW_TABLES: RawTable[] = [
     rules: ['采集路径每次都查这张表。它只有拒绝过的人，通常是空的。'],
   },
 
+  // ── 文件 journal ──────────────────────────────────────────────
+  {
+    name: 'journal_files',
+    group: 'journal',
+    title: '文件身份',
+    mig: 42,
+    tags: ['nofk'],
+    show: ['id', 'norm_path', 'display_path'],
+    note: '键是 <b>canonical OS 路径</b>（verified 层握着句柄问出来的拼写，链接已展开、大小写已归一），再按 <code>find_project_by_path</code> 的同一套规则 normalize——两种拼法指到同一个文件必须收敛成一行。文件属于哪个项目是<b>每个版本行上的注脚</b>，不是文件身份的一部分。',
+    cols: [
+      ['id', 'TEXT', ['PK', 'NN'], '—', ''],
+      ['norm_path', 'TEXT', ['NN', 'UQ'], '—', '匹配键：统一分隔符、去尾斜杠、Windows 下小写。不是给人看的'],
+      ['display_path', 'TEXT', ['NN'], '—', 'OS 自己的拼写，给 UI'],
+      ['created_at', 'BIGINT', ['NN'], '—', ''],
+      ['updated_at', 'BIGINT', ['NN'], '—', ''],
+    ],
+    rels: ['被 <code>journal_versions</code>（CASCADE）引用。自己零外键。'],
+  },
+  {
+    name: 'journal_blobs',
+    group: 'journal',
+    title: '内容快照',
+    mig: 42,
+    tags: ['nofk'],
+    show: ['sha256', 'byte_len', 'line_count'],
+    note: '整文件内容寻址，sha 同时是 <code>blobs/&lt;sha[..2]&gt;/&lt;sha&gt;</code> 的磁盘文件名。沿用语料库的「<b>文件先于行存在</b>」，但<b>没有 owner/fence/lease</b>：内容寻址下并发写入者写的是逐字节相同的内容，fencing 防的「两个 owner 发布不同内容」在此构造上不可能发生，行插入 <code>INSERT OR IGNORE</code> 谁赢都对。',
+    cols: [
+      ['sha256', 'TEXT', ['PK', 'NN'], '—', '内容哈希，也是磁盘文件名'],
+      ['byte_len', 'BIGINT', ['NN'], '—', ''],
+      ['line_count', 'INTEGER', ['NN'], '—', '写入时数一次，blame 预算与历史 UI 用'],
+      ['created_at', 'BIGINT', ['NN'], '—', ''],
+    ],
+    rules: [
+      '读取时<b>重算 sha</b> 而不是比长度——截断之外的损坏长度全对。归属记录里错样本比缺样本贵。',
+      'GC 只删没有任何版本引用的 blob：行先删、文件后删，反过来会留下指着不存在字节的行。',
+    ],
+  },
+  {
+    name: 'journal_versions',
+    group: 'journal',
+    title: '版本链',
+    mig: 42,
+    show: ['id', 'file_id', 'seq', 'op', 'observed_old_sha', 'new_sha', 'source', 'conversation_id', 'turn_id'],
+    note: '一行 = 一次被观察到的状态迁移。链不变量：<code>seq&gt;1 ⇒ observed_old_sha = prev.new_sha</code>，由 <code>append_version</code> 保证——观察值与链头不符时<b>先插一行 op=external</b>（无归属）再插真实行，于是解释不了的差量落在 external 上，会话名下只有它真正做的那份。归属字段全是写入时快照（migration 30 的理由）。',
+    cols: [
+      ['id', 'TEXT', ['PK', 'NN'], '—', ''],
+      ['file_id', 'TEXT', ['FK', 'NN', 'UQ'], '—', '→ <code>journal_files(id)</code> ON DELETE CASCADE'],
+      ['seq', 'BIGINT', ['NN', 'UQ'], '—', '每文件单调；分配由 BEGIN IMMEDIATE 串行化'],
+      [
+        'op',
+        'TEXT',
+        ['NN'],
+        '—',
+        '<code>write|edit|patch|delete|rename_from|rename_to|command_observed|external|rewind</code>（CHECK）',
+      ],
+      [
+        'observed_old_sha',
+        'TEXT',
+        ['FK', 'NULL'],
+        'NULL',
+        '写入方动手前看到的内容；NULL=当时文件不存在。只有 seq=1 携带独立信息（journal 之前的「史前」边界）',
+      ],
+      ['new_sha', 'TEXT', ['FK', 'NULL'], 'NULL', 'NULL=这次是删除'],
+      [
+        'source',
+        'TEXT',
+        ['NN'],
+        '—',
+        '<code>native|hosted|inferred|external|rewind</code>（CHECK）。inferred 是 run_command 括号观察，UI 标「推断」',
+      ],
+      [
+        'conversation_id',
+        'TEXT',
+        ['NULL', 'IDX'],
+        'NULL',
+        '<b>无外键</b>（parent_id 先例）：journal 比会话长寿，删会话不得改写归属；解析不到就画「已删除的会话」',
+      ],
+      ['turn_id', 'TEXT', ['NULL', 'IDX'], 'NULL', '同上；rewind 按它选版本'],
+      ['origin', 'TEXT', ['NULL'], 'NULL', '<code>turns.origin</code> 的写入时快照（desktop / claude_code / …）'],
+      ['model_id', 'TEXT', ['NULL'], 'NULL', '快照'],
+      ['tool_name', 'TEXT', ['NULL'], 'NULL', '哪个工具写的'],
+      [
+        'moved_from_file_id',
+        'TEXT',
+        ['NULL'],
+        'NULL',
+        'rename_to 行指回旧链，blame 穿透 rename 用。无外键：旧链被清理时 blame 就停在那里',
+      ],
+      ['created_at', 'BIGINT', ['NN'], '—', ''],
+    ],
+    rules: [
+      '<code>UNIQUE(file_id, seq)</code>——链的骨架；并发 append 靠 <code>immediate_transaction</code> 串行分配。',
+      "<code>CHECK (source &lt;&gt; 'external' OR conversation_id IS NULL)</code>——「绝不错误归责」里机器查得了的那半句：external 行天然无人可归。",
+      '链不变量 <code>seq&gt;1 ⇒ observed_old = prev.new</code> 机器查不了（跨行），由 <code>db/ops/journal::append_version</code> 独家持有写入口来保证。',
+    ],
+  },
+
   // ── 审计与计费 ────────────────────────────────────────────────
   {
     name: 'audit_messages',
@@ -1659,6 +1762,16 @@ const RAW_TABLES: RawTable[] = [
 export const EDGES: SchemaEdge[] = [
   // 真外键
   { from: 'voice_clips', col: 'blob_id', to: 'voice_blobs', toCol: 'id', kind: 'fk', act: 'CASCADE' },
+  { from: 'journal_versions', col: 'file_id', to: 'journal_files', toCol: 'id', kind: 'fk', act: 'CASCADE' },
+  {
+    from: 'journal_versions',
+    col: 'observed_old_sha',
+    to: 'journal_blobs',
+    toCol: 'sha256',
+    kind: 'fk',
+    act: 'NO ACTION',
+  },
+  { from: 'journal_versions', col: 'new_sha', to: 'journal_blobs', toCol: 'sha256', kind: 'fk', act: 'NO ACTION' },
   { from: 'assistants', col: 'provider_id', to: 'providers', toCol: 'id', kind: 'fk', act: 'SET NULL' },
   { from: 'assistants', col: 'tool_preset_id', to: 'tool_presets', toCol: 'id', kind: 'fk', act: 'SET NULL' },
   { from: 'projects', col: 'assistant_id', to: 'assistants', toCol: 'id', kind: 'fk', act: 'SET NULL' },
@@ -1785,6 +1898,7 @@ const LAYOUT: { x: number; tables: string[] }[] = [
   },
   { x: 1700, tables: ['emoji_packs', 'emojis', 'assistant_emoji_packs'] },
   { x: 2040, tables: ['voice_blobs', 'voice_clips', 'voice_sender_optouts'] },
+  { x: 2380, tables: ['journal_files', 'journal_versions', 'journal_blobs'] },
 ]
 
 /** 节点宽度。画布上是定值，边的方向判断也用它。 */
