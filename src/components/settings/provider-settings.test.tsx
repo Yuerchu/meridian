@@ -204,6 +204,27 @@ describe('ProviderSettings list/detail navigation', () => {
     expect(screen.queryByText(i18n.t('settings.provider.apiKey'))).not.toBeInTheDocument()
   })
 
+  // The backend exempts a ChatGPT login from needing a stored key for this
+  // exact call, and the button used to gate on the key anyway — permanently
+  // grey on the one kind of row the exemption exists for, with the model list
+  // unreachable from the UI.
+  it('a ChatGPT login can fetch its model list without a stored key', async () => {
+    mockViewport(false)
+    const user = userEvent.setup()
+    mockApi.listProviders.mockResolvedValue([
+      { ...makeProvider('codex-1', 'Codex'), credential_kind: 'codex_cli', transport_profile: 'chatgpt_codex' },
+    ])
+    mockApi.getProviderKeyExists.mockResolvedValue(false)
+    mockApi.fetchProviderModels.mockResolvedValue([{ id: 'gpt-5.6', name: 'gpt-5.6' }])
+    render(<ProviderSettings />)
+    await screen.findByText(i18n.t('settings.provider.deleteProvider'))
+
+    const fetchButton = screen.getByRole('button', { name: new RegExp(i18n.t('settings.provider.fetchModels')) })
+    expect(fetchButton).not.toBeDisabled()
+    await user.click(fetchButton)
+    expect(mockApi.fetchProviderModels).toHaveBeenCalledWith('codex-1', true)
+  })
+
   /** An API-key provider keeps the field it has always had. */
   it('an API-key provider still gets a key field', async () => {
     mockViewport(false)
