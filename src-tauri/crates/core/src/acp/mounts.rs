@@ -246,12 +246,35 @@ mod tests {
         assert_eq!(map.to_container(Path::new("/anything")), None);
     }
 
-    /// **The colon.** `C:\work\repo:/repo` has three, and only the second
-    /// separates. Split on the first and the host path becomes `C`, which
-    /// Docker creates as a named volume rather than refusing — so the agent
-    /// gets an empty directory instead of the project and nothing says why.
+    /// **The colon, as a parsing fact — testable on every host.** `C:\work\repo:/repo`
+    /// has three colons and only the second separates. Split on the first and
+    /// the host path becomes `C`, which Docker creates as a named volume rather
+    /// than refusing — so the agent gets an empty directory instead of the
+    /// project and nothing says why. The split is pure string work, so this
+    /// runs everywhere; what a Windows *path* means is the gated test below.
     #[test]
     fn a_windows_drive_letter_is_not_a_separator() {
+        assert_eq!(
+            split_volume("C:\\work\\repo:/repo"),
+            Some((PathBuf::from("C:\\work\\repo"), "/repo".to_string()))
+        );
+        // With trailing options on top: still the second colon, not the fourth.
+        assert_eq!(
+            split_volume("C:\\work:/repo:ro"),
+            Some((PathBuf::from("C:\\work"), "/repo".to_string()))
+        );
+        // A bare drive letter for a host path is the failure mode, not a mount.
+        assert_eq!(split_volume("C:/repo"), None);
+    }
+
+    /// The translation half of the drive-letter case. Gated: `Path` on a POSIX
+    /// host reads `C:\work\repo\src\lib.rs` as one component, so `strip_prefix`
+    /// against the mount can never succeed there — the assertions would fail
+    /// about the host's path semantics, not about this module. A Windows mount
+    /// spec only ever meets a Windows `Path` in production for the same reason.
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn a_windows_mount_translates_both_ways() {
         let map = MountMap::from_command("docker", &argv(&["run", "-v", "C:\\work\\repo:/repo", "img"]));
         assert_eq!(
             map.to_container(Path::new("C:\\work\\repo\\src\\lib.rs")).as_deref(),
@@ -261,20 +284,21 @@ mod tests {
             map.to_host("/repo/src/lib.rs"),
             Some(PathBuf::from("C:\\work\\repo\\src\\lib.rs"))
         );
+        let optioned = MountMap::from_command("docker", &argv(&["run", "-v", "C:\\work:/repo:ro", "img"]));
+        assert_eq!(
+            optioned.to_container(Path::new("C:\\work\\a")).as_deref(),
+            Some("/repo/a")
+        );
     }
 
     /// Options are trailing and have no slash, which is what makes them
     /// separable from a container path.
     #[test]
     fn trailing_options_are_not_part_of_the_container_path() {
-        for spec in ["C:\\work:/repo:ro", "/home/me/work:/repo:rw", "/home/me/work:/repo:z"] {
+        for spec in ["/home/me/work:/repo:rw", "/home/me/work:/repo:z"] {
             let map = MountMap::from_command("docker", &argv(&["run", "-v", spec, "img"]));
             assert!(!map.is_empty(), "{spec} produced no mount");
-            let inside = map.to_container(Path::new(if spec.starts_with('C') {
-                "C:\\work\\a"
-            } else {
-                "/home/me/work/a"
-            }));
+            let inside = map.to_container(Path::new("/home/me/work/a"));
             assert_eq!(inside.as_deref(), Some("/repo/a"), "{spec}");
         }
     }

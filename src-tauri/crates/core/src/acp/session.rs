@@ -1202,7 +1202,18 @@ impl AcpSession {
         // first thing said to it. A failure here is *not* a failure to open —
         // see [`NO_TOOLS`] — but it does have to be visible, which is what
         // `tools_lost` is for.
-        let bridge = if opening.wants_tools {
+        //
+        // **A containerised adapter is not offered the bridge at all.** The
+        // endpoint binds this host's loopback, and `127.0.0.1` inside the
+        // container is the container — so a descriptor sent in would advertise
+        // tools every call to which dials nowhere, and the model would keep
+        // trying them or claim to have used them. Reaching through the
+        // boundary (`host.docker.internal`, wider binds) is measured to work
+        // only on Docker Desktop and weakens the loopback boundary elsewhere,
+        // so until that is built the honest answer is the one `NO_TOOLS`
+        // already says: the tools are missing, and the agent is told so.
+        let containerised = super::process::launches_in_container(&config.command, &config.args);
+        let bridge = if opening.wants_tools && !containerised {
             match Self::start_bridge(&services, &conversation_id).await {
                 Ok(bridge) => Some(bridge),
                 Err(e) => {
@@ -1215,6 +1226,13 @@ impl AcpSession {
                 }
             }
         } else {
+            if opening.wants_tools {
+                tracing::warn!(
+                    conversation_id = %conversation_id,
+                    "the adapter runs in a container the bridge's loopback endpoint cannot reach; \
+                     this session will have no Meridian tools"
+                );
+            }
             None
         };
         // Asked for and not got. An import asks for none, so its `None` is not

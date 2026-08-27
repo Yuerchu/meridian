@@ -76,6 +76,20 @@ pub(super) const CONTAINER_LAUNCHERS: &[&str] = &["docker", "podman", "nerdctl"]
 /// The flag goes immediately after the subcommand. Anywhere later risks landing
 /// after the image name, where it would be an argument to the *agent* rather
 /// than to the launcher.
+/// Whether this command starts the adapter inside a container: a known
+/// launcher with a `run` subcommand. The same reading `forward_marker_into_container`
+/// repairs and `mounts::MountMap` translates against — and what the bridge
+/// asks before advertising an endpoint, since `127.0.0.1` inside a container
+/// is the container.
+pub(super) fn launches_in_container(command: &str, args: &[String]) -> bool {
+    let program = std::path::Path::new(command)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(command)
+        .to_ascii_lowercase();
+    CONTAINER_LAUNCHERS.contains(&program.as_str()) && args.iter().any(|a| a == "run")
+}
+
 fn forward_marker_into_container(command: &str, args: &[String]) -> Vec<String> {
     let program = std::path::Path::new(command)
         .file_stem()
@@ -300,6 +314,27 @@ mod tests {
 
     fn argv(args: &[&str]) -> Vec<String> {
         args.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// What the bridge asks before advertising its endpoint: a `run` on a known
+    /// launcher means the adapter's `127.0.0.1` is not this machine. An `exec`
+    /// enters a container this app did not start and is left alone here for
+    /// the same reason the marker rewrite leaves it alone — but it still
+    /// counts as "not reachable" being false only because nothing is known
+    /// about it, so only the unambiguous `run` answers yes.
+    #[test]
+    fn a_container_launch_is_recognised_and_nothing_else_is() {
+        assert!(launches_in_container("docker", &argv(&["run", "-i", "--rm", "img"])));
+        assert!(launches_in_container("podman", &argv(&["run", "img"])));
+        assert!(launches_in_container(
+            "C:\\Program Files\\Docker\\docker.exe",
+            &argv(&["run", "img"])
+        ));
+        assert!(!launches_in_container("docker", &argv(&["exec", "some-container"])));
+        assert!(!launches_in_container(
+            "npx",
+            &argv(&["-y", "@agentclientprotocol/claude-agent-acp"])
+        ));
     }
 
     /// The case the whole thing exists for. Measured: `docker run` does not
