@@ -11,6 +11,14 @@ use crate::db::schema::conversations;
 /// archive flag is a user's decision and can be undone, and the project view
 /// deliberately concatenates archived rows onto active ones, which would spill
 /// them back into the list. Being spawned is not a decision anyone can reverse.
+/// Every conversation id — archived and delegated runs included, unlike the
+/// sidebar queries below. For reconciling external resources keyed by id: a
+/// container judged an orphan against a *filtered* list is one an archived
+/// conversation was still counting on.
+pub fn all_ids(conn: &mut SqliteConnection) -> QueryResult<Vec<String>> {
+    conversations::table.select(conversations::id).load(conn)
+}
+
 pub fn list_conversations(conn: &mut SqliteConnection, archived: bool) -> QueryResult<Vec<Conversation>> {
     let archived_val = if archived { 1 } else { 0 };
     conversations::table

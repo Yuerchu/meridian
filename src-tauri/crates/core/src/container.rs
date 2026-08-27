@@ -99,10 +99,18 @@ pub trait CommandConnector: Send + Sync + std::fmt::Debug {
     /// `cwd` is a **host** path. Translating it is the connector's job: only it
     /// knows where the workspace is mounted, and a caller that translated would
     /// have to know too.
+    ///
+    /// `workspace` is what gets mounted, and it is the *policy's* project
+    /// directory rather than the command's cwd. The two used to be one
+    /// parameter, and that was a boundary defect: a custom tool sets its own
+    /// working directory, and taking that as the mount source meant the first
+    /// command of a conversation decided what the sandbox contains — `/`, if
+    /// that was its cwd. A cwd outside `workspace` is refused, not mounted.
     async fn execute(
         &self,
         argv: &[String],
         cwd: &Path,
+        workspace: &Path,
         conversation_id: &str,
         timeout: Duration,
         cancel: &CancellationToken,
@@ -255,10 +263,17 @@ impl DockerConnector {
         matches!(killed, Ok(out) if out.status == 0 && out.stdout == "gone")
     }
 
-    /// Every container this app owns, whether or not it is running.
+    /// The names of every container this app owns, whether or not running.
+    ///
+    /// Names rather than ids, because a name is derived from a conversation
+    /// (`container_name`) and can therefore be compared against the rows that
+    /// still exist — which is what telling an orphan from a survivor takes.
     async fn owned(&self) -> Vec<String> {
         let label = format!("label={OWNER_LABEL}={OWNER_LABEL_VALUE}");
-        match self.docker(&["ps", "-aq", "--filter", &label]).await {
+        match self
+            .docker(&["ps", "-a", "--filter", &label, "--format", "{{.Names}}"])
+            .await
+        {
             Ok(out) if out.status == 0 => out
                 .stdout
                 .lines()
@@ -269,22 +284,61 @@ impl DockerConnector {
         }
     }
 
-    /// Remove everything this app left behind.
+    /// Settle what an earlier run left behind, against the conversations that
+    /// still exist.
     ///
-    /// For startup: a crash leaves containers with nobody holding them, and
-    /// they are found by label rather than by a record this app would have had
-    /// to survive the crash to keep.
-    pub async fn reclaim_orphans(&self) -> usize {
-        let mut removed = 0;
-        for id in self.owned().await {
-            if self.docker(&["rm", "-f", &id]).await.is_ok_and(|o| o.status == 0) {
+    /// For startup. A container whose conversation is gone is removed — nothing
+    /// can ever enter it again, and by-label discovery is what finds it without
+    /// a record this app would have had to survive a crash to keep. A container
+    /// whose conversation *does* still exist is stopped, not removed: its
+    /// writable layer is the conversation's continuity across a restart, and
+    /// `ensure` starts it again on the next command. **Removing everything**,
+    /// which this used to do, contradicted that reuse branch — the two were
+    /// written against each other and whichever ran first won.
+    pub async fn reconcile(&self, live_conversation_ids: &[String]) -> (usize, usize) {
+        let live: std::collections::HashSet<String> =
+            live_conversation_ids.iter().map(|id| container_name(id)).collect();
+        let (mut removed, mut stopped) = (0, 0);
+        for name in self.owned().await {
+            if live.contains(&name) {
+                // Cheap on an already-stopped container, and `-t 1` because the
+                // only thing inside between commands is `sleep`.
+                if self
+                    .docker(&["stop", "-t", "1", &name])
+                    .await
+                    .is_ok_and(|o| o.status == 0)
+                {
+                    stopped += 1;
+                }
+            } else if self.docker(&["rm", "-f", &name]).await.is_ok_and(|o| o.status == 0) {
                 removed += 1;
             }
         }
-        if removed > 0 {
-            tracing::info!(removed, "removed containers left behind by an earlier run");
+        if removed > 0 || stopped > 0 {
+            tracing::info!(removed, stopped, "settled containers left behind by an earlier run");
         }
-        removed
+        (removed, stopped)
+    }
+
+    /// Stop every owned container that is still running.
+    ///
+    /// For shutdown: `sleep infinity` keeps a conversation's container running
+    /// for as long as the daemon does, and an app that has exited is not coming
+    /// back for it until the next launch. Stopped, not removed — the writable
+    /// layer is what a restart resumes. `reconcile` covers the exits this never
+    /// sees, which is every crash.
+    pub async fn stop_owned(&self) -> usize {
+        let mut stopped = 0;
+        for name in self.owned().await {
+            if self
+                .docker(&["stop", "-t", "1", &name])
+                .await
+                .is_ok_and(|o| o.status == 0)
+            {
+                stopped += 1;
+            }
+        }
+        stopped
     }
 
     /// End one conversation's container.
@@ -315,6 +369,7 @@ impl CommandConnector for DockerConnector {
         &self,
         argv: &[String],
         cwd: &Path,
+        workspace: &Path,
         conversation_id: &str,
         timeout: Duration,
         cancel: &CancellationToken,
@@ -322,8 +377,10 @@ impl CommandConnector for DockerConnector {
         if argv.is_empty() {
             return Err(ExecError::Spawn("empty command".into()));
         }
-        let name = self.ensure(conversation_id, cwd).await?;
-        let inside = container_path(cwd, cwd)?;
+        // The workspace decides the mount; the cwd is merely resolved against
+        // it, and `container_path` refusing a cwd outside it is the boundary.
+        let name = self.ensure(conversation_id, workspace).await?;
+        let inside = container_path(cwd, workspace)?;
         let exec_id = uuid::Uuid::new_v4().simple().to_string();
 
         let mut args: Vec<String> = vec![
@@ -575,6 +632,7 @@ mod tests {
                     .execute(
                         &["sh".into(), "-c".into(), cmd],
                         &dir,
+                        &dir,
                         &conversation,
                         Duration::from_secs(30),
                         &cancel,
@@ -627,6 +685,7 @@ mod tests {
                 docker
                     .execute(
                         &["sh".into(), "-c".into(), "touch /tmp/probe-started; sleep 300".into()],
+                        &dir,
                         &dir,
                         &conversation,
                         Duration::from_secs(120),
@@ -682,6 +741,7 @@ mod tests {
             .execute(
                 &["true".into()],
                 workspace.path(),
+                workspace.path(),
                 &conversation,
                 Duration::from_secs(30),
                 &CancellationToken::new(),
@@ -696,7 +756,19 @@ mod tests {
             !restarted.owned().await.is_empty(),
             "a container this app owns was not findable by its label"
         );
-        assert!(restarted.reclaim_orphans().await >= 1);
-        assert!(restarted.owned().await.is_empty(), "reclaim left containers behind");
+        // While its conversation still exists, a restart stops it — the
+        // writable layer is the conversation's continuity — and does not
+        // remove it.
+        let (removed, stopped) = restarted.reconcile(std::slice::from_ref(&conversation)).await;
+        assert_eq!(removed, 0, "a live conversation's container was removed");
+        assert!(stopped >= 1);
+        assert!(
+            !restarted.owned().await.is_empty(),
+            "stopping must keep the container findable"
+        );
+        // Once the conversation is gone, the same pass removes it.
+        let (removed, _) = restarted.reconcile(&[]).await;
+        assert!(removed >= 1);
+        assert!(restarted.owned().await.is_empty(), "reconcile left containers behind");
     }
 }

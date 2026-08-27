@@ -277,6 +277,13 @@ pub async fn delete_conversation(app: tauri::AppHandle, id: String) -> Result<()
         let mut all = doomed.clone();
         all.push(id.clone());
         services.acp.close_each(&all).await;
+        // The command container is keyed by conversation id the same way, and
+        // deleting the row is the last moment anything can still name it —
+        // after this, the only thing that ever finds it again is the startup
+        // reconcile noticing its conversation is gone.
+        for c in &all {
+            services.containers.close(c).await;
+        }
     }
 
     tokio::task::spawn_blocking(move || {

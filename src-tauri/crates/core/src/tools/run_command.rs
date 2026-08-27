@@ -40,18 +40,32 @@ impl Tool for RunCommandTool {
 
         let cwd = context.working_dir_or_current();
 
-        let shell_argv: Vec<String> = match context.shell {
-            ShellType::Cmd => vec!["cmd".into(), "/C".into(), command.into()],
-            ShellType::PowerShell => {
-                vec![
-                    find_powershell().into(),
-                    "-NoProfile".into(),
-                    "-Command".into(),
-                    command.into(),
-                ]
-            }
-            ShellType::Bash => {
-                vec![find_bash().into(), "-c".into(), command.into()]
+        // `context.shell` describes this machine, and a container is not this
+        // machine: its argv resolves *inside*, where neither `C:\Program
+        // Files\Git\bin\bash.exe` nor necessarily `/bin/bash` exists — the
+        // default image is Alpine, which ships `sh` alone. So a containered
+        // command gets the one shell the POSIX image contract promises, and the
+        // host shell selection applies only where the command actually runs.
+        let containered = context
+            .sandbox_policy
+            .as_ref()
+            .is_some_and(|p| p.backend == SandboxBackend::Container);
+        let shell_argv: Vec<String> = if containered {
+            vec!["sh".into(), "-c".into(), command.into()]
+        } else {
+            match context.shell {
+                ShellType::Cmd => vec!["cmd".into(), "/C".into(), command.into()],
+                ShellType::PowerShell => {
+                    vec![
+                        find_powershell().into(),
+                        "-NoProfile".into(),
+                        "-Command".into(),
+                        command.into(),
+                    ]
+                }
+                ShellType::Bash => {
+                    vec![find_bash().into(), "-c".into(), command.into()]
+                }
             }
         };
 
@@ -224,6 +238,77 @@ pub(crate) fn find_bash() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A connector that records the argv it was handed and answers success.
+    #[derive(Debug, Default)]
+    struct ArgvRecorder {
+        argv: std::sync::Mutex<Option<Vec<String>>>,
+    }
+
+    #[async_trait]
+    impl crate::container::CommandConnector for ArgvRecorder {
+        fn backend(&self) -> SandboxBackend {
+            SandboxBackend::Container
+        }
+        async fn execute(
+            &self,
+            argv: &[String],
+            _: &std::path::Path,
+            _: &std::path::Path,
+            _: &str,
+            _: Duration,
+            _: &tokio_util::sync::CancellationToken,
+        ) -> Result<ExecResult, crate::sandbox::ExecError> {
+            *self.argv.lock().unwrap() = Some(argv.to_vec());
+            Ok(ExecResult {
+                exit_code: 0,
+                stdout: b"ok".to_vec(),
+                stderr: Vec::new(),
+                timed_out: false,
+                truncated: false,
+                ran_under: SandboxBackend::Container,
+            })
+        }
+    }
+
+    /// **The shell is the container's, not this machine's.** `context.shell`
+    /// selected the argv unconditionally, so a Windows host sent `C:\Program
+    /// Files\Git\bin\bash.exe` — or PowerShell — into `docker exec`, where the
+    /// default image ships `sh` alone, and every command failed before running.
+    #[tokio::test]
+    async fn a_containered_command_gets_the_containers_shell_not_this_machines() {
+        let recorder = std::sync::Arc::new(ArgvRecorder::default());
+        let context = ToolContext {
+            working_directory: Some("/the/project".into()),
+            // The most host-bound choice there is: proof the selection is
+            // ignored where the command does not run on the host.
+            shell: ShellType::PowerShell,
+            file_access: crate::tools::FileAccess::Unrestricted,
+            project_id: None,
+            conversation_id: Some("c-1".into()),
+            turn_id: None,
+            assistant_id: None,
+            db_pool: None,
+            sandbox_policy: Some(crate::sandbox::SandboxPolicy {
+                project_dir: Some(std::path::PathBuf::from("/the/project")),
+                backend: SandboxBackend::Container,
+                connector: Some(recorder.clone()),
+                conversation_id: Some("c-1".into()),
+                ..Default::default()
+            }),
+            tool_secrets: Default::default(),
+            cancel: tokio_util::sync::CancellationToken::new(),
+        };
+
+        RunCommandTool
+            .execute(serde_json::json!({"command": "echo hi"}), &context)
+            .await
+            .unwrap();
+
+        let argv = recorder.argv.lock().unwrap().clone().expect("the connector ran");
+        assert_eq!(&argv[..2], &["sh".to_string(), "-c".to_string()], "{argv:?}");
+        assert_eq!(argv[2], "echo hi");
+    }
 
     fn exec_res(exit_code: i32, stderr: &str, sandboxed: bool, timed_out: bool) -> ExecResult {
         ExecResult {

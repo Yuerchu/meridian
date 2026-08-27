@@ -346,19 +346,26 @@ pub async fn execute(
         Some(SandboxBackend::Container) => {
             let policy = policy.expect("matched on its own backend");
             // **Fails closed.** A policy that asks for a container and has no
-            // connector, or no conversation to place the command in, is
-            // misconfigured — and running it on the host instead is exactly the
-            // silent fallback this backend exists to prevent. The turn sees an
-            // error it can report; nobody gets an unconfined command they
-            // believe was contained.
-            let (Some(connector), Some(conversation_id)) = (&policy.connector, &policy.conversation_id) else {
+            // connector, no conversation to place the command in, or no project
+            // directory to mount is misconfigured — and running it on the host
+            // instead is exactly the silent fallback this backend exists to
+            // prevent. The turn sees an error it can report; nobody gets an
+            // unconfined command they believe was contained. The project
+            // directory is in this list because it is what gets mounted:
+            // passing the command's own cwd in its place is how a custom tool's
+            // working directory became the sandbox's contents.
+            let (Some(connector), Some(conversation_id), Some(workspace)) =
+                (&policy.connector, &policy.conversation_id, &policy.project_dir)
+            else {
                 return Err(ExecError::Spawn(
                     "this conversation is configured to run commands in a container, but no container \
                      backend is available. Nothing was run — check Docker is installed and running."
                         .into(),
                 ));
             };
-            connector.execute(command, cwd, conversation_id, timeout, cancel).await
+            connector
+                .execute(command, cwd, workspace, conversation_id, timeout, cancel)
+                .await
         }
         Some(SandboxBackend::Host) | None => execute_unsandboxed(command, cwd, timeout, cancel).await,
     }
@@ -777,6 +784,7 @@ mod tests {
                 &self,
                 _: &[String],
                 _: &Path,
+                _: &Path,
                 _: &str,
                 _: Duration,
                 _: &CancellationToken,
@@ -787,6 +795,90 @@ mod tests {
 
         fn connector() -> Option<Arc<dyn crate::container::CommandConnector>> {
             Some(Arc::new(Nowhere))
+        }
+
+        /// What a connector was actually handed, for the boundary tests below.
+        #[derive(Debug, Default)]
+        struct Recorder {
+            seen: std::sync::Mutex<Option<(Vec<String>, std::path::PathBuf, std::path::PathBuf)>>,
+        }
+
+        #[async_trait::async_trait]
+        impl crate::container::CommandConnector for Recorder {
+            fn backend(&self) -> SandboxBackend {
+                SandboxBackend::Container
+            }
+            async fn execute(
+                &self,
+                argv: &[String],
+                cwd: &Path,
+                workspace: &Path,
+                _: &str,
+                _: Duration,
+                _: &CancellationToken,
+            ) -> Result<ExecResult, ExecError> {
+                *self.seen.lock().unwrap() = Some((argv.to_vec(), cwd.to_path_buf(), workspace.to_path_buf()));
+                Ok(ExecResult {
+                    exit_code: 0,
+                    stdout: Vec::new(),
+                    stderr: Vec::new(),
+                    timed_out: false,
+                    truncated: false,
+                    ran_under: SandboxBackend::Container,
+                })
+            }
+        }
+
+        /// **The mount source is the policy's project directory, never the
+        /// command's cwd.** They used to be one parameter, and the first
+        /// command of a conversation — a custom tool with its own working
+        /// directory, say `/` — decided what the sandbox contained.
+        #[tokio::test]
+        async fn the_workspace_handed_to_a_connector_is_the_policy_project_dir() {
+            let recorder = Arc::new(Recorder::default());
+            let policy = SandboxPolicy {
+                project_dir: Some(std::path::PathBuf::from("/the/project")),
+                backend: SandboxBackend::Container,
+                connector: Some(recorder.clone()),
+                conversation_id: Some("c-1".into()),
+                ..Default::default()
+            };
+            execute(
+                &["true".into()],
+                Path::new("/somewhere/else"),
+                Some(&policy),
+                Duration::from_secs(5),
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+            let (_, cwd, workspace) = recorder.seen.lock().unwrap().clone().expect("the connector ran");
+            assert_eq!(workspace, Path::new("/the/project"));
+            assert_eq!(cwd, Path::new("/somewhere/else"), "the cwd still travels separately");
+        }
+
+        /// A container policy that lost its project directory is misconfigured,
+        /// and the answer is a refusal — not a mount of whatever the cwd was,
+        /// and not the host.
+        #[tokio::test]
+        async fn a_container_policy_without_a_project_dir_refuses_to_run() {
+            let policy = SandboxPolicy {
+                project_dir: None,
+                backend: SandboxBackend::Container,
+                connector: Some(Arc::new(Recorder::default())),
+                conversation_id: Some("c-1".into()),
+                ..Default::default()
+            };
+            let err = execute(
+                &["true".into()],
+                Path::new("/somewhere"),
+                Some(&policy),
+                Duration::from_secs(5),
+                &CancellationToken::new(),
+            )
+            .await
+            .unwrap_err();
+            assert!(matches!(err, ExecError::Spawn(_)), "{err:?}");
         }
 
         /// Turning it off is an answer, so `None` here is honest.

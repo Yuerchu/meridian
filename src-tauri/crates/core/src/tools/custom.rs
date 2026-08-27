@@ -109,7 +109,13 @@ impl Tool for CustomToolExecutor {
             format!("{} {}", self.command, final_args)
         };
 
-        let argv: Vec<String> = if cfg!(target_os = "windows") {
+        // A containered command resolves its argv inside the container, where
+        // the host's Git Bash path means nothing — same rule as `run_command`.
+        let containered = context
+            .sandbox_policy
+            .as_ref()
+            .is_some_and(|p| p.backend == crate::sandbox::SandboxBackend::Container);
+        let argv: Vec<String> = if !containered && cfg!(target_os = "windows") {
             // Reuse run_command's Git Bash discovery instead of a bare "bash"
             // that depends on PATH.
             vec![super::run_command::find_bash().to_string(), "-c".into(), shell_cmd]
